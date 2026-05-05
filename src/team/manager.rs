@@ -5484,58 +5484,8 @@ async fn migrate_main_agent_events_to_archive(
     archive: &MessageArchiveStoreRef,
     batch_size: usize,
 ) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
-    let max_id = sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
-        .fetch_one(db)
-        .await?;
-    let mut last_id = 0_i64;
-    let mut chunk_rows = Vec::new();
-    let mut counts = AgentEventArchiveMigrationCounts::default();
-    let batch_limit = i64::try_from(batch_size.clamp(1, 1000))?;
-
-    loop {
-        let rows = sqlx::query(
-            r#"
-            SELECT id, agent_id, session_id, ts, stream, message
-            FROM agent_events
-            WHERE id > ?1 AND id <= ?2
-            ORDER BY id ASC
-            LIMIT ?3
-            "#,
-        )
-        .bind(last_id)
-        .bind(max_id)
-        .bind(batch_limit)
-        .fetch_all(db)
-        .await?;
-        if rows.is_empty() {
-            break;
-        }
-        let mut documents = Vec::new();
-        for row in rows {
-            last_id = row.get("id");
-            collect_agent_event_archive_row(
-                AgentEventArchiveRow {
-                    event_id: row.get("id"),
-                    agent_id: row.get("agent_id"),
-                    session_id: row.get("session_id"),
-                    ts: row.get("ts"),
-                    stream: row.get("stream"),
-                    message: decode_message_from_storage(
-                        row.get::<Vec<u8>, _>("message").as_slice(),
-                    ),
-                },
-                &mut documents,
-                &mut chunk_rows,
-                &mut counts,
-            );
-        }
-        if !documents.is_empty() {
-            archive.append_documents(&documents).await?;
-        }
-    }
-
-    append_aggregated_acp_documents(archive, &chunk_rows, batch_size, &mut counts).await?;
-    Ok(counts)
+    migrate_agent_event_rows_to_archive(db, archive, batch_size, AgentEventArchiveSource::Main)
+        .await
 }
 
 async fn migrate_per_agent_events_to_archive(
@@ -5543,6 +5493,27 @@ async fn migrate_per_agent_events_to_archive(
     archive: &MessageArchiveStoreRef,
     agent_id: &str,
     batch_size: usize,
+) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+    migrate_agent_event_rows_to_archive(
+        db,
+        archive,
+        batch_size,
+        AgentEventArchiveSource::PerAgent { agent_id },
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AgentEventArchiveSource<'a> {
+    Main,
+    PerAgent { agent_id: &'a str },
+}
+
+async fn migrate_agent_event_rows_to_archive(
+    db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    batch_size: usize,
+    source: AgentEventArchiveSource<'_>,
 ) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
     let max_id = sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
         .fetch_one(db)
@@ -5553,41 +5524,14 @@ async fn migrate_per_agent_events_to_archive(
     let batch_limit = i64::try_from(batch_size.clamp(1, 1000))?;
 
     loop {
-        let rows = sqlx::query(
-            r#"
-            SELECT id, session_id, ts, stream, message
-            FROM agent_events
-            WHERE id > ?1 AND id <= ?2
-            ORDER BY id ASC
-            LIMIT ?3
-            "#,
-        )
-        .bind(last_id)
-        .bind(max_id)
-        .bind(batch_limit)
-        .fetch_all(db)
-        .await?;
+        let rows = fetch_agent_event_archive_rows(db, source, last_id, max_id, batch_limit).await?;
         if rows.is_empty() {
             break;
         }
         let mut documents = Vec::new();
         for row in rows {
-            last_id = row.get("id");
-            collect_agent_event_archive_row(
-                AgentEventArchiveRow {
-                    event_id: row.get("id"),
-                    agent_id: agent_id.to_string(),
-                    session_id: row.get("session_id"),
-                    ts: row.get("ts"),
-                    stream: row.get("stream"),
-                    message: decode_message_from_storage(
-                        row.get::<Vec<u8>, _>("message").as_slice(),
-                    ),
-                },
-                &mut documents,
-                &mut chunk_rows,
-                &mut counts,
-            );
+            last_id = row.event_id;
+            collect_agent_event_archive_row(row, &mut documents, &mut chunk_rows, &mut counts);
         }
         if !documents.is_empty() {
             archive.append_documents(&documents).await?;
@@ -5596,6 +5540,66 @@ async fn migrate_per_agent_events_to_archive(
 
     append_aggregated_acp_documents(archive, &chunk_rows, batch_size, &mut counts).await?;
     Ok(counts)
+}
+
+async fn fetch_agent_event_archive_rows(
+    db: &SqlitePool,
+    source: AgentEventArchiveSource<'_>,
+    last_id: i64,
+    max_id: i64,
+    batch_limit: i64,
+) -> anyhow::Result<Vec<AgentEventArchiveRow>> {
+    let rows = match source {
+        AgentEventArchiveSource::Main => sqlx::query(
+            r#"
+                SELECT id, agent_id, session_id, ts, stream, message
+                FROM agent_events
+                WHERE id > ?1 AND id <= ?2
+                ORDER BY id ASC
+                LIMIT ?3
+                "#,
+        )
+        .bind(last_id)
+        .bind(max_id)
+        .bind(batch_limit)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(|row| AgentEventArchiveRow {
+            event_id: row.get("id"),
+            agent_id: row.get("agent_id"),
+            session_id: row.get("session_id"),
+            ts: row.get("ts"),
+            stream: row.get("stream"),
+            message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
+        })
+        .collect(),
+        AgentEventArchiveSource::PerAgent { agent_id } => sqlx::query(
+            r#"
+                SELECT id, session_id, ts, stream, message
+                FROM agent_events
+                WHERE id > ?1 AND id <= ?2
+                ORDER BY id ASC
+                LIMIT ?3
+                "#,
+        )
+        .bind(last_id)
+        .bind(max_id)
+        .bind(batch_limit)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(|row| AgentEventArchiveRow {
+            event_id: row.get("id"),
+            agent_id: agent_id.to_string(),
+            session_id: row.get("session_id"),
+            ts: row.get("ts"),
+            stream: row.get("stream"),
+            message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
+        })
+        .collect(),
+    };
+    Ok(rows)
 }
 
 fn collect_agent_event_archive_row(
