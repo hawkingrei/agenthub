@@ -33,6 +33,8 @@ impl LanceDbMessageArchive {
             Field::new("source_kind", DataType::Utf8, false),
             Field::new("source_id", DataType::Utf8, false),
             Field::new("logical_message_id", DataType::Utf8, true),
+            Field::new("authority_message_id", DataType::Int64, true),
+            Field::new("correlation_id", DataType::Utf8, true),
             Field::new("team_id", DataType::Utf8, true),
             Field::new("run_id", DataType::Utf8, true),
             Field::new("conversation_id", DataType::Utf8, true),
@@ -49,106 +51,108 @@ impl LanceDbMessageArchive {
     }
 
     async fn ensure_table(&self) -> Result<lancedb::Table> {
-        let table = self
+        let table = match self
             .connection
-            .create_empty_table(&self.config.message_table, Self::schema())
-            .mode(CreateTableMode::exist_ok(|request| request))
+            .open_table(&self.config.message_table)
             .execute()
-            .await?;
+            .await
+        {
+            Ok(table) => table,
+            Err(lancedb::Error::TableNotFound { .. }) => {
+                self.connection
+                    .create_empty_table(&self.config.message_table, Self::schema())
+                    .mode(CreateTableMode::exist_ok(|request| request))
+                    .execute()
+                    .await?
+            }
+            Err(err) => return Err(err.into()),
+        };
+        self.ensure_message_identity_columns(&table).await?;
         Ok(table)
+    }
+
+    async fn ensure_message_identity_columns(&self, table: &lancedb::Table) -> Result<()> {
+        let schema = table.schema().await?;
+        let mut transforms = Vec::new();
+        if schema.field_with_name("authority_message_id").is_err() {
+            transforms.push((
+                "authority_message_id".to_string(),
+                "cast(NULL as bigint)".to_string(),
+            ));
+        }
+        if schema.field_with_name("correlation_id").is_err() {
+            transforms.push((
+                "correlation_id".to_string(),
+                "cast(NULL as string)".to_string(),
+            ));
+        }
+        if transforms.is_empty() {
+            return Ok(());
+        }
+
+        table
+            .add_columns(
+                lancedb::table::NewColumnTransform::SqlExpressions(transforms),
+                None,
+            )
+            .await?;
+        Ok(())
     }
 
     fn documents_to_record_batch(documents: &[MessageDocument]) -> Result<RecordBatch> {
         let arrays: Vec<ArrayRef> = vec![
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| Some(doc.document_id.as_str()))
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| Some(doc.document_id.as_str())),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| Some(doc.source_kind.as_str()))
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| Some(doc.source_kind.as_str())),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| Some(doc.source_id.as_str()))
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| Some(doc.source_id.as_str())),
             )),
-            Arc::new(StringArray::from(
+            Arc::new(StringArray::from_iter(
                 documents
                     .iter()
-                    .map(|doc| doc.logical_message_id.as_deref())
-                    .collect::<Vec<_>>(),
+                    .map(|doc| doc.logical_message_id.as_deref()),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.team_id.as_deref())
-                    .collect::<Vec<_>>(),
+            Arc::new(Int64Array::from_iter(
+                documents.iter().map(|doc| doc.authority_message_id),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.run_id.as_deref())
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.correlation_id.as_deref()),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.conversation_id.as_deref())
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.team_id.as_deref()),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.task_id.as_deref())
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.run_id.as_deref()),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.agent_id.as_deref())
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.conversation_id.as_deref()),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.session_id.as_deref())
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.task_id.as_deref()),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| Some(doc.body_text.as_str()))
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.agent_id.as_deref()),
             )),
-            Arc::new(StringArray::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.payload_json.as_deref())
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.session_id.as_deref()),
             )),
-            Arc::new(Int64Array::from(
-                documents
-                    .iter()
-                    .map(|doc| Some(doc.created_at))
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| Some(doc.body_text.as_str())),
             )),
-            Arc::new(Int64Array::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.event_id_from)
-                    .collect::<Vec<_>>(),
+            Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.payload_json.as_deref()),
             )),
-            Arc::new(Int64Array::from(
-                documents
-                    .iter()
-                    .map(|doc| doc.event_id_to)
-                    .collect::<Vec<_>>(),
+            Arc::new(Int64Array::from_iter(
+                documents.iter().map(|doc| Some(doc.created_at)),
+            )),
+            Arc::new(Int64Array::from_iter(
+                documents.iter().map(|doc| doc.event_id_from),
+            )),
+            Arc::new(Int64Array::from_iter(
+                documents.iter().map(|doc| doc.event_id_to),
             )),
             Arc::new(UInt32Array::from(
                 documents
@@ -162,6 +166,16 @@ impl LanceDbMessageArchive {
 
     fn build_filter(query: &MessageSearchQuery) -> Option<String> {
         let mut predicates = Vec::new();
+        append_i64_filter(
+            &mut predicates,
+            "authority_message_id",
+            query.authority_message_id,
+        );
+        append_string_filter(
+            &mut predicates,
+            "correlation_id",
+            query.correlation_id.as_deref(),
+        );
         append_string_filter(&mut predicates, "team_id", query.team_id.as_deref());
         append_string_filter(&mut predicates, "run_id", query.run_id.as_deref());
         append_string_filter(
@@ -264,6 +278,13 @@ fn append_string_filter(predicates: &mut Vec<String>, column: &str, value: Optio
     predicates.push(format!("{column} = '{}'", escape_sql_literal(value)));
 }
 
+fn append_i64_filter(predicates: &mut Vec<String>, column: &str, value: Option<i64>) {
+    let Some(value) = value else {
+        return;
+    };
+    predicates.push(format!("{column} = {value}"));
+}
+
 fn escape_sql_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
@@ -300,11 +321,35 @@ fn is_existing_index_error(err: &lancedb::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::{LanceDbMessageArchive, escape_sql_literal, parse_source_kind};
     use crate::model::{
         MessageArchiveBackend, MessageArchiveConfig, MessageArchiveStore, MessageDocument,
         MessageDocumentKind, MessageSearchQuery,
     };
+    use arrow_schema::{DataType, Field, Schema, SchemaRef};
+
+    fn legacy_schema() -> SchemaRef {
+        Arc::new(Schema::new(vec![
+            Field::new("document_id", DataType::Utf8, false),
+            Field::new("source_kind", DataType::Utf8, false),
+            Field::new("source_id", DataType::Utf8, false),
+            Field::new("logical_message_id", DataType::Utf8, true),
+            Field::new("team_id", DataType::Utf8, true),
+            Field::new("run_id", DataType::Utf8, true),
+            Field::new("conversation_id", DataType::Utf8, true),
+            Field::new("task_id", DataType::Utf8, true),
+            Field::new("agent_id", DataType::Utf8, true),
+            Field::new("session_id", DataType::Utf8, true),
+            Field::new("body_text", DataType::Utf8, false),
+            Field::new("payload_json", DataType::Utf8, true),
+            Field::new("created_at", DataType::Int64, false),
+            Field::new("event_id_from", DataType::Int64, true),
+            Field::new("event_id_to", DataType::Int64, true),
+            Field::new("chunk_count", DataType::UInt32, true),
+        ]))
+    }
 
     #[tokio::test]
     async fn lancedb_archive_can_append_and_search_messages() {
@@ -323,6 +368,8 @@ mod tests {
                 source_kind: MessageDocumentKind::TeamConversationMessage,
                 source_id: "1".to_string(),
                 logical_message_id: Some("msg-1".to_string()),
+                authority_message_id: Some(101),
+                correlation_id: Some("corr-1".to_string()),
                 team_id: Some("team-1".to_string()),
                 run_id: None,
                 conversation_id: Some("conv-1".to_string()),
@@ -376,6 +423,8 @@ mod tests {
                     source_kind: MessageDocumentKind::TeamConversationMessage,
                     source_id: "1".to_string(),
                     logical_message_id: Some("msg-1".to_string()),
+                    authority_message_id: Some(101),
+                    correlation_id: Some("corr-alpha".to_string()),
                     team_id: Some("team-a".to_string()),
                     run_id: Some("run-a".to_string()),
                     conversation_id: Some("conv-1".to_string()),
@@ -394,6 +443,8 @@ mod tests {
                     source_kind: MessageDocumentKind::TeamRunEvent,
                     source_id: "2".to_string(),
                     logical_message_id: Some("msg-2".to_string()),
+                    authority_message_id: None,
+                    correlation_id: Some("corr-beta".to_string()),
                     team_id: Some("team-b".to_string()),
                     run_id: Some("run-b".to_string()),
                     conversation_id: Some("conv-2".to_string()),
@@ -425,6 +476,8 @@ mod tests {
             .search(&MessageSearchQuery {
                 query_text: "hello".to_string(),
                 limit: 5,
+                authority_message_id: None,
+                correlation_id: Some("corr-beta".to_string()),
                 team_id: Some("team-b".to_string()),
                 run_id: Some("run-b".to_string()),
                 conversation_id: Some("conv-2".to_string()),
@@ -438,6 +491,81 @@ mod tests {
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].document_id, "doc-2");
         assert!(filtered[0].score.is_some());
+
+        let authority_filtered = archive
+            .search(&MessageSearchQuery {
+                query_text: "hello".to_string(),
+                limit: 5,
+                authority_message_id: Some(101),
+                correlation_id: Some("corr-alpha".to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("search docs");
+        assert_eq!(authority_filtered.len(), 1);
+        assert_eq!(authority_filtered[0].document_id, "doc-1");
+    }
+
+    #[tokio::test]
+    async fn lancedb_archive_migrates_existing_tables_without_identity_columns() {
+        let config = MessageArchiveConfig {
+            backend: MessageArchiveBackend::LanceDb,
+            uri: "memory://agenthub-message-archive-legacy".to_string(),
+            message_table: "messages".to_string(),
+        };
+        let archive = LanceDbMessageArchive::connect(config)
+            .await
+            .expect("connect archive");
+        archive
+            .connection
+            .create_empty_table(&archive.config.message_table, legacy_schema())
+            .execute()
+            .await
+            .expect("create legacy table");
+
+        archive.ensure_ready().await.expect("migrate legacy table");
+
+        let table = archive.ensure_table().await.expect("open migrated table");
+        let schema = table.schema().await.expect("table schema");
+        assert!(schema.field_with_name("authority_message_id").is_ok());
+        assert!(schema.field_with_name("correlation_id").is_ok());
+
+        archive
+            .append_documents(&[MessageDocument {
+                document_id: "legacy-doc-1".to_string(),
+                source_kind: MessageDocumentKind::TeamConversationMessage,
+                source_id: "1".to_string(),
+                logical_message_id: Some("msg-legacy-1".to_string()),
+                authority_message_id: Some(501),
+                correlation_id: Some("corr-legacy".to_string()),
+                team_id: Some("team-legacy".to_string()),
+                run_id: None,
+                conversation_id: Some("conv-legacy".to_string()),
+                task_id: Some("task-legacy".to_string()),
+                agent_id: None,
+                session_id: None,
+                body_text: "hello legacy".to_string(),
+                payload_json: None,
+                created_at: 1,
+                event_id_from: None,
+                event_id_to: None,
+                chunk_count: None,
+            }])
+            .await
+            .expect("append migrated docs");
+
+        let hits = archive
+            .search(&MessageSearchQuery {
+                query_text: "legacy".to_string(),
+                limit: 5,
+                authority_message_id: Some(501),
+                correlation_id: Some("corr-legacy".to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("search migrated docs");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].document_id, "legacy-doc-1");
     }
 
     #[test]
