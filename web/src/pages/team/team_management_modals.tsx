@@ -576,7 +576,6 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
             disabled
             size="md"
             tone="secondary"
-            title="Move to Team is deferred until ownership and runtime guardrails land."
             type="button"
           >
             Move to Team (later)
