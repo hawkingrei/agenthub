@@ -5345,6 +5345,50 @@ async fn actor_mailbox_service_direct_remote_send_requires_relay_route_and_remot
         "route is required for remote transport"
     );
 
+    let null_route = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_NODE_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Remote),
+            route: Some(Value::Null),
+            payload: json!({"text":"please review remotely"}),
+            idempotency_key: Some("msg-direct-remote-null-route".to_string()),
+        })
+        .await
+        .expect_err("remote direct send with null route should fail");
+    assert_eq!(null_route.code, ActorServiceErrorCode::BadRequest);
+    assert_eq!(
+        null_route.message,
+        "route must be a JSON object for remote transport"
+    );
+
+    let empty_route = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_NODE_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Remote),
+            route: Some(json!({})),
+            payload: json!({"text":"please review remotely"}),
+            idempotency_key: Some("msg-direct-remote-empty-route".to_string()),
+        })
+        .await
+        .expect_err("remote direct send with empty route should fail");
+    assert_eq!(empty_route.code, ActorServiceErrorCode::BadRequest);
+    assert_eq!(
+        empty_route.message,
+        "route must contain endpoint or grpc_target for remote transport"
+    );
+
     let main_peer = service
         .actor_send(ActorSendRequest {
             run_id: run.id.clone(),

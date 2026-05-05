@@ -117,7 +117,7 @@ Peer identity policy:
 
 - `from_peer_id` defaults to `main` when omitted; callers SHOULD set it explicitly in multi-peer deployments.
 - `to_peer_id` defaults to `main` for local transport when omitted.
-- For remote transport, callers MUST provide a relay `route` and set `to_peer_id` to a non-`main` peer (for example `node`). Backend mailbox service validation rejects route-less remote sends and remote sends addressed to `main`.
+- For remote transport, callers MUST provide a relay `route` object containing a non-empty `endpoint` or `grpc_target`, and set `to_peer_id` to a non-`main` peer (for example `node`). Backend mailbox service validation rejects route-less or malformed remote sends and remote sends addressed to `main`.
 
 Identity-kind projection (for UX/policy):
 

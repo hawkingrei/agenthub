@@ -563,6 +563,36 @@ impl TeamActorMailboxService {
         validate_direct_mailbox_target_for_member_specs(&member_specs, to_actor_id)
     }
 
+    fn validate_direct_remote_route(route: Option<&Value>) -> Result<(), ActorServiceError> {
+        let Some(route) = route else {
+            return Err(ActorServiceError::new(
+                ActorServiceErrorCode::BadRequest,
+                "route is required for remote transport",
+            ));
+        };
+        let Some(object) = route.as_object() else {
+            return Err(ActorServiceError::new(
+                ActorServiceErrorCode::BadRequest,
+                "route must be a JSON object for remote transport",
+            ));
+        };
+        let has_http_route = object
+            .get("endpoint")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty());
+        let has_grpc_route = object
+            .get("grpc_target")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty());
+        if has_http_route || has_grpc_route {
+            return Ok(());
+        }
+        Err(ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            "route must contain endpoint or grpc_target for remote transport",
+        ))
+    }
+
     async fn load_member_specs_for_run(
         &self,
         run_id: &str,
@@ -762,12 +792,7 @@ impl ActorMailboxService for TeamActorMailboxService {
                     .await?;
             }
             TeamActorMessageTransport::Remote => {
-                if request.route.is_none() {
-                    return Err(ActorServiceError::new(
-                        ActorServiceErrorCode::BadRequest,
-                        "route is required for remote transport",
-                    ));
-                }
+                Self::validate_direct_remote_route(request.route.as_ref())?;
                 if to_peer_id == ACTOR_MAIN_PEER_ID {
                     return Err(ActorServiceError::new(
                         ActorServiceErrorCode::BadRequest,
