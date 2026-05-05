@@ -1,6 +1,13 @@
 ignore:
   - "src/internal/proto/agenthub.internal.v1.rs"
 
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        removed_code_behavior: fully_covered_patch
+
 flag_management:
   default_rules:
     carryforward: false
