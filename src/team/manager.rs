@@ -154,6 +154,7 @@ fn team_conversation_message_archive_document(
             .get("correlation_id")
             .and_then(Value::as_str)
             .map(str::to_string),
+        group_id: None,
         team_id: Some(conversation.team_id.clone()),
         run_id: None,
         conversation_id: Some(message.conversation_id.clone()),
@@ -279,6 +280,7 @@ fn team_run_event_archive_document(
         logical_message_id: None,
         authority_message_id: message_archive_payload_i64(&event.payload, "authority_message_id"),
         correlation_id: message_archive_payload_string(&event.payload, "correlation_id"),
+        group_id: None,
         team_id: Some(team_id.to_string()),
         run_id: Some(event.run_id.clone()),
         conversation_id: message_archive_payload_string(&event.payload, "conversation_id")
@@ -316,6 +318,7 @@ fn team_actor_message_archive_document(
         logical_message_id: None,
         authority_message_id: message_archive_payload_i64(&message.payload, "authority_message_id"),
         correlation_id: message_archive_payload_string(&message.payload, "correlation_id"),
+        group_id: None,
         team_id: Some(team_id.to_string()),
         run_id: Some(message.run_id.clone()),
         conversation_id: message_archive_payload_string_any(
@@ -417,6 +420,7 @@ fn agent_event_archive_document(
         correlation_id: parsed_message
             .as_ref()
             .and_then(|payload| message_archive_payload_string(payload, "correlation_id")),
+        group_id: None,
         team_id: scope.and_then(|scope| scope.team_id.clone()),
         run_id: scope.and_then(|scope| scope.run_id.clone()),
         conversation_id: scope.and_then(|scope| scope.conversation_id.clone()),
@@ -449,6 +453,7 @@ fn aggregated_acp_message_archive_document(
         logical_message_id: Some(message.logical_message_id.clone()),
         authority_message_id: None,
         correlation_id: None,
+        group_id: None,
         team_id: scope.and_then(|scope| scope.team_id.clone()),
         run_id: scope.and_then(|scope| scope.run_id.clone()),
         conversation_id: scope.and_then(|scope| scope.conversation_id.clone()),

@@ -96,6 +96,7 @@ The archive stores one canonical document shape for every message-like record:
 - optional logical grouping IDs:
   - `authority_message_id`
   - `correlation_id`
+  - `group_id`
   - `team_id`
   - `run_id`
   - `conversation_id`
@@ -161,6 +162,7 @@ Search queries may filter by archive scope:
 
 - `authority_message_id`
 - `correlation_id`
+- `group_id`
 - `team_id`
 - `run_id`
 - `conversation_id`
@@ -259,6 +261,10 @@ actor-scoped archive filters find messages delivered to that actor.
 - Migration is one-way from SQLite message history into archive documents.
 - Migration must be resumable and idempotent.
 - New dual-written documents and migrated historical documents must share the same canonical schema.
+- Archive documents carry an optional `group_id` projection field for the future
+  multi-tenant/group rollout. Current Team writes leave it empty until a live authority `group_id`
+  exists; archive backends must still preserve and filter it when supplied by future sources or
+  re-indexing.
 - Team migration batches source rows and appends each batch immediately; `batch_size` must bound both
   source rows materialized at once and archive writes.
 - Team migration excludes `shared_thread_mailbox` bootstrap runs from run-event and actor-mailbox
@@ -352,3 +358,4 @@ actor-scoped archive filters find messages delivered to that actor.
 - [docs/journal/2026-05-05-message-archive-team-conversation-dual-write.md](../journal/2026-05-05-message-archive-team-conversation-dual-write.md)
 - [docs/journal/2026-05-05-message-archive-team-search-api.md](../journal/2026-05-05-message-archive-team-search-api.md)
 - [docs/journal/2026-05-05-message-archive-team-migration.md](../journal/2026-05-05-message-archive-team-migration.md)
+- [docs/journal/2026-05-06-message-archive-group-id-projection.md](../journal/2026-05-06-message-archive-group-id-projection.md)
