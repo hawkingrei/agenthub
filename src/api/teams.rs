@@ -1056,11 +1056,8 @@ async fn search_team_messages(
 ) -> Result<Json<Vec<TeamMessageSearchHitResponse>>, ApiError> {
     let user = require_user(&headers, &state).await?;
     load_team_for_user(&state, &team_id, &user).await?;
-    let source_kind = query
-        .source_kind
+    let source_kind = normalize_optional_string(query.source_kind)
         .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
         .map(parse_message_archive_source_kind)
         .transpose()?;
     let archive_query = MessageSearchQuery {
