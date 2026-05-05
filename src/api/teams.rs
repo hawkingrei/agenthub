@@ -2321,6 +2321,16 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn message_archive_source_kind_values() -> [&'static str; 5] {
+    [
+        MessageDocumentKind::AgentEvent.as_str(),
+        MessageDocumentKind::TeamConversationMessage.as_str(),
+        MessageDocumentKind::TeamRunEvent.as_str(),
+        MessageDocumentKind::TeamActorMessage.as_str(),
+        MessageDocumentKind::AggregatedAcpMessage.as_str(),
+    ]
+}
+
 fn parse_message_archive_source_kind(raw: &str) -> Result<MessageDocumentKind, ApiError> {
     match raw.trim() {
         "agent_event" => Ok(MessageDocumentKind::AgentEvent),
@@ -2328,9 +2338,13 @@ fn parse_message_archive_source_kind(raw: &str) -> Result<MessageDocumentKind, A
         "team_run_event" => Ok(MessageDocumentKind::TeamRunEvent),
         "team_actor_message" => Ok(MessageDocumentKind::TeamActorMessage),
         "aggregated_acp_message" => Ok(MessageDocumentKind::AggregatedAcpMessage),
-        _ => Err(ApiError::bad_request(
-            "unsupported message archive source_kind",
-        )),
+        invalid => {
+            let message = format!(
+                "unsupported message archive source_kind '{invalid}'; expected one of: {}",
+                message_archive_source_kind_values().join(", ")
+            );
+            Err(ApiError::bad_request(&message))
+        }
     }
 }
 

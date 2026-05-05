@@ -5490,6 +5490,22 @@ async fn team_message_search_api_uses_archive_with_team_scope() {
 }
 
 #[tokio::test]
+async fn message_archive_source_kind_error_lists_supported_values() {
+    let err = parse_message_archive_source_kind("bogus_kind")
+        .expect_err("unsupported archive source kind should fail");
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = decode_json_body(response).await;
+    let message = body["error"].as_str().expect("error message");
+    assert!(message.contains("bogus_kind"));
+    assert!(message.contains("agent_event"));
+    assert!(message.contains("team_conversation_message"));
+    assert!(message.contains("team_run_event"));
+    assert!(message.contains("team_actor_message"));
+    assert!(message.contains("aggregated_acp_message"));
+}
+
+#[tokio::test]
 async fn teams_api_rejects_human_task_status_and_owner_updates() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
