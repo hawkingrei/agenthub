@@ -728,21 +728,11 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setSelectedTeamId(created.id);
       clearTeamCreateDraft();
       patchTeamCreate({
-        newTeamName: initial.newTeamName,
-        newTeamDescription: initial.newTeamDescription,
+        ...initial,
         coordinatorPrompt: teamPromptDefaults.coordinator_prompt,
         showCreateTeamModal: false,
-        showForgeAgentForm: false,
-        showCopyExistingAgentModal: false,
-        forgeAgentName: initial.forgeAgentName,
-        forgeAgentWorkdir: initial.forgeAgentWorkdir,
         forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
-        forgeAgentWorktreeMode: initial.forgeAgentWorktreeMode,
-        forgeAgentWorktreeRepo: initial.forgeAgentWorktreeRepo,
-        forgeAgentWorktreeRef: initial.forgeAgentWorktreeRef,
         forgeAgentCodeMode: true,
-        forgeAgentWorktreeError: null,
-        forgeAgentBusy: initial.forgeAgentBusy,
       });
       setWarning("Team created. Add the first agent to make it the coordinator.");
       navigateToTeamDetail(created.id);
