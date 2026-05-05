@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
+use agenthub_message_archive::MessageArchiveStoreRef;
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, AckActorMessageCommand, AckActorMessageResult,
     ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailbox,
@@ -25,12 +26,12 @@ use super::codec::{
 use super::{
     TEAM_SHARED_THREAD_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_TITLE, TeamConversationStreamEvent,
     TeamManager, TeamMemberSpecView, fetch_canonical_shared_thread_target, parse_team_member_specs,
-    redact_sensitive_json,
+    redact_sensitive_json, team_run_event_archive_document_for_db,
 };
 use crate::agent::normalize_target_node_id;
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
-    TeamConversationMessageRecord,
+    TeamConversationMessageRecord, TeamRunEventRecord,
 };
 
 const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
@@ -308,6 +309,7 @@ impl TeamManager {
     fn actor_mailbox(&self) -> ActorMailbox<SqlActorMailboxStore> {
         ActorMailbox::new(SqlActorMailboxStore {
             db: self.db.clone(),
+            message_archive: self.message_archive.clone(),
         })
     }
 
@@ -850,6 +852,7 @@ impl ActorMailboxService for TeamActorMailboxService {
             .unwrap_or_else(|| vec![TeamActorMessageStatus::Pending]);
         let snapshot = SqlActorMailboxStore {
             db: self.manager.db.clone(),
+            message_archive: None,
         }
         .read_inbox_snapshot(&ListActorInboxQuery {
             run_id: run_id.to_string(),
@@ -910,6 +913,7 @@ impl ActorMailboxService for TeamActorMailboxService {
 #[derive(Clone)]
 struct SqlActorMailboxStore {
     db: SqlitePool,
+    message_archive: Option<MessageArchiveStoreRef>,
 }
 
 #[derive(Debug, Error)]
@@ -1372,7 +1376,7 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         ts: i64,
         payload: Value,
     ) -> Result<(), Self::Error> {
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
             VALUES (?1, NULL, ?2, ?3, ?4)
@@ -1384,6 +1388,58 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         .bind(payload.to_string())
         .execute(&self.db)
         .await?;
+        let event = TeamRunEventRecord {
+            event_id: result.last_insert_rowid(),
+            run_id: run_id.to_string(),
+            step_id: None,
+            event_type: event_type.to_string(),
+            ts,
+            payload,
+        };
+        if let Some(archive) = self.message_archive.as_ref().cloned() {
+            let db = self.db.clone();
+            let run_id = event.run_id.clone();
+            let event_id = event.event_id;
+            tokio::spawn(async move {
+                match team_run_event_archive_document_for_db(&db, &event).await {
+                    Ok(Some(document)) => {
+                        match tokio::time::timeout(
+                            super::MESSAGE_ARCHIVE_APPEND_TIMEOUT,
+                            archive.append_documents(&[document]),
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => {}
+                            Ok(Err(error)) => {
+                                tracing::warn!(
+                                    error = ?error,
+                                    run_id = %run_id,
+                                    event_id,
+                                    "failed to dual-write team actor mailbox run event to archive"
+                                );
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    run_id = %run_id,
+                                    event_id,
+                                    timeout_ms = super::MESSAGE_ARCHIVE_APPEND_TIMEOUT.as_millis(),
+                                    "timed out dual-writing team actor mailbox run event to archive"
+                                );
+                            }
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            error = ?error,
+                            run_id = %run_id,
+                            event_id,
+                            "failed to build team actor mailbox run event archive document"
+                        );
+                    }
+                }
+            });
+        }
         Ok(())
     }
 }

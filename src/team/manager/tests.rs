@@ -1133,7 +1133,7 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
         .expect("send retry actor message");
     assert_eq!(retry.message_id, first.message_id);
 
-    let documents = wait_for_archive_documents(&archive, 2).await;
+    let documents = wait_for_archive_documents(&archive, 4).await;
     let actor_documents: Vec<_> = documents
         .iter()
         .filter(|document| document.source_kind == MessageDocumentKind::TeamActorMessage)
@@ -1164,6 +1164,149 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
     assert_eq!(document.agent_id.as_deref(), Some("worker-1"));
     assert_eq!(document.body_text, "live actor archive message");
     assert_eq!(document.created_at, first.created_at);
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::TeamRunEvent
+            && document.run_id.as_deref() == Some(run.id.as_str())
+            && document.body_text == "actor_message_sent"
+            && document.conversation_id.as_deref() == Some(conversation.id.as_str())
+            && document.task_id.as_deref() == Some(task.id.as_str())
+    }));
+}
+
+#[tokio::test]
+async fn create_run_dual_writes_submission_event_to_archive() {
+    let db = setup_test_db().await;
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "run-event-archive-team".to_string(),
+            description: Some("team for run event archive dual-write".to_string()),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Archive run event",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(task.id.as_str()),
+            json!({
+                "task_id": task.id,
+            }),
+        )
+        .await
+        .expect("create run");
+
+    let documents = wait_for_archive_documents(&archive, 1).await;
+    let document = documents
+        .iter()
+        .find(|document| document.source_kind == MessageDocumentKind::TeamRunEvent)
+        .expect("run event archive document");
+    assert_eq!(
+        document.document_id,
+        format!("team_run_event:{}:{}", run.id, document.source_id)
+    );
+    assert_eq!(document.team_id.as_deref(), Some(team.id.as_str()));
+    assert_eq!(document.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(
+        document.conversation_id.as_deref(),
+        Some(conversation.id.as_str())
+    );
+    assert_eq!(document.task_id.as_deref(), Some(task.id.as_str()));
+    assert_eq!(document.body_text, "run_submitted");
+    assert!(
+        document
+            .payload_json
+            .as_deref()
+            .is_some_and(|payload| payload.contains("inherit_recent"))
+    );
+}
+
+#[tokio::test]
+async fn append_run_event_dual_writes_created_event_to_archive() {
+    let db = setup_test_db().await;
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "append-run-event-archive-team".to_string(),
+            description: Some("team for appended run event archive dual-write".to_string()),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Archive appended run event",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(task.id.as_str()),
+            json!({
+                "task_id": task.id,
+            }),
+        )
+        .await
+        .expect("create run");
+
+    manager
+        .append_run_event(
+            &run.id,
+            "custom_live_event",
+            json!({
+                "text": "custom live run event",
+                "authority_message_id": 42,
+                "correlation_id": "corr-live-run"
+            }),
+        )
+        .await
+        .expect("append run event");
+
+    let documents = wait_for_archive_documents(&archive, 2).await;
+    let document = documents
+        .iter()
+        .find(|document| document.body_text == "custom live run event")
+        .expect("custom run event archive document");
+    assert_eq!(document.source_kind, MessageDocumentKind::TeamRunEvent);
+    assert_eq!(document.authority_message_id, Some(42));
+    assert_eq!(document.correlation_id.as_deref(), Some("corr-live-run"));
+    assert_eq!(document.team_id.as_deref(), Some(team.id.as_str()));
+    assert_eq!(document.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(
+        document.conversation_id.as_deref(),
+        Some(conversation.id.as_str())
+    );
+    assert_eq!(document.task_id.as_deref(), Some(task.id.as_str()));
 }
 
 #[tokio::test]

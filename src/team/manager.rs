@@ -177,6 +177,87 @@ impl MessageArchiveScopeFallback {
     }
 }
 
+async fn message_archive_task_conversation_id_db(
+    db: &SqlitePool,
+    team_id: &str,
+    task_id: &str,
+) -> anyhow::Result<Option<String>> {
+    Ok(sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT id
+        FROM team_conversations
+        WHERE team_id = ?1 AND task_id = ?2
+        LIMIT 1
+        "#,
+    )
+    .bind(team_id)
+    .bind(task_id)
+    .fetch_optional(db)
+    .await?)
+}
+
+async fn message_archive_scope_for_payload_db(
+    db: &SqlitePool,
+    team_id: &str,
+    payload: &Value,
+    base_scope: &MessageArchiveScopeFallback,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<MessageArchiveScopeFallback> {
+    let task_id =
+        message_archive_payload_string(payload, "task_id").or_else(|| base_scope.task_id.clone());
+    let mut conversation_id = base_scope.conversation_id.clone();
+    if conversation_id.is_none()
+        && let Some(task_id) = task_id.as_deref()
+    {
+        let cache_key = (team_id.to_string(), task_id.to_string());
+        if !task_conversation_cache.contains_key(&cache_key) {
+            let resolved = message_archive_task_conversation_id_db(db, team_id, task_id).await?;
+            task_conversation_cache.insert(cache_key.clone(), resolved);
+        }
+        conversation_id = task_conversation_cache.get(&cache_key).cloned().flatten();
+    }
+    Ok(MessageArchiveScopeFallback {
+        conversation_id,
+        task_id,
+    })
+}
+
+async fn team_run_event_archive_document_for_db(
+    db: &SqlitePool,
+    event: &TeamRunEventRecord,
+) -> anyhow::Result<Option<MessageDocument>> {
+    let row = sqlx::query(
+        r#"
+        SELECT team_id, input_json
+        FROM team_runs
+        WHERE id = ?1
+        "#,
+    )
+    .bind(&event.run_id)
+    .fetch_one(db)
+    .await?;
+    let team_id: String = row.get("team_id");
+    let input_json: String = row.get("input_json");
+    let run_input: Value = serde_json::from_str(&input_json)?;
+    if message_archive_payload_string(&run_input, "bootstrap_kind").as_deref()
+        == Some(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND)
+    {
+        return Ok(None);
+    }
+    let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
+    let scope = message_archive_scope_for_payload_db(
+        db,
+        &team_id,
+        &event.payload,
+        &base_scope,
+        &mut HashMap::new(),
+    )
+    .await?;
+    Ok(Some(team_run_event_archive_document(
+        &team_id, event, &scope,
+    )))
+}
+
 fn team_run_event_archive_document(
     team_id: &str,
     event: &TeamRunEventRecord,
@@ -1918,6 +1999,66 @@ impl TeamManager {
         )))
     }
 
+    pub(super) fn spawn_archive_team_run_event(&self, event: &TeamRunEventRecord) {
+        if self.message_archive.is_none() {
+            return;
+        }
+        let manager = self.clone();
+        let event = event.clone();
+        let run_id = event.run_id.clone();
+        let event_id = event.event_id;
+
+        tokio::spawn(async move {
+            match manager.team_run_event_archive_document(&event).await {
+                Ok(Some(document)) => {
+                    let Some(archive) = manager.message_archive.as_ref().cloned() else {
+                        return;
+                    };
+                    match tokio::time::timeout(
+                        MESSAGE_ARCHIVE_APPEND_TIMEOUT,
+                        archive.append_documents(&[document]),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => {
+                            tracing::warn!(
+                                error = ?error,
+                                run_id = %run_id,
+                                event_id,
+                                "failed to dual-write team run event to archive"
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                event_id,
+                                timeout_ms = MESSAGE_ARCHIVE_APPEND_TIMEOUT.as_millis(),
+                                "timed out dual-writing team run event to archive"
+                            );
+                        }
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        error = ?error,
+                        run_id = %run_id,
+                        event_id,
+                        "failed to build team run event archive document"
+                    );
+                }
+            }
+        });
+    }
+
+    async fn team_run_event_archive_document(
+        &self,
+        event: &TeamRunEventRecord,
+    ) -> anyhow::Result<Option<MessageDocument>> {
+        team_run_event_archive_document_for_db(&self.db, event).await
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn append_channel_replica_message(
         &self,
@@ -2346,7 +2487,7 @@ impl TeamManager {
             "status": team_run_status_to_str(&status),
             "continuity_mode": continuity_mode,
         });
-        sqlx::query(
+        let submitted_event_result = sqlx::query(
             r#"
             INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
             VALUES (?1, NULL, ?2, ?3, ?4)
@@ -2358,6 +2499,14 @@ impl TeamManager {
         .bind(payload.to_string())
         .execute(&mut *tx)
         .await?;
+        let submitted_event = TeamRunEventRecord {
+            event_id: submitted_event_result.last_insert_rowid(),
+            run_id: run_id.clone(),
+            step_id: None,
+            event_type: "run_submitted".to_string(),
+            ts: now,
+            payload,
+        };
         insert_materialized_run_steps_tx(&mut tx, &run_id, &materialized_steps, now).await?;
         sync_linked_task_status_tx(
             &mut tx,
@@ -2369,6 +2518,7 @@ impl TeamManager {
         )
         .await?;
         tx.commit().await?;
+        self.spawn_archive_team_run_event(&submitted_event);
 
         Ok(TeamRunRecord {
             id: run_id,
@@ -4613,7 +4763,7 @@ impl TeamManager {
         payload: Value,
     ) -> anyhow::Result<()> {
         let ts = Utc::now().timestamp();
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
             VALUES (?1, NULL, ?2, ?3, ?4)
@@ -4625,6 +4775,15 @@ impl TeamManager {
         .bind(payload.to_string())
         .execute(&self.db)
         .await?;
+        let event = TeamRunEventRecord {
+            event_id: result.last_insert_rowid(),
+            run_id: run_id.to_string(),
+            step_id: None,
+            event_type: event_type.to_string(),
+            ts,
+            payload,
+        };
+        self.spawn_archive_team_run_event(&event);
         Ok(())
     }
 
