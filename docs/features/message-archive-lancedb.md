@@ -66,6 +66,11 @@ This means the rollout is staged:
 5. switch search and history-oriented read paths to the archive
 6. only then evaluate whether any SQLite message tables can be demoted or trimmed
 
+The first live dual-write surface is Team conversation messages. They continue to commit to SQLite
+first, then best-effort append a deterministic archive document. Archive append failures must be
+logged and recovered by the historical migration path rather than rolling back the user-visible
+conversation write.
+
 ### 2) Pluggable Backend Boundary
 
 Business logic must not depend directly on `lancedb::Connection` or LanceDB query builders.
@@ -262,6 +267,8 @@ Recommended identity shapes:
   - Team run events
   - Team actor messages
   - raw ACP event replay into aggregated archive documents
+- Focused Team manager test for live Team conversation message dual-write without duplicating
+  archive documents on idempotent retries.
 - `cargo test -p <archive crate>`
 - `cargo check`
 - `bazel build //...`
@@ -271,6 +278,9 @@ Recommended identity shapes:
 - Keep SQLite message tables intact until archive read paths and migration are both validated.
 - Treat the archive as a search/retrieval plane first, not as a replacement for transactionally
   sensitive runtime state.
+- Live archive dual-write should not make Team conversation writes depend on LanceDB availability;
+  deterministic document ids and historical migration are the recovery boundary for missed archive
+  appends.
 - ACP aggregation should be deterministic so historical re-indexing produces the same logical
   archive documents as live dual-write.
 - ACP aggregation keeps parseable chunks with the same grouping key in one logical archive
@@ -289,3 +299,4 @@ Recommended identity shapes:
 ## Source Journals
 
 - [docs/journal/2026-05-04-lancedb-message-archive-phase1.md](../journal/2026-05-04-lancedb-message-archive-phase1.md)
+- [docs/journal/2026-05-05-message-archive-team-conversation-dual-write.md](../journal/2026-05-05-message-archive-team-conversation-dual-write.md)

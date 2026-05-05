@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
-use super::{TeamManager, TeamRunResumeError};
+use super::{TeamManager, TeamRunResumeError, message_archive_body_text};
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL};
 use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::internal::client::InternalGrpcPeerClientConfig;
@@ -14,10 +14,14 @@ use crate::team::{
     TeamTaskListQuery, TeamTaskStatus,
 };
 use agenthub_db::AgentEventDbRouter;
+use agenthub_message_archive::{
+    MessageArchiveStore, MessageDocument, MessageDocumentKind, MessageSearchHit, MessageSearchQuery,
+};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind, ActorInboxRequest,
     ActorMailboxService, ActorSendRequest, ActorServiceErrorCode,
 };
+use async_trait::async_trait;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, StatusCode};
@@ -28,7 +32,64 @@ use serde_json::{Value, json};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 use tokio::sync::Mutex;
+use tokio::time::{sleep, timeout};
 use uuid::Uuid;
+
+#[derive(Default)]
+struct RecordingMessageArchive {
+    documents: Mutex<Vec<MessageDocument>>,
+}
+
+#[async_trait]
+impl MessageArchiveStore for RecordingMessageArchive {
+    async fn ensure_ready(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn append_documents(&self, documents: &[MessageDocument]) -> anyhow::Result<()> {
+        self.documents.lock().await.extend_from_slice(documents);
+        Ok(())
+    }
+
+    async fn search(&self, _query: &MessageSearchQuery) -> anyhow::Result<Vec<MessageSearchHit>> {
+        Ok(Vec::new())
+    }
+}
+
+struct PendingMessageArchive;
+
+#[async_trait]
+impl MessageArchiveStore for PendingMessageArchive {
+    async fn ensure_ready(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn append_documents(&self, _documents: &[MessageDocument]) -> anyhow::Result<()> {
+        std::future::pending::<()>().await;
+        Ok(())
+    }
+
+    async fn search(&self, _query: &MessageSearchQuery) -> anyhow::Result<Vec<MessageSearchHit>> {
+        Ok(Vec::new())
+    }
+}
+
+async fn wait_for_archive_documents(
+    archive: &RecordingMessageArchive,
+    expected_len: usize,
+) -> Vec<MessageDocument> {
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let documents = archive.documents.lock().await.clone();
+            if documents.len() >= expected_len {
+                return documents;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("archive documents should be appended")
+}
 
 async fn setup_test_db() -> SqlitePool {
     let options = SqliteConnectOptions::new()
@@ -773,6 +834,165 @@ async fn append_task_conversation_message_honors_idempotency_key() {
         .expect("list conversation messages");
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].message_id, first.message_id);
+}
+
+#[tokio::test]
+async fn append_task_conversation_message_dual_writes_created_rows_to_archive() {
+    let db = setup_test_db().await;
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-archive-team".to_string(),
+            description: Some("team for task message archive dual-write".to_string()),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    let (first, first_created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "to_coordinator",
+            json!({
+                "type": "chat_message",
+                "text": "archive this message",
+                "correlation_id": "corr-archive-1"
+            }),
+            Some("task-archive-msg-1"),
+        )
+        .await
+        .expect("append first message");
+    assert!(first_created);
+
+    let (retry, retry_created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "to_coordinator",
+            json!({
+                "type": "chat_message",
+                "text": "archive this message",
+                "correlation_id": "corr-archive-1"
+            }),
+            Some("task-archive-msg-1"),
+        )
+        .await
+        .expect("append retry message");
+    assert!(!retry_created);
+    assert_eq!(retry.message_id, first.message_id);
+
+    let documents = wait_for_archive_documents(&archive, 1).await;
+    assert_eq!(
+        documents.len(),
+        1,
+        "idempotent retries should not dual-write duplicate archive documents"
+    );
+    let document = &documents[0];
+    assert_eq!(
+        document.document_id,
+        format!(
+            "team_conversation_message:{}:{}",
+            conversation.id, first.message_id
+        )
+    );
+    assert_eq!(
+        document.source_kind,
+        MessageDocumentKind::TeamConversationMessage
+    );
+    assert_eq!(document.source_id, first.message_id.to_string());
+    assert_eq!(document.authority_message_id, Some(first.message_id));
+    assert_eq!(document.correlation_id.as_deref(), Some("corr-archive-1"));
+    assert_eq!(document.team_id.as_deref(), Some(team.id.as_str()));
+    assert_eq!(
+        document.conversation_id.as_deref(),
+        Some(conversation.id.as_str())
+    );
+    assert_eq!(document.task_id.as_deref(), Some(task.id.as_str()));
+    assert_eq!(document.body_text, "archive this message");
+    assert_eq!(document.created_at, first.created_at);
+}
+
+#[test]
+fn message_archive_body_text_does_not_index_structured_payload_fallback() {
+    assert_eq!(
+        message_archive_body_text(&json!({"type": "event", "metadata": {"id": "meta-1"}})),
+        ""
+    );
+    assert_eq!(
+        message_archive_body_text(&json!({"text": "  searchable text  "})),
+        "searchable text"
+    );
+    assert_eq!(
+        message_archive_body_text(&json!({"summary": "  searchable summary  "})),
+        "searchable summary"
+    );
+}
+
+#[tokio::test]
+async fn append_task_conversation_message_does_not_wait_for_slow_archive() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(Arc::new(PendingMessageArchive)),
+    );
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-slow-archive-team".to_string(),
+            description: Some("team for slow archive dual-write".to_string()),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    let result = timeout(
+        Duration::from_millis(200),
+        manager.append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "to_coordinator",
+            json!({"type": "chat_message", "text": "archive should not block"}),
+            Some("task-slow-archive-msg-1"),
+        ),
+    )
+    .await
+    .expect("conversation append should not wait for archive append")
+    .expect("append message");
+
+    assert!(result.1);
 }
 
 #[tokio::test]

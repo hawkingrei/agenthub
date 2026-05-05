@@ -1,7 +1,11 @@
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::Arc;
 
 use agenthub_config::ServerRole;
+use agenthub_message_archive::{
+    MessageArchiveBackend, MessageArchiveConfig, MessageArchiveStoreRef, open_message_archive_store,
+};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -178,6 +182,7 @@ impl AppState {
         };
         let acp_permissions = Arc::new(AcpPermissionService::new(db.clone()));
         let auth = Arc::new(AuthService::new(db.clone(), config).await?);
+        let message_archive = Self::initialize_message_archive(config).await?;
         let agents = Arc::new(AgentManager::new_with_internal_grpc(
             db.clone(),
             event_dbs.clone(),
@@ -192,9 +197,10 @@ impl AppState {
             internal_peer_client.clone(),
         ));
 
-        let teams = Arc::new(TeamManager::new_with_event_dbs(
+        let teams = Arc::new(TeamManager::new_with_event_dbs_and_message_archive(
             db.clone(),
             event_dbs.clone(),
+            message_archive,
         ));
         if let Some(peer_client) = internal_peer_client.as_ref() {
             teams.configure_internal_grpc_relay(
@@ -216,6 +222,50 @@ impl AppState {
         )));
 
         Ok((agents, teams, push, auth, acp_permissions))
+    }
+
+    async fn initialize_message_archive(
+        config: &agenthub_config::AppConfig,
+    ) -> anyhow::Result<Option<MessageArchiveStoreRef>> {
+        let backend_config = config.message_archive_backend();
+        let backend_config = backend_config.trim();
+        if backend_config.is_empty() {
+            tracing::warn!("message archive disabled because backend config is empty");
+            return Ok(None);
+        }
+        let backend = match MessageArchiveBackend::from_str(backend_config) {
+            Ok(backend) => backend,
+            Err(error) => {
+                tracing::warn!(
+                    error = ?error,
+                    "message archive disabled because backend config could not be parsed"
+                );
+                return Ok(None);
+            }
+        };
+        let archive_config = MessageArchiveConfig {
+            backend,
+            uri: config.message_archive_uri(),
+            message_table: config.message_archive_table(),
+        };
+        let archive = match open_message_archive_store(archive_config).await {
+            Ok(archive) => archive,
+            Err(error) => {
+                tracing::warn!(
+                    error = ?error,
+                    "message archive disabled because backend initialization failed"
+                );
+                return Ok(None);
+            }
+        };
+        if let Err(error) = archive.ensure_ready().await {
+            tracing::warn!(
+                error = ?error,
+                "message archive disabled because backend readiness check failed"
+            );
+            return Ok(None);
+        }
+        Ok(Some(archive))
     }
 
     async fn run_startup_cleanup(agents: &AgentManager, teams: &TeamManager) -> anyhow::Result<()> {
