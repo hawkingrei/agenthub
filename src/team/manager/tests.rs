@@ -1718,6 +1718,146 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
 }
 
 #[tokio::test]
+async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregation() {
+    let db = setup_test_db().await;
+    let event_dbs = AgentEventDbRouter::new(std::env::temp_dir().join(format!(
+        "agenthub-archive-acp-eventdb-{}",
+        uuid::Uuid::new_v4()
+    )));
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner")
+    .bind(std::env::temp_dir().to_string_lossy().to_string())
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("running")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert planner agent");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, ?3, ?4, NULL)
+        "#,
+    )
+    .bind("main-session")
+    .bind("planner")
+    .bind("running")
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert main session");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("planner")
+    .bind("main-session")
+    .bind("1")
+    .bind(10_i64)
+    .bind("acp")
+    .bind(r#"{"type":"tool_call","text":"main raw event","api_key":"main-secret"}"#)
+    .execute(&db)
+    .await
+    .expect("insert main agent event");
+
+    let event_db = event_dbs
+        .pool_for_agent("planner")
+        .await
+        .expect("open planner event db");
+    for (seq, ts, message) in [
+        (
+            "1",
+            20_i64,
+            r#"{"type":"agent_message","text":"lo","chunk":true,"message_id":"msg-1","chunk_index":1}"#,
+        ),
+        (
+            "2",
+            21_i64,
+            r#"{"type":"agent_message","text":"hel","chunk":true,"message_id":"msg-1","chunk_index":0}"#,
+        ),
+        (
+            "3",
+            22_i64,
+            r#"{"type":"agent_message","text":"fallback malformed chunk","chunk":true,"chunk_index":2,"api_key":"per-agent-secret"}"#,
+        ),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("per-agent-session")
+        .bind(seq)
+        .bind(ts)
+        .bind("acp")
+        .bind(message)
+        .execute(&event_db)
+        .await
+        .expect("insert per-agent event");
+    }
+
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let archive_manager =
+        TeamManager::new_with_event_dbs_and_message_archive(db, event_dbs, Some(archive.clone()));
+    let report = archive_manager
+        .migrate_team_messages_to_archive(2)
+        .await
+        .expect("migrate agent events");
+
+    assert_eq!(report.agent_events, 2);
+    assert_eq!(report.aggregated_acp_messages, 1);
+    assert_eq!(report.total_documents(), 3);
+
+    let documents = archive.documents.lock().await.clone();
+    assert_eq!(documents.len(), 3);
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:main-session:1"
+            && document.body_text == "main raw event"
+            && document.payload_json.as_deref().is_some_and(|payload| {
+                payload.contains("[redacted]") && !payload.contains("main-secret")
+            })
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:per-agent-session:3"
+            && document.body_text == "fallback malformed chunk"
+            && document.payload_json.as_deref().is_some_and(|payload| {
+                payload.contains("[redacted]") && !payload.contains("per-agent-secret")
+            })
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AggregatedAcpMessage
+            && document.document_id
+                == "aggregated_acp_message:planner:per-agent-session:msg-1:agent_message"
+            && document.source_id == "planner:per-agent-session:msg-1:agent_message"
+            && document.logical_message_id.as_deref() == Some("msg-1")
+            && document.agent_id.as_deref() == Some("planner")
+            && document.session_id.as_deref() == Some("per-agent-session")
+            && document.body_text == "hello"
+            && document.event_id_from == Some(1)
+            && document.event_id_to == Some(2)
+            && document.chunk_count == Some(2)
+    }));
+}
+
+#[tokio::test]
 async fn migrate_team_messages_to_archive_uses_start_snapshot_for_conversation_rows() {
     let db = setup_test_db().await;
     let seed_manager = TeamManager::new(db.clone());

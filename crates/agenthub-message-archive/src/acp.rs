@@ -121,6 +121,10 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
     out
 }
 
+pub fn is_aggregatable_acp_chunk(raw: &str) -> bool {
+    parse_chunk_event(raw).is_some()
+}
+
 fn parse_chunk_event(raw: &str) -> Option<ParsedChunkEvent> {
     let value: Value = serde_json::from_str(raw).ok()?;
     let obj = value.as_object()?;
@@ -155,7 +159,7 @@ fn parse_chunk_index(value: Option<&Value>) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AcpEventRow, aggregate_acp_chunk_rows};
+    use super::{AcpEventRow, aggregate_acp_chunk_rows, is_aggregatable_acp_chunk};
 
     #[test]
     fn aggregates_consecutive_agent_message_chunks() {
@@ -252,6 +256,19 @@ mod tests {
 
         let aggregated = aggregate_acp_chunk_rows(&rows);
         assert!(aggregated.is_empty());
+    }
+
+    #[test]
+    fn identifies_only_parseable_message_chunks_as_aggregatable() {
+        assert!(is_aggregatable_acp_chunk(
+            r#"{"type":"agent_message","text":"hel","chunk":true,"message_id":"m1","chunk_index":0}"#
+        ));
+        assert!(!is_aggregatable_acp_chunk(
+            r#"{"type":"agent_message","text":"hel","chunk":true,"chunk_index":0}"#
+        ));
+        assert!(!is_aggregatable_acp_chunk(
+            r#"{"type":"tool_call","text":"search","chunk":true,"message_id":"m1","chunk_index":0}"#
+        ));
     }
 
     #[test]
