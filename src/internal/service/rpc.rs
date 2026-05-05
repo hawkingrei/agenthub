@@ -26,12 +26,17 @@ impl TeamInternalControl for TeamInternalControlService {
         let route = optional_json_object(optional_trimmed(&payload.route_json), "route_json")?;
         let payload_json = parse_json_required(&payload.payload_json, "payload_json")?;
         let channel_replica = resolve_channel_replica_request(&payload_json);
+        if is_channel_broadcast_payload(&payload_json) && channel_replica.is_none() {
+            return Err(Status::invalid_argument(
+                "payload_json must represent a valid channel_broadcast replica payload",
+            ));
+        }
         let idempotency_key = optional_trimmed(&payload.idempotency_key);
         let from_peer_id = optional_trimmed(&payload.from_peer_id);
         let to_peer_id = optional_trimmed(&payload.to_peer_id);
 
         if let Some(replica) = channel_replica.as_ref() {
-            self.validate_channel_replica_request(run_id, replica)
+            self.validate_channel_replica_request(run_id, from_actor_id, replica)
                 .await?;
         }
 

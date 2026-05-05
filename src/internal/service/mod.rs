@@ -87,6 +87,7 @@ impl TeamInternalControlDeps {
 #[derive(Debug, Clone)]
 pub(super) struct ChannelReplicaRequest {
     authority_message_id: i64,
+    correlation_id: String,
     team_id: String,
     conversation_id: String,
     task_id: String,
@@ -138,6 +139,7 @@ impl TeamInternalControlService {
     async fn validate_channel_replica_request(
         &self,
         run_id: &str,
+        from_actor_id: &str,
         replica: &ChannelReplicaRequest,
     ) -> Result<(), Status> {
         let row = sqlx::query(
@@ -146,16 +148,22 @@ impl TeamInternalControlService {
                 tr.team_id AS run_team_id,
                 tt.team_id AS task_team_id,
                 tc.task_id AS conversation_task_id,
-                tc.mode AS conversation_mode
+                tc.mode AS conversation_mode,
+                tcm.conversation_id AS authority_conversation_id,
+                tcm.task_id AS authority_task_id,
+                tcm.from_actor_id AS authority_from_actor_id,
+                tcm.payload_json AS authority_payload_json
             FROM team_runs tr
             LEFT JOIN team_tasks tt ON tt.id = ?2
             LEFT JOIN team_conversations tc ON tc.id = ?3
+            LEFT JOIN team_conversation_messages tcm ON tcm.id = ?4
             WHERE tr.id = ?1
             "#,
         )
         .bind(run_id)
         .bind(&replica.task_id)
         .bind(&replica.conversation_id)
+        .bind(replica.authority_message_id)
         .fetch_optional(&self.deps.db)
         .await
         .map_err(|err| map_manager_error(err.into()))?
@@ -175,6 +183,22 @@ impl TeamInternalControlService {
             .ok()
             .flatten()
             .unwrap_or_default();
+        let authority_conversation_id = row
+            .try_get::<Option<String>, _>("authority_conversation_id")
+            .ok()
+            .flatten();
+        let authority_task_id = row
+            .try_get::<Option<String>, _>("authority_task_id")
+            .ok()
+            .flatten();
+        let authority_from_actor_id = row
+            .try_get::<Option<String>, _>("authority_from_actor_id")
+            .ok()
+            .flatten();
+        let authority_payload_json = row
+            .try_get::<Option<String>, _>("authority_payload_json")
+            .ok()
+            .flatten();
 
         if replica.team_id != run_team_id
             || task_team_id.as_deref() != Some(replica.team_id.as_str())
@@ -183,6 +207,39 @@ impl TeamInternalControlService {
         {
             return Err(Status::invalid_argument(
                 "channel replica payload does not match run/team context",
+            ));
+        }
+        if authority_conversation_id.as_deref() != Some(replica.conversation_id.as_str())
+            || authority_task_id.as_deref() != Some(replica.task_id.as_str())
+        {
+            return Err(Status::invalid_argument(
+                "channel replica payload authority_message_id does not match canonical conversation context",
+            ));
+        }
+        if authority_from_actor_id.as_deref() != Some(from_actor_id) {
+            return Err(Status::invalid_argument(
+                "channel replica payload sender does not match canonical authority message",
+            ));
+        }
+        let authority_payload_json = authority_payload_json.ok_or_else(|| {
+            Status::invalid_argument(
+                "channel replica payload authority_message_id does not match canonical conversation context",
+            )
+        })?;
+        let authority_payload: Value =
+            serde_json::from_str(&authority_payload_json).map_err(|_| {
+                Status::failed_precondition(
+                    "canonical authority message payload is not valid JSON for replica validation",
+                )
+            })?;
+        let authority_correlation_id = authority_payload
+            .get("correlation_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        if authority_correlation_id != replica.correlation_id {
+            return Err(Status::invalid_argument(
+                "channel replica payload correlation_id does not match canonical authority message",
             ));
         }
         Ok(())
