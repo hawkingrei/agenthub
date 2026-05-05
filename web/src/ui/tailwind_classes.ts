@@ -234,7 +234,7 @@ export const TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS =
 
 export const TEAM_SIDEBAR_SECTION_CLASS = "flex min-w-0 flex-col gap-1";
 
-export const TEAM_SOFT_CHROME_SHADOW_CLASS = "shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+export const TEAM_SOFT_CHROME_SHADOW_CLASS = "shadow-notion-row";
 
 export const TEAM_SIDEBAR_SECTION_TOGGLE_CLASS =
   "appearance-none border-0 bg-transparent shadow-none mt-3 mb-1 flex w-full items-center justify-between gap-2 px-2 py-0.5 text-left text-[11px] font-medium tracking-[0.01em] text-notion-text-muted transition hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-text/[0.35] focus-visible:ring-offset-1 focus-visible:ring-offset-notion-sidebar";

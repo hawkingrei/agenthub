@@ -219,7 +219,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       ...acpPanelProps,
       subtitle: null,
       headerContext: (
-        <div className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-2xl border border-notion-border/80 bg-notion-sidebar/68 px-1.5 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-2xl border border-notion-border/80 bg-notion-sidebar/68 px-1.5 py-1 shadow-notion-row">
           <StatusBadge
             label={memberStatusLabel}
             tone={resolveTeamRunStatusTone(memberStatus)}

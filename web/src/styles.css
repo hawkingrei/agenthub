@@ -84,14 +84,14 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(55, 53, 47, 0.1);
+  background: rgb(var(--ink-rgb) / 0.1);
   border-radius: 10px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(55, 53, 47, 0.2);
+  background: rgb(var(--ink-rgb) / 0.2);
   border: 3px solid transparent;
   background-clip: content-box;
 }
