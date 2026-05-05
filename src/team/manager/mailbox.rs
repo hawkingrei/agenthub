@@ -756,9 +756,25 @@ impl ActorMailboxService for TeamActorMailboxService {
                 .map_err(map_actor_service_error);
         }
         let to_actor_id = to_actor_id.expect("validated actor target");
-        if transport == TeamActorMessageTransport::Local {
-            self.validate_direct_send_target(run_id, to_actor_id)
-                .await?;
+        match transport {
+            TeamActorMessageTransport::Local => {
+                self.validate_direct_send_target(run_id, to_actor_id)
+                    .await?;
+            }
+            TeamActorMessageTransport::Remote => {
+                if request.route.is_none() {
+                    return Err(ActorServiceError::new(
+                        ActorServiceErrorCode::BadRequest,
+                        "route is required for remote transport",
+                    ));
+                }
+                if to_peer_id == ACTOR_MAIN_PEER_ID {
+                    return Err(ActorServiceError::new(
+                        ActorServiceErrorCode::BadRequest,
+                        "to_peer_id must not be 'main' for remote transport",
+                    ));
+                }
+            }
         }
 
         let (message, created) = self
