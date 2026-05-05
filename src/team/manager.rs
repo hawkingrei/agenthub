@@ -162,10 +162,25 @@ fn team_conversation_message_archive_document(
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct MessageArchiveScopeFallback {
+    conversation_id: Option<String>,
+    task_id: Option<String>,
+}
+
+impl MessageArchiveScopeFallback {
+    fn from_run_input(run_input: &Value) -> Self {
+        Self {
+            conversation_id: message_archive_payload_string(run_input, "conversation_id"),
+            task_id: message_archive_payload_string(run_input, "task_id"),
+        }
+    }
+}
+
 fn team_run_event_archive_document(
     team_id: &str,
     event: &TeamRunEventRecord,
-    run_input: &Value,
+    scope: &MessageArchiveScopeFallback,
 ) -> MessageDocument {
     let body_text = message_archive_body_text(&event.payload);
     let redacted_payload = redact_sensitive_json(&event.payload);
@@ -179,9 +194,9 @@ fn team_run_event_archive_document(
         team_id: Some(team_id.to_string()),
         run_id: Some(event.run_id.clone()),
         conversation_id: message_archive_payload_string(&event.payload, "conversation_id")
-            .or_else(|| message_archive_payload_string(run_input, "conversation_id")),
+            .or_else(|| scope.conversation_id.clone()),
         task_id: message_archive_payload_string(&event.payload, "task_id")
-            .or_else(|| message_archive_payload_string(run_input, "task_id")),
+            .or_else(|| scope.task_id.clone()),
         agent_id: None,
         session_id: None,
         body_text: if body_text.is_empty() {
@@ -200,7 +215,7 @@ fn team_run_event_archive_document(
 fn team_actor_message_archive_document(
     team_id: &str,
     message: &TeamActorMessageRecord,
-    run_input: &Value,
+    scope: &MessageArchiveScopeFallback,
 ) -> MessageDocument {
     let redacted_payload = redact_sensitive_json(&message.payload);
     MessageDocument {
@@ -223,9 +238,9 @@ fn team_actor_message_archive_document(
                 "conversation_id",
             ],
         )
-        .or_else(|| message_archive_payload_string(run_input, "conversation_id")),
+        .or_else(|| scope.conversation_id.clone()),
         task_id: message_archive_payload_string(&message.payload, "task_id")
-            .or_else(|| message_archive_payload_string(run_input, "task_id")),
+            .or_else(|| scope.task_id.clone()),
         agent_id: Some(message.to_actor_id.clone()),
         session_id: None,
         body_text: message_archive_body_text(&message.payload),
@@ -1909,6 +1924,67 @@ impl TeamManager {
         archive.search(query).await
     }
 
+    async fn message_archive_table_max_id(&self, table_name: &str) -> anyhow::Result<i64> {
+        let sql = match table_name {
+            "team_conversation_messages" => {
+                "SELECT COALESCE(MAX(id), 0) FROM team_conversation_messages"
+            }
+            "team_run_events" => "SELECT COALESCE(MAX(id), 0) FROM team_run_events",
+            "team_actor_messages" => "SELECT COALESCE(MAX(id), 0) FROM team_actor_messages",
+            _ => anyhow::bail!("unsupported archive migration table: {table_name}"),
+        };
+        Ok(sqlx::query_scalar::<_, i64>(sql)
+            .fetch_one(&self.db)
+            .await?)
+    }
+
+    async fn message_archive_task_conversation_id(
+        &self,
+        team_id: &str,
+        task_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        Ok(sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT id
+            FROM team_conversations
+            WHERE team_id = ?1 AND task_id = ?2
+            LIMIT 1
+            "#,
+        )
+        .bind(team_id)
+        .bind(task_id)
+        .fetch_optional(&self.db)
+        .await?)
+    }
+
+    async fn message_archive_scope_for_payload(
+        &self,
+        team_id: &str,
+        payload: &Value,
+        base_scope: &MessageArchiveScopeFallback,
+        task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+    ) -> anyhow::Result<MessageArchiveScopeFallback> {
+        let task_id = message_archive_payload_string(payload, "task_id")
+            .or_else(|| base_scope.task_id.clone());
+        let mut conversation_id = base_scope.conversation_id.clone();
+        if conversation_id.is_none() {
+            if let Some(task_id) = task_id.as_deref() {
+                let cache_key = (team_id.to_string(), task_id.to_string());
+                if !task_conversation_cache.contains_key(&cache_key) {
+                    let resolved = self
+                        .message_archive_task_conversation_id(team_id, task_id)
+                        .await?;
+                    task_conversation_cache.insert(cache_key.clone(), resolved);
+                }
+                conversation_id = task_conversation_cache.get(&cache_key).cloned().flatten();
+            }
+        }
+        Ok(MessageArchiveScopeFallback {
+            conversation_id,
+            task_id,
+        })
+    }
+
     pub async fn migrate_team_messages_to_archive(
         &self,
         batch_size: usize,
@@ -1919,6 +1995,15 @@ impl TeamManager {
         let mut report = TeamMessageArchiveMigrationReport::default();
         let batch_size = batch_size.clamp(1, 1000);
         let batch_limit = i64::try_from(batch_size)?;
+        let max_conversation_message_id = self
+            .message_archive_table_max_id("team_conversation_messages")
+            .await?;
+        let max_run_event_id = self.message_archive_table_max_id("team_run_events").await?;
+        let max_actor_message_id = self
+            .message_archive_table_max_id("team_actor_messages")
+            .await?;
+        let mut run_scope_cache: HashMap<String, MessageArchiveScopeFallback> = HashMap::new();
+        let mut task_conversation_cache: HashMap<(String, String), Option<String>> = HashMap::new();
 
         let mut last_id = 0_i64;
         loop {
@@ -1936,12 +2021,13 @@ impl TeamManager {
                     c.team_id
                 FROM team_conversation_messages m
                 INNER JOIN team_conversations c ON c.id = m.conversation_id
-                WHERE m.id > ?1
+                WHERE m.id > ?1 AND m.id <= ?2
                 ORDER BY m.id ASC
-                LIMIT ?2
+                LIMIT ?3
                 "#,
             )
             .bind(last_id)
+            .bind(max_conversation_message_id)
             .bind(batch_limit)
             .fetch_all(&self.db)
             .await?;
@@ -1986,12 +2072,14 @@ impl TeamManager {
                 FROM team_run_events e
                 INNER JOIN team_runs r ON r.id = e.run_id
                 WHERE e.id > ?1
-                  AND trim(COALESCE(json_extract(r.input_json, '$.bootstrap_kind'), '')) != ?2
+                  AND e.id <= ?2
+                  AND trim(COALESCE(json_extract(r.input_json, '$.bootstrap_kind'), '')) != ?3
                 ORDER BY e.id ASC
-                LIMIT ?3
+                LIMIT ?4
                 "#,
             )
             .bind(last_id)
+            .bind(max_run_event_id)
             .bind(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND)
             .bind(batch_limit)
             .fetch_all(&self.db)
@@ -2002,13 +2090,30 @@ impl TeamManager {
             let mut documents = Vec::with_capacity(rows.len());
             for row in rows {
                 last_id = row.get("id");
+                let run_id: String = row.get("run_id");
                 let team_id: String = row.get("team_id");
-                let input_json: String = row.get("input_json");
-                let run_input: Value = serde_json::from_str(&input_json)?;
+                if !run_scope_cache.contains_key(&run_id) {
+                    let input_json: String = row.get("input_json");
+                    let run_input: Value = serde_json::from_str(&input_json)?;
+                    run_scope_cache.insert(
+                        run_id.clone(),
+                        MessageArchiveScopeFallback::from_run_input(&run_input),
+                    );
+                }
+                let base_scope = run_scope_cache
+                    .get(&run_id)
+                    .expect("run scope is cached before use")
+                    .clone();
                 let event = parse_run_event_row(&row)?;
-                documents.push(team_run_event_archive_document(
-                    &team_id, &event, &run_input,
-                ));
+                let scope = self
+                    .message_archive_scope_for_payload(
+                        &team_id,
+                        &event.payload,
+                        &base_scope,
+                        &mut task_conversation_cache,
+                    )
+                    .await?;
+                documents.push(team_run_event_archive_document(&team_id, &event, &scope));
                 report.team_run_events += 1;
             }
             archive.append_documents(&documents).await?;
@@ -2037,12 +2142,14 @@ impl TeamManager {
                 FROM team_actor_messages m
                 INNER JOIN team_runs r ON r.id = m.run_id
                 WHERE m.id > ?1
-                  AND trim(COALESCE(json_extract(r.input_json, '$.bootstrap_kind'), '')) != ?2
+                  AND m.id <= ?2
+                  AND trim(COALESCE(json_extract(r.input_json, '$.bootstrap_kind'), '')) != ?3
                 ORDER BY m.id ASC
-                LIMIT ?3
+                LIMIT ?4
                 "#,
             )
             .bind(last_id)
+            .bind(max_actor_message_id)
             .bind(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND)
             .bind(batch_limit)
             .fetch_all(&self.db)
@@ -2053,12 +2160,31 @@ impl TeamManager {
             let mut documents = Vec::with_capacity(rows.len());
             for row in rows {
                 last_id = row.get("id");
+                let run_id: String = row.get("run_id");
                 let team_id: String = row.get("team_id");
-                let input_json: String = row.get("input_json");
-                let run_input: Value = serde_json::from_str(&input_json)?;
+                if !run_scope_cache.contains_key(&run_id) {
+                    let input_json: String = row.get("input_json");
+                    let run_input: Value = serde_json::from_str(&input_json)?;
+                    run_scope_cache.insert(
+                        run_id.clone(),
+                        MessageArchiveScopeFallback::from_run_input(&run_input),
+                    );
+                }
+                let base_scope = run_scope_cache
+                    .get(&run_id)
+                    .expect("run scope is cached before use")
+                    .clone();
                 let message = parse_team_actor_message_row(&row)?;
+                let scope = self
+                    .message_archive_scope_for_payload(
+                        &team_id,
+                        &message.payload,
+                        &base_scope,
+                        &mut task_conversation_cache,
+                    )
+                    .await?;
                 documents.push(team_actor_message_archive_document(
-                    &team_id, &message, &run_input,
+                    &team_id, &message, &scope,
                 ));
                 report.team_actor_messages += 1;
             }

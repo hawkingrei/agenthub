@@ -56,6 +56,64 @@ impl MessageArchiveStore for RecordingMessageArchive {
     }
 }
 
+struct TailAppendingMessageArchive {
+    db: SqlitePool,
+    conversation_id: String,
+    task_id: String,
+    inserted: Mutex<bool>,
+    documents: Mutex<Vec<MessageDocument>>,
+}
+
+#[async_trait]
+impl MessageArchiveStore for TailAppendingMessageArchive {
+    async fn ensure_ready(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn append_documents(&self, documents: &[MessageDocument]) -> anyhow::Result<()> {
+        self.documents.lock().await.extend_from_slice(documents);
+        let should_insert = {
+            let mut inserted = self.inserted.lock().await;
+            if *inserted {
+                false
+            } else {
+                *inserted = true;
+                true
+            }
+        };
+        if should_insert {
+            sqlx::query(
+                r#"
+                INSERT INTO team_conversation_messages (
+                    conversation_id,
+                    task_id,
+                    from_actor_id,
+                    to_actor_id,
+                    route,
+                    payload_json,
+                    created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
+            )
+            .bind(&self.conversation_id)
+            .bind(&self.task_id)
+            .bind("user")
+            .bind("coordinator")
+            .bind("to_coordinator")
+            .bind(json!({"type":"chat_message","text":"live tail message"}).to_string())
+            .bind(Utc::now().timestamp())
+            .execute(&self.db)
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn search(&self, _query: &MessageSearchQuery) -> anyhow::Result<Vec<MessageSearchHit>> {
+        Ok(Vec::new())
+    }
+}
+
 struct PendingMessageArchive;
 
 #[async_trait]
@@ -982,7 +1040,6 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             Some(task.id.as_str()),
             json!({
                 "task_id": task.id,
-                "conversation_id": conversation.id,
                 "api_key": "run-input-secret",
             }),
         )
@@ -1182,6 +1239,88 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             .iter()
             .all(|document| document.run_id.as_deref() != Some(hidden_run.id.as_str()))
     );
+}
+
+#[tokio::test]
+async fn migrate_team_messages_to_archive_uses_start_snapshot_for_conversation_rows() {
+    let db = setup_test_db().await;
+    let seed_manager = TeamManager::new(db.clone());
+
+    let team = seed_manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-message-archive-snapshot".to_string(),
+            description: Some("team for archive migration snapshot".to_string()),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = seed_manager
+        .create_task(
+            &team.id,
+            "Archive snapshot",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    seed_manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "to_coordinator",
+            json!({"type":"chat_message","text":"snapshot message one"}),
+        )
+        .await
+        .expect("append first message");
+    seed_manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "to_coordinator",
+            json!({"type":"chat_message","text":"snapshot message two"}),
+        )
+        .await
+        .expect("append second message");
+
+    let archive = Arc::new(TailAppendingMessageArchive {
+        db: db.clone(),
+        conversation_id: conversation.id.clone(),
+        task_id: task.id.clone(),
+        inserted: Mutex::new(false),
+        documents: Mutex::new(Vec::new()),
+    });
+    let archive_manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
+
+    let report = archive_manager
+        .migrate_team_messages_to_archive(1)
+        .await
+        .expect("migrate team messages");
+
+    assert_eq!(report.team_conversation_messages, 2);
+    assert_eq!(report.total_documents(), 2);
+    let documents = archive.documents.lock().await.clone();
+    assert_eq!(documents.len(), 2);
+    assert!(
+        documents
+            .iter()
+            .all(|document| document.body_text != "live tail message")
+    );
+    let stored_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM team_conversation_messages WHERE conversation_id = ?1",
+    )
+    .bind(&conversation.id)
+    .fetch_one(&db)
+    .await
+    .expect("count conversation messages");
+    assert_eq!(stored_count, 3);
 }
 
 #[test]

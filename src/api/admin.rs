@@ -336,10 +336,19 @@ async fn migrate_team_messages_archive(
     Json(payload): Json<MigrateTeamMessagesArchiveRequest>,
 ) -> Result<Json<MigrateTeamMessagesArchiveResponse>, ApiError> {
     let user = require_root(&headers, &state).await?;
-    let report = state
+    let report = match state
         .teams
         .migrate_team_messages_to_archive(payload.batch_size.unwrap_or(500))
-        .await?;
+        .await
+    {
+        Ok(report) => report,
+        Err(err) if err.to_string() == "message archive is not configured" => {
+            return Err(ApiError::conflict(
+                "message archive is not configured; enable a supported message archive backend before migrating team messages",
+            ));
+        }
+        Err(err) => return Err(err.into()),
+    };
     let total_documents = report.total_documents();
     let detail = format!(
         "team_conversation_messages={},team_run_events={},team_actor_messages={},total_documents={}",
@@ -616,6 +625,32 @@ mod tests {
             detail
                 .as_deref()
                 .is_some_and(|value| value.contains("total_documents=1"))
+        );
+    }
+
+    #[tokio::test]
+    async fn migrate_team_messages_archive_reports_missing_archive_as_conflict() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let response = super::router(state)
+            .oneshot(build_json_request(
+                "/message_archive/team_messages/migrate",
+                Some(&token),
+                json!({}),
+            ))
+            .await
+            .expect("execute migration request");
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let body: Value = serde_json::from_slice(&bytes).expect("decode response body");
+        assert_eq!(
+            body["error"].as_str(),
+            Some(
+                "message archive is not configured; enable a supported message archive backend before migrating team messages"
+            )
         );
     }
 }
