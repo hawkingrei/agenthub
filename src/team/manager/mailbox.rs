@@ -1413,14 +1413,10 @@ impl ActorMailboxStore for SqlActorMailboxStore {
             let run_id = event.run_id.clone();
             let event_id = event.event_id;
             tokio::spawn(async move {
-                let Ok(_permit) = semaphore.acquire_owned().await else {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        event_id,
-                        "failed to acquire mailbox run event archive permit"
-                    );
-                    return;
-                };
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .expect("mailbox run event archive semaphore stays open");
                 match team_run_event_archive_document_for_db(&db, &event).await {
                     Ok(Some(document)) => {
                         match tokio::time::timeout(
