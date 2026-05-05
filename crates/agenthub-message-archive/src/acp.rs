@@ -42,8 +42,11 @@ struct AggregateKey {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OpenAggregate {
-    message: AcpAggregatedMessage,
     chunks: Vec<ParsedChunkEvent>,
+    agent_id: String,
+    session_id: String,
+    message_kind: String,
+    message_id: String,
     first_event_id: i64,
     last_event_id: i64,
     created_at: i64,
@@ -78,17 +81,10 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
                 open.insert(
                     key,
                     OpenAggregate {
-                        message: AcpAggregatedMessage {
-                            logical_message_id: parsed.message_id.clone(),
-                            message_kind: parsed.message_kind.clone(),
-                            agent_id: row.agent_id,
-                            session_id: row.session_id,
-                            text: String::new(),
-                            created_at: row.ts,
-                            first_event_id: row.event_id,
-                            last_event_id: row.event_id,
-                            chunk_count: 1,
-                        },
+                        agent_id: row.agent_id,
+                        session_id: row.session_id,
+                        message_kind: parsed.message_kind.clone(),
+                        message_id: parsed.message_id.clone(),
                         chunks: vec![parsed],
                         first_event_id: row.event_id,
                         last_event_id: row.event_id,
@@ -103,16 +99,22 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
         .into_values()
         .map(|mut aggregate| {
             aggregate.chunks.sort_by_key(|chunk| chunk.chunk_index);
-            aggregate.message.text = aggregate
+            let text = aggregate
                 .chunks
                 .iter()
                 .map(|chunk| chunk.text.as_str())
                 .collect::<String>();
-            aggregate.message.created_at = aggregate.created_at;
-            aggregate.message.first_event_id = aggregate.first_event_id;
-            aggregate.message.last_event_id = aggregate.last_event_id;
-            aggregate.message.chunk_count = aggregate.chunks.len().try_into().unwrap_or(u32::MAX);
-            aggregate.message
+            AcpAggregatedMessage {
+                logical_message_id: aggregate.message_id,
+                message_kind: aggregate.message_kind,
+                agent_id: aggregate.agent_id,
+                session_id: aggregate.session_id,
+                text,
+                created_at: aggregate.created_at,
+                first_event_id: aggregate.first_event_id,
+                last_event_id: aggregate.last_event_id,
+                chunk_count: aggregate.chunks.len().try_into().unwrap_or(u32::MAX),
+            }
         })
         .collect();
     out.sort_by_key(|message| message.first_event_id);
