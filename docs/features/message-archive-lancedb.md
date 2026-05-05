@@ -154,6 +154,8 @@ The initial search target is the canonical `body_text` field, backed by LanceDB 
 
 Search queries may filter by archive scope:
 
+- `authority_message_id`
+- `correlation_id`
 - `team_id`
 - `run_id`
 - `conversation_id`
