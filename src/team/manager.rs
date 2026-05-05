@@ -38,7 +38,7 @@ use uuid::Uuid;
 
 pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 pub struct TeamMessageArchiveMigrationReport {
     pub team_conversation_messages: usize,
     pub team_run_events: usize,

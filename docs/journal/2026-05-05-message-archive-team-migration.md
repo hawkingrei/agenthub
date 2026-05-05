@@ -16,6 +16,7 @@ remaining gap was historical Team data that already lived only in SQLite.
 - Add `TeamManager::migrate_team_messages_to_archive(batch_size)` for historical Team message rows.
 - Convert `team_conversation_messages`, `team_run_events`, and `team_actor_messages` into canonical
   archive documents.
+- Add a root-only admin trigger at `POST /api/admin/message_archive/team_messages/migrate`.
 - Preserve stable document identities for re-runnable migration:
   - `team_conversation_message:<conversation_id>:<message_id>`
   - `team_run_event:<run_id>:<event_id>`
@@ -38,6 +39,7 @@ remaining gap was historical Team data that already lived only in SQLite.
 ```bash
 cargo test -p agenthub-message-archive lancedb_archive_upserts_documents_by_document_id -- --nocapture
 cargo test --lib migrate_team_messages_to_archive_covers_team_message_tables -- --nocapture
+cargo clippy --locked -p agenthub --lib -- -D warnings
 cargo fmt --all --check
 git diff --check
 ```
@@ -45,6 +47,5 @@ git diff --check
 ## Follow-Ups
 
 - Add historical ACP event aggregation into archive documents.
-- Add an operator-facing migration trigger or startup-safe migration runner.
 - Extend live dual-write beyond Team conversation messages where the write path can tolerate
   best-effort archive append semantics.

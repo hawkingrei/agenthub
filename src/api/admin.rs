@@ -32,6 +32,19 @@ pub struct SetPasskeyEnabledRequest {
     pub enabled: bool,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct MigrateTeamMessagesArchiveRequest {
+    pub batch_size: Option<usize>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct MigrateTeamMessagesArchiveResponse {
+    pub team_conversation_messages: usize,
+    pub team_run_events: usize,
+    pub team_actor_messages: usize,
+    pub total_documents: usize,
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct AdminSettingsResponse {
     pub passkey_enabled: bool,
@@ -64,6 +77,10 @@ pub fn router(state: AppState) -> Router {
         .route("/audits", get(list_audits))
         .route("/settings", get(get_settings))
         .route("/settings/passkey", post(set_passkey_enabled))
+        .route(
+            "/message_archive/team_messages/migrate",
+            post(migrate_team_messages_archive),
+        )
         .route("/join/start", post(join_start))
         .with_state(state)
 }
@@ -311,6 +328,43 @@ async fn set_passkey_enabled(
         )
         .await;
     Ok(ok_response())
+}
+
+async fn migrate_team_messages_archive(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<MigrateTeamMessagesArchiveRequest>,
+) -> Result<Json<MigrateTeamMessagesArchiveResponse>, ApiError> {
+    let user = require_root(&headers, &state).await?;
+    let report = state
+        .teams
+        .migrate_team_messages_to_archive(payload.batch_size.unwrap_or(500))
+        .await?;
+    let total_documents = report.total_documents();
+    let detail = format!(
+        "team_conversation_messages={},team_run_events={},team_actor_messages={},total_documents={}",
+        report.team_conversation_messages,
+        report.team_run_events,
+        report.team_actor_messages,
+        total_documents
+    );
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user.id),
+            None,
+            "message_archive_team_messages_migrated",
+            Some(&detail),
+            extract_ip(&headers).as_deref(),
+            extract_ua(&headers).as_deref(),
+        )
+        .await;
+    Ok(Json(MigrateTeamMessagesArchiveResponse {
+        team_conversation_messages: report.team_conversation_messages,
+        team_run_events: report.team_run_events,
+        team_actor_messages: report.team_actor_messages,
+        total_documents,
+    }))
 }
 
 async fn join_start(
