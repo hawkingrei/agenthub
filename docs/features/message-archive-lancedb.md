@@ -89,6 +89,8 @@ The archive stores one canonical document shape for every message-like record:
 - `source_kind`
 - `source_id`
 - optional logical grouping IDs:
+  - `authority_message_id`
+  - `correlation_id`
   - `team_id`
   - `run_id`
   - `conversation_id`
@@ -110,6 +112,10 @@ The archive stores one canonical document shape for every message-like record:
 - `team_run_event`
 - `team_actor_message`
 - `aggregated_acp_message`
+
+`logical_message_id` remains the generic non-Team logical grouping field, mainly for aggregated ACP
+messages. Human-visible Team projections should prefer explicit `authority_message_id +
+correlation_id` fields instead of overloading `logical_message_id`.
 
 ### 4) ACP Aggregation Layer
 

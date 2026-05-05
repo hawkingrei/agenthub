@@ -33,6 +33,8 @@ impl LanceDbMessageArchive {
             Field::new("source_kind", DataType::Utf8, false),
             Field::new("source_id", DataType::Utf8, false),
             Field::new("logical_message_id", DataType::Utf8, true),
+            Field::new("authority_message_id", DataType::Int64, true),
+            Field::new("correlation_id", DataType::Utf8, true),
             Field::new("team_id", DataType::Utf8, true),
             Field::new("run_id", DataType::Utf8, true),
             Field::new("conversation_id", DataType::Utf8, true),
@@ -82,6 +84,18 @@ impl LanceDbMessageArchive {
                 documents
                     .iter()
                     .map(|doc| doc.logical_message_id.as_deref())
+                    .collect::<Vec<_>>(),
+            )),
+            Arc::new(Int64Array::from(
+                documents
+                    .iter()
+                    .map(|doc| doc.authority_message_id)
+                    .collect::<Vec<_>>(),
+            )),
+            Arc::new(StringArray::from(
+                documents
+                    .iter()
+                    .map(|doc| doc.correlation_id.as_deref())
                     .collect::<Vec<_>>(),
             )),
             Arc::new(StringArray::from(
@@ -162,6 +176,16 @@ impl LanceDbMessageArchive {
 
     fn build_filter(query: &MessageSearchQuery) -> Option<String> {
         let mut predicates = Vec::new();
+        append_i64_filter(
+            &mut predicates,
+            "authority_message_id",
+            query.authority_message_id,
+        );
+        append_string_filter(
+            &mut predicates,
+            "correlation_id",
+            query.correlation_id.as_deref(),
+        );
         append_string_filter(&mut predicates, "team_id", query.team_id.as_deref());
         append_string_filter(&mut predicates, "run_id", query.run_id.as_deref());
         append_string_filter(
@@ -264,6 +288,13 @@ fn append_string_filter(predicates: &mut Vec<String>, column: &str, value: Optio
     predicates.push(format!("{column} = '{}'", escape_sql_literal(value)));
 }
 
+fn append_i64_filter(predicates: &mut Vec<String>, column: &str, value: Option<i64>) {
+    let Some(value) = value else {
+        return;
+    };
+    predicates.push(format!("{column} = {value}"));
+}
+
 fn escape_sql_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
@@ -323,6 +354,8 @@ mod tests {
                 source_kind: MessageDocumentKind::TeamConversationMessage,
                 source_id: "1".to_string(),
                 logical_message_id: Some("msg-1".to_string()),
+                authority_message_id: Some(101),
+                correlation_id: Some("corr-1".to_string()),
                 team_id: Some("team-1".to_string()),
                 run_id: None,
                 conversation_id: Some("conv-1".to_string()),
@@ -376,6 +409,8 @@ mod tests {
                     source_kind: MessageDocumentKind::TeamConversationMessage,
                     source_id: "1".to_string(),
                     logical_message_id: Some("msg-1".to_string()),
+                    authority_message_id: Some(101),
+                    correlation_id: Some("corr-alpha".to_string()),
                     team_id: Some("team-a".to_string()),
                     run_id: Some("run-a".to_string()),
                     conversation_id: Some("conv-1".to_string()),
@@ -394,6 +429,8 @@ mod tests {
                     source_kind: MessageDocumentKind::TeamRunEvent,
                     source_id: "2".to_string(),
                     logical_message_id: Some("msg-2".to_string()),
+                    authority_message_id: None,
+                    correlation_id: Some("corr-beta".to_string()),
                     team_id: Some("team-b".to_string()),
                     run_id: Some("run-b".to_string()),
                     conversation_id: Some("conv-2".to_string()),
@@ -425,6 +462,8 @@ mod tests {
             .search(&MessageSearchQuery {
                 query_text: "hello".to_string(),
                 limit: 5,
+                authority_message_id: None,
+                correlation_id: Some("corr-beta".to_string()),
                 team_id: Some("team-b".to_string()),
                 run_id: Some("run-b".to_string()),
                 conversation_id: Some("conv-2".to_string()),
@@ -438,6 +477,19 @@ mod tests {
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].document_id, "doc-2");
         assert!(filtered[0].score.is_some());
+
+        let authority_filtered = archive
+            .search(&MessageSearchQuery {
+                query_text: "hello".to_string(),
+                limit: 5,
+                authority_message_id: Some(101),
+                correlation_id: Some("corr-alpha".to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("search docs");
+        assert_eq!(authority_filtered.len(), 1);
+        assert_eq!(authority_filtered[0].document_id, "doc-1");
     }
 
     #[test]

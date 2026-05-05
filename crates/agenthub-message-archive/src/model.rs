@@ -56,6 +56,8 @@ pub struct MessageDocument {
     pub source_kind: MessageDocumentKind,
     pub source_id: String,
     pub logical_message_id: Option<String>,
+    pub authority_message_id: Option<i64>,
+    pub correlation_id: Option<String>,
     pub team_id: Option<String>,
     pub run_id: Option<String>,
     pub conversation_id: Option<String>,
@@ -74,6 +76,8 @@ pub struct MessageDocument {
 pub struct MessageSearchQuery {
     pub query_text: String,
     pub limit: usize,
+    pub authority_message_id: Option<i64>,
+    pub correlation_id: Option<String>,
     pub team_id: Option<String>,
     pub run_id: Option<String>,
     pub conversation_id: Option<String>,
