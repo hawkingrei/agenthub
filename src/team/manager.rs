@@ -2337,7 +2337,7 @@ impl TeamManager {
         );
 
         for (agent_id, max_id) in &snapshot.per_agent_max_ids {
-            let pool = self.event_dbs.pool_for_agent(&agent_id).await?;
+            let pool = self.event_dbs.pool_for_agent(agent_id).await?;
             counts.add(
                 migrate_per_agent_events_to_archive(
                     &self.db, &pool, archive, agent_id, batch_size, *max_id,
