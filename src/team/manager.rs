@@ -1986,14 +1986,14 @@ impl TeamManager {
             return Ok(None);
         }
         let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
-        let scope = self
-            .message_archive_scope_for_payload(
-                &team_id,
-                &message.payload,
-                &base_scope,
-                &mut HashMap::new(),
-            )
-            .await?;
+        let scope = message_archive_scope_for_payload_db(
+            &self.db,
+            &team_id,
+            &message.payload,
+            &base_scope,
+            &mut HashMap::new(),
+        )
+        .await?;
         Ok(Some(team_actor_message_archive_document(
             &team_id, message, &scope,
         )))
@@ -2168,53 +2168,6 @@ impl TeamManager {
             .await?)
     }
 
-    async fn message_archive_task_conversation_id(
-        &self,
-        team_id: &str,
-        task_id: &str,
-    ) -> anyhow::Result<Option<String>> {
-        Ok(sqlx::query_scalar::<_, String>(
-            r#"
-            SELECT id
-            FROM team_conversations
-            WHERE team_id = ?1 AND task_id = ?2
-            LIMIT 1
-            "#,
-        )
-        .bind(team_id)
-        .bind(task_id)
-        .fetch_optional(&self.db)
-        .await?)
-    }
-
-    async fn message_archive_scope_for_payload(
-        &self,
-        team_id: &str,
-        payload: &Value,
-        base_scope: &MessageArchiveScopeFallback,
-        task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
-    ) -> anyhow::Result<MessageArchiveScopeFallback> {
-        let task_id = message_archive_payload_string(payload, "task_id")
-            .or_else(|| base_scope.task_id.clone());
-        let mut conversation_id = base_scope.conversation_id.clone();
-        if conversation_id.is_none()
-            && let Some(task_id) = task_id.as_deref()
-        {
-            let cache_key = (team_id.to_string(), task_id.to_string());
-            if !task_conversation_cache.contains_key(&cache_key) {
-                let resolved = self
-                    .message_archive_task_conversation_id(team_id, task_id)
-                    .await?;
-                task_conversation_cache.insert(cache_key.clone(), resolved);
-            }
-            conversation_id = task_conversation_cache.get(&cache_key).cloned().flatten();
-        }
-        Ok(MessageArchiveScopeFallback {
-            conversation_id,
-            task_id,
-        })
-    }
-
     pub async fn migrate_team_messages_to_archive(
         &self,
         batch_size: usize,
@@ -2335,14 +2288,14 @@ impl TeamManager {
                     .expect("run scope is cached before use")
                     .clone();
                 let event = parse_run_event_row(&row)?;
-                let scope = self
-                    .message_archive_scope_for_payload(
-                        &team_id,
-                        &event.payload,
-                        &base_scope,
-                        &mut task_conversation_cache,
-                    )
-                    .await?;
+                let scope = message_archive_scope_for_payload_db(
+                    &self.db,
+                    &team_id,
+                    &event.payload,
+                    &base_scope,
+                    &mut task_conversation_cache,
+                )
+                .await?;
                 documents.push(team_run_event_archive_document(&team_id, &event, &scope));
                 report.team_run_events += 1;
             }
@@ -2405,14 +2358,14 @@ impl TeamManager {
                     .expect("run scope is cached before use")
                     .clone();
                 let message = parse_team_actor_message_row(&row)?;
-                let scope = self
-                    .message_archive_scope_for_payload(
-                        &team_id,
-                        &message.payload,
-                        &base_scope,
-                        &mut task_conversation_cache,
-                    )
-                    .await?;
+                let scope = message_archive_scope_for_payload_db(
+                    &self.db,
+                    &team_id,
+                    &message.payload,
+                    &base_scope,
+                    &mut task_conversation_cache,
+                )
+                .await?;
                 documents.push(team_actor_message_archive_document(
                     &team_id, &message, &scope,
                 ));

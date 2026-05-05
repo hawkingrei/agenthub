@@ -1164,13 +1164,98 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
     assert_eq!(document.agent_id.as_deref(), Some("worker-1"));
     assert_eq!(document.body_text, "live actor archive message");
     assert_eq!(document.created_at, first.created_at);
-    assert!(documents.iter().any(|document| {
+    let sent_run_event_documents: Vec<_> = documents
+        .iter()
+        .filter(|document| {
+            document.source_kind == MessageDocumentKind::TeamRunEvent
+                && document.run_id.as_deref() == Some(run.id.as_str())
+                && document.body_text == "actor_message_sent"
+        })
+        .collect();
+    assert_eq!(
+        sent_run_event_documents.len(),
+        1,
+        "idempotent retries should not dual-write duplicate actor_message_sent archive documents"
+    );
+    assert!(sent_run_event_documents.iter().any(|document| {
         document.source_kind == MessageDocumentKind::TeamRunEvent
             && document.run_id.as_deref() == Some(run.id.as_str())
             && document.body_text == "actor_message_sent"
             && document.conversation_id.as_deref() == Some(conversation.id.as_str())
             && document.task_id.as_deref() == Some(task.id.as_str())
     }));
+}
+
+#[tokio::test]
+async fn append_run_event_skips_shared_thread_mailbox_runs_in_archive() {
+    let db = setup_test_db().await;
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "shared-thread-run-event-archive-team".to_string(),
+            description: Some("team for shared-thread run event archive skip".to_string()),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Shared thread archive skip",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    let shared_run = manager
+        .ensure_shared_thread_mailbox_run(&team.id, &task.id, &conversation.id)
+        .await
+        .expect("ensure shared thread mailbox run");
+
+    manager
+        .append_run_event(
+            &shared_run.id,
+            "shared_thread_live_event",
+            json!({
+                "text": "hidden shared thread event",
+                "task_id": task.id,
+                "conversation_id": conversation.id,
+            }),
+        )
+        .await
+        .expect("append shared thread run event");
+
+    let events = manager
+        .list_run_events(&shared_run.id, 10, None)
+        .await
+        .expect("list shared thread run events");
+    let live_event = events
+        .iter()
+        .find(|event| event.event_type == "shared_thread_live_event")
+        .expect("shared thread live event");
+    assert!(
+        manager
+            .team_run_event_archive_document(live_event)
+            .await
+            .expect("build shared thread run event archive document")
+            .is_none(),
+        "shared-thread mailbox run events should not build archive documents"
+    );
+
+    sleep(Duration::from_millis(50)).await;
+    let documents = archive.documents.lock().await.clone();
+    assert!(
+        documents.is_empty(),
+        "shared-thread mailbox run events should stay out of message archive"
+    );
 }
 
 #[tokio::test]

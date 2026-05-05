@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use agenthub_message_archive::MessageArchiveStoreRef;
@@ -17,6 +18,7 @@ use serde_json::{Map, Value};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Error as SqlxError, Executor, QueryBuilder, Row, Sqlite, SqlitePool};
 use thiserror::Error;
+use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use super::codec::{
@@ -38,6 +40,15 @@ const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
 const SQLITE_READONLY_BASE_CODE: i32 = 8;
+const MAILBOX_RUN_EVENT_ARCHIVE_MAX_CONCURRENCY: usize = 4;
+
+static MAILBOX_RUN_EVENT_ARCHIVE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+
+fn mailbox_run_event_archive_semaphore() -> Arc<Semaphore> {
+    MAILBOX_RUN_EVENT_ARCHIVE_SEMAPHORE
+        .get_or_init(|| Arc::new(Semaphore::new(MAILBOX_RUN_EVENT_ARCHIVE_MAX_CONCURRENCY)))
+        .clone()
+}
 
 #[derive(Debug, Clone)]
 struct CanonicalChatReply {
@@ -1398,9 +1409,18 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         };
         if let Some(archive) = self.message_archive.as_ref().cloned() {
             let db = self.db.clone();
+            let semaphore = mailbox_run_event_archive_semaphore();
             let run_id = event.run_id.clone();
             let event_id = event.event_id;
             tokio::spawn(async move {
+                let Ok(_permit) = semaphore.acquire_owned().await else {
+                    tracing::warn!(
+                        run_id = %run_id,
+                        event_id,
+                        "failed to acquire mailbox run event archive permit"
+                    );
+                    return;
+                };
                 match team_run_event_archive_document_for_db(&db, &event).await {
                     Ok(Some(document)) => {
                         match tokio::time::timeout(
