@@ -214,6 +214,16 @@ Recommended identity shapes:
 - `team_actor_message:<run_id>:<message_id>`
 - `aggregated_acp_message:<agent_id>:<session_id>:<message_id>:<kind>`
 
+Team run-event archive documents use the event payload for `task_id` and `conversation_id` when
+present, then fall back to the owning run `input_json`. If a run-event payload has no human text,
+`body_text` falls back to the event type so operational lifecycle events remain searchable.
+
+Team actor mailbox archive documents preserve `authority_message_id` from the mailbox payload when
+present, because channel fan-out messages use that field to point back to the canonical conversation
+message. Their `conversation_id` is resolved from `task_conversation_id`,
+`channel_conversation_id`, then `conversation_id`. Their `agent_id` is the target actor id so
+actor-scoped archive filters find messages delivered to that actor.
+
 ### 3) ACP Aggregation Contract
 
 - Archive indexing of ACP chunks must produce one logical message document per `(session_id, type,
@@ -249,6 +259,21 @@ Recommended identity shapes:
 - Migration is one-way from SQLite message history into archive documents.
 - Migration must be resumable and idempotent.
 - New dual-written documents and migrated historical documents must share the same canonical schema.
+- Team migration batches source rows and appends each batch immediately; `batch_size` must bound both
+  source rows materialized at once and archive writes.
+- Team migration excludes `shared_thread_mailbox` bootstrap runs from run-event and actor-mailbox
+  archive documents because those runs are internal transport bookkeeping rather than visible Team
+  messages.
+- The first Team migration operator endpoint is a bounded synchronous trigger. It is suitable for
+  small or manually sliced backfills, but large production backfills require a durable background job
+  with persisted progress before operators can rely on retry/resume visibility.
+- The first migration report counts source rows converted into canonical archive documents. It does
+  not distinguish newly inserted archive rows from idempotent updates; archive backends need an
+  inserted/updated write-result contract before the admin API can expose that distinction.
+- Live Team actor mailbox sends dual-write created rows to the archive with the same canonical
+  document identity as migration. Team run-event live dual-write still requires a follow-up
+  consolidation of the multiple event insertion paths before run-event search can be fully
+  continuous without rerunning migration.
 
 ### 6) Multi-Database Extensibility Contract
 
@@ -313,3 +338,4 @@ Recommended identity shapes:
 - [docs/journal/2026-05-04-lancedb-message-archive-phase1.md](../journal/2026-05-04-lancedb-message-archive-phase1.md)
 - [docs/journal/2026-05-05-message-archive-team-conversation-dual-write.md](../journal/2026-05-05-message-archive-team-conversation-dual-write.md)
 - [docs/journal/2026-05-05-message-archive-team-search-api.md](../journal/2026-05-05-message-archive-team-search-api.md)
+- [docs/journal/2026-05-05-message-archive-team-migration.md](../journal/2026-05-05-message-archive-team-migration.md)

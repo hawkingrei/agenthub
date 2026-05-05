@@ -196,7 +196,9 @@ pub(crate) async fn reopen_test_state_with_db_path(path: &StdPath) -> AppState {
     build_test_state_with_db_source_and_archive(Some(path), false, false, None).await
 }
 
-async fn build_test_state_with_message_archive(archive: Arc<dyn MessageArchiveStore>) -> AppState {
+pub(crate) async fn build_test_state_with_message_archive(
+    archive: Arc<dyn MessageArchiveStore>,
+) -> AppState {
     build_test_state_with_db_source_and_archive(None, true, false, Some(archive)).await
 }
 

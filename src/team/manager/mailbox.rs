@@ -180,6 +180,9 @@ impl TeamManager {
             })
             .await
             .map_err(map_actor_mailbox_store_error)?;
+        if result.created {
+            self.spawn_archive_team_actor_message(&result.message);
+        }
         if result.created
             && should_emit_human_visible_reply
             && let Some((team_id, task_id, conversation_id)) =

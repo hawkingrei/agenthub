@@ -32,6 +32,19 @@ pub struct SetPasskeyEnabledRequest {
     pub enabled: bool,
 }
 
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct MigrateTeamMessagesArchiveRequest {
+    pub batch_size: Option<usize>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct MigrateTeamMessagesArchiveResponse {
+    pub team_conversation_messages: usize,
+    pub team_run_events: usize,
+    pub team_actor_messages: usize,
+    pub total_documents: usize,
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct AdminSettingsResponse {
     pub passkey_enabled: bool,
@@ -64,6 +77,10 @@ pub fn router(state: AppState) -> Router {
         .route("/audits", get(list_audits))
         .route("/settings", get(get_settings))
         .route("/settings/passkey", post(set_passkey_enabled))
+        .route(
+            "/message_archive/team_messages/migrate",
+            post(migrate_team_messages_archive),
+        )
         .route("/join/start", post(join_start))
         .with_state(state)
 }
@@ -313,6 +330,53 @@ async fn set_passkey_enabled(
     Ok(ok_response())
 }
 
+async fn migrate_team_messages_archive(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    payload: Option<Json<MigrateTeamMessagesArchiveRequest>>,
+) -> Result<Json<MigrateTeamMessagesArchiveResponse>, ApiError> {
+    let user = require_root(&headers, &state).await?;
+    let payload = payload.map(|Json(payload)| payload).unwrap_or_default();
+    let report = match state
+        .teams
+        .migrate_team_messages_to_archive(payload.batch_size.unwrap_or(500))
+        .await
+    {
+        Ok(report) => report,
+        Err(err) if err.to_string() == "message archive is not configured" => {
+            return Err(ApiError::conflict(
+                "message archive is not configured; enable a supported message archive backend before migrating team messages",
+            ));
+        }
+        Err(err) => return Err(err.into()),
+    };
+    let total_documents = report.total_documents();
+    let detail = format!(
+        "team_conversation_messages={},team_run_events={},team_actor_messages={},total_documents={}",
+        report.team_conversation_messages,
+        report.team_run_events,
+        report.team_actor_messages,
+        total_documents
+    );
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user.id),
+            None,
+            "message_archive_team_messages_migrated",
+            Some(&detail),
+            extract_ip(&headers).as_deref(),
+            extract_ua(&headers).as_deref(),
+        )
+        .await;
+    Ok(Json(MigrateTeamMessagesArchiveResponse {
+        team_conversation_messages: report.team_conversation_messages,
+        team_run_events: report.team_run_events,
+        team_actor_messages: report.team_actor_messages,
+        total_documents,
+    }))
+}
+
 async fn join_start(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -377,12 +441,44 @@ fn hash_pin(pin: &str) -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use agenthub_message_archive::{
+        MessageArchiveStore, MessageDocument, MessageSearchHit, MessageSearchQuery,
+    };
+    use async_trait::async_trait;
     use axum::body::Body;
+    use axum::body::to_bytes;
     use axum::http::{Method, Request, StatusCode, header};
+    use serde_json::{Value, json};
     use sqlx::Row;
     use tower::util::ServiceExt;
 
-    use crate::api::teams::tests::{build_test_state, create_auth_token};
+    use crate::api::teams::tests::{
+        build_test_state, build_test_state_with_message_archive, create_auth_token,
+    };
+    use crate::team::TeamDefinitionConfig;
+
+    #[derive(Default)]
+    struct NoopMessageArchive;
+
+    #[async_trait]
+    impl MessageArchiveStore for NoopMessageArchive {
+        async fn ensure_ready(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn append_documents(&self, _documents: &[MessageDocument]) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn search(
+            &self,
+            _query: &MessageSearchQuery,
+        ) -> anyhow::Result<Vec<MessageSearchHit>> {
+            Ok(Vec::new())
+        }
+    }
 
     fn build_request(token: Option<&str>) -> Request<Body> {
         let mut builder = Request::builder().method(Method::POST).uri("/join/start");
@@ -390,6 +486,25 @@ mod tests {
             builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
         }
         builder.body(Body::empty()).expect("build request")
+    }
+
+    fn build_json_request(path: &str, token: Option<&str>, payload: Value) -> Request<Body> {
+        let mut builder = Request::builder().method(Method::POST).uri(path);
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        builder
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(payload.to_string()))
+            .expect("build json request")
+    }
+
+    fn build_empty_post_request(path: &str, token: Option<&str>) -> Request<Body> {
+        let mut builder = Request::builder().method(Method::POST).uri(path);
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        builder.body(Body::empty()).expect("build empty request")
     }
 
     #[tokio::test]
@@ -430,6 +545,120 @@ mod tests {
             detail
                 .as_deref()
                 .is_some_and(|value| value.starts_with("expires_at="))
+        );
+    }
+
+    #[tokio::test]
+    async fn migrate_team_messages_archive_requires_root_and_records_audit() {
+        let state = build_test_state_with_message_archive(Arc::new(NoopMessageArchive)).await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "admin-archive-migration-team".to_string(),
+                description: None,
+                spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+            })
+            .await
+            .expect("create team");
+        let (task, _) = state
+            .teams
+            .create_task(
+                &team.id,
+                "Admin archive migration",
+                "user",
+                json!({}),
+                "group_chat",
+                None,
+            )
+            .await
+            .expect("create task");
+        state
+            .teams
+            .append_task_conversation_message(
+                &task.id,
+                "user",
+                Some("coordinator"),
+                "to_coordinator",
+                json!({"type":"chat_message","text":"archive via admin route"}),
+            )
+            .await
+            .expect("append conversation message");
+
+        let app = super::router(state.clone());
+        let unauthorized = app
+            .clone()
+            .oneshot(build_json_request(
+                "/message_archive/team_messages/migrate",
+                None,
+                json!({}),
+            ))
+            .await
+            .expect("execute unauthorized request");
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let token = create_auth_token(&state).await;
+        let response = app
+            .oneshot(build_empty_post_request(
+                "/message_archive/team_messages/migrate",
+                Some(&token),
+            ))
+            .await
+            .expect("execute migration request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let body: Value = serde_json::from_slice(&bytes).expect("decode response body");
+        assert_eq!(body["team_conversation_messages"], 1);
+        assert_eq!(body["team_run_events"], 0);
+        assert_eq!(body["team_actor_messages"], 0);
+        assert_eq!(body["total_documents"], 1);
+
+        let row = sqlx::query(
+            r#"
+            SELECT event, detail
+            FROM login_audit
+            WHERE event = 'message_archive_team_messages_migrated'
+            ORDER BY ts DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_one(&state.db)
+        .await
+        .expect("fetch migration audit");
+        let event: String = row.get("event");
+        let detail: Option<String> = row.get("detail");
+        assert_eq!(event, "message_archive_team_messages_migrated");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.contains("total_documents=1"))
+        );
+    }
+
+    #[tokio::test]
+    async fn migrate_team_messages_archive_reports_missing_archive_as_conflict() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let response = super::router(state)
+            .oneshot(build_json_request(
+                "/message_archive/team_messages/migrate",
+                Some(&token),
+                json!({}),
+            ))
+            .await
+            .expect("execute migration request");
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let body: Value = serde_json::from_slice(&bytes).expect("decode response body");
+        assert_eq!(
+            body["error"].as_str(),
+            Some(
+                "message archive is not configured; enable a supported message archive backend before migrating team messages"
+            )
         );
     }
 }

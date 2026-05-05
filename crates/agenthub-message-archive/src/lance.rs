@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use arrow_array::{
-    Array, ArrayRef, Float32Array, Int64Array, RecordBatch, StringArray, UInt32Array,
+    Array, ArrayRef, Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
+    UInt32Array,
 };
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use async_trait::async_trait;
@@ -99,69 +100,92 @@ impl LanceDbMessageArchive {
         Ok(())
     }
 
-    fn documents_to_record_batch(documents: &[MessageDocument]) -> Result<RecordBatch> {
-        let arrays: Vec<ArrayRef> = vec![
-            Arc::new(StringArray::from_iter(
+    fn documents_to_record_batch(
+        documents: &[MessageDocument],
+        target_schema: SchemaRef,
+    ) -> Result<RecordBatch> {
+        let arrays = target_schema
+            .fields()
+            .iter()
+            .map(|field| Self::document_field_array(documents, field.name(), field.data_type()))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(RecordBatch::try_new(target_schema, arrays)?)
+    }
+
+    fn document_field_array(
+        documents: &[MessageDocument],
+        field_name: &str,
+        data_type: &DataType,
+    ) -> Result<ArrayRef> {
+        let array: ArrayRef = match (field_name, data_type) {
+            ("document_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| Some(doc.document_id.as_str())),
             )),
-            Arc::new(StringArray::from_iter(
+            ("source_kind", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| Some(doc.source_kind.as_str())),
             )),
-            Arc::new(StringArray::from_iter(
+            ("source_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| Some(doc.source_id.as_str())),
             )),
-            Arc::new(StringArray::from_iter(
+            ("logical_message_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents
                     .iter()
                     .map(|doc| doc.logical_message_id.as_deref()),
             )),
-            Arc::new(Int64Array::from_iter(
+            ("authority_message_id", DataType::Int64) => Arc::new(Int64Array::from_iter(
                 documents.iter().map(|doc| doc.authority_message_id),
             )),
-            Arc::new(StringArray::from_iter(
+            ("correlation_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.correlation_id.as_deref()),
             )),
-            Arc::new(StringArray::from_iter(
+            ("team_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.team_id.as_deref()),
             )),
-            Arc::new(StringArray::from_iter(
+            ("run_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.run_id.as_deref()),
             )),
-            Arc::new(StringArray::from_iter(
+            ("conversation_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.conversation_id.as_deref()),
             )),
-            Arc::new(StringArray::from_iter(
+            ("task_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.task_id.as_deref()),
             )),
-            Arc::new(StringArray::from_iter(
+            ("agent_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.agent_id.as_deref()),
             )),
-            Arc::new(StringArray::from_iter(
+            ("session_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.session_id.as_deref()),
             )),
-            Arc::new(StringArray::from_iter(
+            ("body_text", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| Some(doc.body_text.as_str())),
             )),
-            Arc::new(StringArray::from_iter(
+            ("payload_json", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.payload_json.as_deref()),
             )),
-            Arc::new(Int64Array::from_iter(
+            ("created_at", DataType::Int64) => Arc::new(Int64Array::from_iter(
                 documents.iter().map(|doc| Some(doc.created_at)),
             )),
-            Arc::new(Int64Array::from_iter(
+            ("event_id_from", DataType::Int64) => Arc::new(Int64Array::from_iter(
                 documents.iter().map(|doc| doc.event_id_from),
             )),
-            Arc::new(Int64Array::from_iter(
+            ("event_id_to", DataType::Int64) => Arc::new(Int64Array::from_iter(
                 documents.iter().map(|doc| doc.event_id_to),
             )),
-            Arc::new(UInt32Array::from(
+            ("chunk_count", DataType::UInt32) => Arc::new(UInt32Array::from(
                 documents
                     .iter()
                     .map(|doc| doc.chunk_count)
                     .collect::<Vec<_>>(),
             )),
-        ];
-        Ok(RecordBatch::try_new(Self::schema(), arrays)?)
+            _ => {
+                return Err(anyhow!(
+                    "unsupported message archive field `{}` with type {:?}",
+                    field_name,
+                    data_type
+                ));
+            }
+        };
+        Ok(array)
     }
 
     fn build_filter(query: &MessageSearchQuery) -> Option<String> {
@@ -215,8 +239,13 @@ impl MessageArchiveStore for LanceDbMessageArchive {
             return Ok(());
         }
         let table = self.ensure_table().await?;
-        let batch = Self::documents_to_record_batch(documents)?;
-        table.add(batch).execute().await?;
+        let table_schema = table.schema().await?;
+        let batch = Self::documents_to_record_batch(documents, table_schema.clone())?;
+        let reader = RecordBatchIterator::new(vec![Ok(batch)], table_schema);
+        let mut merge = table.merge_insert(&["document_id"]);
+        merge.when_matched_update_all(None);
+        merge.when_not_matched_insert_all();
+        merge.execute(Box::new(reader)).await?;
         Ok(())
     }
 
@@ -563,6 +592,77 @@ mod tests {
             .expect("search docs");
         assert_eq!(authority_filtered.len(), 1);
         assert_eq!(authority_filtered[0].document_id, "doc-1");
+    }
+
+    #[tokio::test]
+    async fn lancedb_archive_upserts_documents_by_document_id() {
+        let config = MessageArchiveConfig {
+            backend: MessageArchiveBackend::LanceDb,
+            uri: "memory://agenthub-message-archive-upsert".to_string(),
+            message_table: "messages".to_string(),
+        };
+        let archive = LanceDbMessageArchive::connect(config)
+            .await
+            .expect("connect archive");
+        archive.ensure_ready().await.expect("ensure ready");
+
+        let mut document = MessageDocument {
+            document_id: "team_run_event:run-1:1".to_string(),
+            source_kind: MessageDocumentKind::TeamRunEvent,
+            source_id: "1".to_string(),
+            logical_message_id: None,
+            authority_message_id: Some(1),
+            correlation_id: None,
+            team_id: Some("team-1".to_string()),
+            run_id: Some("run-1".to_string()),
+            conversation_id: None,
+            task_id: None,
+            agent_id: None,
+            session_id: None,
+            body_text: "first archive body".to_string(),
+            payload_json: None,
+            created_at: 1,
+            event_id_from: Some(1),
+            event_id_to: Some(1),
+            chunk_count: None,
+        };
+        archive
+            .append_documents(&[document.clone()])
+            .await
+            .expect("append first doc");
+
+        document.body_text = "second archive body".to_string();
+        archive
+            .append_documents(&[document])
+            .await
+            .expect("upsert doc");
+
+        let hits = archive
+            .search(&MessageSearchQuery {
+                query_text: "second".to_string(),
+                limit: 5,
+                run_id: Some("run-1".to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("search docs");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].document_id, "team_run_event:run-1:1");
+        assert_eq!(hits[0].body_text, "second archive body");
+
+        let stale_hits = archive
+            .search(&MessageSearchQuery {
+                query_text: "first".to_string(),
+                limit: 5,
+                run_id: Some("run-1".to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("search stale doc");
+        assert!(
+            stale_hits.is_empty(),
+            "upsert should not keep stale full-text tokens"
+        );
     }
 
     #[tokio::test]
