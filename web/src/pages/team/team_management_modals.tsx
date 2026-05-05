@@ -553,6 +553,11 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
             Copy keeps the source agent unchanged. AgentHub creates a new Team-owned{" "}
             {copyRoleLabel} agent with copied runtime settings and fresh Team membership.
           </Alert>
+          <Alert radius="md" color="yellow" variant="light" title="Move semantics are not enabled yet">
+            Moving would transfer the existing agent identity and ownership into this Team. That
+            path needs runtime and history guardrails first, so use copy when you want a safe
+            Team-owned member now.
+          </Alert>
         </div>
 
         <div className={TEAM_CREATE_ACTIONS_BAR_CLASS}>
@@ -565,6 +570,16 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
             type="button"
           >
             Cancel
+          </ActionButton>
+          <ActionButton
+            className={chrome.mutedButtonClassName}
+            disabled
+            size="md"
+            tone="secondary"
+            title="Move to Team is deferred until ownership and runtime guardrails land."
+            type="button"
+          >
+            Move to Team (later)
           </ActionButton>
           <ActionButton
             className={chrome.accentButtonClassName}

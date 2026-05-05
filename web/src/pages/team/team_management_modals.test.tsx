@@ -344,6 +344,10 @@ describe("Team management modals", () => {
     expect(html).toContain("<li");
     expect(html).toContain('aria-pressed="false"');
     expect(html).toContain("new Team-owned worker agent");
+    expect(html).toContain("Copy keeps the source agent unchanged");
+    expect(html).toContain("Move semantics are not enabled yet");
+    expect(html).toContain("Move to Team (later)");
+    expect(html).toContain("Move to Team is deferred until ownership and runtime guardrails land.");
   });
 
   it("renders the copy-existing-agent empty-filter fallback", () => {
