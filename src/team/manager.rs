@@ -9,6 +9,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 pub use agenthub_team_domain::TeamRunResumeError;
@@ -92,6 +93,7 @@ pub(crate) const TEAM_CHANNEL_BOOTSTRAP_KIND: &str = "team_channel";
 const TEAM_CHANNEL_BOOTSTRAP_SOURCE: &str = "coordinator_created";
 const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const TEAM_CHANNEL_BOOTSTRAP_UNIQUE_INDEX: &str = "idx_team_channel_bootstrap_unique";
+const MESSAGE_ARCHIVE_APPEND_TIMEOUT: Duration = Duration::from_secs(2);
 const TEAM_CHANNEL_BOOTSTRAP_UNIQUE_CHANNEL_EXPR: &str =
     "lower(trim(COALESCE(json_extract(context_json, '$.channel_id'), '')))";
 const TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS: &str = "team_conversation_messages.conversation_id, team_conversation_messages.from_actor_id, team_conversation_messages.idempotency_key";
@@ -1643,8 +1645,7 @@ impl TeamManager {
         };
 
         if created {
-            self.archive_task_conversation_message(&conversation, &message)
-                .await;
+            self.spawn_archive_task_conversation_message(&conversation, &message);
             self.emit_conversation_event(TeamConversationStreamEvent {
                 team_id: conversation.team_id.clone(),
                 task_id: task_id.to_string(),
@@ -1657,7 +1658,7 @@ impl TeamManager {
         Ok((message, created))
     }
 
-    async fn archive_task_conversation_message(
+    fn spawn_archive_task_conversation_message(
         &self,
         conversation: &TeamConversationRecord,
         message: &TeamConversationMessageRecord,
@@ -1665,15 +1666,37 @@ impl TeamManager {
         let Some(archive) = self.message_archive.as_ref() else {
             return;
         };
+        let archive = archive.clone();
         let document = team_conversation_message_archive_document(conversation, message);
-        if let Err(error) = archive.append_documents(&[document]).await {
-            tracing::warn!(
-                error = ?error,
-                conversation_id = %message.conversation_id,
-                message_id = message.message_id,
-                "failed to dual-write team conversation message to archive"
-            );
-        }
+        let conversation_id = message.conversation_id.clone();
+        let message_id = message.message_id;
+
+        tokio::spawn(async move {
+            match tokio::time::timeout(
+                MESSAGE_ARCHIVE_APPEND_TIMEOUT,
+                archive.append_documents(&[document]),
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(
+                        error = ?error,
+                        conversation_id = %conversation_id,
+                        message_id,
+                        "failed to dual-write team conversation message to archive"
+                    );
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        conversation_id = %conversation_id,
+                        message_id,
+                        timeout_ms = MESSAGE_ARCHIVE_APPEND_TIMEOUT.as_millis(),
+                        "timed out dual-writing team conversation message to archive"
+                    );
+                }
+            }
+        });
     }
 
     #[allow(clippy::too_many_arguments)]
