@@ -6061,24 +6061,25 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
-    let Json(team) = create_team(
-        State(state.clone()),
-        headers.clone(),
-        Json(CreateTeamRequest {
-            name: "task-mailbox-forward-team".to_string(),
-            description: Some("task to mailbox forwarding coverage".to_string()),
-            spec: json!({
-                "entrypoint":"planner",
-                "members":[
-                    {"member_id":"planner","role":"coordinator"},
-                    {"member_id":"worker-1","role":"worker"},
-                    {"member_id":"worker-2","role":"worker"}
-                ]
-            }),
-        }),
-    )
-    .await
-    .expect("create team");
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "task-mailbox-forward-team".to_string(),
+                description: Some("task to mailbox forwarding coverage".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"},
+                        {"member_id":"worker-2","role":"worker"}
+                    ]
+                }),
+            },
+            None,
+        )
+        .await
+        .expect("create team");
 
     let task_created = create_team_task(
         &state,
