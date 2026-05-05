@@ -234,6 +234,14 @@ impl MessageArchiveStore for LanceDbMessageArchive {
                 "document_id",
                 "source_kind",
                 "body_text",
+                "authority_message_id",
+                "correlation_id",
+                "team_id",
+                "run_id",
+                "conversation_id",
+                "task_id",
+                "agent_id",
+                "session_id",
                 "_score",
             ]))
             .limit(query.limit);
@@ -250,6 +258,14 @@ impl MessageArchiveStore for LanceDbMessageArchive {
             let document_ids = required_string_array(&batch, "document_id")?;
             let source_kinds = required_string_array(&batch, "source_kind")?;
             let body_texts = required_string_array(&batch, "body_text")?;
+            let authority_message_ids = optional_i64_array(&batch, "authority_message_id")?;
+            let correlation_ids = optional_string_array(&batch, "correlation_id")?;
+            let team_ids = optional_string_array(&batch, "team_id")?;
+            let run_ids = optional_string_array(&batch, "run_id")?;
+            let conversation_ids = optional_string_array(&batch, "conversation_id")?;
+            let task_ids = optional_string_array(&batch, "task_id")?;
+            let agent_ids = optional_string_array(&batch, "agent_id")?;
+            let session_ids = optional_string_array(&batch, "session_id")?;
             let scores = batch
                 .column_by_name("_score")
                 .and_then(|column| column.as_any().downcast_ref::<Float32Array>());
@@ -264,6 +280,15 @@ impl MessageArchiveStore for LanceDbMessageArchive {
                     body_text: body_texts.value(row).to_string(),
                     score: scores
                         .and_then(|values| values.is_valid(row).then(|| values.value(row))),
+                    authority_message_id: authority_message_ids
+                        .and_then(|values| values.is_valid(row).then(|| values.value(row))),
+                    correlation_id: optional_string_value(correlation_ids, row),
+                    team_id: optional_string_value(team_ids, row),
+                    run_id: optional_string_value(run_ids, row),
+                    conversation_id: optional_string_value(conversation_ids, row),
+                    task_id: optional_string_value(task_ids, row),
+                    agent_id: optional_string_value(agent_ids, row),
+                    session_id: optional_string_value(session_ids, row),
                 });
             }
         }
@@ -297,6 +322,35 @@ fn required_string_array<'a>(batch: &'a RecordBatch, column: &str) -> Result<&'a
         .as_any()
         .downcast_ref::<StringArray>()
         .ok_or_else(|| anyhow!("search result column {column} is not Utf8"))
+}
+
+fn optional_string_array<'a>(
+    batch: &'a RecordBatch,
+    column: &str,
+) -> Result<Option<&'a StringArray>> {
+    let Some(array) = batch.column_by_name(column) else {
+        return Ok(None);
+    };
+    array
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .map(Some)
+        .ok_or_else(|| anyhow!("search result column {column} is not Utf8"))
+}
+
+fn optional_i64_array<'a>(batch: &'a RecordBatch, column: &str) -> Result<Option<&'a Int64Array>> {
+    let Some(array) = batch.column_by_name(column) else {
+        return Ok(None);
+    };
+    array
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .map(Some)
+        .ok_or_else(|| anyhow!("search result column {column} is not Int64"))
+}
+
+fn optional_string_value(values: Option<&StringArray>, row: usize) -> Option<String> {
+    values.and_then(|values| values.is_valid(row).then(|| values.value(row).to_string()))
 }
 
 fn parse_source_kind(raw: &str) -> Option<MessageDocumentKind> {
@@ -397,6 +451,11 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].document_id, "team_conversation_message:conv-1:1");
         assert_eq!(hits[0].body_text, "hello lancedb archive");
+        assert_eq!(hits[0].authority_message_id, Some(101));
+        assert_eq!(hits[0].correlation_id.as_deref(), Some("corr-1"));
+        assert_eq!(hits[0].team_id.as_deref(), Some("team-1"));
+        assert_eq!(hits[0].conversation_id.as_deref(), Some("conv-1"));
+        assert_eq!(hits[0].task_id.as_deref(), Some("task-1"));
         assert!(hits[0].score.is_some());
 
         archive

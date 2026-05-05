@@ -235,6 +235,14 @@ Recommended identity shapes:
 - Search results must return enough metadata to deep-link back to the originating Agent/Team view.
 - Search ranking is backend-defined FTS ranking in the first rollout; no semantic embedding ranking
   is required.
+- The first public read surface is Team-scoped message search at
+  `GET /api/teams/:id/messages/search`. The route must:
+  - authenticate the caller and enforce Team ownership before searching;
+  - force `team_id` from the path, not from caller-supplied query parameters;
+  - accept archive filters for `authority_message_id`, `correlation_id`, `run_id`,
+    `conversation_id`, `task_id`, `agent_id`, `session_id`, and `source_kind`;
+  - clamp `limit` to a bounded range so archive queries cannot request unbounded result sets;
+  - return archive hit metadata needed by later UI deep links.
 
 ### 5) Migration Contract
 
@@ -269,6 +277,10 @@ Recommended identity shapes:
   - raw ACP event replay into aggregated archive documents
 - Focused Team manager test for live Team conversation message dual-write without duplicating
   archive documents on idempotent retries.
+- Focused Team API test for Team-scoped archive search:
+  - route uses the archive abstraction
+  - route forces path Team scope into `MessageSearchQuery`
+  - response preserves archive hit metadata for deep-linking
 - `cargo test -p <archive crate>`
 - `cargo check`
 - `bazel build //...`
@@ -300,3 +312,4 @@ Recommended identity shapes:
 
 - [docs/journal/2026-05-04-lancedb-message-archive-phase1.md](../journal/2026-05-04-lancedb-message-archive-phase1.md)
 - [docs/journal/2026-05-05-message-archive-team-conversation-dual-write.md](../journal/2026-05-05-message-archive-team-conversation-dual-write.md)
+- [docs/journal/2026-05-05-message-archive-team-search-api.md](../journal/2026-05-05-message-archive-team-search-api.md)

@@ -5402,6 +5402,94 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
 }
 
 #[tokio::test]
+async fn team_message_search_api_uses_archive_with_team_scope() {
+    let archive = Arc::new(RecordingSearchArchive {
+        queries: tokio::sync::Mutex::new(Vec::new()),
+        hits: vec![MessageSearchHit {
+            document_id: "team_conversation_message:conversation-1:42".to_string(),
+            source_kind: MessageDocumentKind::TeamConversationMessage,
+            body_text: "archive search result".to_string(),
+            score: Some(0.75),
+            authority_message_id: Some(42),
+            correlation_id: Some("corr-search".to_string()),
+            team_id: Some("team-from-archive".to_string()),
+            run_id: None,
+            conversation_id: Some("conversation-1".to_string()),
+            task_id: Some("task-1".to_string()),
+            agent_id: None,
+            session_id: None,
+        }],
+    });
+    let state = build_test_state_with_message_archive(archive.clone()).await;
+    let headers = auth_headers(&state).await;
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+            name: "message-search-api-team".to_string(),
+            description: Some("archive search".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"coordinator"}]
+            }),
+            },
+            None,
+        )
+        .await
+        .expect("create team");
+
+    let Json(hits) = search_team_messages(
+        State(state),
+        headers,
+        Path(team.id.clone()),
+        Query(SearchTeamMessagesQuery {
+            query: " archive ".to_string(),
+            limit: Some(5),
+            authority_message_id: None,
+            correlation_id: Some(" corr-search ".to_string()),
+            run_id: None,
+            conversation_id: None,
+            task_id: Some(" task-1 ".to_string()),
+            agent_id: None,
+            session_id: None,
+            source_kind: Some("team_conversation_message".to_string()),
+        }),
+    )
+    .await
+    .expect("search team messages");
+
+    assert_eq!(
+        hits,
+        vec![TeamMessageSearchHitResponse {
+            document_id: "team_conversation_message:conversation-1:42".to_string(),
+            source_kind: MessageDocumentKind::TeamConversationMessage,
+            body_text: "archive search result".to_string(),
+            score: Some(0.75),
+            authority_message_id: Some(42),
+            correlation_id: Some("corr-search".to_string()),
+            team_id: Some("team-from-archive".to_string()),
+            run_id: None,
+            conversation_id: Some("conversation-1".to_string()),
+            task_id: Some("task-1".to_string()),
+            agent_id: None,
+            session_id: None,
+        }]
+    );
+
+    let queries = archive.queries.lock().await;
+    assert_eq!(queries.len(), 1);
+    assert_eq!(queries[0].query_text, "archive");
+    assert_eq!(queries[0].limit, 5);
+    assert_eq!(queries[0].team_id.as_deref(), Some(team.id.as_str()));
+    assert_eq!(queries[0].correlation_id.as_deref(), Some("corr-search"));
+    assert_eq!(queries[0].task_id.as_deref(), Some("task-1"));
+    assert_eq!(
+        queries[0].source_kind,
+        Some(MessageDocumentKind::TeamConversationMessage)
+    );
+}
+
+#[tokio::test]
 async fn teams_api_rejects_human_task_status_and_owner_updates() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

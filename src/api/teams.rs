@@ -8,6 +8,7 @@ use self::errors::{
     map_runtime_start_error, map_submit_step_error, map_task_message_error,
     map_team_internal_error,
 };
+use agenthub_message_archive::{MessageDocumentKind, MessageSearchHit, MessageSearchQuery};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
     ActorMailboxService, ActorMessageStatus, ActorSendRequest, ActorServiceErrorCode,
@@ -196,6 +197,37 @@ pub struct SendTeamTaskMessageRequest {
 pub struct ListTeamTaskMessagesQuery {
     pub limit: Option<i64>,
     pub before_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchTeamMessagesQuery {
+    #[serde(alias = "q")]
+    pub query: String,
+    pub limit: Option<usize>,
+    pub authority_message_id: Option<i64>,
+    pub correlation_id: Option<String>,
+    pub run_id: Option<String>,
+    pub conversation_id: Option<String>,
+    pub task_id: Option<String>,
+    pub agent_id: Option<String>,
+    pub session_id: Option<String>,
+    pub source_kind: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct TeamMessageSearchHitResponse {
+    pub document_id: String,
+    pub source_kind: MessageDocumentKind,
+    pub body_text: String,
+    pub score: Option<f32>,
+    pub authority_message_id: Option<i64>,
+    pub correlation_id: Option<String>,
+    pub team_id: Option<String>,
+    pub run_id: Option<String>,
+    pub conversation_id: Option<String>,
+    pub task_id: Option<String>,
+    pub agent_id: Option<String>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -444,6 +476,7 @@ pub fn router(state: AppState) -> Router {
             "/{id}/tasks/{task_id}/messages",
             post(send_team_task_message).get(list_team_task_messages),
         )
+        .route("/{id}/messages/search", get(search_team_messages))
         .route(
             "/{id}/channels/{channel_id}/threads/{root_message_id}/replies",
             post(reply_team_thread),
@@ -1013,6 +1046,46 @@ async fn list_team_task_messages(
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(messages))
+}
+
+async fn search_team_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Query(query): Query<SearchTeamMessagesQuery>,
+) -> Result<Json<Vec<TeamMessageSearchHitResponse>>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let source_kind = query
+        .source_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(parse_message_archive_source_kind)
+        .transpose()?;
+    let archive_query = MessageSearchQuery {
+        query_text: query.query.trim().to_string(),
+        limit: query.limit.unwrap_or(20).clamp(1, 100),
+        authority_message_id: query.authority_message_id,
+        correlation_id: normalize_optional_string(query.correlation_id),
+        team_id: Some(team_id),
+        run_id: normalize_optional_string(query.run_id),
+        conversation_id: normalize_optional_string(query.conversation_id),
+        task_id: normalize_optional_string(query.task_id),
+        agent_id: normalize_optional_string(query.agent_id),
+        session_id: normalize_optional_string(query.session_id),
+        source_kind,
+    };
+    let hits = state
+        .teams
+        .search_message_archive(&archive_query)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(
+        hits.into_iter()
+            .map(TeamMessageSearchHitResponse::from)
+            .collect(),
+    ))
 }
 
 async fn reply_team_thread(
@@ -2242,6 +2315,25 @@ fn normalize_optional_non_empty(value: Option<&str>) -> Result<Option<&str>, Api
     }
 }
 
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn parse_message_archive_source_kind(raw: &str) -> Result<MessageDocumentKind, ApiError> {
+    match raw.trim() {
+        "agent_event" => Ok(MessageDocumentKind::AgentEvent),
+        "team_conversation_message" => Ok(MessageDocumentKind::TeamConversationMessage),
+        "team_run_event" => Ok(MessageDocumentKind::TeamRunEvent),
+        "team_actor_message" => Ok(MessageDocumentKind::TeamActorMessage),
+        "aggregated_acp_message" => Ok(MessageDocumentKind::AggregatedAcpMessage),
+        _ => Err(ApiError::bad_request(
+            "unsupported message archive source_kind",
+        )),
+    }
+}
+
 fn normalize_optional_idempotency_key(value: Option<&str>) -> Result<Option<String>, ApiError> {
     let normalized = normalize_optional_idempotency_key_input(value);
     if value.is_some() && normalized.is_none() {
@@ -2258,6 +2350,25 @@ fn normalize_optional_idempotency_key(value: Option<&str>) -> Result<Option<Stri
         ));
     }
     Ok(Some(idempotency_key))
+}
+
+impl From<MessageSearchHit> for TeamMessageSearchHitResponse {
+    fn from(hit: MessageSearchHit) -> Self {
+        Self {
+            document_id: hit.document_id,
+            source_kind: hit.source_kind,
+            body_text: hit.body_text,
+            score: hit.score,
+            authority_message_id: hit.authority_message_id,
+            correlation_id: hit.correlation_id,
+            team_id: hit.team_id,
+            run_id: hit.run_id,
+            conversation_id: hit.conversation_id,
+            task_id: hit.task_id,
+            agent_id: hit.agent_id,
+            session_id: hit.session_id,
+        }
+    }
 }
 
 fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<String>, ApiError> {
