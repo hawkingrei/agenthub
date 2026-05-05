@@ -1840,9 +1840,9 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
     sqlx::query(
         r#"
         INSERT INTO team_steps (
-            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at, ended_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, NULL, ?8)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, NULL, ?8, ?9)
         "#,
     )
     .bind("archive-step")
@@ -1853,29 +1853,162 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
     .bind("working")
     .bind("[]")
     .bind(1_i64)
+    .bind(22_i64)
     .execute(&db)
     .await
     .expect("insert archive step");
+    sqlx::query(
+        r#"
+        INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("archive-shared-mailbox-run")
+    .bind("archive-team")
+    .bind("archive-task")
+    .bind("working")
+    .bind(
+        json!({
+            "bootstrap_kind": "shared_thread_mailbox",
+            "task_id": "archive-task",
+            "conversation_id": "archive-conversation"
+        })
+        .to_string(),
+    )
+    .bind(23_i64)
+    .execute(&db)
+    .await
+    .expect("insert shared mailbox run");
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at, ended_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, NULL, ?8, ?9)
+        "#,
+    )
+    .bind("archive-shared-mailbox-step")
+    .bind("archive-shared-mailbox-run")
+    .bind("planner_step")
+    .bind("planner")
+    .bind("per-agent-session")
+    .bind("working")
+    .bind("[]")
+    .bind(23_i64)
+    .bind(25_i64)
+    .execute(&db)
+    .await
+    .expect("insert shared mailbox step");
+    sqlx::query(
+        r#"
+        INSERT INTO team_tasks (id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+        "#,
+    )
+    .bind("archive-task-2")
+    .bind("archive-team")
+    .bind("Archive ACP 2")
+    .bind("open")
+    .bind("user")
+    .bind(json!({}).to_string())
+    .bind(30_i64)
+    .bind(30_i64)
+    .execute(&db)
+    .await
+    .expect("insert second archive task");
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversations (id, team_id, task_id, mode, topic, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "#,
+    )
+    .bind("archive-conversation-2")
+    .bind("archive-team")
+    .bind("archive-task-2")
+    .bind("group_chat")
+    .bind("Archive ACP 2")
+    .bind(30_i64)
+    .bind(30_i64)
+    .execute(&db)
+    .await
+    .expect("insert second archive conversation");
+    sqlx::query(
+        r#"
+        INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("archive-run-2")
+    .bind("archive-team")
+    .bind("archive-task-2")
+    .bind("working")
+    .bind(
+        json!({"task_id":"archive-task-2","conversation_id":"archive-conversation-2"}).to_string(),
+    )
+    .bind(30_i64)
+    .execute(&db)
+    .await
+    .expect("insert second archive run");
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, NULL, ?8)
+        "#,
+    )
+    .bind("archive-step-2")
+    .bind("archive-run-2")
+    .bind("planner_step")
+    .bind("planner")
+    .bind("per-agent-session")
+    .bind("working")
+    .bind("[]")
+    .bind(30_i64)
+    .execute(&db)
+    .await
+    .expect("insert second archive step");
 
     let event_db = event_dbs
         .pool_for_agent("planner")
         .await
         .expect("open planner event db");
-    for (seq, ts, message) in [
+    for (seq, ts, stream, message) in [
         (
             "1",
             20_i64,
+            "acp",
             r#"{"type":"agent_message","text":"lo","chunk":true,"message_id":"msg-1","chunk_index":1}"#,
         ),
         (
             "2",
             21_i64,
+            "acp",
             r#"{"type":"agent_message","text":"hel","chunk":true,"message_id":"msg-1","chunk_index":0}"#,
         ),
         (
             "3",
             22_i64,
+            "acp",
             r#"{"type":"agent_message","text":"fallback malformed chunk","chunk":true,"chunk_index":2,"api_key":"per-agent-secret"}"#,
+        ),
+        (
+            "4",
+            23_i64,
+            "stdout",
+            r#"{"type":"agent_message","text":"stdout raw chunk","chunk":true,"message_id":"stdout-msg","chunk_index":0}"#,
+        ),
+        (
+            "5",
+            24_i64,
+            "acp",
+            r#"{"type":"tool_call","text":"hidden mailbox event"}"#,
+        ),
+        (
+            "6",
+            31_i64,
+            "acp",
+            r#"{"type":"tool_call","text":"second run event"}"#,
         ),
     ] {
         sqlx::query(
@@ -1887,7 +2020,7 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
         .bind("per-agent-session")
         .bind(seq)
         .bind(ts)
-        .bind("acp")
+        .bind(stream)
         .bind(message)
         .execute(&event_db)
         .await
@@ -1902,12 +2035,12 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
         .await
         .expect("migrate agent events");
 
-    assert_eq!(report.agent_events, 2);
+    assert_eq!(report.agent_events, 5);
     assert_eq!(report.aggregated_acp_messages, 1);
-    assert_eq!(report.total_documents(), 3);
+    assert_eq!(report.total_documents(), 6);
 
     let documents = archive.documents.lock().await.clone();
-    assert_eq!(documents.len(), 3);
+    assert_eq!(documents.len(), 6);
     assert!(documents.iter().any(|document| {
         document.source_kind == MessageDocumentKind::AgentEvent
             && document.document_id == "agent_event:planner:main-session:1"
@@ -1927,6 +2060,28 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
             && document.payload_json.as_deref().is_some_and(|payload| {
                 payload.contains("[redacted]") && !payload.contains("per-agent-secret")
             })
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:per-agent-session:4"
+            && document.logical_message_id.is_none()
+            && document.team_id.is_none()
+            && document.body_text == "stdout raw chunk"
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:per-agent-session:5"
+            && document.team_id.is_none()
+            && document.body_text == "hidden mailbox event"
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:per-agent-session:6"
+            && document.team_id.as_deref() == Some("archive-team")
+            && document.run_id.as_deref() == Some("archive-run-2")
+            && document.conversation_id.as_deref() == Some("archive-conversation-2")
+            && document.task_id.as_deref() == Some("archive-task-2")
+            && document.body_text == "second run event"
     }));
     assert!(documents.iter().any(|document| {
         document.source_kind == MessageDocumentKind::AggregatedAcpMessage

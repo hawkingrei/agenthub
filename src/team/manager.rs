@@ -5583,7 +5583,7 @@ async fn migrate_agent_event_rows_to_archive(
     let mut chunk_accumulator = AcpChunkAccumulator::default();
     let mut counts = AgentEventArchiveMigrationCounts::default();
     let batch_limit = i64::try_from(batch_size.clamp(1, 1000))?;
-    let mut scope_cache = HashMap::<(String, String), Option<AgentEventArchiveScope>>::new();
+    let mut scope_cache = HashMap::<(String, String, i64), Option<AgentEventArchiveScope>>::new();
     let mut task_conversation_cache = HashMap::<(String, String), Option<String>>::new();
 
     loop {
@@ -5695,13 +5695,15 @@ fn collect_agent_event_archive_row(
     chunk_accumulator: &mut AcpChunkAccumulator,
     counts: &mut AgentEventArchiveMigrationCounts,
 ) {
-    if chunk_accumulator.push_row(AcpEventRow {
-        event_id: row.event_id,
-        agent_id: row.agent_id.clone(),
-        session_id: row.session_id.clone(),
-        ts: row.ts,
-        message: row.message.clone(),
-    }) {
+    if row.stream == "acp"
+        && chunk_accumulator.push_row(AcpEventRow {
+            event_id: row.event_id,
+            agent_id: row.agent_id.clone(),
+            session_id: row.session_id.clone(),
+            ts: row.ts,
+            message: row.message.clone(),
+        })
+    {
         return;
     }
 
@@ -5712,10 +5714,10 @@ fn collect_agent_event_archive_row(
 async fn agent_event_archive_scope_for_row(
     db: &SqlitePool,
     row: &AgentEventArchiveRow,
-    scope_cache: &mut HashMap<(String, String), Option<AgentEventArchiveScope>>,
+    scope_cache: &mut HashMap<(String, String, i64), Option<AgentEventArchiveScope>>,
     task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
 ) -> anyhow::Result<Option<AgentEventArchiveScope>> {
-    let cache_key = (row.agent_id.clone(), row.session_id.clone());
+    let cache_key = (row.agent_id.clone(), row.session_id.clone(), row.event_id);
     if let Some(scope) = scope_cache.get(&cache_key) {
         return Ok(scope.clone());
     }
@@ -5723,6 +5725,7 @@ async fn agent_event_archive_scope_for_row(
         db,
         &row.agent_id,
         &row.session_id,
+        row.ts,
         task_conversation_cache,
     )
     .await?;
@@ -5734,6 +5737,7 @@ async fn agent_event_archive_scope_for_session(
     db: &SqlitePool,
     agent_id: &str,
     session_id: &str,
+    event_ts: i64,
     task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
 ) -> anyhow::Result<Option<AgentEventArchiveScope>> {
     let row = sqlx::query(
@@ -5741,13 +5745,19 @@ async fn agent_event_archive_scope_for_session(
         SELECT r.team_id, r.id AS run_id, r.input_json
         FROM team_steps s
         INNER JOIN team_runs r ON r.id = s.run_id
-        WHERE s.member_id = ?1 AND s.remote_task_id = ?2
+        WHERE s.member_id = ?1
+          AND s.remote_task_id = ?2
+          AND COALESCE(s.started_at, r.started_at, r.created_at, 0) <= ?3
+          AND (s.ended_at IS NULL OR s.ended_at >= ?3)
+          AND trim(COALESCE(json_extract(r.input_json, '$.bootstrap_kind'), '')) != ?4
         ORDER BY COALESCE(s.started_at, 0) DESC, COALESCE(s.ended_at, 0) DESC, s.attempt DESC, s.id DESC
         LIMIT 1
         "#,
     )
     .bind(agent_id)
     .bind(session_id)
+    .bind(event_ts)
+    .bind(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND)
     .fetch_optional(db)
     .await?;
     let Some(row) = row else {
@@ -5779,7 +5789,7 @@ async fn append_aggregated_acp_documents(
     archive: &MessageArchiveStoreRef,
     accumulator: AcpChunkAccumulator,
     batch_size: usize,
-    scope_cache: &mut HashMap<(String, String), Option<AgentEventArchiveScope>>,
+    scope_cache: &mut HashMap<(String, String, i64), Option<AgentEventArchiveScope>>,
     task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
     counts: &mut AgentEventArchiveMigrationCounts,
 ) -> anyhow::Result<()> {
