@@ -756,7 +756,7 @@ function SeenProgressHoverCard({
                 width: "var(--size)",
                 height: "var(--size)",
                 background:
-                  "conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)",
+                  "conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgb(var(--ink-rgb) / 0.12) 0)",
               } as SeenDialStyle}
             />
             <span className="sr-only">{`${seenProgress.readCount}/${seenProgress.totalCount}`}</span>

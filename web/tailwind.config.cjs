@@ -33,6 +33,8 @@ module.exports = {
           "surface-tint": "#f0f1f0",
           text: "#37352f",
           "text-muted": "#787774",
+          "active": "rgba(0,0,0,0.07)",
+          "active-soft": "rgba(0,0,0,0.05)",
           border: "#e9e9e7",
           "border-subtle": "rgba(0,0,0,0.06)",
           "border-faint": "rgba(0,0,0,0.05)",
