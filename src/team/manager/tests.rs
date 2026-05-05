@@ -1127,7 +1127,7 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             .iter()
             .filter(|document| document.source_kind == MessageDocumentKind::TeamRunEvent)
             .count(),
-        2
+        3
     );
     assert!(documents.iter().any(|document| {
         document
