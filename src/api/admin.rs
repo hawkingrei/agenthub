@@ -32,7 +32,7 @@ pub struct SetPasskeyEnabledRequest {
     pub enabled: bool,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Default, serde::Deserialize)]
 pub struct MigrateTeamMessagesArchiveRequest {
     pub batch_size: Option<usize>,
 }
@@ -333,9 +333,10 @@ async fn set_passkey_enabled(
 async fn migrate_team_messages_archive(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(payload): Json<MigrateTeamMessagesArchiveRequest>,
+    payload: Option<Json<MigrateTeamMessagesArchiveRequest>>,
 ) -> Result<Json<MigrateTeamMessagesArchiveResponse>, ApiError> {
     let user = require_root(&headers, &state).await?;
+    let payload = payload.map(|Json(payload)| payload).unwrap_or_default();
     let report = match state
         .teams
         .migrate_team_messages_to_archive(payload.batch_size.unwrap_or(500))
@@ -498,6 +499,14 @@ mod tests {
             .expect("build json request")
     }
 
+    fn build_empty_post_request(path: &str, token: Option<&str>) -> Request<Body> {
+        let mut builder = Request::builder().method(Method::POST).uri(path);
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        builder.body(Body::empty()).expect("build empty request")
+    }
+
     #[tokio::test]
     async fn join_start_records_audit_entry() {
         let state = build_test_state().await;
@@ -589,10 +598,9 @@ mod tests {
 
         let token = create_auth_token(&state).await;
         let response = app
-            .oneshot(build_json_request(
+            .oneshot(build_empty_post_request(
                 "/message_archive/team_messages/migrate",
                 Some(&token),
-                json!({}),
             ))
             .await
             .expect("execute migration request");

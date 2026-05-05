@@ -1829,6 +1829,95 @@ impl TeamManager {
         });
     }
 
+    pub(super) fn spawn_archive_team_actor_message(&self, message: &TeamActorMessageRecord) {
+        if self.message_archive.is_none() {
+            return;
+        }
+        let manager = self.clone();
+        let message = message.clone();
+        let run_id = message.run_id.clone();
+        let message_id = message.message_id;
+
+        tokio::spawn(async move {
+            match manager.team_actor_message_archive_document(&message).await {
+                Ok(Some(document)) => {
+                    let Some(archive) = manager.message_archive.as_ref().cloned() else {
+                        return;
+                    };
+                    match tokio::time::timeout(
+                        MESSAGE_ARCHIVE_APPEND_TIMEOUT,
+                        archive.append_documents(&[document]),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => {
+                            tracing::warn!(
+                                error = ?error,
+                                run_id = %run_id,
+                                message_id,
+                                "failed to dual-write team actor message to archive"
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                message_id,
+                                timeout_ms = MESSAGE_ARCHIVE_APPEND_TIMEOUT.as_millis(),
+                                "timed out dual-writing team actor message to archive"
+                            );
+                        }
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        error = ?error,
+                        run_id = %run_id,
+                        message_id,
+                        "failed to build team actor message archive document"
+                    );
+                }
+            }
+        });
+    }
+
+    async fn team_actor_message_archive_document(
+        &self,
+        message: &TeamActorMessageRecord,
+    ) -> anyhow::Result<Option<MessageDocument>> {
+        let row = sqlx::query(
+            r#"
+            SELECT team_id, input_json
+            FROM team_runs
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&message.run_id)
+        .fetch_one(&self.db)
+        .await?;
+        let team_id: String = row.get("team_id");
+        let input_json: String = row.get("input_json");
+        let run_input: Value = serde_json::from_str(&input_json)?;
+        if message_archive_payload_string(&run_input, "bootstrap_kind").as_deref()
+            == Some(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND)
+        {
+            return Ok(None);
+        }
+        let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
+        let scope = self
+            .message_archive_scope_for_payload(
+                &team_id,
+                &message.payload,
+                &base_scope,
+                &mut HashMap::new(),
+            )
+            .await?;
+        Ok(Some(team_actor_message_archive_document(
+            &team_id, message, &scope,
+        )))
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn append_channel_replica_message(
         &self,

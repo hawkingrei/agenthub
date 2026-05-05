@@ -60,6 +60,7 @@ struct TailAppendingMessageArchive {
     db: SqlitePool,
     conversation_id: String,
     task_id: String,
+    run_id: Option<String>,
     inserted: Mutex<bool>,
     documents: Mutex<Vec<MessageDocument>>,
 }
@@ -105,6 +106,50 @@ impl MessageArchiveStore for TailAppendingMessageArchive {
             .bind(Utc::now().timestamp())
             .execute(&self.db)
             .await?;
+            if let Some(run_id) = self.run_id.as_deref() {
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, NULL, ?2, ?3, ?4)
+                    "#,
+                )
+                .bind(run_id)
+                .bind("live_tail_event")
+                .bind(Utc::now().timestamp())
+                .bind(json!({"text":"live tail run event"}).to_string())
+                .execute(&self.db)
+                .await?;
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_actor_messages (
+                        run_id,
+                        from_actor_id,
+                        from_peer_id,
+                        to_actor_id,
+                        to_peer_id,
+                        channel,
+                        transport,
+                        route_json,
+                        payload_json,
+                        status,
+                        created_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10)
+                    "#,
+                )
+                .bind(run_id)
+                .bind("coordinator")
+                .bind(ACTOR_MAIN_PEER_ID)
+                .bind("worker-1")
+                .bind(ACTOR_MAIN_PEER_ID)
+                .bind("all")
+                .bind("local")
+                .bind(json!({"type":"chat_message","text":"live tail actor message"}).to_string())
+                .bind("pending")
+                .bind(Utc::now().timestamp())
+                .execute(&self.db)
+                .await?;
+            }
         }
         Ok(())
     }
@@ -991,6 +1036,137 @@ async fn append_task_conversation_message_dual_writes_created_rows_to_archive() 
 }
 
 #[tokio::test]
+async fn send_actor_message_dual_writes_created_rows_to_archive() {
+    let db = setup_test_db().await;
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-message-archive-team".to_string(),
+            description: Some("team for actor message archive dual-write".to_string()),
+            spec: json!({
+                "entrypoint":"coordinator_plan",
+                "members":[
+                    {"member_id":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Archive actor message",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    let source_message = manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "to_coordinator",
+            json!({"type":"chat_message","text":"source actor archive message"}),
+        )
+        .await
+        .expect("append source message");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(task.id.as_str()),
+            json!({
+                "task_id": task.id,
+            }),
+        )
+        .await
+        .expect("create run");
+
+    let first = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type": "chat_message",
+                "text": "live actor archive message",
+                "authority_message_id": source_message.message_id,
+                "correlation_id": "corr-live-actor"
+            }),
+            idempotency_key: Some("actor-archive-msg-1"),
+        })
+        .await
+        .expect("send first actor message");
+    let retry = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type": "chat_message",
+                "text": "live actor archive message",
+                "authority_message_id": source_message.message_id,
+                "correlation_id": "corr-live-actor"
+            }),
+            idempotency_key: Some("actor-archive-msg-1"),
+        })
+        .await
+        .expect("send retry actor message");
+    assert_eq!(retry.message_id, first.message_id);
+
+    let documents = wait_for_archive_documents(&archive, 2).await;
+    let actor_documents: Vec<_> = documents
+        .iter()
+        .filter(|document| document.source_kind == MessageDocumentKind::TeamActorMessage)
+        .collect();
+    assert_eq!(
+        actor_documents.len(),
+        1,
+        "idempotent retries should not dual-write duplicate actor archive documents"
+    );
+    let document = actor_documents[0];
+    assert_eq!(
+        document.document_id,
+        format!("team_actor_message:{}:{}", run.id, first.message_id)
+    );
+    assert_eq!(document.source_id, first.message_id.to_string());
+    assert_eq!(
+        document.authority_message_id,
+        Some(source_message.message_id)
+    );
+    assert_eq!(document.correlation_id.as_deref(), Some("corr-live-actor"));
+    assert_eq!(document.team_id.as_deref(), Some(team.id.as_str()));
+    assert_eq!(document.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(
+        document.conversation_id.as_deref(),
+        Some(conversation.id.as_str())
+    );
+    assert_eq!(document.task_id.as_deref(), Some(task.id.as_str()));
+    assert_eq!(document.agent_id.as_deref(), Some("worker-1"));
+    assert_eq!(document.body_text, "live actor archive message");
+    assert_eq!(document.created_at, first.created_at);
+}
+
+#[tokio::test]
 async fn migrate_team_messages_to_archive_covers_team_message_tables() {
     let db = setup_test_db().await;
     let seed_manager = TeamManager::new(db.clone());
@@ -1290,6 +1466,7 @@ async fn migrate_team_messages_to_archive_uses_start_snapshot_for_conversation_r
         db: db.clone(),
         conversation_id: conversation.id.clone(),
         task_id: task.id.clone(),
+        run_id: None,
         inserted: Mutex::new(false),
         documents: Mutex::new(Vec::new()),
     });
@@ -1321,6 +1498,142 @@ async fn migrate_team_messages_to_archive_uses_start_snapshot_for_conversation_r
     .await
     .expect("count conversation messages");
     assert_eq!(stored_count, 3);
+}
+
+#[tokio::test]
+async fn migrate_team_messages_to_archive_uses_start_snapshot_for_run_and_actor_rows() {
+    let db = setup_test_db().await;
+    let seed_manager = TeamManager::new(db.clone());
+
+    let team = seed_manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-message-archive-run-actor-snapshot".to_string(),
+            description: Some("team for run and actor archive migration snapshot".to_string()),
+            spec: json!({
+                "entrypoint":"coordinator_plan",
+                "members":[
+                    {"member_id":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = seed_manager
+        .create_task(
+            &team.id,
+            "Archive run and actor snapshot",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    let run = seed_manager
+        .create_run(
+            &team.id,
+            Some(task.id.as_str()),
+            json!({
+                "task_id": task.id,
+            }),
+        )
+        .await
+        .expect("create run");
+    sqlx::query(
+        r#"
+        INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+        VALUES (?1, NULL, ?2, ?3, ?4)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("snapshot_run_event")
+    .bind(Utc::now().timestamp())
+    .bind(json!({"text":"snapshot run event"}).to_string())
+    .execute(&seed_manager.db)
+    .await
+    .expect("insert snapshot run event");
+    sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            from_peer_id,
+            to_actor_id,
+            to_peer_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("coordinator")
+    .bind(ACTOR_MAIN_PEER_ID)
+    .bind("worker-1")
+    .bind(ACTOR_MAIN_PEER_ID)
+    .bind("all")
+    .bind("local")
+    .bind(json!({"type":"chat_message","text":"snapshot actor message"}).to_string())
+    .bind("pending")
+    .bind(Utc::now().timestamp())
+    .execute(&seed_manager.db)
+    .await
+    .expect("insert snapshot actor message");
+
+    let archive = Arc::new(TailAppendingMessageArchive {
+        db: db.clone(),
+        conversation_id: conversation.id.clone(),
+        task_id: task.id.clone(),
+        run_id: Some(run.id.clone()),
+        inserted: Mutex::new(false),
+        documents: Mutex::new(Vec::new()),
+    });
+    let archive_manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
+
+    let report = archive_manager
+        .migrate_team_messages_to_archive(1)
+        .await
+        .expect("migrate team messages");
+
+    assert_eq!(report.team_conversation_messages, 0);
+    assert_eq!(report.team_run_events, 2);
+    assert_eq!(report.team_actor_messages, 1);
+    assert_eq!(report.total_documents(), 3);
+    let documents = archive.documents.lock().await.clone();
+    assert_eq!(documents.len(), 3);
+    assert!(
+        documents
+            .iter()
+            .all(|document| document.body_text != "live tail run event")
+    );
+    assert!(
+        documents
+            .iter()
+            .all(|document| document.body_text != "live tail actor message")
+    );
+    let stored_run_event_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM team_run_events WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&db)
+            .await
+            .expect("count run events");
+    let stored_actor_message_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM team_actor_messages WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&db)
+            .await
+            .expect("count actor messages");
+    assert_eq!(stored_run_event_count, 3);
+    assert_eq!(stored_actor_message_count, 2);
 }
 
 #[test]

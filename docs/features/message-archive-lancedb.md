@@ -264,6 +264,16 @@ actor-scoped archive filters find messages delivered to that actor.
 - Team migration excludes `shared_thread_mailbox` bootstrap runs from run-event and actor-mailbox
   archive documents because those runs are internal transport bookkeeping rather than visible Team
   messages.
+- The first Team migration operator endpoint is a bounded synchronous trigger. It is suitable for
+  small or manually sliced backfills, but large production backfills require a durable background job
+  with persisted progress before operators can rely on retry/resume visibility.
+- The first migration report counts source rows converted into canonical archive documents. It does
+  not distinguish newly inserted archive rows from idempotent updates; archive backends need an
+  inserted/updated write-result contract before the admin API can expose that distinction.
+- Live Team actor mailbox sends dual-write created rows to the archive with the same canonical
+  document identity as migration. Team run-event live dual-write still requires a follow-up
+  consolidation of the multiple event insertion paths before run-event search can be fully
+  continuous without rerunning migration.
 
 ### 6) Multi-Database Extensibility Contract
 
