@@ -10,11 +10,12 @@ AgentHub already carries message identity and delivery metadata across multiple 
 - node-local replica/cache rows;
 - search/archive projections.
 
-Today these layers already share useful fields such as `run_id`, `conversation_id`,
-`authority_message_id`, `correlation_id`, `broadcast_id`, and `idempotency_key`, but the system
-does not yet define one canonical ownership contract for them. Without that contract, future work
-on distributed replay, search, gossip-driven node membership, and multi-tenant isolation can drift
-into incompatible metadata semantics.
+Today these layers already share useful fields such as `conversation_id`,
+`authority_message_id`, `correlation_id`, `broadcast_id`, and `idempotency_key`, while `run_id`
+already serves as the mailbox/execution partition key on delivery-facing authority rows and
+projections. The system does not yet define one canonical ownership contract for these fields.
+Without that contract, future work on distributed replay, search, gossip-driven node membership,
+and multi-tenant isolation can drift into incompatible metadata semantics.
 
 ## Scope
 
@@ -40,12 +41,15 @@ AgentHub should model message metadata in three layers.
 This layer defines the logical message and execution truth. Authority-layer fields must be owned by
 `main` and must not be redefined by node-local caches or projections.
 
-Current authority-layer fields:
+Current authority-layer fields are split by authority surface:
 
-- `run_id`
 - `conversation_id`
 - `authority_message_id`
 - `correlation_id`
+
+Current execution/mailbox authority field:
+
+- `run_id`
 
 Future compatibility field:
 
@@ -113,14 +117,14 @@ reconcile them from `main` using authority references.
 - `authority_message_id` is the canonical logical message identity.
 - `correlation_id` is the canonical intent-lineage identity.
 - `conversation_id` is the canonical conversation-container identity.
-- `run_id` is the canonical execution-partition identity.
+- `run_id` is the canonical execution-partition identity for mailbox and execution surfaces.
 
 These fields serve different purposes and must not be conflated:
 
 - `authority_message_id` identifies one message;
 - `correlation_id` identifies one intent chain that may span multiple messages;
 - `conversation_id` identifies one human-visible conversation container;
-- `run_id` identifies one execution scope.
+- `run_id` identifies one execution scope on delivery-facing authority rows and projections.
 
 ### 4) Delivery Metadata Contract
 
@@ -151,7 +155,7 @@ must not be treated as the source of truth when data diverges.
 
 | Surface | Role | Required authority references | Notes |
 | --- | --- | --- | --- |
-| `team_conversation_messages` | authority row | `conversation_id`, `authority_message_id`, `correlation_id` | canonical human-visible message content |
+| `team_conversation_messages` | authority row | `conversation_id`, `authority_message_id`, `correlation_id` | canonical human-visible message content; does not currently persist `run_id` |
 | `team_actor_messages` | authority row | `run_id`, sender/recipient actor ids, effective `idempotency_key` | canonical delivery state |
 | `team_channel_message_replicas` | replica row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id` | node-relevant channel cache only |
 | remote relay route metadata | delivery metadata | `source_node_id`, `target_node_id`, optional `broadcast_id`, optional `correlation_id`, effective `idempotency_key` | transport/debug only |

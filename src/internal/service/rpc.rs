@@ -36,7 +36,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let to_peer_id = optional_trimmed(&payload.to_peer_id);
 
         if let Some(replica) = channel_replica.as_ref() {
-            self.validate_channel_replica_request(run_id, replica)
+            self.validate_channel_replica_request(run_id, from_actor_id, replica)
                 .await?;
         }
 

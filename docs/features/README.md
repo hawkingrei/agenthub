@@ -60,6 +60,8 @@ When multiple journal notes describe the same area:
 - `docs/features/team-conversation-event-bus.md`
 - `docs/features/backend-runtime-logic.md`
 - `docs/features/distributed-node-architecture.md`
+- `docs/features/distributed-node-registry-and-gossip.md`
+- `docs/features/logical-message-metadata-contract.md`
 - `docs/features/message-archive-lancedb.md`
 
 ## Historical References
