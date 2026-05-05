@@ -1967,17 +1967,17 @@ impl TeamManager {
         let task_id = message_archive_payload_string(payload, "task_id")
             .or_else(|| base_scope.task_id.clone());
         let mut conversation_id = base_scope.conversation_id.clone();
-        if conversation_id.is_none() {
-            if let Some(task_id) = task_id.as_deref() {
-                let cache_key = (team_id.to_string(), task_id.to_string());
-                if !task_conversation_cache.contains_key(&cache_key) {
-                    let resolved = self
-                        .message_archive_task_conversation_id(team_id, task_id)
-                        .await?;
-                    task_conversation_cache.insert(cache_key.clone(), resolved);
-                }
-                conversation_id = task_conversation_cache.get(&cache_key).cloned().flatten();
+        if conversation_id.is_none()
+            && let Some(task_id) = task_id.as_deref()
+        {
+            let cache_key = (team_id.to_string(), task_id.to_string());
+            if !task_conversation_cache.contains_key(&cache_key) {
+                let resolved = self
+                    .message_archive_task_conversation_id(team_id, task_id)
+                    .await?;
+                task_conversation_cache.insert(cache_key.clone(), resolved);
             }
+            conversation_id = task_conversation_cache.get(&cache_key).cloned().flatten();
         }
         Ok(MessageArchiveScopeFallback {
             conversation_id,
