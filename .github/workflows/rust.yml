@@ -63,6 +63,7 @@ jobs:
   rust-grpc-integration:
     name: Rust (gRPC Integration)
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -83,6 +84,7 @@ jobs:
   rust-coverage:
     name: Rust (Coverage)
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -108,7 +110,7 @@ jobs:
           cargo llvm-cov --workspace --locked --lcov --output-path rust-cargo.lcov
           wc -l rust-cargo.lcov
       - name: Upload coverage reports to Codecov
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
