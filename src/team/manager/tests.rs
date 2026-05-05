@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
-use super::{TeamManager, TeamRunResumeError};
+use super::{TeamManager, TeamRunResumeError, message_archive_body_text};
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL};
 use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::internal::client::InternalGrpcPeerClientConfig;
@@ -930,6 +930,22 @@ async fn append_task_conversation_message_dual_writes_created_rows_to_archive() 
     assert_eq!(document.task_id.as_deref(), Some(task.id.as_str()));
     assert_eq!(document.body_text, "archive this message");
     assert_eq!(document.created_at, first.created_at);
+}
+
+#[test]
+fn message_archive_body_text_does_not_index_structured_payload_fallback() {
+    assert_eq!(
+        message_archive_body_text(&json!({"type": "event", "metadata": {"id": "meta-1"}})),
+        ""
+    );
+    assert_eq!(
+        message_archive_body_text(&json!({"text": "  searchable text  "})),
+        "searchable text"
+    );
+    assert_eq!(
+        message_archive_body_text(&json!({"summary": "  searchable summary  "})),
+        "searchable summary"
+    );
 }
 
 #[tokio::test]

@@ -154,7 +154,7 @@ fn message_archive_body_text(payload: &Value) -> String {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| payload.to_string())
+        .unwrap_or_default()
 }
 
 fn build_step_runtime_handle_event_payload(step: &TeamStepRecord, status: &'static str) -> Value {

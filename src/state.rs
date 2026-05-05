@@ -227,7 +227,13 @@ impl AppState {
     async fn initialize_message_archive(
         config: &agenthub_config::AppConfig,
     ) -> anyhow::Result<Option<MessageArchiveStoreRef>> {
-        let backend = match MessageArchiveBackend::from_str(&config.message_archive_backend()) {
+        let backend_config = config.message_archive_backend();
+        let backend_config = backend_config.trim();
+        if backend_config.is_empty() {
+            tracing::warn!("message archive disabled because backend config is empty");
+            return Ok(None);
+        }
+        let backend = match MessageArchiveBackend::from_str(backend_config) {
             Ok(backend) => backend,
             Err(error) => {
                 tracing::warn!(
