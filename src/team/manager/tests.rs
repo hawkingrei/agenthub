@@ -932,6 +932,140 @@ async fn append_task_conversation_message_dual_writes_created_rows_to_archive() 
     assert_eq!(document.created_at, first.created_at);
 }
 
+#[tokio::test]
+async fn migrate_team_messages_to_archive_covers_team_message_tables() {
+    let db = setup_test_db().await;
+    let seed_manager = TeamManager::new(db.clone());
+
+    let team = seed_manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-message-archive-migration".to_string(),
+            description: Some("team for archive migration".to_string()),
+            spec: json!({
+                "entrypoint":"coordinator_plan",
+                "members":[
+                    {"member_id":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = seed_manager
+        .create_task(
+            &team.id,
+            "Archive migration",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    let conversation_message = seed_manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "to_coordinator",
+            json!({
+                "type": "chat_message",
+                "text": "migrate conversation message",
+                "correlation_id": "corr-migration-conversation"
+            }),
+        )
+        .await
+        .expect("append conversation message");
+    let run = seed_manager
+        .create_run(
+            &team.id,
+            Some(task.id.as_str()),
+            json!({
+                "task_id": task.id,
+                "conversation_id": conversation.id,
+            }),
+        )
+        .await
+        .expect("create run");
+    let actor_message = seed_manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type": "chat_message",
+                "text": "migrate actor mailbox message",
+                "task_id": task.id,
+                "task_conversation_id": conversation.id,
+                "correlation_id": "corr-migration-actor"
+            }),
+            idempotency_key: None,
+        })
+        .await
+        .expect("send actor message");
+
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let archive_manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db,
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
+    let report = archive_manager
+        .migrate_team_messages_to_archive(2)
+        .await
+        .expect("migrate team messages");
+
+    assert_eq!(report.team_conversation_messages, 1);
+    assert_eq!(report.team_run_events, 2);
+    assert_eq!(report.team_actor_messages, 1);
+    assert_eq!(report.total_documents(), 4);
+
+    let documents = archive.documents.lock().await.clone();
+    assert_eq!(documents.len(), 4);
+    assert!(documents.iter().any(|document| {
+        document.document_id
+            == format!(
+                "team_conversation_message:{}:{}",
+                conversation_message.conversation_id, conversation_message.message_id
+            )
+            && document.source_kind == MessageDocumentKind::TeamConversationMessage
+            && document.team_id.as_deref() == Some(team.id.as_str())
+            && document.correlation_id.as_deref() == Some("corr-migration-conversation")
+            && document.body_text == "migrate conversation message"
+    }));
+    assert_eq!(
+        documents
+            .iter()
+            .filter(|document| document.source_kind == MessageDocumentKind::TeamRunEvent)
+            .count(),
+        2
+    );
+    assert!(documents.iter().any(|document| {
+        document
+            .document_id
+            .starts_with(format!("team_run_event:{}:", run.id).as_str())
+            && document.source_kind == MessageDocumentKind::TeamRunEvent
+            && document.team_id.as_deref() == Some(team.id.as_str())
+            && document.run_id.as_deref() == Some(run.id.as_str())
+            && document.body_text == "run_submitted"
+    }));
+    assert!(documents.iter().any(|document| {
+        document.document_id
+            == format!("team_actor_message:{}:{}", run.id, actor_message.message_id)
+            && document.source_kind == MessageDocumentKind::TeamActorMessage
+            && document.team_id.as_deref() == Some(team.id.as_str())
+            && document.run_id.as_deref() == Some(run.id.as_str())
+            && document.agent_id.as_deref() == Some("worker-1")
+            && document.correlation_id.as_deref() == Some("corr-migration-actor")
+            && document.body_text == "migrate actor mailbox message"
+    }));
+}
+
 #[test]
 fn message_archive_body_text_does_not_index_structured_payload_fallback() {
     assert_eq!(

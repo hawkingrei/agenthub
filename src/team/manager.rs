@@ -38,6 +38,19 @@ use uuid::Uuid;
 
 pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TeamMessageArchiveMigrationReport {
+    pub team_conversation_messages: usize,
+    pub team_run_events: usize,
+    pub team_actor_messages: usize,
+}
+
+impl TeamMessageArchiveMigrationReport {
+    pub fn total_documents(&self) -> usize {
+        self.team_conversation_messages + self.team_run_events + self.team_actor_messages
+    }
+}
+
 use self::codec::{
     parse_run_event_row, parse_team_actor_message_row, parse_team_conversation_message_row,
     parse_team_conversation_row, parse_team_definition_row, parse_team_member_continuity_state_row,
@@ -147,6 +160,73 @@ fn team_conversation_message_archive_document(
         event_id_to: None,
         chunk_count: None,
     }
+}
+
+fn team_run_event_archive_document(team_id: &str, event: &TeamRunEventRecord) -> MessageDocument {
+    let body_text = message_archive_body_text(&event.payload);
+    MessageDocument {
+        document_id: format!("team_run_event:{}:{}", event.run_id, event.event_id),
+        source_kind: MessageDocumentKind::TeamRunEvent,
+        source_id: event.event_id.to_string(),
+        logical_message_id: None,
+        authority_message_id: Some(event.event_id),
+        correlation_id: message_archive_payload_string(&event.payload, "correlation_id"),
+        team_id: Some(team_id.to_string()),
+        run_id: Some(event.run_id.clone()),
+        conversation_id: message_archive_payload_string(&event.payload, "conversation_id"),
+        task_id: message_archive_payload_string(&event.payload, "task_id"),
+        agent_id: None,
+        session_id: None,
+        body_text: if body_text.is_empty() {
+            event.event_type.clone()
+        } else {
+            body_text
+        },
+        payload_json: Some(event.payload.to_string()),
+        created_at: event.ts,
+        event_id_from: Some(event.event_id),
+        event_id_to: Some(event.event_id),
+        chunk_count: None,
+    }
+}
+
+fn team_actor_message_archive_document(
+    team_id: &str,
+    message: &TeamActorMessageRecord,
+) -> MessageDocument {
+    MessageDocument {
+        document_id: format!(
+            "team_actor_message:{}:{}",
+            message.run_id, message.message_id
+        ),
+        source_kind: MessageDocumentKind::TeamActorMessage,
+        source_id: message.message_id.to_string(),
+        logical_message_id: None,
+        authority_message_id: Some(message.message_id),
+        correlation_id: message_archive_payload_string(&message.payload, "correlation_id"),
+        team_id: Some(team_id.to_string()),
+        run_id: Some(message.run_id.clone()),
+        conversation_id: message_archive_payload_string(&message.payload, "task_conversation_id")
+            .or_else(|| message_archive_payload_string(&message.payload, "conversation_id")),
+        task_id: message_archive_payload_string(&message.payload, "task_id"),
+        agent_id: Some(message.to_actor_id.clone()),
+        session_id: None,
+        body_text: message_archive_body_text(&message.payload),
+        payload_json: Some(message.payload.to_string()),
+        created_at: message.created_at,
+        event_id_from: None,
+        event_id_to: None,
+        chunk_count: None,
+    }
+}
+
+fn message_archive_payload_string(payload: &Value, key: &str) -> Option<String> {
+    payload
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn message_archive_body_text(payload: &Value) -> String {
@@ -1795,6 +1875,115 @@ impl TeamManager {
             return Ok(Vec::new());
         };
         archive.search(query).await
+    }
+
+    pub async fn migrate_team_messages_to_archive(
+        &self,
+        batch_size: usize,
+    ) -> anyhow::Result<TeamMessageArchiveMigrationReport> {
+        let Some(archive) = self.message_archive.as_ref() else {
+            anyhow::bail!("message archive is not configured");
+        };
+        let mut report = TeamMessageArchiveMigrationReport::default();
+        let mut documents = Vec::new();
+
+        let conversation_rows = sqlx::query(
+            r#"
+            SELECT
+                m.id,
+                m.conversation_id,
+                m.task_id,
+                m.from_actor_id,
+                m.to_actor_id,
+                m.route,
+                m.payload_json,
+                m.created_at,
+                c.team_id
+            FROM team_conversation_messages m
+            INNER JOIN team_conversations c ON c.id = m.conversation_id
+            ORDER BY m.id ASC
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+        for row in conversation_rows {
+            let conversation = TeamConversationRecord {
+                id: row.get("conversation_id"),
+                team_id: row.get("team_id"),
+                task_id: row.get("task_id"),
+                mode: String::new(),
+                topic: None,
+                created_at: 0,
+                updated_at: 0,
+            };
+            let message = parse_team_conversation_message_row(&row)?;
+            documents.push(team_conversation_message_archive_document(
+                &conversation,
+                &message,
+            ));
+            report.team_conversation_messages += 1;
+        }
+
+        let run_event_rows = sqlx::query(
+            r#"
+            SELECT
+                e.id,
+                e.run_id,
+                e.step_id,
+                e.event_type,
+                e.ts,
+                e.payload_json,
+                r.team_id
+            FROM team_run_events e
+            INNER JOIN team_runs r ON r.id = e.run_id
+            ORDER BY e.id ASC
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+        for row in run_event_rows {
+            let team_id: String = row.get("team_id");
+            let event = parse_run_event_row(&row)?;
+            documents.push(team_run_event_archive_document(&team_id, &event));
+            report.team_run_events += 1;
+        }
+
+        let actor_message_rows = sqlx::query(
+            r#"
+            SELECT
+                m.id,
+                m.run_id,
+                m.from_actor_id,
+                m.from_peer_id,
+                m.to_actor_id,
+                m.to_peer_id,
+                m.channel,
+                m.transport,
+                m.route_json,
+                m.payload_json,
+                m.status,
+                m.created_at,
+                m.delivered_at,
+                r.team_id
+            FROM team_actor_messages m
+            INNER JOIN team_runs r ON r.id = m.run_id
+            ORDER BY m.id ASC
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?;
+        for row in actor_message_rows {
+            let team_id: String = row.get("team_id");
+            let message = parse_team_actor_message_row(&row)?;
+            documents.push(team_actor_message_archive_document(&team_id, &message));
+            report.team_actor_messages += 1;
+        }
+
+        let batch_size = batch_size.clamp(1, 1000);
+        for chunk in documents.chunks(batch_size) {
+            archive.append_documents(chunk).await?;
+        }
+        Ok(report)
     }
 
     pub async fn create_run(

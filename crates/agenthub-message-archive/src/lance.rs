@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use arrow_array::{
-    Array, ArrayRef, Float32Array, Int64Array, RecordBatch, StringArray, UInt32Array,
+    Array, ArrayRef, Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
+    UInt32Array,
 };
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use async_trait::async_trait;
@@ -216,7 +217,11 @@ impl MessageArchiveStore for LanceDbMessageArchive {
         }
         let table = self.ensure_table().await?;
         let batch = Self::documents_to_record_batch(documents)?;
-        table.add(batch).execute().await?;
+        let reader = RecordBatchIterator::new(vec![Ok(batch)], Self::schema());
+        let mut merge = table.merge_insert(&["document_id"]);
+        merge.when_matched_update_all(None);
+        merge.when_not_matched_insert_all();
+        merge.execute(Box::new(reader)).await?;
         Ok(())
     }
 
@@ -563,6 +568,63 @@ mod tests {
             .expect("search docs");
         assert_eq!(authority_filtered.len(), 1);
         assert_eq!(authority_filtered[0].document_id, "doc-1");
+    }
+
+    #[tokio::test]
+    async fn lancedb_archive_upserts_documents_by_document_id() {
+        let config = MessageArchiveConfig {
+            backend: MessageArchiveBackend::LanceDb,
+            uri: "memory://agenthub-message-archive-upsert".to_string(),
+            message_table: "messages".to_string(),
+        };
+        let archive = LanceDbMessageArchive::connect(config)
+            .await
+            .expect("connect archive");
+        archive.ensure_ready().await.expect("ensure ready");
+
+        let mut document = MessageDocument {
+            document_id: "team_run_event:run-1:1".to_string(),
+            source_kind: MessageDocumentKind::TeamRunEvent,
+            source_id: "1".to_string(),
+            logical_message_id: None,
+            authority_message_id: Some(1),
+            correlation_id: None,
+            team_id: Some("team-1".to_string()),
+            run_id: Some("run-1".to_string()),
+            conversation_id: None,
+            task_id: None,
+            agent_id: None,
+            session_id: None,
+            body_text: "first archive body".to_string(),
+            payload_json: None,
+            created_at: 1,
+            event_id_from: Some(1),
+            event_id_to: Some(1),
+            chunk_count: None,
+        };
+        archive
+            .append_documents(&[document.clone()])
+            .await
+            .expect("append first doc");
+
+        document.body_text = "second archive body".to_string();
+        archive
+            .append_documents(&[document])
+            .await
+            .expect("upsert doc");
+
+        let hits = archive
+            .search(&MessageSearchQuery {
+                query_text: "second".to_string(),
+                limit: 5,
+                run_id: Some("run-1".to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("search docs");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].document_id, "team_run_event:run-1:1");
+        assert_eq!(hits[0].body_text, "second archive body");
     }
 
     #[tokio::test]
