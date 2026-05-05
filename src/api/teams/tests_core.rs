@@ -5490,6 +5490,56 @@ async fn team_message_search_api_uses_archive_with_team_scope() {
 }
 
 #[tokio::test]
+async fn team_message_search_api_rejects_blank_query() {
+    let state = build_test_state_with_message_archive(Arc::new(RecordingSearchArchive {
+        queries: tokio::sync::Mutex::new(Vec::new()),
+        hits: Vec::new(),
+    }))
+    .await;
+    let headers = auth_headers(&state).await;
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "message-search-blank-query-team".to_string(),
+                description: Some("archive search".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner","role":"coordinator"}]
+                }),
+            },
+            None,
+        )
+        .await
+        .expect("create team");
+
+    let err = search_team_messages(
+        State(state),
+        headers,
+        Path(team.id),
+        Query(SearchTeamMessagesQuery {
+            query: "   ".to_string(),
+            limit: None,
+            authority_message_id: None,
+            correlation_id: None,
+            run_id: None,
+            conversation_id: None,
+            task_id: None,
+            agent_id: None,
+            session_id: None,
+            source_kind: None,
+        }),
+    )
+    .await
+    .expect_err("blank archive query should fail");
+
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = decode_json_body(response).await;
+    assert_eq!(body["error"], Value::from("query is required"));
+}
+
+#[tokio::test]
 async fn message_archive_source_kind_error_lists_supported_values() {
     let err = parse_message_archive_source_kind("bogus_kind")
         .expect_err("unsupported archive source kind should fail");
