@@ -10,8 +10,8 @@ use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
-    TeamRunStatus, TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch,
-    TeamTaskListQuery, TeamTaskStatus,
+    TeamRunEventRecord, TeamRunStatus, TeamStepStatus, TeamTaskAssignmentUpdate,
+    TeamTaskContextPatch, TeamTaskListQuery, TeamTaskStatus,
 };
 use agenthub_db::AgentEventDbRouter;
 use agenthub_message_archive::{
@@ -192,6 +192,46 @@ async fn wait_for_archive_documents(
     })
     .await
     .expect("archive documents should be appended")
+}
+
+async fn wait_for_archive_run_event_documents(
+    archive: &RecordingMessageArchive,
+    run_id: &str,
+    expected_len: usize,
+) -> Vec<MessageDocument> {
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let documents = archive.documents.lock().await.clone();
+            let run_event_documents = documents
+                .into_iter()
+                .filter(|document| {
+                    document.source_kind == MessageDocumentKind::TeamRunEvent
+                        && document.run_id.as_deref() == Some(run_id)
+                })
+                .collect::<Vec<_>>();
+            if run_event_documents.len() >= expected_len {
+                return run_event_documents;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("archive run event documents should be appended")
+}
+
+fn archived_run_event_types<'a>(
+    documents: &[MessageDocument],
+    events: &'a [TeamRunEventRecord],
+) -> Vec<&'a str> {
+    documents
+        .iter()
+        .filter_map(|document| {
+            events
+                .iter()
+                .find(|event| document.source_id == event.event_id.to_string())
+                .map(|event| event.event_type.as_str())
+        })
+        .collect()
 }
 
 async fn assert_archive_documents_stay_empty(archive: &RecordingMessageArchive) {
@@ -4117,7 +4157,12 @@ async fn cancel_run_updates_status_and_emits_event() {
 #[tokio::test]
 async fn cancel_run_only_cancels_active_steps() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -4191,12 +4236,28 @@ async fn cancel_run_only_cancels_active_steps() {
         .filter_map(|event| event.step_id.clone())
         .collect();
     assert_eq!(canceled_step_ids, vec![active_step.id]);
+
+    let documents = wait_for_archive_run_event_documents(&archive, &run.id, events.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"step_canceled"),
+        "step_canceled should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"run_canceled"),
+        "run_canceled should be archived after transaction commit"
+    );
 }
 
 #[tokio::test]
 async fn step_lifecycle_transitions_persist_and_emit_events() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -4294,6 +4355,14 @@ async fn step_lifecycle_transitions_persist_and_emit_events() {
             "run_completed"
         ]
     );
+
+    let documents =
+        wait_for_archive_run_event_documents(&archive, &run.id, event_types.len()).await;
+    let mut archived_event_types = archived_run_event_types(&documents, &events);
+    let mut expected_event_types = event_types.clone();
+    archived_event_types.sort_unstable();
+    expected_event_types.sort_unstable();
+    assert_eq!(archived_event_types, expected_event_types);
 }
 
 #[tokio::test]
@@ -4971,7 +5040,12 @@ async fn flush_run_context_fails_when_session_mapping_missing() {
 #[tokio::test]
 async fn input_required_and_resume_transitions_update_run_and_emit_events() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -5098,6 +5172,22 @@ async fn input_required_and_resume_transitions_update_run_and_emit_events() {
             "continuity_state_updated",
             "run_completed"
         ]
+    );
+
+    let documents =
+        wait_for_archive_run_event_documents(&archive, &run.id, event_types.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"run_input_required"),
+        "run_input_required should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"step_input_required"),
+        "step_input_required should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"step_resumed"),
+        "step_resumed should be archived after transaction commit"
     );
 }
 
@@ -5272,7 +5362,12 @@ async fn reconcile_loop_step_tracks_round_state_and_events() {
 #[tokio::test]
 async fn continue_step_advances_reconcile_round_without_coordinator_resume() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -5399,6 +5494,26 @@ async fn continue_step_advances_reconcile_round_without_coordinator_resume() {
     assert_eq!(reconcile_events[1].1["round"], json!(1));
     assert_eq!(reconcile_events[1].1["status"], json!("continued"));
     assert_eq!(reconcile_events[2].1["round"], json!(2));
+
+    let documents =
+        wait_for_archive_run_event_documents(&archive, &run.id, event_types.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"step_continued"),
+        "step_continued should be archived after transaction commit"
+    );
+    assert_eq!(
+        archived_event_types
+            .iter()
+            .filter(|event_type| **event_type == "step_reconcile_round_started")
+            .count(),
+        2,
+        "both reconcile round start events should be archived"
+    );
+    assert!(
+        archived_event_types.contains(&"step_reconcile_round_finished"),
+        "step_reconcile_round_finished should be archived after transaction commit"
+    );
 }
 
 #[tokio::test]
@@ -8169,7 +8284,12 @@ async fn run_completes_only_after_all_steps_complete() {
 #[tokio::test]
 async fn fail_step_updates_status_and_emits_event() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -8227,6 +8347,18 @@ async fn fail_step_updates_status_and_emits_event() {
             "step_failed",
             "run_failed"
         ]
+    );
+
+    let documents =
+        wait_for_archive_run_event_documents(&archive, &run.id, event_types.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"step_failed"),
+        "step_failed should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"run_failed"),
+        "run_failed should be archived after transaction commit"
     );
 }
 
