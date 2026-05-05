@@ -4,7 +4,8 @@ mod lance;
 mod model;
 
 pub use acp::{
-    AcpAggregatedMessage, AcpEventRow, aggregate_acp_chunk_rows, is_aggregatable_acp_chunk,
+    AcpAggregatedMessage, AcpChunkAccumulator, AcpEventRow, aggregate_acp_chunk_rows,
+    is_aggregatable_acp_chunk,
 };
 pub use factory::{MessageArchiveStoreRef, open_message_archive_store};
 pub use lance::LanceDbMessageArchive;

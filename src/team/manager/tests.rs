@@ -1775,6 +1775,88 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
     .await
     .expect("insert main agent event");
 
+    sqlx::query(
+        r#"
+        INSERT INTO team_definitions (id, name, description, spec_json, owner_user_id, created_at, updated_at)
+        VALUES (?1, ?2, NULL, ?3, NULL, ?4, ?5)
+        "#,
+    )
+    .bind("archive-team")
+    .bind("archive-team")
+    .bind(json!({"entrypoint":"coordinator_plan","members":[{"member_id":"planner"}]}).to_string())
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive team");
+    sqlx::query(
+        r#"
+        INSERT INTO team_tasks (id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+        "#,
+    )
+    .bind("archive-task")
+    .bind("archive-team")
+    .bind("Archive ACP")
+    .bind("open")
+    .bind("user")
+    .bind(json!({}).to_string())
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive task");
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversations (id, team_id, task_id, mode, topic, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "#,
+    )
+    .bind("archive-conversation")
+    .bind("archive-team")
+    .bind("archive-task")
+    .bind("group_chat")
+    .bind("Archive ACP")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive conversation");
+    sqlx::query(
+        r#"
+        INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("archive-run")
+    .bind("archive-team")
+    .bind("archive-task")
+    .bind("working")
+    .bind(json!({"task_id":"archive-task","conversation_id":"archive-conversation"}).to_string())
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive run");
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, NULL, ?8)
+        "#,
+    )
+    .bind("archive-step")
+    .bind("archive-run")
+    .bind("planner_step")
+    .bind("planner")
+    .bind("per-agent-session")
+    .bind("working")
+    .bind("[]")
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive step");
+
     let event_db = event_dbs
         .pool_for_agent("planner")
         .await
@@ -1837,6 +1919,10 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
     assert!(documents.iter().any(|document| {
         document.source_kind == MessageDocumentKind::AgentEvent
             && document.document_id == "agent_event:planner:per-agent-session:3"
+            && document.team_id.as_deref() == Some("archive-team")
+            && document.run_id.as_deref() == Some("archive-run")
+            && document.conversation_id.as_deref() == Some("archive-conversation")
+            && document.task_id.as_deref() == Some("archive-task")
             && document.body_text == "fallback malformed chunk"
             && document.payload_json.as_deref().is_some_and(|payload| {
                 payload.contains("[redacted]") && !payload.contains("per-agent-secret")
@@ -1848,6 +1934,10 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
                 == "aggregated_acp_message:planner:per-agent-session:msg-1:agent_message"
             && document.source_id == "planner:per-agent-session:msg-1:agent_message"
             && document.logical_message_id.as_deref() == Some("msg-1")
+            && document.team_id.as_deref() == Some("archive-team")
+            && document.run_id.as_deref() == Some("archive-run")
+            && document.conversation_id.as_deref() == Some("archive-conversation")
+            && document.task_id.as_deref() == Some("archive-task")
             && document.agent_id.as_deref() == Some("planner")
             && document.session_id.as_deref() == Some("per-agent-session")
             && document.body_text == "hello"
@@ -1855,6 +1945,59 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
             && document.event_id_to == Some(2)
             && document.chunk_count == Some(2)
     }));
+}
+
+#[tokio::test]
+async fn migrate_team_messages_to_archive_skips_missing_per_agent_event_db() {
+    let db = setup_test_db().await;
+    let event_dbs = AgentEventDbRouter::new(std::env::temp_dir().join(format!(
+        "agenthub-archive-missing-eventdb-{}",
+        uuid::Uuid::new_v4()
+    )));
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("idle-agent")
+    .bind("idle-agent")
+    .bind(std::env::temp_dir().to_string_lossy().to_string())
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("stopped")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert idle agent");
+
+    let idle_event_db_path = event_dbs.db_path_for_agent("idle-agent");
+    assert!(
+        !idle_event_db_path.exists(),
+        "test must start without a per-agent event db"
+    );
+
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let archive_manager =
+        TeamManager::new_with_event_dbs_and_message_archive(db, event_dbs, Some(archive.clone()));
+    let report = archive_manager
+        .migrate_team_messages_to_archive(2)
+        .await
+        .expect("migrate with missing per-agent event db");
+
+    assert_eq!(report.agent_events, 0);
+    assert_eq!(report.aggregated_acp_messages, 0);
+    assert!(
+        !idle_event_db_path.exists(),
+        "migration should not create empty per-agent event db files"
+    );
+    let documents = archive.documents.lock().await.clone();
+    assert!(documents.is_empty());
 }
 
 #[tokio::test]

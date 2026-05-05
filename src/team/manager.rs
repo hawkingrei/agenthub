@@ -80,9 +80,8 @@ use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
 use agenthub_message_archive::{
-    AcpAggregatedMessage, AcpEventRow, MessageArchiveStoreRef, MessageDocument,
-    MessageDocumentKind, MessageSearchHit, MessageSearchQuery, aggregate_acp_chunk_rows,
-    is_aggregatable_acp_chunk,
+    AcpAggregatedMessage, AcpChunkAccumulator, AcpEventRow, MessageArchiveStoreRef,
+    MessageDocument, MessageDocumentKind, MessageSearchHit, MessageSearchQuery,
 };
 use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, canonical_json};
 
@@ -364,7 +363,24 @@ impl AgentEventArchiveMigrationCounts {
     }
 }
 
-fn agent_event_archive_document(row: &AgentEventArchiveRow) -> MessageDocument {
+#[derive(Debug, Clone, Default)]
+struct AgentEventArchiveScope {
+    team_id: Option<String>,
+    run_id: Option<String>,
+    conversation_id: Option<String>,
+    task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AgentEventArchiveSnapshot {
+    main_max_id: i64,
+    per_agent_max_ids: Vec<(String, i64)>,
+}
+
+fn agent_event_archive_document(
+    row: &AgentEventArchiveRow,
+    scope: Option<&AgentEventArchiveScope>,
+) -> MessageDocument {
     let parsed_message = serde_json::from_str::<Value>(row.message.as_str()).ok();
     let body_text = parsed_message
         .as_ref()
@@ -401,10 +417,10 @@ fn agent_event_archive_document(row: &AgentEventArchiveRow) -> MessageDocument {
         correlation_id: parsed_message
             .as_ref()
             .and_then(|payload| message_archive_payload_string(payload, "correlation_id")),
-        team_id: None,
-        run_id: None,
-        conversation_id: None,
-        task_id: None,
+        team_id: scope.and_then(|scope| scope.team_id.clone()),
+        run_id: scope.and_then(|scope| scope.run_id.clone()),
+        conversation_id: scope.and_then(|scope| scope.conversation_id.clone()),
+        task_id: scope.and_then(|scope| scope.task_id.clone()),
         agent_id: Some(row.agent_id.clone()),
         session_id: Some(row.session_id.clone()),
         body_text,
@@ -416,7 +432,10 @@ fn agent_event_archive_document(row: &AgentEventArchiveRow) -> MessageDocument {
     }
 }
 
-fn aggregated_acp_message_archive_document(message: &AcpAggregatedMessage) -> MessageDocument {
+fn aggregated_acp_message_archive_document(
+    message: &AcpAggregatedMessage,
+    scope: Option<&AgentEventArchiveScope>,
+) -> MessageDocument {
     MessageDocument {
         document_id: format!(
             "aggregated_acp_message:{}:{}:{}:{}",
@@ -430,10 +449,10 @@ fn aggregated_acp_message_archive_document(message: &AcpAggregatedMessage) -> Me
         logical_message_id: Some(message.logical_message_id.clone()),
         authority_message_id: None,
         correlation_id: None,
-        team_id: None,
-        run_id: None,
-        conversation_id: None,
-        task_id: None,
+        team_id: scope.and_then(|scope| scope.team_id.clone()),
+        run_id: scope.and_then(|scope| scope.run_id.clone()),
+        conversation_id: scope.and_then(|scope| scope.conversation_id.clone()),
+        task_id: scope.and_then(|scope| scope.task_id.clone()),
         agent_id: Some(message.agent_id.clone()),
         session_id: Some(message.session_id.clone()),
         body_text: message.text.clone(),
@@ -2303,32 +2322,62 @@ impl TeamManager {
         &self,
         archive: &MessageArchiveStoreRef,
         batch_size: usize,
+        snapshot: &AgentEventArchiveSnapshot,
     ) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
         let mut counts = AgentEventArchiveMigrationCounts::default();
         counts.add(
-            migrate_main_agent_events_to_archive(&self.db, archive, batch_size)
-                .await
-                .context("migrate main agent_events to message archive")?,
+            migrate_main_agent_events_to_archive(
+                &self.db,
+                archive,
+                batch_size,
+                snapshot.main_max_id,
+            )
+            .await
+            .context("migrate main agent_events to message archive")?,
         );
 
+        for (agent_id, max_id) in &snapshot.per_agent_max_ids {
+            let pool = self.event_dbs.pool_for_agent(&agent_id).await?;
+            counts.add(
+                migrate_per_agent_events_to_archive(
+                    &self.db, &pool, archive, agent_id, batch_size, *max_id,
+                )
+                .await
+                .with_context(|| {
+                    format!("migrate per-agent agent_events for agent_id={agent_id}")
+                })?,
+            );
+        }
+        Ok(counts)
+    }
+
+    async fn message_archive_agent_event_snapshot(
+        &self,
+    ) -> anyhow::Result<AgentEventArchiveSnapshot> {
+        let main_max_id =
+            sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
+                .fetch_one(&self.db)
+                .await?;
         let agent_ids = sqlx::query_scalar::<_, String>("SELECT id FROM agents ORDER BY id ASC")
             .fetch_all(&self.db)
             .await?;
+        let mut per_agent_max_ids = Vec::new();
         for agent_id in agent_ids {
             let db_path = self.event_dbs.db_path_for_agent(&agent_id);
             if !tokio::fs::try_exists(&db_path).await? {
                 continue;
             }
             let pool = self.event_dbs.pool_for_agent(&agent_id).await?;
-            counts.add(
-                migrate_per_agent_events_to_archive(&pool, archive, &agent_id, batch_size)
-                    .await
-                    .with_context(|| {
-                        format!("migrate per-agent agent_events for agent_id={agent_id}")
-                    })?,
-            );
+            let max_id =
+                sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
+                    .fetch_one(&pool)
+                    .await?;
+            per_agent_max_ids.push((agent_id, max_id));
         }
-        Ok(counts)
+        Ok(AgentEventArchiveSnapshot {
+            main_max_id,
+            per_agent_max_ids,
+        })
     }
 
     pub async fn migrate_team_messages_to_archive(
@@ -2348,6 +2397,7 @@ impl TeamManager {
         let max_actor_message_id = self
             .message_archive_table_max_id("team_actor_messages")
             .await?;
+        let agent_event_snapshot = self.message_archive_agent_event_snapshot().await?;
         let mut run_scope_cache: HashMap<String, MessageArchiveScopeFallback> = HashMap::new();
         let mut task_conversation_cache: HashMap<(String, String), Option<String>> = HashMap::new();
 
@@ -2538,7 +2588,7 @@ impl TeamManager {
         }
 
         let agent_event_counts = self
-            .migrate_agent_events_to_archive(archive, batch_size)
+            .migrate_agent_events_to_archive(archive, batch_size, &agent_event_snapshot)
             .await?;
         report.agent_events = agent_event_counts.agent_events;
         report.aggregated_acp_messages = agent_event_counts.aggregated_acp_messages;
@@ -5483,21 +5533,33 @@ async fn migrate_main_agent_events_to_archive(
     db: &SqlitePool,
     archive: &MessageArchiveStoreRef,
     batch_size: usize,
-) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
-    migrate_agent_event_rows_to_archive(db, archive, batch_size, AgentEventArchiveSource::Main)
-        .await
-}
-
-async fn migrate_per_agent_events_to_archive(
-    db: &SqlitePool,
-    archive: &MessageArchiveStoreRef,
-    agent_id: &str,
-    batch_size: usize,
+    max_id: i64,
 ) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
     migrate_agent_event_rows_to_archive(
         db,
+        db,
         archive,
         batch_size,
+        max_id,
+        AgentEventArchiveSource::Main,
+    )
+    .await
+}
+
+async fn migrate_per_agent_events_to_archive(
+    main_db: &SqlitePool,
+    event_db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    agent_id: &str,
+    batch_size: usize,
+    max_id: i64,
+) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+    migrate_agent_event_rows_to_archive(
+        main_db,
+        event_db,
+        archive,
+        batch_size,
+        max_id,
         AgentEventArchiveSource::PerAgent { agent_id },
     )
     .await
@@ -5510,35 +5572,59 @@ enum AgentEventArchiveSource<'a> {
 }
 
 async fn migrate_agent_event_rows_to_archive(
-    db: &SqlitePool,
+    main_db: &SqlitePool,
+    event_db: &SqlitePool,
     archive: &MessageArchiveStoreRef,
     batch_size: usize,
+    max_id: i64,
     source: AgentEventArchiveSource<'_>,
 ) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
-    let max_id = sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
-        .fetch_one(db)
-        .await?;
     let mut last_id = 0_i64;
-    let mut chunk_rows = Vec::new();
+    let mut chunk_accumulator = AcpChunkAccumulator::default();
     let mut counts = AgentEventArchiveMigrationCounts::default();
     let batch_limit = i64::try_from(batch_size.clamp(1, 1000))?;
+    let mut scope_cache = HashMap::<(String, String), Option<AgentEventArchiveScope>>::new();
+    let mut task_conversation_cache = HashMap::<(String, String), Option<String>>::new();
 
     loop {
-        let rows = fetch_agent_event_archive_rows(db, source, last_id, max_id, batch_limit).await?;
+        let rows =
+            fetch_agent_event_archive_rows(event_db, source, last_id, max_id, batch_limit).await?;
         if rows.is_empty() {
             break;
         }
         let mut documents = Vec::new();
         for row in rows {
             last_id = row.event_id;
-            collect_agent_event_archive_row(row, &mut documents, &mut chunk_rows, &mut counts);
+            let scope = agent_event_archive_scope_for_row(
+                main_db,
+                &row,
+                &mut scope_cache,
+                &mut task_conversation_cache,
+            )
+            .await?;
+            collect_agent_event_archive_row(
+                row,
+                scope.as_ref(),
+                &mut documents,
+                &mut chunk_accumulator,
+                &mut counts,
+            );
         }
         if !documents.is_empty() {
             archive.append_documents(&documents).await?;
         }
     }
 
-    append_aggregated_acp_documents(archive, &chunk_rows, batch_size, &mut counts).await?;
+    append_aggregated_acp_documents(
+        main_db,
+        archive,
+        chunk_accumulator,
+        batch_size,
+        &mut scope_cache,
+        &mut task_conversation_cache,
+        &mut counts,
+    )
+    .await?;
     Ok(counts)
 }
 
@@ -5604,35 +5690,117 @@ async fn fetch_agent_event_archive_rows(
 
 fn collect_agent_event_archive_row(
     row: AgentEventArchiveRow,
+    scope: Option<&AgentEventArchiveScope>,
     documents: &mut Vec<MessageDocument>,
-    chunk_rows: &mut Vec<AcpEventRow>,
+    chunk_accumulator: &mut AcpChunkAccumulator,
     counts: &mut AgentEventArchiveMigrationCounts,
 ) {
-    if is_aggregatable_acp_chunk(row.message.as_str()) {
-        chunk_rows.push(AcpEventRow {
-            event_id: row.event_id,
-            agent_id: row.agent_id,
-            session_id: row.session_id,
-            ts: row.ts,
-            message: row.message,
-        });
+    if chunk_accumulator.push_row(AcpEventRow {
+        event_id: row.event_id,
+        agent_id: row.agent_id.clone(),
+        session_id: row.session_id.clone(),
+        ts: row.ts,
+        message: row.message.clone(),
+    }) {
         return;
     }
 
-    documents.push(agent_event_archive_document(&row));
+    documents.push(agent_event_archive_document(&row, scope));
     counts.agent_events += 1;
 }
 
+async fn agent_event_archive_scope_for_row(
+    db: &SqlitePool,
+    row: &AgentEventArchiveRow,
+    scope_cache: &mut HashMap<(String, String), Option<AgentEventArchiveScope>>,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<Option<AgentEventArchiveScope>> {
+    let cache_key = (row.agent_id.clone(), row.session_id.clone());
+    if let Some(scope) = scope_cache.get(&cache_key) {
+        return Ok(scope.clone());
+    }
+    let scope = agent_event_archive_scope_for_session(
+        db,
+        &row.agent_id,
+        &row.session_id,
+        task_conversation_cache,
+    )
+    .await?;
+    scope_cache.insert(cache_key, scope.clone());
+    Ok(scope)
+}
+
+async fn agent_event_archive_scope_for_session(
+    db: &SqlitePool,
+    agent_id: &str,
+    session_id: &str,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<Option<AgentEventArchiveScope>> {
+    let row = sqlx::query(
+        r#"
+        SELECT r.team_id, r.id AS run_id, r.input_json
+        FROM team_steps s
+        INNER JOIN team_runs r ON r.id = s.run_id
+        WHERE s.member_id = ?1 AND s.remote_task_id = ?2
+        ORDER BY COALESCE(s.started_at, 0) DESC, COALESCE(s.ended_at, 0) DESC, s.attempt DESC, s.id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(agent_id)
+    .bind(session_id)
+    .fetch_optional(db)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let team_id: String = row.get("team_id");
+    let run_id: String = row.get("run_id");
+    let input_json: String = row.get("input_json");
+    let run_input: Value = serde_json::from_str(&input_json)?;
+    let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
+    let scope = message_archive_scope_for_payload_db(
+        db,
+        &team_id,
+        &Value::Null,
+        &base_scope,
+        task_conversation_cache,
+    )
+    .await?;
+    Ok(Some(AgentEventArchiveScope {
+        team_id: Some(team_id),
+        run_id: Some(run_id),
+        conversation_id: scope.conversation_id,
+        task_id: scope.task_id,
+    }))
+}
+
 async fn append_aggregated_acp_documents(
+    db: &SqlitePool,
     archive: &MessageArchiveStoreRef,
-    rows: &[AcpEventRow],
+    accumulator: AcpChunkAccumulator,
     batch_size: usize,
+    scope_cache: &mut HashMap<(String, String), Option<AgentEventArchiveScope>>,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
     counts: &mut AgentEventArchiveMigrationCounts,
 ) -> anyhow::Result<()> {
-    let documents = aggregate_acp_chunk_rows(rows)
-        .iter()
-        .map(aggregated_acp_message_archive_document)
-        .collect::<Vec<_>>();
+    let mut documents = Vec::new();
+    for message in accumulator.finish() {
+        let row = AgentEventArchiveRow {
+            event_id: message.first_event_id,
+            agent_id: message.agent_id.clone(),
+            session_id: message.session_id.clone(),
+            ts: message.created_at,
+            stream: "acp".to_string(),
+            message: String::new(),
+        };
+        let scope =
+            agent_event_archive_scope_for_row(db, &row, scope_cache, task_conversation_cache)
+                .await?;
+        documents.push(aggregated_acp_message_archive_document(
+            &message,
+            scope.as_ref(),
+        ));
+    }
     counts.aggregated_acp_messages += documents.len();
     for chunk in documents.chunks(batch_size.clamp(1, 1000)) {
         archive.append_documents(chunk).await?;
