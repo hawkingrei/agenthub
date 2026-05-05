@@ -19,6 +19,7 @@ use agenthub_team_domain::{
     continuity_note_relative_path, extract_context_artifact_path,
 };
 use agenthub_text::truncate_chars;
+use anyhow::Context;
 use chrono::Utc;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -43,11 +44,17 @@ pub struct TeamMessageArchiveMigrationReport {
     pub team_conversation_messages: usize,
     pub team_run_events: usize,
     pub team_actor_messages: usize,
+    pub agent_events: usize,
+    pub aggregated_acp_messages: usize,
 }
 
 impl TeamMessageArchiveMigrationReport {
     pub fn total_documents(&self) -> usize {
-        self.team_conversation_messages + self.team_run_events + self.team_actor_messages
+        self.team_conversation_messages
+            + self.team_run_events
+            + self.team_actor_messages
+            + self.agent_events
+            + self.aggregated_acp_messages
     }
 }
 
@@ -73,8 +80,8 @@ use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
 use agenthub_message_archive::{
-    MessageArchiveStoreRef, MessageDocument, MessageDocumentKind, MessageSearchHit,
-    MessageSearchQuery,
+    AcpAggregatedMessage, AcpChunkAccumulator, AcpEventRow, MessageArchiveStoreRef,
+    MessageDocument, MessageDocumentKind, MessageSearchHit, MessageSearchQuery,
 };
 use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, canonical_json};
 
@@ -330,6 +337,140 @@ fn team_actor_message_archive_document(
         event_id_from: None,
         event_id_to: None,
         chunk_count: None,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AgentEventArchiveRow {
+    event_id: i64,
+    agent_id: String,
+    session_id: String,
+    ts: i64,
+    stream: String,
+    message: String,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct AgentEventArchiveMigrationCounts {
+    agent_events: usize,
+    aggregated_acp_messages: usize,
+}
+
+impl AgentEventArchiveMigrationCounts {
+    fn add(&mut self, other: AgentEventArchiveMigrationCounts) {
+        self.agent_events += other.agent_events;
+        self.aggregated_acp_messages += other.aggregated_acp_messages;
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct AgentEventArchiveScope {
+    team_id: Option<String>,
+    run_id: Option<String>,
+    conversation_id: Option<String>,
+    task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AgentEventArchiveSnapshot {
+    main_max_id: i64,
+    per_agent_max_ids: Vec<(String, i64)>,
+}
+
+fn agent_event_archive_document(
+    row: &AgentEventArchiveRow,
+    scope: Option<&AgentEventArchiveScope>,
+) -> MessageDocument {
+    let parsed_message = serde_json::from_str::<Value>(row.message.as_str()).ok();
+    let body_text = parsed_message
+        .as_ref()
+        .map(message_archive_body_text)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            parsed_message
+                .as_ref()
+                .and_then(|payload| payload.get("type"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| row.message.trim().to_string());
+    let payload_json = parsed_message
+        .as_ref()
+        .map(redact_sensitive_json)
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "stream": row.stream.as_str(),
+                "message": row.message.as_str(),
+            })
+        })
+        .to_string();
+
+    MessageDocument {
+        document_id: format!(
+            "agent_event:{}:{}:{}",
+            row.agent_id, row.session_id, row.event_id
+        ),
+        source_kind: MessageDocumentKind::AgentEvent,
+        source_id: row.event_id.to_string(),
+        logical_message_id: None,
+        authority_message_id: None,
+        correlation_id: parsed_message
+            .as_ref()
+            .and_then(|payload| message_archive_payload_string(payload, "correlation_id")),
+        team_id: scope.and_then(|scope| scope.team_id.clone()),
+        run_id: scope.and_then(|scope| scope.run_id.clone()),
+        conversation_id: scope.and_then(|scope| scope.conversation_id.clone()),
+        task_id: scope.and_then(|scope| scope.task_id.clone()),
+        agent_id: Some(row.agent_id.clone()),
+        session_id: Some(row.session_id.clone()),
+        body_text,
+        payload_json: Some(payload_json),
+        created_at: row.ts,
+        event_id_from: Some(row.event_id),
+        event_id_to: Some(row.event_id),
+        chunk_count: None,
+    }
+}
+
+fn aggregated_acp_message_archive_document(
+    message: &AcpAggregatedMessage,
+    scope: Option<&AgentEventArchiveScope>,
+) -> MessageDocument {
+    MessageDocument {
+        document_id: format!(
+            "aggregated_acp_message:{}:{}:{}:{}",
+            message.agent_id, message.session_id, message.logical_message_id, message.message_kind
+        ),
+        source_kind: MessageDocumentKind::AggregatedAcpMessage,
+        source_id: format!(
+            "{}:{}:{}:{}",
+            message.agent_id, message.session_id, message.logical_message_id, message.message_kind
+        ),
+        logical_message_id: Some(message.logical_message_id.clone()),
+        authority_message_id: None,
+        correlation_id: None,
+        team_id: scope.and_then(|scope| scope.team_id.clone()),
+        run_id: scope.and_then(|scope| scope.run_id.clone()),
+        conversation_id: scope.and_then(|scope| scope.conversation_id.clone()),
+        task_id: scope.and_then(|scope| scope.task_id.clone()),
+        agent_id: Some(message.agent_id.clone()),
+        session_id: Some(message.session_id.clone()),
+        body_text: message.text.clone(),
+        payload_json: Some(
+            serde_json::json!({
+                "type": message.message_kind.as_str(),
+                "message_id": message.logical_message_id.as_str(),
+                "text": message.text.as_str(),
+                "event_id_from": message.first_event_id,
+                "event_id_to": message.last_event_id,
+                "chunk_count": message.chunk_count,
+            })
+            .to_string(),
+        ),
+        created_at: message.created_at,
+        event_id_from: Some(message.first_event_id),
+        event_id_to: Some(message.last_event_id),
+        chunk_count: Some(message.chunk_count),
     }
 }
 
@@ -2177,6 +2318,68 @@ impl TeamManager {
             .await?)
     }
 
+    async fn migrate_agent_events_to_archive(
+        &self,
+        archive: &MessageArchiveStoreRef,
+        batch_size: usize,
+        snapshot: &AgentEventArchiveSnapshot,
+    ) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+        let mut counts = AgentEventArchiveMigrationCounts::default();
+        counts.add(
+            migrate_main_agent_events_to_archive(
+                &self.db,
+                archive,
+                batch_size,
+                snapshot.main_max_id,
+            )
+            .await
+            .context("migrate main agent_events to message archive")?,
+        );
+
+        for (agent_id, max_id) in &snapshot.per_agent_max_ids {
+            let pool = self.event_dbs.pool_for_agent(agent_id).await?;
+            counts.add(
+                migrate_per_agent_events_to_archive(
+                    &self.db, &pool, archive, agent_id, batch_size, *max_id,
+                )
+                .await
+                .with_context(|| {
+                    format!("migrate per-agent agent_events for agent_id={agent_id}")
+                })?,
+            );
+        }
+        Ok(counts)
+    }
+
+    async fn message_archive_agent_event_snapshot(
+        &self,
+    ) -> anyhow::Result<AgentEventArchiveSnapshot> {
+        let main_max_id =
+            sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
+                .fetch_one(&self.db)
+                .await?;
+        let agent_ids = sqlx::query_scalar::<_, String>("SELECT id FROM agents ORDER BY id ASC")
+            .fetch_all(&self.db)
+            .await?;
+        let mut per_agent_max_ids = Vec::new();
+        for agent_id in agent_ids {
+            let db_path = self.event_dbs.db_path_for_agent(&agent_id);
+            if !tokio::fs::try_exists(&db_path).await? {
+                continue;
+            }
+            let pool = self.event_dbs.pool_for_agent(&agent_id).await?;
+            let max_id =
+                sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
+                    .fetch_one(&pool)
+                    .await?;
+            per_agent_max_ids.push((agent_id, max_id));
+        }
+        Ok(AgentEventArchiveSnapshot {
+            main_max_id,
+            per_agent_max_ids,
+        })
+    }
+
     pub async fn migrate_team_messages_to_archive(
         &self,
         batch_size: usize,
@@ -2194,6 +2397,7 @@ impl TeamManager {
         let max_actor_message_id = self
             .message_archive_table_max_id("team_actor_messages")
             .await?;
+        let agent_event_snapshot = self.message_archive_agent_event_snapshot().await?;
         let mut run_scope_cache: HashMap<String, MessageArchiveScopeFallback> = HashMap::new();
         let mut task_conversation_cache: HashMap<(String, String), Option<String>> = HashMap::new();
 
@@ -2382,6 +2586,12 @@ impl TeamManager {
             }
             archive.append_documents(&documents).await?;
         }
+
+        let agent_event_counts = self
+            .migrate_agent_events_to_archive(archive, batch_size, &agent_event_snapshot)
+            .await?;
+        report.agent_events = agent_event_counts.agent_events;
+        report.aggregated_acp_messages = agent_event_counts.aggregated_acp_messages;
         Ok(report)
     }
 
@@ -5250,6 +5460,295 @@ impl TeamManager {
             .map(|member| member.role);
         Ok(role)
     }
+}
+
+async fn migrate_main_agent_events_to_archive(
+    db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    batch_size: usize,
+    max_id: i64,
+) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+    migrate_agent_event_rows_to_archive(
+        db,
+        db,
+        archive,
+        batch_size,
+        max_id,
+        AgentEventArchiveSource::Main,
+    )
+    .await
+}
+
+async fn migrate_per_agent_events_to_archive(
+    main_db: &SqlitePool,
+    event_db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    agent_id: &str,
+    batch_size: usize,
+    max_id: i64,
+) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+    migrate_agent_event_rows_to_archive(
+        main_db,
+        event_db,
+        archive,
+        batch_size,
+        max_id,
+        AgentEventArchiveSource::PerAgent { agent_id },
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AgentEventArchiveSource<'a> {
+    Main,
+    PerAgent { agent_id: &'a str },
+}
+
+async fn migrate_agent_event_rows_to_archive(
+    main_db: &SqlitePool,
+    event_db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    batch_size: usize,
+    max_id: i64,
+    source: AgentEventArchiveSource<'_>,
+) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+    let mut last_id = 0_i64;
+    let mut chunk_accumulator = AcpChunkAccumulator::default();
+    let mut counts = AgentEventArchiveMigrationCounts::default();
+    let batch_limit = i64::try_from(batch_size.clamp(1, 1000))?;
+    let mut scope_cache = HashMap::<(String, String, i64), Option<AgentEventArchiveScope>>::new();
+    let mut task_conversation_cache = HashMap::<(String, String), Option<String>>::new();
+
+    loop {
+        let rows =
+            fetch_agent_event_archive_rows(event_db, source, last_id, max_id, batch_limit).await?;
+        if rows.is_empty() {
+            break;
+        }
+        let mut documents = Vec::new();
+        for row in rows {
+            last_id = row.event_id;
+            let scope = agent_event_archive_scope_for_row(
+                main_db,
+                &row,
+                &mut scope_cache,
+                &mut task_conversation_cache,
+            )
+            .await?;
+            collect_agent_event_archive_row(
+                row,
+                scope.as_ref(),
+                &mut documents,
+                &mut chunk_accumulator,
+                &mut counts,
+            );
+        }
+        if !documents.is_empty() {
+            archive.append_documents(&documents).await?;
+        }
+    }
+
+    append_aggregated_acp_documents(
+        main_db,
+        archive,
+        chunk_accumulator,
+        batch_size,
+        &mut scope_cache,
+        &mut task_conversation_cache,
+        &mut counts,
+    )
+    .await?;
+    Ok(counts)
+}
+
+async fn fetch_agent_event_archive_rows(
+    db: &SqlitePool,
+    source: AgentEventArchiveSource<'_>,
+    last_id: i64,
+    max_id: i64,
+    batch_limit: i64,
+) -> anyhow::Result<Vec<AgentEventArchiveRow>> {
+    let rows = match source {
+        AgentEventArchiveSource::Main => sqlx::query(
+            r#"
+                SELECT id, agent_id, session_id, ts, stream, message
+                FROM agent_events
+                WHERE id > ?1 AND id <= ?2
+                ORDER BY id ASC
+                LIMIT ?3
+                "#,
+        )
+        .bind(last_id)
+        .bind(max_id)
+        .bind(batch_limit)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(|row| AgentEventArchiveRow {
+            event_id: row.get("id"),
+            agent_id: row.get("agent_id"),
+            session_id: row.get("session_id"),
+            ts: row.get("ts"),
+            stream: row.get("stream"),
+            message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
+        })
+        .collect(),
+        AgentEventArchiveSource::PerAgent { agent_id } => sqlx::query(
+            r#"
+                SELECT id, session_id, ts, stream, message
+                FROM agent_events
+                WHERE id > ?1 AND id <= ?2
+                ORDER BY id ASC
+                LIMIT ?3
+                "#,
+        )
+        .bind(last_id)
+        .bind(max_id)
+        .bind(batch_limit)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(|row| AgentEventArchiveRow {
+            event_id: row.get("id"),
+            agent_id: agent_id.to_string(),
+            session_id: row.get("session_id"),
+            ts: row.get("ts"),
+            stream: row.get("stream"),
+            message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
+        })
+        .collect(),
+    };
+    Ok(rows)
+}
+
+fn collect_agent_event_archive_row(
+    row: AgentEventArchiveRow,
+    scope: Option<&AgentEventArchiveScope>,
+    documents: &mut Vec<MessageDocument>,
+    chunk_accumulator: &mut AcpChunkAccumulator,
+    counts: &mut AgentEventArchiveMigrationCounts,
+) {
+    if row.stream == "acp"
+        && chunk_accumulator.push_row(AcpEventRow {
+            event_id: row.event_id,
+            agent_id: row.agent_id.clone(),
+            session_id: row.session_id.clone(),
+            ts: row.ts,
+            message: row.message.clone(),
+        })
+    {
+        return;
+    }
+
+    documents.push(agent_event_archive_document(&row, scope));
+    counts.agent_events += 1;
+}
+
+async fn agent_event_archive_scope_for_row(
+    db: &SqlitePool,
+    row: &AgentEventArchiveRow,
+    scope_cache: &mut HashMap<(String, String, i64), Option<AgentEventArchiveScope>>,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<Option<AgentEventArchiveScope>> {
+    let cache_key = (row.agent_id.clone(), row.session_id.clone(), row.event_id);
+    if let Some(scope) = scope_cache.get(&cache_key) {
+        return Ok(scope.clone());
+    }
+    let scope = agent_event_archive_scope_for_session(
+        db,
+        &row.agent_id,
+        &row.session_id,
+        row.ts,
+        task_conversation_cache,
+    )
+    .await?;
+    scope_cache.insert(cache_key, scope.clone());
+    Ok(scope)
+}
+
+async fn agent_event_archive_scope_for_session(
+    db: &SqlitePool,
+    agent_id: &str,
+    session_id: &str,
+    event_ts: i64,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<Option<AgentEventArchiveScope>> {
+    let row = sqlx::query(
+        r#"
+        SELECT r.team_id, r.id AS run_id, r.input_json
+        FROM team_steps s
+        INNER JOIN team_runs r ON r.id = s.run_id
+        WHERE s.member_id = ?1
+          AND s.remote_task_id = ?2
+          AND COALESCE(s.started_at, r.started_at, r.created_at, 0) <= ?3
+          AND (s.ended_at IS NULL OR s.ended_at >= ?3)
+          AND trim(COALESCE(json_extract(r.input_json, '$.bootstrap_kind'), '')) != ?4
+        ORDER BY COALESCE(s.started_at, 0) DESC, COALESCE(s.ended_at, 0) DESC, s.attempt DESC, s.id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(agent_id)
+    .bind(session_id)
+    .bind(event_ts)
+    .bind(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND)
+    .fetch_optional(db)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let team_id: String = row.get("team_id");
+    let run_id: String = row.get("run_id");
+    let input_json: String = row.get("input_json");
+    let run_input: Value = serde_json::from_str(&input_json)?;
+    let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
+    let scope = message_archive_scope_for_payload_db(
+        db,
+        &team_id,
+        &Value::Null,
+        &base_scope,
+        task_conversation_cache,
+    )
+    .await?;
+    Ok(Some(AgentEventArchiveScope {
+        team_id: Some(team_id),
+        run_id: Some(run_id),
+        conversation_id: scope.conversation_id,
+        task_id: scope.task_id,
+    }))
+}
+
+async fn append_aggregated_acp_documents(
+    db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    accumulator: AcpChunkAccumulator,
+    batch_size: usize,
+    scope_cache: &mut HashMap<(String, String, i64), Option<AgentEventArchiveScope>>,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+    counts: &mut AgentEventArchiveMigrationCounts,
+) -> anyhow::Result<()> {
+    let mut documents = Vec::new();
+    for message in accumulator.finish() {
+        let row = AgentEventArchiveRow {
+            event_id: message.first_event_id,
+            agent_id: message.agent_id.clone(),
+            session_id: message.session_id.clone(),
+            ts: message.created_at,
+            stream: "acp".to_string(),
+            message: String::new(),
+        };
+        let scope =
+            agent_event_archive_scope_for_row(db, &row, scope_cache, task_conversation_cache)
+                .await?;
+        documents.push(aggregated_acp_message_archive_document(
+            &message,
+            scope.as_ref(),
+        ));
+    }
+    counts.aggregated_acp_messages += documents.len();
+    for chunk in documents.chunks(batch_size.clamp(1, 1000)) {
+        archive.append_documents(chunk).await?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

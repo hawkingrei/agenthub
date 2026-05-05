@@ -658,7 +658,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 <div className="mt-2 px-2">
                   <button
                     type="button"
-                    className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-[12px] font-medium text-notion-text-muted transition hover:bg-[rgba(55,53,47,0.05)] hover:text-notion-text"
+                    className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-[12px] font-medium text-notion-text-muted transition hover:bg-notion-text/[0.05] hover:text-notion-text"
                     onClick={onOpenCreateTeam}
                   >
                     <i className="bi bi-plus-lg" aria-hidden="true" />
@@ -714,7 +714,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 <div className="flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    className="inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium text-notion-text-muted transition hover:bg-[rgba(55,53,47,0.05)] hover:text-notion-text"
+                    className="inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium text-notion-text-muted transition hover:bg-notion-text/[0.05] hover:text-notion-text"
                     onClick={resetCreateChannelForm}
                     disabled={creatingChannel}
                   >
@@ -894,7 +894,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                             </span>
                           )}
                           {(member.pending_inbox_count ?? 0) > 0 && (
-                            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-[rgba(55,53,47,0.06)] px-1 py-0.5 text-[9px] font-medium leading-none text-notion-text-muted">
+                            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-notion-text/[0.06] px-1 py-0.5 text-[9px] font-medium leading-none text-notion-text-muted">
                               {member.pending_inbox_count}
                             </span>
                           )}

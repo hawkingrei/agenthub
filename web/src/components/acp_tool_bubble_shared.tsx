@@ -10,7 +10,7 @@ import type { ToolGroupStatusTone } from "./acp_tool_call_meta";
 export const ACP_TOOL_ROW_CLASS =
   "acp-row group relative mb-0.5 flex w-full flex-col items-start rounded-lg border border-transparent px-1.5 py-1.5 transition hover:border-black/10 hover:bg-white/80";
 export const ACP_TOOL_CARD_CLASS =
-  "self-start w-full max-w-full overflow-hidden rounded-xl border border-black/6 bg-white/94 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+  "self-start w-full max-w-full overflow-hidden rounded-xl border border-black/6 bg-white/94 shadow-notion-row";
 export const ACP_TOOL_CARD_NESTED_CLASS = "max-w-full bg-slate-50/48 shadow-none";
 export const ACP_TOOL_SUMMARY_CLASS =
   "flex cursor-pointer list-none items-start gap-2 px-2 py-1.5 [&::-webkit-details-marker]:hidden";

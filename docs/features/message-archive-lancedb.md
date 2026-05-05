@@ -280,6 +280,10 @@ actor-scoped archive filters find messages delivered to that actor.
   enclosing transaction commits. This includes step submission, working, input-required, resumed,
   continued, completed, failed, canceled, reconcile-round, continuity-state, and matching run-status
   events emitted by those lifecycle transitions.
+- Historical agent event migration replays both main/global `agent_events` rows and per-agent
+  `AgentEventDbRouter` rows. Parseable ACP message chunks become `aggregated_acp_message`
+  documents, while non-chunk or malformed ACP rows fall back to raw `agent_event` documents with
+  the same deterministic source identity.
 
 ### 6) Multi-Database Extensibility Contract
 
@@ -305,7 +309,8 @@ actor-scoped archive filters find messages delivered to that actor.
   - Team conversation messages
   - Team run events
   - Team actor messages
-  - raw ACP event replay into aggregated archive documents
+  - main/global and per-agent raw ACP event replay into aggregated archive documents
+  - malformed or non-chunk ACP fallback into raw `agent_event` archive documents
 - Focused Team manager test for live Team conversation message dual-write without duplicating
   archive documents on idempotent retries.
 - Focused Team manager tests for live Team run-event dual-write on run submission and public

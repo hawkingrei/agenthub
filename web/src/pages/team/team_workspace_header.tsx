@@ -188,7 +188,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                       type="button"
                       tone="ghost"
                       size="sm"
-                      className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex max-w-full items-center gap-1.5 rounded-xl border border-black/6 bg-white/88 px-2 py-1 text-left text-[11px] font-medium shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-[2px] hover:border-black/10 hover:bg-white`}
+                      className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex max-w-full items-center gap-1.5 rounded-xl border border-black/6 bg-white/88 px-2 py-1 text-left text-[11px] font-medium shadow-notion-row backdrop-blur-[2px] hover:border-black/10 hover:bg-white`}
                       aria-label="Agent"
                       title={selectedAgentIdentityDescription}
                     >

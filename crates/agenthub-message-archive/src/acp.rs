@@ -52,15 +52,17 @@ struct OpenAggregate {
     created_at: i64,
 }
 
-pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessage> {
-    let mut sorted = rows.to_vec();
-    sorted.sort_by_key(|row| row.event_id);
+#[derive(Debug, Default)]
+pub struct AcpChunkAccumulator {
+    // Keep only open logical messages, not every historical event row.
+    // Final ordering is made deterministic when the accumulator is finished.
+    open: HashMap<AggregateKey, OpenAggregate>,
+}
 
-    let mut open = HashMap::<AggregateKey, OpenAggregate>::new();
-
-    for row in sorted {
+impl AcpChunkAccumulator {
+    pub fn push_row(&mut self, row: AcpEventRow) -> bool {
         let Some(parsed) = parse_chunk_event(&row.message) else {
-            continue;
+            return false;
         };
 
         let key = AggregateKey {
@@ -70,7 +72,7 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
             message_id: parsed.message_id.clone(),
         };
 
-        match open.get_mut(&key) {
+        match self.open.get_mut(&key) {
             Some(active) => {
                 active.first_event_id = active.first_event_id.min(row.event_id);
                 active.last_event_id = active.last_event_id.max(row.event_id);
@@ -78,7 +80,7 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
                 active.chunks.push(parsed);
             }
             None => {
-                open.insert(
+                self.open.insert(
                     key,
                     OpenAggregate {
                         agent_id: row.agent_id,
@@ -93,32 +95,51 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
                 );
             }
         }
+        true
     }
 
-    let mut out: Vec<_> = open
-        .into_values()
-        .map(|mut aggregate| {
-            aggregate.chunks.sort_by_key(|chunk| chunk.chunk_index);
-            let text = aggregate
-                .chunks
-                .iter()
-                .map(|chunk| chunk.text.as_str())
-                .collect::<String>();
-            AcpAggregatedMessage {
-                logical_message_id: aggregate.message_id,
-                message_kind: aggregate.message_kind,
-                agent_id: aggregate.agent_id,
-                session_id: aggregate.session_id,
-                text,
-                created_at: aggregate.created_at,
-                first_event_id: aggregate.first_event_id,
-                last_event_id: aggregate.last_event_id,
-                chunk_count: aggregate.chunks.len().try_into().unwrap_or(u32::MAX),
-            }
-        })
-        .collect();
-    out.sort_by_key(|message| message.first_event_id);
-    out
+    pub fn finish(self) -> Vec<AcpAggregatedMessage> {
+        let mut out: Vec<_> = self
+            .open
+            .into_values()
+            .map(|mut aggregate| {
+                aggregate.chunks.sort_by_key(|chunk| chunk.chunk_index);
+                let text = aggregate
+                    .chunks
+                    .iter()
+                    .map(|chunk| chunk.text.as_str())
+                    .collect::<String>();
+                AcpAggregatedMessage {
+                    logical_message_id: aggregate.message_id,
+                    message_kind: aggregate.message_kind,
+                    agent_id: aggregate.agent_id,
+                    session_id: aggregate.session_id,
+                    text,
+                    created_at: aggregate.created_at,
+                    first_event_id: aggregate.first_event_id,
+                    last_event_id: aggregate.last_event_id,
+                    chunk_count: aggregate.chunks.len().try_into().unwrap_or(u32::MAX),
+                }
+            })
+            .collect();
+        out.sort_by_key(|message| message.first_event_id);
+        out
+    }
+}
+
+pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessage> {
+    let mut sorted = rows.to_vec();
+    sorted.sort_by_key(|row| row.event_id);
+
+    let mut accumulator = AcpChunkAccumulator::default();
+    for row in sorted {
+        accumulator.push_row(row);
+    }
+    accumulator.finish()
+}
+
+pub fn is_aggregatable_acp_chunk(raw: &str) -> bool {
+    parse_chunk_event(raw).is_some()
 }
 
 fn parse_chunk_event(raw: &str) -> Option<ParsedChunkEvent> {
@@ -155,7 +176,7 @@ fn parse_chunk_index(value: Option<&Value>) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AcpEventRow, aggregate_acp_chunk_rows};
+    use super::{AcpEventRow, aggregate_acp_chunk_rows, is_aggregatable_acp_chunk};
 
     #[test]
     fn aggregates_consecutive_agent_message_chunks() {
@@ -252,6 +273,19 @@ mod tests {
 
         let aggregated = aggregate_acp_chunk_rows(&rows);
         assert!(aggregated.is_empty());
+    }
+
+    #[test]
+    fn identifies_only_parseable_message_chunks_as_aggregatable() {
+        assert!(is_aggregatable_acp_chunk(
+            r#"{"type":"agent_message","text":"hel","chunk":true,"message_id":"m1","chunk_index":0}"#
+        ));
+        assert!(!is_aggregatable_acp_chunk(
+            r#"{"type":"agent_message","text":"hel","chunk":true,"chunk_index":0}"#
+        ));
+        assert!(!is_aggregatable_acp_chunk(
+            r#"{"type":"tool_call","text":"search","chunk":true,"message_id":"m1","chunk_index":0}"#
+        ));
     }
 
     #[test]
