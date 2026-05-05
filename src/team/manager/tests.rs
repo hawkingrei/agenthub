@@ -4852,7 +4852,7 @@ async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
         "memory_flush_noop event should be recorded"
     );
 
-    let documents = wait_for_archive_documents(&archive, 4).await;
+    let documents = wait_for_archive_documents(&archive, 5).await;
     let archived_event_types = documents
         .iter()
         .filter(|document| {
@@ -4868,6 +4868,14 @@ async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
     assert!(
         archived_event_types.contains(&"memory_flush_started"),
         "memory_flush_started should be archived after transaction commit"
+    );
+    assert_eq!(
+        archived_event_types
+            .iter()
+            .filter(|event_type| **event_type == "memory_flush_started")
+            .count(),
+        2,
+        "each flush attempt should archive its own memory_flush_started event"
     );
     assert!(
         archived_event_types.contains(&"memory_flush_persisted"),
