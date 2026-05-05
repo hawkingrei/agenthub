@@ -194,6 +194,21 @@ async fn wait_for_archive_documents(
     .expect("archive documents should be appended")
 }
 
+async fn assert_archive_documents_stay_empty(archive: &RecordingMessageArchive) {
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let documents = archive.documents.lock().await.clone();
+            assert!(
+                documents.is_empty(),
+                "archive should remain empty, got documents: {documents:?}"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect_err("archive should remain empty for the full assertion window");
+}
+
 async fn setup_test_db() -> SqlitePool {
     let options = SqliteConnectOptions::new()
         .filename(":memory:")
@@ -1250,12 +1265,69 @@ async fn append_run_event_skips_shared_thread_mailbox_runs_in_archive() {
         "shared-thread mailbox run events should not build archive documents"
     );
 
-    sleep(Duration::from_millis(50)).await;
-    let documents = archive.documents.lock().await.clone();
-    assert!(
-        documents.is_empty(),
-        "shared-thread mailbox run events should stay out of message archive"
+    assert_archive_documents_stay_empty(&archive).await;
+}
+
+#[tokio::test]
+async fn actor_mailbox_run_event_skips_shared_thread_mailbox_runs_in_archive() {
+    let db = setup_test_db().await;
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
     );
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "shared-thread-mailbox-archive-team".to_string(),
+            description: Some("team for shared-thread mailbox archive skip".to_string()),
+            spec: json!({
+                "entrypoint":"coordinator_plan",
+                "members":[
+                    {"member_id":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Shared thread mailbox archive skip",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    let shared_run = manager
+        .ensure_shared_thread_mailbox_run(&team.id, &task.id, &conversation.id)
+        .await
+        .expect("ensure shared thread mailbox run");
+
+    manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &shared_run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type": "chat_message",
+                "text": "hidden shared thread mailbox event",
+            }),
+            idempotency_key: Some("shared-thread-mailbox-archive-msg-1"),
+        })
+        .await
+        .expect("send shared thread mailbox actor message");
+
+    assert_archive_documents_stay_empty(&archive).await;
 }
 
 #[tokio::test]

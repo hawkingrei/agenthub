@@ -1409,14 +1409,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         };
         if let Some(archive) = self.message_archive.as_ref().cloned() {
             let db = self.db.clone();
-            let semaphore = mailbox_run_event_archive_semaphore();
+            let permit = mailbox_run_event_archive_semaphore()
+                .acquire_owned()
+                .await
+                .expect("mailbox run event archive semaphore stays open");
             let run_id = event.run_id.clone();
             let event_id = event.event_id;
             tokio::spawn(async move {
-                let _permit = semaphore
-                    .acquire_owned()
-                    .await
-                    .expect("mailbox run event archive semaphore stays open");
+                let _permit = permit;
                 match team_run_event_archive_document_for_db(&db, &event).await {
                     Ok(Some(document)) => {
                         match tokio::time::timeout(

@@ -272,10 +272,10 @@ actor-scoped archive filters find messages delivered to that actor.
   inserted/updated write-result contract before the admin API can expose that distinction.
 - Live Team actor mailbox sends dual-write created rows to the archive with the same canonical
   document identity as migration.
-- Live Team run-event dual-write covers new run submissions and the public run-event append path,
-  including actor mailbox run-event appends. The remaining tx-heavy step lifecycle insertion paths
-  still require follow-up consolidation before run-event search can be fully continuous without
-  rerunning migration.
+- Live Team run-event dual-write covers new run submissions, the public run-event append path, and
+  actor mailbox run-event appends. The remaining tx-heavy insertion paths still require follow-up
+  consolidation before run-event search can be fully continuous without rerunning migration; this
+  includes step lifecycle writes and memory-flush events emitted through `append_run_event_tx`.
 
 ### 6) Multi-Database Extensibility Contract
 
