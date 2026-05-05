@@ -1,2 +1,9 @@
 ignore:
   - "src/internal/proto/agenthub.internal.v1.rs"
+
+flag_management:
+  default_rules:
+    carryforward: false
+  individual_flags:
+    - name: rust-cargo
+      carryforward: true
