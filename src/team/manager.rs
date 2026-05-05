@@ -2052,6 +2052,15 @@ impl TeamManager {
         });
     }
 
+    fn spawn_archive_team_run_events(&self, events: Vec<TeamRunEventRecord>) {
+        if self.message_archive.is_none() {
+            return;
+        }
+        for event in events {
+            self.spawn_archive_team_run_event(&event);
+        }
+    }
+
     async fn team_run_event_archive_document(
         &self,
         event: &TeamRunEventRecord,
@@ -3109,8 +3118,8 @@ impl TeamManager {
         event_type: &str,
         ts: i64,
         payload: &Value,
-    ) -> anyhow::Result<()> {
-        sqlx::query(
+    ) -> anyhow::Result<TeamRunEventRecord> {
+        let result = sqlx::query(
             r#"
             INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
             VALUES (?1, ?2, ?3, ?4, ?5)
@@ -3123,7 +3132,14 @@ impl TeamManager {
         .bind(payload.to_string())
         .execute(&mut **tx)
         .await?;
-        Ok(())
+        Ok(TeamRunEventRecord {
+            event_id: result.last_insert_rowid(),
+            run_id: run_id.to_string(),
+            step_id: step_id.map(str::to_string),
+            event_type: event_type.to_string(),
+            ts,
+            payload: payload.clone(),
+        })
     }
 
     async fn persist_continuity_artifact_tx(
@@ -5011,7 +5027,8 @@ impl TeamManager {
         )
         .await?;
 
-        Self::append_run_event_tx(
+        let mut archive_events = Vec::new();
+        let started_event = Self::append_run_event_tx(
             &mut tx,
             run_id,
             None,
@@ -5027,6 +5044,7 @@ impl TeamManager {
             }),
         )
         .await?;
+        archive_events.push(started_event);
 
         let Some(session_id) = session_id else {
             let context = MemoryFlushFinalizeContext {
@@ -5037,7 +5055,7 @@ impl TeamManager {
                 trigger: normalized.trigger.as_str(),
                 now,
             };
-            let result = finalize_memory_flush_failed_tx(
+            let (result, event) = finalize_memory_flush_failed_tx(
                 &mut tx,
                 &context,
                 "session_mapping_missing",
@@ -5047,6 +5065,8 @@ impl TeamManager {
             )
             .await?;
             tx.commit().await?;
+            archive_events.push(event);
+            self.spawn_archive_team_run_events(archive_events);
             return Ok(result);
         };
 
@@ -5075,8 +5095,10 @@ impl TeamManager {
                 trigger: normalized.trigger.as_str(),
                 now,
             };
-            let result = finalize_memory_flush_noop_tx(&mut tx, &context).await?;
+            let (result, event) = finalize_memory_flush_noop_tx(&mut tx, &context).await?;
             tx.commit().await?;
+            archive_events.push(event);
+            self.spawn_archive_team_run_events(archive_events);
             return Ok(result);
         }
 
@@ -5129,7 +5151,7 @@ impl TeamManager {
                     trigger: normalized.trigger.as_str(),
                     now,
                 };
-                let result = finalize_memory_flush_failed_tx(
+                let (result, event) = finalize_memory_flush_failed_tx(
                     &mut tx,
                     &context,
                     "agent_workdir_missing",
@@ -5139,6 +5161,8 @@ impl TeamManager {
                 )
                 .await?;
                 tx.commit().await?;
+                archive_events.push(event);
+                self.spawn_archive_team_run_events(archive_events);
                 return Ok(result);
             }
             Err(err) => {
@@ -5150,7 +5174,7 @@ impl TeamManager {
                     trigger: normalized.trigger.as_str(),
                     now,
                 };
-                let result = finalize_memory_flush_failed_tx(
+                let (result, event) = finalize_memory_flush_failed_tx(
                     &mut tx,
                     &context,
                     "artifact_write_failed",
@@ -5160,6 +5184,8 @@ impl TeamManager {
                 )
                 .await?;
                 tx.commit().await?;
+                archive_events.push(event);
+                self.spawn_archive_team_run_events(archive_events);
                 return Ok(result);
             }
         };
@@ -5176,7 +5202,7 @@ impl TeamManager {
         .await?;
 
         let pointer_payload = build_context_artifact_pointer_payload(&pointer);
-        Self::append_run_event_tx(
+        let persisted_event = Self::append_run_event_tx(
             &mut tx,
             run_id,
             None,
@@ -5196,8 +5222,10 @@ impl TeamManager {
             }),
         )
         .await?;
+        archive_events.push(persisted_event);
 
         tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
         Ok(TeamMemoryFlushResult {
             status: "persisted".to_string(),
             run_id: run_id.to_string(),
@@ -5537,7 +5565,7 @@ async fn finalize_memory_flush_failed_tx(
     event_range: Option<(i64, i64)>,
     flushed_events: i64,
     error_excerpt: Option<String>,
-) -> anyhow::Result<TeamMemoryFlushResult> {
+) -> anyhow::Result<(TeamMemoryFlushResult, TeamRunEventRecord)> {
     let mut payload = serde_json::Map::new();
     payload.insert(
         "team_id".to_string(),
@@ -5566,7 +5594,7 @@ async fn finalize_memory_flush_failed_tx(
     if let Some(error_excerpt) = error_excerpt {
         payload.insert("error_excerpt".to_string(), Value::String(error_excerpt));
     }
-    TeamManager::append_run_event_tx(
+    let event = TeamManager::append_run_event_tx(
         tx,
         context.run_id,
         None,
@@ -5575,29 +5603,32 @@ async fn finalize_memory_flush_failed_tx(
         &Value::Object(payload),
     )
     .await?;
-    Ok(TeamMemoryFlushResult {
-        status: "failed".to_string(),
-        run_id: context.run_id.to_string(),
-        team_id: context.team_id.to_string(),
-        member_id: context.member_id.to_string(),
-        session_id: context.session_id.map(str::to_string),
-        trigger: context.trigger.to_string(),
-        reason: Some(reason.to_string()),
-        artifact_pointer: None,
-        event_id_from: event_range.map(|(event_id_from, _)| event_id_from),
-        event_id_to: event_range.map(|(_, event_id_to)| event_id_to),
-        flushed_events,
-    })
+    Ok((
+        TeamMemoryFlushResult {
+            status: "failed".to_string(),
+            run_id: context.run_id.to_string(),
+            team_id: context.team_id.to_string(),
+            member_id: context.member_id.to_string(),
+            session_id: context.session_id.map(str::to_string),
+            trigger: context.trigger.to_string(),
+            reason: Some(reason.to_string()),
+            artifact_pointer: None,
+            event_id_from: event_range.map(|(event_id_from, _)| event_id_from),
+            event_id_to: event_range.map(|(_, event_id_to)| event_id_to),
+            flushed_events,
+        },
+        event,
+    ))
 }
 
 async fn finalize_memory_flush_noop_tx(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     context: &MemoryFlushFinalizeContext<'_>,
-) -> anyhow::Result<TeamMemoryFlushResult> {
+) -> anyhow::Result<(TeamMemoryFlushResult, TeamRunEventRecord)> {
     let session_id = context
         .session_id
         .ok_or_else(|| anyhow::anyhow!("session_id is required for noop flush"))?;
-    TeamManager::append_run_event_tx(
+    let event = TeamManager::append_run_event_tx(
         tx,
         context.run_id,
         None,
@@ -5614,19 +5645,22 @@ async fn finalize_memory_flush_noop_tx(
         }),
     )
     .await?;
-    Ok(TeamMemoryFlushResult {
-        status: "noop".to_string(),
-        run_id: context.run_id.to_string(),
-        team_id: context.team_id.to_string(),
-        member_id: context.member_id.to_string(),
-        session_id: Some(session_id.to_string()),
-        trigger: context.trigger.to_string(),
-        reason: Some("no_new_events".to_string()),
-        artifact_pointer: None,
-        event_id_from: None,
-        event_id_to: None,
-        flushed_events: 0,
-    })
+    Ok((
+        TeamMemoryFlushResult {
+            status: "noop".to_string(),
+            run_id: context.run_id.to_string(),
+            team_id: context.team_id.to_string(),
+            member_id: context.member_id.to_string(),
+            session_id: Some(session_id.to_string()),
+            trigger: context.trigger.to_string(),
+            reason: Some("no_new_events".to_string()),
+            artifact_pointer: None,
+            event_id_from: None,
+            event_id_to: None,
+            flushed_events: 0,
+        },
+        event,
+    ))
 }
 
 async fn resolve_memory_flush_session_id_tx(

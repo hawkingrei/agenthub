@@ -4687,7 +4687,12 @@ async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
         "agenthub-team-flush-eventdb-{}",
         uuid::Uuid::new_v4()
     )));
-    let manager = TeamManager::new_with_event_dbs(db.clone(), event_dbs.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        event_dbs.clone(),
+        Some(archive.clone()),
+    );
 
     let unique_suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -4847,13 +4852,44 @@ async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
         "memory_flush_noop event should be recorded"
     );
 
+    let documents = wait_for_archive_documents(&archive, 4).await;
+    let archived_event_types = documents
+        .iter()
+        .filter(|document| {
+            document.source_kind == MessageDocumentKind::TeamRunEvent
+                && document.run_id.as_deref() == Some(run.id.as_str())
+        })
+        .map(|document| document.body_text.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        archived_event_types.contains(&"run_submitted"),
+        "run_submitted should still be archived"
+    );
+    assert!(
+        archived_event_types.contains(&"memory_flush_started"),
+        "memory_flush_started should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"memory_flush_persisted"),
+        "memory_flush_persisted should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"memory_flush_noop"),
+        "memory_flush_noop should be archived after transaction commit"
+    );
+
     let _ = std::fs::remove_dir_all(workspace);
 }
 
 #[tokio::test]
 async fn flush_run_context_fails_when_session_mapping_missing() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -4903,6 +4939,24 @@ async fn flush_run_context_fails_when_session_mapping_missing() {
     assert!(
         event_types.contains(&"memory_flush_failed"),
         "memory_flush_failed event should be recorded"
+    );
+
+    let documents = wait_for_archive_documents(&archive, 3).await;
+    let archived_event_types = documents
+        .iter()
+        .filter(|document| {
+            document.source_kind == MessageDocumentKind::TeamRunEvent
+                && document.run_id.as_deref() == Some(run.id.as_str())
+        })
+        .map(|document| document.body_text.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        archived_event_types.contains(&"memory_flush_started"),
+        "memory_flush_started should be archived for failed flush attempts"
+    );
+    assert!(
+        archived_event_types.contains(&"memory_flush_failed"),
+        "memory_flush_failed should be archived after transaction commit"
     );
 }
 
