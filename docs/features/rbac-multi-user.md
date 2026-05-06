@@ -53,7 +53,7 @@ Roles are hierarchical: a higher role includes all permissions of lower roles.
 |------|------|-------------|
 | `root` | 管理员 | Superuser. Full access. Manage nodes, users, all resources. Create/delete other roots. |
 | `maintainer` | 维护员 | Team/resource manager. Create/manage agents and teams. Manage team membership. Cannot manage nodes or users. |
-| `member` | 员工 | Regular user. Create agents and teams. Full access to own agents. Can chat in invited teams. Cannot manage other users' agents. |
+| `member` | 员工 | Regular user. Create agents and teams. Can deeply interact (send input, view full details) only with agents they created. Can chat in invited teams. Can view metadata of all agents. |
 | `visitor` | 访客 | Read-only user. Cannot create resources. Can browse all agent metadata. Cannot send messages or interact with agents. |
 | `device` | 节点 | System role for `agenthub join`. No WebUI login. Unchanged from current behavior. |
 
@@ -104,9 +104,9 @@ Roles are hierarchical: a higher role includes all permissions of lower roles.
 
 - `root` can do everything, everywhere.
 - `maintainer` can manage all agents and teams (create, delete, start, stop) but cannot touch nodes or users.
-- `member` can create agents and teams. Can only manage (start, stop, delete, send input to)
-  agents they created themselves. For teams they don't own, they can view and participate in
-  conversations (if invited), but cannot manage membership or delete.
+- `member` can create agents and teams. Can only deeply interact (send input, start/stop, delete)
+  with agents they created themselves. Can view metadata of all agents. Can chat in invited teams.
+  Cannot manage other users' agents in any way.
 - `visitor` is strictly read-only. **Cannot create agents. Cannot manage any agents.**
   Can view all agent metadata. Cannot send input to any agent. Cannot create, modify, or delete
   anything. Cannot send messages.
@@ -172,7 +172,8 @@ pub fn require_not_visitor(user: &UserRecord) -> Result<(), ApiError> {
 |----------|---------------|
 | `POST /api/agents` | `require_not_visitor` |
 | `GET /api/agents` | filtered by visibility |
-| `GET /api/agents/:id` | `require_resource_owner` (root/maintainer see all) |
+| `GET /api/agents/:id` | metadata always returned; full detail (ACP, terminal, history) only for owner / root / maintainer |
+| `POST /api/agents/:id/input` | owner / root / maintainer only (member cannot send input to others' agents) |
 | `POST /api/agents/:id/start` | `require_resource_owner` |
 | `POST /api/agents/:id/stop` | `require_resource_owner` |
 | `DELETE /api/agents/:id` | `require_resource_owner` |
