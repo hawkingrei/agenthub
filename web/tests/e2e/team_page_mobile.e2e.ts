@@ -2,6 +2,7 @@ import { expect, test } from "./coverage";
 import {
   createTeamFromModal,
   gotoTeams,
+  jsonResponse,
   mockTeamPageApis,
   openMainTeamAction,
   openTeamFromSelector,
@@ -89,6 +90,76 @@ test("node detail keeps mobile detail surfaces stacked without horizontal overfl
     .locator('[data-node-team-summary-metrics="true"]')
     .evaluate((element) => window.getComputedStyle(element).gridTemplateColumns);
   expect(summaryMetricColumns.trim().split(/\s+/).length).toBe(1);
+
+  const horizontalOverflow = await page.evaluate(() => {
+    return document.documentElement.scrollWidth - document.documentElement.clientWidth;
+  });
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+});
+
+test("agents workbench keeps mobile primary controls reachable", async ({
+  page,
+}) => {
+  await mockTeamPageApis(page);
+  const sentInputs: Array<{
+    agent_id: string;
+    input: string;
+    session_id?: string;
+  }> = [];
+
+  await page.route(/\/api\/agents\/[^/]+\/events(?:\?.*)?$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonResponse([]));
+  });
+  await page.route(/\/api\/agents\/[^/]+\/input$/, async (route, request) => {
+    if (request.method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const agentId = decodeURIComponent(
+      request.url().match(/\/api\/agents\/([^/]+)\/input$/)?.[1] ?? ""
+    );
+    const payload = request.postDataJSON() as {
+      input: string;
+      session_id?: string;
+    };
+    sentInputs.push({
+      agent_id: agentId,
+      input: payload.input,
+      session_id: payload.session_id,
+    });
+    await route.fulfill(jsonResponse({ status: "ok" }));
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("button", { name: "Show agents" }).first()).toBeVisible();
+  await expect(page.getByText("Coordinator Agent", { exact: true })).toBeVisible();
+
+  const agentInput = page.getByPlaceholder(/Send input|Type a message \(tap Send/);
+  await expect(agentInput).toBeVisible();
+  await agentInput.fill("Summarize the current workspace state.");
+  await page.getByRole("button", { name: "Send input", exact: true }).click();
+  await expect
+    .poll(() => sentInputs.length, { timeout: 10_000 })
+    .toBe(1);
+  expect(sentInputs[0]).toMatchObject({
+    agent_id: "agent-coordinator-1",
+    input: "Summarize the current workspace state.",
+  });
+
+  await page.getByRole("button", { name: "Show agents" }).first().click();
+  const hideAgentsToggle = page.getByRole("banner").getByRole("button", {
+    name: "Hide agents",
+  });
+  await expect(hideAgentsToggle).toBeVisible();
+  await expect(page.getByText("Worker Agent", { exact: true })).toBeVisible();
+  await hideAgentsToggle.click();
+  await expect(page.getByRole("button", { name: "Show agents" }).first()).toBeVisible();
 
   const horizontalOverflow = await page.evaluate(() => {
     return document.documentElement.scrollWidth - document.documentElement.clientWidth;
