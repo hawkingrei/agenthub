@@ -2,8 +2,8 @@
 
 ## Summary
 
-`Add Existing Agent` now keeps `Copy into Team` as the only executable adoption path while showing
-`Move to Team` as explicitly deferred.
+`Add Existing Agent` now keeps `Copy into Team` as the only executable adoption path while
+documenting `Move to Team` as explicitly deferred.
 
 ## Background
 
@@ -16,15 +16,18 @@ before it can be enabled.
 
 - Keep copy as the active Add Existing Agent action.
 - Add visible move semantics explaining why transfer is not enabled yet.
-- Render a disabled `Move to Team (later)` action so copy and move are not collapsed into one
-  ambiguous import path.
+- Keep move as non-actionable explanatory copy instead of a default add-agent action.
+- Make the default copy boundary explicit: copied configuration does not clone workspace contents,
+  runtime history, active sessions, or workspace-local memory/context.
 
 ## Key Decisions
 
 - Do not add move behavior in this slice.
 - Do not mutate source agents from the Add Existing Agent flow.
-- Keep the disabled move action in the same modal as copy so operators see the product boundary at
-  the decision point.
+- Keep move semantics in the same modal as copy so operators see the product boundary at the
+  decision point, without presenting move as a selectable action.
+- Keep workspace-content copy, memory/context seeding, and ownership transfer as separate opt-in
+  follow-ups rather than implicit side effects of configuration copy.
 
 ## Validation
 
@@ -32,6 +35,7 @@ before it can be enabled.
 npm --prefix web run test -- src/pages/team/team_management_modals.test.tsx
 git diff --check
 npm --prefix web run lint
+cd web && npm exec tsc -- --noEmit
 npm --prefix web run build
 ```
 
@@ -40,7 +44,9 @@ npm --prefix web run build
 The Team setup E2E path now covers the copy-first adoption boundary:
 
 - an empty Team can open `Copy Existing Agent` from the setup panel;
-- `Move to Team (later)` is visible but disabled;
+- `Move to Team (later)` is not shown as a default action;
+- the modal explains that move semantics are not enabled yet;
+- the modal explains that the default copy path is configuration-only;
 - `Copy into Team` creates a new Team-owned coordinator member;
 - the original source agent remains available in the mocked agent list.
 
@@ -53,3 +59,5 @@ npm --prefix web run e2e -- tests/e2e/team_page_setup.e2e.ts --grep "team adopti
 ## Follow-Ups
 
 - Define stopped-only runtime and ownership-transfer guards before enabling `Move to Team`.
+- Separately evaluate explicit workspace-content copy and memory/context seeding before any
+  non-configuration adoption mode is enabled.

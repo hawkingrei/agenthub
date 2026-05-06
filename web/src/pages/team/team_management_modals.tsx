@@ -553,6 +553,11 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
             Copy keeps the source agent unchanged. AgentHub creates a new Team-owned{" "}
             {copyRoleLabel} agent with copied runtime settings and fresh Team membership.
           </Alert>
+          <Alert radius="md" color="blue" variant="light" title="Configuration copy only">
+            The default copy path does not clone workspace contents, runtime history, active
+            sessions, or workspace-local memory/context. Those must remain explicit opt-in
+            follow-ups.
+          </Alert>
           <Alert
             radius="md"
             color="yellow"
