@@ -46,6 +46,7 @@ cargo test -p agenthub append_run_event_dual_writes_created_event_to_archive -- 
 cargo test -p agenthub migrate_team_messages_to_archive_covers_team_message_tables -- --nocapture
 cargo test -p agenthub-db init_db_adds_agent_nodes_group_id_column -- --nocapture
 cargo fmt --all --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
 ```
 
 ## Follow-Ups

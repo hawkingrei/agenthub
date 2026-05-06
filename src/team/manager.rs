@@ -186,6 +186,9 @@ struct MessageArchiveScopeFallback {
     task_id: Option<String>,
 }
 
+type TeamRunArchiveScope = (String, Option<String>, MessageArchiveScopeFallback);
+type TeamRunArchiveScopeCache = HashMap<String, Option<TeamRunArchiveScope>>;
+
 impl MessageArchiveScopeFallback {
     fn from_run_input(run_input: &Value) -> Self {
         Self {
@@ -258,10 +261,7 @@ pub(super) async fn team_run_event_archive_document_for_db(
 async fn team_run_event_archive_document_for_db_cached(
     db: &SqlitePool,
     event: &TeamRunEventRecord,
-    run_scope_cache: &mut HashMap<
-        String,
-        Option<(String, Option<String>, MessageArchiveScopeFallback)>,
-    >,
+    run_scope_cache: &mut TeamRunArchiveScopeCache,
     task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
 ) -> anyhow::Result<Option<MessageDocument>> {
     if !run_scope_cache.contains_key(&event.run_id) {
@@ -290,7 +290,7 @@ async fn team_run_event_archive_document_for_db_cached(
 async fn team_run_event_archive_scope_for_db(
     db: &SqlitePool,
     run_id: &str,
-) -> anyhow::Result<Option<(String, Option<String>, MessageArchiveScopeFallback)>> {
+) -> anyhow::Result<Option<TeamRunArchiveScope>> {
     let row = sqlx::query(
         r#"
         SELECT team_id, group_id, input_json
