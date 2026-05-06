@@ -1240,49 +1240,53 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     )
     .await;
     create_team_conversation_messages_idempotency_index(&pool).await?;
-    add_column_if_missing(
-        &pool,
-        "ALTER TABLE team_conversation_messages ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
-        "team_conversation_messages.correlation_id",
-    )
-    .await;
-    if let Err(err) = sqlx::query(
-        r#"
-        UPDATE team_conversation_messages
-        SET correlation_id = trim(COALESCE(json_extract(payload_json, '$.correlation_id'), ''))
-        WHERE correlation_id = ''
-          AND trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) != ''
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to backfill team_conversation_messages.correlation_id: {}",
-            err
-        );
+    if !sqlite_table_has_column(&pool, "team_conversation_messages", "correlation_id").await? {
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_conversation_messages ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
+            "team_conversation_messages.correlation_id",
+        )
+        .await;
+        if let Err(err) = sqlx::query(
+            r#"
+            UPDATE team_conversation_messages
+            SET correlation_id = trim(COALESCE(json_extract(payload_json, '$.correlation_id'), ''))
+            WHERE correlation_id = ''
+              AND trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) != ''
+            "#,
+        )
+        .execute(&pool)
+        .await
+        {
+            tracing::warn!(
+                "db init: failed to backfill team_conversation_messages.correlation_id: {}",
+                err
+            );
+        }
     }
-    add_column_if_missing(
-        &pool,
-        "ALTER TABLE team_channel_message_replicas ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
-        "team_channel_message_replicas.correlation_id",
-    )
-    .await;
-    if let Err(err) = sqlx::query(
-        r#"
-        UPDATE team_channel_message_replicas
-        SET correlation_id = trim(COALESCE(json_extract(payload_json, '$.correlation_id'), ''))
-        WHERE correlation_id = ''
-          AND trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) != ''
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to backfill team_channel_message_replicas.correlation_id: {}",
-            err
-        );
+    if !sqlite_table_has_column(&pool, "team_channel_message_replicas", "correlation_id").await? {
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_channel_message_replicas ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
+            "team_channel_message_replicas.correlation_id",
+        )
+        .await;
+        if let Err(err) = sqlx::query(
+            r#"
+            UPDATE team_channel_message_replicas
+            SET correlation_id = trim(COALESCE(json_extract(payload_json, '$.correlation_id'), ''))
+            WHERE correlation_id = ''
+              AND trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) != ''
+            "#,
+        )
+        .execute(&pool)
+        .await
+        {
+            tracing::warn!(
+                "db init: failed to backfill team_channel_message_replicas.correlation_id: {}",
+                err
+            );
+        }
     }
     add_column_if_missing(
         &pool,
