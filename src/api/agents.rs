@@ -1527,6 +1527,7 @@ mod tests {
             CREATE TABLE team_runs (
                 id TEXT PRIMARY KEY,
                 team_id TEXT NOT NULL,
+                group_id TEXT,
                 context_id TEXT NOT NULL,
                 status TEXT NOT NULL,
                 input_json TEXT NOT NULL,

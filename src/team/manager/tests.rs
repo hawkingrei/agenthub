@@ -288,6 +288,7 @@ async fn setup_test_db() -> SqlitePool {
             description TEXT,
             spec_json TEXT NOT NULL,
             owner_user_id TEXT,
+            group_id TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -302,6 +303,7 @@ async fn setup_test_db() -> SqlitePool {
         CREATE TABLE team_runs (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
+            group_id TEXT,
             context_id TEXT NOT NULL,
             status TEXT NOT NULL,
             input_json TEXT NOT NULL,
@@ -363,6 +365,7 @@ async fn setup_test_db() -> SqlitePool {
         CREATE TABLE team_tasks (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
+            group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
             created_by_actor_id TEXT NOT NULL,
@@ -799,6 +802,75 @@ async fn create_team_and_run_records_submission_event() {
     assert_eq!(event_type, "run_submitted");
     assert_eq!(run_id, run.id);
     assert_eq!(payload["continuity_mode"], json!("inherit_recent"));
+}
+
+#[tokio::test]
+async fn create_team_task_and_run_persist_authority_group_id() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "group-authority-team".to_string(),
+                description: Some("team with owner-backed group boundary".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[{"member_id":"coordinator","role":"coordinator"}]
+                }),
+            },
+            Some("user-group-authority"),
+        )
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Group scoped task",
+            "user",
+            json!({"summary":"group boundary check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(&team.id, Some(&task.id), json!({"task_id":task.id}))
+        .await
+        .expect("create run");
+
+    let row = sqlx::query(
+        r#"
+        SELECT
+            td.group_id AS team_group_id,
+            tt.group_id AS task_group_id,
+            tr.group_id AS run_group_id
+        FROM team_definitions AS td
+        JOIN team_tasks AS tt ON tt.team_id = td.id
+        JOIN team_runs AS tr ON tr.team_id = td.id
+        WHERE td.id = ?1
+          AND tt.id = ?2
+          AND tr.id = ?3
+        "#,
+    )
+    .bind(&team.id)
+    .bind(&task.id)
+    .bind(&run.id)
+    .fetch_one(&db)
+    .await
+    .expect("read authority group ids");
+    assert_eq!(
+        row.get::<Option<String>, _>("team_group_id"),
+        Some("user-group-authority".to_string())
+    );
+    assert_eq!(
+        row.get::<Option<String>, _>("task_group_id"),
+        Some("user-group-authority".to_string())
+    );
+    assert_eq!(
+        row.get::<Option<String>, _>("run_group_id"),
+        Some("user-group-authority".to_string())
+    );
 }
 
 #[tokio::test]

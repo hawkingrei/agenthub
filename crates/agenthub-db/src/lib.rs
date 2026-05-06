@@ -495,6 +495,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             description TEXT,
             spec_json TEXT NOT NULL,
             owner_user_id TEXT,
+            group_id TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -508,6 +509,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         CREATE TABLE IF NOT EXISTS team_runs (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
+            group_id TEXT,
             context_id TEXT NOT NULL,
             status TEXT NOT NULL,
             input_json TEXT NOT NULL,
@@ -567,6 +569,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         CREATE TABLE IF NOT EXISTS team_tasks (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
+            group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
             created_by_actor_id TEXT NOT NULL,
@@ -1101,6 +1104,25 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_definitions.owner_user_id",
     )
     .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_definitions ADD COLUMN group_id TEXT",
+        "team_definitions.group_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_tasks ADD COLUMN group_id TEXT",
+        "team_tasks.group_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_runs ADD COLUMN group_id TEXT",
+        "team_runs.group_id",
+    )
+    .await;
+    backfill_team_authority_group_ids(&pool).await;
     add_column_if_missing(
         &pool,
         "ALTER TABLE auth_sessions ADD COLUMN revoked_at INTEGER",
@@ -2237,6 +2259,75 @@ async fn sqlite_table_has_column(
     }))
 }
 
+async fn backfill_team_authority_group_ids(pool: &SqlitePool) {
+    if let Err(err) = sqlx::query(
+        r#"
+        UPDATE team_definitions
+        SET group_id = trim(owner_user_id)
+        WHERE group_id IS NULL
+          AND trim(COALESCE(owner_user_id, '')) != ''
+        "#,
+    )
+    .execute(pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to backfill team_definitions.group_id from owner_user_id: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        UPDATE team_tasks
+        SET group_id = (
+            SELECT td.group_id
+            FROM team_definitions AS td
+            WHERE td.id = team_tasks.team_id
+        )
+        WHERE group_id IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM team_definitions AS td
+              WHERE td.id = team_tasks.team_id
+                AND td.group_id IS NOT NULL
+          )
+        "#,
+    )
+    .execute(pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to backfill team_tasks.group_id from team_definitions: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        UPDATE team_runs
+        SET group_id = (
+            SELECT td.group_id
+            FROM team_definitions AS td
+            WHERE td.id = team_runs.team_id
+        )
+        WHERE group_id IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM team_definitions AS td
+              WHERE td.id = team_runs.team_id
+                AND td.group_id IS NOT NULL
+          )
+        "#,
+    )
+    .execute(pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to backfill team_runs.group_id from team_definitions: {}",
+            err
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -3068,6 +3159,171 @@ mod tests {
         .await
         .expect("read assigned_member_id column");
         assert_eq!(assigned_member_id_column, "assigned_member_id");
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_and_backfills_team_authority_group_ids() {
+        let dir = unique_temp_dir("db-migrate-team-authority-group-id");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_definitions");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_tasks (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                assigned_member_id TEXT,
+                context_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_tasks");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_runs (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                context_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                input_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                started_at INTEGER,
+                ended_at INTEGER
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_runs");
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (
+                id, name, description, spec_json, owner_user_id, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("team-group")
+        .bind("team group")
+        .bind(Some("legacy group id owner boundary"))
+        .bind(r#"{"members":[]}"#)
+        .bind(Some("user-group"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy team");
+        sqlx::query(
+            r#"
+            INSERT INTO team_tasks (
+                id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+            "#,
+        )
+        .bind("task-group")
+        .bind("team-group")
+        .bind("group task")
+        .bind("open")
+        .bind("user:test")
+        .bind("{}")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy task");
+        sqlx::query(
+            r#"
+            INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("run-group")
+        .bind("team-group")
+        .bind("task-group")
+        .bind("submitted")
+        .bind("{}")
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy run");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with team authority group migration");
+
+        for table in ["team_definitions", "team_tasks", "team_runs"] {
+            let group_id_column: String = sqlx::query_scalar(&format!(
+                r#"
+                SELECT name
+                FROM pragma_table_info('{table}')
+                WHERE name = 'group_id'
+                "#
+            ))
+            .fetch_one(&pool)
+            .await
+            .unwrap_or_else(|err| panic!("read {table}.group_id column: {err}"));
+            assert_eq!(group_id_column, "group_id");
+        }
+
+        let group_rows = sqlx::query(
+            r#"
+            SELECT
+                td.group_id AS team_group_id,
+                tt.group_id AS task_group_id,
+                tr.group_id AS run_group_id
+            FROM team_definitions AS td
+            JOIN team_tasks AS tt ON tt.team_id = td.id
+            JOIN team_runs AS tr ON tr.team_id = td.id
+            WHERE td.id = ?1
+            "#,
+        )
+        .bind("team-group")
+        .fetch_one(&pool)
+        .await
+        .expect("read backfilled authority group ids");
+        assert_eq!(
+            group_rows.get::<Option<String>, _>("team_group_id"),
+            Some("user-group".to_string())
+        );
+        assert_eq!(
+            group_rows.get::<Option<String>, _>("task_group_id"),
+            Some("user-group".to_string())
+        );
+        assert_eq!(
+            group_rows.get::<Option<String>, _>("run_group_id"),
+            Some("user-group".to_string())
+        );
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);
