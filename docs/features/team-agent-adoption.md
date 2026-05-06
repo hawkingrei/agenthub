@@ -264,3 +264,4 @@ Current status:
 
 - `docs/journal/2026-05-03-team-agent-adoption-contract.md`
 - `docs/journal/2026-05-03-team-add-existing-agent-copy.md`
+- `docs/journal/2026-05-06-team-adoption-move-deferred.md`
