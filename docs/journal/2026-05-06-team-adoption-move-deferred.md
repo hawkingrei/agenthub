@@ -35,7 +35,7 @@ before it can be enabled.
 npm --prefix web run test -- src/pages/team/team_management_modals.test.tsx
 git diff --check
 npm --prefix web run lint
-cd web && npm exec tsc -- --noEmit
+npm --prefix web exec -- tsc -p web/tsconfig.json --noEmit
 npm --prefix web run build
 ```
 
