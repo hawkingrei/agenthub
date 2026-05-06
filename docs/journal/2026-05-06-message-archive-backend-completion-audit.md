@@ -8,6 +8,8 @@ The LanceDB message archive backend rollout is complete for the current backend 
 
 The active P0+ backlog item required a backend-agnostic archive layer with LanceDB as the first backend, ACP chunk aggregation into logical messages, dual-write for new records, and one-way migration of existing SQLite message history without replacing Team relational state.
 
+The canonical rollout contract is [message-archive-lancedb.md](../features/message-archive-lancedb.md).
+
 ## Scope
 
 - Backend archive abstraction and LanceDB implementation.
@@ -26,17 +28,10 @@ The active P0+ backlog item required a backend-agnostic archive layer with Lance
 
 ## Validation
 
-```bash
-cargo test -p agenthub-message-archive
-```
-
-Result: 16 passed, 0 failed.
-
-```bash
-cargo test -p agenthub archive
-```
-
-Result: 17 passed, 0 failed, 611 filtered out.
+- `cargo test -p agenthub-message-archive`
+  - Result: 16 passed, 0 failed.
+- `cargo test -p agenthub archive`
+  - Result: 17 passed, 0 failed, 611 filtered out.
 
 The focused checks cover archive model/factory behavior, LanceDB append/search/upsert/schema migration, ACP chunk aggregation, Team conversation/actor/run-event dual-write, admin migration, Team search API scope enforcement, historical Team table migration, main and per-agent ACP event replay, and shared-thread mailbox exclusions.
 
