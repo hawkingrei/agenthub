@@ -576,6 +576,41 @@ describe("useTeamManagementActions", () => {
     }
   });
 
+  it("cleans up a copied agent when the team spec update conflicts", async () => {
+    mockedApi.createAgent.mockResolvedValueOnce({
+      id: "agent-copy-conflict",
+      name: "source-agent-worker-1",
+      workdir: "/repo/source",
+      command: "agenthub-codex-acp",
+      args: [],
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: true,
+      status: "stopped",
+      created_at: 1,
+      updated_at: 1,
+    } as never);
+    mockedApi.updateTeamSpec.mockRejectedValueOnce(
+      Object.assign(new Error("team spec changed"), { status: 409 })
+    );
+    mockedApi.deleteAgent.mockResolvedValueOnce(undefined as never);
+
+    const params = createParams();
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onCopyExistingTeamAgent("agent-source-1");
+      });
+
+      expect(mockedApi.deleteAgent).toHaveBeenCalledWith("token-1", "agent-copy-conflict");
+      expect(params.setError).toHaveBeenCalledWith("team spec changed");
+      expect(params.setShowCopyExistingAgentModal).not.toHaveBeenCalledWith(false);
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
   it("surfaces an error when the selected copy source is missing", async () => {
     const params = createParams({
       agents: [],
