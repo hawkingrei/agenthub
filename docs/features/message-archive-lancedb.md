@@ -357,3 +357,4 @@ actor-scoped archive filters find messages delivered to that actor.
 - [docs/journal/2026-05-05-message-archive-team-conversation-dual-write.md](../journal/2026-05-05-message-archive-team-conversation-dual-write.md)
 - [docs/journal/2026-05-05-message-archive-team-search-api.md](../journal/2026-05-05-message-archive-team-search-api.md)
 - [docs/journal/2026-05-05-message-archive-team-migration.md](../journal/2026-05-05-message-archive-team-migration.md)
+- [docs/journal/2026-05-06-message-archive-step-lifecycle-run-events.md](../journal/2026-05-06-message-archive-step-lifecycle-run-events.md)

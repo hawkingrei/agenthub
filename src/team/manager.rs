@@ -229,10 +229,51 @@ async fn message_archive_scope_for_payload_db(
     })
 }
 
-async fn team_run_event_archive_document_for_db(
+pub(super) async fn team_run_event_archive_document_for_db(
     db: &SqlitePool,
     event: &TeamRunEventRecord,
 ) -> anyhow::Result<Option<MessageDocument>> {
+    let mut run_scope_cache = HashMap::new();
+    let mut task_conversation_cache = HashMap::new();
+    team_run_event_archive_document_for_db_cached(
+        db,
+        event,
+        &mut run_scope_cache,
+        &mut task_conversation_cache,
+    )
+    .await
+}
+
+async fn team_run_event_archive_document_for_db_cached(
+    db: &SqlitePool,
+    event: &TeamRunEventRecord,
+    run_scope_cache: &mut HashMap<String, Option<(String, MessageArchiveScopeFallback)>>,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<Option<MessageDocument>> {
+    if !run_scope_cache.contains_key(&event.run_id) {
+        let resolved = team_run_event_archive_scope_for_db(db, &event.run_id).await?;
+        run_scope_cache.insert(event.run_id.clone(), resolved);
+    }
+    let Some(Some((team_id, base_scope))) = run_scope_cache.get(&event.run_id) else {
+        return Ok(None);
+    };
+    let scope = message_archive_scope_for_payload_db(
+        db,
+        team_id,
+        &event.payload,
+        base_scope,
+        task_conversation_cache,
+    )
+    .await?;
+    Ok(Some(team_run_event_archive_document(
+        team_id, event, &scope,
+    )))
+}
+
+async fn team_run_event_archive_scope_for_db(
+    db: &SqlitePool,
+    run_id: &str,
+) -> anyhow::Result<Option<(String, MessageArchiveScopeFallback)>> {
     let row = sqlx::query(
         r#"
         SELECT team_id, input_json
@@ -240,7 +281,7 @@ async fn team_run_event_archive_document_for_db(
         WHERE id = ?1
         "#,
     )
-    .bind(&event.run_id)
+    .bind(run_id)
     .fetch_one(db)
     .await?;
     let team_id: String = row.get("team_id");
@@ -251,17 +292,9 @@ async fn team_run_event_archive_document_for_db(
     {
         return Ok(None);
     }
-    let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
-    let scope = message_archive_scope_for_payload_db(
-        db,
-        &team_id,
-        &event.payload,
-        &base_scope,
-        &mut HashMap::new(),
-    )
-    .await?;
-    Ok(Some(team_run_event_archive_document(
-        &team_id, event, &scope,
+    Ok(Some((
+        team_id,
+        MessageArchiveScopeFallback::from_run_input(&run_input),
     )))
 }
 
@@ -2141,72 +2174,79 @@ impl TeamManager {
     }
 
     pub(super) fn spawn_archive_team_run_event(&self, event: &TeamRunEventRecord) {
-        if self.message_archive.is_none() {
-            return;
-        }
-        let manager = self.clone();
-        let event = event.clone();
-        let run_id = event.run_id.clone();
-        let event_id = event.event_id;
-
-        tokio::spawn(async move {
-            match manager.team_run_event_archive_document(&event).await {
-                Ok(Some(document)) => {
-                    let Some(archive) = manager.message_archive.as_ref().cloned() else {
-                        return;
-                    };
-                    match tokio::time::timeout(
-                        MESSAGE_ARCHIVE_APPEND_TIMEOUT,
-                        archive.append_documents(&[document]),
-                    )
-                    .await
-                    {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => {
-                            tracing::warn!(
-                                error = ?error,
-                                run_id = %run_id,
-                                event_id,
-                                "failed to dual-write team run event to archive"
-                            );
-                        }
-                        Err(_) => {
-                            tracing::warn!(
-                                run_id = %run_id,
-                                event_id,
-                                timeout_ms = MESSAGE_ARCHIVE_APPEND_TIMEOUT.as_millis(),
-                                "timed out dual-writing team run event to archive"
-                            );
-                        }
-                    }
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    tracing::warn!(
-                        error = ?error,
-                        run_id = %run_id,
-                        event_id,
-                        "failed to build team run event archive document"
-                    );
-                }
-            }
-        });
+        self.spawn_archive_team_run_events(vec![event.clone()]);
     }
 
-    fn spawn_archive_team_run_events(&self, events: Vec<TeamRunEventRecord>) {
-        if self.message_archive.is_none() {
-            return;
-        }
-        for event in events {
-            self.spawn_archive_team_run_event(&event);
-        }
-    }
-
-    async fn team_run_event_archive_document(
+    #[cfg(test)]
+    pub(super) async fn team_run_event_archive_document(
         &self,
         event: &TeamRunEventRecord,
     ) -> anyhow::Result<Option<MessageDocument>> {
         team_run_event_archive_document_for_db(&self.db, event).await
+    }
+
+    fn spawn_archive_team_run_events(&self, events: Vec<TeamRunEventRecord>) {
+        let Some(archive) = self.message_archive.as_ref().cloned() else {
+            return;
+        };
+        if events.is_empty() {
+            return;
+        }
+        let manager = self.clone();
+
+        tokio::spawn(async move {
+            let mut documents = Vec::with_capacity(events.len());
+            let mut run_scope_cache = HashMap::new();
+            let mut task_conversation_cache = HashMap::new();
+            for event in events {
+                match team_run_event_archive_document_for_db_cached(
+                    &manager.db,
+                    &event,
+                    &mut run_scope_cache,
+                    &mut task_conversation_cache,
+                )
+                .await
+                {
+                    Ok(Some(document)) => documents.push(document),
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            error = ?error,
+                            run_id = %event.run_id,
+                            event_id = event.event_id,
+                            "failed to build team run event archive document"
+                        );
+                    }
+                }
+            }
+            if documents.is_empty() {
+                return;
+            }
+
+            let document_count = documents.len();
+            match tokio::time::timeout(
+                MESSAGE_ARCHIVE_APPEND_TIMEOUT,
+                archive.append_documents(&documents),
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(
+                        error = ?error,
+                        document_count,
+                        "failed to dual-write team run events to archive"
+                    );
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        document_count,
+                        timeout_ms = MESSAGE_ARCHIVE_APPEND_TIMEOUT.as_millis(),
+                        "timed out dual-writing team run events to archive"
+                    );
+                }
+            }
+        });
     }
 
     #[allow(clippy::too_many_arguments)]

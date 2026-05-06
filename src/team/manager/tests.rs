@@ -3250,7 +3250,12 @@ async fn create_run_marks_linked_task_in_progress() {
 #[tokio::test]
 async fn create_run_materializes_input_step_template_into_run_steps() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -3314,6 +3319,25 @@ async fn create_run_materializes_input_step_template_into_run_steps() {
                 "round_state":{"current_round":0}
             }
         }))
+    );
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let documents = wait_for_archive_run_event_documents(&archive, &run.id, events.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"run_submitted"),
+        "run_submitted should be archived after run creation commits"
+    );
+    assert_eq!(
+        archived_event_types
+            .iter()
+            .filter(|event_type| **event_type == "step_submitted")
+            .count(),
+        2,
+        "materialized step_submitted events should be archived after run creation commits"
     );
 }
 
