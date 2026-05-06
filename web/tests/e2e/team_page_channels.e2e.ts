@@ -11,6 +11,7 @@ test("team channel sidebar helper does not select prefixed channel ids", async (
   await page.setContent(`
     <aside class="teams-sidebar">
       <button type="button"># all-archive archived lane</button>
+      <button type="button">Kanban Human task requests belong in # all.</button>
       <button type="button"># all default lane</button>
     </aside>
   `);

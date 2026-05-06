@@ -482,12 +482,11 @@ export function teamChannelSidebarEntry(
   channelId: string
 ) {
   const channelNamePattern = new RegExp(
-    `^\\s*#\\s+${escapeRegExp(channelId)}(?:\\s|$)`
+    `#\\s*${escapeRegExp(channelId)}(?:\\s|$)`
   );
   return page
     .locator(".teams-sidebar")
-    .locator("button")
-    .filter({ hasText: channelNamePattern })
+    .getByRole("button", { name: channelNamePattern })
     .first();
 }
 
