@@ -320,6 +320,8 @@ pub struct TeamConversationMessageRecord {
     pub message_id: i64,
     pub conversation_id: String,
     pub task_id: String,
+    #[serde(default, skip_serializing, skip_deserializing)]
+    pub group_id: Option<String>,
     pub from_actor_id: String,
     pub to_actor_id: Option<String>,
     pub route: String,

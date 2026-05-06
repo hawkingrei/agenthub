@@ -83,6 +83,7 @@ pub(super) fn parse_team_conversation_message_row(
         message_id: row.get("id"),
         conversation_id: row.get("conversation_id"),
         task_id: row.get("task_id"),
+        group_id: row.try_get("group_id").ok().flatten(),
         from_actor_id: row.get("from_actor_id"),
         to_actor_id: row.try_get("to_actor_id")?,
         route: row.get("route"),

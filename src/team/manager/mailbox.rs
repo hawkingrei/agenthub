@@ -1483,10 +1483,11 @@ async fn maybe_persist_human_visible_chat_reply(
             to_actor_id,
             route,
             correlation_id,
+            group_id,
             payload_json,
             created_at
         )
-        VALUES (?1, ?2, ?3, NULL, 'group_chat', ?4, ?5, ?6)
+        VALUES (?1, ?2, ?3, NULL, 'group_chat', ?4, (SELECT group_id FROM team_tasks WHERE id = ?2), ?5, ?6)
         "#,
     )
     .bind(&shared_thread.conversation_id)

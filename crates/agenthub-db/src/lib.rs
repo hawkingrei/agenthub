@@ -615,6 +615,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             to_actor_id TEXT,
             route TEXT NOT NULL,
             correlation_id TEXT NOT NULL DEFAULT '',
+            group_id TEXT,
             payload_json TEXT NOT NULL,
             idempotency_key TEXT,
             created_at INTEGER NOT NULL,
@@ -1270,6 +1271,13 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_conversation_messages.idempotency_key",
     )
     .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_conversation_messages ADD COLUMN group_id TEXT",
+        "team_conversation_messages.group_id",
+    )
+    .await;
+    backfill_team_conversation_message_group_ids(&pool).await?;
     create_team_conversation_messages_idempotency_index(&pool).await?;
     if !sqlite_table_has_column(&pool, "team_conversation_messages", "correlation_id").await? {
         add_column_if_missing(
@@ -2320,6 +2328,30 @@ async fn backfill_team_authority_group_ids(pool: &SqlitePool) -> anyhow::Result<
     .execute(pool)
     .await
     .context("backfill team_runs.group_id from team_definitions")?;
+    Ok(())
+}
+
+async fn backfill_team_conversation_message_group_ids(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE team_conversation_messages
+        SET group_id = (
+            SELECT tt.group_id
+            FROM team_tasks AS tt
+            WHERE tt.id = team_conversation_messages.task_id
+        )
+        WHERE group_id IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM team_tasks AS tt
+              WHERE tt.id = team_conversation_messages.task_id
+                AND tt.group_id IS NOT NULL
+          )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("backfill team_conversation_messages.group_id from team_tasks")?;
     Ok(())
 }
 
@@ -3379,6 +3411,189 @@ mod tests {
             group_rows.get::<Option<String>, _>("run_group_id"),
             Some("user-group".to_string())
         );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_and_backfills_team_conversation_message_group_ids() {
+        let dir = unique_temp_dir("db-migrate-task-message-group-id");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_definitions");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_tasks (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                assigned_member_id TEXT,
+                context_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_tasks");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversations (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                task_id TEXT NOT NULL UNIQUE,
+                mode TEXT NOT NULL,
+                topic TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_conversations");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                correlation_id TEXT NOT NULL DEFAULT '',
+                payload_json TEXT NOT NULL,
+                idempotency_key TEXT,
+                created_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_conversation_messages");
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (
+                id, name, description, spec_json, owner_user_id, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("team-message-group")
+        .bind("team message group")
+        .bind(Some("legacy message group id owner boundary"))
+        .bind(r#"{"members":[]}"#)
+        .bind(Some("user-message-group"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy team");
+        sqlx::query(
+            r#"
+            INSERT INTO team_tasks (
+                id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+            "#,
+        )
+        .bind("task-message-group")
+        .bind("team-message-group")
+        .bind("message group task")
+        .bind("open")
+        .bind("user:test")
+        .bind("{}")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy task");
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversations (
+                id, team_id, task_id, mode, topic, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("conversation-message-group")
+        .bind("team-message-group")
+        .bind("task-message-group")
+        .bind("group_chat")
+        .bind(Some("all"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy conversation");
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages (
+                conversation_id, task_id, from_actor_id, route, correlation_id, payload_json, idempotency_key, created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind("conversation-message-group")
+        .bind("task-message-group")
+        .bind("user:test")
+        .bind("group_chat")
+        .bind("corr-message-group")
+        .bind(r#"{"text":"hello"}"#)
+        .bind("idem-message-group")
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy task message");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with task message group migration");
+
+        let group_id_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_conversation_messages')
+            WHERE name = 'group_id'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read task message group_id column");
+        assert_eq!(group_id_column, "group_id");
+
+        let group_id: Option<String> = sqlx::query_scalar(
+            "SELECT group_id FROM team_conversation_messages WHERE idempotency_key = ?1",
+        )
+        .bind("idem-message-group")
+        .fetch_one(&pool)
+        .await
+        .expect("read backfilled task message group_id");
+        assert_eq!(group_id, Some("user-message-group".to_string()));
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

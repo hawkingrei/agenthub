@@ -649,6 +649,7 @@ async fn init_test_schema(db: &SqlitePool) {
             to_actor_id TEXT,
             route TEXT NOT NULL,
             correlation_id TEXT NOT NULL DEFAULT '',
+            group_id TEXT,
             payload_json TEXT NOT NULL,
             idempotency_key TEXT,
             created_at INTEGER NOT NULL,

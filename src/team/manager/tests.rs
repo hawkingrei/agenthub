@@ -424,6 +424,7 @@ async fn setup_test_db() -> SqlitePool {
             to_actor_id TEXT,
             route TEXT NOT NULL,
             correlation_id TEXT NOT NULL DEFAULT '',
+            group_id TEXT,
             payload_json TEXT NOT NULL,
             idempotency_key TEXT,
             created_at INTEGER NOT NULL,
@@ -874,6 +875,64 @@ async fn create_team_task_and_run_persist_authority_group_id() {
 }
 
 #[tokio::test]
+async fn append_task_conversation_message_persists_authority_group_id() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "message-group-authority-team".to_string(),
+                description: Some("team with message group boundary".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[{"member_id":"coordinator","role":"coordinator"}]
+                }),
+            },
+            Some("user-message-authority"),
+        )
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Message group task",
+            "user",
+            json!({"summary":"message group boundary check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    let (message, created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({
+                "type": "chat_message",
+                "text": "message with group",
+                "correlation_id": "corr-message-authority"
+            }),
+            Some("message-authority-group-1"),
+        )
+        .await
+        .expect("append message");
+    assert!(created);
+    assert_eq!(message.group_id.as_deref(), Some("user-message-authority"));
+
+    let stored_group_id: Option<String> =
+        sqlx::query_scalar("SELECT group_id FROM team_conversation_messages WHERE id = ?1")
+            .bind(message.message_id)
+            .fetch_one(&db)
+            .await
+            .expect("read task message group_id");
+    assert_eq!(stored_group_id, Some("user-message-authority".to_string()));
+}
+
+#[tokio::test]
 async fn task_and_conversation_messages_are_persisted_with_redaction() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
@@ -1168,11 +1227,14 @@ async fn append_task_conversation_message_dual_writes_created_rows_to_archive() 
     );
 
     let team = manager
-        .create_team(TeamDefinitionConfig {
-            name: "task-archive-team".to_string(),
-            description: Some("team for task message archive dual-write".to_string()),
-            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
-        })
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "task-archive-team".to_string(),
+                description: Some("team for task message archive dual-write".to_string()),
+                spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+            },
+            Some("user-task-archive"),
+        )
         .await
         .expect("create team");
     let (task, conversation) = manager
@@ -1243,6 +1305,7 @@ async fn append_task_conversation_message_dual_writes_created_rows_to_archive() 
     assert_eq!(document.source_id, first.message_id.to_string());
     assert_eq!(document.authority_message_id, Some(first.message_id));
     assert_eq!(document.correlation_id.as_deref(), Some("corr-archive-1"));
+    assert_eq!(document.group_id.as_deref(), Some("user-task-archive"));
     assert_eq!(document.team_id.as_deref(), Some(team.id.as_str()));
     assert_eq!(
         document.conversation_id.as_deref(),

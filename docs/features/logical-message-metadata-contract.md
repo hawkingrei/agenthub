@@ -156,16 +156,16 @@ must not be treated as the source of truth when data diverges.
 
 | Surface | Role | Required authority references | Notes |
 | --- | --- | --- | --- |
-| `team_conversation_messages` | authority row | `conversation_id`, `authority_message_id`, `correlation_id` | canonical human-visible message content; `correlation_id` is persisted as a first-class authority column; does not currently persist `run_id` |
+| `team_conversation_messages` | authority row | `conversation_id`, `authority_message_id`, `correlation_id`, optional `group_id` | canonical human-visible message content; `correlation_id` and the Team-derived nullable `group_id` are persisted as first-class authority columns; does not currently persist `run_id` |
 | `team_actor_messages` | authority row | `run_id`, sender/recipient actor ids, effective `idempotency_key` | canonical delivery state |
 | `team_channel_message_replicas` | replica row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id` | node-relevant channel cache only; `correlation_id` is persisted as a first-class projection column |
 | remote relay route metadata | delivery metadata | `source_node_id`, `target_node_id`, optional `broadcast_id`, optional `correlation_id`, effective `idempotency_key` | transport/debug only |
 | archive/search document | projection row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id`, optional `group_id` | must point back to `main` authority; `group_id` is preserved only when supplied by a live authority source |
 
 `group_id` is intentionally optional in the current surface matrix because the live message schema
-does not carry it everywhere yet. This spec treats it as the forward compatibility isolation key for
-the multi-tenant/group rollout; projection layers may add nullable storage for it before authority
-rows start populating it.
+does not carry it everywhere yet. Team conversation messages now inherit the owning task group when
+available, but other authority and projection rows still need nullable rollout before routing can
+enforce group boundaries.
 
 ### 7) `group_id` Physical Rollout Plan
 
@@ -181,7 +181,8 @@ rollout order is:
    - `team_definitions`, `team_tasks`, and `team_runs` should carry the Team group boundary first.
    - `node` registry authority rows should carry the same group boundary before routing enforces it.
 3. Propagate `group_id` into message authority rows.
-   - `team_conversation_messages` should inherit from the owning Team.
+   - `team_conversation_messages` inherits from the owning task, which already inherits from the
+     owning Team.
    - `team_actor_messages` should inherit from the owning run or Team context.
 4. Propagate `group_id` into projection rows.
    - `team_channel_message_replicas` should copy it from the authority message or run context.
@@ -199,7 +200,8 @@ treat missing `group_id` as `unknown`, not as permission to cross group boundari
 - `cargo test internal_grpc_mailbox_send_rejects_channel_replica_payload_without_correlation_id -- --nocapture`
 - `cargo test -p agenthub-db init_db_adds_task_message_correlation_id_and_backfills_existing_rows -- --nocapture`
 - `cargo test -p agenthub append_task_conversation_message_persists_correlation_id_column -- --nocapture`
-- migration tests for the first physical `group_id` authority column once that phase lands
+- `cargo test -p agenthub-db init_db_adds_and_backfills_team_conversation_message_group_ids -- --nocapture`
+- `cargo test -p agenthub append_task_conversation_message_persists_authority_group_id -- --nocapture`
 - `cargo test remote_actor_messages_relay_success_marks_message_delivered -- --nocapture`
 - `cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture`
 
