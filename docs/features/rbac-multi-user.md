@@ -78,8 +78,8 @@ Roles are hierarchical: a higher role includes all permissions of lower roles.
 | View nodes | ✅ | ✅ | ✅ | - |
 | **Agent operations** | | | | |
 | Create agent | ✅ | ✅ | ✅ | - |
-| View own agents | ✅ | ✅ | ✅ | ✅ |
-| View any agent | ✅ | ✅ | - | - |
+| View own agents (meta + full) | ✅ | ✅ | ✅ | ✅ |
+| View any agent (meta only) | ✅ | ✅ | ✅ | ✅ |
 | Send input to own agent | ✅ | ✅ | ✅ | - |
 | Send input to any agent | ✅ | ✅ | - | - |
 | Start/stop own agent | ✅ | ✅ | ✅ | - |
@@ -108,7 +108,7 @@ Roles are hierarchical: a higher role includes all permissions of lower roles.
   agents they created themselves. For teams they don't own, they can view and participate in
   conversations (if invited), but cannot manage membership or delete.
 - `visitor` is strictly read-only. **Cannot create agents. Cannot manage any agents.**
-  Can view agents they own and teams they're invited to. Cannot create, modify, or delete
+  Can view all agent metadata. Cannot send input to any agent. Cannot create, modify, or delete
   anything. Cannot send messages.
 
 ### 3) Resource Ownership
@@ -189,11 +189,13 @@ pub fn require_not_visitor(user: &UserRecord) -> Result<(), ApiError> {
 
 ### 5) Visitor-Specific Guards
 
-- `require_not_visitor` is applied to ALL write endpoints (POST, PUT, DELETE, PATCH).
-- Visitors cannot send Team conversation messages — the message send endpoint gates on
-  `require_not_visitor`.
-- Visitors cannot create agents — gated on agent create endpoint.
-- Visitors cannot start/stop runs — gated on runtime endpoints.
+- `GET` endpoints for agents/teams return metadata for all resources to visitors (no filtering by
+  ownership). Visitors can browse and discover what's running.
+- `require_not_visitor` middleware is applied to ALL write endpoints (POST, PUT, DELETE, PATCH).
+- Visitors cannot send Team conversation messages.
+- Visitors cannot create agents.
+- Visitors cannot start/stop runs.
+- Visitors cannot send input to any agent (even ones they own).
 
 ### 6) Session And Token Security
 
