@@ -282,10 +282,15 @@ Use this structure when creating or refreshing coordinator workspace `AGENTS.md`
   - `shared-channel` for human-visible or team-wide progress updates
 - For shared-channel updates, send to the channel mailbox surface and keep `@member_id` mentions as
   ownership metadata; do not treat mentions as a narrowing recipient filter.
+- Keep shared-channel root messages summary-first. If a status update, review point, or human
+  request needs logs, detailed reasoning, or a longer evidence chain, open the thread rooted at that
+  channel message and move the detailed context there.
 - Large evidence handoffs should be summary-first:
   - send a concise summary in the mailbox/channel body
   - attach a stable `detail_ref` / artifact pointer for the full content
   - avoid reposting full logs or copied context into shared-channel updates
+- Treat `agenthub actor team-thread-open` and `agenthub actor team-thread-reply` as the canonical
+  agent-side path for moving one channel topic from broad summary into thread-scoped deep context.
 - If operator attention is urgently required, send a concise human-mailbox notification
   (`to_actor_id = user` / `user:<id>`) as a `human-notification` secondary route in addition to
   the normal coordinator/channel update.

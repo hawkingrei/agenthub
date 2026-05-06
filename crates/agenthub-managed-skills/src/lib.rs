@@ -361,20 +361,24 @@ Team mailbox commands:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 4. Send a channel message:
    `agenthub actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
-5. Send a remote direct message:
+5. Open a thread for detailed context rooted in an existing channel message:
+   `agenthub actor team-thread-open --run-id "<run-id>" --shared --root-message-id "<message-id>"`
+6. Reply inside that thread when the topic needs logs, evidence, or detailed follow-up:
+   `agenthub actor team-thread-reply --run-id "<run-id>" --shared --root-message-id "<message-id>" --text-file .agenthubmemory/mailbox/outbox/thread-reply.md`
+7. Send a remote direct message:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{"endpoint":"https://..."}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
-6. Send an urgent human notification:
+8. Send an urgent human notification:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
-7. Force duplicate delivery when business logic requires repeated send:
+9. Force duplicate delivery when business logic requires repeated send:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
-8. Use explicit idempotency key when coordinating retries across workers:
+10. Use explicit idempotency key when coordinating retries across workers:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 
 Team context commands:
 
-9. Inspect live team runtime status, roster, identity-card descriptions, and optional run step overlay:
+11. Inspect live team runtime status, roster, identity-card descriptions, and optional run step overlay:
    `agenthub actor team-members`
-10. When you need step-level overlay for a specific run:
+12. When you need step-level overlay for a specific run:
    `agenthub actor team-members --run-id "<run-id>"`
 
 Protocol rules:
@@ -403,6 +407,7 @@ Protocol rules:
 - Prefer `actor send --text` for markdown-rich messages; it preserves formatting better than wrapping prose inside structured fields.
 - For group chat / channel sends, use `channel_id`; the message will still fan out to all relevant teammates even when `@member_id` appears in the text.
 - Treat `@member_id` in channel text as mention metadata for receivers, not as a routing override.
+- Keep channel root messages summary-first. Use `team-thread-open` and `team-thread-reply` for the full context of one rooted topic.
 - Use `to_actor_id = "user"` or `user:<id>` only when you intentionally want a human notification.
 - Use `channel` only when a non-default channel is required.
 - By default, `actor send` auto-generates an idempotency key from message fields to prevent duplicate delivery on retries.
@@ -491,6 +496,74 @@ mod tests {
             worker_executor
                 .contents
                 .contains("important findings, risks, tradeoffs, or decisions")
+        );
+    }
+
+    #[test]
+    fn managed_skills_describe_channel_thread_context_split() {
+        let home = unique_test_temp_dir("agenthub-managed-skills-channel-thread");
+
+        let shared_index =
+            managed_skill_doc(ManagedSkillKind::TeamAgentsIndex, Some(home.as_path()))
+                .expect("build shared team index doc");
+        assert!(
+            shared_index
+                .contents
+                .contains("channel root messages are summary-first")
+        );
+        assert!(
+            shared_index
+                .contents
+                .contains("thread replies are the full-context lane")
+        );
+        assert!(
+            shared_index
+                .contents
+                .contains("agenthub actor team-thread-open")
+        );
+        assert!(
+            shared_index
+                .contents
+                .contains("agenthub actor team-thread-reply")
+        );
+
+        let mailbox = managed_skill_doc(ManagedSkillKind::TeamActorMailbox, Some(home.as_path()))
+            .expect("build mailbox doc");
+        assert!(mailbox.contents.contains("team-thread-open"));
+        assert!(mailbox.contents.contains("team-thread-reply"));
+        assert!(
+            mailbox
+                .contents
+                .contains("open the thread before treating the root message")
+        );
+
+        let runtime = managed_skill_doc(ManagedSkillKind::ActorRuntime, Some(home.as_path()))
+            .expect("build actor runtime doc");
+        assert!(runtime.contents.contains("agenthub actor team-thread-open"));
+        assert!(
+            runtime
+                .contents
+                .contains("agenthub actor team-thread-reply")
+        );
+        assert!(
+            runtime
+                .contents
+                .contains("Keep channel root messages summary-first")
+        );
+
+        let coordinator = managed_skill_doc(
+            ManagedSkillKind::TeamCoordinatorOrchestrator,
+            Some(home.as_path()),
+        )
+        .expect("build coordinator doc");
+        assert!(coordinator.contents.contains("thread-scoped deep context"));
+
+        let worker = managed_skill_doc(ManagedSkillKind::TeamWorkerExecutor, Some(home.as_path()))
+            .expect("build worker doc");
+        assert!(
+            worker
+                .contents
+                .contains("turning the root channel lane into a context dump")
         );
     }
 

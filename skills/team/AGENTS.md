@@ -52,6 +52,12 @@ restating the same rules.
   - `agenthub actor team-tasks` is the canonical path for inspecting the current Team Kanban surface
   - coordinator owns canonical task creation and task lifecycle management for the team
   - channels are for communication/review; Kanban is the canonical task-tracking surface
+- Channel/thread context split:
+  - channel root messages are summary-first entrypoints for one topic, request, review point, or decision
+  - thread replies are the full-context lane for that root topic
+  - use `agenthub actor team-thread-open` before assuming a root channel message contains complete working context
+  - use `agenthub actor team-thread-reply` for long background, evidence, logs, detailed reasoning, or topic-specific follow-up
+  - keep the main channel scannable; do not paste full investigation context into a channel root when a thread can hold it
 - Self-maintenance:
   - each agent may update its own role description/prompt/skill profile through `profile_patch_proposal`
   - use `target="team"` for durable identity-card changes and `target="run"` for temporary run-scoped overrides
@@ -107,6 +113,9 @@ restating the same rules.
     state before using channel messages as the lightweight status broadcast.
 - Channel status messages should actively `@` the relevant agents/people instead of broadcasting
   without ownership context.
+- Channel root messages should carry only the summary needed for broad awareness. If the topic needs
+  deeper context, open the thread and put the detailed follow-up there so only relevant readers pay
+  the full context cost.
 - Findings, debugging experience, reusable heuristics, and newly discovered risks are first-class
   outputs; report them even before implementation completes when they can change team decisions.
 - Large evidence should be summary-first:
