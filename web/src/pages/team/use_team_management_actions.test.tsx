@@ -611,6 +611,40 @@ describe("useTeamManagementActions", () => {
     }
   });
 
+  it("keeps the original copy conflict error when cleanup deletion fails", async () => {
+    mockedApi.createAgent.mockResolvedValueOnce({
+      id: "agent-copy-delete-fails",
+      name: "source-agent-worker-1",
+      workdir: "/repo/source",
+      command: "agenthub-codex-acp",
+      args: [],
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: true,
+      status: "stopped",
+      created_at: 1,
+      updated_at: 1,
+    } as never);
+    mockedApi.updateTeamSpec.mockRejectedValueOnce(
+      Object.assign(new Error("team spec changed"), { status: 409 })
+    );
+    mockedApi.deleteAgent.mockRejectedValueOnce(new Error("delete failed"));
+
+    const params = createParams();
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onCopyExistingTeamAgent("agent-source-1");
+      });
+
+      expect(mockedApi.deleteAgent).toHaveBeenCalledWith("token-1", "agent-copy-delete-fails");
+      expect(params.setError).toHaveBeenCalledWith("team spec changed");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
   it("surfaces an error when the selected copy source is missing", async () => {
     const params = createParams({
       agents: [],

@@ -470,10 +470,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setTeamMemberDraft(null);
       void refreshTeamRuntime(updated.id).catch(() => undefined);
     } catch (err) {
-      const status =
-        typeof (err as { status?: unknown })?.status === "number"
-          ? ((err as { status: number }).status as number)
-          : null;
+      const status = (err as { status?: number })?.status ?? null;
       if (createdAgentId && status === 409) {
         try {
           await api.deleteAgent(token, createdAgentId);
@@ -598,7 +595,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
           // Best-effort cleanup only. Ambiguous failures should not mask the original conflict.
         }
       }
-      setError(parseErrorMessage(err));
+      setError(formatTeamForgeWorktreeError(err) ?? parseErrorMessage(err));
     } finally {
       setBusy(null);
     }
