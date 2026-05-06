@@ -156,7 +156,7 @@ must not be treated as the source of truth when data diverges.
 
 | Surface | Role | Required authority references | Notes |
 | --- | --- | --- | --- |
-| `team_conversation_messages` | authority row | `conversation_id`, `authority_message_id`, `correlation_id` | canonical human-visible message content; does not currently persist `run_id` |
+| `team_conversation_messages` | authority row | `conversation_id`, `authority_message_id`, `correlation_id` | canonical human-visible message content; `correlation_id` is persisted as a first-class authority column; does not currently persist `run_id` |
 | `team_actor_messages` | authority row | `run_id`, sender/recipient actor ids, effective `idempotency_key` | canonical delivery state |
 | `team_channel_message_replicas` | replica row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id` | node-relevant channel cache only; `correlation_id` is persisted as a first-class projection column |
 | remote relay route metadata | delivery metadata | `source_node_id`, `target_node_id`, optional `broadcast_id`, optional `correlation_id`, effective `idempotency_key` | transport/debug only |
@@ -171,6 +171,8 @@ rows start populating it.
 
 - `cargo test internal_grpc_mailbox_send_persists_channel_replica_history -- --nocapture`
 - `cargo test internal_grpc_mailbox_send_rejects_channel_replica_payload_without_correlation_id -- --nocapture`
+- `cargo test -p agenthub-db init_db_adds_task_message_correlation_id_and_backfills_existing_rows -- --nocapture`
+- `cargo test -p agenthub append_task_conversation_message_persists_correlation_id_column -- --nocapture`
 - `cargo test remote_actor_messages_relay_success_marks_message_delivered -- --nocapture`
 - `cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture`
 
@@ -201,3 +203,4 @@ rows start populating it.
 - `docs/journal/2026-05-04-distributed-message-metadata-contract-phase1.md`
 - `docs/journal/2026-05-06-message-archive-group-id-projection.md`
 - `docs/journal/2026-05-06-channel-replica-correlation-projection.md`
+- `docs/journal/2026-05-06-task-message-correlation-authority.md`
