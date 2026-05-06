@@ -4452,6 +4452,204 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn init_db_prefers_authority_group_when_backfilling_channel_replicas() {
+        let dir = unique_temp_dir("db-migrate-channel-replica-authority-group-id");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_definitions");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_runs (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                context_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                input_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                started_at INTEGER,
+                ended_at INTEGER
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_runs");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                correlation_id TEXT NOT NULL DEFAULT '',
+                group_id TEXT,
+                payload_json TEXT NOT NULL,
+                idempotency_key TEXT,
+                created_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_conversation_messages");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_channel_message_replicas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                authority_message_id INTEGER NOT NULL,
+                correlation_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                team_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                source_node_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                stored_at INTEGER NOT NULL,
+                UNIQUE(authority_message_id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_channel_message_replicas");
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (
+                id, name, description, spec_json, owner_user_id, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("team-replica-authority-group")
+        .bind("team replica authority group")
+        .bind(Some("legacy replica authority group id owner boundary"))
+        .bind(r#"{"members":[]}"#)
+        .bind(Some("run-replica-group"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy team");
+        sqlx::query(
+            r#"
+            INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("run-replica-authority-group")
+        .bind("team-replica-authority-group")
+        .bind("task-replica-authority-group")
+        .bind("submitted")
+        .bind("{}")
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy run");
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages (
+                id,
+                conversation_id,
+                task_id,
+                from_actor_id,
+                route,
+                correlation_id,
+                group_id,
+                payload_json,
+                idempotency_key,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+        )
+        .bind(200_i64)
+        .bind("conversation-replica-authority-group")
+        .bind("task-replica-authority-group")
+        .bind("planner")
+        .bind("group_chat")
+        .bind("corr-replica-authority-group")
+        .bind("authority-replica-group")
+        .bind(r#"{"text":"hello"}"#)
+        .bind("idem-replica-authority-group")
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy authority message");
+        sqlx::query(
+            r#"
+            INSERT INTO team_channel_message_replicas (
+                authority_message_id,
+                correlation_id,
+                run_id,
+                team_id,
+                conversation_id,
+                task_id,
+                channel_id,
+                from_actor_id,
+                source_node_id,
+                payload_json,
+                stored_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            "#,
+        )
+        .bind(200_i64)
+        .bind("corr-replica-authority-group")
+        .bind("run-replica-authority-group")
+        .bind("team-replica-authority-group")
+        .bind("conversation-replica-authority-group")
+        .bind("task-replica-authority-group")
+        .bind("all")
+        .bind("planner")
+        .bind("main")
+        .bind(r#"{"text":"hello"}"#)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy replica");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with channel replica authority group migration");
+
+        let group_id: Option<String> = sqlx::query_scalar(
+            "SELECT group_id FROM team_channel_message_replicas WHERE authority_message_id = ?1",
+        )
+        .bind(200_i64)
+        .fetch_one(&pool)
+        .await
+        .expect("read backfilled replica group_id");
+        assert_eq!(group_id, Some("authority-replica-group".to_string()));
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn init_db_fails_when_task_message_idempotency_index_cannot_be_created() {
         let dir = unique_temp_dir("db-migrate-task-message-idempotency-duplicates");
         std::fs::create_dir_all(&dir).expect("create temp dir");
