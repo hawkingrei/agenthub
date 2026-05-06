@@ -232,9 +232,10 @@ test("team setup actions stay reachable through mobile shell-first creation and 
   await workerDialog.getByRole("button", { name: "Copy into Team" }).click();
   await expect(workerDialog).toBeHidden();
 
-  expect(updates).toHaveLength(2);
-  expect(updates[1]?.payload.spec.coordinator_member_id).toBe("agent-forge-4");
-  expect(updates[1]?.payload.spec.members).toEqual([
+  const finalUpdates = fixture.getUpdateSpecPayloads();
+  expect(finalUpdates).toHaveLength(2);
+  expect(finalUpdates[1]?.payload.spec.coordinator_member_id).toBe("agent-forge-4");
+  expect(finalUpdates[1]?.payload.spec.members).toEqual([
     expect.objectContaining({
       member_id: "agent-forge-4",
       role: "coordinator",
