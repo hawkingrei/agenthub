@@ -80,6 +80,8 @@ Roles are hierarchical: a higher role includes all permissions of lower roles.
 | Create agent | ✅ | ✅ | ✅ | - |
 | View own agents | ✅ | ✅ | ✅ | ✅ |
 | View any agent | ✅ | ✅ | - | - |
+| Send input to own agent | ✅ | ✅ | ✅ | - |
+| Send input to any agent | ✅ | ✅ | - | - |
 | Start/stop own agent | ✅ | ✅ | ✅ | - |
 | Start/stop any agent | ✅ | ✅ | - | - |
 | Delete own agent | ✅ | ✅ | ✅ | - |
@@ -102,10 +104,12 @@ Roles are hierarchical: a higher role includes all permissions of lower roles.
 
 - `root` can do everything, everywhere.
 - `maintainer` can manage all agents and teams (create, delete, start, stop) but cannot touch nodes or users.
-- `member` has full access to their own resources. For teams they don't own, they can view and
-  participate in conversations (if invited), but cannot manage membership or delete.
-- `visitor` is strictly read-only. Can view agents they own and teams they're invited to. Cannot
-  create, modify, or delete anything. Cannot send messages.
+- `member` can create agents and teams. Can only manage (start, stop, delete, send input to)
+  agents they created themselves. For teams they don't own, they can view and participate in
+  conversations (if invited), but cannot manage membership or delete.
+- `visitor` is strictly read-only. **Cannot create agents. Cannot manage any agents.**
+  Can view agents they own and teams they're invited to. Cannot create, modify, or delete
+  anything. Cannot send messages.
 
 ### 3) Resource Ownership
 
