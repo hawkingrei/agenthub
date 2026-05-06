@@ -584,16 +584,8 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setShowCopyExistingAgentModal(false);
       void refreshTeamRuntime(updated.id).catch(() => undefined);
     } catch (err) {
-      const status =
-        typeof (err as { status?: unknown })?.status === "number"
-          ? ((err as { status: number }).status as number)
-          : null;
-      if (createdAgentId && status === 409) {
-        try {
-          await api.deleteAgent(token, createdAgentId);
-        } catch {
-          // Best-effort cleanup only. Ambiguous failures should not mask the original conflict.
-        }
+      if (createdAgentId && (err as { status?: number })?.status === 409) {
+        void api.deleteAgent(token, createdAgentId).catch(() => undefined);
       }
       setError(formatTeamForgeWorktreeError(err) ?? parseErrorMessage(err));
     } finally {
