@@ -157,8 +157,8 @@ must not be treated as the source of truth when data diverges.
 | Surface | Role | Required authority references | Notes |
 | --- | --- | --- | --- |
 | `team_conversation_messages` | authority row | `conversation_id`, `authority_message_id`, `correlation_id`, optional `group_id` | canonical human-visible message content; `correlation_id` and the Team-derived nullable `group_id` are persisted as first-class authority columns; does not currently persist `run_id` |
-| `team_actor_messages` | authority row | `run_id`, sender/recipient actor ids, effective `idempotency_key` | canonical delivery state |
-| `team_channel_message_replicas` | replica row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id` | node-relevant channel cache only; `correlation_id` is persisted as a first-class projection column |
+| `team_actor_messages` | authority row | `run_id`, sender/recipient actor ids, effective `idempotency_key`, optional `group_id` | canonical delivery state; nullable `group_id` inherits from the owning run |
+| `team_channel_message_replicas` | replica row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id`, optional `group_id` | node-relevant channel cache only; `correlation_id` and nullable `group_id` are persisted as first-class projection columns |
 | remote relay route metadata | delivery metadata | `source_node_id`, `target_node_id`, optional `broadcast_id`, optional `correlation_id`, effective `idempotency_key` | transport/debug only |
 | archive/search document | projection row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id`, optional `group_id` | must point back to `main` authority; `group_id` is preserved only when supplied by a live authority source |
 
@@ -183,9 +183,9 @@ rollout order is:
 3. Propagate `group_id` into message authority rows.
    - `team_conversation_messages` inherits from the owning task, which already inherits from the
      owning Team.
-   - `team_actor_messages` should inherit from the owning run or Team context.
+   - `team_actor_messages` inherits from the owning run.
 4. Propagate `group_id` into projection rows.
-   - `team_channel_message_replicas` should copy it from the authority message or run context.
+   - `team_channel_message_replicas` copies it from the authority message or run context.
    - archive/search documents should preserve it when the authority source supplies it.
 5. Enforce routing boundaries after data is populated.
    - mailbox, channel fan-out, and remote relay paths should reject cross-group routing unless a
@@ -202,6 +202,10 @@ treat missing `group_id` as `unknown`, not as permission to cross group boundari
 - `cargo test -p agenthub append_task_conversation_message_persists_correlation_id_column -- --nocapture`
 - `cargo test -p agenthub-db init_db_adds_and_backfills_team_conversation_message_group_ids -- --nocapture`
 - `cargo test -p agenthub append_task_conversation_message_persists_authority_group_id -- --nocapture`
+- `cargo test -p agenthub-db init_db_adds_and_backfills_team_actor_message_group_ids -- --nocapture`
+- `cargo test -p agenthub send_actor_message_persists_authority_group_id -- --nocapture`
+- `cargo test -p agenthub-db init_db_adds_and_backfills_channel_replica_group_ids -- --nocapture`
+- `cargo test -p agenthub internal_grpc_mailbox_send_persists_channel_replica_history -- --nocapture`
 - `cargo test remote_actor_messages_relay_success_marks_message_delivered -- --nocapture`
 - `cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture`
 

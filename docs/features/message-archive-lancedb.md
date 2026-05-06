@@ -262,9 +262,9 @@ actor-scoped archive filters find messages delivered to that actor.
 - Migration must be resumable and idempotent.
 - New dual-written documents and migrated historical documents must share the same canonical schema.
 - Archive documents carry an optional `group_id` projection field for the future
-  multi-tenant/group rollout. Team conversation message documents copy the nullable
-  `team_conversation_messages.group_id` value when the authority row supplies it; archive backends
-  must still preserve and filter it when supplied by future sources or re-indexing.
+  multi-tenant/group rollout. Team conversation and actor message documents copy the nullable
+  authority-row `group_id` value when supplied; archive backends must still preserve and filter it
+  when supplied by future sources or re-indexing.
 - Team migration batches source rows and appends each batch immediately; `batch_size` must bound both
   source rows materialized at once and archive writes.
 - Team migration excludes `shared_thread_mailbox` bootstrap runs from run-event and actor-mailbox

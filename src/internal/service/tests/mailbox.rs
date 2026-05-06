@@ -332,7 +332,7 @@ async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
 
     let replica = sqlx::query(
             r#"
-            SELECT authority_message_id, correlation_id, run_id, team_id, conversation_id, task_id, channel_id, from_actor_id, source_node_id, payload_json
+            SELECT authority_message_id, correlation_id, group_id, run_id, team_id, conversation_id, task_id, channel_id, from_actor_id, source_node_id, payload_json
             FROM team_channel_message_replicas
             WHERE authority_message_id = ?1
             "#,
@@ -348,6 +348,10 @@ async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
     assert_eq!(
         replica.get::<String, _>("correlation_id"),
         "corr-internal-grpc-replica-1"
+    );
+    assert_eq!(
+        replica.get::<Option<String>, _>("group_id"),
+        Some("internal-grpc-mailbox-group".to_string())
     );
     assert_eq!(replica.get::<String, _>("run_id"), run.id);
     assert_eq!(replica.get::<String, _>("channel_id"), "all");

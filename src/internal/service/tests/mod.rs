@@ -71,18 +71,21 @@ fn authenticated_request<T>(payload: T, token: &str) -> Request<T> {
 async fn create_team_run(state: &crate::state::AppState) -> crate::team::TeamRunRecord {
     let team = state
         .teams
-        .create_team(TeamDefinitionConfig {
-            name: format!("internal-grpc-mailbox-{}", Uuid::new_v4()),
-            description: Some("internal grpc mailbox test team".to_string()),
-            spec: json!({
-                "entrypoint":"planner",
-                "coordinator_member_id":"planner",
-                "members":[
-                    {"member_id":"planner","role":"coordinator"},
-                    {"member_id":"reviewer","role":"worker"}
-                ]
-            }),
-        })
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: format!("internal-grpc-mailbox-{}", Uuid::new_v4()),
+                description: Some("internal grpc mailbox test team".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "coordinator_member_id":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"coordinator"},
+                        {"member_id":"reviewer","role":"worker"}
+                    ]
+                }),
+            },
+            Some("internal-grpc-mailbox-group"),
+        )
         .await
         .expect("create test team");
     state

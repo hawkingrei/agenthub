@@ -349,6 +349,7 @@ fn team_actor_message_archive_document(
     team_id: &str,
     message: &TeamActorMessageRecord,
     scope: &MessageArchiveScopeFallback,
+    group_id: Option<String>,
 ) -> MessageDocument {
     let redacted_payload = redact_sensitive_json(&message.payload);
     MessageDocument {
@@ -361,7 +362,7 @@ fn team_actor_message_archive_document(
         logical_message_id: None,
         authority_message_id: message_archive_payload_i64(&message.payload, "authority_message_id"),
         correlation_id: message_archive_payload_string(&message.payload, "correlation_id"),
-        group_id: None,
+        group_id,
         team_id: Some(team_id.to_string()),
         run_id: Some(message.run_id.clone()),
         conversation_id: message_archive_payload_string_any(
@@ -2181,15 +2182,18 @@ impl TeamManager {
     ) -> anyhow::Result<Option<MessageDocument>> {
         let row = sqlx::query(
             r#"
-            SELECT team_id, input_json
-            FROM team_runs
-            WHERE id = ?1
+            SELECT r.team_id, m.group_id, r.input_json
+            FROM team_runs AS r
+            LEFT JOIN team_actor_messages AS m ON m.id = ?2
+            WHERE r.id = ?1
             "#,
         )
         .bind(&message.run_id)
+        .bind(message.message_id)
         .fetch_one(&self.db)
         .await?;
         let team_id: String = row.get("team_id");
+        let group_id: Option<String> = row.try_get("group_id")?;
         let input_json: String = row.get("input_json");
         let run_input: Value = serde_json::from_str(&input_json)?;
         if message_archive_payload_string(&run_input, "bootstrap_kind").as_deref()
@@ -2207,7 +2211,7 @@ impl TeamManager {
         )
         .await?;
         Ok(Some(team_actor_message_archive_document(
-            &team_id, message, &scope,
+            &team_id, message, &scope, group_id,
         )))
     }
 
@@ -2313,12 +2317,29 @@ impl TeamManager {
                 conversation_id,
                 task_id,
                 channel_id,
+                group_id,
                 from_actor_id,
                 source_node_id,
                 payload_json,
                 stored_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                COALESCE(
+                    (SELECT group_id FROM team_conversation_messages WHERE id = ?1),
+                    (SELECT group_id FROM team_runs WHERE id = ?3)
+                ),
+                ?8,
+                ?9,
+                ?10,
+                ?11
+            )
             "#,
         )
         .bind(authority_message_id)
@@ -2613,6 +2634,7 @@ impl TeamManager {
                     m.transport,
                     m.route_json,
                     m.payload_json,
+                    m.group_id,
                     m.status,
                     m.created_at,
                     m.delivered_at,
@@ -2654,6 +2676,7 @@ impl TeamManager {
                     .expect("run scope is cached before use")
                     .clone();
                 let message = parse_team_actor_message_row(&row)?;
+                let group_id: Option<String> = row.try_get("group_id")?;
                 let scope = message_archive_scope_for_payload_db(
                     &self.db,
                     &team_id,
@@ -2663,7 +2686,7 @@ impl TeamManager {
                 )
                 .await?;
                 documents.push(team_actor_message_archive_document(
-                    &team_id, &message, &scope,
+                    &team_id, &message, &scope, group_id,
                 ));
                 report.team_actor_messages += 1;
             }
