@@ -1271,13 +1271,19 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_conversation_messages.idempotency_key",
     )
     .await;
+    let team_conversation_messages_had_group_id =
+        sqlite_table_has_column(&pool, "team_conversation_messages", "group_id").await?;
     add_column_if_missing(
         &pool,
         "ALTER TABLE team_conversation_messages ADD COLUMN group_id TEXT",
         "team_conversation_messages.group_id",
     )
     .await;
-    backfill_team_conversation_message_group_ids(&pool).await?;
+    if !team_conversation_messages_had_group_id
+        && sqlite_table_has_column(&pool, "team_conversation_messages", "group_id").await?
+    {
+        backfill_team_conversation_message_group_ids(&pool).await?;
+    }
     create_team_conversation_messages_idempotency_index(&pool).await?;
     if !sqlite_table_has_column(&pool, "team_conversation_messages", "correlation_id").await? {
         add_column_if_missing(

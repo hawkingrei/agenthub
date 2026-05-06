@@ -1942,13 +1942,6 @@ impl TeamManager {
         let redacted_payload = redact_sensitive_json(&payload);
         let payload_json = redacted_payload.to_string();
         let correlation_id = task_conversation_payload_correlation_id(&redacted_payload);
-        let group_id = sqlx::query_scalar::<_, Option<String>>(
-            "SELECT group_id FROM team_tasks WHERE id = ?1",
-        )
-        .bind(task_id)
-        .fetch_optional(&self.db)
-        .await?
-        .flatten();
         let to_actor_id = to_actor_id
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -1971,7 +1964,10 @@ impl TeamManager {
                     idempotency_key,
                     created_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                SELECT ?1, ?2, ?3, ?4, ?5, ?6, group_id, ?7, ?8, ?9
+                FROM team_tasks
+                WHERE id = ?2
+                RETURNING id, group_id
                 "#,
             )
             .bind(&conversation.id)
@@ -1980,27 +1976,30 @@ impl TeamManager {
             .bind(to_actor_id.as_deref())
             .bind(route)
             .bind(&correlation_id)
-            .bind(group_id.as_deref())
             .bind(&payload_json)
             .bind(idempotency_key)
             .bind(now)
-            .execute(&mut *tx)
+            .fetch_one(&mut *tx)
             .await
             {
-                Ok(result) => (
-                    TeamConversationMessageRecord {
-                        message_id: result.last_insert_rowid(),
-                        conversation_id: conversation.id.clone(),
-                        task_id: task_id.to_string(),
-                        group_id: group_id.clone(),
-                        from_actor_id: from_actor_id.to_string(),
-                        to_actor_id: to_actor_id.clone(),
-                        route: route.to_string(),
-                        payload: redacted_payload.clone(),
-                        created_at: now,
-                    },
-                    true,
-                ),
+                Ok(row) => {
+                    let message_id = row.get("id");
+                    let group_id: Option<String> = row.try_get("group_id")?;
+                    (
+                        TeamConversationMessageRecord {
+                            message_id,
+                            conversation_id: conversation.id.clone(),
+                            task_id: task_id.to_string(),
+                            group_id,
+                            from_actor_id: from_actor_id.to_string(),
+                            to_actor_id: to_actor_id.clone(),
+                            route: route.to_string(),
+                            payload: redacted_payload.clone(),
+                            created_at: now,
+                        },
+                        true,
+                    )
+                }
                 Err(err) if is_task_conversation_message_idempotency_unique_violation(&err) => {
                     let existing = fetch_task_conversation_message_by_idempotency(
                         &mut tx,
@@ -2024,7 +2023,7 @@ impl TeamManager {
             tx.commit().await?;
             outcome
         } else {
-            let result = sqlx::query(
+            let inserted = sqlx::query(
                 r#"
                 INSERT INTO team_conversation_messages (
                     conversation_id,
@@ -2037,7 +2036,10 @@ impl TeamManager {
                     payload_json,
                     created_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                SELECT ?1, ?2, ?3, ?4, ?5, ?6, group_id, ?7, ?8
+                FROM team_tasks
+                WHERE id = ?2
+                RETURNING id, group_id
                 "#,
             )
             .bind(&conversation.id)
@@ -2046,17 +2048,18 @@ impl TeamManager {
             .bind(to_actor_id.as_deref())
             .bind(route)
             .bind(&correlation_id)
-            .bind(group_id.as_deref())
             .bind(&payload_json)
             .bind(now)
-            .execute(&self.db)
+            .fetch_one(&self.db)
             .await?;
+            let message_id = inserted.get("id");
+            let group_id: Option<String> = inserted.try_get("group_id")?;
             (
                 TeamConversationMessageRecord {
-                    message_id: result.last_insert_rowid(),
+                    message_id,
                     conversation_id: conversation.id.clone(),
                     task_id: task_id.to_string(),
-                    group_id: group_id.clone(),
+                    group_id,
                     from_actor_id: from_actor_id.to_string(),
                     to_actor_id: to_actor_id.clone(),
                     route: route.to_string(),
