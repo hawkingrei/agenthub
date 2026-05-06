@@ -186,7 +186,12 @@ struct MessageArchiveScopeFallback {
     task_id: Option<String>,
 }
 
-type TeamRunArchiveScope = (String, Option<String>, MessageArchiveScopeFallback);
+struct TeamRunArchiveScope {
+    team_id: String,
+    group_id: Option<String>,
+    base_scope: MessageArchiveScopeFallback,
+}
+
 type TeamRunArchiveScopeCache = HashMap<String, Option<TeamRunArchiveScope>>;
 
 impl MessageArchiveScopeFallback {
@@ -268,22 +273,22 @@ async fn team_run_event_archive_document_for_db_cached(
         let resolved = team_run_event_archive_scope_for_db(db, &event.run_id).await?;
         run_scope_cache.insert(event.run_id.clone(), resolved);
     }
-    let Some(Some((team_id, group_id, base_scope))) = run_scope_cache.get(&event.run_id) else {
+    let Some(Some(cached_scope)) = run_scope_cache.get(&event.run_id) else {
         return Ok(None);
     };
     let scope = message_archive_scope_for_payload_db(
         db,
-        team_id,
+        &cached_scope.team_id,
         &event.payload,
-        base_scope,
+        &cached_scope.base_scope,
         task_conversation_cache,
     )
     .await?;
     Ok(Some(team_run_event_archive_document(
-        team_id,
+        &cached_scope.team_id,
         event,
         &scope,
-        group_id.as_deref(),
+        cached_scope.group_id.as_deref(),
     )))
 }
 
@@ -310,11 +315,11 @@ async fn team_run_event_archive_scope_for_db(
     {
         return Ok(None);
     }
-    Ok(Some((
+    Ok(Some(TeamRunArchiveScope {
         team_id,
         group_id,
-        MessageArchiveScopeFallback::from_run_input(&run_input),
-    )))
+        base_scope: MessageArchiveScopeFallback::from_run_input(&run_input),
+    }))
 }
 
 fn team_run_event_archive_document(

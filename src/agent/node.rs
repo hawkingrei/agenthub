@@ -5,22 +5,24 @@ use super::{AgentNodeConfig, AgentNodeRecord, AgentNodeUpdate};
 pub(crate) const AGENT_NODE_MAIN_ID: &str = "main";
 pub(crate) const AGENT_NODE_MAIN_NAME: &str = "Main Node";
 
-type ValidatedAgentNodeConfig = (
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-);
+#[derive(Debug)]
+pub(crate) struct ValidatedAgentNodeConfig {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) grpc_target: String,
+    pub(crate) tls_server_name: Option<String>,
+    pub(crate) default_worktree_root: Option<String>,
+    pub(crate) group_id: Option<String>,
+}
 
-type ValidatedAgentNodeUpdate = (
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-);
+#[derive(Debug)]
+pub(crate) struct ValidatedAgentNodeUpdate {
+    pub(crate) name: String,
+    pub(crate) grpc_target: String,
+    pub(crate) tls_server_name: Option<String>,
+    pub(crate) default_worktree_root: Option<String>,
+    pub(crate) group_id: Option<String>,
+}
 
 pub(crate) fn build_main_agent_node_record() -> AgentNodeRecord {
     AgentNodeRecord {
@@ -107,14 +109,14 @@ pub(crate) fn validate_agent_node_config_input(
     let default_worktree_root =
         validate_agent_node_default_worktree_root(config.default_worktree_root.as_deref())?;
     let group_id = validate_agent_node_group_id(config.group_id.as_deref())?;
-    Ok((
+    Ok(ValidatedAgentNodeConfig {
         id,
         name,
         grpc_target,
         tls_server_name,
         default_worktree_root,
         group_id,
-    ))
+    })
 }
 
 pub(crate) fn validate_agent_node_update_input(
@@ -131,13 +133,13 @@ pub(crate) fn validate_agent_node_update_input(
     let default_worktree_root =
         validate_agent_node_default_worktree_root(config.default_worktree_root.as_deref())?;
     let group_id = validate_agent_node_group_id(config.group_id.as_deref())?;
-    Ok((
+    Ok(ValidatedAgentNodeUpdate {
         name,
         grpc_target,
         tls_server_name,
         default_worktree_root,
         group_id,
-    ))
+    })
 }
 
 fn validate_agent_node_default_worktree_root(raw: Option<&str>) -> anyhow::Result<Option<String>> {
@@ -202,11 +204,14 @@ mod tests {
             group_id: Some(" group-a ".to_string()),
         })
         .expect("https target should pass");
-        assert_eq!(ok.0, "node-local");
-        assert_eq!(ok.2, "https://node-local.internal:50051");
-        assert_eq!(ok.3.as_deref(), Some("node-local.internal"));
-        assert_eq!(ok.4.as_deref(), Some("~/.agenthub/worktrees"));
-        assert_eq!(ok.5.as_deref(), Some("group-a"));
+        assert_eq!(ok.id, "node-local");
+        assert_eq!(ok.grpc_target, "https://node-local.internal:50051");
+        assert_eq!(ok.tls_server_name.as_deref(), Some("node-local.internal"));
+        assert_eq!(
+            ok.default_worktree_root.as_deref(),
+            Some("~/.agenthub/worktrees")
+        );
+        assert_eq!(ok.group_id.as_deref(), Some("group-a"));
     }
 
     #[test]
@@ -232,10 +237,10 @@ mod tests {
             group_id: Some(" group-east ".to_string()),
         })
         .expect("blank optional fields should normalize");
-        assert_eq!(ok.0, "Node East");
-        assert_eq!(ok.1, "https://node-east.internal:50051");
-        assert!(ok.2.is_none());
-        assert!(ok.3.is_none());
-        assert_eq!(ok.4.as_deref(), Some("group-east"));
+        assert_eq!(ok.name, "Node East");
+        assert_eq!(ok.grpc_target, "https://node-east.internal:50051");
+        assert!(ok.tls_server_name.is_none());
+        assert!(ok.default_worktree_root.is_none());
+        assert_eq!(ok.group_id.as_deref(), Some("group-east"));
     }
 }

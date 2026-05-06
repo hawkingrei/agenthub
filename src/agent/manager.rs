@@ -896,19 +896,18 @@ impl AgentManager {
         config: AgentNodeConfig,
     ) -> anyhow::Result<AgentNodeRecord> {
         let schema_caps = self.agent_node_schema_caps().await?;
-        let (id, name, grpc_target, tls_server_name, default_worktree_root, group_id) =
-            validate_agent_node_config_input(&config)?;
+        let validated = validate_agent_node_config_input(&config)?;
         let now = Utc::now().timestamp();
         insert_agent_node_record(
             &self.db,
             schema_caps,
             AgentNodeInsertRecord {
-                id: &id,
-                name: &name,
-                grpc_target: &grpc_target,
-                tls_server_name: tls_server_name.as_deref(),
-                default_worktree_root: default_worktree_root.as_deref(),
-                group_id: group_id.as_deref(),
+                id: &validated.id,
+                name: &validated.name,
+                grpc_target: &validated.grpc_target,
+                tls_server_name: validated.tls_server_name.as_deref(),
+                default_worktree_root: validated.default_worktree_root.as_deref(),
+                group_id: validated.group_id.as_deref(),
                 now,
             },
         )
@@ -928,19 +927,18 @@ impl AgentManager {
             );
         }
         let schema_caps = self.agent_node_schema_caps().await?;
-        let (name, grpc_target, tls_server_name, default_worktree_root, group_id) =
-            validate_agent_node_update_input(&config)?;
+        let validated = validate_agent_node_update_input(&config)?;
         let now = Utc::now().timestamp();
         update_agent_node_record(
             &self.db,
             schema_caps,
             AgentNodeUpdateRecord {
                 node_id: normalized,
-                name: &name,
-                grpc_target: &grpc_target,
-                tls_server_name: tls_server_name.as_deref(),
-                default_worktree_root: default_worktree_root.as_deref(),
-                group_id: group_id.as_deref(),
+                name: &validated.name,
+                grpc_target: &validated.grpc_target,
+                tls_server_name: validated.tls_server_name.as_deref(),
+                default_worktree_root: validated.default_worktree_root.as_deref(),
+                group_id: validated.group_id.as_deref(),
                 now,
             },
         )
