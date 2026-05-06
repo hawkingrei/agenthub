@@ -1009,6 +1009,78 @@ export async function mockTeamPageApis(
     }
   );
 
+  // --- Channel routes ---
+  const teamChannelsByTeamId = new Map<string, Array<{ channel_id: string; description?: string | null; task_id?: string | null; team_id: string; created_at: number; updated_at: number }>>();
+  const ensureChannels = (teamId: string) => {
+    if (!teamChannelsByTeamId.has(teamId)) {
+      teamChannelsByTeamId.set(teamId, []);
+    }
+    return teamChannelsByTeamId.get(teamId)!;
+  };
+
+  await page.route(/\/api\/teams\/[^/]+\/channels(?:\?.*)?$/, async (route, request) => {
+    const teamId = request.url().match(/\/api\/teams\/([^/]+)\/channels/)?.[1] ?? "";
+    if (request.method() === "GET") {
+      await route.fulfill(jsonResponse(ensureChannels(teamId)));
+      return;
+    }
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as { channel_id: string; description?: string | null };
+      const channels = ensureChannels(teamId);
+      if (channels.some((ch) => ch.channel_id === payload.channel_id)) {
+        await route.fulfill(jsonResponse({ error: "channel already exists" }, 409));
+        return;
+      }
+      const created = {
+        channel_id: payload.channel_id,
+        description: payload.description ?? null,
+        task_id: null,
+        team_id: teamId,
+        created_at: now,
+        updated_at: now,
+      };
+      channels.push(created);
+      await route.fulfill(jsonResponse(created));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/channels\/[^/]+$/, async (route, request) => {
+    const m = request.url().match(/\/api\/teams\/([^/]+)\/channels\/([^/]+)$/);
+    if (!m || request.method() !== "DELETE") {
+      await route.fallback();
+      return;
+    }
+    const teamId = m[1];
+    const channelId = m[2];
+    const channels = ensureChannels(teamId);
+    const idx = channels.findIndex((ch) => ch.channel_id === channelId);
+    if (idx === -1) {
+      await route.fulfill(jsonResponse({ error: "channel not found" }, 404));
+      return;
+    }
+    const [deleted] = channels.splice(idx, 1);
+    await route.fulfill(jsonResponse(deleted));
+  });
+
+  // Thread reply route
+  await page.route(
+    /\/api\/teams\/[^/]+\/channels\/[^/]+\/threads\/\d+\/replies$/,
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const payload = request.postDataJSON() as { text: string; mention_actor_ids?: string[] };
+      await route.fulfill(jsonResponse({
+        message_id: 1000 + Math.floor(Math.random() * 9000),
+        text: payload.text,
+        created_at: now,
+      }));
+    }
+  );
+
   return {
     now,
     auth,
