@@ -26,4 +26,20 @@ describe("TeamSetupPanel", () => {
     expect(html).toContain("Create a new Team-owned agent or copy an existing agent configuration.");
     expect(html).toContain("Create the first coordinator agent");
   });
+
+  it("uses default goal guidance when the team has no description", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamSetupPanel
+          description="  "
+          forgeLabel="Create New Agent"
+          copyExistingLabel="Copy Existing Agent"
+          onForge={vi.fn()}
+          onCopyExisting={vi.fn()}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Capture the mission, constraints, and what this team should own.");
+  });
 });
