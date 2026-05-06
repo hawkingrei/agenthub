@@ -169,6 +169,34 @@ test("team adoption copy keeps move out of the default action path and creates a
   });
   expect(fixture.agents.some((agent) => agent.id === "agent-coordinator-1")).toBe(true);
   expect(fixture.agents.some((agent) => agent.id === "agent-forge-4")).toBe(true);
+
+  await openSelectedTeamMenu(page);
+  await page.getByRole("menuitem", { name: /Copy Existing Agent/ }).click();
+  const workerDialog = page
+    .locator("[role='dialog']")
+    .filter({ hasText: "Copy an existing agent into this Team." })
+    .last();
+  await expect(workerDialog).toBeVisible();
+  await expect(workerDialog.getByText("new Team-owned worker agent").first()).toBeVisible();
+  await workerDialog.getByLabel("Search existing agents").fill("agent-worker-1");
+  await workerDialog.locator("li", { hasText: "agent-worker-1" }).getByRole("button").click();
+  await workerDialog.getByRole("button", { name: "Copy into Team" }).click();
+  await expect(workerDialog).toBeHidden();
+
+  const finalUpdates = fixture.getUpdateSpecPayloads();
+  expect(finalUpdates).toHaveLength(2);
+  expect(finalUpdates[1]?.payload.spec.coordinator_member_id).toBe("agent-forge-4");
+  expect(finalUpdates[1]?.payload.spec.members).toEqual([
+    expect.objectContaining({
+      member_id: "agent-forge-4",
+      role: "coordinator",
+    }),
+    expect.objectContaining({
+      member_id: "agent-forge-5",
+      role: "worker",
+      description: "Copied from existing agent Worker Agent.",
+    }),
+  ]);
 });
 
 test("team create modal only captures mission metadata and points member setup to the next step", async ({

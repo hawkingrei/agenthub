@@ -6,6 +6,7 @@ import {
   mockTeamPageApis,
   openMainTeamAction,
   openTeamFromSelector,
+  selectedTeamMenuLocator,
 } from "./team_page_helpers";
 
 test("team page keeps single-column proportions on mobile viewport", async ({
@@ -171,7 +172,7 @@ test("agents workbench keeps mobile primary controls reachable", async ({
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
 });
 
-test("team setup actions stay reachable after mobile shell-first creation", async ({
+test("team setup actions stay reachable through mobile shell-first creation and worker add", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
@@ -216,6 +217,35 @@ test("team setup actions stay reachable after mobile shell-first creation", asyn
     role: "coordinator",
     description: "Copied from existing agent Coordinator Agent.",
   });
+
+  await page.getByRole("button", { name: "Show teams panel" }).click();
+  await selectedTeamMenuLocator(page).click();
+  await page.getByRole("menuitem", { name: "Copy Existing Agent" }).click();
+  const workerDialog = page
+    .locator("[role='dialog']")
+    .filter({ hasText: "Copy an existing agent into this Team." })
+    .last();
+  await expect(workerDialog).toBeVisible();
+  await expect(workerDialog.getByText("new Team-owned worker agent").first()).toBeVisible();
+  await workerDialog.getByLabel("Search existing agents").fill("agent-worker-1");
+  await workerDialog.locator("li", { hasText: "agent-worker-1" }).getByRole("button").click();
+  await workerDialog.getByRole("button", { name: "Copy into Team" }).click();
+  await expect(workerDialog).toBeHidden();
+
+  const finalUpdates = fixture.getUpdateSpecPayloads();
+  expect(finalUpdates).toHaveLength(2);
+  expect(finalUpdates[1]?.payload.spec.coordinator_member_id).toBe("agent-forge-4");
+  expect(finalUpdates[1]?.payload.spec.members).toEqual([
+    expect.objectContaining({
+      member_id: "agent-forge-4",
+      role: "coordinator",
+    }),
+    expect.objectContaining({
+      member_id: "agent-forge-5",
+      role: "worker",
+      description: "Copied from existing agent Worker Agent.",
+    }),
+  ]);
 
   const horizontalOverflow = await page.evaluate(() => {
     return document.documentElement.scrollWidth - document.documentElement.clientWidth;
