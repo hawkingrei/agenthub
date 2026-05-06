@@ -470,10 +470,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setTeamMemberDraft(null);
       void refreshTeamRuntime(updated.id).catch(() => undefined);
     } catch (err) {
-      const status =
-        typeof (err as { status?: unknown })?.status === "number"
-          ? ((err as { status: number }).status as number)
-          : null;
+      const status = (err as { status?: number })?.status ?? null;
       if (createdAgentId && status === 409) {
         try {
           await api.deleteAgent(token, createdAgentId);
@@ -553,6 +550,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setBusy("copy-team-agent");
     setError(null);
     setWarning(null);
+    let createdAgentId: string | null = null;
     try {
       const created = await api.createAgent(token, {
         name: copiedAgentName,
@@ -566,6 +564,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         worktree_ref: copiedWorktreeRef,
         code_mode: sourceAgent.code_mode,
       });
+      createdAgentId = created.id;
       const updated = await api.updateTeamSpec(token, selectedTeam.id, {
         spec: appendTeamMemberToSpec(
           selectedTeam.spec,
@@ -585,7 +584,10 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setShowCopyExistingAgentModal(false);
       void refreshTeamRuntime(updated.id).catch(() => undefined);
     } catch (err) {
-      setError(parseErrorMessage(err));
+      if (createdAgentId && (err as { status?: number })?.status === 409) {
+        void api.deleteAgent(token, createdAgentId).catch(() => undefined);
+      }
+      setError(formatTeamForgeWorktreeError(err) ?? parseErrorMessage(err));
     } finally {
       setBusy(null);
     }
