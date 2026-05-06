@@ -472,13 +472,20 @@ export async function selectTeamChannelFromSidebar(
   page: import("@playwright/test").Page,
   channelId: string
 ): Promise<void> {
-  const sidebar = page.locator(".teams-sidebar");
-  const channelEntry = sidebar
+  const channelEntry = teamChannelSidebarEntry(page, channelId);
+  await expect(channelEntry).toBeVisible();
+  await channelEntry.click();
+}
+
+export function teamChannelSidebarEntry(
+  page: import("@playwright/test").Page,
+  channelId: string
+) {
+  return page
+    .locator(".teams-sidebar")
     .locator("button")
     .filter({ hasText: `# ${channelId}` })
     .first();
-  await expect(channelEntry).toBeVisible();
-  await channelEntry.click();
 }
 
 export async function openMainTeamAction(
