@@ -9,7 +9,7 @@ describe("TeamSetupPanel", () => {
       <MantineProvider>
         <TeamSetupPanel
           description="Own query debugging"
-          forgeLabel="Add First Coordinator Agent"
+          forgeLabel="Create New Agent"
           copyExistingLabel="Copy Existing Agent"
           onForge={vi.fn()}
           onCopyExisting={vi.fn()}
@@ -18,11 +18,12 @@ describe("TeamSetupPanel", () => {
     );
 
     expect(html).toContain("No agents have joined this team yet.");
-    expect(html).toContain("Add First Coordinator Agent");
+    expect(html).toContain("Create New Agent");
     expect(html).toContain("Copy Existing Agent");
     expect(html).toContain("Alpha");
-    expect(html).toContain("until you add the first coordinator agent");
-    expect(html).toContain("This first agent becomes the coordinator.");
+    expect(html).toContain("Choose one of the two agent paths below");
+    expect(html).toContain("The first added agent becomes the coordinator");
+    expect(html).toContain("Create a new Team-owned agent or copy an existing agent configuration.");
     expect(html).toContain("Create the first coordinator agent");
   });
 });

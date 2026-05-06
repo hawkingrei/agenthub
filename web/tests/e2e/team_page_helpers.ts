@@ -28,9 +28,9 @@ export function selectedTeamMenuLocator(page: import("@playwright/test").Page) {
 }
 
 const TEAM_ADD_AGENT_ENTRY_LABEL_PATTERN =
-  /^(Add First Coordinator Agent|Add Worker Agent|Add Agent)$/;
+  /^(Create New Agent|Add First Coordinator Agent|Add Worker Agent|Add Agent)$/;
 const TEAM_CREATE_AGENT_CONFIRM_LABEL_PATTERN =
-  /^(Create Coordinator Agent|Create Worker Agent|Create Agent)$/;
+  /^(Create Agent|Create Coordinator Agent|Create Worker Agent)$/;
 const TEAM_MEMBER_NAME_LABEL_PATTERN = /^(Name|Agent name)$/;
 const TEAM_MEMBER_DESCRIPTION_LABEL_PATTERN = /^(Description|Identity)$/;
 const TEAM_MEMBER_RUNTIME_LABEL_PATTERN = /^(Runtime|Role model)$/;

@@ -15,6 +15,7 @@ import {
   mockTeamPageApis,
   openAdvancedView,
   openMainTeamAction,
+  openSelectedTeamMenu,
   openTeamFromSelector,
   selectAgentFromSidebar,
   selectTeamChannelFromSidebar,
@@ -128,7 +129,7 @@ test("team member setup adds the first agent and appends more agents through spe
   ]);
 });
 
-test("team adoption copy keeps move disabled and creates a team-owned coordinator", async ({
+test("team adoption copy keeps move out of the default action path and creates a team-owned coordinator", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
@@ -143,14 +144,13 @@ test("team adoption copy keeps move disabled and creates a team-owned coordinato
   await page.getByRole("button", { name: "Copy Existing Agent" }).click();
   const dialog = page
     .locator("[role='dialog']")
-    .filter({ hasText: "Copy an existing agent into this team." })
+    .filter({ hasText: "Copy an existing agent into this Team." })
     .last();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("The original agent remains unchanged.")).toBeVisible();
 
   const moveButton = dialog.getByRole("button", { name: "Move to Team (later)" });
-  await expect(moveButton).toBeVisible();
-  await expect(moveButton).toBeDisabled();
+  await expect(moveButton).toHaveCount(0);
 
   const copyButton = dialog.getByRole("button", { name: "Copy into Team" });
   await expect(copyButton).toBeEnabled();
@@ -435,6 +435,7 @@ test("team setup keeps add agent wording after the first member binds", async ({
     goal: "Bind coordinator in-place before worker setup.",
   });
   await expectAddAgentEntryVisible(page, teamName);
+  await expect(page.getByRole("button", { name: "Create New Agent" })).toBeVisible();
 
   await createTeamMemberFromModal(page, {
     teamName,
@@ -444,6 +445,9 @@ test("team setup keeps add agent wording after the first member binds", async ({
 
   await openTeamFromSelector(page, teamName);
   await expectAddAgentEntryVisible(page, teamName);
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Create New Agent" })).toBeVisible();
+  await page.keyboard.press("Escape");
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(1);
   expect(updates[0]?.payload.spec.members[0]?.member_id).toBe("agent-forge-1");

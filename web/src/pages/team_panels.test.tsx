@@ -1075,7 +1075,7 @@ describe("team panels interactions", () => {
             onOpenCurrentMachine={onOpenCurrentMachine}
             onOpenTeamMemberForge={onOpenTeamMemberForge}
             onOpenTeamMemberCopyExisting={onOpenTeamMemberCopyExisting}
-            teamMemberForgeLabel="Add Worker Agent"
+            teamMemberForgeLabel="Create New Agent"
             teamMemberCopyExistingLabel="Copy Existing Agent"
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}
@@ -1101,8 +1101,8 @@ describe("team panels interactions", () => {
     await waitForCondition(() => document.body.textContent?.includes("Current Machine (main)") ?? false);
     clickElement(findInteractiveByText(document.body, "Current Machine (main)"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
-    await waitForCondition(() => document.body.textContent?.includes("Add Worker Agent") ?? false);
-    clickElement(findInteractiveByText(document.body, "Add Worker Agent"));
+    await waitForCondition(() => document.body.textContent?.includes("Create New Agent") ?? false);
+    clickElement(findInteractiveByText(document.body, "Create New Agent"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Copy Existing Agent") ?? false);
     expect(document.body.textContent).toContain("Alpha");
