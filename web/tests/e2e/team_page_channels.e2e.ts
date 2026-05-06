@@ -3,6 +3,8 @@ import {
   gotoTeams,
   mockTeamPageApis,
   openTeamFromSelector,
+  selectTeamChannelFromSidebar,
+  teamChannelSidebarEntry,
 } from "./team_page_helpers";
 
 test("team channels shows #all by default in sidebar", async ({ page }) => {
@@ -28,12 +30,9 @@ test("team channels shows #all by default in sidebar", async ({ page }) => {
   await gotoTeams(page);
   await openTeamFromSelector(page, "Default Channel Team");
 
-  // The sidebar should show "# all" as the default channel
-  const allChannel = page.locator("button").filter({ hasText: "# all" });
-  await expect(allChannel.first()).toBeVisible();
+  await expect(teamChannelSidebarEntry(page, "all")).toBeVisible();
 
-  // Clicking "# all" should keep us in the channels lens
-  await allChannel.first().click();
+  await selectTeamChannelFromSidebar(page, "all");
   await expect(page).toHaveURL(/lens=channels/);
 });
 
@@ -77,20 +76,16 @@ test("team channels create, switch and delete custom channel", async ({ page }) 
   // Submit
   await page.locator('button[type="submit"]').filter({ hasText: "Create channel" }).click();
 
-  // The new channel should appear in the sidebar
-  const reviewChannel = page.locator("button").filter({ hasText: "# review" });
-  await expect(reviewChannel.first()).toBeVisible();
+  const reviewChannel = teamChannelSidebarEntry(page, "review");
+  await expect(reviewChannel).toBeVisible();
 
-  // Switch to the new channel
-  await reviewChannel.first().click();
+  await selectTeamChannelFromSidebar(page, "review");
   await expect(page).toHaveURL(/channel=review/);
 
-  // Switch back to # all
-  const allChannel = page.locator("button").filter({ hasText: "# all" });
-  await allChannel.first().click();
+  await selectTeamChannelFromSidebar(page, "all");
 
   // Delete the custom channel (hover to reveal delete button)
-  await reviewChannel.first().hover();
+  await reviewChannel.hover();
   const deleteButton = page.getByLabel("Delete channel review");
   await expect(deleteButton).toBeVisible();
 
@@ -99,7 +94,7 @@ test("team channels create, switch and delete custom channel", async ({ page }) 
   await deleteButton.click();
 
   // The channel should be removed
-  await expect(reviewChannel.first()).toBeHidden();
+  await expect(reviewChannel).toBeHidden();
 });
 
 test("team channels navigates to channel via url and opens thread", async ({ page }) => {
@@ -175,16 +170,15 @@ test("non-default channel delete requires confirmation", async ({ page }) => {
   await page.getByLabel("Channel ID").fill("staging");
   await page.locator('button[type="submit"]').filter({ hasText: "Create channel" }).click();
 
-  // Verify the channel appears
-  const stagingChannel = page.locator("button").filter({ hasText: "# staging" });
-  await expect(stagingChannel.first()).toBeVisible();
+  const stagingChannel = teamChannelSidebarEntry(page, "staging");
+  await expect(stagingChannel).toBeVisible();
 
   // Cancel the delete dialog should keep the channel
-  await stagingChannel.first().hover();
+  await stagingChannel.hover();
   const deleteButton = page.getByLabel("Delete channel staging");
   page.once("dialog", (dialog) => dialog.dismiss());
   await deleteButton.click();
 
   // Channel should still be visible
-  await expect(stagingChannel.first()).toBeVisible();
+  await expect(stagingChannel).toBeVisible();
 });
