@@ -154,7 +154,7 @@ fn team_conversation_message_archive_document(
             .get("correlation_id")
             .and_then(Value::as_str)
             .map(str::to_string),
-        group_id: None,
+        group_id: message.group_id.clone(),
         team_id: Some(conversation.team_id.clone()),
         run_id: None,
         conversation_id: Some(message.conversation_id.clone()),
@@ -1942,6 +1942,13 @@ impl TeamManager {
         let redacted_payload = redact_sensitive_json(&payload);
         let payload_json = redacted_payload.to_string();
         let correlation_id = task_conversation_payload_correlation_id(&redacted_payload);
+        let group_id = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT group_id FROM team_tasks WHERE id = ?1",
+        )
+        .bind(task_id)
+        .fetch_optional(&self.db)
+        .await?
+        .flatten();
         let to_actor_id = to_actor_id
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -1959,11 +1966,12 @@ impl TeamManager {
                     to_actor_id,
                     route,
                     correlation_id,
+                    group_id,
                     payload_json,
                     idempotency_key,
                     created_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                 "#,
             )
             .bind(&conversation.id)
@@ -1972,6 +1980,7 @@ impl TeamManager {
             .bind(to_actor_id.as_deref())
             .bind(route)
             .bind(&correlation_id)
+            .bind(group_id.as_deref())
             .bind(&payload_json)
             .bind(idempotency_key)
             .bind(now)
@@ -1983,6 +1992,7 @@ impl TeamManager {
                         message_id: result.last_insert_rowid(),
                         conversation_id: conversation.id.clone(),
                         task_id: task_id.to_string(),
+                        group_id: group_id.clone(),
                         from_actor_id: from_actor_id.to_string(),
                         to_actor_id: to_actor_id.clone(),
                         route: route.to_string(),
@@ -2023,10 +2033,11 @@ impl TeamManager {
                     to_actor_id,
                     route,
                     correlation_id,
+                    group_id,
                     payload_json,
                     created_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                 "#,
             )
             .bind(&conversation.id)
@@ -2035,6 +2046,7 @@ impl TeamManager {
             .bind(to_actor_id.as_deref())
             .bind(route)
             .bind(&correlation_id)
+            .bind(group_id.as_deref())
             .bind(&payload_json)
             .bind(now)
             .execute(&self.db)
@@ -2044,6 +2056,7 @@ impl TeamManager {
                     message_id: result.last_insert_rowid(),
                     conversation_id: conversation.id.clone(),
                     task_id: task_id.to_string(),
+                    group_id: group_id.clone(),
                     from_actor_id: from_actor_id.to_string(),
                     to_actor_id: to_actor_id.clone(),
                     route: route.to_string(),
@@ -2337,6 +2350,7 @@ impl TeamManager {
                 id,
                 conversation_id,
                 task_id,
+                group_id,
                 from_actor_id,
                 to_actor_id,
                 route,
@@ -2477,6 +2491,7 @@ impl TeamManager {
                     m.id,
                     m.conversation_id,
                     m.task_id,
+                    m.group_id,
                     m.from_actor_id,
                     m.to_actor_id,
                     m.route,
@@ -7639,6 +7654,7 @@ async fn fetch_task_conversation_message_by_idempotency(
             id,
             conversation_id,
             task_id,
+            group_id,
             from_actor_id,
             to_actor_id,
             route,

@@ -2983,6 +2983,7 @@ fn parse_thread_participant_message_row(
         message_id: row.get("id"),
         conversation_id: row.get("conversation_id"),
         task_id: row.get("task_id"),
+        group_id: None,
         from_actor_id: row.get("from_actor_id"),
         to_actor_id: row.get::<Option<String>, _>("to_actor_id"),
         route: row.get("route"),
