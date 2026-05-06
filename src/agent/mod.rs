@@ -108,6 +108,7 @@ pub struct AgentNodeConfig {
     pub grpc_target: String,
     pub tls_server_name: Option<String>,
     pub default_worktree_root: Option<String>,
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,6 +117,7 @@ pub struct AgentNodeUpdate {
     pub grpc_target: String,
     pub tls_server_name: Option<String>,
     pub default_worktree_root: Option<String>,
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -150,6 +152,7 @@ pub struct AgentNodeRecord {
     pub grpc_target: Option<String>,
     pub tls_server_name: Option<String>,
     pub default_worktree_root: Option<String>,
+    pub group_id: Option<String>,
     pub last_seen_at: Option<i64>,
     pub is_main: bool,
     pub created_at: i64,

@@ -1943,11 +1943,14 @@ async fn append_run_event_dual_writes_created_event_to_archive() {
     );
 
     let team = manager
-        .create_team(TeamDefinitionConfig {
-            name: "append-run-event-archive-team".to_string(),
-            description: Some("team for appended run event archive dual-write".to_string()),
-            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
-        })
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "append-run-event-archive-team".to_string(),
+                description: Some("team for appended run event archive dual-write".to_string()),
+                spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
+            },
+            Some("group-live-run-event"),
+        )
         .await
         .expect("create team");
     let (task, conversation) = manager
@@ -1993,6 +1996,7 @@ async fn append_run_event_dual_writes_created_event_to_archive() {
     assert_eq!(document.source_kind, MessageDocumentKind::TeamRunEvent);
     assert_eq!(document.authority_message_id, Some(42));
     assert_eq!(document.correlation_id.as_deref(), Some("corr-live-run"));
+    assert_eq!(document.group_id.as_deref(), Some("group-live-run-event"));
     assert_eq!(document.team_id.as_deref(), Some(team.id.as_str()));
     assert_eq!(document.run_id.as_deref(), Some(run.id.as_str()));
     assert_eq!(
@@ -2008,17 +2012,20 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
     let seed_manager = TeamManager::new(db.clone());
 
     let team = seed_manager
-        .create_team(TeamDefinitionConfig {
-            name: "team-message-archive-migration".to_string(),
-            description: Some("team for archive migration".to_string()),
-            spec: json!({
-                "entrypoint":"coordinator_plan",
-                "members":[
-                    {"member_id":"coordinator"},
-                    {"member_id":"worker-1","role":"worker"}
-                ]
-            }),
-        })
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "team-message-archive-migration".to_string(),
+                description: Some("team for archive migration".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator_plan",
+                    "members":[
+                        {"member_id":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }),
+            },
+            Some("group-archive-migration"),
+        )
         .await
         .expect("create team");
     let (task, conversation) = seed_manager
@@ -2218,6 +2225,7 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
         document.body_text == "raw run secret event"
             && document.source_kind == MessageDocumentKind::TeamRunEvent
             && document.authority_message_id == Some(conversation_message.message_id)
+            && document.group_id.as_deref() == Some("group-archive-migration")
             && document.payload_json.as_deref().is_some_and(|payload| {
                 payload.contains("[redacted]") && !payload.contains("run-event-secret")
             })

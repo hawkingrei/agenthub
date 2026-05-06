@@ -5448,6 +5448,7 @@ async fn team_message_search_api_uses_archive_with_team_scope() {
             limit: Some(5),
             authority_message_id: None,
             correlation_id: Some(" corr-search ".to_string()),
+            group_id: Some(" group-search ".to_string()),
             run_id: None,
             conversation_id: None,
             task_id: Some(" task-1 ".to_string()),
@@ -5484,6 +5485,7 @@ async fn team_message_search_api_uses_archive_with_team_scope() {
     assert_eq!(queries[0].limit, 5);
     assert_eq!(queries[0].team_id.as_deref(), Some(team.id.as_str()));
     assert_eq!(queries[0].correlation_id.as_deref(), Some("corr-search"));
+    assert_eq!(queries[0].group_id.as_deref(), Some("group-search"));
     assert_eq!(queries[0].task_id.as_deref(), Some("task-1"));
     assert_eq!(
         queries[0].source_kind,
@@ -5524,6 +5526,7 @@ async fn team_message_search_api_rejects_blank_query() {
             limit: None,
             authority_message_id: None,
             correlation_id: None,
+            group_id: None,
             run_id: None,
             conversation_id: None,
             task_id: None,

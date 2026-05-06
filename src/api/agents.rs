@@ -1945,6 +1945,7 @@ mod tests {
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
                 default_worktree_root: None,
+                group_id: None,
             })
             .await
             .expect("create agent node");
@@ -2002,6 +2003,7 @@ mod tests {
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
                 default_worktree_root: None,
+                group_id: None,
             })
             .await
             .expect("create agent node");
@@ -2102,6 +2104,7 @@ mod tests {
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
                 default_worktree_root: Some("~/.agenthub/worktrees/node-east".to_string()),
+                group_id: None,
             })
             .await
             .expect("create agent node");
@@ -2320,6 +2323,7 @@ mod tests {
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
                 default_worktree_root: None,
+                group_id: None,
             })
             .await
             .expect("create agent node");
@@ -2393,6 +2397,7 @@ mod tests {
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
                 default_worktree_root: None,
+                group_id: None,
             })
             .await
             .expect("create agent node");

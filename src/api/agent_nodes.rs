@@ -283,6 +283,7 @@ mod tests {
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
                 default_worktree_root: None,
+                group_id: None,
             })
             .await
             .expect("create agent node");
@@ -371,6 +372,7 @@ mod tests {
                 grpc_target: "https://node-east.internal:50051".to_string(),
                 tls_server_name: Some("node-east.internal".to_string()),
                 default_worktree_root: None,
+                group_id: None,
             })
             .await
             .expect("create agent node");
@@ -400,6 +402,77 @@ mod tests {
             body["default_worktree_root"],
             json!("~/.agenthub/worktrees/node-east")
         );
+    }
+
+    #[tokio::test]
+    async fn create_and_patch_agent_node_preserves_main_owned_group_id() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                default_worktree_root TEXT,
+                last_seen_at INTEGER,
+                group_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_nodes table");
+
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "id": "node-east",
+                    "name": "Node East",
+                    "grpc_target": "https://node-east.internal:50051",
+                    "tls_server_name": "node-east.internal",
+                    "default_worktree_root": " ~/.agenthub/worktrees/node-east ",
+                    "group_id": " group-east "
+                })),
+            ))
+            .await
+            .expect("run create agent node request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["group_id"], json!("group-east"));
+        assert_eq!(
+            body["default_worktree_root"],
+            json!("~/.agenthub/worktrees/node-east")
+        );
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::PATCH,
+                "/node-east",
+                Some(&token),
+                Some(json!({
+                    "name": "Node East",
+                    "grpc_target": "https://node-east.internal:50051",
+                    "tls_server_name": "node-east.internal",
+                    "default_worktree_root": null,
+                    "group_id": " group-west "
+                })),
+            ))
+            .await
+            .expect("run patch agent node request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["group_id"], json!("group-west"));
+        assert_eq!(body["default_worktree_root"], Value::Null);
     }
 
     #[tokio::test]
