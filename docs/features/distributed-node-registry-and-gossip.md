@@ -125,7 +125,7 @@ It may update local observations, but it must not redefine `main` authority rows
 Physical rollout order:
 
 1. Add a main-owned nullable `group_id` to canonical node registry rows.
-2. Backfill existing single-user installations into one default group boundary.
+2. Add a reviewed group assignment source for existing and new node rows.
 3. Mirror `group_id` into node-local registry snapshots as read-only authority metadata.
 4. Scope gossip membership exchange by `group_id`.
 5. Only after node and message authority rows both carry `group_id`, enforce cross-group routing
@@ -146,8 +146,7 @@ This spec depends on `main` authoritative message storage:
 ## Validation Matrix
 
 - registry/metadata contract review against `docs/features/distributed-node-architecture.md`
-- future migration test proving canonical node registry rows gain nullable `group_id` without
-  breaking existing single-node installations
+- `cargo test -p agenthub-db init_db_adds_agent_nodes_group_id_column -- --nocapture`
 - focused relay and internal gRPC tests proving message delivery still depends on `main` authority:
   - `cargo test remote_actor_messages_relay_success_marks_message_delivered -- --nocapture`
   - `cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture`
@@ -164,7 +163,7 @@ This spec depends on `main` authoritative message storage:
 
 ## Open Risks
 
-- Node-registry schema still needs a concrete physical rollout plan.
+- Node-registry group assignment still needs a reviewed source before routing can enforce it.
 - Group/tenant isolation exists here as a contract direction before it exists everywhere in the
   live schema.
 - Gossip conflict resolution still needs a concrete version/epoch policy once node mirrors become
@@ -175,3 +174,4 @@ This spec depends on `main` authoritative message storage:
 - `docs/journal/2026-03-19-distributed-p2p-pipeline.md`
 - `docs/journal/2026-05-04-distributed-message-metadata-contract-phase1.md`
 - `docs/journal/2026-05-06-group-id-rollout-plan.md`
+- `docs/journal/2026-05-06-node-registry-group-id.md`

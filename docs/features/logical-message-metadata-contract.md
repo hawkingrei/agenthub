@@ -235,3 +235,4 @@ treat missing `group_id` as `unknown`, not as permission to cross group boundari
 - `docs/journal/2026-05-06-task-message-correlation-authority.md`
 - `docs/journal/2026-05-06-group-id-rollout-plan.md`
 - `docs/journal/2026-05-06-team-authority-group-id.md`
+- `docs/journal/2026-05-06-node-registry-group-id.md`
