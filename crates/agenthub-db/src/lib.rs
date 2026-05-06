@@ -415,6 +415,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             tls_server_name TEXT,
             default_worktree_root TEXT,
             last_seen_at INTEGER,
+            group_id TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -1098,6 +1099,12 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         &pool,
         "ALTER TABLE agent_nodes ADD COLUMN last_seen_at INTEGER",
         "agent_nodes.last_seen_at",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agent_nodes ADD COLUMN group_id TEXT",
+        "agent_nodes.group_id",
     )
     .await;
     add_column_if_missing(
@@ -2532,6 +2539,66 @@ mod tests {
             column_names.iter().any(|name| name == "last_seen_at"),
             "agent_nodes columns missing last_seen_at: {column_names:?}"
         );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_agent_nodes_group_id_column() {
+        let dir = unique_temp_dir("db-agent-nodes-group-id");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                default_worktree_root TEXT,
+                last_seen_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy agent_nodes");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_nodes (
+                id, name, grpc_target, tls_server_name, default_worktree_root, last_seen_at, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind("node-a")
+        .bind("node-a")
+        .bind("https://node-a.example.internal")
+        .bind(Some("node-a.example.internal"))
+        .bind(Some("/tmp/agenthub/node-a"))
+        .bind(Some(10_i64))
+        .bind(1_i64)
+        .bind(1_i64)
+        .execute(&pool)
+        .await
+        .expect("insert legacy agent node");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+        let group_id = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT group_id FROM agent_nodes WHERE id = ?1",
+        )
+        .bind("node-a")
+        .fetch_one(&pool)
+        .await
+        .expect("read migrated agent node group_id");
+        assert_eq!(group_id, None);
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);
