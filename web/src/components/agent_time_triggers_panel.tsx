@@ -150,7 +150,7 @@ export const AgentTimeTriggersPanel = React.memo(
                     {triggerKindLabel(trigger.kind)}
                   </span>
                   <span className={OUTPUT_HEADER_DETAILS_VALUE_CLASS}>
-                    <span className={resolveTriggerStatusTone(trigger.status)}>
+                    <span className={trigger.last_error ? "text-red-600" : resolveTriggerStatusTone(trigger.status)}>
                       {trigger.status}
                     </span>{" "}
                     · {formatFireAt(trigger.fire_at)}
@@ -165,7 +165,7 @@ export const AgentTimeTriggersPanel = React.memo(
                     {trigger.last_error && (
                       <>
                         <br />
-                        <span className="text-red-600">{trigger.last_error}</span>
+                        <span className="text-red-600">Error: {trigger.last_error}</span>
                       </>
                     )}
                     {trigger.message_text && (
