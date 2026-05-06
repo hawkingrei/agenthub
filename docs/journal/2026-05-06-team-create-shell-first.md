@@ -35,6 +35,7 @@ opened the coordinator forge modal automatically.
 
 ```bash
 npm --prefix web run test -- src/pages/team/use_team_management_actions.test.tsx src/pages/team/team_management_modals.test.tsx src/pages/team_setup_panel.test.tsx
+(cd web && PLAYWRIGHT_NO_WEBSERVER=1 npm exec -- playwright test tests/e2e/team_page_setup.e2e.ts --project chromium)
 (cd web && PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MOBILE_ONLY=1 npm exec -- playwright test --project chromium)
 git diff --check
 npm --prefix web run lint
