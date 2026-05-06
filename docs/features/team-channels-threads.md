@@ -2,17 +2,17 @@
 
 ## Problem
 
-The current Team workspace exposes one shared conversation lane (`# all`) plus task/run/member
-surfaces, but it does not yet support a compact `channel + thread` interaction model.
+The Team workspace exposes `# all` plus API-backed non-default Team channels, channel-rooted
+threads, and the task/run/member surfaces. The current contract keeps the compact
+`channel + thread` model as the canonical Team communication shape.
 
-This leaves several gaps:
+The model exists to avoid these regressions:
 
-- Team communication still feels like one flat conversation instead of a set of discoverable
+- Team communication collapsing back into one flat conversation instead of discoverable
   communication lanes;
-- replies are not elevated into a first-class thread context with a stable right-side pane;
-- task affordances are distributed across the page instead of staying close to the message composer;
-- the unified Workspace shell already borrows Slock-like object navigation, but Team communication
-  has not yet learned the corresponding `channel / thread` information architecture.
+- replies duplicating into the parent channel timeline instead of staying in a focused thread pane;
+- channel roots turning into full context dumps instead of summary entrypoints;
+- threads becoming a top-level workspace lens or replacing canonical Team task/run ownership.
 
 We want to learn from the Slock channel/thread layout without collapsing AgentHub Team semantics or
 losing the current Notion-style content-first shell.
