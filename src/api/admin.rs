@@ -42,6 +42,8 @@ pub struct MigrateTeamMessagesArchiveResponse {
     pub team_conversation_messages: usize,
     pub team_run_events: usize,
     pub team_actor_messages: usize,
+    pub agent_events: usize,
+    pub aggregated_acp_messages: usize,
     pub total_documents: usize,
 }
 
@@ -352,10 +354,12 @@ async fn migrate_team_messages_archive(
     };
     let total_documents = report.total_documents();
     let detail = format!(
-        "team_conversation_messages={},team_run_events={},team_actor_messages={},total_documents={}",
+        "team_conversation_messages={},team_run_events={},team_actor_messages={},agent_events={},aggregated_acp_messages={},total_documents={}",
         report.team_conversation_messages,
         report.team_run_events,
         report.team_actor_messages,
+        report.agent_events,
+        report.aggregated_acp_messages,
         total_documents
     );
     let _ = state
@@ -373,6 +377,8 @@ async fn migrate_team_messages_archive(
         team_conversation_messages: report.team_conversation_messages,
         team_run_events: report.team_run_events,
         team_actor_messages: report.team_actor_messages,
+        agent_events: report.agent_events,
+        aggregated_acp_messages: report.aggregated_acp_messages,
         total_documents,
     }))
 }
@@ -612,6 +618,8 @@ mod tests {
         assert_eq!(body["team_conversation_messages"], 1);
         assert_eq!(body["team_run_events"], 0);
         assert_eq!(body["team_actor_messages"], 0);
+        assert_eq!(body["agent_events"], 0);
+        assert_eq!(body["aggregated_acp_messages"], 0);
         assert_eq!(body["total_documents"], 1);
 
         let row = sqlx::query(
@@ -634,6 +642,9 @@ mod tests {
                 .as_deref()
                 .is_some_and(|value| value.contains("total_documents=1"))
         );
+        assert!(detail.as_deref().is_some_and(|value| {
+            value.contains("agent_events=0") && value.contains("aggregated_acp_messages=0")
+        }));
     }
 
     #[tokio::test]

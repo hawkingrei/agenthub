@@ -10,8 +10,8 @@ use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
-    TeamRunStatus, TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch,
-    TeamTaskListQuery, TeamTaskStatus,
+    TeamRunEventRecord, TeamRunStatus, TeamStepStatus, TeamTaskAssignmentUpdate,
+    TeamTaskContextPatch, TeamTaskListQuery, TeamTaskStatus,
 };
 use agenthub_db::AgentEventDbRouter;
 use agenthub_message_archive::{
@@ -192,6 +192,46 @@ async fn wait_for_archive_documents(
     })
     .await
     .expect("archive documents should be appended")
+}
+
+async fn wait_for_archive_run_event_documents(
+    archive: &RecordingMessageArchive,
+    run_id: &str,
+    expected_len: usize,
+) -> Vec<MessageDocument> {
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let documents = archive.documents.lock().await.clone();
+            let run_event_documents = documents
+                .into_iter()
+                .filter(|document| {
+                    document.source_kind == MessageDocumentKind::TeamRunEvent
+                        && document.run_id.as_deref() == Some(run_id)
+                })
+                .collect::<Vec<_>>();
+            if run_event_documents.len() >= expected_len {
+                return run_event_documents;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("archive run event documents should be appended")
+}
+
+fn archived_run_event_types<'a>(
+    documents: &[MessageDocument],
+    events: &'a [TeamRunEventRecord],
+) -> Vec<&'a str> {
+    documents
+        .iter()
+        .filter_map(|document| {
+            events
+                .iter()
+                .find(|event| document.source_id == event.event_id.to_string())
+                .map(|event| event.event_type.as_str())
+        })
+        .collect()
 }
 
 async fn assert_archive_documents_stay_empty(archive: &RecordingMessageArchive) {
@@ -1202,6 +1242,199 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
 }
 
 #[tokio::test]
+async fn run_context_read_models_reflect_actor_and_session_state() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "run-context-read-model-team".to_string(),
+            description: Some("team for run context read models".to_string()),
+            spec: json!({
+                "entrypoint":"coordinator",
+                "members":[
+                    {"member_id":"coordinator","role":"coordinator"},
+                    {"member_id":"worker","role":"worker"},
+                    {"member_id":"reviewer","role":"reviewer"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-read-models"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+    manager
+        .append_run_event(&run.id, "operator_note", json!({"text":"checkpoint"}))
+        .await
+        .expect("append run event");
+
+    let pending = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"please take this"}),
+            idempotency_key: Some("read-model-pending"),
+        })
+        .await
+        .expect("send pending actor message");
+    let delivered = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"please review this"}),
+            idempotency_key: Some("read-model-delivered"),
+        })
+        .await
+        .expect("send delivered actor message");
+    manager
+        .ack_actor_message(&run.id, "reviewer", delivered.message_id)
+        .await
+        .expect("ack reviewer message");
+
+    sqlx::query("INSERT INTO agents (id, name, workdir, command, args, worktree_mode, code_mode, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)")
+        .bind("worker")
+        .bind("Worker")
+        .bind("/tmp/worker")
+        .bind("agent")
+        .bind("[]")
+        .bind("off")
+        .bind(1_i64)
+        .bind("running")
+        .bind(10_i64)
+        .bind(10_i64)
+        .execute(&db)
+        .await
+        .expect("insert worker agent");
+    sqlx::query("INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at) VALUES (?1, ?2, ?3, ?4, NULL)")
+        .bind("session-worker-live")
+        .bind("worker")
+        .bind("running")
+        .bind(10_i64)
+        .execute(&db)
+        .await
+        .expect("insert live worker session");
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let latest_event_id = events
+        .iter()
+        .map(|event| event.event_id)
+        .max()
+        .expect("run should have events");
+
+    let fingerprint = manager
+        .read_run_context_fingerprint(&run.id)
+        .await
+        .expect("read run fingerprint");
+    assert_eq!(fingerprint.team_id, team.id);
+    assert_eq!(fingerprint.run_id, run.id);
+    assert_eq!(fingerprint.run_status, "submitted");
+    assert_eq!(fingerprint.latest_event_id, latest_event_id);
+    assert_eq!(fingerprint.latest_mailbox_message_id, delivered.message_id);
+    assert_eq!(fingerprint.mailbox_pending, 1);
+    assert_eq!(fingerprint.mailbox_delivered, 1);
+    assert_eq!(fingerprint.mailbox_dead_letter, 0);
+
+    let pending_by_actor = manager
+        .list_actor_pending_counts_by_actor(&run.id)
+        .await
+        .expect("list pending counts by actor");
+    assert_eq!(pending_by_actor.get("worker"), Some(&1));
+    assert_eq!(pending_by_actor.get("reviewer"), None);
+
+    let all_pending = manager
+        .list_pending_actor_unread_counts()
+        .await
+        .expect("list pending unread counts");
+    assert!(all_pending.iter().any(|record| {
+        record.run_id == run.id && record.actor_id == "worker" && record.unread_count == 1
+    }));
+    assert!(
+        !all_pending
+            .iter()
+            .any(|record| { record.run_id == run.id && record.actor_id == "reviewer" })
+    );
+
+    assert_eq!(
+        manager
+            .member_role_for_run(&run.id, "worker")
+            .await
+            .expect("read worker role"),
+        Some("worker".to_string())
+    );
+    assert_eq!(
+        manager
+            .member_role_for_run(&run.id, "missing")
+            .await
+            .expect("read missing role"),
+        None
+    );
+    assert_eq!(
+        manager
+            .member_role_for_run("missing-run", "worker")
+            .await
+            .expect("read missing run role"),
+        None
+    );
+
+    assert_eq!(
+        manager
+            .get_agent_session_status("session-worker-live")
+            .await
+            .expect("read session status"),
+        Some("running".to_string())
+    );
+    assert_eq!(
+        manager
+            .get_agent_session_status("missing-session")
+            .await
+            .expect("read missing session status"),
+        None
+    );
+    assert_eq!(
+        manager
+            .get_live_member_session("worker")
+            .await
+            .expect("read live worker session"),
+        Some(("session-worker-live".to_string(), "running".to_string()))
+    );
+    assert_eq!(
+        manager
+            .get_live_member_session("missing-worker")
+            .await
+            .expect("read missing live session"),
+        None
+    );
+
+    let mismatch = manager
+        .describe_team_context(Some("wrong-team"), Some(&run.id))
+        .await
+        .expect_err("explicit team mismatch should be rejected");
+    assert!(mismatch.to_string().contains("wrong-team"));
+    assert_eq!(pending.status, TeamActorMessageStatus::Pending);
+}
+
+#[tokio::test]
 async fn append_run_event_skips_shared_thread_mailbox_runs_in_archive() {
     let db = setup_test_db().await;
     let archive = Arc::new(RecordingMessageArchive::default());
@@ -1715,6 +1948,444 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             .iter()
             .all(|document| document.run_id.as_deref() != Some(hidden_run.id.as_str()))
     );
+}
+
+#[tokio::test]
+async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregation() {
+    let db = setup_test_db().await;
+    let event_dbs = AgentEventDbRouter::new(std::env::temp_dir().join(format!(
+        "agenthub-archive-acp-eventdb-{}",
+        uuid::Uuid::new_v4()
+    )));
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner")
+    .bind(std::env::temp_dir().to_string_lossy().to_string())
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("running")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert planner agent");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, ?3, ?4, NULL)
+        "#,
+    )
+    .bind("main-session")
+    .bind("planner")
+    .bind("running")
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert main session");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("planner")
+    .bind("main-session")
+    .bind("1")
+    .bind(10_i64)
+    .bind("acp")
+    .bind(r#"{"type":"tool_call","text":"main raw event","api_key":"main-secret"}"#)
+    .execute(&db)
+    .await
+    .expect("insert main agent event");
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_definitions (id, name, description, spec_json, owner_user_id, created_at, updated_at)
+        VALUES (?1, ?2, NULL, ?3, NULL, ?4, ?5)
+        "#,
+    )
+    .bind("archive-team")
+    .bind("archive-team")
+    .bind(json!({"entrypoint":"coordinator_plan","members":[{"member_id":"planner"}]}).to_string())
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive team");
+    sqlx::query(
+        r#"
+        INSERT INTO team_tasks (id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+        "#,
+    )
+    .bind("archive-task")
+    .bind("archive-team")
+    .bind("Archive ACP")
+    .bind("open")
+    .bind("user")
+    .bind(json!({}).to_string())
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive task");
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversations (id, team_id, task_id, mode, topic, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "#,
+    )
+    .bind("archive-conversation")
+    .bind("archive-team")
+    .bind("archive-task")
+    .bind("group_chat")
+    .bind("Archive ACP")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive conversation");
+    sqlx::query(
+        r#"
+        INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("archive-run")
+    .bind("archive-team")
+    .bind("archive-task")
+    .bind("working")
+    .bind(json!({"task_id":"archive-task","conversation_id":"archive-conversation"}).to_string())
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive run");
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at, ended_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, NULL, ?8, ?9)
+        "#,
+    )
+    .bind("archive-step")
+    .bind("archive-run")
+    .bind("planner_step")
+    .bind("planner")
+    .bind("per-agent-session")
+    .bind("working")
+    .bind("[]")
+    .bind(1_i64)
+    .bind(22_i64)
+    .execute(&db)
+    .await
+    .expect("insert archive step");
+    sqlx::query(
+        r#"
+        INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("archive-shared-mailbox-run")
+    .bind("archive-team")
+    .bind("archive-task")
+    .bind("working")
+    .bind(
+        json!({
+            "bootstrap_kind": "shared_thread_mailbox",
+            "task_id": "archive-task",
+            "conversation_id": "archive-conversation"
+        })
+        .to_string(),
+    )
+    .bind(23_i64)
+    .execute(&db)
+    .await
+    .expect("insert shared mailbox run");
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at, ended_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, NULL, ?8, ?9)
+        "#,
+    )
+    .bind("archive-shared-mailbox-step")
+    .bind("archive-shared-mailbox-run")
+    .bind("planner_step")
+    .bind("planner")
+    .bind("per-agent-session")
+    .bind("working")
+    .bind("[]")
+    .bind(23_i64)
+    .bind(25_i64)
+    .execute(&db)
+    .await
+    .expect("insert shared mailbox step");
+    sqlx::query(
+        r#"
+        INSERT INTO team_tasks (id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+        "#,
+    )
+    .bind("archive-task-2")
+    .bind("archive-team")
+    .bind("Archive ACP 2")
+    .bind("open")
+    .bind("user")
+    .bind(json!({}).to_string())
+    .bind(30_i64)
+    .bind(30_i64)
+    .execute(&db)
+    .await
+    .expect("insert second archive task");
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversations (id, team_id, task_id, mode, topic, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "#,
+    )
+    .bind("archive-conversation-2")
+    .bind("archive-team")
+    .bind("archive-task-2")
+    .bind("group_chat")
+    .bind("Archive ACP 2")
+    .bind(30_i64)
+    .bind(30_i64)
+    .execute(&db)
+    .await
+    .expect("insert second archive conversation");
+    sqlx::query(
+        r#"
+        INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+    )
+    .bind("archive-run-2")
+    .bind("archive-team")
+    .bind("archive-task-2")
+    .bind("working")
+    .bind(
+        json!({"task_id":"archive-task-2","conversation_id":"archive-conversation-2"}).to_string(),
+    )
+    .bind(30_i64)
+    .execute(&db)
+    .await
+    .expect("insert second archive run");
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, NULL, ?8)
+        "#,
+    )
+    .bind("archive-step-2")
+    .bind("archive-run-2")
+    .bind("planner_step")
+    .bind("planner")
+    .bind("per-agent-session")
+    .bind("working")
+    .bind("[]")
+    .bind(30_i64)
+    .execute(&db)
+    .await
+    .expect("insert second archive step");
+
+    let event_db = event_dbs
+        .pool_for_agent("planner")
+        .await
+        .expect("open planner event db");
+    for (seq, ts, stream, message) in [
+        (
+            "1",
+            20_i64,
+            "acp",
+            r#"{"type":"agent_message","text":"lo","chunk":true,"message_id":"msg-1","chunk_index":1}"#,
+        ),
+        (
+            "2",
+            21_i64,
+            "acp",
+            r#"{"type":"agent_message","text":"hel","chunk":true,"message_id":"msg-1","chunk_index":0}"#,
+        ),
+        (
+            "3",
+            22_i64,
+            "acp",
+            r#"{"type":"agent_message","text":"fallback malformed chunk","chunk":true,"chunk_index":2,"api_key":"per-agent-secret"}"#,
+        ),
+        (
+            "4",
+            23_i64,
+            "stdout",
+            r#"{"type":"agent_message","text":"stdout raw chunk","chunk":true,"message_id":"stdout-msg","chunk_index":0}"#,
+        ),
+        (
+            "5",
+            24_i64,
+            "acp",
+            r#"{"type":"tool_call","text":"hidden mailbox event"}"#,
+        ),
+        (
+            "6",
+            31_i64,
+            "acp",
+            r#"{"type":"tool_call","text":"second run event"}"#,
+        ),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("per-agent-session")
+        .bind(seq)
+        .bind(ts)
+        .bind(stream)
+        .bind(message)
+        .execute(&event_db)
+        .await
+        .expect("insert per-agent event");
+    }
+
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let archive_manager =
+        TeamManager::new_with_event_dbs_and_message_archive(db, event_dbs, Some(archive.clone()));
+    let report = archive_manager
+        .migrate_team_messages_to_archive(2)
+        .await
+        .expect("migrate agent events");
+
+    assert_eq!(report.agent_events, 5);
+    assert_eq!(report.aggregated_acp_messages, 1);
+    assert_eq!(report.total_documents(), 6);
+
+    let documents = archive.documents.lock().await.clone();
+    assert_eq!(documents.len(), 6);
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:main-session:1"
+            && document.body_text == "main raw event"
+            && document.payload_json.as_deref().is_some_and(|payload| {
+                payload.contains("[redacted]") && !payload.contains("main-secret")
+            })
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:per-agent-session:3"
+            && document.team_id.as_deref() == Some("archive-team")
+            && document.run_id.as_deref() == Some("archive-run")
+            && document.conversation_id.as_deref() == Some("archive-conversation")
+            && document.task_id.as_deref() == Some("archive-task")
+            && document.body_text == "fallback malformed chunk"
+            && document.payload_json.as_deref().is_some_and(|payload| {
+                payload.contains("[redacted]") && !payload.contains("per-agent-secret")
+            })
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:per-agent-session:4"
+            && document.logical_message_id.is_none()
+            && document.team_id.is_none()
+            && document.body_text == "stdout raw chunk"
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:per-agent-session:5"
+            && document.team_id.is_none()
+            && document.body_text == "hidden mailbox event"
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AgentEvent
+            && document.document_id == "agent_event:planner:per-agent-session:6"
+            && document.team_id.as_deref() == Some("archive-team")
+            && document.run_id.as_deref() == Some("archive-run-2")
+            && document.conversation_id.as_deref() == Some("archive-conversation-2")
+            && document.task_id.as_deref() == Some("archive-task-2")
+            && document.body_text == "second run event"
+    }));
+    assert!(documents.iter().any(|document| {
+        document.source_kind == MessageDocumentKind::AggregatedAcpMessage
+            && document.document_id
+                == "aggregated_acp_message:planner:per-agent-session:msg-1:agent_message"
+            && document.source_id == "planner:per-agent-session:msg-1:agent_message"
+            && document.logical_message_id.as_deref() == Some("msg-1")
+            && document.team_id.as_deref() == Some("archive-team")
+            && document.run_id.as_deref() == Some("archive-run")
+            && document.conversation_id.as_deref() == Some("archive-conversation")
+            && document.task_id.as_deref() == Some("archive-task")
+            && document.agent_id.as_deref() == Some("planner")
+            && document.session_id.as_deref() == Some("per-agent-session")
+            && document.body_text == "hello"
+            && document.event_id_from == Some(1)
+            && document.event_id_to == Some(2)
+            && document.chunk_count == Some(2)
+    }));
+}
+
+#[tokio::test]
+async fn migrate_team_messages_to_archive_skips_missing_per_agent_event_db() {
+    let db = setup_test_db().await;
+    let event_dbs = AgentEventDbRouter::new(std::env::temp_dir().join(format!(
+        "agenthub-archive-missing-eventdb-{}",
+        uuid::Uuid::new_v4()
+    )));
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("idle-agent")
+    .bind("idle-agent")
+    .bind(std::env::temp_dir().to_string_lossy().to_string())
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("stopped")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert idle agent");
+
+    let idle_event_db_path = event_dbs.db_path_for_agent("idle-agent");
+    assert!(
+        !idle_event_db_path.exists(),
+        "test must start without a per-agent event db"
+    );
+
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let archive_manager =
+        TeamManager::new_with_event_dbs_and_message_archive(db, event_dbs, Some(archive.clone()));
+    let report = archive_manager
+        .migrate_team_messages_to_archive(2)
+        .await
+        .expect("migrate with missing per-agent event db");
+
+    assert_eq!(report.agent_events, 0);
+    assert_eq!(report.aggregated_acp_messages, 0);
+    assert!(
+        !idle_event_db_path.exists(),
+        "migration should not create empty per-agent event db files"
+    );
+    let documents = archive.documents.lock().await.clone();
+    assert!(documents.is_empty());
 }
 
 #[tokio::test]
@@ -2579,7 +3250,12 @@ async fn create_run_marks_linked_task_in_progress() {
 #[tokio::test]
 async fn create_run_materializes_input_step_template_into_run_steps() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -2643,6 +3319,25 @@ async fn create_run_materializes_input_step_template_into_run_steps() {
                 "round_state":{"current_round":0}
             }
         }))
+    );
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let documents = wait_for_archive_run_event_documents(&archive, &run.id, events.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"run_submitted"),
+        "run_submitted should be archived after run creation commits"
+    );
+    assert_eq!(
+        archived_event_types
+            .iter()
+            .filter(|event_type| **event_type == "step_submitted")
+            .count(),
+        2,
+        "materialized step_submitted events should be archived after run creation commits"
     );
 }
 
@@ -4117,7 +4812,12 @@ async fn cancel_run_updates_status_and_emits_event() {
 #[tokio::test]
 async fn cancel_run_only_cancels_active_steps() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -4191,12 +4891,28 @@ async fn cancel_run_only_cancels_active_steps() {
         .filter_map(|event| event.step_id.clone())
         .collect();
     assert_eq!(canceled_step_ids, vec![active_step.id]);
+
+    let documents = wait_for_archive_run_event_documents(&archive, &run.id, events.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"step_canceled"),
+        "step_canceled should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"run_canceled"),
+        "run_canceled should be archived after transaction commit"
+    );
 }
 
 #[tokio::test]
 async fn step_lifecycle_transitions_persist_and_emit_events() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -4294,6 +5010,14 @@ async fn step_lifecycle_transitions_persist_and_emit_events() {
             "run_completed"
         ]
     );
+
+    let documents =
+        wait_for_archive_run_event_documents(&archive, &run.id, event_types.len()).await;
+    let mut archived_event_types = archived_run_event_types(&documents, &events);
+    let mut expected_event_types = event_types.clone();
+    archived_event_types.sort_unstable();
+    expected_event_types.sort_unstable();
+    assert_eq!(archived_event_types, expected_event_types);
 }
 
 #[tokio::test]
@@ -4852,15 +5576,8 @@ async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
         "memory_flush_noop event should be recorded"
     );
 
-    let documents = wait_for_archive_documents(&archive, 5).await;
-    let archived_event_types = documents
-        .iter()
-        .filter(|document| {
-            document.source_kind == MessageDocumentKind::TeamRunEvent
-                && document.run_id.as_deref() == Some(run.id.as_str())
-        })
-        .map(|document| document.body_text.as_str())
-        .collect::<Vec<_>>();
+    let documents = wait_for_archive_run_event_documents(&archive, &run.id, events.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
     assert!(
         archived_event_types.contains(&"run_submitted"),
         "run_submitted should still be archived"
@@ -4971,7 +5688,12 @@ async fn flush_run_context_fails_when_session_mapping_missing() {
 #[tokio::test]
 async fn input_required_and_resume_transitions_update_run_and_emit_events() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -5098,6 +5820,22 @@ async fn input_required_and_resume_transitions_update_run_and_emit_events() {
             "continuity_state_updated",
             "run_completed"
         ]
+    );
+
+    let documents =
+        wait_for_archive_run_event_documents(&archive, &run.id, event_types.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"run_input_required"),
+        "run_input_required should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"step_input_required"),
+        "step_input_required should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"step_resumed"),
+        "step_resumed should be archived after transaction commit"
     );
 }
 
@@ -5272,7 +6010,12 @@ async fn reconcile_loop_step_tracks_round_state_and_events() {
 #[tokio::test]
 async fn continue_step_advances_reconcile_round_without_coordinator_resume() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -5399,6 +6142,26 @@ async fn continue_step_advances_reconcile_round_without_coordinator_resume() {
     assert_eq!(reconcile_events[1].1["round"], json!(1));
     assert_eq!(reconcile_events[1].1["status"], json!("continued"));
     assert_eq!(reconcile_events[2].1["round"], json!(2));
+
+    let documents =
+        wait_for_archive_run_event_documents(&archive, &run.id, event_types.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"step_continued"),
+        "step_continued should be archived after transaction commit"
+    );
+    assert_eq!(
+        archived_event_types
+            .iter()
+            .filter(|event_type| **event_type == "step_reconcile_round_started")
+            .count(),
+        2,
+        "both reconcile round start events should be archived"
+    );
+    assert!(
+        archived_event_types.contains(&"step_reconcile_round_finished"),
+        "step_reconcile_round_finished should be archived after transaction commit"
+    );
 }
 
 #[tokio::test]
@@ -8169,7 +8932,12 @@ async fn run_completes_only_after_all_steps_complete() {
 #[tokio::test]
 async fn fail_step_updates_status_and_emits_event() {
     let db = setup_test_db().await;
-    let manager = TeamManager::new(db.clone());
+    let archive = Arc::new(RecordingMessageArchive::default());
+    let manager = TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        AgentEventDbRouter::with_default_base_dir(),
+        Some(archive.clone()),
+    );
 
     let team = manager
         .create_team(TeamDefinitionConfig {
@@ -8227,6 +8995,18 @@ async fn fail_step_updates_status_and_emits_event() {
             "step_failed",
             "run_failed"
         ]
+    );
+
+    let documents =
+        wait_for_archive_run_event_documents(&archive, &run.id, event_types.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
+    assert!(
+        archived_event_types.contains(&"step_failed"),
+        "step_failed should be archived after transaction commit"
+    );
+    assert!(
+        archived_event_types.contains(&"run_failed"),
+        "run_failed should be archived after transaction commit"
     );
 }
 

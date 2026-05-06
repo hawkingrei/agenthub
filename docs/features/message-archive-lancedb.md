@@ -96,6 +96,7 @@ The archive stores one canonical document shape for every message-like record:
 - optional logical grouping IDs:
   - `authority_message_id`
   - `correlation_id`
+  - `group_id`
   - `team_id`
   - `run_id`
   - `conversation_id`
@@ -161,6 +162,7 @@ Search queries may filter by archive scope:
 
 - `authority_message_id`
 - `correlation_id`
+- `group_id`
 - `team_id`
 - `run_id`
 - `conversation_id`
@@ -259,6 +261,10 @@ actor-scoped archive filters find messages delivered to that actor.
 - Migration is one-way from SQLite message history into archive documents.
 - Migration must be resumable and idempotent.
 - New dual-written documents and migrated historical documents must share the same canonical schema.
+- Archive documents carry an optional `group_id` projection field for the future
+  multi-tenant/group rollout. Current Team writes leave it empty until a live authority `group_id`
+  exists; archive backends must still preserve and filter it when supplied by future sources or
+  re-indexing.
 - Team migration batches source rows and appends each batch immediately; `batch_size` must bound both
   source rows materialized at once and archive writes.
 - Team migration excludes `shared_thread_mailbox` bootstrap runs from run-event and actor-mailbox
@@ -275,9 +281,15 @@ actor-scoped archive filters find messages delivered to that actor.
 - Live Team run-event dual-write covers new run submissions, the public run-event append path, and
   actor mailbox run-event appends.
 - Live memory-flush run events emitted through `append_run_event_tx` dual-write after the enclosing
-  SQLite transaction commits so archive search does not observe rolled-back flush attempts. The
-  remaining tx-heavy step lifecycle insertion paths still require follow-up consolidation before
-  run-event search can be fully continuous without rerunning migration.
+  SQLite transaction commits so archive search does not observe rolled-back flush attempts.
+- Live Team step lifecycle run events emitted inside SQLite transactions also dual-write after the
+  enclosing transaction commits. This includes step submission, working, input-required, resumed,
+  continued, completed, failed, canceled, reconcile-round, continuity-state, and matching run-status
+  events emitted by those lifecycle transitions.
+- Historical agent event migration replays both main/global `agent_events` rows and per-agent
+  `AgentEventDbRouter` rows. Parseable ACP message chunks become `aggregated_acp_message`
+  documents, while non-chunk or malformed ACP rows fall back to raw `agent_event` documents with
+  the same deterministic source identity.
 
 ### 6) Multi-Database Extensibility Contract
 
@@ -303,13 +315,17 @@ actor-scoped archive filters find messages delivered to that actor.
   - Team conversation messages
   - Team run events
   - Team actor messages
-  - raw ACP event replay into aggregated archive documents
+  - main/global and per-agent raw ACP event replay into aggregated archive documents
+  - malformed or non-chunk ACP fallback into raw `agent_event` archive documents
 - Focused Team manager test for live Team conversation message dual-write without duplicating
   archive documents on idempotent retries.
 - Focused Team manager tests for live Team run-event dual-write on run submission and public
   run-event appends.
 - Focused Team manager tests for memory-flush run-event dual-write after transaction commit,
   including persisted/noop and failed flush attempts.
+- Focused Team manager tests for step lifecycle run-event dual-write after transaction commit,
+  including submitted/working/completed, input-required/resumed, continued reconcile rounds, failed,
+  and canceled transitions.
 - Focused Team API test for Team-scoped archive search:
   - route uses the archive abstraction
   - route forces path Team scope into `MessageSearchQuery`
@@ -347,3 +363,5 @@ actor-scoped archive filters find messages delivered to that actor.
 - [docs/journal/2026-05-05-message-archive-team-conversation-dual-write.md](../journal/2026-05-05-message-archive-team-conversation-dual-write.md)
 - [docs/journal/2026-05-05-message-archive-team-search-api.md](../journal/2026-05-05-message-archive-team-search-api.md)
 - [docs/journal/2026-05-05-message-archive-team-migration.md](../journal/2026-05-05-message-archive-team-migration.md)
+- [docs/journal/2026-05-06-message-archive-group-id-projection.md](../journal/2026-05-06-message-archive-group-id-projection.md)
+- [docs/journal/2026-05-06-message-archive-step-lifecycle-run-events.md](../journal/2026-05-06-message-archive-step-lifecycle-run-events.md)

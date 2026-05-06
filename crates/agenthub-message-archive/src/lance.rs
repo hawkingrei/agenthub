@@ -36,6 +36,7 @@ impl LanceDbMessageArchive {
             Field::new("logical_message_id", DataType::Utf8, true),
             Field::new("authority_message_id", DataType::Int64, true),
             Field::new("correlation_id", DataType::Utf8, true),
+            Field::new("group_id", DataType::Utf8, true),
             Field::new("team_id", DataType::Utf8, true),
             Field::new("run_id", DataType::Utf8, true),
             Field::new("conversation_id", DataType::Utf8, true),
@@ -68,11 +69,11 @@ impl LanceDbMessageArchive {
             }
             Err(err) => return Err(err.into()),
         };
-        self.ensure_message_identity_columns(&table).await?;
+        self.ensure_metadata_columns(&table).await?;
         Ok(table)
     }
 
-    async fn ensure_message_identity_columns(&self, table: &lancedb::Table) -> Result<()> {
+    async fn ensure_metadata_columns(&self, table: &lancedb::Table) -> Result<()> {
         let schema = table.schema().await?;
         let mut transforms = Vec::new();
         if schema.field_with_name("authority_message_id").is_err() {
@@ -86,6 +87,9 @@ impl LanceDbMessageArchive {
                 "correlation_id".to_string(),
                 "cast(NULL as string)".to_string(),
             ));
+        }
+        if schema.field_with_name("group_id").is_err() {
+            transforms.push(("group_id".to_string(), "cast(NULL as string)".to_string()));
         }
         if transforms.is_empty() {
             return Ok(());
@@ -137,6 +141,9 @@ impl LanceDbMessageArchive {
             )),
             ("correlation_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.correlation_id.as_deref()),
+            )),
+            ("group_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
+                documents.iter().map(|doc| doc.group_id.as_deref()),
             )),
             ("team_id", DataType::Utf8) => Arc::new(StringArray::from_iter(
                 documents.iter().map(|doc| doc.team_id.as_deref()),
@@ -200,6 +207,7 @@ impl LanceDbMessageArchive {
             "correlation_id",
             query.correlation_id.as_deref(),
         );
+        append_string_filter(&mut predicates, "group_id", query.group_id.as_deref());
         append_string_filter(&mut predicates, "team_id", query.team_id.as_deref());
         append_string_filter(&mut predicates, "run_id", query.run_id.as_deref());
         append_string_filter(
@@ -265,6 +273,7 @@ impl MessageArchiveStore for LanceDbMessageArchive {
                 "body_text",
                 "authority_message_id",
                 "correlation_id",
+                "group_id",
                 "team_id",
                 "run_id",
                 "conversation_id",
@@ -289,6 +298,7 @@ impl MessageArchiveStore for LanceDbMessageArchive {
             let body_texts = required_string_array(&batch, "body_text")?;
             let authority_message_ids = optional_i64_array(&batch, "authority_message_id")?;
             let correlation_ids = optional_string_array(&batch, "correlation_id")?;
+            let group_ids = optional_string_array(&batch, "group_id")?;
             let team_ids = optional_string_array(&batch, "team_id")?;
             let run_ids = optional_string_array(&batch, "run_id")?;
             let conversation_ids = optional_string_array(&batch, "conversation_id")?;
@@ -312,6 +322,7 @@ impl MessageArchiveStore for LanceDbMessageArchive {
                     authority_message_id: authority_message_ids
                         .and_then(|values| values.is_valid(row).then(|| values.value(row))),
                     correlation_id: optional_string_value(correlation_ids, row),
+                    group_id: optional_string_value(group_ids, row),
                     team_id: optional_string_value(team_ids, row),
                     run_id: optional_string_value(run_ids, row),
                     conversation_id: optional_string_value(conversation_ids, row),
@@ -453,6 +464,7 @@ mod tests {
                 logical_message_id: Some("msg-1".to_string()),
                 authority_message_id: Some(101),
                 correlation_id: Some("corr-1".to_string()),
+                group_id: Some("group-1".to_string()),
                 team_id: Some("team-1".to_string()),
                 run_id: None,
                 conversation_id: Some("conv-1".to_string()),
@@ -482,6 +494,7 @@ mod tests {
         assert_eq!(hits[0].body_text, "hello lancedb archive");
         assert_eq!(hits[0].authority_message_id, Some(101));
         assert_eq!(hits[0].correlation_id.as_deref(), Some("corr-1"));
+        assert_eq!(hits[0].group_id.as_deref(), Some("group-1"));
         assert_eq!(hits[0].team_id.as_deref(), Some("team-1"));
         assert_eq!(hits[0].conversation_id.as_deref(), Some("conv-1"));
         assert_eq!(hits[0].task_id.as_deref(), Some("task-1"));
@@ -513,6 +526,7 @@ mod tests {
                     logical_message_id: Some("msg-1".to_string()),
                     authority_message_id: Some(101),
                     correlation_id: Some("corr-alpha".to_string()),
+                    group_id: Some("group-a".to_string()),
                     team_id: Some("team-a".to_string()),
                     run_id: Some("run-a".to_string()),
                     conversation_id: Some("conv-1".to_string()),
@@ -533,6 +547,7 @@ mod tests {
                     logical_message_id: Some("msg-2".to_string()),
                     authority_message_id: None,
                     correlation_id: Some("corr-beta".to_string()),
+                    group_id: Some("group-b".to_string()),
                     team_id: Some("team-b".to_string()),
                     run_id: Some("run-b".to_string()),
                     conversation_id: Some("conv-2".to_string()),
@@ -566,6 +581,7 @@ mod tests {
                 limit: 5,
                 authority_message_id: None,
                 correlation_id: Some("corr-beta".to_string()),
+                group_id: Some("group-b".to_string()),
                 team_id: Some("team-b".to_string()),
                 run_id: Some("run-b".to_string()),
                 conversation_id: Some("conv-2".to_string()),
@@ -613,6 +629,7 @@ mod tests {
             logical_message_id: None,
             authority_message_id: Some(1),
             correlation_id: None,
+            group_id: None,
             team_id: Some("team-1".to_string()),
             run_id: Some("run-1".to_string()),
             conversation_id: None,
@@ -688,6 +705,7 @@ mod tests {
         let schema = table.schema().await.expect("table schema");
         assert!(schema.field_with_name("authority_message_id").is_ok());
         assert!(schema.field_with_name("correlation_id").is_ok());
+        assert!(schema.field_with_name("group_id").is_ok());
 
         archive
             .append_documents(&[MessageDocument {
@@ -697,6 +715,7 @@ mod tests {
                 logical_message_id: Some("msg-legacy-1".to_string()),
                 authority_message_id: Some(501),
                 correlation_id: Some("corr-legacy".to_string()),
+                group_id: Some("group-legacy".to_string()),
                 team_id: Some("team-legacy".to_string()),
                 run_id: None,
                 conversation_id: Some("conv-legacy".to_string()),
@@ -719,6 +738,7 @@ mod tests {
                 limit: 5,
                 authority_message_id: Some(501),
                 correlation_id: Some("corr-legacy".to_string()),
+                group_id: Some("group-legacy".to_string()),
                 ..Default::default()
             })
             .await

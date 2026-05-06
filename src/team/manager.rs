@@ -19,6 +19,7 @@ use agenthub_team_domain::{
     continuity_note_relative_path, extract_context_artifact_path,
 };
 use agenthub_text::truncate_chars;
+use anyhow::Context;
 use chrono::Utc;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -43,11 +44,17 @@ pub struct TeamMessageArchiveMigrationReport {
     pub team_conversation_messages: usize,
     pub team_run_events: usize,
     pub team_actor_messages: usize,
+    pub agent_events: usize,
+    pub aggregated_acp_messages: usize,
 }
 
 impl TeamMessageArchiveMigrationReport {
     pub fn total_documents(&self) -> usize {
-        self.team_conversation_messages + self.team_run_events + self.team_actor_messages
+        self.team_conversation_messages
+            + self.team_run_events
+            + self.team_actor_messages
+            + self.agent_events
+            + self.aggregated_acp_messages
     }
 }
 
@@ -73,8 +80,8 @@ use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
 use agenthub_message_archive::{
-    MessageArchiveStoreRef, MessageDocument, MessageDocumentKind, MessageSearchHit,
-    MessageSearchQuery,
+    AcpAggregatedMessage, AcpChunkAccumulator, AcpEventRow, MessageArchiveStoreRef,
+    MessageDocument, MessageDocumentKind, MessageSearchHit, MessageSearchQuery,
 };
 use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, canonical_json};
 
@@ -147,6 +154,7 @@ fn team_conversation_message_archive_document(
             .get("correlation_id")
             .and_then(Value::as_str)
             .map(str::to_string),
+        group_id: None,
         team_id: Some(conversation.team_id.clone()),
         run_id: None,
         conversation_id: Some(message.conversation_id.clone()),
@@ -222,10 +230,51 @@ async fn message_archive_scope_for_payload_db(
     })
 }
 
-async fn team_run_event_archive_document_for_db(
+pub(super) async fn team_run_event_archive_document_for_db(
     db: &SqlitePool,
     event: &TeamRunEventRecord,
 ) -> anyhow::Result<Option<MessageDocument>> {
+    let mut run_scope_cache = HashMap::new();
+    let mut task_conversation_cache = HashMap::new();
+    team_run_event_archive_document_for_db_cached(
+        db,
+        event,
+        &mut run_scope_cache,
+        &mut task_conversation_cache,
+    )
+    .await
+}
+
+async fn team_run_event_archive_document_for_db_cached(
+    db: &SqlitePool,
+    event: &TeamRunEventRecord,
+    run_scope_cache: &mut HashMap<String, Option<(String, MessageArchiveScopeFallback)>>,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<Option<MessageDocument>> {
+    if !run_scope_cache.contains_key(&event.run_id) {
+        let resolved = team_run_event_archive_scope_for_db(db, &event.run_id).await?;
+        run_scope_cache.insert(event.run_id.clone(), resolved);
+    }
+    let Some(Some((team_id, base_scope))) = run_scope_cache.get(&event.run_id) else {
+        return Ok(None);
+    };
+    let scope = message_archive_scope_for_payload_db(
+        db,
+        team_id,
+        &event.payload,
+        base_scope,
+        task_conversation_cache,
+    )
+    .await?;
+    Ok(Some(team_run_event_archive_document(
+        team_id, event, &scope,
+    )))
+}
+
+async fn team_run_event_archive_scope_for_db(
+    db: &SqlitePool,
+    run_id: &str,
+) -> anyhow::Result<Option<(String, MessageArchiveScopeFallback)>> {
     let row = sqlx::query(
         r#"
         SELECT team_id, input_json
@@ -233,7 +282,7 @@ async fn team_run_event_archive_document_for_db(
         WHERE id = ?1
         "#,
     )
-    .bind(&event.run_id)
+    .bind(run_id)
     .fetch_one(db)
     .await?;
     let team_id: String = row.get("team_id");
@@ -244,17 +293,9 @@ async fn team_run_event_archive_document_for_db(
     {
         return Ok(None);
     }
-    let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
-    let scope = message_archive_scope_for_payload_db(
-        db,
-        &team_id,
-        &event.payload,
-        &base_scope,
-        &mut HashMap::new(),
-    )
-    .await?;
-    Ok(Some(team_run_event_archive_document(
-        &team_id, event, &scope,
+    Ok(Some((
+        team_id,
+        MessageArchiveScopeFallback::from_run_input(&run_input),
     )))
 }
 
@@ -272,6 +313,7 @@ fn team_run_event_archive_document(
         logical_message_id: None,
         authority_message_id: message_archive_payload_i64(&event.payload, "authority_message_id"),
         correlation_id: message_archive_payload_string(&event.payload, "correlation_id"),
+        group_id: None,
         team_id: Some(team_id.to_string()),
         run_id: Some(event.run_id.clone()),
         conversation_id: message_archive_payload_string(&event.payload, "conversation_id")
@@ -309,6 +351,7 @@ fn team_actor_message_archive_document(
         logical_message_id: None,
         authority_message_id: message_archive_payload_i64(&message.payload, "authority_message_id"),
         correlation_id: message_archive_payload_string(&message.payload, "correlation_id"),
+        group_id: None,
         team_id: Some(team_id.to_string()),
         run_id: Some(message.run_id.clone()),
         conversation_id: message_archive_payload_string_any(
@@ -330,6 +373,142 @@ fn team_actor_message_archive_document(
         event_id_from: None,
         event_id_to: None,
         chunk_count: None,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AgentEventArchiveRow {
+    event_id: i64,
+    agent_id: String,
+    session_id: String,
+    ts: i64,
+    stream: String,
+    message: String,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct AgentEventArchiveMigrationCounts {
+    agent_events: usize,
+    aggregated_acp_messages: usize,
+}
+
+impl AgentEventArchiveMigrationCounts {
+    fn add(&mut self, other: AgentEventArchiveMigrationCounts) {
+        self.agent_events += other.agent_events;
+        self.aggregated_acp_messages += other.aggregated_acp_messages;
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct AgentEventArchiveScope {
+    team_id: Option<String>,
+    run_id: Option<String>,
+    conversation_id: Option<String>,
+    task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AgentEventArchiveSnapshot {
+    main_max_id: i64,
+    per_agent_max_ids: Vec<(String, i64)>,
+}
+
+fn agent_event_archive_document(
+    row: &AgentEventArchiveRow,
+    scope: Option<&AgentEventArchiveScope>,
+) -> MessageDocument {
+    let parsed_message = serde_json::from_str::<Value>(row.message.as_str()).ok();
+    let body_text = parsed_message
+        .as_ref()
+        .map(message_archive_body_text)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            parsed_message
+                .as_ref()
+                .and_then(|payload| payload.get("type"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| row.message.trim().to_string());
+    let payload_json = parsed_message
+        .as_ref()
+        .map(redact_sensitive_json)
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "stream": row.stream.as_str(),
+                "message": row.message.as_str(),
+            })
+        })
+        .to_string();
+
+    MessageDocument {
+        document_id: format!(
+            "agent_event:{}:{}:{}",
+            row.agent_id, row.session_id, row.event_id
+        ),
+        source_kind: MessageDocumentKind::AgentEvent,
+        source_id: row.event_id.to_string(),
+        logical_message_id: None,
+        authority_message_id: None,
+        correlation_id: parsed_message
+            .as_ref()
+            .and_then(|payload| message_archive_payload_string(payload, "correlation_id")),
+        group_id: None,
+        team_id: scope.and_then(|scope| scope.team_id.clone()),
+        run_id: scope.and_then(|scope| scope.run_id.clone()),
+        conversation_id: scope.and_then(|scope| scope.conversation_id.clone()),
+        task_id: scope.and_then(|scope| scope.task_id.clone()),
+        agent_id: Some(row.agent_id.clone()),
+        session_id: Some(row.session_id.clone()),
+        body_text,
+        payload_json: Some(payload_json),
+        created_at: row.ts,
+        event_id_from: Some(row.event_id),
+        event_id_to: Some(row.event_id),
+        chunk_count: None,
+    }
+}
+
+fn aggregated_acp_message_archive_document(
+    message: &AcpAggregatedMessage,
+    scope: Option<&AgentEventArchiveScope>,
+) -> MessageDocument {
+    MessageDocument {
+        document_id: format!(
+            "aggregated_acp_message:{}:{}:{}:{}",
+            message.agent_id, message.session_id, message.logical_message_id, message.message_kind
+        ),
+        source_kind: MessageDocumentKind::AggregatedAcpMessage,
+        source_id: format!(
+            "{}:{}:{}:{}",
+            message.agent_id, message.session_id, message.logical_message_id, message.message_kind
+        ),
+        logical_message_id: Some(message.logical_message_id.clone()),
+        authority_message_id: None,
+        correlation_id: None,
+        group_id: None,
+        team_id: scope.and_then(|scope| scope.team_id.clone()),
+        run_id: scope.and_then(|scope| scope.run_id.clone()),
+        conversation_id: scope.and_then(|scope| scope.conversation_id.clone()),
+        task_id: scope.and_then(|scope| scope.task_id.clone()),
+        agent_id: Some(message.agent_id.clone()),
+        session_id: Some(message.session_id.clone()),
+        body_text: message.text.clone(),
+        payload_json: Some(
+            serde_json::json!({
+                "type": message.message_kind.as_str(),
+                "message_id": message.logical_message_id.as_str(),
+                "text": message.text.as_str(),
+                "event_id_from": message.first_event_id,
+                "event_id_to": message.last_event_id,
+                "chunk_count": message.chunk_count,
+            })
+            .to_string(),
+        ),
+        created_at: message.created_at,
+        event_id_from: Some(message.first_event_id),
+        event_id_to: Some(message.last_event_id),
+        chunk_count: Some(message.chunk_count),
     }
 }
 
@@ -2000,72 +2179,79 @@ impl TeamManager {
     }
 
     pub(super) fn spawn_archive_team_run_event(&self, event: &TeamRunEventRecord) {
-        if self.message_archive.is_none() {
-            return;
-        }
-        let manager = self.clone();
-        let event = event.clone();
-        let run_id = event.run_id.clone();
-        let event_id = event.event_id;
-
-        tokio::spawn(async move {
-            match manager.team_run_event_archive_document(&event).await {
-                Ok(Some(document)) => {
-                    let Some(archive) = manager.message_archive.as_ref().cloned() else {
-                        return;
-                    };
-                    match tokio::time::timeout(
-                        MESSAGE_ARCHIVE_APPEND_TIMEOUT,
-                        archive.append_documents(&[document]),
-                    )
-                    .await
-                    {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => {
-                            tracing::warn!(
-                                error = ?error,
-                                run_id = %run_id,
-                                event_id,
-                                "failed to dual-write team run event to archive"
-                            );
-                        }
-                        Err(_) => {
-                            tracing::warn!(
-                                run_id = %run_id,
-                                event_id,
-                                timeout_ms = MESSAGE_ARCHIVE_APPEND_TIMEOUT.as_millis(),
-                                "timed out dual-writing team run event to archive"
-                            );
-                        }
-                    }
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    tracing::warn!(
-                        error = ?error,
-                        run_id = %run_id,
-                        event_id,
-                        "failed to build team run event archive document"
-                    );
-                }
-            }
-        });
+        self.spawn_archive_team_run_events(vec![event.clone()]);
     }
 
-    fn spawn_archive_team_run_events(&self, events: Vec<TeamRunEventRecord>) {
-        if self.message_archive.is_none() {
-            return;
-        }
-        for event in events {
-            self.spawn_archive_team_run_event(&event);
-        }
-    }
-
-    async fn team_run_event_archive_document(
+    #[cfg(test)]
+    pub(super) async fn team_run_event_archive_document(
         &self,
         event: &TeamRunEventRecord,
     ) -> anyhow::Result<Option<MessageDocument>> {
         team_run_event_archive_document_for_db(&self.db, event).await
+    }
+
+    fn spawn_archive_team_run_events(&self, events: Vec<TeamRunEventRecord>) {
+        let Some(archive) = self.message_archive.as_ref().cloned() else {
+            return;
+        };
+        if events.is_empty() {
+            return;
+        }
+        let manager = self.clone();
+
+        tokio::spawn(async move {
+            let mut documents = Vec::with_capacity(events.len());
+            let mut run_scope_cache = HashMap::new();
+            let mut task_conversation_cache = HashMap::new();
+            for event in events {
+                match team_run_event_archive_document_for_db_cached(
+                    &manager.db,
+                    &event,
+                    &mut run_scope_cache,
+                    &mut task_conversation_cache,
+                )
+                .await
+                {
+                    Ok(Some(document)) => documents.push(document),
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            error = ?error,
+                            run_id = %event.run_id,
+                            event_id = event.event_id,
+                            "failed to build team run event archive document"
+                        );
+                    }
+                }
+            }
+            if documents.is_empty() {
+                return;
+            }
+
+            let document_count = documents.len();
+            match tokio::time::timeout(
+                MESSAGE_ARCHIVE_APPEND_TIMEOUT,
+                archive.append_documents(&documents),
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(
+                        error = ?error,
+                        document_count,
+                        "failed to dual-write team run events to archive"
+                    );
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        document_count,
+                        timeout_ms = MESSAGE_ARCHIVE_APPEND_TIMEOUT.as_millis(),
+                        "timed out dual-writing team run events to archive"
+                    );
+                }
+            }
+        });
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2177,6 +2363,68 @@ impl TeamManager {
             .await?)
     }
 
+    async fn migrate_agent_events_to_archive(
+        &self,
+        archive: &MessageArchiveStoreRef,
+        batch_size: usize,
+        snapshot: &AgentEventArchiveSnapshot,
+    ) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+        let mut counts = AgentEventArchiveMigrationCounts::default();
+        counts.add(
+            migrate_main_agent_events_to_archive(
+                &self.db,
+                archive,
+                batch_size,
+                snapshot.main_max_id,
+            )
+            .await
+            .context("migrate main agent_events to message archive")?,
+        );
+
+        for (agent_id, max_id) in &snapshot.per_agent_max_ids {
+            let pool = self.event_dbs.pool_for_agent(agent_id).await?;
+            counts.add(
+                migrate_per_agent_events_to_archive(
+                    &self.db, &pool, archive, agent_id, batch_size, *max_id,
+                )
+                .await
+                .with_context(|| {
+                    format!("migrate per-agent agent_events for agent_id={agent_id}")
+                })?,
+            );
+        }
+        Ok(counts)
+    }
+
+    async fn message_archive_agent_event_snapshot(
+        &self,
+    ) -> anyhow::Result<AgentEventArchiveSnapshot> {
+        let main_max_id =
+            sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
+                .fetch_one(&self.db)
+                .await?;
+        let agent_ids = sqlx::query_scalar::<_, String>("SELECT id FROM agents ORDER BY id ASC")
+            .fetch_all(&self.db)
+            .await?;
+        let mut per_agent_max_ids = Vec::new();
+        for agent_id in agent_ids {
+            let db_path = self.event_dbs.db_path_for_agent(&agent_id);
+            if !tokio::fs::try_exists(&db_path).await? {
+                continue;
+            }
+            let pool = self.event_dbs.pool_for_agent(&agent_id).await?;
+            let max_id =
+                sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(id), 0) FROM agent_events")
+                    .fetch_one(&pool)
+                    .await?;
+            per_agent_max_ids.push((agent_id, max_id));
+        }
+        Ok(AgentEventArchiveSnapshot {
+            main_max_id,
+            per_agent_max_ids,
+        })
+    }
+
     pub async fn migrate_team_messages_to_archive(
         &self,
         batch_size: usize,
@@ -2194,6 +2442,7 @@ impl TeamManager {
         let max_actor_message_id = self
             .message_archive_table_max_id("team_actor_messages")
             .await?;
+        let agent_event_snapshot = self.message_archive_agent_event_snapshot().await?;
         let mut run_scope_cache: HashMap<String, MessageArchiveScopeFallback> = HashMap::new();
         let mut task_conversation_cache: HashMap<(String, String), Option<String>> = HashMap::new();
 
@@ -2382,6 +2631,12 @@ impl TeamManager {
             }
             archive.append_documents(&documents).await?;
         }
+
+        let agent_event_counts = self
+            .migrate_agent_events_to_archive(archive, batch_size, &agent_event_snapshot)
+            .await?;
+        report.agent_events = agent_event_counts.agent_events;
+        report.aggregated_acp_messages = agent_event_counts.aggregated_acp_messages;
         Ok(report)
     }
 
@@ -2449,27 +2704,11 @@ impl TeamManager {
             "status": team_run_status_to_str(&status),
             "continuity_mode": continuity_mode,
         });
-        let submitted_event_result = sqlx::query(
-            r#"
-            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-            VALUES (?1, NULL, ?2, ?3, ?4)
-            "#,
-        )
-        .bind(&run_id)
-        .bind("run_submitted")
-        .bind(now)
-        .bind(payload.to_string())
-        .execute(&mut *tx)
-        .await?;
-        let submitted_event = TeamRunEventRecord {
-            event_id: submitted_event_result.last_insert_rowid(),
-            run_id: run_id.clone(),
-            step_id: None,
-            event_type: "run_submitted".to_string(),
-            ts: now,
-            payload,
-        };
-        insert_materialized_run_steps_tx(&mut tx, &run_id, &materialized_steps, now).await?;
+        let submitted_event =
+            Self::append_run_event_tx(&mut tx, &run_id, None, "run_submitted", now, &payload)
+                .await?;
+        let mut archive_events =
+            insert_materialized_run_steps_tx(&mut tx, &run_id, &materialized_steps, now).await?;
         sync_linked_task_status_tx(
             &mut tx,
             team_id,
@@ -2480,7 +2719,8 @@ impl TeamManager {
         )
         .await?;
         tx.commit().await?;
-        self.spawn_archive_team_run_event(&submitted_event);
+        archive_events.insert(0, submitted_event);
+        self.spawn_archive_team_run_events(archive_events);
 
         Ok(TeamRunRecord {
             id: run_id,
@@ -2560,20 +2800,17 @@ impl TeamManager {
             "member_id": member_id,
             "status": team_step_status_to_str(&status),
         });
-        sqlx::query(
-            r#"
-            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-            VALUES (?1, ?2, ?3, ?4, ?5)
-            "#,
+        let submitted_event = Self::append_run_event_tx(
+            &mut tx,
+            run_id,
+            Some(&step_id),
+            "step_submitted",
+            now,
+            &payload,
         )
-        .bind(run_id)
-        .bind(&step_id)
-        .bind("step_submitted")
-        .bind(now)
-        .bind(payload.to_string())
-        .execute(&mut *tx)
         .await?;
         tx.commit().await?;
+        self.spawn_archive_team_run_event(&submitted_event);
 
         self.get_step(&step_id).await
     }
@@ -3429,6 +3666,7 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
         let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
 
         if update.rows_affected() > 0 {
             let run_update = sqlx::query(
@@ -3446,34 +3684,29 @@ impl TeamManager {
                 let run_payload = serde_json::json!({
                     "status": "working",
                 });
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, NULL, ?2, ?3, ?4)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    None,
+                    "run_working",
+                    now,
+                    &run_payload,
                 )
-                .bind(&step.run_id)
-                .bind("run_working")
-                .bind(now)
-                .bind(run_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
             }
 
             let step_payload = build_step_runtime_handle_event_payload(&step, "working");
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_working",
+                now,
+                &step_payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("step_working")
-            .bind(now)
-            .bind(step_payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
 
             if let Some((_, round)) = reconcile_started.as_ref() {
                 let runtime = extract_reconcile_round_runtime(step.input.as_ref());
@@ -3486,23 +3719,21 @@ impl TeamManager {
                     "acceptance_count": runtime.as_ref().map(|item| item.acceptance.len()).unwrap_or(0),
                     "max_rounds": runtime.and_then(|item| item.execution.max_rounds),
                 });
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, ?2, ?3, ?4, ?5)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_started",
+                    now,
+                    &round_payload,
                 )
-                .bind(&step.run_id)
-                .bind(&step.id)
-                .bind("step_reconcile_round_started")
-                .bind(now)
-                .bind(round_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
             }
         }
 
         tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
         Ok(step)
     }
 
@@ -3557,6 +3788,7 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
         let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
 
         if update.rows_affected() > 0 {
             let mut round_artifact_pointer = None;
@@ -3611,18 +3843,16 @@ impl TeamManager {
                     "step_id": step.id,
                     "step_key": step.step_key,
                 });
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, NULL, ?2, ?3, ?4)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    None,
+                    "run_input_required",
+                    now,
+                    &run_payload,
                 )
-                .bind(&step.run_id)
-                .bind("run_input_required")
-                .bind(now)
-                .bind(run_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
                 let (team_id, run_input) =
                     load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
                 sync_linked_task_status_tx(
@@ -3649,19 +3879,16 @@ impl TeamManager {
                 round_artifact_pointer.as_ref(),
                 round_artifact_offload_reason,
             );
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_input_required",
+                now,
+                &step_payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("step_input_required")
-            .bind(now)
-            .bind(step_payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
 
             if let Some((_, round)) = reconcile_finished.as_ref() {
                 let round_payload = serde_json::json!({
@@ -3677,23 +3904,21 @@ impl TeamManager {
                     round_artifact_pointer.as_ref(),
                     round_artifact_offload_reason,
                 );
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, ?2, ?3, ?4, ?5)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_finished",
+                    now,
+                    &round_payload,
                 )
-                .bind(&step.run_id)
-                .bind(&step.id)
-                .bind("step_reconcile_round_finished")
-                .bind(now)
-                .bind(round_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
             }
         }
 
         tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
         Ok(step)
     }
 
@@ -3738,6 +3963,7 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
         let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
 
         if update.rows_affected() > 0 {
             let run_update = sqlx::query(
@@ -3755,18 +3981,16 @@ impl TeamManager {
                 let run_payload = serde_json::json!({
                     "status": "working",
                 });
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, NULL, ?2, ?3, ?4)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    None,
+                    "run_working",
+                    now,
+                    &run_payload,
                 )
-                .bind(&step.run_id)
-                .bind("run_working")
-                .bind(now)
-                .bind(run_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
                 let (team_id, run_input) =
                     load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
                 sync_linked_task_status_tx(
@@ -3781,19 +4005,16 @@ impl TeamManager {
             }
 
             let step_payload = build_step_runtime_handle_event_payload(&step, "working");
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_resumed",
+                now,
+                &step_payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("step_resumed")
-            .bind(now)
-            .bind(step_payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
 
             if let Some((_, round)) = started_input.as_ref() {
                 let runtime = extract_reconcile_round_runtime(step.input.as_ref());
@@ -3806,23 +4027,21 @@ impl TeamManager {
                     "acceptance_count": runtime.as_ref().map(|item| item.acceptance.len()).unwrap_or(0),
                     "max_rounds": runtime.and_then(|item| item.execution.max_rounds),
                 });
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, ?2, ?3, ?4, ?5)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_started",
+                    now,
+                    &round_payload,
                 )
-                .bind(&step.run_id)
-                .bind(&step.id)
-                .bind("step_reconcile_round_started")
-                .bind(now)
-                .bind(round_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
             }
         }
 
         tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
         Ok(step)
     }
 
@@ -3877,6 +4096,7 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
         let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
 
         if update.rows_affected() > 0 {
             let mut round_artifact_pointer = None;
@@ -3938,19 +4158,16 @@ impl TeamManager {
                     ),
                 );
             }
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_continued",
+                now,
+                &continue_payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("step_continued")
-            .bind(now)
-            .bind(continue_payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
 
             let round_finished_payload = serde_json::json!({
                 "step_id": step.id,
@@ -3977,19 +4194,16 @@ impl TeamManager {
                     ),
                 );
             }
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_reconcile_round_finished",
+                now,
+                &round_finished_payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("step_reconcile_round_finished")
-            .bind(now)
-            .bind(round_finished_payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
 
             let round_started_payload = serde_json::json!({
                 "step_id": step.id,
@@ -4000,22 +4214,20 @@ impl TeamManager {
                 "acceptance_count": runtime.acceptance.len(),
                 "max_rounds": runtime.execution.max_rounds,
             });
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_reconcile_round_started",
+                now,
+                &round_started_payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("step_reconcile_round_started")
-            .bind(now)
-            .bind(round_started_payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
         }
 
         tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
         Ok(step)
     }
 
@@ -4059,6 +4271,7 @@ impl TeamManager {
         .await?;
         let step = load_step_record_tx(&mut tx, step_id).await?;
         let mut runtime_state_snapshot: Option<RuntimeStateSnapshotWritePlan> = None;
+        let mut archive_events = Vec::new();
 
         if update.rows_affected() > 0 {
             let mut round_artifact_pointer = None;
@@ -4107,19 +4320,16 @@ impl TeamManager {
                 round_artifact_pointer.as_ref(),
                 round_artifact_offload_reason,
             );
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_completed",
+                now,
+                &payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("step_completed")
-            .bind(now)
-            .bind(payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
 
             let (team_id, run_input) = load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
             let continuity_mode = extract_continuity_mode_from_input(&run_input);
@@ -4214,19 +4424,16 @@ impl TeamManager {
                     );
                 }
             }
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "continuity_state_updated",
+                now,
+                &continuity_payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("continuity_state_updated")
-            .bind(now)
-            .bind(continuity_payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
 
             if let Some((_, round)) = reconcile_finished.as_ref() {
                 let mut round_payload = serde_json::json!({
@@ -4241,19 +4448,16 @@ impl TeamManager {
                     round_artifact_pointer.as_ref(),
                     round_artifact_offload_reason,
                 );
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, ?2, ?3, ?4, ?5)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_finished",
+                    now,
+                    &round_payload,
                 )
-                .bind(&step.run_id)
-                .bind(&step.id)
-                .bind("step_reconcile_round_finished")
-                .bind(now)
-                .bind(round_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
             }
 
             let non_completed_count: i64 = sqlx::query_scalar(
@@ -4284,18 +4488,16 @@ impl TeamManager {
                     let run_payload = serde_json::json!({
                         "status": "completed",
                     });
-                    sqlx::query(
-                        r#"
-                        INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                        VALUES (?1, NULL, ?2, ?3, ?4)
-                        "#,
+                    let event = Self::append_run_event_tx(
+                        &mut tx,
+                        &step.run_id,
+                        None,
+                        "run_completed",
+                        now,
+                        &run_payload,
                     )
-                    .bind(&step.run_id)
-                    .bind("run_completed")
-                    .bind(now)
-                    .bind(run_payload.to_string())
-                    .execute(&mut *tx)
                     .await?;
+                    archive_events.push(event);
                     sync_linked_task_status_tx(
                         &mut tx,
                         &team_id,
@@ -4310,6 +4512,7 @@ impl TeamManager {
         }
 
         tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
         if let Some(plan) = runtime_state_snapshot {
             Self::write_runtime_state_snapshot_best_effort(plan).await?;
         }
@@ -4353,6 +4556,7 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
         let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
 
         if update.rows_affected() > 0 {
             let mut round_artifact_pointer = None;
@@ -4402,19 +4606,16 @@ impl TeamManager {
                 round_artifact_pointer.as_ref(),
                 round_artifact_offload_reason,
             );
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                "#,
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_failed",
+                now,
+                &payload,
             )
-            .bind(&step.run_id)
-            .bind(&step.id)
-            .bind("step_failed")
-            .bind(now)
-            .bind(payload.to_string())
-            .execute(&mut *tx)
             .await?;
+            archive_events.push(event);
 
             if let Some((_, round)) = reconcile_finished.as_ref() {
                 let round_payload = serde_json::json!({
@@ -4430,19 +4631,16 @@ impl TeamManager {
                     round_artifact_pointer.as_ref(),
                     round_artifact_offload_reason,
                 );
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, ?2, ?3, ?4, ?5)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_finished",
+                    now,
+                    &round_payload,
                 )
-                .bind(&step.run_id)
-                .bind(&step.id)
-                .bind("step_reconcile_round_finished")
-                .bind(now)
-                .bind(round_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
             }
 
             let run_update = sqlx::query(
@@ -4461,22 +4659,21 @@ impl TeamManager {
                 let run_payload = serde_json::json!({
                     "status": "failed",
                 });
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, NULL, ?2, ?3, ?4)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    None,
+                    "run_failed",
+                    now,
+                    &run_payload,
                 )
-                .bind(&step.run_id)
-                .bind("run_failed")
-                .bind(now)
-                .bind(run_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
             }
         }
 
         tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
         Ok(step)
     }
 
@@ -4821,6 +5018,7 @@ impl TeamManager {
         .bind(run_id)
         .execute(&mut *tx)
         .await?;
+        let mut archive_events = Vec::new();
 
         if result.rows_affected() > 0 {
             let (team_id, run_input) = load_run_status_sync_meta_tx(&mut tx, run_id).await?;
@@ -4858,34 +5056,23 @@ impl TeamManager {
                     "step_key": step_key,
                     "status": "canceled",
                 });
-                sqlx::query(
-                    r#"
-                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                    VALUES (?1, ?2, ?3, ?4, ?5)
-                    "#,
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    run_id,
+                    Some(&step_id),
+                    "step_canceled",
+                    now,
+                    &step_payload,
                 )
-                .bind(run_id)
-                .bind(&step_id)
-                .bind("step_canceled")
-                .bind(now)
-                .bind(step_payload.to_string())
-                .execute(&mut *tx)
                 .await?;
+                archive_events.push(event);
             }
 
             let payload = serde_json::json!({ "status": "canceled" });
-            sqlx::query(
-                r#"
-                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-                VALUES (?1, NULL, ?2, ?3, ?4)
-                "#,
-            )
-            .bind(run_id)
-            .bind("run_canceled")
-            .bind(now)
-            .bind(payload.to_string())
-            .execute(&mut *tx)
-            .await?;
+            let event =
+                Self::append_run_event_tx(&mut tx, run_id, None, "run_canceled", now, &payload)
+                    .await?;
+            archive_events.push(event);
             sync_linked_task_status_tx(
                 &mut tx,
                 &team_id,
@@ -4897,6 +5084,7 @@ impl TeamManager {
             .await?;
         }
         tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
 
         self.get_run(run_id).await
     }
@@ -5317,6 +5505,295 @@ impl TeamManager {
             .map(|member| member.role);
         Ok(role)
     }
+}
+
+async fn migrate_main_agent_events_to_archive(
+    db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    batch_size: usize,
+    max_id: i64,
+) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+    migrate_agent_event_rows_to_archive(
+        db,
+        db,
+        archive,
+        batch_size,
+        max_id,
+        AgentEventArchiveSource::Main,
+    )
+    .await
+}
+
+async fn migrate_per_agent_events_to_archive(
+    main_db: &SqlitePool,
+    event_db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    agent_id: &str,
+    batch_size: usize,
+    max_id: i64,
+) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+    migrate_agent_event_rows_to_archive(
+        main_db,
+        event_db,
+        archive,
+        batch_size,
+        max_id,
+        AgentEventArchiveSource::PerAgent { agent_id },
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AgentEventArchiveSource<'a> {
+    Main,
+    PerAgent { agent_id: &'a str },
+}
+
+async fn migrate_agent_event_rows_to_archive(
+    main_db: &SqlitePool,
+    event_db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    batch_size: usize,
+    max_id: i64,
+    source: AgentEventArchiveSource<'_>,
+) -> anyhow::Result<AgentEventArchiveMigrationCounts> {
+    let mut last_id = 0_i64;
+    let mut chunk_accumulator = AcpChunkAccumulator::default();
+    let mut counts = AgentEventArchiveMigrationCounts::default();
+    let batch_limit = i64::try_from(batch_size.clamp(1, 1000))?;
+    let mut scope_cache = HashMap::<(String, String, i64), Option<AgentEventArchiveScope>>::new();
+    let mut task_conversation_cache = HashMap::<(String, String), Option<String>>::new();
+
+    loop {
+        let rows =
+            fetch_agent_event_archive_rows(event_db, source, last_id, max_id, batch_limit).await?;
+        if rows.is_empty() {
+            break;
+        }
+        let mut documents = Vec::new();
+        for row in rows {
+            last_id = row.event_id;
+            let scope = agent_event_archive_scope_for_row(
+                main_db,
+                &row,
+                &mut scope_cache,
+                &mut task_conversation_cache,
+            )
+            .await?;
+            collect_agent_event_archive_row(
+                row,
+                scope.as_ref(),
+                &mut documents,
+                &mut chunk_accumulator,
+                &mut counts,
+            );
+        }
+        if !documents.is_empty() {
+            archive.append_documents(&documents).await?;
+        }
+    }
+
+    append_aggregated_acp_documents(
+        main_db,
+        archive,
+        chunk_accumulator,
+        batch_size,
+        &mut scope_cache,
+        &mut task_conversation_cache,
+        &mut counts,
+    )
+    .await?;
+    Ok(counts)
+}
+
+async fn fetch_agent_event_archive_rows(
+    db: &SqlitePool,
+    source: AgentEventArchiveSource<'_>,
+    last_id: i64,
+    max_id: i64,
+    batch_limit: i64,
+) -> anyhow::Result<Vec<AgentEventArchiveRow>> {
+    let rows = match source {
+        AgentEventArchiveSource::Main => sqlx::query(
+            r#"
+                SELECT id, agent_id, session_id, ts, stream, message
+                FROM agent_events
+                WHERE id > ?1 AND id <= ?2
+                ORDER BY id ASC
+                LIMIT ?3
+                "#,
+        )
+        .bind(last_id)
+        .bind(max_id)
+        .bind(batch_limit)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(|row| AgentEventArchiveRow {
+            event_id: row.get("id"),
+            agent_id: row.get("agent_id"),
+            session_id: row.get("session_id"),
+            ts: row.get("ts"),
+            stream: row.get("stream"),
+            message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
+        })
+        .collect(),
+        AgentEventArchiveSource::PerAgent { agent_id } => sqlx::query(
+            r#"
+                SELECT id, session_id, ts, stream, message
+                FROM agent_events
+                WHERE id > ?1 AND id <= ?2
+                ORDER BY id ASC
+                LIMIT ?3
+                "#,
+        )
+        .bind(last_id)
+        .bind(max_id)
+        .bind(batch_limit)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(|row| AgentEventArchiveRow {
+            event_id: row.get("id"),
+            agent_id: agent_id.to_string(),
+            session_id: row.get("session_id"),
+            ts: row.get("ts"),
+            stream: row.get("stream"),
+            message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
+        })
+        .collect(),
+    };
+    Ok(rows)
+}
+
+fn collect_agent_event_archive_row(
+    row: AgentEventArchiveRow,
+    scope: Option<&AgentEventArchiveScope>,
+    documents: &mut Vec<MessageDocument>,
+    chunk_accumulator: &mut AcpChunkAccumulator,
+    counts: &mut AgentEventArchiveMigrationCounts,
+) {
+    if row.stream == "acp"
+        && chunk_accumulator.push_row(AcpEventRow {
+            event_id: row.event_id,
+            agent_id: row.agent_id.clone(),
+            session_id: row.session_id.clone(),
+            ts: row.ts,
+            message: row.message.clone(),
+        })
+    {
+        return;
+    }
+
+    documents.push(agent_event_archive_document(&row, scope));
+    counts.agent_events += 1;
+}
+
+async fn agent_event_archive_scope_for_row(
+    db: &SqlitePool,
+    row: &AgentEventArchiveRow,
+    scope_cache: &mut HashMap<(String, String, i64), Option<AgentEventArchiveScope>>,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<Option<AgentEventArchiveScope>> {
+    let cache_key = (row.agent_id.clone(), row.session_id.clone(), row.event_id);
+    if let Some(scope) = scope_cache.get(&cache_key) {
+        return Ok(scope.clone());
+    }
+    let scope = agent_event_archive_scope_for_session(
+        db,
+        &row.agent_id,
+        &row.session_id,
+        row.ts,
+        task_conversation_cache,
+    )
+    .await?;
+    scope_cache.insert(cache_key, scope.clone());
+    Ok(scope)
+}
+
+async fn agent_event_archive_scope_for_session(
+    db: &SqlitePool,
+    agent_id: &str,
+    session_id: &str,
+    event_ts: i64,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+) -> anyhow::Result<Option<AgentEventArchiveScope>> {
+    let row = sqlx::query(
+        r#"
+        SELECT r.team_id, r.id AS run_id, r.input_json
+        FROM team_steps s
+        INNER JOIN team_runs r ON r.id = s.run_id
+        WHERE s.member_id = ?1
+          AND s.remote_task_id = ?2
+          AND COALESCE(s.started_at, r.started_at, r.created_at, 0) <= ?3
+          AND (s.ended_at IS NULL OR s.ended_at >= ?3)
+          AND trim(COALESCE(json_extract(r.input_json, '$.bootstrap_kind'), '')) != ?4
+        ORDER BY COALESCE(s.started_at, 0) DESC, COALESCE(s.ended_at, 0) DESC, s.attempt DESC, s.id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(agent_id)
+    .bind(session_id)
+    .bind(event_ts)
+    .bind(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND)
+    .fetch_optional(db)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let team_id: String = row.get("team_id");
+    let run_id: String = row.get("run_id");
+    let input_json: String = row.get("input_json");
+    let run_input: Value = serde_json::from_str(&input_json)?;
+    let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
+    let scope = message_archive_scope_for_payload_db(
+        db,
+        &team_id,
+        &Value::Null,
+        &base_scope,
+        task_conversation_cache,
+    )
+    .await?;
+    Ok(Some(AgentEventArchiveScope {
+        team_id: Some(team_id),
+        run_id: Some(run_id),
+        conversation_id: scope.conversation_id,
+        task_id: scope.task_id,
+    }))
+}
+
+async fn append_aggregated_acp_documents(
+    db: &SqlitePool,
+    archive: &MessageArchiveStoreRef,
+    accumulator: AcpChunkAccumulator,
+    batch_size: usize,
+    scope_cache: &mut HashMap<(String, String, i64), Option<AgentEventArchiveScope>>,
+    task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
+    counts: &mut AgentEventArchiveMigrationCounts,
+) -> anyhow::Result<()> {
+    let mut documents = Vec::new();
+    for message in accumulator.finish() {
+        let row = AgentEventArchiveRow {
+            event_id: message.first_event_id,
+            agent_id: message.agent_id.clone(),
+            session_id: message.session_id.clone(),
+            ts: message.created_at,
+            stream: "acp".to_string(),
+            message: String::new(),
+        };
+        let scope =
+            agent_event_archive_scope_for_row(db, &row, scope_cache, task_conversation_cache)
+                .await?;
+        documents.push(aggregated_acp_message_archive_document(
+            &message,
+            scope.as_ref(),
+        ));
+    }
+    counts.aggregated_acp_messages += documents.len();
+    for chunk in documents.chunks(batch_size.clamp(1, 1000)) {
+        archive.append_documents(chunk).await?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -6477,7 +6954,8 @@ async fn insert_materialized_run_steps_tx(
     run_id: &str,
     steps: &[MaterializedRunStepTemplate],
     now: i64,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<TeamRunEventRecord>> {
+    let mut events = Vec::with_capacity(steps.len());
     for step in steps {
         let step_id = Uuid::new_v4().to_string();
         let depends_on_json = serde_json::to_string(&step.depends_on)?;
@@ -6506,21 +6984,18 @@ async fn insert_materialized_run_steps_tx(
             "member_id": step.member_id,
             "status": team_step_status_to_str(&TeamStepStatus::Submitted),
         });
-        sqlx::query(
-            r#"
-            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-            VALUES (?1, ?2, ?3, ?4, ?5)
-            "#,
+        let event = TeamManager::append_run_event_tx(
+            tx,
+            run_id,
+            Some(&step_id),
+            "step_submitted",
+            now,
+            &payload,
         )
-        .bind(run_id)
-        .bind(&step_id)
-        .bind("step_submitted")
-        .bind(now)
-        .bind(payload.to_string())
-        .execute(&mut **tx)
         .await?;
+        events.push(event);
     }
-    Ok(())
+    Ok(events)
 }
 
 async fn load_step_record_tx(

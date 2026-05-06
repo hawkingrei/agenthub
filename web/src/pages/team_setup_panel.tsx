@@ -43,10 +43,11 @@ export function TeamSetupPanel({
         titleClassName="text-base font-normal"
         subtitleClassName="max-w-2xl text-[13px] leading-5 text-ui-text-secondary"
         contentClassName="gap-0"
+        actionsClassName="w-full min-w-0 shrink justify-start sm:w-auto sm:shrink-0 sm:justify-end"
         actions={
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="grid w-full min-w-0 gap-2 sm:w-auto sm:grid-cols-2">
             <ActionButton
-              className="border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+              className="w-full border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
               onClick={onCopyExisting}
               tone="secondary"
             >
@@ -55,7 +56,7 @@ export function TeamSetupPanel({
               <AlphaBadge />
             </ActionButton>
             <ActionButton
-              className={TEAM_WORKBENCH_ACCENT_BUTTON_CLASS}
+              className={`${TEAM_WORKBENCH_ACCENT_BUTTON_CLASS} w-full`}
               onClick={onForge}
             >
               <i className="bi bi-person-plus" aria-hidden="true" />

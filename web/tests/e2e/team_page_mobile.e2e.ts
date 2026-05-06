@@ -1,5 +1,6 @@
 import { expect, test } from "./coverage";
 import {
+  createTeamFromModal,
   gotoTeams,
   mockTeamPageApis,
   openMainTeamAction,
@@ -88,6 +89,58 @@ test("node detail keeps mobile detail surfaces stacked without horizontal overfl
     .locator('[data-node-team-summary-metrics="true"]')
     .evaluate((element) => window.getComputedStyle(element).gridTemplateColumns);
   expect(summaryMetricColumns.trim().split(/\s+/).length).toBe(1);
+
+  const horizontalOverflow = await page.evaluate(() => {
+    return document.documentElement.scrollWidth - document.documentElement.clientWidth;
+  });
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+});
+
+test("team setup actions stay reachable after mobile shell-first creation", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  const teamName = "Mobile Setup Team";
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await gotoTeams(page);
+  await createTeamFromModal(page, {
+    name: teamName,
+    goal: "Validate mobile setup actions after creating a shell-only team.",
+  });
+
+  const setupPanel = page.locator(".teams-main").filter({
+    hasText: "No agents have joined this team yet.",
+  });
+  await expect(setupPanel.getByRole("button", { name: "Copy Existing Agent" })).toBeVisible();
+  await expect(setupPanel.getByRole("button", { name: "Add First Coordinator Agent" })).toBeVisible();
+
+  await setupPanel.getByRole("button", { name: "Copy Existing Agent" }).click();
+  const dialog = page
+    .locator("[role='dialog']")
+    .filter({ hasText: "Copy an existing agent into this team." })
+    .last();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Copy keeps the source agent unchanged.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Move to Team (later)" })).toBeDisabled();
+
+  const dialogBox = await dialog.boundingBox();
+  const viewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(dialogBox).not.toBeNull();
+  expect(dialogBox!.x).toBeGreaterThanOrEqual(0);
+  expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
+
+  await dialog.getByRole("button", { name: "Copy into Team" }).click();
+  await expect(dialog).toBeHidden();
+
+  const updates = fixture.getUpdateSpecPayloads();
+  expect(updates).toHaveLength(1);
+  expect(updates[0]?.payload.spec.coordinator_member_id).toBe("agent-forge-4");
+  expect(updates[0]?.payload.spec.members[0]).toMatchObject({
+    member_id: "agent-forge-4",
+    role: "coordinator",
+    description: "Copied from existing agent Coordinator Agent.",
+  });
 
   const horizontalOverflow = await page.evaluate(() => {
     return document.documentElement.scrollWidth - document.documentElement.clientWidth;
