@@ -44,12 +44,22 @@ It does not yet:
 
 - `cd web && npm exec vitest -- run src/components/workspace_shell_header.test.tsx src/components/agent_nodes_workbench.test.tsx src/pages/team_page.smoke.test.tsx`
 - `cd web && PLAYWRIGHT_MOBILE_ONLY=1 npx playwright test tests/e2e/team_page_mobile.e2e.ts --project chromium`
+- `PLAYWRIGHT_NO_WEBSERVER=1 PLAYWRIGHT_MOBILE_ONLY=1 npm --prefix web run e2e -- tests/e2e/team_page_mobile.e2e.ts --grep "team setup actions stay reachable"`
 - `cd web && npm exec tsc -- --noEmit`
 - `cd web && npm run lint`
 - Chrome DevTools MCP baseline:
   - inspected deployed Team workspace shell structure at `/workspace/teams/...`
   - confirmed the current header/lens/sidebar composition before edits
   - used that baseline to target the shared header lane split instead of only page-local tweaks
+
+## 2026-05-06 Mobile Setup Coverage
+
+- added a mobile browser regression that creates a shell-only Team, verifies both setup entry
+  points remain reachable in the Team setup card, and exercises `Copy Existing Agent`
+- locked the disabled `Move to Team (later)` boundary in the mobile dialog so copy and move do not
+  collapse under compact controls
+- kept this as coverage-only work; Team creation, adoption semantics, and runtime ownership rules
+  remain unchanged
 
 ## Follow-Ups
 
