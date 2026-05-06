@@ -167,12 +167,39 @@ does not carry it everywhere yet. This spec treats it as the forward compatibili
 the multi-tenant/group rollout; projection layers may add nullable storage for it before authority
 rows start populating it.
 
+### 7) `group_id` Physical Rollout Plan
+
+`group_id` must become live in authority rows before it becomes a required projection filter. The
+rollout order is:
+
+1. Define the canonical group authority source.
+   - Initial group ownership should be derived from Team ownership, not from node-local state.
+   - Before a dedicated groups table exists, `team_definitions.owner_user_id` is the compatibility
+     boundary for single-user installations, but it must not be renamed or treated as the final
+     group id.
+2. Add nullable `group_id` to control-plane authority rows.
+   - `team_definitions`, `team_tasks`, and `team_runs` should carry the Team group boundary first.
+   - `node` registry authority rows should carry the same group boundary before routing enforces it.
+3. Propagate `group_id` into message authority rows.
+   - `team_conversation_messages` should inherit from the owning Team.
+   - `team_actor_messages` should inherit from the owning run or Team context.
+4. Propagate `group_id` into projection rows.
+   - `team_channel_message_replicas` should copy it from the authority message or run context.
+   - archive/search documents should preserve it when the authority source supplies it.
+5. Enforce routing boundaries after data is populated.
+   - mailbox, channel fan-out, and remote relay paths should reject cross-group routing unless a
+     future bridge contract explicitly permits it.
+
+Each phase must be backward compatible with existing rows where `group_id` is absent. Reads should
+treat missing `group_id` as `unknown`, not as permission to cross group boundaries.
+
 ## Validation Matrix
 
 - `cargo test internal_grpc_mailbox_send_persists_channel_replica_history -- --nocapture`
 - `cargo test internal_grpc_mailbox_send_rejects_channel_replica_payload_without_correlation_id -- --nocapture`
 - `cargo test -p agenthub-db init_db_adds_task_message_correlation_id_and_backfills_existing_rows -- --nocapture`
 - `cargo test -p agenthub append_task_conversation_message_persists_correlation_id_column -- --nocapture`
+- migration tests for the first physical `group_id` authority column once that phase lands
 - `cargo test remote_actor_messages_relay_success_marks_message_delivered -- --nocapture`
 - `cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture`
 
@@ -184,6 +211,8 @@ rows start populating it.
   message identities.
 - Treat `group_id` as a compatibility target until the live message schema rolls it out across the
   relevant persisted surfaces.
+- Do not enforce cross-group routing until `group_id` is populated on both node registry authority
+  rows and message authority rows.
 - `conversation_id` is a conversation container id, not a message id.
 - Threads remain message-anchored conversation containers; their messages still need their own
   `authority_message_id` values.
@@ -204,3 +233,4 @@ rows start populating it.
 - `docs/journal/2026-05-06-message-archive-group-id-projection.md`
 - `docs/journal/2026-05-06-channel-replica-correlation-projection.md`
 - `docs/journal/2026-05-06-task-message-correlation-authority.md`
+- `docs/journal/2026-05-06-group-id-rollout-plan.md`
