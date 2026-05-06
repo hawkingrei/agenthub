@@ -531,7 +531,7 @@ export const ADMIN_VALUE_CLASS = "value break-all text-[14px] font-medium text-n
 export const ADMIN_EMPTY_TEXT_CLASS = "text-sm text-notion-text-muted italic py-4";
 
 export const APP_WORKBENCH_HEADER_CLASS =
-  "flex flex-wrap items-center justify-end gap-2 bg-white px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3 border-b border-notion-border";
+  "relative z-40 flex flex-wrap items-center justify-end gap-2 bg-white px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3 border-b border-notion-border";
 
 export const APP_WORKBENCH_HEADER_STATUS_CLASS =
   "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-notion-border/70 bg-notion-sidebar/72 px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-notion-text-muted transition hover:bg-notion-hover";
