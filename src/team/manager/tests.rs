@@ -3,7 +3,10 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
-use super::{TeamManager, TeamRunResumeError, message_archive_body_text};
+use super::{
+    TeamManager, TeamRunResumeError, message_archive_body_text,
+    task_conversation_payload_correlation_id,
+};
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL};
 use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::internal::client::InternalGrpcPeerClientConfig;
@@ -63,6 +66,23 @@ struct TailAppendingMessageArchive {
     run_id: Option<String>,
     inserted: Mutex<bool>,
     documents: Mutex<Vec<MessageDocument>>,
+}
+
+#[test]
+fn task_conversation_payload_correlation_id_normalizes_optional_payload_field() {
+    assert_eq!(
+        task_conversation_payload_correlation_id(&json!({"correlation_id":" corr-1 "})),
+        "corr-1"
+    );
+    assert_eq!(
+        task_conversation_payload_correlation_id(&json!({"correlation_id":"   "})),
+        ""
+    );
+    assert_eq!(task_conversation_payload_correlation_id(&json!({})), "");
+    assert_eq!(
+        task_conversation_payload_correlation_id(&json!({"correlation_id":42})),
+        ""
+    );
 }
 
 #[async_trait]
