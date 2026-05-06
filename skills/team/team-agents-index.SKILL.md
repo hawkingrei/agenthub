@@ -20,6 +20,11 @@ Primary references:
   - coordinator interprets conversation input and compiles internal Team tasks
   - coordinator owns canonical Team task creation/management
   - Kanban is the canonical Team task surface; channels remain communication/review lanes
+- Enforce channel/thread context split:
+  - channel root messages are summary-first entrypoints for one topic
+  - thread replies are the full-context lane for detailed evidence, logs, reasoning, and follow-up
+  - use `agenthub actor team-thread-open` before treating a root channel message as complete context
+  - use `agenthub actor team-thread-reply` for topic-specific deep context
 - Enforce shared routing vocabulary from `skills/team/AGENTS.md`:
   - `coordinator-mailbox`
   - `peer-mailbox`

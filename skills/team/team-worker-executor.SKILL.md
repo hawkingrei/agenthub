@@ -199,10 +199,15 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - When posting to a shared channel, use `channel_id` (for example `all`) as the transport target;
   keep `@member_id` in the message body as mention metadata for ownership context rather than as a
   recipient filter.
+- Keep shared-channel root messages summary-first. If your update needs detailed evidence, logs,
+  reasoning, or topic-specific back-and-forth, open the thread rooted at that channel message and
+  continue there instead of turning the root channel lane into a context dump.
 - Large logs, traces, or copied context should be summary-first:
   - send the short summary in mailbox text/payload
   - attach a stable `detail_ref` / artifact pointer for the full content
   - avoid pasting the full body unless the receiver truly cannot access the referenced detail
+- Use `agenthub actor team-thread-open` and `agenthub actor team-thread-reply` when a relevant
+  channel topic needs deeper context than the root summary provides.
 - When posting to a shared channel, explicitly `@` the relevant owner, reviewer, dependency peer,
   or human stakeholder so the update has clear recipients.
 - If a blocker or risk needs immediate operator attention, send a concise human-mailbox

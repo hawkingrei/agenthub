@@ -33,6 +33,8 @@ Shared routing, mention, and human-visible reply policy remain canonical in
   be treated as notification delivery, not as agent identity.
 - `@member_id` in a channel message is mention metadata only; it does not narrow the channel
   broadcast recipient set.
+- Channel root messages are summary-first. Thread replies carry the detailed context for one rooted
+  topic.
 
 ## Routing Surface Contract
 
@@ -42,6 +44,8 @@ Shared routing, mention, and human-visible reply policy remain canonical in
 - Shared channel (`channel_id`) is team-wide delivery. Use it for `shared-channel`.
 - Human mailbox (`to_actor_id = user` / `user:<id>`) is urgent operator-facing notification. Use
   it for `human-notification`.
+- Thread replies are topic-scoped follow-up rooted in an existing channel message. Use
+  `team-thread-open` and `team-thread-reply` when a channel summary needs deeper context.
 - If several specific peers need the same actionable update, either send separate direct mailbox
   messages or use `shared-channel` with explicit `@member_id` mentions; do not pretend channel
   mention metadata is a recipient filter.
@@ -92,9 +96,13 @@ Recommended fields:
    `agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-file .agenthubmemory/mailbox/outbox/status-update.json`
 6. Broadcast into the shared Team channel while preserving mentions as metadata:
    `agenthub actor send --channel-id all --text-file .agenthubmemory/mailbox/outbox/channel-update.md`
-7. Escalate to human notifications when urgent coordination cannot wait:
+7. Open a thread for topic-specific deep context rooted in an existing channel message:
+   `agenthub actor team-thread-open --channel-id all --root-message-id "$ROOT_MESSAGE_ID"`
+8. Reply inside that thread when long evidence, logs, or detailed follow-up are needed:
+   `agenthub actor team-thread-reply --channel-id all --root-message-id "$ROOT_MESSAGE_ID" --text-file .agenthubmemory/mailbox/outbox/thread-reply.md`
+9. Escalate to human notifications when urgent coordination cannot wait:
    `agenthub actor send --to-actor-id user --text-file .agenthubmemory/mailbox/outbox/human-notification.md`
-8. Direct a single peer when the update does not need channel visibility:
+10. Direct a single peer when the update does not need channel visibility:
    `agenthub actor send --to-actor-id "$PEER_ACTOR_ID" --text-file .agenthubmemory/mailbox/outbox/peer-update.md`
 
 ## Reply Modes
@@ -112,6 +120,11 @@ Recommended fields:
   - if transport requires a chat envelope, keep it minimal and put only the natural-language reply in `text`
   - bad visible reply example: `{"type":"chat_message","current_phase":"Team formation","text":"..."}`
   - good visible reply example: `已收到你的消息。当前 mailbox 收发正常；如果有具体任务，直接发目标、约束和期望输出即可。`
+- Channel/thread replies:
+  - keep new channel root messages concise and summary-first
+  - move long background, logs, detailed reasoning, and topic-specific back-and-forth into the
+    thread rooted at that channel message
+  - open the thread before treating the root message as complete working context
 
 ## Reliability Rules
 
