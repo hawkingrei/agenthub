@@ -275,9 +275,11 @@ actor-scoped archive filters find messages delivered to that actor.
 - Live Team run-event dual-write covers new run submissions, the public run-event append path, and
   actor mailbox run-event appends.
 - Live memory-flush run events emitted through `append_run_event_tx` dual-write after the enclosing
-  SQLite transaction commits so archive search does not observe rolled-back flush attempts. The
-  remaining tx-heavy step lifecycle insertion paths still require follow-up consolidation before
-  run-event search can be fully continuous without rerunning migration.
+  SQLite transaction commits so archive search does not observe rolled-back flush attempts.
+- Live Team step lifecycle run events emitted inside SQLite transactions also dual-write after the
+  enclosing transaction commits. This includes step submission, working, input-required, resumed,
+  continued, completed, failed, canceled, reconcile-round, continuity-state, and matching run-status
+  events emitted by those lifecycle transitions.
 - Historical agent event migration replays both main/global `agent_events` rows and per-agent
   `AgentEventDbRouter` rows. Parseable ACP message chunks become `aggregated_acp_message`
   documents, while non-chunk or malformed ACP rows fall back to raw `agent_event` documents with
@@ -315,6 +317,9 @@ actor-scoped archive filters find messages delivered to that actor.
   run-event appends.
 - Focused Team manager tests for memory-flush run-event dual-write after transaction commit,
   including persisted/noop and failed flush attempts.
+- Focused Team manager tests for step lifecycle run-event dual-write after transaction commit,
+  including submitted/working/completed, input-required/resumed, continued reconcile rounds, failed,
+  and canceled transitions.
 - Focused Team API test for Team-scoped archive search:
   - route uses the archive abstraction
   - route forces path Team scope into `MessageSearchQuery`
@@ -352,3 +357,4 @@ actor-scoped archive filters find messages delivered to that actor.
 - [docs/journal/2026-05-05-message-archive-team-conversation-dual-write.md](../journal/2026-05-05-message-archive-team-conversation-dual-write.md)
 - [docs/journal/2026-05-05-message-archive-team-search-api.md](../journal/2026-05-05-message-archive-team-search-api.md)
 - [docs/journal/2026-05-05-message-archive-team-migration.md](../journal/2026-05-05-message-archive-team-migration.md)
+- [docs/journal/2026-05-06-message-archive-step-lifecycle-run-events.md](../journal/2026-05-06-message-archive-step-lifecycle-run-events.md)
