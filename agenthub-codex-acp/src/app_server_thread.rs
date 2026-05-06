@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent_client_protocol_legacy::{Error, SessionId};
+use agent_client_protocol::Error;
+use agent_client_protocol::schema::SessionId;
 use codex_app_server_client::{
     DEFAULT_IN_PROCESS_CHANNEL_CAPACITY, InProcessAppServerClient, InProcessAppServerRequestHandle,
     InProcessClientStartArgs, InProcessServerEvent, TypedRequestError,

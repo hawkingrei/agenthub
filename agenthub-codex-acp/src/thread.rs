@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-use agent_client_protocol_legacy::{
+use agent_client_protocol::schema::{
     AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ClientCapabilities,
     ConfigOptionUpdate, Content, ContentBlock, ContentChunk, Diff, EmbeddedResource,
     EmbeddedResourceResource, LoadSessionResponse, Meta, ModelId, ModelInfo, PermissionOption,
@@ -18,7 +18,7 @@ use agent_client_protocol_legacy::{
     ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
     ToolCallUpdateFields, ToolKind, UnstructuredCommandInput, UsageUpdate,
 };
-use agent_client_protocol_legacy::{Client, Error};
+use agent_client_protocol::{Client, Error};
 use agenthub_managed_skills::managed_skills_root;
 use codex_apply_patch::parse_patch;
 use codex_core::{
@@ -2656,8 +2656,32 @@ fn background_terminal_activity_meta(kind: &str, command: &str) -> Meta {
 #[derive(Clone)]
 struct SessionClient {
     session_id: SessionId,
-    client: Arc<dyn Client>,
+    client: Arc<dyn AcpClientBridge>,
     client_capabilities: Arc<Mutex<ClientCapabilities>>,
+}
+
+#[async_trait::async_trait(?Send)]
+trait AcpClientBridge {
+    async fn request_permission(
+        &self,
+        args: RequestPermissionRequest,
+    ) -> Result<RequestPermissionResponse, Error>;
+
+    async fn session_notification(&self, args: SessionNotification) -> Result<(), Error>;
+}
+
+#[async_trait::async_trait(?Send)]
+impl AcpClientBridge for agent_client_protocol::ConnectionTo<Client> {
+    async fn request_permission(
+        &self,
+        args: RequestPermissionRequest,
+    ) -> Result<RequestPermissionResponse, Error> {
+        self.send_request(args).block_task().await
+    }
+
+    async fn session_notification(&self, args: SessionNotification) -> Result<(), Error> {
+        self.send_notification(args)
+    }
 }
 
 impl SessionClient {
@@ -2672,7 +2696,7 @@ impl SessionClient {
     #[cfg(test)]
     fn with_client(
         session_id: SessionId,
-        client: Arc<dyn Client>,
+        client: Arc<dyn AcpClientBridge>,
         client_capabilities: Arc<Mutex<ClientCapabilities>>,
     ) -> Self {
         Self {
@@ -4642,7 +4666,7 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use agent_client_protocol_legacy::{
+    use agent_client_protocol::schema::{
         RequestPermissionResponse, SessionConfigKind, SessionConfigSelectOptions, TextContent,
     };
     use agenthub_managed_skills::{
@@ -6112,7 +6136,7 @@ mod tests {
     }
 
     #[async_trait::async_trait(?Send)]
-    impl Client for StubClient {
+    impl AcpClientBridge for StubClient {
         async fn request_permission(
             &self,
             args: RequestPermissionRequest,

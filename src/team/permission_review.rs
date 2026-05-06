@@ -826,7 +826,7 @@ mod tests {
             options: vec![agenthub_acp::AcpPermissionOption {
                 option_id: "allow".to_string(),
                 name: "Allow once".to_string(),
-                kind: agent_client_protocol_legacy::PermissionOptionKind::AllowOnce,
+                kind: agent_client_protocol::schema::PermissionOptionKind::AllowOnce,
             }],
             tool_call: Some(json!({"tool":{"name":"mcp__fs__read"}})),
             current_run_id: None,
@@ -1059,7 +1059,7 @@ mod tests {
             options: vec![agenthub_acp::AcpPermissionOption {
                 option_id: "allow".to_string(),
                 name: "Allow once".to_string(),
-                kind: agent_client_protocol_legacy::PermissionOptionKind::AllowOnce,
+                kind: agent_client_protocol::schema::PermissionOptionKind::AllowOnce,
             }],
             tool_call: Some(json!({"tool":{"name":"mcp__fs__read"}})),
             current_run_id: None,
@@ -1238,7 +1238,7 @@ mod tests {
             options: vec![agenthub_acp::AcpPermissionOption {
                 option_id: "allow".to_string(),
                 name: "Allow once".to_string(),
-                kind: agent_client_protocol_legacy::PermissionOptionKind::AllowOnce,
+                kind: agent_client_protocol::schema::PermissionOptionKind::AllowOnce,
             }],
             tool_call: Some(json!({"tool":{"name":"mcp__fs__write"}})),
             current_run_id: None,
