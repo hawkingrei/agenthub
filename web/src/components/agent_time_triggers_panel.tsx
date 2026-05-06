@@ -20,13 +20,25 @@ const ACTIVE_TRIGGER_STATUSES = new Set(["scheduled", "dispatching"]);
 function formatFireAt(fireAtUnix: number): string {
   const d = new Date(fireAtUnix * 1000);
   const now = Date.now();
-  const diffSec = Math.max(0, Math.floor((d.getTime() - now) / 1000));
+  const diffSec = Math.floor((d.getTime() - now) / 1000);
 
+  if (diffSec < 0) {
+    const ago = Math.abs(diffSec);
+    if (ago < 60) return "just now";
+    if (ago < 3600) return `${Math.floor(ago / 60)}m ago`;
+    if (ago < 86400) return `${Math.floor(ago / 3600)}h ago`;
+    if (ago < 2592000) return `${Math.floor(ago / 86400)}d ago`;
+    return d.toLocaleDateString();
+  }
   if (diffSec < 60) return "in <1 min";
   if (diffSec < 3600) return `in ${Math.floor(diffSec / 60)}m`;
   if (diffSec < 86400) return `in ${Math.floor(diffSec / 3600)}h`;
   if (diffSec < 2592000) return `in ${Math.floor(diffSec / 86400)}d`;
   return d.toLocaleDateString();
+}
+
+function formatFiredAt(firedAtUnix: number): string {
+  return new Date(firedAtUnix * 1000).toLocaleString();
 }
 
 function triggerKindLabel(kind: string): string {
@@ -142,6 +154,20 @@ export const AgentTimeTriggersPanel = React.memo(
                       {trigger.status}
                     </span>{" "}
                     · {formatFireAt(trigger.fire_at)}
+                    {trigger.fired_at && trigger.status === "fired" && (
+                      <>
+                        <br />
+                        <span className="text-green-700">
+                          fired {formatFiredAt(trigger.fired_at)}
+                        </span>
+                      </>
+                    )}
+                    {trigger.last_error && (
+                      <>
+                        <br />
+                        <span className="text-red-600">{trigger.last_error}</span>
+                      </>
+                    )}
                     {trigger.message_text && (
                       <>
                         <br />
