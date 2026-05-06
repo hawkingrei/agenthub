@@ -38,7 +38,7 @@ export function TeamSetupPanel({
             </h3>
           </div>
         }
-        subtitle="The team goal is saved, but runtime and runs stay blocked until you add the first coordinator agent."
+        subtitle="The team goal is saved. Choose one of the two agent paths below; the first added agent becomes the coordinator automatically."
         className="border-b-0 pb-0"
         titleClassName="text-base font-normal"
         subtitleClassName="max-w-2xl text-[13px] leading-5 text-ui-text-secondary"
@@ -77,8 +77,8 @@ export function TeamSetupPanel({
           <div className={TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS}>
             <p className={TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS}>First Agent</p>
             <p className={TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS}>
-              Add the first agent with a short description and a workspace. This first agent
-              becomes the coordinator.
+              Create a new Team-owned agent or copy an existing agent configuration. The first
+              added agent becomes the coordinator.
             </p>
           </div>
           <div className={TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS}>

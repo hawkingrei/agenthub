@@ -464,14 +464,14 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
         <div className={chrome.modalHeaderClassName}>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className={chrome.badgeClassName}>Add Existing Agent</span>
+              <span className={chrome.badgeClassName}>Copy Existing Agent</span>
               <AlphaBadge />
             </div>
             <h3
               id="team-copy-existing-agent-title"
               className="mt-2 text-[18px] font-semibold tracking-tight text-black"
             >
-              Copy an existing agent into this team.
+              Copy an existing agent into this Team.
             </h3>
             <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/70">
               AgentHub will create a new Team-owned {copyRoleLabel} agent from the selected source
@@ -578,15 +578,6 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
             Cancel
           </ActionButton>
           <ActionButton
-            className={chrome.mutedButtonClassName}
-            disabled
-            size="md"
-            tone="secondary"
-            type="button"
-          >
-            Move to Team (later)
-          </ActionButton>
-          <ActionButton
             className={chrome.accentButtonClassName}
             onClick={() => onCopy(selectedAgentId)}
             disabled={busy || !selectedAgentId}
@@ -641,7 +632,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
         <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft px-3.5 py-3 shadow-none">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className={chrome.infoStripLabelClassName}>Assigned Role</p>
+              <p className={chrome.infoStripLabelClassName}>Team Assignment</p>
               <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
                 {selectedTeamHasCoordinator
                   ? "This team already has a coordinator, so new agents join as workers by default."
@@ -653,7 +644,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
             </span>
           </div>
           <p className="mt-3 text-[11px] leading-5 text-ui-text-muted">
-            The default Add Agent flow keeps role assignment fixed so the modal only asks for
+            The default Add Agent flow keeps Team assignment fixed so the modal only asks for
             description and workspace settings.
           </p>
         </SurfaceCard>
@@ -693,8 +684,8 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
           }
         />
         <Alert className="mt-4" radius="md" color="blue" variant="light" title="Managed automatically">
-          AgentHub injects the role-specific system prompt and Team skills automatically for the
-          selected role. The default Add Agent flow only asks for a description and workspace
+          AgentHub injects the assignment-specific system prompt and Team skills automatically.
+          The default Add Agent flow only asks for a description and workspace
           settings.
         </Alert>
         {!selectedTeamHasCoordinator ? (
