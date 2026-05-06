@@ -122,6 +122,18 @@ It may update local observations, but it must not redefine `main` authority rows
 - gossip membership exchange should be scoped by `group_id` once registry surfaces carry it
   consistently.
 
+Physical rollout order:
+
+1. Add a main-owned nullable `group_id` to canonical node registry rows.
+2. Backfill existing single-user installations into one default group boundary.
+3. Mirror `group_id` into node-local registry snapshots as read-only authority metadata.
+4. Scope gossip membership exchange by `group_id`.
+5. Only after node and message authority rows both carry `group_id`, enforce cross-group routing
+   rejection in mailbox, channel fan-out, and remote relay paths.
+
+Node-local mirrors must not invent `group_id` values. If a node sees missing or conflicting group
+metadata, it should treat the record as unresolved and refresh from `main`.
+
 ### 5) Message Interaction Contract
 
 This spec depends on `main` authoritative message storage:
@@ -134,6 +146,8 @@ This spec depends on `main` authoritative message storage:
 ## Validation Matrix
 
 - registry/metadata contract review against `docs/features/distributed-node-architecture.md`
+- future migration test proving canonical node registry rows gain nullable `group_id` without
+  breaking existing single-node installations
 - focused relay and internal gRPC tests proving message delivery still depends on `main` authority:
   - `cargo test remote_actor_messages_relay_success_marks_message_delivered -- --nocapture`
   - `cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture`
@@ -160,3 +174,4 @@ This spec depends on `main` authoritative message storage:
 
 - `docs/journal/2026-03-19-distributed-p2p-pipeline.md`
 - `docs/journal/2026-05-04-distributed-message-metadata-contract-phase1.md`
+- `docs/journal/2026-05-06-group-id-rollout-plan.md`
