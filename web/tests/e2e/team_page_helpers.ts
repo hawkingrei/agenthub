@@ -89,7 +89,7 @@ export async function restoreTeamAddAgentContext(
     await showTeamsPanelButton.click();
   }
 
-  const conversationSubject = page.getByRole("button", { name: "# all", exact: true });
+  const conversationSubject = teamChannelSidebarEntry(page, "all");
   if (await conversationSubject.isVisible().catch(() => false)) {
     await conversationSubject.click();
     await page.waitForTimeout(150);
@@ -472,13 +472,35 @@ export async function selectTeamChannelFromSidebar(
   page: import("@playwright/test").Page,
   channelId: string
 ): Promise<void> {
-  const sidebar = page.locator(".teams-sidebar");
-  const channelEntry = sidebar
-    .locator("button")
-    .filter({ hasText: `# ${channelId}` })
-    .first();
+  const channelEntry = teamChannelSidebarEntry(page, channelId);
   await expect(channelEntry).toBeVisible();
   await channelEntry.click();
+}
+
+export function teamChannelSidebarEntry(
+  page: import("@playwright/test").Page,
+  channelId: string
+) {
+  assertRawChannelId(channelId);
+  const channelNamePattern = new RegExp(
+    `#\\s*${escapeRegExp(channelId)}(?:\\s|$)`
+  );
+  return page
+    .locator(".teams-sidebar")
+    .getByRole("button", { name: channelNamePattern })
+    .first();
+}
+
+function assertRawChannelId(channelId: string): void {
+  if (channelId.trim().startsWith("#")) {
+    throw new Error(
+      `Expected a raw channel id without the display prefix, got ${JSON.stringify(channelId)}`
+    );
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function openMainTeamAction(
@@ -542,10 +564,7 @@ export async function openMainTeamAction(
   }
 
   if (allowSidebarReset) {
-    const sidebarConversationEntry = page
-      .locator(".teams-sidebar")
-      .locator("button", { hasText: "# all" })
-      .first();
+    const sidebarConversationEntry = teamChannelSidebarEntry(page, "all");
     if ((await sidebarConversationEntry.count()) > 0) {
       await expect(sidebarConversationEntry).toBeVisible();
       await sidebarConversationEntry.click();
