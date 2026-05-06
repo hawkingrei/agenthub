@@ -9,7 +9,7 @@
 
 ## Background
 
-`docs/todo.md` still described the channel/thread rollout as incomplete even though the implementation had already landed across backend, internal control, actor CLI, web routing, split-pane UI, prompt defaults, and E2E fixtures. This note records the post-merge closure evidence so the active backlog does not keep stale P0+/P0 entries.
+[todo.md](../todo.md) still described the channel/thread rollout as incomplete even though the implementation had already landed across backend, internal control, actor CLI, web routing, split-pane UI, prompt defaults, and E2E fixtures. This note records the post-merge closure evidence so the active backlog does not keep stale P0+/P0 entries.
 
 ## Scope
 
@@ -56,5 +56,5 @@ Implementation evidence already present:
 
 ## Follow-Ups
 
-- Keep deployed-site validation separate from this rollout closure; `docs/todo.md` still tracks deployment verification surfaces that require live `agenthub.hawkingrei.com` evidence.
+- Keep deployed-site validation separate from this rollout closure; [todo.md](../todo.md) still tracks deployment verification surfaces that require live `agenthub.hawkingrei.com` evidence.
 - Treat composer task-draft affordances as a later product slice because they affect task materialization semantics.
