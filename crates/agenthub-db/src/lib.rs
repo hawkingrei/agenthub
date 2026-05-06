@@ -13,6 +13,8 @@ use sqlx::{
 };
 use tokio::sync::Mutex;
 
+use anyhow::Context;
+
 use agenthub_config::path_utils::expand_tilde;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1122,7 +1124,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_runs.group_id",
     )
     .await;
-    backfill_team_authority_group_ids(&pool).await;
+    backfill_team_authority_group_ids(&pool).await?;
     add_column_if_missing(
         &pool,
         "ALTER TABLE auth_sessions ADD COLUMN revoked_at INTEGER",
@@ -2259,8 +2261,8 @@ async fn sqlite_table_has_column(
     }))
 }
 
-async fn backfill_team_authority_group_ids(pool: &SqlitePool) {
-    if let Err(err) = sqlx::query(
+async fn backfill_team_authority_group_ids(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
         r#"
         UPDATE team_definitions
         SET group_id = trim(owner_user_id)
@@ -2270,13 +2272,8 @@ async fn backfill_team_authority_group_ids(pool: &SqlitePool) {
     )
     .execute(pool)
     .await
-    {
-        tracing::warn!(
-            "db init: failed to backfill team_definitions.group_id from owner_user_id: {}",
-            err
-        );
-    }
-    if let Err(err) = sqlx::query(
+    .context("backfill team_definitions.group_id from owner_user_id")?;
+    sqlx::query(
         r#"
         UPDATE team_tasks
         SET group_id = (
@@ -2295,13 +2292,8 @@ async fn backfill_team_authority_group_ids(pool: &SqlitePool) {
     )
     .execute(pool)
     .await
-    {
-        tracing::warn!(
-            "db init: failed to backfill team_tasks.group_id from team_definitions: {}",
-            err
-        );
-    }
-    if let Err(err) = sqlx::query(
+    .context("backfill team_tasks.group_id from team_definitions")?;
+    sqlx::query(
         r#"
         UPDATE team_runs
         SET group_id = (
@@ -2320,12 +2312,8 @@ async fn backfill_team_authority_group_ids(pool: &SqlitePool) {
     )
     .execute(pool)
     .await
-    {
-        tracing::warn!(
-            "db init: failed to backfill team_runs.group_id from team_definitions: {}",
-            err
-        );
-    }
+    .context("backfill team_runs.group_id from team_definitions")?;
+    Ok(())
 }
 
 #[cfg(test)]
