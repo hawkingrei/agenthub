@@ -186,6 +186,14 @@ struct MessageArchiveScopeFallback {
     task_id: Option<String>,
 }
 
+struct TeamRunArchiveScope {
+    team_id: String,
+    group_id: Option<String>,
+    base_scope: MessageArchiveScopeFallback,
+}
+
+type TeamRunArchiveScopeCache = HashMap<String, Option<TeamRunArchiveScope>>;
+
 impl MessageArchiveScopeFallback {
     fn from_run_input(run_input: &Value) -> Self {
         Self {
@@ -258,36 +266,39 @@ pub(super) async fn team_run_event_archive_document_for_db(
 async fn team_run_event_archive_document_for_db_cached(
     db: &SqlitePool,
     event: &TeamRunEventRecord,
-    run_scope_cache: &mut HashMap<String, Option<(String, MessageArchiveScopeFallback)>>,
+    run_scope_cache: &mut TeamRunArchiveScopeCache,
     task_conversation_cache: &mut HashMap<(String, String), Option<String>>,
 ) -> anyhow::Result<Option<MessageDocument>> {
     if !run_scope_cache.contains_key(&event.run_id) {
         let resolved = team_run_event_archive_scope_for_db(db, &event.run_id).await?;
         run_scope_cache.insert(event.run_id.clone(), resolved);
     }
-    let Some(Some((team_id, base_scope))) = run_scope_cache.get(&event.run_id) else {
+    let Some(Some(cached_scope)) = run_scope_cache.get(&event.run_id) else {
         return Ok(None);
     };
     let scope = message_archive_scope_for_payload_db(
         db,
-        team_id,
+        &cached_scope.team_id,
         &event.payload,
-        base_scope,
+        &cached_scope.base_scope,
         task_conversation_cache,
     )
     .await?;
     Ok(Some(team_run_event_archive_document(
-        team_id, event, &scope,
+        &cached_scope.team_id,
+        event,
+        &scope,
+        cached_scope.group_id.as_deref(),
     )))
 }
 
 async fn team_run_event_archive_scope_for_db(
     db: &SqlitePool,
     run_id: &str,
-) -> anyhow::Result<Option<(String, MessageArchiveScopeFallback)>> {
+) -> anyhow::Result<Option<TeamRunArchiveScope>> {
     let row = sqlx::query(
         r#"
-        SELECT team_id, input_json
+        SELECT team_id, group_id, input_json
         FROM team_runs
         WHERE id = ?1
         "#,
@@ -296,6 +307,7 @@ async fn team_run_event_archive_scope_for_db(
     .fetch_one(db)
     .await?;
     let team_id: String = row.get("team_id");
+    let group_id: Option<String> = row.get("group_id");
     let input_json: String = row.get("input_json");
     let run_input: Value = serde_json::from_str(&input_json)?;
     if message_archive_payload_string(&run_input, "bootstrap_kind").as_deref()
@@ -303,16 +315,18 @@ async fn team_run_event_archive_scope_for_db(
     {
         return Ok(None);
     }
-    Ok(Some((
+    Ok(Some(TeamRunArchiveScope {
         team_id,
-        MessageArchiveScopeFallback::from_run_input(&run_input),
-    )))
+        group_id,
+        base_scope: MessageArchiveScopeFallback::from_run_input(&run_input),
+    }))
 }
 
 fn team_run_event_archive_document(
     team_id: &str,
     event: &TeamRunEventRecord,
     scope: &MessageArchiveScopeFallback,
+    group_id: Option<&str>,
 ) -> MessageDocument {
     let body_text = message_archive_body_text(&event.payload);
     let redacted_payload = redact_sensitive_json(&event.payload);
@@ -323,7 +337,7 @@ fn team_run_event_archive_document(
         logical_message_id: None,
         authority_message_id: message_archive_payload_i64(&event.payload, "authority_message_id"),
         correlation_id: message_archive_payload_string(&event.payload, "correlation_id"),
-        group_id: None,
+        group_id: group_id.map(str::to_string),
         team_id: Some(team_id.to_string()),
         run_id: Some(event.run_id.clone()),
         conversation_id: message_archive_payload_string(&event.payload, "conversation_id")
@@ -2568,6 +2582,7 @@ impl TeamManager {
                     e.ts,
                     e.payload_json,
                     r.team_id,
+                    r.group_id,
                     r.input_json
                 FROM team_run_events e
                 INNER JOIN team_runs r ON r.id = e.run_id
@@ -2592,6 +2607,7 @@ impl TeamManager {
                 last_id = row.get("id");
                 let run_id: String = row.get("run_id");
                 let team_id: String = row.get("team_id");
+                let group_id: Option<String> = row.get("group_id");
                 if !run_scope_cache.contains_key(&run_id) {
                     let input_json: String = row.get("input_json");
                     let run_input: Value = serde_json::from_str(&input_json)?;
@@ -2613,7 +2629,12 @@ impl TeamManager {
                     &mut task_conversation_cache,
                 )
                 .await?;
-                documents.push(team_run_event_archive_document(&team_id, &event, &scope));
+                documents.push(team_run_event_archive_document(
+                    &team_id,
+                    &event,
+                    &scope,
+                    group_id.as_deref(),
+                ));
                 report.team_run_events += 1;
             }
             archive.append_documents(&documents).await?;

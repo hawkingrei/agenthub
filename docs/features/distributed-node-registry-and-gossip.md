@@ -126,6 +126,9 @@ Physical rollout order:
 
 1. Add a main-owned nullable `group_id` to canonical node registry rows.
 2. Add a reviewed group assignment source for existing and new node rows.
+   - Current source: root/admin create and update requests write `agent_nodes.group_id` on `main`.
+   - Compatibility: blank values normalize to `NULL`; legacy schemas reject non-empty assignments
+     instead of silently dropping them.
 3. Mirror `group_id` into node-local registry snapshots as read-only authority metadata.
 4. Scope gossip membership exchange by `group_id`.
 5. Only after node and message authority rows both carry `group_id`, enforce cross-group routing
@@ -147,6 +150,7 @@ This spec depends on `main` authoritative message storage:
 
 - registry/metadata contract review against `docs/features/distributed-node-architecture.md`
 - `cargo test -p agenthub-db init_db_adds_agent_nodes_group_id_column -- --nocapture`
+- `cargo test -p agenthub create_and_patch_agent_node_preserves_main_owned_group_id -- --nocapture`
 - focused relay and internal gRPC tests proving message delivery still depends on `main` authority:
   - `cargo test remote_actor_messages_relay_success_marks_message_delivered -- --nocapture`
   - `cargo test bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture`
@@ -163,9 +167,8 @@ This spec depends on `main` authoritative message storage:
 
 ## Open Risks
 
-- Node-registry group assignment still needs a reviewed source before routing can enforce it.
-- Group/tenant isolation exists here as a contract direction before it exists everywhere in the
-  live schema.
+- Group/tenant isolation still needs routing and gossip enforcement after the assignment data is
+  populated.
 - Gossip conflict resolution still needs a concrete version/epoch policy once node mirrors become
   mutable.
 
@@ -175,3 +178,4 @@ This spec depends on `main` authoritative message storage:
 - `docs/journal/2026-05-04-distributed-message-metadata-contract-phase1.md`
 - `docs/journal/2026-05-06-group-id-rollout-plan.md`
 - `docs/journal/2026-05-06-node-registry-group-id.md`
+- `docs/journal/2026-05-07-metadata-projection-contract-closure.md`

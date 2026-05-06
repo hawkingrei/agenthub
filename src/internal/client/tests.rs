@@ -481,6 +481,7 @@ async fn configure_remote_grpc_relay(
             grpc_target: format!("https://{}", addr),
             tls_server_name: Some("localhost".to_string()),
             default_worktree_root: None,
+            group_id: None,
         })
         .await
         .expect("create agent node");
