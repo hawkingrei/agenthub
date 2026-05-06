@@ -1242,6 +1242,199 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
 }
 
 #[tokio::test]
+async fn run_context_read_models_reflect_actor_and_session_state() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "run-context-read-model-team".to_string(),
+            description: Some("team for run context read models".to_string()),
+            spec: json!({
+                "entrypoint":"coordinator",
+                "members":[
+                    {"member_id":"coordinator","role":"coordinator"},
+                    {"member_id":"worker","role":"worker"},
+                    {"member_id":"reviewer","role":"reviewer"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-read-models"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+    manager
+        .append_run_event(&run.id, "operator_note", json!({"text":"checkpoint"}))
+        .await
+        .expect("append run event");
+
+    let pending = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"please take this"}),
+            idempotency_key: Some("read-model-pending"),
+        })
+        .await
+        .expect("send pending actor message");
+    let delivered = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"please review this"}),
+            idempotency_key: Some("read-model-delivered"),
+        })
+        .await
+        .expect("send delivered actor message");
+    manager
+        .ack_actor_message(&run.id, "reviewer", delivered.message_id)
+        .await
+        .expect("ack reviewer message");
+
+    sqlx::query("INSERT INTO agents (id, name, workdir, command, args, worktree_mode, code_mode, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)")
+        .bind("worker")
+        .bind("Worker")
+        .bind("/tmp/worker")
+        .bind("agent")
+        .bind("[]")
+        .bind("off")
+        .bind(1_i64)
+        .bind("running")
+        .bind(10_i64)
+        .bind(10_i64)
+        .execute(&db)
+        .await
+        .expect("insert worker agent");
+    sqlx::query("INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at) VALUES (?1, ?2, ?3, ?4, NULL)")
+        .bind("session-worker-live")
+        .bind("worker")
+        .bind("running")
+        .bind(10_i64)
+        .execute(&db)
+        .await
+        .expect("insert live worker session");
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let latest_event_id = events
+        .iter()
+        .map(|event| event.event_id)
+        .max()
+        .expect("run should have events");
+
+    let fingerprint = manager
+        .read_run_context_fingerprint(&run.id)
+        .await
+        .expect("read run fingerprint");
+    assert_eq!(fingerprint.team_id, team.id);
+    assert_eq!(fingerprint.run_id, run.id);
+    assert_eq!(fingerprint.run_status, "submitted");
+    assert_eq!(fingerprint.latest_event_id, latest_event_id);
+    assert_eq!(fingerprint.latest_mailbox_message_id, delivered.message_id);
+    assert_eq!(fingerprint.mailbox_pending, 1);
+    assert_eq!(fingerprint.mailbox_delivered, 1);
+    assert_eq!(fingerprint.mailbox_dead_letter, 0);
+
+    let pending_by_actor = manager
+        .list_actor_pending_counts_by_actor(&run.id)
+        .await
+        .expect("list pending counts by actor");
+    assert_eq!(pending_by_actor.get("worker"), Some(&1));
+    assert_eq!(pending_by_actor.get("reviewer"), None);
+
+    let all_pending = manager
+        .list_pending_actor_unread_counts()
+        .await
+        .expect("list pending unread counts");
+    assert!(all_pending.iter().any(|record| {
+        record.run_id == run.id && record.actor_id == "worker" && record.unread_count == 1
+    }));
+    assert!(
+        !all_pending
+            .iter()
+            .any(|record| { record.run_id == run.id && record.actor_id == "reviewer" })
+    );
+
+    assert_eq!(
+        manager
+            .member_role_for_run(&run.id, "worker")
+            .await
+            .expect("read worker role"),
+        Some("worker".to_string())
+    );
+    assert_eq!(
+        manager
+            .member_role_for_run(&run.id, "missing")
+            .await
+            .expect("read missing role"),
+        None
+    );
+    assert_eq!(
+        manager
+            .member_role_for_run("missing-run", "worker")
+            .await
+            .expect("read missing run role"),
+        None
+    );
+
+    assert_eq!(
+        manager
+            .get_agent_session_status("session-worker-live")
+            .await
+            .expect("read session status"),
+        Some("running".to_string())
+    );
+    assert_eq!(
+        manager
+            .get_agent_session_status("missing-session")
+            .await
+            .expect("read missing session status"),
+        None
+    );
+    assert_eq!(
+        manager
+            .get_live_member_session("worker")
+            .await
+            .expect("read live worker session"),
+        Some(("session-worker-live".to_string(), "running".to_string()))
+    );
+    assert_eq!(
+        manager
+            .get_live_member_session("missing-worker")
+            .await
+            .expect("read missing live session"),
+        None
+    );
+
+    let mismatch = manager
+        .describe_team_context(Some("wrong-team"), Some(&run.id))
+        .await
+        .expect_err("explicit team mismatch should be rejected");
+    assert!(mismatch.to_string().contains("wrong-team"));
+    assert_eq!(pending.status, TeamActorMessageStatus::Pending);
+}
+
+#[tokio::test]
 async fn append_run_event_skips_shared_thread_mailbox_runs_in_archive() {
     let db = setup_test_db().await;
     let archive = Arc::new(RecordingMessageArchive::default());
