@@ -46,3 +46,23 @@ cd web && npm run build
   ceremony, especially around how existing agents are picked or prefilled
 - add browser-level Team create coverage once the current coordinator-first create-shell wording is
   fully reflected in the main Team flow
+
+## 2026-05-06 Shell-First Follow-Up
+
+`Create Team` now creates only the empty Team shell. After a successful create, the create modal
+closes, the first-agent forge draft is cleared, and the operator lands on the Team detail page where
+the normal `Add Agent` action owns first-agent setup.
+
+This removes the remaining mismatch where Team creation still auto-opened the coordinator forge
+modal even though the product contract had already moved coordinator setup into the first explicit
+add-agent step.
+
+Validation:
+
+```bash
+npm --prefix web run test -- src/pages/team/use_team_management_actions.test.tsx
+npm --prefix web run lint
+cd web && ./node_modules/.bin/tsc --noEmit
+npm --prefix web run build
+git diff --check
+```

@@ -307,7 +307,7 @@ describe("useTeamManagementActions", () => {
     }
   });
 
-  it("creates a team and immediately opens the first coordinator forge flow", async () => {
+  it("creates a team shell and leaves first-agent setup to Add Agent", async () => {
     mockedApi.createTeam.mockResolvedValueOnce({
       id: "team-2",
       name: "New Team",
@@ -344,9 +344,9 @@ describe("useTeamManagementActions", () => {
           newTeamDescription: "",
           coordinatorPrompt: "lead",
           showCreateTeamModal: false,
-          showForgeAgentForm: true,
+          showForgeAgentForm: false,
           showCopyExistingAgentModal: false,
-          forgeAgentName: "new-team-coordinator",
+          forgeAgentName: "",
           forgeAgentPresetId: "codex",
           forgeAgentWorktreeMode: "use_existing",
           forgeAgentWorktreeRepo: "",
@@ -355,11 +355,7 @@ describe("useTeamManagementActions", () => {
           forgeAgentWorktreeError: null,
         })
       );
-      expect(params.setTeamMemberDraft).toHaveBeenCalledWith(
-        expect.objectContaining({
-          role: "coordinator",
-        })
-      );
+      expect(params.setTeamMemberDraft).toHaveBeenCalledWith(null);
       expect(params.navigateToTeamDetail).toHaveBeenCalledWith("team-2");
     } finally {
       mounted.cleanup();

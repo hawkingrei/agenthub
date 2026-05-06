@@ -724,33 +724,24 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         spec: buildEmptyTeamSpec(),
       });
       const initial = createInitialTeamCreateState();
-      const defaults = resolveTeamForgeDefaults({
-        teamName: created.name,
-        teamSpec: created.spec,
-        role: resolveInitialTeamMemberRole(false),
-        workerCount: 0,
-        defaultWorktreeRoot: forgeDefaultWorktreeRoot,
-        agentPresetId: DEFAULT_AGENT_PRESET_ID,
-        promptDefaults: teamPromptDefaults,
-      });
       setTeams((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedTeamId(created.id);
       clearTeamCreateDraft();
-      setTeamMemberDraft(defaults.draft);
+      setTeamMemberDraft(null);
       patchTeamCreate({
         newTeamName: initial.newTeamName,
         newTeamDescription: initial.newTeamDescription,
         coordinatorPrompt: teamPromptDefaults.coordinator_prompt,
         showCreateTeamModal: false,
-        showForgeAgentForm: true,
+        showForgeAgentForm: false,
         showCopyExistingAgentModal: false,
-        forgeAgentName: defaults.agentName,
-        forgeAgentWorkdir: defaults.agentWorkdir,
-        forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
-        forgeAgentWorktreeMode: defaults.worktreeMode,
-        forgeAgentWorktreeRepo: defaults.worktreeRepo,
-        forgeAgentWorktreeRef: defaults.worktreeRef,
-        forgeAgentCodeMode: true,
+        forgeAgentName: initial.forgeAgentName,
+        forgeAgentWorkdir: initial.forgeAgentWorkdir,
+        forgeAgentPresetId: initial.forgeAgentPresetId,
+        forgeAgentWorktreeMode: initial.forgeAgentWorktreeMode,
+        forgeAgentWorktreeRepo: initial.forgeAgentWorktreeRepo,
+        forgeAgentWorktreeRef: initial.forgeAgentWorktreeRef,
+        forgeAgentCodeMode: initial.forgeAgentCodeMode,
         forgeAgentWorktreeError: null,
         forgeAgentBusy: initial.forgeAgentBusy,
       });
@@ -763,7 +754,6 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
   }, [
     newTeamDescription,
     newTeamName,
-    forgeDefaultWorktreeRoot,
     navigateToTeamDetail,
     patchTeamCreate,
     setBusy,
