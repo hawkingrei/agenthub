@@ -308,6 +308,9 @@ describe("Team management modals", () => {
     expect(html).toContain("Source Agent");
     expect(html).toContain("Copy semantics");
     expect(html).toContain("Copy into Team");
+    expect(html).toContain("Configuration copy only");
+    expect(html).toContain("does not clone workspace contents");
+    expect(html).toContain("workspace-local memory/context");
   });
 
   it("renders the copy-existing-agent dialog as a semantic list with selection state", () => {
