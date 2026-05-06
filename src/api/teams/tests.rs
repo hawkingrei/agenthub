@@ -512,6 +512,7 @@ async fn init_test_schema(db: &SqlitePool) {
             description TEXT,
             spec_json TEXT NOT NULL,
             owner_user_id TEXT,
+            group_id TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -526,6 +527,7 @@ async fn init_test_schema(db: &SqlitePool) {
         CREATE TABLE team_runs (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
+            group_id TEXT,
             context_id TEXT NOT NULL,
             status TEXT NOT NULL,
             input_json TEXT NOT NULL,
@@ -588,6 +590,7 @@ async fn init_test_schema(db: &SqlitePool) {
         CREATE TABLE team_tasks (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
+            group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
             created_by_actor_id TEXT NOT NULL,

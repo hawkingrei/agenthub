@@ -1000,6 +1000,9 @@ impl TeamManager {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp();
         let spec_json = serde_json::to_string(&config.spec)?;
+        let group_id = owner_user_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         sqlx::query(
             r#"
             INSERT INTO team_definitions (
@@ -1008,10 +1011,11 @@ impl TeamManager {
                 description,
                 spec_json,
                 owner_user_id,
+                group_id,
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
         )
         .bind(&id)
@@ -1019,6 +1023,7 @@ impl TeamManager {
         .bind(&config.description)
         .bind(spec_json)
         .bind(owner_user_id)
+        .bind(group_id)
         .bind(now)
         .bind(now)
         .execute(&self.db)
@@ -1232,9 +1237,9 @@ impl TeamManager {
         sqlx::query(
             r#"
             INSERT INTO team_tasks (
-                id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
+                id, team_id, group_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, ?4, ?5, NULL, ?6, ?7, ?8)
             "#,
         )
         .bind(&task_id)
@@ -1630,9 +1635,9 @@ impl TeamManager {
         sqlx::query(
             r#"
             INSERT INTO team_tasks (
-                id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
+                id, team_id, group_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
             )
-            VALUES (?1, ?2, ?3, 'open', ?4, NULL, ?5, ?6, ?7)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', ?4, NULL, ?5, ?6, ?7)
             "#,
         )
         .bind(&task_id)
@@ -2703,8 +2708,8 @@ impl TeamManager {
         let mut tx = self.db.begin().await?;
         sqlx::query(
             r#"
-            INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            INSERT INTO team_runs (id, team_id, group_id, context_id, status, input_json, created_at)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, ?4, ?5, ?6)
             "#,
         )
         .bind(&run_id)
@@ -4796,6 +4801,7 @@ impl TeamManager {
             INSERT OR IGNORE INTO team_runs (
                 id,
                 team_id,
+                group_id,
                 context_id,
                 status,
                 input_json,
@@ -4803,7 +4809,7 @@ impl TeamManager {
                 started_at,
                 ended_at
             )
-            VALUES (?1, ?2, ?3, 'completed', ?4, ?5, ?6, ?7)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'completed', ?4, ?5, ?6, ?7)
             "#,
         )
         .bind(&run_id)
@@ -7449,6 +7455,7 @@ impl TeamManager {
             INSERT INTO team_tasks (
                 id,
                 team_id,
+                group_id,
                 title,
                 status,
                 created_by_actor_id,
@@ -7457,7 +7464,7 @@ impl TeamManager {
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, ?3, 'open', ?4, NULL, ?5, ?6, ?7)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', ?4, NULL, ?5, ?6, ?7)
             "#,
         )
         .bind(&task_id)
