@@ -170,6 +170,16 @@ fn team_conversation_message_archive_document(
     }
 }
 
+fn task_conversation_payload_correlation_id(payload: &Value) -> String {
+    payload
+        .get("correlation_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+        .to_string()
+}
+
 #[derive(Debug, Clone, Default)]
 struct MessageArchiveScopeFallback {
     conversation_id: Option<String>,
@@ -1926,6 +1936,7 @@ impl TeamManager {
         let conversation = self.get_task_conversation(task_id).await?;
         let redacted_payload = redact_sensitive_json(&payload);
         let payload_json = redacted_payload.to_string();
+        let correlation_id = task_conversation_payload_correlation_id(&redacted_payload);
         let to_actor_id = to_actor_id
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -1942,11 +1953,12 @@ impl TeamManager {
                     from_actor_id,
                     to_actor_id,
                     route,
+                    correlation_id,
                     payload_json,
                     idempotency_key,
                     created_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                 "#,
             )
             .bind(&conversation.id)
@@ -1954,6 +1966,7 @@ impl TeamManager {
             .bind(from_actor_id)
             .bind(to_actor_id.as_deref())
             .bind(route)
+            .bind(&correlation_id)
             .bind(&payload_json)
             .bind(idempotency_key)
             .bind(now)
@@ -2004,10 +2017,11 @@ impl TeamManager {
                     from_actor_id,
                     to_actor_id,
                     route,
+                    correlation_id,
                     payload_json,
                     created_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                 "#,
             )
             .bind(&conversation.id)
@@ -2015,6 +2029,7 @@ impl TeamManager {
             .bind(from_actor_id)
             .bind(to_actor_id.as_deref())
             .bind(route)
+            .bind(&correlation_id)
             .bind(&payload_json)
             .bind(now)
             .execute(&self.db)

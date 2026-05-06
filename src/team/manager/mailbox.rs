@@ -1473,6 +1473,7 @@ async fn maybe_persist_human_visible_chat_reply(
     let shared_thread = resolve_or_create_shared_thread_for_run(tx, &cmd.run_id, cmd).await?;
     let payload = build_canonical_chat_payload(&reply);
     let payload_json = redact_sensitive_json(&payload).to_string();
+    let correlation_id = channel_payload_correlation_id(&payload).unwrap_or_default();
     sqlx::query(
         r#"
         INSERT INTO team_conversation_messages (
@@ -1481,15 +1482,17 @@ async fn maybe_persist_human_visible_chat_reply(
             from_actor_id,
             to_actor_id,
             route,
+            correlation_id,
             payload_json,
             created_at
         )
-        VALUES (?1, ?2, ?3, NULL, 'group_chat', ?4, ?5)
+        VALUES (?1, ?2, ?3, NULL, 'group_chat', ?4, ?5, ?6)
         "#,
     )
     .bind(&shared_thread.conversation_id)
     .bind(&shared_thread.task_id)
     .bind(&cmd.from_actor_id)
+    .bind(correlation_id)
     .bind(payload_json)
     .bind(cmd.created_at)
     .execute(&mut **tx)

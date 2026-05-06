@@ -608,6 +608,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             from_actor_id TEXT NOT NULL,
             to_actor_id TEXT,
             route TEXT NOT NULL,
+            correlation_id TEXT NOT NULL DEFAULT '',
             payload_json TEXT NOT NULL,
             idempotency_key TEXT,
             created_at INTEGER NOT NULL,
@@ -1239,6 +1240,30 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     )
     .await;
     create_team_conversation_messages_idempotency_index(&pool).await?;
+    if !sqlite_table_has_column(&pool, "team_conversation_messages", "correlation_id").await? {
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_conversation_messages ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
+            "team_conversation_messages.correlation_id",
+        )
+        .await;
+        if let Err(err) = sqlx::query(
+            r#"
+            UPDATE team_conversation_messages
+            SET correlation_id = trim(COALESCE(json_extract(payload_json, '$.correlation_id'), ''))
+            WHERE correlation_id = ''
+              AND trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) != ''
+            "#,
+        )
+        .execute(&pool)
+        .await
+        {
+            tracing::warn!(
+                "db init: failed to backfill team_conversation_messages.correlation_id: {}",
+                err
+            );
+        }
+    }
     if !sqlite_table_has_column(&pool, "team_channel_message_replicas", "correlation_id").await? {
         add_column_if_missing(
             &pool,
@@ -3332,6 +3357,88 @@ mod tests {
         assert!(index_sql.contains("conversation_id"));
         assert!(index_sql.contains("from_actor_id"));
         assert!(index_sql.contains("idempotency_key"));
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_task_message_correlation_id_and_backfills_existing_rows() {
+        let dir = unique_temp_dir("db-migrate-task-message-correlation");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                idempotency_key TEXT,
+                created_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_conversation_messages");
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages (
+                conversation_id,
+                task_id,
+                from_actor_id,
+                route,
+                payload_json,
+                idempotency_key,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("conversation-1")
+        .bind("task-1")
+        .bind("user")
+        .bind("group_chat")
+        .bind(r#"{"text":"hello","correlation_id":"corr-task-message-1"}"#)
+        .bind("idem-1")
+        .bind(1_i64)
+        .execute(&pool)
+        .await
+        .expect("insert legacy task message");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with task message correlation migration");
+
+        let correlation_id_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_conversation_messages')
+            WHERE name = 'correlation_id'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read correlation_id column");
+        assert_eq!(correlation_id_column, "correlation_id");
+
+        let correlation_id: String = sqlx::query_scalar(
+            "SELECT correlation_id FROM team_conversation_messages WHERE idempotency_key = ?1",
+        )
+        .bind("idem-1")
+        .fetch_one(&pool)
+        .await
+        .expect("read backfilled correlation_id");
+        assert_eq!(correlation_id, "corr-task-message-1");
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);
