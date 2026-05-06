@@ -78,7 +78,7 @@ test("team channels create, switch and delete custom channel", async ({ page }) 
   await channelDescInput.fill("Code review and PR discussion");
 
   // Submit
-  await page.getByRole("button", { name: "Create channel" }).click();
+  await page.locator('button[type="submit"]').filter({ hasText: "Create channel" }).click();
 
   // The new channel should appear in the sidebar
   const reviewChannel = page.locator("button").filter({ hasText: "# review" });
@@ -160,7 +160,7 @@ test("non-default channel delete requires confirmation", async ({ page }) => {
   const createChannelButton = page.getByLabel("Create channel");
   await createChannelButton.click();
   await page.getByLabel("Channel ID").fill("staging");
-  await page.getByRole("button", { name: "Create channel" }).click();
+  await page.locator('button[type="submit"]').filter({ hasText: "Create channel" }).click();
 
   // Verify the channel appears
   const stagingChannel = page.locator("button").filter({ hasText: "# staging" });
