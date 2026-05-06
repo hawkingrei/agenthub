@@ -87,7 +87,6 @@ agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
 agent-client-protocol = { version = "0.11.1", features = ["unstable"] }
-agent-client-protocol-legacy = { package = "agent-client-protocol", version = "=0.10.4", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }
