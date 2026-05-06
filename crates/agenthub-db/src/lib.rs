@@ -638,6 +638,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             conversation_id TEXT NOT NULL,
             task_id TEXT NOT NULL,
             channel_id TEXT NOT NULL,
+            group_id TEXT,
             from_actor_id TEXT NOT NULL,
             source_node_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
@@ -662,6 +663,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             transport TEXT NOT NULL,
             route_json TEXT,
             payload_json TEXT NOT NULL,
+            group_id TEXT,
             idempotency_key TEXT,
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
@@ -1327,6 +1329,19 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             );
         }
     }
+    let team_channel_message_replicas_had_group_id =
+        sqlite_table_has_column(&pool, "team_channel_message_replicas", "group_id").await?;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_channel_message_replicas ADD COLUMN group_id TEXT",
+        "team_channel_message_replicas.group_id",
+    )
+    .await;
+    if !team_channel_message_replicas_had_group_id
+        && sqlite_table_has_column(&pool, "team_channel_message_replicas", "group_id").await?
+    {
+        backfill_team_channel_message_replica_group_ids(&pool).await?;
+    }
     add_column_if_missing(
         &pool,
         "ALTER TABLE team_actor_messages ADD COLUMN from_peer_id TEXT NOT NULL DEFAULT 'main'",
@@ -1363,6 +1378,19 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_actor_messages.dead_letter_at",
     )
     .await;
+    let team_actor_messages_had_group_id =
+        sqlite_table_has_column(&pool, "team_actor_messages", "group_id").await?;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN group_id TEXT",
+        "team_actor_messages.group_id",
+    )
+    .await;
+    if !team_actor_messages_had_group_id
+        && sqlite_table_has_column(&pool, "team_actor_messages", "group_id").await?
+    {
+        backfill_team_actor_message_group_ids(&pool).await?;
+    }
     add_column_if_missing(
         &pool,
         "ALTER TABLE team_actor_messages ADD COLUMN idempotency_key TEXT",
@@ -2352,6 +2380,69 @@ async fn backfill_team_conversation_message_group_ids(pool: &SqlitePool) -> anyh
     .execute(pool)
     .await
     .context("backfill team_conversation_messages.group_id from team_tasks")?;
+    Ok(())
+}
+
+async fn backfill_team_actor_message_group_ids(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE team_actor_messages
+        SET group_id = (
+            SELECT tr.group_id
+            FROM team_runs AS tr
+            WHERE tr.id = team_actor_messages.run_id
+        )
+        WHERE group_id IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM team_runs AS tr
+              WHERE tr.id = team_actor_messages.run_id
+                AND tr.group_id IS NOT NULL
+          )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("backfill team_actor_messages.group_id from team_runs")?;
+    Ok(())
+}
+
+async fn backfill_team_channel_message_replica_group_ids(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE team_channel_message_replicas
+        SET group_id = COALESCE(
+            (
+                SELECT tcm.group_id
+                FROM team_conversation_messages AS tcm
+                WHERE tcm.id = team_channel_message_replicas.authority_message_id
+            ),
+            (
+                SELECT tr.group_id
+                FROM team_runs AS tr
+                WHERE tr.id = team_channel_message_replicas.run_id
+            )
+        )
+        WHERE group_id IS NULL
+          AND (
+              EXISTS (
+                  SELECT 1
+                  FROM team_conversation_messages AS tcm
+                  WHERE tcm.id = team_channel_message_replicas.authority_message_id
+                    AND tcm.group_id IS NOT NULL
+              )
+              OR EXISTS (
+                  SELECT 1
+                  FROM team_runs AS tr
+                  WHERE tr.id = team_channel_message_replicas.run_id
+                    AND tr.group_id IS NOT NULL
+              )
+          )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("backfill team_channel_message_replicas.group_id from authority messages or runs")?;
     Ok(())
 }
 
@@ -3601,6 +3692,162 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn init_db_adds_and_backfills_team_actor_message_group_ids() {
+        let dir = unique_temp_dir("db-migrate-actor-message-group-id");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_definitions");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_runs (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                context_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                input_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                started_at INTEGER,
+                ended_at INTEGER
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_runs");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_actor_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                from_peer_id TEXT NOT NULL DEFAULT 'main',
+                to_actor_id TEXT NOT NULL,
+                to_peer_id TEXT NOT NULL DEFAULT 'main',
+                channel TEXT NOT NULL,
+                transport TEXT NOT NULL,
+                route_json TEXT,
+                payload_json TEXT NOT NULL,
+                idempotency_key TEXT,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                delivered_at INTEGER,
+                relay_attempt INTEGER NOT NULL DEFAULT 0,
+                relay_next_retry_at INTEGER,
+                relay_last_error TEXT,
+                dead_letter_at INTEGER
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_actor_messages");
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (
+                id, name, description, spec_json, owner_user_id, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("team-actor-message-group")
+        .bind("team actor message group")
+        .bind(Some("legacy actor message group id owner boundary"))
+        .bind(r#"{"members":[]}"#)
+        .bind(Some("user-actor-message-group"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy team");
+        sqlx::query(
+            r#"
+            INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("run-actor-message-group")
+        .bind("team-actor-message-group")
+        .bind("task-actor-message-group")
+        .bind("submitted")
+        .bind("{}")
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy run");
+        sqlx::query(
+            r#"
+            INSERT INTO team_actor_messages (
+                run_id, from_actor_id, from_peer_id, to_actor_id, to_peer_id, channel, transport,
+                route_json, payload_json, idempotency_key, status, created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10, ?11)
+            "#,
+        )
+        .bind("run-actor-message-group")
+        .bind("coordinator")
+        .bind("main")
+        .bind("worker")
+        .bind("main")
+        .bind("all")
+        .bind("local")
+        .bind(r#"{"text":"hello"}"#)
+        .bind("idem-actor-message-group")
+        .bind("pending")
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy actor message");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with actor message group migration");
+
+        let group_id_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_actor_messages')
+            WHERE name = 'group_id'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read actor message group_id column");
+        assert_eq!(group_id_column, "group_id");
+
+        let group_id: Option<String> = sqlx::query_scalar(
+            "SELECT group_id FROM team_actor_messages WHERE idempotency_key = ?1",
+        )
+        .bind("idem-actor-message-group")
+        .fetch_one(&pool)
+        .await
+        .expect("read backfilled actor message group_id");
+        assert_eq!(group_id, Some("user-actor-message-group".to_string()));
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn init_db_migrates_legacy_leader_terms_to_coordinator() {
         let dir = unique_temp_dir("db-migrate-leader-terms");
         std::fs::create_dir_all(&dir).expect("create temp dir");
@@ -4054,6 +4301,166 @@ mod tests {
         .await
         .expect("read backfilled correlation_id");
         assert_eq!(correlation_id, "corr-replica-1");
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_and_backfills_channel_replica_group_ids() {
+        let dir = unique_temp_dir("db-migrate-channel-replica-group-id");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_definitions");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_runs (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                context_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                input_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                started_at INTEGER,
+                ended_at INTEGER
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_runs");
+        sqlx::query(
+            r#"
+            CREATE TABLE team_channel_message_replicas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                authority_message_id INTEGER NOT NULL,
+                correlation_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                team_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                source_node_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                stored_at INTEGER NOT NULL,
+                UNIQUE(authority_message_id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_channel_message_replicas");
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (
+                id, name, description, spec_json, owner_user_id, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("team-replica-group")
+        .bind("team replica group")
+        .bind(Some("legacy replica group id owner boundary"))
+        .bind(r#"{"members":[]}"#)
+        .bind(Some("user-replica-group"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy team");
+        sqlx::query(
+            r#"
+            INSERT INTO team_runs (id, team_id, context_id, status, input_json, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind("run-replica-group")
+        .bind("team-replica-group")
+        .bind("task-replica-group")
+        .bind("submitted")
+        .bind("{}")
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy run");
+        sqlx::query(
+            r#"
+            INSERT INTO team_channel_message_replicas (
+                authority_message_id,
+                correlation_id,
+                run_id,
+                team_id,
+                conversation_id,
+                task_id,
+                channel_id,
+                from_actor_id,
+                source_node_id,
+                payload_json,
+                stored_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            "#,
+        )
+        .bind(100_i64)
+        .bind("corr-replica-group")
+        .bind("run-replica-group")
+        .bind("team-replica-group")
+        .bind("conversation-replica-group")
+        .bind("task-replica-group")
+        .bind("all")
+        .bind("planner")
+        .bind("main")
+        .bind(r#"{"text":"hello"}"#)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy replica");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with channel replica group migration");
+
+        let group_id_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_channel_message_replicas')
+            WHERE name = 'group_id'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read replica group_id column");
+        assert_eq!(group_id_column, "group_id");
+
+        let group_id: Option<String> = sqlx::query_scalar(
+            "SELECT group_id FROM team_channel_message_replicas WHERE authority_message_id = ?1",
+        )
+        .bind(100_i64)
+        .fetch_one(&pool)
+        .await
+        .expect("read backfilled replica group_id");
+        assert_eq!(group_id, Some("user-replica-group".to_string()));
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

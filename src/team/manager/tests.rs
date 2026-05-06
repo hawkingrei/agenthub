@@ -461,6 +461,7 @@ async fn setup_test_db() -> SqlitePool {
             transport TEXT NOT NULL,
             route_json TEXT,
             payload_json TEXT NOT NULL,
+            group_id TEXT,
             idempotency_key TEXT,
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
@@ -488,6 +489,7 @@ async fn setup_test_db() -> SqlitePool {
             conversation_id TEXT NOT NULL,
             task_id TEXT NOT NULL,
             channel_id TEXT NOT NULL,
+            group_id TEXT,
             from_actor_id TEXT NOT NULL,
             source_node_id TEXT NOT NULL,
             payload_json TEXT NOT NULL,
@@ -655,9 +657,11 @@ async fn insert_team_conversation_message(
     sqlx::query(
         r#"
         INSERT INTO team_conversation_messages (
-            conversation_id, task_id, from_actor_id, to_actor_id, route, payload_json, idempotency_key, created_at
+            conversation_id, task_id, from_actor_id, to_actor_id, route, group_id, payload_json, idempotency_key, created_at
         )
-        VALUES (?1, ?2, ?3, NULL, 'broadcast', ?4, NULL, ?5)
+        SELECT ?1, ?2, ?3, NULL, 'broadcast', group_id, ?4, NULL, ?5
+        FROM team_tasks
+        WHERE id = ?2
         "#,
     )
     .bind(conversation_id)
@@ -930,6 +934,75 @@ async fn append_task_conversation_message_persists_authority_group_id() {
             .await
             .expect("read task message group_id");
     assert_eq!(stored_group_id, Some("user-message-authority".to_string()));
+}
+
+#[tokio::test]
+async fn send_actor_message_persists_authority_group_id() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "actor-message-group-authority-team".to_string(),
+                description: Some("team with actor message group boundary".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[
+                        {"member_id":"coordinator","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }),
+            },
+            Some("user-actor-message-authority"),
+        )
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Actor message group task",
+            "user",
+            json!({"summary":"actor message group boundary check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(&team.id, Some(&task.id), json!({"task_id":task.id}))
+        .await
+        .expect("create run");
+
+    let message = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type": "chat_message",
+                "text": "actor message with group"
+            }),
+            idempotency_key: Some("actor-message-authority-group-1"),
+        })
+        .await
+        .expect("send actor message");
+
+    let stored_group_id: Option<String> =
+        sqlx::query_scalar("SELECT group_id FROM team_actor_messages WHERE id = ?1")
+            .bind(message.message_id)
+            .fetch_one(&db)
+            .await
+            .expect("read actor message group_id");
+    assert_eq!(
+        stored_group_id,
+        Some("user-actor-message-authority".to_string())
+    );
 }
 
 #[tokio::test]
@@ -1327,17 +1400,20 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
     );
 
     let team = manager
-        .create_team(TeamDefinitionConfig {
-            name: "actor-message-archive-team".to_string(),
-            description: Some("team for actor message archive dual-write".to_string()),
-            spec: json!({
-                "entrypoint":"coordinator_plan",
-                "members":[
-                    {"member_id":"coordinator"},
-                    {"member_id":"worker-1","role":"worker"}
-                ]
-            }),
-        })
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "actor-message-archive-team".to_string(),
+                description: Some("team for actor message archive dual-write".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator_plan",
+                    "members":[
+                        {"member_id":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }),
+            },
+            Some("user-actor-archive"),
+        )
         .await
         .expect("create team");
     let (task, conversation) = manager
@@ -1435,6 +1511,7 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
         Some(source_message.message_id)
     );
     assert_eq!(document.correlation_id.as_deref(), Some("corr-live-actor"));
+    assert_eq!(document.group_id.as_deref(), Some("user-actor-archive"));
     assert_eq!(document.team_id.as_deref(), Some(team.id.as_str()));
     assert_eq!(document.run_id.as_deref(), Some(run.id.as_str()));
     assert_eq!(

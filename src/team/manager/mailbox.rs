@@ -1163,11 +1163,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 transport,
                 route_json,
                 payload_json,
+                group_id,
                 status,
                 created_at,
                 idempotency_key
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, tr.group_id, ?10, ?11, ?12
+            FROM team_runs AS tr
+            WHERE tr.id = ?1
             "#,
         )
         .bind(&cmd.run_id)
