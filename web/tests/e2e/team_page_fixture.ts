@@ -125,9 +125,34 @@ export type TeamConversationMessageRecord = {
   task_id: string;
   from_actor_id: string;
   to_actor_id: string | null;
-  route: "to_coordinator" | "to_member" | "group_chat";
+  route: "to_coordinator" | "to_member" | "group_chat" | "team_thread_reply";
   payload: unknown;
   created_at: number;
+};
+
+export type TeamChannelRecord = {
+  team_id: string;
+  channel_id: string;
+  task_id: string;
+  conversation_id: string;
+  description?: string | null;
+  created_by_actor_id: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type TeamThreadOpenRecord = {
+  team_id: string;
+  channel_id: string;
+  task_id: string;
+  conversation_id: string;
+  root_message_id: number;
+  thread_id: string;
+};
+
+export type TeamThreadReplyRecord = {
+  thread: TeamThreadOpenRecord;
+  message: TeamConversationMessageRecord;
 };
 
 export type TeamActorMessageRecord = {
@@ -1010,12 +1035,29 @@ export async function mockTeamPageApis(
   );
 
   // --- Channel routes ---
-  const teamChannelsByTeamId = new Map<string, Array<{ channel_id: string; description?: string | null; task_id?: string | null; team_id: string; created_at: number; updated_at: number }>>();
+  const teamChannelsByTeamId = new Map<string, TeamChannelRecord[]>();
+  const threadReplyCountersByThreadId = new Map<string, number>();
   const ensureChannels = (teamId: string) => {
     if (!teamChannelsByTeamId.has(teamId)) {
       teamChannelsByTeamId.set(teamId, []);
     }
     return teamChannelsByTeamId.get(teamId)!;
+  };
+  const buildChannelRecord = (
+    teamId: string,
+    payload: { channel_id: string; description?: string | null }
+  ): TeamChannelRecord => {
+    const taskId = `task-${teamId}-channel-${payload.channel_id}`;
+    return {
+      team_id: teamId,
+      channel_id: payload.channel_id,
+      task_id: taskId,
+      conversation_id: `conversation-${taskId}`,
+      description: payload.description ?? null,
+      created_by_actor_id: `user:${auth.userId}`,
+      created_at: now,
+      updated_at: now,
+    };
   };
 
   await page.route(/\/api\/teams\/[^/]+\/channels(?:\?.*)?$/, async (route, request) => {
@@ -1031,14 +1073,7 @@ export async function mockTeamPageApis(
         await route.fulfill(jsonResponse({ error: "channel already exists" }, 409));
         return;
       }
-      const created = {
-        channel_id: payload.channel_id,
-        description: payload.description ?? null,
-        task_id: null,
-        team_id: teamId,
-        created_at: now,
-        updated_at: now,
-      };
+      const created = buildChannelRecord(teamId, payload);
       channels.push(created);
       await route.fulfill(jsonResponse(created));
       return;
@@ -1072,12 +1107,47 @@ export async function mockTeamPageApis(
         await route.fallback();
         return;
       }
+      const m = request
+        .url()
+        .match(/\/api\/teams\/([^/]+)\/channels\/([^/]+)\/threads\/(\d+)\/replies$/);
+      if (!m) {
+        await route.fulfill(jsonResponse({ error: "path params missing" }, 400));
+        return;
+      }
+      const [, teamId, channelId, rootMessageIdText] = m;
+      const rootMessageId = Number(rootMessageIdText);
+      const taskId = `task-${teamId}-channel-${channelId}`;
+      const conversationId = `conversation-${taskId}`;
+      const threadId = `thread-${teamId}-${channelId}-${rootMessageId}`;
+      const nextReplyIndex = (threadReplyCountersByThreadId.get(threadId) ?? 0) + 1;
+      threadReplyCountersByThreadId.set(threadId, nextReplyIndex);
       const payload = request.postDataJSON() as { text: string; mention_actor_ids?: string[] };
-      await route.fulfill(jsonResponse({
-        message_id: 1000 + Math.floor(Math.random() * 9000),
-        text: payload.text,
-        created_at: now,
-      }));
+      const reply: TeamThreadReplyRecord = {
+        thread: {
+          team_id: teamId,
+          channel_id: channelId,
+          task_id: taskId,
+          conversation_id: conversationId,
+          root_message_id: rootMessageId,
+          thread_id: threadId,
+        },
+        message: {
+          message_id: 1000 + nextReplyIndex,
+          conversation_id: conversationId,
+          task_id: taskId,
+          from_actor_id: `user:${auth.userId}`,
+          to_actor_id: null,
+          route: "team_thread_reply",
+          payload: {
+            type: "chat_message",
+            text: payload.text,
+            mention_actor_ids: payload.mention_actor_ids ?? [],
+            thread_root_message_id: rootMessageId,
+          },
+          created_at: now + 300 + nextReplyIndex,
+        },
+      };
+      await route.fulfill(jsonResponse(reply));
     }
   );
 

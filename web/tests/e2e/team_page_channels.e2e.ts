@@ -1,6 +1,5 @@
 import { expect, test } from "./coverage";
 import {
-  createTeamFromModal,
   gotoTeams,
   mockTeamPageApis,
   openTeamFromSelector,
@@ -27,7 +26,6 @@ test("team channels shows #all by default in sidebar", async ({ page }) => {
   });
 
   await gotoTeams(page);
-  await createTeamFromModal(page, { name: "Default Channel Team" });
   await openTeamFromSelector(page, "Default Channel Team");
 
   // The sidebar should show "# all" as the default channel
@@ -60,7 +58,6 @@ test("team channels create, switch and delete custom channel", async ({ page }) 
   });
 
   await gotoTeams(page);
-  await createTeamFromModal(page, { name: "Channel CRUD Team" });
   await openTeamFromSelector(page, "Channel CRUD Team");
 
   // Open the create channel form
@@ -98,7 +95,7 @@ test("team channels create, switch and delete custom channel", async ({ page }) 
   await expect(deleteButton).toBeVisible();
 
   // Mock the confirm dialog
-  page.on("dialog", (dialog) => dialog.accept());
+  page.once("dialog", (dialog) => dialog.accept());
   await deleteButton.click();
 
   // The channel should be removed
@@ -153,7 +150,6 @@ test("non-default channel delete requires confirmation", async ({ page }) => {
   });
 
   await gotoTeams(page);
-  await createTeamFromModal(page, { name: "Confirm Team" });
   await openTeamFromSelector(page, "Confirm Team");
 
   // Create a custom channel
@@ -169,7 +165,7 @@ test("non-default channel delete requires confirmation", async ({ page }) => {
   // Cancel the delete dialog should keep the channel
   await stagingChannel.first().hover();
   const deleteButton = page.getByLabel("Delete channel staging");
-  page.on("dialog", (dialog) => dialog.dismiss());
+  page.once("dialog", (dialog) => dialog.dismiss());
   await deleteButton.click();
 
   // Channel should still be visible
