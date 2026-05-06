@@ -178,7 +178,7 @@ rollout order is:
      boundary for single-user installations, but it must not be renamed or treated as the final
      group id.
 2. Add nullable `group_id` to control-plane authority rows.
-   - `team_definitions` should carry the Team group boundary first.
+   - `team_definitions`, `team_tasks`, and `team_runs` should carry the Team group boundary first.
    - `node` registry authority rows should carry the same group boundary before routing enforces it.
 3. Propagate `group_id` into message authority rows.
    - `team_conversation_messages` should inherit from the owning Team.
