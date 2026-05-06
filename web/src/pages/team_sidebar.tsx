@@ -268,6 +268,11 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     teams: true,
     agents: true,
   });
+  React.useEffect(() => {
+    setShowCreateChannelForm(false);
+    setNewChannelId("");
+    setNewChannelDescription("");
+  }, [selectedTeamId]);
   const deferredTeamFilter = React.useDeferredValue(teamFilter);
   const normalizedTeamFilter = deferredTeamFilter.trim().toLowerCase();
   const filteredTeams = React.useMemo(() => {

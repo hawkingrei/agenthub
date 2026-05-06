@@ -119,15 +119,56 @@ export type TeamTaskRecord = {
   updated_at: number;
 };
 
+export type TeamConversationRecord = {
+  id: string;
+  team_id: string;
+  task_id: string;
+  mode: "to_coordinator" | "to_member" | "group_chat";
+  topic?: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
 export type TeamConversationMessageRecord = {
   message_id: number;
   conversation_id: string;
   task_id: string;
   from_actor_id: string;
   to_actor_id: string | null;
-  route: "to_coordinator" | "to_member" | "group_chat";
+  route: "to_coordinator" | "to_member" | "group_chat" | "team_thread_reply";
   payload: unknown;
   created_at: number;
+};
+
+export type TeamChannelRecord = {
+  team_id: string;
+  channel_id: string;
+  task_id: string;
+  conversation_id: string;
+  description?: string | null;
+  created_by_actor_id: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type TeamThreadOpenRecord = {
+  team_id: string;
+  channel_id: string;
+  task_id: string;
+  conversation_id: string;
+  root_message_id: number;
+  thread_id: string;
+};
+
+export type TeamThreadReplyRecord = {
+  thread: TeamThreadOpenRecord;
+  message: TeamConversationMessageRecord;
+};
+
+export type TeamTaskDetailResponse = {
+  task: TeamTaskRecord;
+  conversation: TeamConversationRecord;
+  latest_run?: TeamRunRecord | null;
 };
 
 export type TeamActorMessageRecord = {
@@ -289,8 +330,40 @@ export async function mockTeamPageApis(
     };
     tasksByTeamId.set(teamId, [defaultTask]);
     taskCounterByTeamId.set(teamId, 1);
-    taskMessagesById.set(defaultTask.id, []);
+    if (!taskMessagesById.has(defaultTask.id)) {
+      taskMessagesById.set(defaultTask.id, []);
+    }
     return [defaultTask];
+  };
+  const buildTaskDetail = (task: TeamTaskRecord): TeamTaskDetailResponse => ({
+    task,
+    conversation: {
+      id: `conversation-${task.id}`,
+      team_id: task.team_id,
+      task_id: task.id,
+      mode: "group_chat",
+      topic: task.title,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+    },
+    latest_run: null,
+  });
+  const putTask = (task: TeamTaskRecord): TeamTaskRecord => {
+    const current = ensureTasks(task.team_id);
+    tasksByTeamId.set(task.team_id, [
+      task,
+      ...current.filter((item) => item.id !== task.id),
+    ]);
+    if (!taskMessagesById.has(task.id)) {
+      taskMessagesById.set(task.id, []);
+    }
+    return task;
+  };
+  const seedTaskMessages = (
+    taskId: string,
+    messages: TeamConversationMessageRecord[]
+  ): void => {
+    taskMessagesById.set(taskId, messages);
   };
 
   const inferRunStatusFromRunId = (runId: string): TeamRunRecord["status"] => {
@@ -720,12 +793,41 @@ export async function mockTeamPageApis(
         created_at: createdAt,
         updated_at: createdAt,
       };
-      tasksByTeamId.set(teamId, [createdTask, ...current.filter((item) => item.id !== taskId)]);
-      taskMessagesById.set(taskId, []);
+      putTask(createdTask);
       await route.fulfill(jsonResponse({ task: createdTask }));
       return;
     }
     await route.fallback();
+  });
+
+  await page.route(
+    /\/api\/teams\/[^/]+\/shared_thread$/,
+    async (route, request) => {
+      if (request.method() !== "GET" && request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const url = new URL(request.url());
+      const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/shared_thread$/)?.[1] ?? "";
+      const sharedTask = ensureTasks(teamId)[0];
+      await route.fulfill(jsonResponse(buildTaskDetail(sharedTask)));
+    }
+  );
+
+  await page.route(/\/api\/teams\/[^/]+\/tasks\/[^/?]+$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/tasks/)?.[1] ?? "";
+    const taskId = url.pathname.match(/\/tasks\/([^/]+)$/)?.[1] ?? "";
+    const task = ensureTasks(teamId).find((item) => item.id === taskId);
+    if (!task) {
+      await route.fulfill(jsonResponse({ error: "task not found" }, 404));
+      return;
+    }
+    await route.fulfill(jsonResponse(buildTaskDetail(task)));
   });
 
   await page.route(
@@ -1009,6 +1111,164 @@ export async function mockTeamPageApis(
     }
   );
 
+  // --- Channel routes ---
+  const teamChannelsByTeamId = new Map<string, TeamChannelRecord[]>();
+  const threadReplyCountersByThreadId = new Map<string, number>();
+  const ensureChannels = (teamId: string) => {
+    if (!teamChannelsByTeamId.has(teamId)) {
+      teamChannelsByTeamId.set(teamId, []);
+    }
+    return teamChannelsByTeamId.get(teamId)!;
+  };
+  const buildChannelRecord = (
+    teamId: string,
+    payload: { channel_id: string; description?: string | null }
+  ): TeamChannelRecord => {
+    const taskId = `task-${teamId}-channel-${payload.channel_id}`;
+    return {
+      team_id: teamId,
+      channel_id: payload.channel_id,
+      task_id: taskId,
+      conversation_id: `conversation-${taskId}`,
+      description: payload.description ?? null,
+      created_by_actor_id: `user:${auth.userId}`,
+      created_at: now,
+      updated_at: now,
+    };
+  };
+  const ensureChannelTask = (channel: TeamChannelRecord): TeamTaskRecord => {
+    const existing = ensureTasks(channel.team_id).find(
+      (task) => task.id === channel.task_id
+    );
+    if (existing) {
+      return existing;
+    }
+    return putTask({
+      id: channel.task_id,
+      team_id: channel.team_id,
+      title: `# ${channel.channel_id}`,
+      status: "open",
+      created_by_actor_id: channel.created_by_actor_id,
+      context: {
+        source: "e2e-channel",
+        channel_id: channel.channel_id,
+      },
+      created_at: channel.created_at,
+      updated_at: channel.updated_at,
+    });
+  };
+
+  await page.route(/\/api\/teams\/[^/]+\/channels(?:\?.*)?$/, async (route, request) => {
+    const teamId = request.url().match(/\/api\/teams\/([^/]+)\/channels/)?.[1] ?? "";
+    if (request.method() === "GET") {
+      await route.fulfill(jsonResponse(ensureChannels(teamId)));
+      return;
+    }
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as { channel_id: string; description?: string | null };
+      const channels = ensureChannels(teamId);
+      if (channels.some((ch) => ch.channel_id === payload.channel_id)) {
+        await route.fulfill(jsonResponse({ error: "channel already exists" }, 409));
+        return;
+      }
+      const created = buildChannelRecord(teamId, payload);
+      channels.push(created);
+      ensureChannelTask(created);
+      await route.fulfill(jsonResponse(created));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/channels\/[^/]+$/, async (route, request) => {
+    const m = request.url().match(/\/api\/teams\/([^/]+)\/channels\/([^/]+)$/);
+    if (!m || request.method() !== "DELETE") {
+      await route.fallback();
+      return;
+    }
+    const teamId = m[1];
+    const channelId = m[2];
+    const channels = ensureChannels(teamId);
+    const idx = channels.findIndex((ch) => ch.channel_id === channelId);
+    if (idx === -1) {
+      await route.fulfill(jsonResponse({ error: "channel not found" }, 404));
+      return;
+    }
+    const [deleted] = channels.splice(idx, 1);
+    tasksByTeamId.set(
+      teamId,
+      ensureTasks(teamId).filter((task) => task.id !== deleted.task_id)
+    );
+    taskMessagesById.delete(deleted.task_id);
+    await route.fulfill(jsonResponse(deleted));
+  });
+
+  // Thread reply route
+  await page.route(
+    /\/api\/teams\/[^/]+\/channels\/[^/]+\/threads\/\d+\/replies$/,
+    async (route, request) => {
+      if (request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const m = request
+        .url()
+        .match(/\/api\/teams\/([^/]+)\/channels\/([^/]+)\/threads\/(\d+)\/replies$/);
+      if (!m) {
+        await route.fulfill(jsonResponse({ error: "path params missing" }, 400));
+        return;
+      }
+      const [, teamId, channelId, rootMessageIdText] = m;
+      const rootMessageId = Number(rootMessageIdText);
+      const channel =
+        ensureChannels(teamId).find((item) => item.channel_id === channelId) ??
+        buildChannelRecord(teamId, { channel_id: channelId });
+      ensureChannelTask(channel);
+      const taskId = channel.task_id;
+      const conversationId = channel.conversation_id;
+      const threadId = `thread-${teamId}-${channelId}-${rootMessageId}`;
+      const existingMessages = taskMessagesById.get(taskId) ?? [];
+      const nextMessageId =
+        existingMessages.reduce(
+          (maxMessageId, message) => Math.max(maxMessageId, message.message_id),
+          0
+        ) + 1;
+      const payload = request.postDataJSON() as { text: string; mention_actor_ids?: string[] };
+      const message: TeamConversationMessageRecord = {
+        message_id: nextMessageId,
+        conversation_id: conversationId,
+        task_id: taskId,
+        from_actor_id: `user:${auth.userId}`,
+        to_actor_id: null,
+        route: "team_thread_reply",
+        payload: {
+          type: "chat_message",
+          text: payload.text,
+          mention_actor_ids: payload.mention_actor_ids ?? [],
+          thread_root_message_id: rootMessageId,
+        },
+        created_at: now + 300 + nextMessageId,
+      };
+      taskMessagesById.set(taskId, [...existingMessages, message]);
+      threadReplyCountersByThreadId.set(
+        threadId,
+        (threadReplyCountersByThreadId.get(threadId) ?? 0) + 1
+      );
+      const reply: TeamThreadReplyRecord = {
+        thread: {
+          team_id: teamId,
+          channel_id: channelId,
+          task_id: taskId,
+          conversation_id: conversationId,
+          root_message_id: rootMessageId,
+          thread_id: threadId,
+        },
+        message,
+      };
+      await route.fulfill(jsonResponse(reply));
+    }
+  );
+
   return {
     now,
     auth,
@@ -1018,5 +1278,6 @@ export async function mockTeamPageApis(
     teams,
     getCreatePayload: () => createTeamPayload,
     getUpdateSpecPayloads: () => updateSpecPayloads,
+    seedTaskMessages,
   };
 }

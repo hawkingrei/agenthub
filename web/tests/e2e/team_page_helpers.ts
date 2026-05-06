@@ -468,6 +468,19 @@ export async function selectPrimaryTeamEntryFromSidebar(
   await entry.click();
 }
 
+export async function selectTeamChannelFromSidebar(
+  page: import("@playwright/test").Page,
+  channelId: string
+): Promise<void> {
+  const sidebar = page.locator(".teams-sidebar");
+  const channelEntry = sidebar
+    .locator("button")
+    .filter({ hasText: `# ${channelId}` })
+    .first();
+  await expect(channelEntry).toBeVisible();
+  await channelEntry.click();
+}
+
 export async function openMainTeamAction(
   page: import("@playwright/test").Page,
   label: string,

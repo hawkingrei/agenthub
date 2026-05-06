@@ -21,12 +21,15 @@ export const DEFAULT_TEAM_CHANNEL_ITEMS: ReadonlyArray<TeamChannelItem> = [
 export function buildTeamChannelItems(
   channels: ReadonlyArray<TeamChannelRecord>
 ): ReadonlyArray<TeamChannelItem> {
-  if (channels.length === 0) {
+  const customChannels = channels.filter(
+    (channel) => channel.channel_id !== DEFAULT_TEAM_CHANNEL_ID
+  );
+  if (customChannels.length === 0) {
     return DEFAULT_TEAM_CHANNEL_ITEMS;
   }
   return [
     ...DEFAULT_TEAM_CHANNEL_ITEMS,
-    ...channels.map((channel) => ({
+    ...customChannels.map((channel) => ({
       id: channel.channel_id,
       label: `# ${channel.channel_id}`,
       description:
