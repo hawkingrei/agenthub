@@ -216,6 +216,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
         <AgentsRouteShell
           agentsCollapsed={agentsCollapsed}
           workspaceRef={workspaceRef}
+          authToken={auth?.token ?? null}
           workspaceStyle={workspaceStyle}
           onAgentsSplitterPointerDown={onAgentsSplitterPointerDown}
           agentsPanelProps={agentsPanelProps}

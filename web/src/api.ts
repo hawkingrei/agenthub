@@ -42,6 +42,20 @@ export type AgentRecord = {
   updated_at: number;
 };
 
+export type AgentTimeTriggerRecord = {
+  id: string;
+  agent_id: string;
+  kind: string;
+  created_by_actor_id: string;
+  message_text: string;
+  fire_at: number;
+  status: "scheduled" | "dispatching" | "fired" | "canceled";
+  created_at: number;
+  updated_at: number;
+  fired_at: number | null;
+  last_error: string | null;
+};
+
 export type AgentDiscoveryIdentityRecord = {
   agent_id: string;
   name: string;
@@ -1272,6 +1286,15 @@ export const api = {
     apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}`, token, {
       method: "DELETE",
     }),
+  listAgentTimeTriggers: (
+    token: string,
+    id: string,
+    limit?: number
+  ) =>
+    apiFetch<AgentTimeTriggerRecord[]>(
+      `/api/agents/${encodePathSegment(id)}/triggers${limit != null ? `?limit=${limit}` : ""}`,
+      token
+    ),
   listAcpPermissions: (token: string, id: string, status?: string) => {
     const query = status ? `?status=${encodeURIComponent(status)}` : "";
     return apiFetch<AcpPermissionRecord[]>(

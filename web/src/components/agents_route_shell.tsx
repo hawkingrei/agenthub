@@ -1,6 +1,7 @@
 import React, { Suspense } from "react";
 import { AgentsPanel, AgentsPanelProps } from "./agents_panel";
 import { AgentsWorkbenchProps } from "./agents_workbench_types";
+import { AgentTimeTriggersPanel } from "./agent_time_triggers_panel";
 import { OutputHeader, OutputHeaderProps } from "./output_header";
 import { OutputErrorBoundary } from "./output_error_boundary";
 import {
@@ -32,6 +33,7 @@ function WorkbenchBodyFallback({ hasAcp }: { hasAcp: boolean }) {
 type AgentsRouteShellViewProps = {
   agentsCollapsed: boolean;
   workspaceRef: React.RefObject<HTMLElement | null>;
+  authToken: string | null;
   workspaceStyle?: React.CSSProperties;
   onAgentsSplitterPointerDown: React.PointerEventHandler<HTMLDivElement>;
   agentsPanelProps: AgentsPanelProps;
@@ -43,6 +45,7 @@ type AgentsRouteShellViewProps = {
 export const AgentsRouteShellView = React.memo(function AgentsRouteShellView({
   agentsCollapsed,
   workspaceRef,
+  authToken,
   workspaceStyle,
   onAgentsSplitterPointerDown,
   agentsPanelProps,
@@ -80,7 +83,15 @@ export const AgentsRouteShellView = React.memo(function AgentsRouteShellView({
             <OutputHeader {...outputHeaderProps} />
           </div>
         ) : null}
-        <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
+        {outputHeaderProps.activeAgent ? (
+          <div className="shrink-0 px-3 pt-1">
+            <AgentTimeTriggersPanel
+              agentId={outputHeaderProps.activeAgent.id}
+              authToken={authToken}
+            />
+          </div>
+        ) : null}
+        <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col pt-0.5">
           {workbenchNode}
         </div>
       </div>
@@ -97,6 +108,7 @@ type AgentsRouteShellProps = Omit<AgentsRouteShellViewProps, "workbenchNode"> & 
 export const AgentsRouteShell = React.memo(function AgentsRouteShell({
   agentsCollapsed,
   workspaceRef,
+  authToken,
   workspaceStyle,
   onAgentsSplitterPointerDown,
   agentsPanelProps,
@@ -119,6 +131,7 @@ export const AgentsRouteShell = React.memo(function AgentsRouteShell({
     <AgentsRouteShellView
       agentsCollapsed={agentsCollapsed}
       workspaceRef={workspaceRef}
+      authToken={authToken}
       workspaceStyle={workspaceStyle}
       onAgentsSplitterPointerDown={onAgentsSplitterPointerDown}
       agentsPanelProps={agentsPanelProps}

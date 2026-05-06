@@ -119,6 +119,7 @@ function renderShell(
     <MantineProvider>
       <AgentsRouteShellView
         agentsCollapsed={false}
+        authToken={null}
         workspaceRef={React.createRef<HTMLElement>()}
         workspaceStyle={undefined}
         onAgentsSplitterPointerDown={() => {}}
@@ -138,6 +139,7 @@ function renderRouteShell(
     <MantineProvider>
       <AgentsRouteShell
         agentsCollapsed={false}
+        authToken={null}
         workspaceRef={React.createRef<HTMLElement>()}
         workspaceStyle={undefined}
         onAgentsSplitterPointerDown={() => {}}
