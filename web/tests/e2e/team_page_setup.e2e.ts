@@ -128,6 +128,49 @@ test("team member setup adds the first agent and appends more agents through spe
   ]);
 });
 
+test("team adoption copy keeps move disabled and creates a team-owned coordinator", async ({
+  page,
+}) => {
+  const fixture = await mockTeamPageApis(page);
+  const teamName = "adoption-copy-team";
+
+  await gotoTeams(page);
+  await createTeamFromModal(page, {
+    name: teamName,
+    goal: "Adopt an existing agent through copy semantics.",
+  });
+
+  await page.getByRole("button", { name: "Copy Existing Agent" }).click();
+  const dialog = page
+    .locator("[role='dialog']")
+    .filter({ hasText: "Copy an existing agent into this team." })
+    .last();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("The original agent remains unchanged.")).toBeVisible();
+
+  const moveButton = dialog.getByRole("button", { name: "Move to Team (later)" });
+  await expect(moveButton).toBeVisible();
+  await expect(moveButton).toBeDisabled();
+
+  const copyButton = dialog.getByRole("button", { name: "Copy into Team" });
+  await expect(copyButton).toBeEnabled();
+  await copyButton.click();
+  await expect(dialog).toBeHidden();
+
+  const updates = fixture.getUpdateSpecPayloads();
+  expect(updates).toHaveLength(1);
+  const [member] = updates[0]?.payload.spec.members ?? [];
+  expect(updates[0]?.payload.spec.coordinator_member_id).toBe("agent-forge-4");
+  expect(member).toMatchObject({
+    member_id: "agent-forge-4",
+    role: "coordinator",
+    description: "Copied from existing agent Coordinator Agent.",
+    model: "Codex",
+  });
+  expect(fixture.agents.some((agent) => agent.id === "agent-coordinator-1")).toBe(true);
+  expect(fixture.agents.some((agent) => agent.id === "agent-forge-4")).toBe(true);
+});
+
 test("team create modal only captures mission metadata and points member setup to the next step", async ({
   page,
 }) => {

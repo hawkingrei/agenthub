@@ -35,7 +35,21 @@ npm --prefix web run lint
 npm --prefix web run build
 ```
 
+## 2026-05-06 Browser Coverage Follow-Up
+
+The Team setup E2E path now covers the copy-first adoption boundary:
+
+- an empty Team can open `Copy Existing Agent` from the setup panel;
+- `Move to Team (later)` is visible but disabled;
+- `Copy into Team` creates a new Team-owned coordinator member;
+- the original source agent remains available in the mocked agent list.
+
+Additional validation:
+
+```bash
+npm --prefix web run e2e -- tests/e2e/team_page_setup.e2e.ts --grep "team adoption copy keeps move disabled"
+```
+
 ## Follow-Ups
 
 - Define stopped-only runtime and ownership-transfer guards before enabling `Move to Team`.
-- Add browser-level coverage for copy-first adoption and the disabled move boundary.
