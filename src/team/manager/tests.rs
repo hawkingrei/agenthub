@@ -457,6 +457,7 @@ async fn setup_test_db() -> SqlitePool {
         CREATE TABLE team_channel_message_replicas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             authority_message_id INTEGER NOT NULL,
+            correlation_id TEXT NOT NULL,
             run_id TEXT NOT NULL,
             team_id TEXT NOT NULL,
             conversation_id TEXT NOT NULL,
@@ -3923,9 +3924,9 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
     sqlx::query(
         r#"
         INSERT INTO team_channel_message_replicas (
-            authority_message_id, run_id, team_id, conversation_id, task_id, channel_id, from_actor_id, source_node_id, payload_json, stored_at
+            authority_message_id, correlation_id, run_id, team_id, conversation_id, task_id, channel_id, from_actor_id, source_node_id, payload_json, stored_at
         )
-        VALUES (?1, 'run-1', ?2, ?3, ?4, ?5, 'coordinator', 'main', '{"text":"Investigate issue"}', ?6)
+        VALUES (?1, 'corr-delete-replica', 'run-1', ?2, ?3, ?4, ?5, 'coordinator', 'main', '{"text":"Investigate issue","correlation_id":"corr-delete-replica"}', ?6)
         "#,
     )
     .bind(root_message_id)

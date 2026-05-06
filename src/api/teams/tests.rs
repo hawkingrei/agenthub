@@ -702,6 +702,7 @@ async fn init_test_schema(db: &SqlitePool) {
         CREATE TABLE team_channel_message_replicas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             authority_message_id INTEGER NOT NULL,
+            correlation_id TEXT NOT NULL,
             run_id TEXT NOT NULL,
             team_id TEXT NOT NULL,
             conversation_id TEXT NOT NULL,
