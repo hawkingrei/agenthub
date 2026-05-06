@@ -219,3 +219,4 @@ Explicit anti-goals:
 
 - `docs/journal/2026-02-19-team-create-dual-entry-modes.md`
 - `docs/journal/2026-02-19-team-create-wizard-manual-spec-flow.md`
+- `docs/journal/2026-05-06-team-create-shell-first.md`

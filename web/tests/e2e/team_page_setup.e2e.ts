@@ -62,24 +62,12 @@ test("team create flow stores mission metadata before member setup", async ({ pa
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
   await expect.poll(() => isTeamDetailReady(page)).toBe(true);
-  const forgeDialog = page.getByRole("dialog").filter({
-    has: page.getByRole("button", { name: "Create Coordinator Agent", exact: true }),
-  });
-  await expect(forgeDialog).toBeVisible();
-  await expect(forgeDialog.getByText("Assigned Role", { exact: true })).toBeVisible();
-  await expect(forgeDialog.getByText("Coordinator", { exact: true })).toBeVisible();
   await expect(
-    forgeDialog.getByText(
-      "This team does not have a coordinator yet, so the first added agent becomes the coordinator automatically.",
-      { exact: true }
-    )
+    page.getByText("Team created. Add the first agent to make it the coordinator.", {
+      exact: true,
+    })
   ).toBeVisible();
-  await expect(
-    forgeDialog.getByText(
-      "The first agent added to a Team becomes the coordinator. Add workers after this first agent exists.",
-      { exact: true }
-    )
-  ).toBeVisible();
+  await expectAddAgentEntryVisible(page, "quest-team");
 
   const payload = fixture.getCreatePayload();
   expect(payload).not.toBeNull();
@@ -403,9 +391,7 @@ test("team setup keeps add agent wording after the first member binds", async ({
     name: teamName,
     goal: "Bind coordinator in-place before worker setup.",
   });
-  await expect(
-    page.getByRole("button", { name: "Create Coordinator Agent", exact: true })
-  ).toBeVisible();
+  await expectAddAgentEntryVisible(page, teamName);
 
   await createTeamMemberFromModal(page, {
     teamName,
