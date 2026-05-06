@@ -1061,6 +1061,28 @@ async fn append_task_conversation_message_persists_correlation_id_column() {
             .await
             .expect("read task message correlation_id");
     assert_eq!(correlation_id, "corr-task-authority-1");
+
+    let direct_message = manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            Some("  "),
+            "group_chat",
+            json!({
+                "type":"chat_message",
+                "text":"hello without idempotency",
+                "correlation_id":" corr-task-direct-1 "
+            }),
+        )
+        .await
+        .expect("append direct message");
+    let direct_correlation_id: String =
+        sqlx::query_scalar("SELECT correlation_id FROM team_conversation_messages WHERE id = ?1")
+            .bind(direct_message.message_id)
+            .fetch_one(&db)
+            .await
+            .expect("read direct task message correlation_id");
+    assert_eq!(direct_correlation_id, "corr-task-direct-1");
 }
 
 #[tokio::test]
