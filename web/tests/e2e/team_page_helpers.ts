@@ -481,11 +481,18 @@ export function teamChannelSidebarEntry(
   page: import("@playwright/test").Page,
   channelId: string
 ) {
+  const channelNamePattern = new RegExp(
+    `^\\s*#\\s+${escapeRegExp(channelId)}(?:\\s|$)`
+  );
   return page
     .locator(".teams-sidebar")
     .locator("button")
-    .filter({ hasText: `# ${channelId}` })
+    .filter({ hasText: channelNamePattern })
     .first();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function openMainTeamAction(

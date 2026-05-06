@@ -7,6 +7,17 @@ import {
   teamChannelSidebarEntry,
 } from "./team_page_helpers";
 
+test("team channel sidebar helper does not select prefixed channel ids", async ({ page }) => {
+  await page.setContent(`
+    <aside class="teams-sidebar">
+      <button type="button"># all-archive archived lane</button>
+      <button type="button"># all default lane</button>
+    </aside>
+  `);
+
+  await expect(teamChannelSidebarEntry(page, "all")).toHaveText("# all default lane");
+});
+
 test("team channels shows #all by default in sidebar", async ({ page }) => {
   const fixture = await mockTeamPageApis(page);
   const teamId = "team-ch-default";
