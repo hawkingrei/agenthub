@@ -187,8 +187,8 @@ describe("Team management modals", () => {
     expect(html).toContain("Coordinator Profile");
     expect(html).toContain("Managed automatically");
     expect(html).toContain("What should this agent help with?");
-    expect(html).toContain("keeps role assignment fixed");
-    expect(html).toContain("Assigned Role");
+    expect(html).toContain("keeps Team assignment fixed");
+    expect(html).toContain("Team Assignment");
     expect(html).toContain("Coordinator");
     expect(html).toContain(
       "This team does not have a coordinator yet, so the first added agent becomes the coordinator automatically."
@@ -230,8 +230,8 @@ describe("Team management modals", () => {
             infoStripGridClassName: "info-grid",
           }}
           modalProps={{
-            title: "Add Worker Agent",
-            confirmLabel: "Create Worker Agent",
+            title: "Create new worker agent",
+            confirmLabel: "Create Agent",
             agentPresetLabel: "Runtime",
             agentPresetSummaryLabel: "Model",
             showCommandSummary: false,
@@ -301,9 +301,9 @@ describe("Team management modals", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain("Add Existing Agent");
+    expect(html).toContain("Copy Existing Agent");
     expect(html).toContain("Alpha");
-    expect(html).toContain("Copy an existing agent into this team.");
+    expect(html).toContain("Copy an existing agent into this Team.");
     expect(html).toContain("Search existing agents");
     expect(html).toContain("Source Agent");
     expect(html).toContain("Copy semantics");
@@ -346,8 +346,7 @@ describe("Team management modals", () => {
     expect(html).toContain("new Team-owned worker agent");
     expect(html).toContain("Copy keeps the source agent unchanged");
     expect(html).toContain("Move semantics are not enabled yet");
-    expect(html).toContain("Move to Team (later)");
-    expect(html).toContain('disabled="">Move to Team (later)');
+    expect(html).not.toContain("Move to Team (later)");
   });
 
   it("renders the copy-existing-agent empty-filter fallback", () => {
