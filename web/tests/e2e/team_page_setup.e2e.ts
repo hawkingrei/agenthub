@@ -17,7 +17,7 @@ import {
   openMainTeamAction,
   openTeamFromSelector,
   selectAgentFromSidebar,
-  selectPrimaryTeamEntryFromSidebar,
+  selectTeamChannelFromSidebar,
   teamSelectorPanel,
 } from "./team_page_helpers";
 
@@ -402,8 +402,8 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(memberConsoleLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(memberConsoleLayout.overflowing).toEqual([]);
 
-  await selectPrimaryTeamEntryFromSidebar(page, "all");
-  await expect(page.getByRole("heading", { name: "# all", exact: true })).toBeVisible();
+  await selectTeamChannelFromSidebar(page, "all");
+  await expect(page).toHaveURL(/lens=channels/);
   await openAdvancedView(page, "Execution Mailbox");
   await expect(page.locator(".teams-chat-head")).toBeVisible();
   const mailboxLayout = await page.evaluate(() => {
