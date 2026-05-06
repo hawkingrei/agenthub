@@ -158,7 +158,7 @@ must not be treated as the source of truth when data diverges.
 | --- | --- | --- | --- |
 | `team_conversation_messages` | authority row | `conversation_id`, `authority_message_id`, `correlation_id` | canonical human-visible message content; does not currently persist `run_id` |
 | `team_actor_messages` | authority row | `run_id`, sender/recipient actor ids, effective `idempotency_key` | canonical delivery state |
-| `team_channel_message_replicas` | replica row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id` | node-relevant channel cache only |
+| `team_channel_message_replicas` | replica row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id` | node-relevant channel cache only; `correlation_id` is persisted as a first-class projection column |
 | remote relay route metadata | delivery metadata | `source_node_id`, `target_node_id`, optional `broadcast_id`, optional `correlation_id`, effective `idempotency_key` | transport/debug only |
 | archive/search document | projection row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id`, optional `group_id` | must point back to `main` authority; `group_id` is preserved only when supplied by a live authority source |
 
@@ -200,3 +200,4 @@ rows start populating it.
 - `docs/journal/2026-03-13-team-shared-thread-canonical-replies.md`
 - `docs/journal/2026-05-04-distributed-message-metadata-contract-phase1.md`
 - `docs/journal/2026-05-06-message-archive-group-id-projection.md`
+- `docs/journal/2026-05-06-channel-replica-correlation-projection.md`

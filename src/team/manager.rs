@@ -2258,6 +2258,7 @@ impl TeamManager {
     pub async fn append_channel_replica_message(
         &self,
         authority_message_id: i64,
+        correlation_id: &str,
         run_id: &str,
         team_id: &str,
         conversation_id: &str,
@@ -2273,6 +2274,7 @@ impl TeamManager {
             r#"
             INSERT OR IGNORE INTO team_channel_message_replicas (
                 authority_message_id,
+                correlation_id,
                 run_id,
                 team_id,
                 conversation_id,
@@ -2283,10 +2285,11 @@ impl TeamManager {
                 payload_json,
                 stored_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             "#,
         )
         .bind(authority_message_id)
+        .bind(correlation_id)
         .bind(run_id)
         .bind(team_id)
         .bind(conversation_id)

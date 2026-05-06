@@ -67,6 +67,7 @@ impl TeamInternalControl for TeamInternalControlService {
                 .teams
                 .append_channel_replica_message(
                     replica.authority_message_id,
+                    &replica.correlation_id,
                     run_id,
                     &replica.team_id,
                     &replica.conversation_id,

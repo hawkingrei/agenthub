@@ -624,6 +624,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         CREATE TABLE IF NOT EXISTS team_channel_message_replicas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             authority_message_id INTEGER NOT NULL,
+            correlation_id TEXT NOT NULL,
             run_id TEXT NOT NULL,
             team_id TEXT NOT NULL,
             conversation_id TEXT NOT NULL,
@@ -1238,6 +1239,28 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     )
     .await;
     create_team_conversation_messages_idempotency_index(&pool).await?;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_channel_message_replicas ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
+        "team_channel_message_replicas.correlation_id",
+    )
+    .await;
+    if let Err(err) = sqlx::query(
+        r#"
+        UPDATE team_channel_message_replicas
+        SET correlation_id = trim(COALESCE(json_extract(payload_json, '$.correlation_id'), ''))
+        WHERE correlation_id = ''
+          AND trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) != ''
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to backfill team_channel_message_replicas.correlation_id: {}",
+            err
+        );
+    }
     add_column_if_missing(
         &pool,
         "ALTER TABLE team_actor_messages ADD COLUMN from_peer_id TEXT NOT NULL DEFAULT 'main'",
@@ -3307,6 +3330,95 @@ mod tests {
         assert!(index_sql.contains("conversation_id"));
         assert!(index_sql.contains("from_actor_id"));
         assert!(index_sql.contains("idempotency_key"));
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_channel_replica_correlation_id_and_backfills_existing_rows() {
+        let dir = unique_temp_dir("db-migrate-channel-replica-correlation");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_channel_message_replicas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                authority_message_id INTEGER NOT NULL,
+                run_id TEXT NOT NULL,
+                team_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                source_node_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                stored_at INTEGER NOT NULL,
+                UNIQUE(authority_message_id)
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_channel_message_replicas");
+        sqlx::query(
+            r#"
+            INSERT INTO team_channel_message_replicas (
+                authority_message_id,
+                run_id,
+                team_id,
+                conversation_id,
+                task_id,
+                channel_id,
+                from_actor_id,
+                source_node_id,
+                payload_json,
+                stored_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+        )
+        .bind(42_i64)
+        .bind("run-1")
+        .bind("team-1")
+        .bind("conversation-1")
+        .bind("task-1")
+        .bind("all")
+        .bind("planner")
+        .bind("main")
+        .bind(r#"{"text":"hello","correlation_id":"corr-replica-1"}"#)
+        .bind(1_i64)
+        .execute(&pool)
+        .await
+        .expect("insert legacy replica row");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with channel replica correlation migration");
+        let correlation_id_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_channel_message_replicas')
+            WHERE name = 'correlation_id'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read correlation_id column");
+        assert_eq!(correlation_id_column, "correlation_id");
+
+        let correlation_id: String = sqlx::query_scalar(
+            "SELECT correlation_id FROM team_channel_message_replicas WHERE authority_message_id = ?1",
+        )
+        .bind(42_i64)
+        .fetch_one(&pool)
+        .await
+        .expect("read backfilled correlation_id");
+        assert_eq!(correlation_id, "corr-replica-1");
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);
