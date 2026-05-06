@@ -1168,9 +1168,7 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 created_at,
                 idempotency_key
             )
-            SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, tr.group_id, ?10, ?11, ?12
-            FROM team_runs AS tr
-            WHERE tr.id = ?1
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, (SELECT group_id FROM team_runs WHERE id = ?1), ?10, ?11, ?12)
             "#,
         )
         .bind(&cmd.run_id)

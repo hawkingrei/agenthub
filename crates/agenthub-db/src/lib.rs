@@ -2387,18 +2387,11 @@ async fn backfill_team_actor_message_group_ids(pool: &SqlitePool) -> anyhow::Res
     sqlx::query(
         r#"
         UPDATE team_actor_messages
-        SET group_id = (
-            SELECT tr.group_id
-            FROM team_runs AS tr
-            WHERE tr.id = team_actor_messages.run_id
-        )
-        WHERE group_id IS NULL
-          AND EXISTS (
-              SELECT 1
-              FROM team_runs AS tr
-              WHERE tr.id = team_actor_messages.run_id
-                AND tr.group_id IS NOT NULL
-          )
+        SET group_id = tr.group_id
+        FROM team_runs AS tr
+        WHERE tr.id = team_actor_messages.run_id
+          AND team_actor_messages.group_id IS NULL
+          AND tr.group_id IS NOT NULL
         "#,
     )
     .execute(pool)
@@ -2411,38 +2404,29 @@ async fn backfill_team_channel_message_replica_group_ids(pool: &SqlitePool) -> a
     sqlx::query(
         r#"
         UPDATE team_channel_message_replicas
-        SET group_id = COALESCE(
-            (
-                SELECT tcm.group_id
-                FROM team_conversation_messages AS tcm
-                WHERE tcm.id = team_channel_message_replicas.authority_message_id
-            ),
-            (
-                SELECT tr.group_id
-                FROM team_runs AS tr
-                WHERE tr.id = team_channel_message_replicas.run_id
-            )
-        )
-        WHERE group_id IS NULL
-          AND (
-              EXISTS (
-                  SELECT 1
-                  FROM team_conversation_messages AS tcm
-                  WHERE tcm.id = team_channel_message_replicas.authority_message_id
-                    AND tcm.group_id IS NOT NULL
-              )
-              OR EXISTS (
-                  SELECT 1
-                  FROM team_runs AS tr
-                  WHERE tr.id = team_channel_message_replicas.run_id
-                    AND tr.group_id IS NOT NULL
-              )
-          )
+        SET group_id = tcm.group_id
+        FROM team_conversation_messages AS tcm
+        WHERE tcm.id = team_channel_message_replicas.authority_message_id
+          AND team_channel_message_replicas.group_id IS NULL
+          AND tcm.group_id IS NOT NULL
         "#,
     )
     .execute(pool)
     .await
-    .context("backfill team_channel_message_replicas.group_id from authority messages or runs")?;
+    .context("backfill team_channel_message_replicas.group_id from authority messages")?;
+    sqlx::query(
+        r#"
+        UPDATE team_channel_message_replicas
+        SET group_id = tr.group_id
+        FROM team_runs AS tr
+        WHERE tr.id = team_channel_message_replicas.run_id
+          AND team_channel_message_replicas.group_id IS NULL
+          AND tr.group_id IS NOT NULL
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("backfill team_channel_message_replicas.group_id from runs")?;
     Ok(())
 }
 
