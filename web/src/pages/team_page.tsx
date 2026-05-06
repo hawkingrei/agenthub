@@ -1342,9 +1342,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     return null;
   }, [selectedTeam, selectedTeamHasConfiguredMembers]);
-  const teamMemberForgeLabel = selectedTeamHasCoordinator
-    ? "Add Worker Agent"
-    : "Add First Coordinator Agent";
+  const teamMemberForgeLabel = "Create New Agent";
   const teamMemberCopyExistingLabel = "Copy Existing Agent";
   const copyExistingTeamAgentCandidates = useMemo(() => {
     const selectedMemberIds = new Set(selectedTeamMembers.map((member) => member.member_id));
@@ -3794,10 +3792,10 @@ export function TeamPage(props: TeamPageProps) {
   );
   const forgeModalProps = useMemo(
     () => ({
-      title: selectedTeamHasCoordinator ? "Add Worker Agent" : "Add First Coordinator Agent",
-      confirmLabel: selectedTeamHasCoordinator
-        ? "Create Worker Agent"
-        : "Create Coordinator Agent",
+      title: selectedTeamHasCoordinator
+        ? "Create new worker agent"
+        : "Create first coordinator agent",
+      confirmLabel: "Create Agent",
       agentPresetLabel: "Runtime",
       agentPresetSummaryLabel: "Preset",
       commandSummaryLabel: "Launch command",

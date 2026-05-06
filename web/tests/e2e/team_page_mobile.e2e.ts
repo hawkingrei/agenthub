@@ -113,16 +113,16 @@ test("team setup actions stay reachable after mobile shell-first creation", asyn
     hasText: "No agents have joined this team yet.",
   });
   await expect(setupPanel.getByRole("button", { name: "Copy Existing Agent" })).toBeVisible();
-  await expect(setupPanel.getByRole("button", { name: "Add First Coordinator Agent" })).toBeVisible();
+  await expect(setupPanel.getByRole("button", { name: "Create New Agent" })).toBeVisible();
 
   await setupPanel.getByRole("button", { name: "Copy Existing Agent" }).click();
   const dialog = page
     .locator("[role='dialog']")
-    .filter({ hasText: "Copy an existing agent into this team." })
+    .filter({ hasText: "Copy an existing agent into this Team." })
     .last();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Copy keeps the source agent unchanged.")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Move to Team (later)" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Move to Team (later)" })).toHaveCount(0);
 
   const dialogBox = await dialog.boundingBox();
   const viewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
