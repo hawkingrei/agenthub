@@ -1,7 +1,12 @@
 //! Codex ACP - An Agent Client Protocol implementation for Codex.
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 
-use agent_client_protocol_legacy::AgentSideConnection;
+use agent_client_protocol::schema::{
+    AuthenticateRequest, CancelNotification, CloseSessionRequest, InitializeRequest,
+    ListSessionsRequest, LoadSessionRequest, NewSessionRequest, PromptRequest,
+    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest,
+};
+use agent_client_protocol::{Agent, Client, ConnectionTo};
 use codex_core::config::ManagedFeatures;
 use codex_core::config::{Config, ConfigOverrides};
 use codex_exec_server::{EnvironmentManager, EnvironmentManagerArgs, ExecServerRuntimePaths};
@@ -10,7 +15,9 @@ use codex_utils_cli::CliConfigOverrides;
 use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
+use std::task::{Context, Poll};
 use std::{io::Result as IoResult, rc::Rc};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -31,14 +38,52 @@ mod linux_memfd_compat;
 mod prompt_args;
 mod thread;
 
-pub static ACP_CLIENT: OnceLock<Arc<AgentSideConnection>> = OnceLock::new();
+pub static ACP_CLIENT: OnceLock<Arc<ConnectionTo<Client>>> = OnceLock::new();
 const AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV: &str = "AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED";
+
+#[derive(Clone)]
+struct LocalCodexAgent(Rc<codex_agent::CodexAgent>);
+
+// The ACP adapter runs inside a single-threaded Tokio runtime and LocalSet. The
+// 0.11 ACP builder requires Send handlers even though this binary never moves
+// CodexAgent across worker threads.
+unsafe impl Send for LocalCodexAgent {}
+unsafe impl Sync for LocalCodexAgent {}
+
+impl std::ops::Deref for LocalCodexAgent {
+    type Target = codex_agent::CodexAgent;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+struct LocalSendFuture<F>(F);
+
+// These futures are only polled on the current-thread ACP runtime. This wrapper
+// satisfies the 0.11 ACP handler bounds while preserving the existing local
+// Codex state model.
+unsafe impl<F> Send for LocalSendFuture<F> {}
+
+impl<F: Future> Future for LocalSendFuture<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // SAFETY: LocalSendFuture is a transparent wrapper and does not move the
+        // inner future after it has been pinned by the executor.
+        unsafe { self.map_unchecked_mut(|item| &mut item.0) }.poll(cx)
+    }
+}
+
+fn local_send_future<F: Future>(future: F) -> LocalSendFuture<F> {
+    LocalSendFuture(future)
+}
 
 pub(crate) async fn build_environment_manager(
     config: &Config,
-) -> Result<Arc<EnvironmentManager>, agent_client_protocol_legacy::Error> {
+) -> Result<Arc<EnvironmentManager>, agent_client_protocol::Error> {
     let current_exe = std::env::current_exe().map_err(|err| {
-        agent_client_protocol_legacy::Error::internal_error().data(format!(
+        agent_client_protocol::Error::internal_error().data(format!(
             "failed to determine current executable path: {err}"
         ))
     })?;
@@ -47,7 +92,7 @@ pub(crate) async fn build_environment_manager(
         config.codex_linux_sandbox_exe.clone(),
     )
     .map_err(|err| {
-        agent_client_protocol_legacy::Error::internal_error().data(format!(
+        agent_client_protocol::Error::internal_error().data(format!(
             "failed to resolve exec-server runtime paths: {err}"
         ))
     })?;
@@ -56,12 +101,14 @@ pub(crate) async fn build_environment_manager(
     ))
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn spawn_acp_io_task<F>(
     thread_name: &str,
     io_task: F,
 ) -> IoResult<tokio::sync::oneshot::Receiver<IoResult<()>>>
 where
-    F: Future<Output = agent_client_protocol_legacy::Result<()>> + Send + 'static,
+    F: Future<Output = agent_client_protocol::Result<()>> + Send + 'static,
 {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let thread_name = thread_name.to_string();
@@ -334,28 +381,124 @@ pub async fn run_main(
     }
     normalize_responses_websocket_support(&mut config);
 
-    let stdin = tokio::io::stdin().compat();
-    let stdout = tokio::io::stdout().compat_write();
-
     // Run the I/O task to handle the actual communication
     LocalSet::new()
         .run_until(async move {
-            let agent = Rc::new(codex_agent::CodexAgent::new(config).await.map_err(|err| {
-                std::io::Error::other(format!("failed to initialize Codex ACP agent: {err}"))
-            })?);
-            // Create the ACP connection
-            let (client, io_task) = AgentSideConnection::new(agent.clone(), stdout, stdin, |fut| {
-                tokio::task::spawn_local(fut);
-            });
+            let agent = LocalCodexAgent(Rc::new(
+                codex_agent::CodexAgent::new(config).await.map_err(|err| {
+                    std::io::Error::other(format!("failed to initialize Codex ACP agent: {err}"))
+                })?,
+            ));
+            let transport = agent_client_protocol::ByteStreams::new(
+                tokio::io::stdout().compat_write(),
+                tokio::io::stdin().compat(),
+            );
+            let agent_for_initialize = agent.clone();
+            let agent_for_authenticate = agent.clone();
+            let agent_for_new_session = agent.clone();
+            let agent_for_load_session = agent.clone();
+            let agent_for_list_sessions = agent.clone();
+            let agent_for_close_session = agent.clone();
+            let agent_for_prompt = agent.clone();
+            let agent_for_cancel = agent.clone();
+            let agent_for_mode = agent.clone();
+            let agent_for_model = agent.clone();
+            let agent_for_config = agent.clone();
 
-            if ACP_CLIENT.set(Arc::new(client)).is_err() {
-                return Err(std::io::Error::other("ACP client already set"));
-            }
-
-            let io_task = spawn_acp_io_task("agenthub-codex-acp-io", io_task)?;
-            io_task.await.map_err(|_| {
-                std::io::Error::other("ACP I/O thread shut down before reporting a result")
-            })?
+            Agent
+                .builder()
+                .name("agenthub-codex-acp")
+                .on_receive_request(
+                    async move |request: InitializeRequest, responder, connection| {
+                        drop(ACP_CLIENT.set(Arc::new(connection.clone())));
+                        responder.respond_with_result(
+                            local_send_future(agent_for_initialize.initialize(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_request(
+                    async move |request: AuthenticateRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_authenticate.authenticate(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_request(
+                    async move |request: NewSessionRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_new_session.new_session(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_request(
+                    async move |request: LoadSessionRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_load_session.load_session(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_request(
+                    async move |request: ListSessionsRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_list_sessions.list_sessions(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_request(
+                    async move |request: CloseSessionRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_close_session.close_session(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_request(
+                    async move |request: PromptRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_prompt.prompt(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_notification(
+                    async move |notification: CancelNotification, _connection| {
+                        local_send_future(agent_for_cancel.cancel(notification)).await
+                    },
+                    agent_client_protocol::on_receive_notification!(),
+                )
+                .on_receive_request(
+                    async move |request: SetSessionModeRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_mode.set_session_mode(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_request(
+                    async move |request: SetSessionModelRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_model.set_session_model(request)).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_request(
+                    async move |request: SetSessionConfigOptionRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            local_send_future(agent_for_config.set_session_config_option(request))
+                                .await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .connect_to(transport)
+                .await
+                .map_err(|err| std::io::Error::other(format!("ACP I/O error: {err}")))
         })
         .await?;
 

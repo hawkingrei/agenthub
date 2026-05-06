@@ -11,10 +11,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent_client_protocol_legacy::{
-    Agent, Client, ClientSideConnection, Error as AcpError, ErrorCode as AcpErrorCode,
-};
-use agent_client_protocol_legacy::{
+use agent_client_protocol::schema::{
     CancelNotification, ClientCapabilities, ContentBlock, ContentChunk, Implementation,
     InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, PermissionOption,
     PermissionOptionKind, PromptRequest, ProtocolVersion, RequestPermissionOutcome,
@@ -22,6 +19,7 @@ use agent_client_protocol_legacy::{
     SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
     SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
 };
+use agent_client_protocol::{Agent, ConnectionTo, Error as AcpError, ErrorCode as AcpErrorCode};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -51,6 +49,8 @@ const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 // so ACP startup should tolerate late session readiness instead of failing fast.
 const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(300);
 const ACP_PERMISSION_REVIEW_TIMEOUT: Duration = Duration::from_secs(120);
+
+type AcpClientConnection = ConnectionTo<Agent>;
 
 pub const fn acp_permission_review_timeout() -> Duration {
     ACP_PERMISSION_REVIEW_TIMEOUT
@@ -557,12 +557,11 @@ impl AcpClient {
     }
 }
 
-#[async_trait::async_trait(?Send)]
-impl Client for AcpClient {
+impl AcpClient {
     async fn request_permission(
         &self,
         args: RequestPermissionRequest,
-    ) -> Result<RequestPermissionResponse, agent_client_protocol_legacy::Error> {
+    ) -> Result<RequestPermissionResponse, agent_client_protocol::Error> {
         let options = args
             .options
             .iter()
@@ -583,9 +582,7 @@ impl Client for AcpClient {
                     }),
             )
             .await
-            .map_err(|err| {
-                agent_client_protocol_legacy::Error::internal_error().data(err.to_string())
-            })?;
+            .map_err(|err| agent_client_protocol::Error::internal_error().data(err.to_string()))?;
         if let Some(dispatcher) = self.permission_review_dispatcher.as_ref() {
             let tool_call = serde_json::to_value(&args.tool_call).ok();
             let dispatch_request = AcpPermissionReviewRequest {
@@ -671,7 +668,7 @@ impl Client for AcpClient {
     async fn session_notification(
         &self,
         args: SessionNotification,
-    ) -> Result<(), agent_client_protocol_legacy::Error> {
+    ) -> Result<(), agent_client_protocol::Error> {
         self.emit_update(args.update).await;
         Ok(())
     }
@@ -684,8 +681,8 @@ fn pick_allow_option(args: &RequestPermissionRequest) -> RequestPermissionOutcom
         .find(|opt| {
             matches!(
                 opt.kind,
-                agent_client_protocol_legacy::PermissionOptionKind::AllowAlways
-                    | agent_client_protocol_legacy::PermissionOptionKind::AllowOnce
+                agent_client_protocol::schema::PermissionOptionKind::AllowAlways
+                    | agent_client_protocol::schema::PermissionOptionKind::AllowOnce
             )
         })
         .or_else(|| args.options.first())
@@ -776,6 +773,16 @@ impl AcpHandle {
     }
 }
 
+async fn send_acp_request<Req>(
+    conn: &AcpClientConnection,
+    request: Req,
+) -> Result<Req::Response, AcpError>
+where
+    Req: agent_client_protocol::JsonRpcRequest,
+{
+    conn.send_request(request).block_task().await
+}
+
 fn is_session_mutation_command(cmd: &AcpCommand) -> bool {
     matches!(
         cmd,
@@ -808,7 +815,7 @@ fn should_queue_while_prompts_active(
 
 async fn dispatch_acp_command(
     cmd: AcpCommand,
-    conn: Rc<ClientSideConnection>,
+    conn: Rc<AcpClientConnection>,
     event_sink: Arc<dyn AcpEventSink>,
     session_id: &str,
     prompt_prefix_blocks: &[ContentBlock],
@@ -828,7 +835,7 @@ async fn dispatch_acp_command(
             blocks.push(ContentBlock::Text(TextContent::new(prompt)));
             tokio::task::spawn_local(async move {
                 let request = PromptRequest::new(session_id, blocks);
-                if let Err(err) = conn.prompt(request).await {
+                if let Err(err) = send_acp_request(&conn, request).await {
                     event_sink
                         .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
                         .await;
@@ -838,7 +845,7 @@ async fn dispatch_acp_command(
         }
         AcpCommand::SetMode(mode_id) => {
             let request = SetSessionModeRequest::new(session_id.to_string(), mode_id);
-            if let Err(err) = conn.set_session_mode(request).await {
+            if let Err(err) = send_acp_request(&conn, request).await {
                 event_sink
                     .emit_raw(AcpStream::System, format!("acp set_mode error: {err}"))
                     .await;
@@ -846,7 +853,7 @@ async fn dispatch_acp_command(
         }
         AcpCommand::SetModel(model_id) => {
             let request = SetSessionModelRequest::new(session_id.to_string(), model_id);
-            if let Err(err) = conn.set_session_model(request).await {
+            if let Err(err) = send_acp_request(&conn, request).await {
                 event_sink
                     .emit_raw(AcpStream::System, format!("acp set_model error: {err}"))
                     .await;
@@ -858,7 +865,7 @@ async fn dispatch_acp_command(
                 config_id,
                 value.as_str(),
             );
-            if let Err(err) = conn.set_session_config_option(request).await {
+            if let Err(err) = send_acp_request(&conn, request).await {
                 event_sink
                     .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))
                     .await;
@@ -866,7 +873,7 @@ async fn dispatch_acp_command(
         }
         AcpCommand::Cancel => {
             let request = CancelNotification::new(session_id.to_string());
-            if let Err(err) = conn.cancel(request).await {
+            if let Err(err) = conn.send_notification(request) {
                 event_sink
                     .emit_raw(AcpStream::System, format!("acp cancel error: {err}"))
                     .await;
@@ -989,38 +996,49 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
 
             let local = tokio::task::LocalSet::new();
             runtime.block_on(local.run_until(async move {
-            let client = AcpClient::new(
-                event_sink.clone(),
-                permissions,
-                permission_review_dispatcher,
-                agent_id.clone(),
-                agent_session_id.clone(),
-                actor_context.clone(),
-            );
-            let outgoing = stdin.compat_write();
-            let incoming = stdout.compat();
-            let (conn, io_task) = ClientSideConnection::new(client, outgoing, incoming, |fut| {
-                tokio::task::spawn_local(fut);
-            });
-
-            let io_sink = event_sink.clone();
-            tokio::task::spawn_local(async move {
-                if let Err(err) = io_task.await {
-                    io_sink
-                        .emit_raw(AcpStream::System, format!("acp io error: {err}"))
-                        .await;
-                }
-            });
+                let client = AcpClient::new(
+                    event_sink.clone(),
+                    permissions,
+                    permission_review_dispatcher,
+                    agent_id.clone(),
+                    agent_session_id.clone(),
+                    actor_context.clone(),
+                );
+                let transport =
+                    agent_client_protocol::ByteStreams::new(stdin.compat_write(), stdout.compat());
+                let client_for_permission = client.clone();
+                let client_for_notifications = client.clone();
+                let event_sink_for_connection = event_sink.clone();
+                let connect_result = agent_client_protocol::Client
+                .builder()
+                .on_receive_request(
+                    async move |request: RequestPermissionRequest, responder, _connection| {
+                        responder.respond_with_result(
+                            client_for_permission.request_permission(request).await,
+                        )
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_notification(
+                    async move |notification: SessionNotification, _connection| {
+                        client_for_notifications
+                            .session_notification(notification)
+                            .await
+                    },
+                    agent_client_protocol::on_receive_notification!(),
+                )
+                .connect_with(transport, |conn: AcpClientConnection| async move {
+            let event_sink = event_sink_for_connection;
 
             let init = InitializeRequest::new(ProtocolVersion::V1)
                 .client_capabilities(ClientCapabilities::default())
                 .client_info(client_info);
 
-            let init_response = match conn.initialize(init).await {
+            let init_response = match send_acp_request(&conn, init).await {
                 Ok(response) => response,
                 Err(err) => {
                     let _ = ready_tx.send(Err(format!("acp initialize failed: {err}")));
-                    return;
+                    return Ok(());
                 }
             };
 
@@ -1038,7 +1056,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 if let Some(meta) = skills_meta.clone() {
                     request = request.meta(meta);
                 }
-                match conn.load_session(request).await {
+                match send_acp_request(&conn, request).await {
                     Ok(_) => {
                         event_sink
                             .emit_raw(
@@ -1058,7 +1076,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         .await
                         {
                             let _ = ready_tx.send(Err(message));
-                            return;
+                            return Ok(());
                         }
                         event_sink
                             .emit_raw(AcpStream::System, format!("acp load_session failed: {err}"))
@@ -1072,7 +1090,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 if let Some(meta) = skills_meta.clone() {
                     request = request.meta(meta);
                 }
-                let session = match conn.new_session(request).await {
+                let session = match send_acp_request(&conn, request).await {
                     Ok(session) => session,
                     Err(err) => {
                         if let Some(message) = handle_auth_required_failure(
@@ -1084,10 +1102,10 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         .await
                         {
                             let _ = ready_tx.send(Err(message));
-                            return;
+                            return Ok(());
                         }
                         let _ = ready_tx.send(Err(format!("acp new_session failed: {err}")));
-                        return;
+                        return Ok(());
                     }
                 };
                 session_id = Some(session.session_id.to_string());
@@ -1164,7 +1182,16 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     }
                 }
             }
-        }));
+            Ok(())
+                })
+                .await;
+
+                if let Err(err) = connect_result {
+                    event_sink
+                        .emit_raw(AcpStream::System, format!("acp io error: {err}"))
+                        .await;
+                }
+            }));
         }
     });
 
@@ -1846,10 +1873,10 @@ mod tests {
         load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
         remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
-    use agent_client_protocol_legacy::{
-        ContentBlock, Error as AcpError, ErrorCode as AcpErrorCode, McpServer,
-        RequestPermissionOutcome, SelectedPermissionOutcome,
+    use agent_client_protocol::schema::{
+        ContentBlock, McpServer, RequestPermissionOutcome, SelectedPermissionOutcome,
     };
+    use agent_client_protocol::{Error as AcpError, ErrorCode as AcpErrorCode};
     use agenthub_acp_core::build_skill;
     use agenthub_managed_skills::{
         ManagedSkillKind, install_managed_skills, managed_skill_doc_path,

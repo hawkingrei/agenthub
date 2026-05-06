@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use agent_client_protocol_legacy::{ContentBlock, TextContent};
+use agent_client_protocol::schema::{ContentBlock, TextContent};
 use agenthub_acp_core::{AcpSkill, build_skill};
 use agenthub_managed_skills::{ManagedSkillKind, managed_skill_doc};
 use agenthub_team_domain::{
@@ -121,7 +121,7 @@ mod tests {
         AcpActorSkillContext, build_actor_runtime_context_block, build_required_managed_skill,
     };
     use crate::test_utils::TempManagedSkillsHome;
-    use agent_client_protocol_legacy::ContentBlock;
+    use agent_client_protocol::schema::ContentBlock;
 
     #[test]
     fn actor_runtime_skill_uses_static_name() {

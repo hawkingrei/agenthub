@@ -1,15 +1,14 @@
-use agent_client_protocol_legacy::Error;
-use agent_client_protocol_legacy::{
-    Agent, AgentCapabilities, AuthEnvVar, AuthMethod, AuthMethodAgent, AuthMethodEnvVar,
-    AuthMethodId, AuthenticateRequest, AuthenticateResponse, CancelNotification,
-    ClientCapabilities, CloseSessionRequest, CloseSessionResponse, Implementation,
-    InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
-    LoadSessionRequest, LoadSessionResponse, McpCapabilities, McpServer, McpServerHttp,
-    McpServerStdio, NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest,
-    PromptResponse, ProtocolVersion, SessionCapabilities, SessionCloseCapabilities, SessionId,
-    SessionInfo, SessionListCapabilities, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse,
-    SetSessionModelRequest, SetSessionModelResponse,
+use agent_client_protocol::Error;
+use agent_client_protocol::schema::{
+    AgentCapabilities, AuthEnvVar, AuthMethod, AuthMethodAgent, AuthMethodEnvVar, AuthMethodId,
+    AuthenticateRequest, AuthenticateResponse, CancelNotification, ClientCapabilities,
+    CloseSessionRequest, CloseSessionResponse, Implementation, InitializeRequest,
+    InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
+    LoadSessionResponse, McpCapabilities, McpServer, McpServerHttp, McpServerStdio,
+    NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest, PromptResponse,
+    ProtocolVersion, SessionCapabilities, SessionCloseCapabilities, SessionId, SessionInfo,
+    SessionListCapabilities, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
+    SetSessionModeRequest, SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
 };
 use codex_config::types::{McpServerConfig, McpServerTransportConfig};
 use codex_core::{
@@ -522,9 +521,11 @@ fn repair_initial_history(history: InitialHistory) -> (InitialHistory, HistoryRe
     }
 }
 
-#[async_trait::async_trait(?Send)]
-impl Agent for CodexAgent {
-    async fn initialize(&self, request: InitializeRequest) -> Result<InitializeResponse, Error> {
+impl CodexAgent {
+    pub(crate) async fn initialize(
+        &self,
+        request: InitializeRequest,
+    ) -> Result<InitializeResponse, Error> {
         let InitializeRequest {
             protocol_version,
             client_capabilities,
@@ -564,7 +565,7 @@ impl Agent for CodexAgent {
             .auth_methods(auth_methods))
     }
 
-    async fn authenticate(
+    pub(crate) async fn authenticate(
         &self,
         request: AuthenticateRequest,
     ) -> Result<AuthenticateResponse, Error> {
@@ -631,7 +632,10 @@ impl Agent for CodexAgent {
         Ok(AuthenticateResponse::new())
     }
 
-    async fn new_session(&self, request: NewSessionRequest) -> Result<NewSessionResponse, Error> {
+    pub(crate) async fn new_session(
+        &self,
+        request: NewSessionRequest,
+    ) -> Result<NewSessionResponse, Error> {
         // Check before sending if authentication was successful or not
         self.check_auth().await?;
 
@@ -671,7 +675,7 @@ impl Agent for CodexAgent {
             .config_options(load.config_options))
     }
 
-    async fn load_session(
+    pub(crate) async fn load_session(
         &self,
         request: LoadSessionRequest,
     ) -> Result<LoadSessionResponse, Error> {
@@ -739,7 +743,7 @@ impl Agent for CodexAgent {
             .config_options(load.config_options))
     }
 
-    async fn list_sessions(
+    pub(crate) async fn list_sessions(
         &self,
         request: ListSessionsRequest,
     ) -> Result<ListSessionsResponse, Error> {
@@ -803,7 +807,7 @@ impl Agent for CodexAgent {
         Ok(ListSessionsResponse::new(sessions).next_cursor(next_cursor))
     }
 
-    async fn close_session(
+    pub(crate) async fn close_session(
         &self,
         request: CloseSessionRequest,
     ) -> Result<CloseSessionResponse, Error> {
@@ -822,7 +826,7 @@ impl Agent for CodexAgent {
         Ok(CloseSessionResponse::new())
     }
 
-    async fn prompt(&self, request: PromptRequest) -> Result<PromptResponse, Error> {
+    pub(crate) async fn prompt(&self, request: PromptRequest) -> Result<PromptResponse, Error> {
         info!("Processing prompt for session: {}", request.session_id);
         // Check before sending if authentication was successful or not
         self.check_auth().await?;
@@ -834,13 +838,13 @@ impl Agent for CodexAgent {
         Ok(PromptResponse::new(stop_reason))
     }
 
-    async fn cancel(&self, args: CancelNotification) -> Result<(), Error> {
+    pub(crate) async fn cancel(&self, args: CancelNotification) -> Result<(), Error> {
         info!("Cancelling operations for session: {}", args.session_id);
         self.get_thread(&args.session_id)?.cancel().await?;
         Ok(())
     }
 
-    async fn set_session_mode(
+    pub(crate) async fn set_session_mode(
         &self,
         args: SetSessionModeRequest,
     ) -> Result<SetSessionModeResponse, Error> {
@@ -851,7 +855,7 @@ impl Agent for CodexAgent {
         Ok(SetSessionModeResponse::default())
     }
 
-    async fn set_session_model(
+    pub(crate) async fn set_session_model(
         &self,
         args: SetSessionModelRequest,
     ) -> Result<SetSessionModelResponse, Error> {
@@ -864,7 +868,7 @@ impl Agent for CodexAgent {
         Ok(SetSessionModelResponse::default())
     }
 
-    async fn set_session_config_option(
+    pub(crate) async fn set_session_config_option(
         &self,
         args: SetSessionConfigOptionRequest,
     ) -> Result<SetSessionConfigOptionResponse, Error> {
