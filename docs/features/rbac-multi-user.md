@@ -53,8 +53,8 @@ Roles are hierarchical: a higher role includes all permissions of lower roles.
 |------|------|-------------|
 | `root` | 管理员 | Superuser. Full access. Manage nodes, users, all resources. Create/delete other roots. |
 | `maintainer` | 维护员 | Team/resource manager. Create/manage agents and teams. Manage team membership. Cannot manage nodes or users. |
-| `member` | 员工 | Regular user. Create agents and teams. Full access to own resources. Read-only access to teams they are invited to. |
-| `visitor` | 访客 | Read-only user. Cannot create resources. Can only view teams they're explicitly invited to. |
+| `member` | 员工 | Regular user. Create agents and teams. Full access to own agents. Can chat in invited teams. Cannot manage other users' agents. |
+| `visitor` | 访客 | Read-only user. Cannot create resources. Can browse all agent metadata. Cannot send messages or interact with agents. |
 | `device` | 节点 | System role for `agenthub join`. No WebUI login. Unchanged from current behavior. |
 
 **Constraints:**
