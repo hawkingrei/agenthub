@@ -114,13 +114,14 @@ test("agents workbench keeps mobile primary controls reachable", async ({
     }
     await route.fulfill(jsonResponse([]));
   });
-  await page.route(/\/api\/agents\/[^/]+\/input$/, async (route, request) => {
+  await page.route(/\/api\/agents\/[^/]+\/input(?:\?.*)?$/, async (route, request) => {
     if (request.method() !== "POST") {
       await route.fallback();
       return;
     }
+    const url = new URL(request.url());
     const agentId = decodeURIComponent(
-      request.url().match(/\/api\/agents\/([^/]+)\/input$/)?.[1] ?? ""
+      url.pathname.match(/\/api\/agents\/([^/]+)\/input$/)?.[1] ?? ""
     );
     const payload = request.postDataJSON() as {
       input: string;
@@ -137,7 +138,10 @@ test("agents workbench keeps mobile primary controls reachable", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/workspace", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("button", { name: "Show agents" }).first()).toBeVisible();
+  const showAgentsToggle = page.getByRole("banner").getByRole("button", {
+    name: "Show agents",
+  });
+  await expect(showAgentsToggle).toBeVisible();
   await expect(page.getByText("Coordinator Agent", { exact: true })).toBeVisible();
 
   const agentInput = page.getByPlaceholder(/Send input|Type a message \(tap Send/);
@@ -152,14 +156,14 @@ test("agents workbench keeps mobile primary controls reachable", async ({
     input: "Summarize the current workspace state.",
   });
 
-  await page.getByRole("button", { name: "Show agents" }).first().click();
+  await showAgentsToggle.click();
   const hideAgentsToggle = page.getByRole("banner").getByRole("button", {
     name: "Hide agents",
   });
   await expect(hideAgentsToggle).toBeVisible();
   await expect(page.getByText("Worker Agent", { exact: true })).toBeVisible();
   await hideAgentsToggle.click();
-  await expect(page.getByRole("button", { name: "Show agents" }).first()).toBeVisible();
+  await expect(showAgentsToggle).toBeVisible();
 
   const horizontalOverflow = await page.evaluate(() => {
     return document.documentElement.scrollWidth - document.documentElement.clientWidth;
