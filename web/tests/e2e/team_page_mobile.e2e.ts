@@ -125,9 +125,10 @@ test("team setup actions stay reachable after mobile shell-first creation", asyn
   await expect(dialog.getByRole("button", { name: "Move to Team (later)" })).toBeDisabled();
 
   const dialogBox = await dialog.boundingBox();
+  const viewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
   expect(dialogBox).not.toBeNull();
   expect(dialogBox!.x).toBeGreaterThanOrEqual(0);
-  expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(390);
+  expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
 
   await dialog.getByRole("button", { name: "Copy into Team" }).click();
   await expect(dialog).toBeHidden();
