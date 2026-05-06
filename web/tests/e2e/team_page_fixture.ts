@@ -119,6 +119,16 @@ export type TeamTaskRecord = {
   updated_at: number;
 };
 
+export type TeamConversationRecord = {
+  id: string;
+  team_id: string;
+  task_id: string;
+  mode: "to_coordinator" | "to_member" | "group_chat";
+  topic?: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
 export type TeamConversationMessageRecord = {
   message_id: number;
   conversation_id: string;
@@ -153,6 +163,12 @@ export type TeamThreadOpenRecord = {
 export type TeamThreadReplyRecord = {
   thread: TeamThreadOpenRecord;
   message: TeamConversationMessageRecord;
+};
+
+export type TeamTaskDetailResponse = {
+  task: TeamTaskRecord;
+  conversation: TeamConversationRecord;
+  latest_run?: TeamRunRecord | null;
 };
 
 export type TeamActorMessageRecord = {
@@ -314,8 +330,40 @@ export async function mockTeamPageApis(
     };
     tasksByTeamId.set(teamId, [defaultTask]);
     taskCounterByTeamId.set(teamId, 1);
-    taskMessagesById.set(defaultTask.id, []);
+    if (!taskMessagesById.has(defaultTask.id)) {
+      taskMessagesById.set(defaultTask.id, []);
+    }
     return [defaultTask];
+  };
+  const buildTaskDetail = (task: TeamTaskRecord): TeamTaskDetailResponse => ({
+    task,
+    conversation: {
+      id: `conversation-${task.id}`,
+      team_id: task.team_id,
+      task_id: task.id,
+      mode: "group_chat",
+      topic: task.title,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+    },
+    latest_run: null,
+  });
+  const putTask = (task: TeamTaskRecord): TeamTaskRecord => {
+    const current = ensureTasks(task.team_id);
+    tasksByTeamId.set(task.team_id, [
+      task,
+      ...current.filter((item) => item.id !== task.id),
+    ]);
+    if (!taskMessagesById.has(task.id)) {
+      taskMessagesById.set(task.id, []);
+    }
+    return task;
+  };
+  const seedTaskMessages = (
+    taskId: string,
+    messages: TeamConversationMessageRecord[]
+  ): void => {
+    taskMessagesById.set(taskId, messages);
   };
 
   const inferRunStatusFromRunId = (runId: string): TeamRunRecord["status"] => {
@@ -745,12 +793,41 @@ export async function mockTeamPageApis(
         created_at: createdAt,
         updated_at: createdAt,
       };
-      tasksByTeamId.set(teamId, [createdTask, ...current.filter((item) => item.id !== taskId)]);
-      taskMessagesById.set(taskId, []);
+      putTask(createdTask);
       await route.fulfill(jsonResponse({ task: createdTask }));
       return;
     }
     await route.fallback();
+  });
+
+  await page.route(
+    /\/api\/teams\/[^/]+\/shared_thread$/,
+    async (route, request) => {
+      if (request.method() !== "GET" && request.method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const url = new URL(request.url());
+      const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/shared_thread$/)?.[1] ?? "";
+      const sharedTask = ensureTasks(teamId)[0];
+      await route.fulfill(jsonResponse(buildTaskDetail(sharedTask)));
+    }
+  );
+
+  await page.route(/\/api\/teams\/[^/]+\/tasks\/[^/?]+$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/tasks/)?.[1] ?? "";
+    const taskId = url.pathname.match(/\/tasks\/([^/]+)$/)?.[1] ?? "";
+    const task = ensureTasks(teamId).find((item) => item.id === taskId);
+    if (!task) {
+      await route.fulfill(jsonResponse({ error: "task not found" }, 404));
+      return;
+    }
+    await route.fulfill(jsonResponse(buildTaskDetail(task)));
   });
 
   await page.route(
@@ -1059,6 +1136,27 @@ export async function mockTeamPageApis(
       updated_at: now,
     };
   };
+  const ensureChannelTask = (channel: TeamChannelRecord): TeamTaskRecord => {
+    const existing = ensureTasks(channel.team_id).find(
+      (task) => task.id === channel.task_id
+    );
+    if (existing) {
+      return existing;
+    }
+    return putTask({
+      id: channel.task_id,
+      team_id: channel.team_id,
+      title: `# ${channel.channel_id}`,
+      status: "open",
+      created_by_actor_id: channel.created_by_actor_id,
+      context: {
+        source: "e2e-channel",
+        channel_id: channel.channel_id,
+      },
+      created_at: channel.created_at,
+      updated_at: channel.updated_at,
+    });
+  };
 
   await page.route(/\/api\/teams\/[^/]+\/channels(?:\?.*)?$/, async (route, request) => {
     const teamId = request.url().match(/\/api\/teams\/([^/]+)\/channels/)?.[1] ?? "";
@@ -1075,6 +1173,7 @@ export async function mockTeamPageApis(
       }
       const created = buildChannelRecord(teamId, payload);
       channels.push(created);
+      ensureChannelTask(created);
       await route.fulfill(jsonResponse(created));
       return;
     }
@@ -1096,6 +1195,11 @@ export async function mockTeamPageApis(
       return;
     }
     const [deleted] = channels.splice(idx, 1);
+    tasksByTeamId.set(
+      teamId,
+      ensureTasks(teamId).filter((task) => task.id !== deleted.task_id)
+    );
+    taskMessagesById.delete(deleted.task_id);
     await route.fulfill(jsonResponse(deleted));
   });
 
@@ -1116,12 +1220,40 @@ export async function mockTeamPageApis(
       }
       const [, teamId, channelId, rootMessageIdText] = m;
       const rootMessageId = Number(rootMessageIdText);
-      const taskId = `task-${teamId}-channel-${channelId}`;
-      const conversationId = `conversation-${taskId}`;
+      const channel =
+        ensureChannels(teamId).find((item) => item.channel_id === channelId) ??
+        buildChannelRecord(teamId, { channel_id: channelId });
+      ensureChannelTask(channel);
+      const taskId = channel.task_id;
+      const conversationId = channel.conversation_id;
       const threadId = `thread-${teamId}-${channelId}-${rootMessageId}`;
-      const nextReplyIndex = (threadReplyCountersByThreadId.get(threadId) ?? 0) + 1;
-      threadReplyCountersByThreadId.set(threadId, nextReplyIndex);
+      const existingMessages = taskMessagesById.get(taskId) ?? [];
+      const nextMessageId =
+        existingMessages.reduce(
+          (maxMessageId, message) => Math.max(maxMessageId, message.message_id),
+          0
+        ) + 1;
       const payload = request.postDataJSON() as { text: string; mention_actor_ids?: string[] };
+      const message: TeamConversationMessageRecord = {
+        message_id: nextMessageId,
+        conversation_id: conversationId,
+        task_id: taskId,
+        from_actor_id: `user:${auth.userId}`,
+        to_actor_id: null,
+        route: "team_thread_reply",
+        payload: {
+          type: "chat_message",
+          text: payload.text,
+          mention_actor_ids: payload.mention_actor_ids ?? [],
+          thread_root_message_id: rootMessageId,
+        },
+        created_at: now + 300 + nextMessageId,
+      };
+      taskMessagesById.set(taskId, [...existingMessages, message]);
+      threadReplyCountersByThreadId.set(
+        threadId,
+        (threadReplyCountersByThreadId.get(threadId) ?? 0) + 1
+      );
       const reply: TeamThreadReplyRecord = {
         thread: {
           team_id: teamId,
@@ -1131,21 +1263,7 @@ export async function mockTeamPageApis(
           root_message_id: rootMessageId,
           thread_id: threadId,
         },
-        message: {
-          message_id: 1000 + nextReplyIndex,
-          conversation_id: conversationId,
-          task_id: taskId,
-          from_actor_id: `user:${auth.userId}`,
-          to_actor_id: null,
-          route: "team_thread_reply",
-          payload: {
-            type: "chat_message",
-            text: payload.text,
-            mention_actor_ids: payload.mention_actor_ids ?? [],
-            thread_root_message_id: rootMessageId,
-          },
-          created_at: now + 300 + nextReplyIndex,
-        },
+        message,
       };
       await route.fulfill(jsonResponse(reply));
     }
@@ -1160,5 +1278,6 @@ export async function mockTeamPageApis(
     teams,
     getCreatePayload: () => createTeamPayload,
     getUpdateSpecPayloads: () => updateSpecPayloads,
+    seedTaskMessages,
   };
 }

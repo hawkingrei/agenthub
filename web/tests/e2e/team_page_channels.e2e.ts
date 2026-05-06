@@ -121,6 +121,21 @@ test("team channels navigates to channel via url and opens thread", async ({ pag
     created_at: teamCreatedAt,
     updated_at: teamCreatedAt,
   });
+  fixture.seedTaskMessages(`task-${teamId}-1`, [
+    {
+      message_id: 5,
+      conversation_id: `conversation-task-${teamId}-1`,
+      task_id: `task-${teamId}-1`,
+      from_actor_id: "planner",
+      to_actor_id: null,
+      route: "group_chat",
+      payload: {
+        type: "chat_message",
+        text: "Root channel update",
+      },
+      created_at: fixture.now + 95,
+    },
+  ]);
 
   // Navigate directly to a channel + thread URL
   await page.goto(`/workspace/teams/${teamId}?lens=channels&channel=all&thread=5`);
@@ -128,6 +143,8 @@ test("team channels navigates to channel via url and opens thread", async ({ pag
   // The page should load with the channels lens active
   await expect(page).toHaveURL(/lens=channels/);
   await expect(page).toHaveURL(/thread=5/);
+  await expect(page.getByText("Root channel update")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Reply in thread" })).toBeVisible();
 });
 
 test("non-default channel delete requires confirmation", async ({ page }) => {
