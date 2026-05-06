@@ -17,6 +17,9 @@ test("team channel sidebar helper does not select prefixed channel ids", async (
   `);
 
   await expect(teamChannelSidebarEntry(page, "all")).toHaveText("# all default lane");
+  expect(() => teamChannelSidebarEntry(page, "# all")).toThrow(
+    "Expected a raw channel id without the display prefix"
+  );
 });
 
 test("team channels shows #all by default in sidebar", async ({ page }) => {
