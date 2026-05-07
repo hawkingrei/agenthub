@@ -49,14 +49,14 @@ describe("deriveDetectedNodeRuntimes", () => {
     ]);
   });
 
-  it("tolerates missing commands and keeps unavailable runtime markers", () => {
+  it("tolerates missing commands and keeps unobserved attached-agent markers", () => {
     const runtimes = deriveDetectedNodeRuntimes(remoteNode, [
       agent({ command: undefined as unknown as string }),
     ]);
 
     expect(runtimes).toEqual([
-      { label: "Codex CLI (not detected)", available: false },
-      { label: "Gemini CLI (not detected)", available: false },
+      { label: "Codex CLI (no attached agent observed)", available: false },
+      { label: "Gemini CLI (no attached agent observed)", available: false },
     ]);
   });
 });

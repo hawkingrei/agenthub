@@ -3,12 +3,46 @@ use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, TimeZone, Utc};
-use tracing_subscriber::EnvFilter;
+use fastrace::collector::{Config as FastraceCollectorConfig, ConsoleReporter};
+use fastrace_tracing::FastraceCompatLayer;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 pub type LogSpec = (PathBuf, String);
 
 pub struct LogGuards {
-    _writer: tracing_appender::non_blocking::WorkerGuard,
+    _writer: Option<tracing_appender::non_blocking::WorkerGuard>,
+    _fastrace: Option<FastraceFlushGuard>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TraceExportOptions {
+    pub fastrace_console: bool,
+}
+
+impl TraceExportOptions {
+    pub fn from_env() -> Self {
+        Self::from_env_value(std::env::var("AGENTHUB_FASTRACE").ok().as_deref())
+    }
+
+    pub fn from_env_value(raw: Option<&str>) -> Self {
+        let fastrace_console = raw
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "console" | "stdout"
+                )
+            })
+            .unwrap_or(false);
+        Self { fastrace_console }
+    }
+}
+
+pub struct FastraceFlushGuard;
+
+impl Drop for FastraceFlushGuard {
+    fn drop(&mut self) {
+        fastrace::flush();
+    }
 }
 
 pub struct ActiveHourlyLogWriter {
@@ -149,22 +183,63 @@ pub fn init_tracing(
     filter: EnvFilter,
     log_spec: Option<&LogSpec>,
 ) -> anyhow::Result<Option<LogGuards>> {
+    init_tracing_with_options(filter, log_spec, TraceExportOptions::from_env())
+}
+
+pub fn init_tracing_with_options(
+    filter: EnvFilter,
+    log_spec: Option<&LogSpec>,
+    trace_export: TraceExportOptions,
+) -> anyhow::Result<Option<LogGuards>> {
+    let fastrace_guard = if trace_export.fastrace_console {
+        fastrace::set_reporter(ConsoleReporter, FastraceCollectorConfig::default());
+        Some(FastraceFlushGuard)
+    } else {
+        None
+    };
+
     if let Some((dir, file_name)) = log_spec {
         let appender = ActiveHourlyLogWriter::new(dir.clone(), file_name.clone())?;
         let (writer, guard) = tracing_appender::non_blocking(appender);
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(filter)
+        let fmt_layer = tracing_subscriber::fmt::layer()
             .with_writer(writer)
             .with_ansi(false)
-            .with_target(true)
-            .try_init();
-        return Ok(Some(LogGuards { _writer: guard }));
+            .with_target(true);
+        if trace_export.fastrace_console {
+            let _ = tracing_subscriber::registry()
+                .with(filter)
+                .with(fmt_layer)
+                .with(FastraceCompatLayer::new())
+                .try_init();
+        } else {
+            let _ = tracing_subscriber::registry()
+                .with(filter)
+                .with(fmt_layer)
+                .try_init();
+        }
+        return Ok(Some(LogGuards {
+            _writer: Some(guard),
+            _fastrace: fastrace_guard,
+        }));
     }
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(true)
-        .try_init();
-    Ok(None)
+
+    let fmt_layer = tracing_subscriber::fmt::layer().with_target(true);
+    if trace_export.fastrace_console {
+        let _ = tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt_layer)
+            .with(FastraceCompatLayer::new())
+            .try_init();
+    } else {
+        let _ = tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt_layer)
+            .try_init();
+    }
+    Ok(fastrace_guard.map(|guard| LogGuards {
+        _writer: None,
+        _fastrace: Some(guard),
+    }))
 }
 
 #[cfg(test)]
@@ -192,7 +267,8 @@ mod tests {
     #[test]
     fn init_tracing_supports_stdout_and_file_targets() {
         let stdout_guard =
-            init_tracing(EnvFilter::new("info"), None).expect("init tracing for stdout");
+            init_tracing_with_options(EnvFilter::new("info"), None, TraceExportOptions::default())
+                .expect("init tracing for stdout");
         assert!(stdout_guard.is_none());
 
         let unique = format!(
@@ -205,11 +281,43 @@ mod tests {
         );
         let dir = std::env::temp_dir().join(unique);
         let spec = (dir.clone(), "agenthub.log".to_string());
-        let file_guard =
-            init_tracing(EnvFilter::new("info"), Some(&spec)).expect("init tracing for file");
+        let file_guard = init_tracing_with_options(
+            EnvFilter::new("info"),
+            Some(&spec),
+            TraceExportOptions::default(),
+        )
+        .expect("init tracing for file");
         assert!(file_guard.is_some());
         assert!(dir.exists());
         assert!(dir.join("agenthub.log").exists());
+    }
+
+    #[test]
+    fn trace_export_options_parse_fastrace_console_env() {
+        assert_eq!(
+            TraceExportOptions::from_env_value(None),
+            TraceExportOptions {
+                fastrace_console: false
+            }
+        );
+        assert_eq!(
+            TraceExportOptions::from_env_value(Some("console")),
+            TraceExportOptions {
+                fastrace_console: true
+            }
+        );
+        assert_eq!(
+            TraceExportOptions::from_env_value(Some("true")),
+            TraceExportOptions {
+                fastrace_console: true
+            }
+        );
+        assert_eq!(
+            TraceExportOptions::from_env_value(Some("off")),
+            TraceExportOptions {
+                fastrace_console: false
+            }
+        );
     }
 
     #[test]

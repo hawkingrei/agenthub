@@ -239,7 +239,7 @@ export function deriveDetectedNodeRuntimes(
     }
     if (label === "Codex CLI" || label === "Gemini CLI") {
       tags.push({
-        label: `${label} (not detected)`,
+        label: `${label} (no attached agent observed)`,
         available: false,
       });
     }
@@ -494,10 +494,10 @@ export function AgentNodeDetailCard({
           </KeyValueList>
           <div className="mt-3 rounded-lg border border-ui-border/80 bg-white/80 px-3 py-3">
             <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-              Detected Runtimes
+              Observed Agent Runtimes
             </Text>
             <Text size="xs" c="dimmed" mt={4}>
-              Derived from current attached agents and known operator-facing runtime surfaces.
+              Derived from attached agent commands and known operator-facing runtime surfaces; this is not a host binary probe.
             </Text>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {detectedRuntimes.map((runtime) => (
