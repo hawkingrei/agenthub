@@ -1071,6 +1071,19 @@ describe("team page helpers", () => {
     expect(updated?.members.every((member) => member.session_status === "stopped")).toBe(true);
   });
 
+  it("skips optimistic runtime synthesis when no cached runtime or member fallback exists", () => {
+    const updated = updateCachedTeamRuntimeStatus(
+      undefined,
+      "team-1",
+      "Team One",
+      "running",
+      [],
+      () => "running"
+    );
+
+    expect(updated).toBeUndefined();
+  });
+
   it("synthesizes optimistic runtime members when start-team has no cached runtime yet", () => {
     const control: TeamRuntimeControlResponse["members"] = [
       { member_id: "coordinator-agent", session_id: "session-coordinator", action: "started" },
@@ -1104,6 +1117,57 @@ describe("team page helpers", () => {
       "session-coordinator",
       "session-worker",
     ]);
+  });
+
+  it("synthesizes stopped optimistic runtime members without sessions", () => {
+    const updated = updateCachedTeamRuntimeStatus(
+      undefined,
+      "team-1",
+      "Team One",
+      "stopped",
+      [{ member_id: "coordinator-agent", session_id: "session-new", action: "stopped" }],
+      () => "running",
+      [buildMemberStatus({ status: "running" })]
+    );
+
+    expect(updated?.status).toBe("stopped");
+    expect(updated?.members).toHaveLength(1);
+    expect(updated?.members[0]?.session_id).toBeUndefined();
+    expect(updated?.members[0]?.session_status).toBe("stopped");
+    expect(updated?.members[0]?.agent_status).toBe("stopped");
+  });
+
+  it("updates cached runtime sessions for non-stopped optimistic state", () => {
+    const updated = updateCachedTeamRuntimeStatus(
+      buildRuntime({
+        members: [
+          {
+            member_id: "coordinator-agent",
+            display_name: "Coordinator Agent",
+            role: "coordinator",
+            description: "lead",
+            agent_status: "stopped",
+            session_id: undefined,
+            session_status: "stopped",
+            card: {
+              card_id: "card-coordinator",
+              schema_version: "1",
+              description: "lead",
+              capability_tags: [],
+            },
+          },
+        ],
+      }),
+      "team-1",
+      "Team One",
+      "running",
+      [{ member_id: "coordinator-agent", session_id: "session-new", action: "started" }],
+      () => "running"
+    );
+
+    expect(updated?.status).toBe("running");
+    expect(updated?.members[0]?.session_id).toBe("session-new");
+    expect(updated?.members[0]?.session_status).toBe("running");
   });
 
   it("formats timestamps and pretty prints JSON safely", () => {
