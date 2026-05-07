@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -136,7 +136,7 @@ struct AppServerState {
     pending_user_input_requests: HashMap<String, RequestId>,
     pending_elicitation_requests: HashMap<String, RequestId>,
     pending_turn_diffs: HashMap<String, String>,
-    pending_custom_tool_calls: HashMap<String, PendingCustomToolCall>,
+    pending_custom_tool_calls: HashSet<String>,
     interrupt_after_turn_starts: bool,
 }
 
@@ -146,12 +146,6 @@ struct ActiveTurn {
     turn_id: Option<String>,
     steerable: bool,
     last_agent_message: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PendingCustomToolCall {
-    turn_id: String,
-    name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -167,7 +161,7 @@ impl MissingCustomToolOutputs {
 
         let mut call_ids = state
             .pending_custom_tool_calls
-            .keys()
+            .iter()
             .cloned()
             .collect::<Vec<_>>();
         call_ids.sort();
@@ -272,7 +266,7 @@ impl AppServerCodexThread {
                 pending_user_input_requests: HashMap::new(),
                 pending_elicitation_requests: HashMap::new(),
                 pending_turn_diffs: HashMap::new(),
-                pending_custom_tool_calls: HashMap::new(),
+                pending_custom_tool_calls: HashSet::new(),
                 interrupt_after_turn_starts: false,
             }),
         }
@@ -2154,16 +2148,10 @@ fn pending_patch_changes_from_turns(
         .collect()
 }
 
-fn record_raw_response_item(state: &mut AppServerState, turn_id: &str, item: &ResponseItem) {
+fn record_raw_response_item(state: &mut AppServerState, _turn_id: &str, item: &ResponseItem) {
     match item {
-        ResponseItem::CustomToolCall { call_id, name, .. } => {
-            state.pending_custom_tool_calls.insert(
-                call_id.clone(),
-                PendingCustomToolCall {
-                    turn_id: turn_id.to_string(),
-                    name: name.clone(),
-                },
-            );
+        ResponseItem::CustomToolCall { call_id, .. } => {
+            state.pending_custom_tool_calls.insert(call_id.clone());
         }
         ResponseItem::CustomToolCallOutput { call_id, .. } => {
             state.pending_custom_tool_calls.remove(call_id);
@@ -2927,7 +2915,7 @@ mod tests {
             pending_user_input_requests: HashMap::new(),
             pending_elicitation_requests: HashMap::new(),
             pending_turn_diffs: HashMap::new(),
-            pending_custom_tool_calls: HashMap::new(),
+            pending_custom_tool_calls: HashSet::new(),
             interrupt_after_turn_starts: false,
         }
     }
@@ -3332,13 +3320,7 @@ mod tests {
         };
         record_raw_response_item(&mut state, "turn-1", &call);
 
-        assert_eq!(
-            state.pending_custom_tool_calls.get("call-1"),
-            Some(&PendingCustomToolCall {
-                turn_id: "turn-1".to_string(),
-                name: "apply_patch".to_string(),
-            })
-        );
+        assert!(state.pending_custom_tool_calls.contains("call-1"));
 
         let output = ResponseItem::CustomToolCallOutput {
             call_id: "call-1".to_string(),
@@ -3371,20 +3353,8 @@ mod tests {
         let mut state = test_state_with_active_turn(None).await;
         assert_eq!(MissingCustomToolOutputs::from_state(&state), None);
 
-        state.pending_custom_tool_calls.insert(
-            "call-z".to_string(),
-            PendingCustomToolCall {
-                turn_id: "turn-1".to_string(),
-                name: "z_tool".to_string(),
-            },
-        );
-        state.pending_custom_tool_calls.insert(
-            "call-a".to_string(),
-            PendingCustomToolCall {
-                turn_id: "turn-1".to_string(),
-                name: "a_tool".to_string(),
-            },
-        );
+        state.pending_custom_tool_calls.insert("call-z".to_string());
+        state.pending_custom_tool_calls.insert("call-a".to_string());
 
         let missing = MissingCustomToolOutputs::from_state(&state).expect("missing outputs");
         assert_eq!(
@@ -3403,13 +3373,9 @@ mod tests {
     #[tokio::test]
     async fn prepare_submission_blocks_new_turn_when_custom_tool_output_is_missing() {
         let mut state = test_state_with_active_turn(None).await;
-        state.pending_custom_tool_calls.insert(
-            "call-missing".to_string(),
-            PendingCustomToolCall {
-                turn_id: "turn-1".to_string(),
-                name: "apply_patch".to_string(),
-            },
-        );
+        state
+            .pending_custom_tool_calls
+            .insert("call-missing".to_string());
 
         let err = prepare_submission_start(
             &mut state,
@@ -3438,13 +3404,9 @@ mod tests {
     #[tokio::test]
     async fn prepare_submission_blocks_review_and_compact_when_custom_tool_output_is_missing() {
         let mut state = test_state_with_active_turn(None).await;
-        state.pending_custom_tool_calls.insert(
-            "call-missing".to_string(),
-            PendingCustomToolCall {
-                turn_id: "turn-1".to_string(),
-                name: "apply_patch".to_string(),
-            },
-        );
+        state
+            .pending_custom_tool_calls
+            .insert("call-missing".to_string());
 
         let review_err = prepare_submission_start(
             &mut state,
@@ -3475,13 +3437,9 @@ mod tests {
     #[tokio::test]
     async fn prepare_submission_allows_undo_when_custom_tool_output_is_missing() {
         let mut state = test_state_with_active_turn(None).await;
-        state.pending_custom_tool_calls.insert(
-            "call-missing".to_string(),
-            PendingCustomToolCall {
-                turn_id: "turn-1".to_string(),
-                name: "apply_patch".to_string(),
-            },
-        );
+        state
+            .pending_custom_tool_calls
+            .insert("call-missing".to_string());
 
         let prepared = prepare_submission_start(&mut state, "undo-submission", &Op::Undo)
             .expect("undo should remain available")
