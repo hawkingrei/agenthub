@@ -378,7 +378,9 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
     if (parsed.type === "run_status") {
       runStatus = {
         status: String(parsed.status ?? ""),
-        session_id: parsed.session_id ? String(parsed.session_id) : undefined,
+        session_id: parsed.session_id
+          ? String(parsed.session_id)
+          : event.session_id ?? undefined,
       };
       if (inThinking) {
         inThinking = false;
@@ -393,6 +395,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
     currentMode ??
     configOptions.find((option) => option.id === "mode")?.currentValueId ??
     null;
+  closeStaleLiveToolCalls(toolCalls, messages, runStatus);
   return {
     hasAcp:
       toolCalls.length > 0 ||
@@ -411,6 +414,70 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
     runStatus,
     thinkingStartTs,
   };
+}
+
+const LIVE_TOOL_CALL_STATUSES = new Set(["pending", "in_progress", "running"]);
+const TERMINAL_RUN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "canceled",
+  "interrupted",
+  "stopped",
+]);
+
+function closeStaleLiveToolCalls(
+  toolCalls: AcpToolCall[],
+  messages: AcpMessage[],
+  runStatus: AcpRunStatus | null
+): void {
+  const normalizedRunStatus = normalizeAcpStatus(runStatus?.status);
+  const terminalRunStatus = TERMINAL_RUN_STATUSES.has(normalizedRunStatus)
+    ? normalizedRunStatus
+    : null;
+  for (const call of toolCalls) {
+    if (!LIVE_TOOL_CALL_STATUSES.has(normalizeAcpStatus(call.status))) {
+      continue;
+    }
+    if (terminalRunStatus && isRunStatusForToolCall(runStatus, call)) {
+      call.status = terminalRunStatus;
+      continue;
+    }
+    if (hasLaterMessageInSameSession(call, messages)) {
+      call.status = "completed";
+    }
+  }
+}
+
+function hasLaterMessageInSameSession(
+  call: AcpToolCall,
+  messages: AcpMessage[]
+): boolean {
+  const callOrder = { event_id: call.event_id ?? null, ts: call.ts };
+  return messages.some((message) => {
+    if ((message.session_id ?? null) !== (call.session_id ?? null)) {
+      return false;
+    }
+    return (
+      compareEventOrder(
+        { event_id: message.event_id ?? null, ts: message.ts },
+        callOrder
+      ) > 0
+    );
+  });
+}
+
+function isRunStatusForToolCall(
+  runStatus: AcpRunStatus | null,
+  call: AcpToolCall
+): boolean {
+  if (!runStatus?.session_id) return true;
+  return runStatus.session_id === (call.session_id ?? null);
+}
+
+function normalizeAcpStatus(status?: string | null): string {
+  if (!status) return "";
+  return status.trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
 function parseAcpTerminalActivity(value: unknown): AcpTerminalActivity | null {
