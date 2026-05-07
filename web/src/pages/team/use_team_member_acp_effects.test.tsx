@@ -356,6 +356,38 @@ describe("useTeamMemberAcpEffects", () => {
     expect(params.loadMemberEvents).toHaveBeenCalledTimes(baseCalls + 1);
   });
 
+  it("falls back to polling when member ACP SSE only receives heartbeats", async () => {
+    vi.useFakeTimers();
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const source = MockEventSource.instances[0];
+    const baseCalls = (params.loadMemberEvents as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      source.emitOpen();
+      await Promise.resolve();
+    });
+
+    for (let index = 0; index < 8; index += 1) {
+      await act(async () => {
+        vi.advanceTimersByTime(4_000);
+        source.emitMessage("heartbeat");
+        await Promise.resolve();
+      });
+    }
+
+    expect(params.loadMemberEvents).toHaveBeenCalledTimes(baseCalls + 1);
+  });
+
   it("appends matching SSE lines for the selected agent session", async () => {
     const memberEvents = createStateSetter<AgentEvent[]>([buildAgentEvent(1)]);
     const params = createParams({

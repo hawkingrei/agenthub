@@ -56,7 +56,7 @@ export function useTeamMemberAcpEffects({
   const sseConnectedRef = useRef(false);
   const sseConnectingRef = useRef(false);
   const sseHasOpenedRef = useRef(false);
-  const lastSseActivityAtRef = useRef(Date.now());
+  const lastSseMemberActivityAtRef = useRef(Date.now());
   const activitySyncInFlightRef = useRef(false);
   const activitySyncQueuedRef = useRef(false);
   const activitySyncTimerRef = useRef<number | null>(null);
@@ -97,16 +97,16 @@ export function useTeamMemberAcpEffects({
 
   const syncPollFallbackEnabled = useCallback(() => {
     const now = Date.now();
-    const sseStale = isSseConnectionStale(
+    const memberActivityStale = isSseConnectionStale(
       sseConnectedRef.current,
-      lastSseActivityAtRef.current,
+      lastSseMemberActivityAtRef.current,
       now,
       TEAM_MEMBER_ACP_SSE_STALE_RECONNECT_THRESHOLD_MS
     );
     const nextEnabled =
       pollFallbackAllowedRef.current &&
       (typeof EventSource === "undefined" ||
-        sseStale ||
+        memberActivityStale ||
         (!sseConnectedRef.current &&
           (!sseConnectingRef.current || sseHasOpenedRef.current)));
     pollFallbackEnabledRef.current = nextEnabled;
@@ -330,11 +330,10 @@ export function useTeamMemberAcpEffects({
         sseConnectingRef.current = false;
         sseConnectedRef.current = true;
         sseHasOpenedRef.current = true;
-        lastSseActivityAtRef.current = Date.now();
+        lastSseMemberActivityAtRef.current = Date.now();
         syncPollFallbackEnabled();
       };
       nextSource.onmessage = (event) => {
-        lastSseActivityAtRef.current = Date.now();
         if (cancelled || event.data === "heartbeat") {
           return;
         }
@@ -350,6 +349,7 @@ export function useTeamMemberAcpEffects({
         if (liveLines.length === 0) {
           return;
         }
+        lastSseMemberActivityAtRef.current = Date.now();
         setMemberEvents((prev) =>
           upsertAgentEventList(prev, liveLines, "replace", sessionId)
         );
