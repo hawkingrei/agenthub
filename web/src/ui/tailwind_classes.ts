@@ -189,8 +189,11 @@ export const TEAM_PANEL_SECONDARY_BUTTON_CLASS =
 export const TEAM_PANEL_INPUT_CLASS =
   "w-full rounded-lg border border-notion-border bg-white px-3 py-2 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10";
 
+export const TEAM_PANEL_TEXTAREA_BASE_CLASS =
+  "w-full resize-none rounded-lg border border-notion-border bg-white text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10";
+
 export const TEAM_PANEL_TEXTAREA_CLASS =
-  "w-full rounded-lg border border-notion-border bg-white px-3 py-2 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10 resize-none";
+  `${TEAM_PANEL_TEXTAREA_BASE_CLASS} px-3 py-2 text-[14px]`;
 
 export const TEAM_PANEL_PRE_CLASS =
   "mono mt-2 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-notion-border bg-notion-sidebar/50 p-4 text-[12px] leading-relaxed text-notion-text shadow-inner";
@@ -507,7 +510,7 @@ export const MAILBOX_MESSAGE_ACTIONS_CLASS = "mt-2 flex";
 export const MAILBOX_COMPOSER_CLASS = "mt-1.5 flex flex-col gap-1.5";
 
 export const MAILBOX_COMPOSER_TEXTAREA_CLASS =
-  `${TEAM_PANEL_TEXTAREA_CLASS} px-2.5 py-1.5 text-[13px] leading-5`;
+  `${TEAM_PANEL_TEXTAREA_BASE_CLASS} px-2.5 py-1.5 text-[13px] leading-5`;
 
 export const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid min-w-0 gap-3 lg:grid-cols-2";
 
