@@ -2683,6 +2683,14 @@ Fallback to the user-level review contract.
     }
 
     #[test]
+    fn permission_review_failure_outcome_is_cancelled() {
+        assert!(matches!(
+            permission_review_failure_outcome(),
+            RequestPermissionOutcome::Cancelled
+        ));
+    }
+
+    #[test]
     fn permission_review_timeout_defaults_to_two_minutes() {
         assert_eq!(ACP_PERMISSION_REVIEW_TIMEOUT, Duration::from_secs(120));
         assert_eq!(
