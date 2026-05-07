@@ -24,7 +24,7 @@
     "bootstrap-icons": "^1.11.3",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",
-    "react": "^19.2.4",
+    "react": "^19.2.6",
     "react-dom": "^19.2.5",
     "uuidv7": "^1.0.2"
   },
