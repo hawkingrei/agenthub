@@ -85,3 +85,18 @@ CARGO_TARGET_DIR=/Users/weizhenwang/devel/opensource/agenthub/target-codex-live-
 CARGO_TARGET_DIR=/Users/weizhenwang/devel/opensource/agenthub/target-codex-live-guard cargo test -p agenthub-codex-acp custom_tool
 CARGO_TARGET_DIR=/Users/weizhenwang/devel/opensource/agenthub/target-codex-live-guard cargo clippy -p agenthub-codex-acp --all-targets -- -D warnings
 ```
+
+Merge and CI evidence:
+
+- PR: https://github.com/hawkingrei/agenthub/pull/545
+- Merge commit: `7adaf49feca552e38b1f7bd6f7e6544e59e2608e`
+- Merged at: `2026-05-07T07:51:00Z`
+- GitHub checks passed:
+  - `Bazel Build`, `Bazel Test (Root)`, `Bazel Test (Crates)`, `Bazel Coverage`, and aggregate
+    `Bazel Build and Test` in run `25482572604`
+  - `Rust (Cargo)`, `Rust (Fmt)`, and `Rust (Proto Check)` in run `25482572609`
+  - `Cargo Clippy` in run `25482572632`
+  - `Distributed P2P Pipeline` in run `25482572593`
+  - `Web` in run `25482572594`, `Web E2E` in run `25482572623`, `Web E2E Mobile` in run
+    `25482572602`, and `User Docs` in run `25482572618`
+  - Codecov `patch` at `92.90%` and Codecov `project` at `81.01%`
