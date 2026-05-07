@@ -166,11 +166,9 @@ export const ACP_PAYLOAD_MARKDOWN_CLASS =
 export const TEAM_PANEL_CARD_CLASS =
   "teams-panel-card flex min-h-0 flex-1 flex-col overflow-hidden";
 
-export const TEAM_PAGE_SHELL_ROOT_CLASS =
-  "flex min-h-0 flex-1 flex-col overflow-hidden bg-white";
+export const TEAM_PAGE_SHELL_ROOT_CLASS = `${WORKSPACE_CONTENT_ROOT_CLASS} bg-white`;
 
-export const TEAM_CONVERSATION_PANEL_ROOT_CLASS =
-  "flex h-full min-h-0 flex-1 flex-col overflow-hidden";
+export const TEAM_CONVERSATION_PANEL_ROOT_CLASS = `h-full ${WORKSPACE_CONTENT_ROOT_CLASS}`;
 
 export const TEAM_PANEL_TITLE_CLASS = "text-[22px] font-bold tracking-tight text-notion-text";
 
@@ -764,7 +762,7 @@ export const TEAM_WORKBENCH_INFO_STRIP_GRID_CLASS =
   "grid gap-px bg-notion-border lg:grid-cols-3";
 
 export const TEAM_WORKBENCH_INFO_STRIP_STEPS_GRID_CLASS =
-  "grid gap-px border-t border-ui-border bg-ui-border lg:grid-cols-3";
+  "grid gap-px border-t border-notion-border bg-notion-border lg:grid-cols-3";
 
 export const TEAM_SETUP_ACTIONS_GRID_CLASS =
   "grid w-full min-w-0 gap-2 sm:w-auto sm:grid-cols-2";
