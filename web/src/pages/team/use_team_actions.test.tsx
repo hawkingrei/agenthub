@@ -338,6 +338,70 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("loads member events from the latest step runtime handle when no session is selected", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 17,
+        agent_id: "worker-agent",
+        session_id: "runtime-handle-1",
+        seq: "17",
+        ts: 223,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Loaded from latest step runtime handle.",
+        }),
+      },
+    ]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: null,
+      selectedMemberSnapshot: {
+        member_id: "worker-agent",
+        role: "worker",
+        model: null,
+        prompt: null,
+        skills: [],
+        pending_inbox_count: 0,
+        status: "running",
+        session_status: "running",
+        latest_step: {
+          id: "step-runtime",
+          run_id: "run-1",
+          step_key: "worker",
+          member_id: "worker-agent",
+          runtime_handle_id: "runtime-handle-1",
+          status: "working",
+          attempt: 1,
+          depends_on: [],
+        } as TeamStepRecord,
+      },
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-handle-1",
+        undefined
+      );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
   it("coalesces concurrent replace loads for the same member ACP session", async () => {
     let resolveList: ((events: AgentEvent[]) => void) | null = null;
     const listAgentEvents = vi
