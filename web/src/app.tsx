@@ -60,6 +60,7 @@ import {
 import {
   AUTH_CARD_BASE_CLASS,
   AUTH_PAGE_CLASS,
+  APP_ROOT_CLASS,
 } from "./ui/tailwind_classes";
 import { parseSendInputSessionMismatch } from "./app_utils";
 import { resolveDefaultWorktreeRootForTargetNode } from "./worktree_defaults";
@@ -1153,7 +1154,7 @@ export function App() {
   switch (routeKind) {
     case "join":
       return (
-        <div className="app bg-white" ref={appRootRef}>
+        <div className={APP_ROOT_CLASS} ref={appRootRef}>
           <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
             <LazyJoinPage onComplete={(next) => setAuth(next)} />
           </Suspense>
@@ -1199,7 +1200,7 @@ export function App() {
     case "teams": {
       const teamRoute = resolveTeamRoute(routeLocation.pathname);
       return (
-        <div className="app bg-white" ref={appRootRef}>
+        <div className={APP_ROOT_CLASS} ref={appRootRef}>
           <Suspense fallback={<RouteFallback label="Loading teams..." />}>
             <LazyTeamPage
               auth={auth!}

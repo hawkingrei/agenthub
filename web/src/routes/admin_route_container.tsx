@@ -3,6 +3,7 @@ import type { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
 import { AuthState } from "../types";
 import { RouteFallback } from "./route_fallback";
 import type { AdminPageProps } from "../pages/admin_page";
+import { APP_ROOT_CLASS } from "../ui/tailwind_classes";
 
 const LazyAdminPage = React.lazy(async () => {
   const module = (await import("../pages/admin_page")) as typeof import("../pages/admin_page");
@@ -109,7 +110,7 @@ export function AdminRouteContainer({
   };
 
   return (
-    <div className="app bg-white" ref={appRootRef as React.Ref<HTMLDivElement>}>
+    <div className={APP_ROOT_CLASS} ref={appRootRef as React.Ref<HTMLDivElement>}>
       <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
         <LazyAdminPage {...pageProps} />
       </Suspense>

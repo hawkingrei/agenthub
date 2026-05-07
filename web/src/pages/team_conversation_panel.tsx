@@ -7,6 +7,7 @@ import { TeamTaskPanel } from "./team_task_panel";
 import { mergeMailboxMessages } from "./team/mailbox_helpers";
 import { type TeamMemberLiveState } from "./team/member_helpers";
 import { resolveTaskMessageSeenByActors } from "./team/page_helpers";
+import { TEAM_CONVERSATION_PANEL_ROOT_CLASS } from "../ui/tailwind_classes";
 
 type TeamConversationPanelProps = {
   conversationKey?: string;
@@ -56,7 +57,7 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+    <div className={TEAM_CONVERSATION_PANEL_ROOT_CLASS}>
       <TeamTaskPanel
         conversationKey={props.conversationKey}
         developerMode={props.developerMode}

@@ -20,7 +20,11 @@ import {
   resolveNodeRoleLabel,
 } from "./agent_node_detail_shared";
 import { validateAgentNodeUpdateDraft } from "./agent_node_validation";
-import { SECTION_CARD_CLASS, SECTION_HEADER_CLASS } from "../ui/tailwind_classes";
+import {
+  SECTION_CARD_CLASS,
+  SECTION_HEADER_CLASS,
+  WORKSPACE_PANEL_ROOT_CLASS,
+} from "../ui/tailwind_classes";
 
 const NODE_ROSTER_ITEM_CLASS =
   "w-full rounded-xl border-2 border-transparent bg-white/70 px-2.5 py-2.5 shadow-none hover:border-black hover:bg-white";
@@ -360,7 +364,7 @@ export function AgentNodesWorkbench({
 
   if (!selectedNode) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-auto bg-white px-4 py-4 sm:px-6">
+      <div className={WORKSPACE_PANEL_ROOT_CLASS}>
         <EmptyState
           title="No nodes registered yet"
           body="Register a remote node or use the local control plane node to start routing agents."
@@ -371,7 +375,7 @@ export function AgentNodesWorkbench({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-auto bg-white px-4 py-4 sm:px-6">
+    <div className={WORKSPACE_PANEL_ROOT_CLASS}>
       <div className="mx-auto flex w-full max-w-6xl min-h-full flex-col gap-4">
         <div>
           <Text size="xl" fw={700}>
