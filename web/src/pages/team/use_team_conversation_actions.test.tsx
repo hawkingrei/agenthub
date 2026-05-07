@@ -310,7 +310,7 @@ describe("useTeamConversationActions", () => {
         "token-1",
         "team-1",
         "task-all",
-        { limit: 60 }
+        { limit: 20 }
       );
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenNthCalledWith(
         1,

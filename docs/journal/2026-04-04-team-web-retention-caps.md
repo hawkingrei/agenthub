@@ -30,3 +30,28 @@
 
 - `cd web && npm run test -- src/pages/team/page_helpers.test.ts src/output_cache.test.ts`
 - `make build-web`
+
+## 2026-05-07 P0 Follow-up
+
+After the P0+ closure work merged, the active TODO still required post-merge
+verification for the Team web retention caps. A follow-up audit found that the
+run-event and member-event caps were still implemented at the shared helper
+layer, but the shared-thread conversation contract had drifted from recent-20
+to recent-60 in both the fetch limit and client retention constant.
+
+This follow-up restores the stable recent-20 contract:
+
+- `TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 20`
+- shared-thread message fetches request `{ limit: 20 }`
+- the existing helper tests continue to cover conversation, run-event, and
+  member-event retention caps
+- the conversation action regression test verifies repeated shared-thread
+  refreshes stay bounded instead of growing client state
+
+Local validation:
+
+- `cd web && npm run test -- src/pages/team/use_team_conversation_actions.test.tsx src/pages/team/page_helpers.test.ts src/pages/team/use_team_actions.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+
+The TODO item should remain open until the follow-up PR records push/PR CI
+evidence after merge.
