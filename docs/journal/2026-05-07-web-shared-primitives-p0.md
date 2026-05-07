@@ -33,7 +33,7 @@ state, API behavior, or workspace information architecture.
 Commands run:
 
 ```bash
-cd web && npm run test -- src/ui/primitives.test.tsx src/pages/team_panels.test.tsx
+cd web && npm run test -- src/ui/primitives.test.tsx src/pages/team_panels.test.tsx src/agents_root_page.test.tsx
 cd web && npm run lint
 cd web && npm exec tsc -- --noEmit
 cd web && npm run build
@@ -41,7 +41,7 @@ cd web && npm run build
 
 Results:
 
-- focused Vitest: `2` files, `109` tests passed
+- focused Vitest: `3` files, `112` tests passed
 - lint: pass
 - TypeScript no-emit: pass
 - production build: pass
