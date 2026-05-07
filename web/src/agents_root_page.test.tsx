@@ -7,7 +7,10 @@ import { AgentsPanelProps } from "./components/agents_panel";
 import { AgentsWorkbenchProps } from "./components/agents_workbench_types";
 import { OutputHeaderProps } from "./components/output_header";
 import { AuthState } from "./types";
-import { WORKSPACE_CONTENT_PADDING_CLASS } from "./ui/tailwind_classes";
+import {
+  WORKSPACE_CONTENT_PADDING_CLASS,
+  WORKSPACE_CONTENT_ROOT_CLASS,
+} from "./ui/tailwind_classes";
 
 const baseAuth: AuthState = {
   token: "token-root",
@@ -214,6 +217,7 @@ describe("AgentsRootPage", () => {
       normalizedError: "route failed",
     });
 
+    expect(html).toContain(WORKSPACE_CONTENT_ROOT_CLASS);
     expect(html).toContain(WORKSPACE_CONTENT_PADDING_CLASS);
     expect(html).toContain("route failed");
   });
