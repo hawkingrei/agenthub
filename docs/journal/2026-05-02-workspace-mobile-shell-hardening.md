@@ -63,9 +63,7 @@ It does not yet:
 
 ## Follow-Ups
 
-- continue the `P0+` mobile-first backlog with Team thread/channel split-view behavior on narrow
-  screens
-- revisit Agents route chrome next so standalone agent object pages follow the same mobile lane
-  rules as Team and Nodes
-- add CI evidence for the new standalone mobile E2E workflow on both `push` and `pull_request`
-  before closing the broader mobile backlog item
+- The broader `P0+` mobile-first backlog is now closed by
+  [2026-05-07-p0-plus-closure.md](./2026-05-07-p0-plus-closure.md).
+- Continue any deeper Agents route chrome refinement as part of the remaining workspace-shell P0
+  work, not as a separate P0+ blocker.
