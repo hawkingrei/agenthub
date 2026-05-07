@@ -449,7 +449,10 @@ function closeStaleLiveToolCalls(
     );
     if (
       latestMessageOrder &&
-      compareEventOrder(latestMessageOrder, toolCallOrder(call)) > 0
+      compareEventOrder(latestMessageOrder, {
+        event_id: call.event_id ?? null,
+        ts: call.ts,
+      }) > 0
     ) {
       call.status = "completed";
     }
@@ -458,30 +461,17 @@ function closeStaleLiveToolCalls(
 
 function buildLatestMessageOrderBySession(
   messages: AcpMessage[]
-): Map<string | null, EventOrder> {
-  const latest = new Map<string | null, EventOrder>();
+): Map<string | null, { event_id: number | null; ts?: number }> {
+  const latest = new Map<string | null, { event_id: number | null; ts?: number }>();
   for (const message of messages) {
     const sessionId = message.session_id ?? null;
-    const order = messageOrder(message);
+    const order = { event_id: message.event_id ?? null, ts: message.ts };
     const existing = latest.get(sessionId);
     if (!existing || compareEventOrder(order, existing) > 0) {
       latest.set(sessionId, order);
     }
   }
   return latest;
-}
-
-type EventOrder = {
-  event_id: number | null;
-  ts?: number;
-};
-
-function toolCallOrder(call: AcpToolCall): EventOrder {
-  return { event_id: call.event_id ?? null, ts: call.ts };
-}
-
-function messageOrder(message: AcpMessage): EventOrder {
-  return { event_id: message.event_id ?? null, ts: message.ts };
 }
 
 function isRunStatusForToolCall(
