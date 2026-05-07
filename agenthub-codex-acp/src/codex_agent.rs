@@ -22,7 +22,7 @@ use codex_login::{
 use codex_protocol::{
     ThreadId,
     models::{FunctionCallOutputPayload, ResponseItem},
-    protocol::{InitialHistory, ResumedHistory, RolloutItem, SessionSource},
+    protocol::{InitialHistory, ResumedHistory, RolloutItem, RolloutLine, SessionSource},
 };
 use std::{
     cell::RefCell,
@@ -60,6 +60,7 @@ pub struct CodexAgent {
 
 const SESSION_LIST_PAGE_SIZE: usize = 25;
 const SESSION_TITLE_MAX_GRAPHEMES: usize = 120;
+const REPAIRED_ROLLOUT_TIMESTAMP: &str = "1970-01-01T00:00:00.000Z";
 
 impl CodexAgent {
     /// Create a new `CodexAgent` with the given configuration
@@ -521,6 +522,43 @@ fn repair_initial_history(history: InitialHistory) -> (InitialHistory, HistoryRe
     }
 }
 
+async fn persist_repaired_initial_history(
+    rollout_path: &Path,
+    history: &InitialHistory,
+) -> std::io::Result<()> {
+    let temp_path = rollout_path.with_extension("jsonl.agenthub-repair-tmp");
+    let timestamp = repaired_rollout_timestamp(history);
+    let mut contents = String::new();
+    for item in history.get_rollout_items() {
+        let line = RolloutLine {
+            timestamp: timestamp.clone(),
+            item,
+        };
+        let serialized = serde_json::to_string(&line).map_err(|err| {
+            std::io::Error::other(format!("failed to serialize repaired rollout line: {err}"))
+        })?;
+        contents.push_str(&serialized);
+        contents.push('\n');
+    }
+
+    tokio::fs::write(&temp_path, contents).await?;
+    tokio::fs::rename(&temp_path, rollout_path).await?;
+    Ok(())
+}
+
+fn repaired_rollout_timestamp(history: &InitialHistory) -> String {
+    history
+        .get_rollout_items()
+        .into_iter()
+        .find_map(|item| match item {
+            RolloutItem::SessionMeta(meta_line) if !meta_line.meta.timestamp.is_empty() => {
+                Some(meta_line.meta.timestamp)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| REPAIRED_ROLLOUT_TIMESTAMP.to_string())
+}
+
 impl CodexAgent {
     pub(crate) async fn initialize(
         &self,
@@ -701,6 +739,9 @@ impl CodexAgent {
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
         let (history, repaired_stats) = repair_initial_history(history);
         if repaired_stats.total() > 0 {
+            persist_repaired_initial_history(&rollout_path, &history)
+                .await
+                .map_err(|e| Error::internal_error().data(e.to_string()))?;
             warn!(
                 session_id = %session_id,
                 repaired_items = repaired_stats.total(),
@@ -708,7 +749,7 @@ impl CodexAgent {
                 inserted_custom_tool_call_outputs = repaired_stats.inserted_custom_tool_call_outputs,
                 dropped_orphan_function_call_outputs = repaired_stats.dropped_orphan_function_call_outputs,
                 dropped_orphan_custom_tool_call_outputs = repaired_stats.dropped_orphan_custom_tool_call_outputs,
-                "repaired dirty Codex rollout history before session resume"
+                "repaired and persisted dirty Codex rollout history before session resume"
             );
         }
 
@@ -889,14 +930,21 @@ impl CodexAgent {
 
 #[cfg(test)]
 mod tests {
-    use super::{HistoryRepairStats, repair_initial_history, repair_response_item_history};
+    use super::{
+        HistoryRepairStats, persist_repaired_initial_history, repair_initial_history,
+        repair_response_item_history,
+    };
+    use codex_core::RolloutRecorder;
     use codex_protocol::{
         ThreadId,
         models::{
             FunctionCallOutputPayload, LocalShellAction, LocalShellExecAction, LocalShellStatus,
             ResponseItem,
         },
-        protocol::{CompactedItem, InitialHistory, ResumedHistory, RolloutItem},
+        protocol::{
+            CompactedItem, InitialHistory, ResumedHistory, RolloutItem, SessionMeta,
+            SessionMetaLine, SessionSource,
+        },
     };
     use std::path::PathBuf;
 
@@ -929,6 +977,71 @@ mod tests {
             &items[1],
             RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output, .. })
                 if call_id == "call-1" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+        ));
+    }
+
+    #[tokio::test]
+    async fn persist_repaired_initial_history_rewrites_rollout_before_resume() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let rollout_path = temp_dir.path().join("rollout.jsonl");
+        let thread_id = ThreadId::new();
+        let history = InitialHistory::Resumed(ResumedHistory {
+            conversation_id: thread_id,
+            history: vec![
+                RolloutItem::SessionMeta(SessionMetaLine {
+                    meta: SessionMeta {
+                        id: thread_id,
+                        timestamp: "2026-05-07T00:00:00.000Z".to_string(),
+                        cwd: temp_dir.path().to_path_buf(),
+                        originator: "agenthub-test".to_string(),
+                        cli_version: "test".to_string(),
+                        source: SessionSource::Custom("agenthub-test".to_string()),
+                        ..SessionMeta::default()
+                    },
+                    git: None,
+                }),
+                RolloutItem::ResponseItem(ResponseItem::CustomToolCall {
+                    id: None,
+                    status: Some("completed".to_string()),
+                    call_id: "call-persist".to_string(),
+                    name: "actor_send".to_string(),
+                    input: "{}".to_string(),
+                }),
+            ],
+            rollout_path: Some(rollout_path.clone()),
+        });
+
+        let (repaired, repaired_stats) = repair_initial_history(history);
+        assert_eq!(
+            repaired_stats,
+            HistoryRepairStats {
+                inserted_custom_tool_call_outputs: 1,
+                ..HistoryRepairStats::default()
+            }
+        );
+
+        persist_repaired_initial_history(&rollout_path, &repaired)
+            .await
+            .expect("persist repaired rollout");
+        let text = tokio::fs::read_to_string(&rollout_path)
+            .await
+            .expect("read repaired rollout");
+        assert!(
+            text.lines()
+                .all(|line| line.contains("2026-05-07T00:00:00.000Z"))
+        );
+
+        let loaded = RolloutRecorder::get_rollout_history(&rollout_path)
+            .await
+            .expect("load repaired rollout");
+        let items = loaded.get_rollout_items();
+
+        assert_eq!(items.len(), 3);
+        assert!(matches!(&items[0], RolloutItem::SessionMeta(_)));
+        assert!(matches!(
+            &items[2],
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output, .. })
+                if call_id == "call-persist" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
         ));
     }
 

@@ -13,10 +13,13 @@ spec is required to keep contracts consistent across providers and UI/runtime la
 - ACP transport/reliability behavior (streaming + fallback).
 - ACP permission workflow and scoping guarantees.
 - ACP provider compatibility baseline for Codex/Gemini/Kimi adapters.
+- Codex-specific diagnostic side-channel boundaries for live turn/tool-call integrity.
 
 ## Non-Goals
 
 - Replacing provider-specific adapter implementations.
+- Replacing AgentHub's provider-neutral ACP control/event boundary with Codex-only app-server
+  protocol calls.
 - Re-documenting every ACP UI polish change as timeline history.
 - Defining Team orchestration semantics beyond ACP interaction boundaries.
 
@@ -56,6 +59,12 @@ ACP runtime concerns should stay split across three orthogonal layers:
 2. Backend event sink normalizes and persists stream artifacts.
 3. Frontend ACP conversation/debug surfaces consume ordered events.
 4. UI applies rendering policies (group/fold/humanized payloads/permission linking).
+
+Codex is a special case inside the provider adapter: `agenthub-codex-acp` uses the upstream Codex
+app-server/thread protocol internally, but AgentHub's main process and web surfaces should continue
+to consume ACP requests, ACP notifications, and AgentHub-normalized ACP event JSON as the stable
+boundary. Codex-native state may be exposed only through explicit diagnostics metadata, not by
+making the primary runtime path Codex-specific.
 
 ### 4) Conversation/Debug Surfaces
 
@@ -131,6 +140,14 @@ ACP permission requests are first-class runtime records:
 
 - ACP protocol mapping must stay aligned with upstream provider schemas.
 - Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
+- Codex ACP live-turn diagnostics should track enough native app-server state to explain a stuck or
+  panicking turn without changing the provider-neutral ACP surface:
+  - active Codex thread id, turn id, and AgentHub submission id
+  - queued submission count and pending app-server request ids
+  - pending tool calls keyed by Codex `call_id` / ACP `tool_call_id`
+  - whether each custom tool call has observed a matching output item before turn completion,
+    compaction, resume, or shutdown
+  - the last Codex `EventMsg` class and timestamp seen by the adapter
 - Gemini/Kimi ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
 - Gemini CLI bootstrap should track the current upstream ACP contract (`gemini --acp`) while continuing to tolerate the legacy `--experimental-acp` flag in provider detection for backward compatibility.
 - When an ACP provider returns `auth_required`, AgentHub should surface an explicit setup error instead of silently retrying interactive auth flows on behalf of a remote user.
@@ -148,6 +165,11 @@ ACP permission requests are first-class runtime records:
 - `pnpm -C web exec vitest run src/acp_panel.test.tsx src/acp_debug.test.tsx src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx src/hooks/use_acp_conversation.test.ts`
 - `cargo check -p agenthub-codex-acp`
 - `cargo test -p agenthub-codex-acp`
+- Focused `agenthub-codex-acp` tests for live-turn tool-call completeness:
+  - a `CustomToolCall` without matching `CustomToolCallOutput` is recorded as diagnostic state
+    before turn completion/compaction can panic
+  - orphan custom-tool outputs are reported without corrupting ACP event replay
+  - concurrent prompts preserve per-submission tool-call accounting
 
 ## Operational Notes
 
@@ -181,10 +203,16 @@ ACP permission requests are first-class runtime records:
 - Team/operator recovery may explicitly clear a persisted ACP session and force a new session for a
   selected member when provider history is irrecoverably dirty; this should remain a targeted
   recovery path, not the normal resume flow.
+- Treat Codex app-server/protocol state as an adapter-local observability source. It can explain
+  Codex-specific failures such as missing custom-tool outputs, but it should not become the primary
+  AgentHub runtime contract while Gemini/Kimi and future providers still rely on ACP.
 
 ## Open Risks
 
 - Upstream protocol drift may still require frequent adapter sync and lockfile refresh.
+- Live Codex tool-call completeness can still drift from ACP-visible tool-call rendering if the
+  adapter only validates persisted rollout history. The live path needs its own accounting before
+  compaction or resume paths run.
 - Long-session rendering can regress if virtualization/stick-bottom heuristics are bypassed.
 - Permission UX still needs periodic real-browser verification under rapid agent switching.
 
@@ -201,3 +229,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-03-24-codex-acp-native-skill-injection.md`
 - `docs/journal/2026-03-30-codex-acp-apply-patch-deadlock.md`
 - `docs/journal/2026-03-31-pretext-acp-conversation-virtualization.md`
+- `docs/journal/2026-04-24-codex-custom-tool-output-hotfix.md`

@@ -59,3 +59,29 @@ Operational validation:
   - native Codex skill injection still keeps dynamic actor runtime context in a separate text prefix block
   - approvals, `ModelReroute`, and model preset/config-option flows remain aligned after the upstream upgrade
 - This journal entry now serves as historical context for the temporary fork. The active backlog item is no longer “keep the fork pin alive”, but “verify dirty-history resume/compaction semantics on the official upstream baseline and document any remaining behavior gap versus the old fork repair”.
+
+## 2026-05-07 Follow-up: Adapter-Side Guard On Official Codex
+
+PR 545 keeps `agenthub-codex-acp` on the official `openai/codex` dependency and moves the custom
+tool-output protection into the AgentHub adapter boundary:
+
+- live Codex app-server `CustomToolCall` events are tracked in adapter-local pending state
+- new user input, review, and compaction submissions are blocked if a custom tool call has not
+  observed a matching `CustomToolCallOutput`
+- `Undo` remains available as the recovery path and clears the adapter-local pending guard before
+  rollback
+- persisted dirty rollout history is repaired and atomically rewritten before `resume_thread`, so
+  Codex core does not read the same missing-output gap from disk before AgentHub history replay
+
+This closes the main behavior gap left by dropping the temporary fork: missing custom-tool outputs
+are handled by AgentHub before Codex resume/normalization can panic, while the primary runtime
+contract remains ACP instead of Codex app-server protocol.
+
+Focused validation:
+
+```bash
+cargo fmt -p agenthub-codex-acp -- --check
+CARGO_TARGET_DIR=/Users/weizhenwang/devel/opensource/agenthub/target-codex-live-guard cargo test -p agenthub-codex-acp persist_repaired_initial_history
+CARGO_TARGET_DIR=/Users/weizhenwang/devel/opensource/agenthub/target-codex-live-guard cargo test -p agenthub-codex-acp custom_tool
+CARGO_TARGET_DIR=/Users/weizhenwang/devel/opensource/agenthub/target-codex-live-guard cargo clippy -p agenthub-codex-acp --all-targets -- -D warnings
+```
