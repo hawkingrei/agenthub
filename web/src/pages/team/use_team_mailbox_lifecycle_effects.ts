@@ -18,7 +18,10 @@ type UseTeamMailboxLifecycleEffectsOptions = {
   conversationLatestMessageId: number | null;
   conversationMessagesLength: number;
   loadInbox: (actorIdOverride?: string) => Promise<void>;
-  loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
+  loadMemberEvents: (
+    mode?: "replace" | "prepend",
+    sessionIdOverride?: string | null
+  ) => Promise<void>;
   parseError: (err: unknown) => string;
   setError: Dispatch<SetStateAction<string | null>>;
   setSelectedMemberId: (next: string) => void;

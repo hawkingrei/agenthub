@@ -18,7 +18,10 @@ type UseTeamMemberAcpEffectsOptions = {
   selectedSessionId: string | null;
   tab: TeamTab;
   eventsAutoRefresh: boolean;
-  loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
+  loadMemberEvents: (
+    mode?: "replace" | "prepend",
+    sessionIdOverride?: string | null
+  ) => Promise<void>;
   setMemberEvents: Dispatch<SetStateAction<AgentEvent[]>>;
   setMemberEventsHasMore: Dispatch<SetStateAction<boolean>>;
   onLiveActivity?: () => Promise<void> | void;

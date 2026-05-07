@@ -424,7 +424,10 @@ export function useTeamActions(options: UseTeamActionsOptions) {
   );
 
   const loadMemberEvents = useCallback(
-    async (mode: "replace" | "prepend" = "replace") => {
+    async (
+      mode: "replace" | "prepend" = "replace",
+      sessionIdOverride?: string | null
+    ) => {
       const agentId = selectedMemberAgentId?.trim() ?? "";
       if (!agentId) {
         memberEventsRef.current = [];
@@ -433,8 +436,9 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         return;
       }
       const sessionId =
-        selectedMemberSessionId ??
-        getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step) ??
+        sessionIdOverride?.trim() ||
+        selectedMemberSessionId ||
+        getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step) ||
         undefined;
       if (!sessionId) {
         memberEventsRef.current = [];

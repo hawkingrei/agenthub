@@ -1315,6 +1315,73 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("loads member events from an explicit session override after input session mismatch", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 21,
+        agent_id: "agent-123",
+        session_id: "runtime-session-running",
+        seq: "21",
+        ts: 456,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Response from the running session.",
+        }),
+      },
+    ]);
+    const memberEventsRef = {
+      current: [
+        {
+          event_id: 9,
+          agent_id: "agent-123",
+          session_id: "runtime-session-stale",
+          seq: "9",
+          ts: 123,
+          stream: "acp" as const,
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "Old session message.",
+          }),
+        },
+      ],
+    };
+    const setMemberEvents = vi.fn();
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "agent-123",
+      selectedMemberSessionId: "runtime-session-stale",
+      memberEventsRef,
+      setMemberEvents,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace", "runtime-session-running");
+      });
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "agent-123",
+        60,
+        "runtime-session-running",
+        undefined
+      );
+      expect(memberEventsRef.current.map((event) => event.session_id)).toContain(
+        "runtime-session-running"
+      );
+      expect(setMemberEvents).toHaveBeenCalled();
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
   it("clears detached ACP events when the resolved member agent id is missing", async () => {
     const listAgentEvents = vi.spyOn(api, "listAgentEvents");
     const setMemberEvents = vi.fn();

@@ -15,7 +15,10 @@ type UseTeamMailboxEffectsParams = {
   conversationLatestMessageId: number | null;
   conversationMessageCount: number;
   loadInbox: (actorIdOverride?: string) => Promise<void>;
-  loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
+  loadMemberEvents: (
+    mode?: "replace" | "prepend",
+    sessionIdOverride?: string | null
+  ) => Promise<void>;
   markConversationSeen: (key: string, messageId: number | null) => void;
   scrollConversationToBottom: () => void;
   parseErrorMessage: (error: unknown) => string;

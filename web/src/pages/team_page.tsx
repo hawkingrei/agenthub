@@ -2909,10 +2909,14 @@ export function TeamPage(props: TeamPageProps) {
         if (mismatch) {
           try {
             await sendForSession(mismatch.running);
+            setSelectedAgentWorkspaceStickySession({
+              memberId: selectedAgentWorkspaceMemberId.trim(),
+              sessionId: mismatch.running,
+            });
             if (selectedTeamId) {
               void refreshTeamRuntime(selectedTeamId).catch(() => undefined);
             }
-            await loadMemberEvents("replace");
+            await loadMemberEvents("replace", mismatch.running);
             return;
           } catch (retryErr) {
             setError(parseErrorMessage(retryErr));
@@ -2934,6 +2938,7 @@ export function TeamPage(props: TeamPageProps) {
       refreshAgents,
       refreshTeamRuntime,
       selectedAgentWorkspaceAgentId,
+      selectedAgentWorkspaceMemberId,
       selectedTeamId,
       setError,
     ]
