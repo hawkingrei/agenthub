@@ -1143,7 +1143,7 @@ describe("team panels interactions", () => {
     const onActiveRunChange = vi.fn();
     const onLoadMoreRuns = vi.fn();
 
-    const activeRun = buildRun({ id: "run-1" });
+    const activeRun = buildRun({ id: "run-1", summary: "Planning current run." });
 
     act(() => {
       root.render(
@@ -1198,6 +1198,7 @@ describe("team panels interactions", () => {
     expect(onRefreshRuns).toHaveBeenCalledTimes(1);
     expect(onActiveRunChange).toHaveBeenCalledWith("run-1");
     expect(onLoadMoreRuns).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Planning current run.");
     expect(
       findButtonByAriaLabel(container, "Start execution run").getAttribute("title")
     ).toBe("Start a new execution run");
@@ -1791,6 +1792,15 @@ describe("team panels interactions", () => {
                 runtime_handle_id: "runtime-7",
                 error_text: "needs retry",
               }),
+              buildStep({
+                id: "step-3",
+                step_key: "legacy-dispatch",
+                member_id: "worker-3",
+                depends_on: [],
+                runtime_handle_id: null,
+                remote_task_id: "legacy-runtime-3",
+                error_text: null,
+              }),
             ]}
             onRefreshSteps={() => {}}
             stepKey=""
@@ -1841,6 +1851,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("plan, seed");
     expect(container.textContent).toContain("runtime_handle_id");
     expect(container.textContent).toContain("runtime-7");
+    expect(container.textContent).toContain("legacy-runtime-3");
     expect(container.textContent).toContain("error_text");
     expect(container.textContent).toContain("needs retry");
     const stepItem = required(
