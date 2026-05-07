@@ -25,6 +25,15 @@ const FAILED_TOOL_STATUSES = new Set([
   "interrupted",
   "stopped",
 ]);
+const LIVE_TOOL_STATUSES = new Set(["pending", "in_progress", "running"]);
+const TERMINAL_RUN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "canceled",
+  "interrupted",
+  "stopped",
+]);
 
 export type ToolCallBubbleProps = {
   msg: ToolCallConversationItem;
@@ -127,7 +136,9 @@ export function deriveToolGroupStatusSummary(
       liveCount += 1;
       continue;
     }
-    const normalized = normalizeToolCallStatus(call.status);
+    const normalized = normalizeToolCallStatus(
+      resolveEffectiveToolCallStatus(call.status, runStatus)
+    );
     if (FAILED_TOOL_STATUSES.has(normalized)) {
       failedCount += 1;
     }
@@ -166,6 +177,21 @@ export function formatToolCallStatus(status?: string): string {
     default:
       return status;
   }
+}
+
+export function resolveEffectiveToolCallStatus(
+  status?: string,
+  runStatus?: string | null
+): string | undefined {
+  const normalizedStatus = normalizeToolCallStatus(status);
+  if (!LIVE_TOOL_STATUSES.has(normalizedStatus)) {
+    return status;
+  }
+  const normalizedRunStatus = normalizeToolCallStatus(runStatus ?? undefined);
+  if (!TERMINAL_RUN_STATUSES.has(normalizedRunStatus)) {
+    return status;
+  }
+  return normalizedRunStatus;
 }
 
 export function getToolCallStatusMark(

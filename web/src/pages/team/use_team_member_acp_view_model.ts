@@ -5,6 +5,7 @@ import type { AgentEvent, TeamMemberSnapshot } from "../../api";
 import { getTeamStepRuntimeHandleId } from "../../api";
 import { getAcpConversationCacheStats } from "../../components/acp_conversation_cache_stats";
 import { resolveAcpInputDockConversationClearance } from "../../components/acp_input_dock_clearance";
+import { isToolCallEffectivelyLive } from "../../components/acp_tool_fold";
 import { resolveInputDockJumpMode } from "../../components/acp_panel_helpers";
 import { useAcpConversation } from "../../hooks/use_acp_conversation";
 import {
@@ -240,19 +241,6 @@ export function useTeamMemberAcpViewModel({
   const canSendInput = Boolean(
     selectedMemberId.trim() && selectedSessionId && onSendInput && agentAllowsInput
   );
-  const hasInProgressToolCall = acpView.toolCalls.some(
-    (call) => call.status === "in_progress"
-  );
-  const canInterruptAcpRun =
-    Boolean(canInterrupt) &&
-    (acpView.runStatus?.status === "running" || hasInProgressToolCall);
-  const canSetMode = Boolean(canControlAcp && onAcpSetMode);
-  const canSetModel = Boolean(canControlAcp && onAcpSetModel);
-  const canSetConfig = Boolean(canControlAcp && onAcpSetConfig);
-  const canCancelRun = Boolean(canControlAcp && onInterrupt && canInterruptAcpRun);
-  const canClearSession = Boolean(onForceNewSession);
-  const canControlAcpSession =
-    canSetMode || canSetModel || canSetConfig || canCancelRun || canClearSession;
   const memberTitle = React.useMemo(() => {
     const explicitTitle = memberTitleProp?.trim();
     if (explicitTitle) {
@@ -280,6 +268,24 @@ export function useTeamMemberAcpViewModel({
     (!snapshotIsActive &&
       Boolean(normalizedAgentStatus) &&
       !isAgentActiveStatus(normalizedAgentStatus));
+  const authoritativeTerminalStatus = hasAuthoritativeStoppedStatus
+    ? snapshotStatus || normalizedAgentStatus || "stopped"
+    : null;
+  const effectiveRunStatus =
+    authoritativeTerminalStatus ?? acpView.runStatus?.status ?? null;
+  const hasLiveToolCall = acpView.toolCalls.some((call) =>
+    isToolCallEffectivelyLive(call.status, effectiveRunStatus)
+  );
+  const canInterruptAcpRun =
+    Boolean(canInterrupt) &&
+    (normalizeTeamMemberStatusValue(effectiveRunStatus) === "running" || hasLiveToolCall);
+  const canSetMode = Boolean(canControlAcp && onAcpSetMode);
+  const canSetModel = Boolean(canControlAcp && onAcpSetModel);
+  const canSetConfig = Boolean(canControlAcp && onAcpSetConfig);
+  const canCancelRun = Boolean(canControlAcp && onInterrupt && canInterruptAcpRun);
+  const canClearSession = Boolean(onForceNewSession);
+  const canControlAcpSession =
+    canSetMode || canSetModel || canSetConfig || canCancelRun || canClearSession;
   const memberStatus =
     (snapshotIsActive
       ? snapshotStatus
@@ -318,7 +324,7 @@ export function useTeamMemberAcpViewModel({
       isFrozenView: acpConversation.isFrozenView,
       shouldAutoCollapse: acpConversation.shouldAutoCollapse,
       collapseCutoff: acpConversation.collapseCutoff,
-      runStatus: acpView.runStatus?.status ?? null,
+      runStatus: effectiveRunStatus,
       virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
       virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
       stickToBottom: acpConversation.conversationStickToBottom,
@@ -354,9 +360,9 @@ export function useTeamMemberAcpViewModel({
       acpConversation.isFrozenView,
       acpConversation.shouldAutoCollapse,
       acpConversation.showConversationTopReachedHint,
-      acpView.runStatus?.status,
       ansi,
       canSendInput,
+      effectiveRunStatus,
       handleSubmitRequestUserInput,
       hasRenderableConversationContent,
       memberEventsLoading,

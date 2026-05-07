@@ -546,6 +546,61 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(latestAcpConversationArgs().isAgentActive).toBe(false);
   });
 
+  it("uses stopped member snapshots to close stale live tool calls", async () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationRenderItems: [
+          {
+            kind: "tool_call",
+            id: "call-stale",
+            title: "Shell",
+            status: "in_progress",
+            raw_input: { cmd: "cargo test" },
+          },
+        ],
+        conversationSourceItems: 1,
+        conversationRenderedItems: 1,
+        conversationTotalItems: 1,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedAgentStatus="running"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "stopped",
+          session_status: "stopped",
+        }}
+        memberEvents={buildAcpEvents([
+          { type: "tool_call", id: "call-stale", title: "Shell", status: "in_progress" },
+        ])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
+
+    expect(container.textContent).toContain("Agent is stopped");
+    expect(container.textContent).toContain("Stopped");
+    expect(container.textContent).not.toContain("In Progress");
+  });
+
   it("uses active agent status when no member snapshot is available", () => {
     renderWithMantine(
       root,
