@@ -126,10 +126,10 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("Connect Config");
     expect(html).toContain("Degraded");
     expect(html).toContain("indirect runtime signal");
-    expect(html).toContain("Detected Runtimes");
+    expect(html).toContain("Observed Agent Runtimes");
     expect(html).toContain("AgentHub Runtime");
-    expect(html).toContain("Codex CLI (not detected)");
-    expect(html).toContain("Gemini CLI (not detected)");
+    expect(html).toContain("Codex CLI (no attached agent observed)");
+    expect(html).toContain("Gemini CLI (no attached agent observed)");
     expect(html).toContain("bootstrap-token");
     expect(html).toContain("Copy");
     expect(html).toContain("node_id=node-east");

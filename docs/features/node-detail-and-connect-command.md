@@ -91,10 +91,12 @@ Recommended fields:
 - created timestamp;
 - last seen timestamp when available.
 
-Detected runtimes should render as compact capability tags, including unavailable states such as:
+Observed agent runtimes should render as compact capability tags. The first rollout derives these
+tags from attached-agent commands and known operator-facing runtime surfaces; it must not present
+missing attached-agent evidence as a host binary installation failure.
 
 - `Codex CLI`
-- `Gemini CLI (not installed)`
+- `Gemini CLI (no attached agent observed)`
 
 This is more useful than hiding runtime support behind raw config text.
 

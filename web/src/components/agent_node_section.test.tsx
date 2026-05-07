@@ -197,7 +197,7 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Machines");
     expect(html).toContain("Info");
     expect(html).toContain("Connect Command");
-    expect(html).toContain("Detected Runtimes");
+    expect(html).toContain("Observed Agent Runtimes");
     expect(html).toContain("~/.agenthub/worktrees/node-east");
     expect(html).toContain("Agents on this node (0)");
     expect(html).toContain("Node ID");
@@ -300,9 +300,9 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("2 attached agents");
     expect(html).toContain("Agents on this node (2)");
     expect(html).toContain("Degraded");
-    expect(html).toContain("Detected Runtimes");
+    expect(html).toContain("Observed Agent Runtimes");
     expect(html).toContain("AgentHub Runtime");
-    expect(html).toContain("Codex CLI (not detected)");
+    expect(html).toContain("Codex CLI (no attached agent observed)");
   });
 
   it("falls back to the main node chooser and truncates long agent lists", () => {
