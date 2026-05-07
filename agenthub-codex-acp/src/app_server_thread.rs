@@ -35,6 +35,7 @@ use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::dynamic_tools::DynamicToolCallRequest;
 use codex_protocol::error::CodexErr;
 use codex_protocol::mcp::{CallToolResult, RequestId as McpRequestId};
+use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs};
 use codex_protocol::protocol::{
@@ -135,6 +136,7 @@ struct AppServerState {
     pending_user_input_requests: HashMap<String, RequestId>,
     pending_elicitation_requests: HashMap<String, RequestId>,
     pending_turn_diffs: HashMap<String, String>,
+    pending_custom_tool_calls: HashMap<String, PendingCustomToolCall>,
     interrupt_after_turn_starts: bool,
 }
 
@@ -144,6 +146,12 @@ struct ActiveTurn {
     turn_id: Option<String>,
     steerable: bool,
     last_agent_message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingCustomToolCall {
+    turn_id: String,
+    name: String,
 }
 
 struct QueuedSubmission {
@@ -163,6 +171,7 @@ enum TurnSteerFailure {
     Other,
 }
 
+#[derive(Debug)]
 enum PreparedSubmissionStart {
     TurnStart {
         request_id: RequestId,
@@ -221,6 +230,7 @@ impl AppServerCodexThread {
                 pending_user_input_requests: HashMap::new(),
                 pending_elicitation_requests: HashMap::new(),
                 pending_turn_diffs: HashMap::new(),
+                pending_custom_tool_calls: HashMap::new(),
                 interrupt_after_turn_starts: false,
             }),
         }
@@ -374,13 +384,14 @@ impl AppServerCodexThread {
                 return Ok(());
             }
             match prepare_submission_start(&mut state, &submission_id, &op) {
-                Some(prepared) => prepared,
-                None => {
+                Ok(Some(prepared)) => prepared,
+                Ok(None) => {
                     return Err(CodexErr::UnsupportedOperation(format!(
                         "app-server thread cannot start submission for {}",
                         op.kind()
                     )));
                 }
+                Err(err) => return Err(err),
             }
         };
 
@@ -1683,7 +1694,6 @@ impl AppServerCodexThread {
             | ServerNotification::HookCompleted(_)
             | ServerNotification::ItemGuardianApprovalReviewStarted(_)
             | ServerNotification::ItemGuardianApprovalReviewCompleted(_)
-            | ServerNotification::RawResponseItemCompleted(_)
             | ServerNotification::PlanDelta(_)
             | ServerNotification::ReasoningSummaryPartAdded(_)
             | ServerNotification::FileChangeOutputDelta(_)
@@ -1712,6 +1722,11 @@ impl AppServerCodexThread {
             | ServerNotification::FuzzyFileSearchSessionUpdated(_)
             | ServerNotification::FuzzyFileSearchSessionCompleted(_)
             | ServerNotification::AccountLoginCompleted(_) => Ok(None),
+            ServerNotification::RawResponseItemCompleted(payload) => {
+                let mut state = self.state.lock().await;
+                record_raw_response_item(&mut state, &payload.turn_id, &payload.item);
+                Ok(None)
+            }
             ServerNotification::TurnDiffUpdated(payload) => {
                 let submission_id = {
                     let mut state = self.state.lock().await;
@@ -2097,11 +2112,47 @@ fn pending_patch_changes_from_turns(
         .collect()
 }
 
+fn record_raw_response_item(state: &mut AppServerState, turn_id: &str, item: &ResponseItem) {
+    match item {
+        ResponseItem::CustomToolCall { call_id, name, .. } => {
+            state.pending_custom_tool_calls.insert(
+                call_id.clone(),
+                PendingCustomToolCall {
+                    turn_id: turn_id.to_string(),
+                    name: name.clone(),
+                },
+            );
+        }
+        ResponseItem::CustomToolCallOutput { call_id, .. } => {
+            state.pending_custom_tool_calls.remove(call_id);
+        }
+        _ => {}
+    }
+}
+
+fn missing_custom_tool_output_error(state: &AppServerState) -> Option<CodexErr> {
+    if state.pending_custom_tool_calls.is_empty() {
+        return None;
+    }
+
+    let mut call_ids = state
+        .pending_custom_tool_calls
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    call_ids.sort();
+    Some(CodexErr::Fatal(format!(
+        "Codex live history is missing CustomToolCallOutput for call id(s): {}. \
+Use undo, force a new session, or clear the dirty Codex session before starting another turn or compaction.",
+        call_ids.join(", ")
+    )))
+}
+
 fn prepare_submission_start(
     state: &mut AppServerState,
     submission_id: &str,
     op: &Op,
-) -> Option<PreparedSubmissionStart> {
+) -> Result<Option<PreparedSubmissionStart>, CodexErr> {
     match op {
         Op::UserInput {
             items,
@@ -2109,13 +2160,16 @@ fn prepare_submission_start(
             responsesapi_client_metadata,
             ..
         } => {
+            if let Some(err) = missing_custom_tool_output_error(state) {
+                return Err(err);
+            }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: true,
                 last_agent_message: None,
             });
-            Some(PreparedSubmissionStart::TurnStart {
+            Ok(Some(PreparedSubmissionStart::TurnStart {
                 request_id: next_request_id(state),
                 params: Box::new(TurnStartParams {
                     thread_id: state.thread_id.clone(),
@@ -2141,46 +2195,52 @@ fn prepare_submission_start(
                     environments: None,
                     permissions: None,
                 }),
-            })
+            }))
         }
         Op::Review { review_request } => {
+            if let Some(err) = missing_custom_tool_output_error(state) {
+                return Err(err);
+            }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: false,
                 last_agent_message: None,
             });
-            Some(PreparedSubmissionStart::ReviewStart {
+            Ok(Some(PreparedSubmissionStart::ReviewStart {
                 request_id: next_request_id(state),
                 params: Box::new(ReviewStartParams {
                     thread_id: state.thread_id.clone(),
                     target: review_target_to_app_server(review_request.target.clone()),
                     delivery: Some(ReviewDelivery::Inline),
                 }),
-            })
+            }))
         }
         Op::Compact => {
+            if let Some(err) = missing_custom_tool_output_error(state) {
+                return Err(err);
+            }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: false,
                 last_agent_message: None,
             });
-            Some(PreparedSubmissionStart::CompactStart {
+            Ok(Some(PreparedSubmissionStart::CompactStart {
                 request_id: next_request_id(state),
                 params: Box::new(ThreadCompactStartParams {
                     thread_id: state.thread_id.clone(),
                 }),
-            })
+            }))
         }
-        Op::Undo => Some(PreparedSubmissionStart::Rollback {
+        Op::Undo => Ok(Some(PreparedSubmissionStart::Rollback {
             request_id: next_request_id(state),
             params: Box::new(ThreadRollbackParams {
                 thread_id: state.thread_id.clone(),
                 num_turns: 1,
             }),
-        }),
-        _ => None,
+        })),
+        _ => Ok(None),
     }
 }
 
@@ -2834,6 +2894,7 @@ mod tests {
             pending_user_input_requests: HashMap::new(),
             pending_elicitation_requests: HashMap::new(),
             pending_turn_diffs: HashMap::new(),
+            pending_custom_tool_calls: HashMap::new(),
             interrupt_after_turn_starts: false,
         }
     }
@@ -3224,6 +3285,86 @@ mod tests {
             reused_submission_id_after_successful_turn_steer(&state, &old_active_turn),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn raw_response_item_tracking_clears_custom_tool_call_after_output() {
+        let mut state = test_state_with_active_turn(None).await;
+        let call = ResponseItem::CustomToolCall {
+            id: None,
+            status: None,
+            call_id: "call-1".to_string(),
+            name: "apply_patch".to_string(),
+            input: "*** Begin Patch".to_string(),
+        };
+        record_raw_response_item(&mut state, "turn-1", &call);
+
+        assert_eq!(
+            state.pending_custom_tool_calls.get("call-1"),
+            Some(&PendingCustomToolCall {
+                turn_id: "turn-1".to_string(),
+                name: "apply_patch".to_string(),
+            })
+        );
+
+        let output = ResponseItem::CustomToolCallOutput {
+            call_id: "call-1".to_string(),
+            name: Some("apply_patch".to_string()),
+            output: codex_protocol::models::FunctionCallOutputPayload::from_text("ok".to_string()),
+        };
+        record_raw_response_item(&mut state, "turn-1", &output);
+
+        assert!(state.pending_custom_tool_calls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn prepare_submission_blocks_new_turn_when_custom_tool_output_is_missing() {
+        let mut state = test_state_with_active_turn(None).await;
+        state.pending_custom_tool_calls.insert(
+            "call-missing".to_string(),
+            PendingCustomToolCall {
+                turn_id: "turn-1".to_string(),
+                name: "apply_patch".to_string(),
+            },
+        );
+
+        let err = prepare_submission_start(
+            &mut state,
+            "submission-2",
+            &Op::UserInput {
+                items: vec![codex_protocol::user_input::UserInput::Text {
+                    text: "continue".to_string(),
+                    text_elements: Vec::new(),
+                }],
+                final_output_json_schema: None,
+                responsesapi_client_metadata: None,
+                environments: None,
+            },
+        )
+        .expect_err("dirty custom tool history should block new turns");
+
+        let message = err.to_string();
+        assert!(message.contains("CustomToolCallOutput"));
+        assert!(message.contains("call-missing"));
+        assert!(state.active_turn.is_none());
+    }
+
+    #[tokio::test]
+    async fn prepare_submission_allows_undo_when_custom_tool_output_is_missing() {
+        let mut state = test_state_with_active_turn(None).await;
+        state.pending_custom_tool_calls.insert(
+            "call-missing".to_string(),
+            PendingCustomToolCall {
+                turn_id: "turn-1".to_string(),
+                name: "apply_patch".to_string(),
+            },
+        );
+
+        let prepared = prepare_submission_start(&mut state, "undo-submission", &Op::Undo)
+            .expect("undo should remain available")
+            .expect("prepared rollback");
+
+        assert!(matches!(prepared, PreparedSubmissionStart::Rollback { .. }));
     }
 
     #[test]
