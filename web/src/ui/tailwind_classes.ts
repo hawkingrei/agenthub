@@ -189,8 +189,11 @@ export const TEAM_PANEL_SECONDARY_BUTTON_CLASS =
 export const TEAM_PANEL_INPUT_CLASS =
   "w-full rounded-lg border border-notion-border bg-white px-3 py-2 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10";
 
+export const TEAM_PANEL_TEXTAREA_BASE_CLASS =
+  "w-full resize-none rounded-lg border border-notion-border bg-white text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10";
+
 export const TEAM_PANEL_TEXTAREA_CLASS =
-  "w-full rounded-lg border border-notion-border bg-white px-3 py-2 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10 resize-none";
+  `${TEAM_PANEL_TEXTAREA_BASE_CLASS} px-3 py-2 text-[14px]`;
 
 export const TEAM_PANEL_PRE_CLASS =
   "mono mt-2 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-notion-border bg-notion-sidebar/50 p-4 text-[12px] leading-relaxed text-notion-text shadow-inner";
@@ -435,14 +438,43 @@ export const OVERVIEW_MEMBER_LIST_CLASS =
 export const MAILBOX_META_CLASS =
   "mb-4 grid min-w-0 gap-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-4 text-[13px] text-notion-text sm:grid-cols-2 xl:grid-cols-4";
 
+export const MAILBOX_META_LABEL_CLASS =
+  "text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2";
+
+export const MAILBOX_META_VALUE_CLASS = "font-bold";
+
 export const MAILBOX_SHELL_CLASS =
   "teams-chat-shell grid min-w-0 gap-4 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]";
 
 export const MAILBOX_MEMBER_LIST_CLASS =
   "teams-chat-members flex max-h-[220px] min-w-0 flex-col gap-1.5 overflow-auto rounded-xl border border-notion-border bg-notion-sidebar/20 p-3 lg:max-h-[640px]";
 
+export const MAILBOX_SECTION_TITLE_CLASS =
+  "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted px-1";
+
+export const MAILBOX_MEMBER_ROW_HEADER_CLASS =
+  "flex w-full items-center justify-between gap-2";
+
+export const MAILBOX_MEMBER_ROW_META_CLASS =
+  "flex w-full items-center justify-between gap-2 mt-0.5";
+
+export const MAILBOX_MEMBER_UNREAD_BADGE_CLASS =
+  "teams-member-unread shrink-0 rounded-sm bg-state-warning-bg border border-state-warning-border px-1.5 py-0.5 text-[10px] font-bold text-state-warning-text";
+
 export const MAILBOX_PANEL_CLASS =
   "teams-chat-panel flex min-w-0 flex-col gap-2.5 rounded-xl border border-notion-border bg-notion-bg-subtle p-3 shadow-sm";
+
+export const MAILBOX_CHAT_HEADER_CLASS =
+  "teams-chat-head border-b border-notion-border pb-3";
+
+export const MAILBOX_CHAT_TITLE_CLASS =
+  "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+
+export const MAILBOX_CHAT_SUBTITLE_CLASS =
+  "truncate text-[14px] font-bold text-notion-text mt-0.5";
+
+export const MAILBOX_CHAT_STATUS_CLASS =
+  "mt-1 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 
 export const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center gap-1 rounded-md border border-notion-border bg-white px-2.5 text-[12px] font-medium text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";
@@ -468,10 +500,38 @@ export const MAILBOX_CONVERSATION_EMPTY_CLASS =
 export const MAILBOX_MESSAGE_HEAD_CLASS =
   "mb-0.5 flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 
+export const MAILBOX_MESSAGE_BODY_CLASS = "mt-0.5 text-[14px] leading-6";
+
+export const MAILBOX_MESSAGE_PRE_CLASS =
+  "mono whitespace-pre-wrap rounded border border-black/5 bg-white/40 p-1.5 text-[12px]";
+
+export const MAILBOX_MESSAGE_ACTIONS_CLASS = "mt-2 flex";
+
+export const MAILBOX_COMPOSER_CLASS = "mt-1.5 flex flex-col gap-1.5";
+
+export const MAILBOX_COMPOSER_TEXTAREA_CLASS =
+  `${TEAM_PANEL_TEXTAREA_BASE_CLASS} px-2.5 py-1.5 text-[13px] leading-5`;
+
 export const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid min-w-0 gap-3 lg:grid-cols-2";
 
 export const MAILBOX_ADVANCED_PANEL_CLASS =
   "teams-message-panel flex min-w-0 flex-col gap-2.5 rounded-lg border border-notion-border bg-notion-sidebar/10 p-3";
+
+export const MAILBOX_ADVANCED_PANEL_TITLE_CLASS =
+  "text-[13px] font-bold text-notion-text uppercase tracking-tight";
+
+export const MAILBOX_ADVANCED_TEMPLATE_ROW_CLASS = "flex flex-col gap-2";
+
+export const MAILBOX_CHECKBOX_LABEL_CLASS =
+  "checkbox inline-flex items-center gap-2 text-[13px] text-notion-text font-medium cursor-pointer";
+
+export const MAILBOX_ADVANCED_HINT_CLASS =
+  "mt-4 rounded-md border border-state-warning-border bg-state-warning-bg px-4 py-3 text-[13px] text-state-warning-text italic";
+
+export const MAILBOX_ADVANCED_ROOT_CLASS = "teams-message-advanced mt-4";
+
+export const MAILBOX_ADVANCED_TITLE_CLASS =
+  "text-sm font-bold text-notion-text uppercase tracking-widest mb-4";
 
 export const EVENTS_LIST_CLASS = "teams-event-list flex flex-col gap-3 mt-4";
 
@@ -766,6 +826,12 @@ export const TEAM_WORKBENCH_INFO_STRIP_STEPS_GRID_CLASS =
 
 export const TEAM_SETUP_ACTIONS_GRID_CLASS =
   "grid w-full min-w-0 gap-2 sm:w-auto sm:grid-cols-2";
+
+export const TEAM_SETUP_COPY_ACTION_CLASS =
+  "w-full border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+
+export const TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS =
+  "overflow-hidden rounded-xl border border-notion-border bg-white shadow-md";
 
 /* Shared cross-panel primitives */
 export const SECTION_HEADER_CLASS = "uppercase tracking-[0.08em]";

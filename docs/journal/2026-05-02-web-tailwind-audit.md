@@ -8,8 +8,8 @@ This checkpoint records the current Tailwind/className migration state across `w
 - current migration goal: move repeated Tailwind strings into
   `web/src/ui/tailwind_classes.ts` constants or `web/src/ui/primitives.tsx`
   wrappers
-- current remaining estimate after the latest primitive/constant pass: about
-  `~8h`
+- current remaining estimate after the latest Team setup/mailbox constant pass:
+  about `~3h`
 
 ## Background
 
@@ -58,9 +58,9 @@ It is not a canonical frontend design spec and does not replace
 |---|---|---|
 | `web/src/pages/team_task_panel.tsx` | ~reduced | **Partially resolved:** the 2026-04-11 primitive pass moved empty states, dense metadata controls, compact action rows, badges, and conversation bubbles onto shared primitives. Remaining inline classes are mostly message/activity layout and advanced permission-card variants. |
 | `web/src/components/agent_nodes_workbench.tsx` | ~30+ | Many inline grid/flex layout classes. **Partially resolved:** the repeated section-card literal is now `SECTION_CARD_CLASS`, and section headers use `SECTION_HEADER_CLASS`. Still has other inline patterns to extract. |
-| `web/src/pages/team_setup_panel.tsx` | ~reduced | **Partially resolved:** setup action grid and info-strip grid/step shell now use shared Tailwind constants. Remaining inline classes are mostly title/button tone overrides. |
+| `web/src/pages/team_setup_panel.tsx` | ~reduced | **Partially resolved:** setup action grid, info-strip grid/step shell, setup checklist, and copy-action button now use shared Tailwind constants. Remaining inline classes are local title/content structure. |
 | `web/src/pages/team/team_page_shell.tsx` | ~reduced | **Partially resolved:** shell root now uses a shared Team shell constant. Remaining layout comes from route-owned pane composition. |
-| `web/src/pages/team_mailbox_panel.tsx` | ~15+ | Mailbox panel with forms/layouts. |
+| `web/src/pages/team_mailbox_panel.tsx` | ~reduced | **Partially resolved:** mailbox meta rows, member row chrome, chat header/status, message body/fallback, composer, and advanced mailbox form chrome now use shared Tailwind constants. Remaining inline classes are mostly local alignment and semantic hooks. |
 | `web/src/pages/team_conversation_panel.tsx` | ~10+ | Conversation panel with bubble/thread classes. |
 | `web/src/app.tsx` | ~reduced | **Partially resolved:** AuthGateCard uses notion text tokens, and route app roots now use `APP_ROOT_CLASS`. Remaining inline classes are auth copy typography. |
 | `web/src/pages/auth_pages.tsx` | ~0 | ✅ RESOLVED. Previously used `text-slate-*`; now uses notion tokens. |
@@ -129,8 +129,8 @@ It is not a canonical frontend design spec and does not replace
    - `WORKSPACE_CONTENT_ROOT_CLASS`
    - `WORKSPACE_CONTENT_PADDING_CLASS`
    - Team setup info-strip/action grid constants
-6. Continue `team_setup_panel.tsx`, `team_mailbox_panel.tsx`, and Team shell/detail surfaces. (~3h)
-7. Finish the remaining Tier 2 files. (~2h)
+6. ✅ Continue `team_setup_panel.tsx` and `team_mailbox_panel.tsx` constant migration.
+7. Continue Team shell/detail surfaces and the remaining Tier 2 files. (~3h)
 
 ## Validation
 
@@ -146,13 +146,15 @@ It is not a canonical frontend design spec and does not replace
   - `team_setup_panel.tsx`
   - `team/team_page_shell.tsx`
   - `team_conversation_panel.tsx`
+  - `team_mailbox_panel.tsx`
 - aligned the remaining-effort wording with `docs/todo.md`
 
 ## Follow-Ups
 
-- continue the remaining Team setup and mailbox panel migrations
+- continue Team shell/detail and Tier 2 panel migrations where inline layout
+  strings still repeat
 - migrate remaining route shell roots and loading/error wrappers as they repeat
 - keep `docs/todo.md` pointing at the current remaining estimate instead of
   duplicating stale audit prose
 
-Total estimated remaining effort: ~5h.
+Total estimated remaining effort: ~3h.

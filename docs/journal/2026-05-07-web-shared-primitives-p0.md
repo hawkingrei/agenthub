@@ -59,3 +59,46 @@ Chrome DevTools MCP:
   remaining Team detail surfaces onto shared primitives/constants.
 - Keep the active TODO estimate aligned with the audit after each frontend
   cleanup PR.
+
+## Team Panel Follow-Up
+
+This follow-up continued the same P0 primitive rollout into the Team setup and
+mailbox panels without changing Team behavior.
+
+Additional scope:
+
+- Move the setup checklist and copy-action button classes into
+  `web/src/ui/tailwind_classes.ts`.
+- Move mailbox meta, member-row, chat-header, message-body, composer, and
+  advanced-control classes into shared constants.
+- Add focused render assertions so the setup/mailbox panels keep using the
+  shared constants instead of drifting back to inline Tailwind strings.
+- Update the Tailwind audit and active TODO remaining estimate after the
+  mailbox/setup slice.
+
+Additional validation:
+
+```bash
+npm --prefix web run test -- src/pages/team_setup_panel.test.tsx src/pages/team_panels.test.tsx
+```
+
+Result:
+
+- focused Vitest: `2` files, `98` tests passed
+
+Chrome MCP/browser check:
+
+- URL: `http://127.0.0.1:5173/workspace/teams`
+- Chrome DevTools MCP was blocked because `list_pages` returned
+  `selected page has been closed`.
+- Browser automation fallback opened the local page, but the available session
+  was unauthenticated and the app redirected to `/?next=/workspace/teams`.
+- A temporary localStorage auth bypass reached the Teams route, but the Vite-only
+  frontend returned the empty Teams shell plus an API JSON parse error because no
+  backend API was attached to that browser check.
+
+Remaining follow-ups:
+
+- Continue Team shell/detail and Tier 2 panel migrations.
+- Run a real authenticated Chrome MCP check against a backend-backed session for
+  the Team setup/mailbox surfaces before closing the P0 browser-validation item.
