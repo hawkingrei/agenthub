@@ -391,7 +391,7 @@ impl AppServerCodexThread {
                         op.kind()
                     )));
                 }
-                Err(err) => return Err(err),
+                Err(err) => return Err(*err),
             }
         };
 
@@ -2152,7 +2152,7 @@ fn prepare_submission_start(
     state: &mut AppServerState,
     submission_id: &str,
     op: &Op,
-) -> Result<Option<PreparedSubmissionStart>, CodexErr> {
+) -> Result<Option<PreparedSubmissionStart>, Box<CodexErr>> {
     match op {
         Op::UserInput {
             items,
@@ -2161,7 +2161,7 @@ fn prepare_submission_start(
             ..
         } => {
             if let Some(err) = missing_custom_tool_output_error(state) {
-                return Err(err);
+                return Err(Box::new(err));
             }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
@@ -2199,7 +2199,7 @@ fn prepare_submission_start(
         }
         Op::Review { review_request } => {
             if let Some(err) = missing_custom_tool_output_error(state) {
-                return Err(err);
+                return Err(Box::new(err));
             }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
@@ -2218,7 +2218,7 @@ fn prepare_submission_start(
         }
         Op::Compact => {
             if let Some(err) = missing_custom_tool_output_error(state) {
-                return Err(err);
+                return Err(Box::new(err));
             }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
