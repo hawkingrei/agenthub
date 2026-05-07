@@ -8,11 +8,11 @@ import {
   TEAM_WORKBENCH_BADGE_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_GRID_CLASS,
   TEAM_WORKBENCH_PANEL_CLASS,
+  TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_STEPS_GRID_CLASS,
   TEAM_SETUP_ACTIONS_GRID_CLASS,
+  TEAM_SETUP_COPY_ACTION_CLASS,
 } from "../ui/tailwind_classes";
-const TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS =
-  "overflow-hidden rounded-xl border border-notion-border bg-white shadow-md";
 
 type TeamSetupPanelProps = {
   description: string | null | undefined;
@@ -49,7 +49,7 @@ export function TeamSetupPanel({
         actions={
           <div className={TEAM_SETUP_ACTIONS_GRID_CLASS}>
             <ActionButton
-              className="w-full border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+              className={TEAM_SETUP_COPY_ACTION_CLASS}
               onClick={onCopyExisting}
               tone="secondary"
             >

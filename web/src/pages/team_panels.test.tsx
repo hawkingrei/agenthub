@@ -29,6 +29,11 @@ import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
 import {
+  MAILBOX_ADVANCED_PANEL_TITLE_CLASS,
+  MAILBOX_CHAT_HEADER_CLASS,
+  MAILBOX_COMPOSER_TEXTAREA_CLASS,
+  MAILBOX_MEMBER_UNREAD_BADGE_CLASS,
+  MAILBOX_MESSAGE_PRE_CLASS,
   TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS,
   TEAM_SIDEBAR_SECTION_TOGGLE_CLASS,
 } from "../ui/tailwind_classes";
@@ -6207,10 +6212,21 @@ describe("team panels interactions", () => {
     expect(
       required(container.querySelector(".teams-chat-head"), "mailbox header missing").textContent
     ).toContain("auto_follow=on");
+    expect(
+      required(container.querySelector(".teams-chat-head"), "mailbox header missing").className
+    ).toContain(MAILBOX_CHAT_HEADER_CLASS);
     expect(container.querySelectorAll(".teams-member-unread")).toHaveLength(2);
+    expect(
+      required(container.querySelector(".teams-member-unread"), "member unread badge missing")
+        .className
+    ).toContain(MAILBOX_MEMBER_UNREAD_BADGE_CLASS);
     expect(
       required(container.querySelector(".teams-chat-panel"), "mailbox panel missing").className
     ).toContain("p-3");
+    expect(chatDraft.className).toContain(MAILBOX_COMPOSER_TEXTAREA_CLASS);
+    expect(required(container.querySelector("pre"), "pretty JSON fallback missing").className).toContain(
+      MAILBOX_MESSAGE_PRE_CLASS
+    );
     expect(
       required(
         container.querySelector(".teams-message-bubble-incoming"),
@@ -6285,6 +6301,13 @@ describe("team panels interactions", () => {
         </MantineProvider>
       );
     });
+
+    expect(
+      required(
+        container.querySelector(".teams-message-panel h4"),
+        "advanced panel title missing"
+      ).className
+    ).toContain(MAILBOX_ADVANCED_PANEL_TITLE_CLASS);
 
     changeInputValue(
       required(container.querySelector('input[placeholder="from_actor_id"]') as HTMLInputElement | null, "from_actor_id missing"),

@@ -25,10 +25,21 @@ import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
+  MAILBOX_ADVANCED_HINT_CLASS,
   MAILBOX_META_CLASS,
+  MAILBOX_META_LABEL_CLASS,
+  MAILBOX_META_VALUE_CLASS,
   MAILBOX_SHELL_CLASS,
   MAILBOX_MEMBER_LIST_CLASS,
+  MAILBOX_SECTION_TITLE_CLASS,
+  MAILBOX_MEMBER_ROW_HEADER_CLASS,
+  MAILBOX_MEMBER_ROW_META_CLASS,
+  MAILBOX_MEMBER_UNREAD_BADGE_CLASS,
   MAILBOX_PANEL_CLASS,
+  MAILBOX_CHAT_HEADER_CLASS,
+  MAILBOX_CHAT_TITLE_CLASS,
+  MAILBOX_CHAT_SUBTITLE_CLASS,
+  MAILBOX_CHAT_STATUS_CLASS,
   MAILBOX_CHAT_JUMP_BUTTON_CLASS,
   MAILBOX_MESSAGE_LIST_CLASS,
   MAILBOX_MESSAGE_ITEM_CLASS,
@@ -36,8 +47,18 @@ import {
   MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS,
   MAILBOX_CONVERSATION_EMPTY_CLASS,
   MAILBOX_MESSAGE_HEAD_CLASS,
+  MAILBOX_MESSAGE_BODY_CLASS,
+  MAILBOX_MESSAGE_PRE_CLASS,
+  MAILBOX_MESSAGE_ACTIONS_CLASS,
+  MAILBOX_COMPOSER_CLASS,
+  MAILBOX_COMPOSER_TEXTAREA_CLASS,
   MAILBOX_ADVANCED_GRID_CLASS,
   MAILBOX_ADVANCED_PANEL_CLASS,
+  MAILBOX_ADVANCED_PANEL_TITLE_CLASS,
+  MAILBOX_ADVANCED_TEMPLATE_ROW_CLASS,
+  MAILBOX_CHECKBOX_LABEL_CLASS,
+  MAILBOX_ADVANCED_ROOT_CLASS,
+  MAILBOX_ADVANCED_TITLE_CLASS,
 } from "../ui/tailwind_classes";
 
 type ChatActors = {
@@ -123,12 +144,6 @@ type TeamMailboxPanelProps = {
   onInboxIncludeDeliveredChange: (value: boolean) => void;
   onRefreshInbox: () => Promise<void> | void;
 };
-
-const MAILBOX_SECTION_TITLE_CLASS = "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted px-1";
-const MAILBOX_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-[13px] text-notion-text font-medium cursor-pointer";
-const MAILBOX_ADVANCED_HINT_CLASS =
-  "mt-4 rounded-md border border-state-warning-border bg-state-warning-bg px-4 py-3 text-[13px] text-state-warning-text italic";
-  const MAILBOX_ADVANCED_ROOT_CLASS = "teams-message-advanced mt-4";
 
 function resolveMailboxActorLabel(
   actorId: string,
@@ -317,7 +332,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const advancedControls = (
     <div className={MAILBOX_ADVANCED_GRID_CLASS}>
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
-        <h4 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Send Message (JSON)</h4>
+        <h4 className={MAILBOX_ADVANCED_PANEL_TITLE_CLASS}>Send Message (JSON)</h4>
         <input
           className={TEAM_PANEL_INPUT_CLASS}
           placeholder="from_actor_id"
@@ -351,7 +366,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
           value={msgRoute}
           onChange={(event) => onMsgRouteChange(event.target.value)}
         />
-        <div className="flex flex-col gap-2">
+        <div className={MAILBOX_ADVANCED_TEMPLATE_ROW_CLASS}>
           <select
             className={TEAM_PANEL_INPUT_CLASS}
             value={msgTemplate}
@@ -391,7 +406,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
       </div>
 
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
-        <h4 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Inbox Query (read-only)</h4>
+        <h4 className={MAILBOX_ADVANCED_PANEL_TITLE_CLASS}>Inbox Query (read-only)</h4>
         <p className={TEAM_MUTED_TEXT_CLASS}>
           Refresh inspects mailbox state only. Accept pending work from the conversation pane when
           you are taking ownership of it.
@@ -444,20 +459,20 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
       {showConversation && snapshot && (
         <div className={MAILBOX_META_CLASS}>
           <span>
-            <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Pending:</strong>
-            <span className="font-bold">{snapshot.mailbox.pending}</span>
+            <strong className={MAILBOX_META_LABEL_CLASS}>Pending:</strong>
+            <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.pending}</span>
           </span>
           <span>
-            <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Delivered:</strong>
-            <span className="font-bold">{snapshot.mailbox.delivered}</span>
+            <strong className={MAILBOX_META_LABEL_CLASS}>Delivered:</strong>
+            <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.delivered}</span>
           </span>
           <span>
-            <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Dead Letter:</strong>
-            <span className="font-bold">{snapshot.mailbox.dead_letter}</span>
+            <strong className={MAILBOX_META_LABEL_CLASS}>Dead Letter:</strong>
+            <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.dead_letter}</span>
           </span>
           <span>
-            <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Recent Messages:</strong>
-            <span className="font-bold">{snapshot.mailbox.recent_messages.length}</span>
+            <strong className={MAILBOX_META_LABEL_CLASS}>Recent Messages:</strong>
+            <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.recent_messages.length}</span>
           </span>
         </div>
       )}
@@ -473,7 +488,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                   active={selectedMemberId === member.memberId}
                   onClick={() => onSelectMember(member.memberId)}
                 >
-                  <div className="flex w-full items-center justify-between gap-2">
+                  <div className={MAILBOX_MEMBER_ROW_HEADER_CLASS}>
                     <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>
                       {member.label} ({member.role})
                     </span>
@@ -486,12 +501,12 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                       />
                     )}
                   </div>
-                  <div className="flex w-full items-center justify-between gap-2 mt-0.5">
+                  <div className={MAILBOX_MEMBER_ROW_META_CLASS}>
                     <span className={TEAM_LIST_ITEM_META_CLASS}>
                       {member.isHuman ? "human actor" : `pending=${member.pendingInboxCount}`}
                     </span>
                     {member.unread > 0 && (
-                      <span className="teams-member-unread shrink-0 rounded-sm bg-state-warning-bg border border-state-warning-border px-1.5 py-0.5 text-[10px] font-bold text-state-warning-text">
+                      <span className={MAILBOX_MEMBER_UNREAD_BADGE_CLASS}>
                         unread={member.unread}
                       </span>
                     )}
@@ -505,10 +520,10 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
           </div>
 
           <div className={MAILBOX_PANEL_CLASS}>
-            <ToolbarRow className="teams-chat-head border-b border-notion-border pb-3">
+            <ToolbarRow className={MAILBOX_CHAT_HEADER_CLASS}>
               <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Conversation</span>
-                <div className="truncate text-[14px] font-bold text-notion-text mt-0.5">
+                <span className={MAILBOX_CHAT_TITLE_CLASS}>Conversation</span>
+                <div className={MAILBOX_CHAT_SUBTITLE_CLASS}>
                   {resolveMailboxActorLabel(
                     chatActors.fromActorId,
                     displayNameByActorId,
@@ -521,7 +536,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                     normalizedHumanActorId
                   )}
                 </div>
-                <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
+                <div className={MAILBOX_CHAT_STATUS_CLASS}>
                   auto_follow={chatStickToBottom ? "on" : "off"}
                 </div>
               </div>
@@ -578,7 +593,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                         <span className="opacity-40">{" · "}</span>
                         <span className="opacity-60">{formatTs(row.message.created_at)}</span>
                       </div>
-                      <div className="mt-0.5 text-[14px] leading-6">
+                      <div className={MAILBOX_MESSAGE_BODY_CLASS}>
                         {row.htmlPayload !== null ? (
                           <div
                             dangerouslySetInnerHTML={{
@@ -586,11 +601,11 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                             }}
                           />
                         ) : (
-                          <pre className="mono whitespace-pre-wrap rounded border border-black/5 bg-white/40 p-1.5 text-[12px]">{row.payload}</pre>
+                          <pre className={MAILBOX_MESSAGE_PRE_CLASS}>{row.payload}</pre>
                         )}
                       </div>
                       {row.canAccept && (
-                        <div className={`mt-2 flex ${row.isOutgoing ? "justify-end" : "justify-start"}`}>
+                        <div className={`${MAILBOX_MESSAGE_ACTIONS_CLASS} ${row.isOutgoing ? "justify-end" : "justify-start"}`}>
                           <ActionButton
                             tone="secondary"
                             size="md"
@@ -614,9 +629,9 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               )}
             </ul>
 
-            <div className="mt-1.5 flex flex-col gap-1.5">
+            <div className={MAILBOX_COMPOSER_CLASS}>
               <textarea
-                className={`${TEAM_PANEL_TEXTAREA_CLASS} px-2.5 py-1.5 text-[13px] leading-5`}
+                className={MAILBOX_COMPOSER_TEXTAREA_CLASS}
                 rows={3}
                 placeholder="Type a message to selected agent"
                 value={chatDraft}
@@ -657,7 +672,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
 
       {showDeveloperMailboxTools && (
         <InsetSurface className={MAILBOX_ADVANCED_ROOT_CLASS}>
-          <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest mb-4">Advanced mailbox controls</h4>
+          <h4 className={MAILBOX_ADVANCED_TITLE_CLASS}>Advanced mailbox controls</h4>
           {advancedControls}
         </InsetSurface>
       )}

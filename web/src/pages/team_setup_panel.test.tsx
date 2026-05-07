@@ -2,6 +2,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { MantineProvider } from "@mantine/core";
 import { TeamSetupPanel } from "./team_setup_panel";
+import {
+  TEAM_SETUP_COPY_ACTION_CLASS,
+  TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS,
+} from "../ui/tailwind_classes";
 
 describe("TeamSetupPanel", () => {
   it("renders first-coordinator setup guidance", () => {
@@ -25,6 +29,8 @@ describe("TeamSetupPanel", () => {
     expect(html).toContain("The first added agent becomes the coordinator");
     expect(html).toContain("Create a new Team-owned agent or copy an existing agent configuration.");
     expect(html).toContain("Create the first coordinator agent");
+    expect(html).toContain(TEAM_SETUP_COPY_ACTION_CLASS);
+    expect(html).toContain(TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS);
   });
 
   it("uses default goal guidance when the team has no description", () => {
