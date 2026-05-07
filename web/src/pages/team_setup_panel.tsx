@@ -6,11 +6,13 @@ import {
   TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS,
   TEAM_WORKBENCH_ACCENT_BUTTON_CLASS,
   TEAM_WORKBENCH_BADGE_CLASS,
+  TEAM_WORKBENCH_INFO_STRIP_GRID_CLASS,
   TEAM_WORKBENCH_PANEL_CLASS,
+  TEAM_WORKBENCH_INFO_STRIP_STEPS_GRID_CLASS,
+  TEAM_SETUP_ACTIONS_GRID_CLASS,
 } from "../ui/tailwind_classes";
 const TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS =
   "overflow-hidden rounded-xl border border-notion-border bg-white shadow-md";
-const TEAM_WORKBENCH_INFO_STRIP_GRID_CLASS = "grid gap-px bg-notion-border lg:grid-cols-3";
 
 type TeamSetupPanelProps = {
   description: string | null | undefined;
@@ -45,7 +47,7 @@ export function TeamSetupPanel({
         contentClassName="gap-0"
         actionsClassName="w-full min-w-0 shrink justify-start sm:w-auto sm:shrink-0 sm:justify-end"
         actions={
-          <div className="grid w-full min-w-0 gap-2 sm:w-auto sm:grid-cols-2">
+          <div className={TEAM_SETUP_ACTIONS_GRID_CLASS}>
             <ActionButton
               className="w-full border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
               onClick={onCopyExisting}
@@ -89,7 +91,7 @@ export function TeamSetupPanel({
             </p>
           </div>
         </div>
-        <div className="grid gap-px border-t border-ui-border bg-ui-border lg:grid-cols-3">
+        <div className={TEAM_WORKBENCH_INFO_STRIP_STEPS_GRID_CLASS}>
           <div className={TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS}>
             <p className={TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS}>Step 1</p>
             <p className={TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS}>

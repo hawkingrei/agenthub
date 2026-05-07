@@ -56,16 +56,16 @@ It is not a canonical frontend design spec and does not replace
 
 | File | Approx Count | Notes |
 |---|---|---|
-| `web/src/pages/team_task_panel.tsx` | ~40+ | Heavy inline Tailwind. Largest single offender. Uses `rounded-xl`, `border`, `px-`, `py-`, `mt-`, `flex`, `gap-`, etc. |
+| `web/src/pages/team_task_panel.tsx` | ~reduced | **Partially resolved:** the 2026-04-11 primitive pass moved empty states, dense metadata controls, compact action rows, badges, and conversation bubbles onto shared primitives. Remaining inline classes are mostly message/activity layout and advanced permission-card variants. |
 | `web/src/components/agent_nodes_workbench.tsx` | ~30+ | Many inline grid/flex layout classes. **Partially resolved:** the repeated section-card literal is now `SECTION_CARD_CLASS`, and section headers use `SECTION_HEADER_CLASS`. Still has other inline patterns to extract. |
-| `web/src/pages/team_setup_panel.tsx` | ~20+ | Team setup wizard with many inline layout classes. |
-| `web/src/pages/team_page_shell.tsx` | ~15+ | Team shell with repeated `flex`, `gap`, `px` patterns. |
+| `web/src/pages/team_setup_panel.tsx` | ~reduced | **Partially resolved:** setup action grid and info-strip grid/step shell now use shared Tailwind constants. Remaining inline classes are mostly title/button tone overrides. |
+| `web/src/pages/team/team_page_shell.tsx` | ~reduced | **Partially resolved:** shell root now uses a shared Team shell constant. Remaining layout comes from route-owned pane composition. |
 | `web/src/pages/team_mailbox_panel.tsx` | ~15+ | Mailbox panel with forms/layouts. |
 | `web/src/pages/team_conversation_panel.tsx` | ~10+ | Conversation panel with bubble/thread classes. |
-| `web/src/app.tsx` | ~2 | **Partially resolved:** AuthGateCard now uses `text-notion-text`/`text-notion-text-muted`. Remaining inline classes use layout tokens that should still migrate. |
+| `web/src/app.tsx` | ~reduced | **Partially resolved:** AuthGateCard uses notion text tokens, and route app roots now use `APP_ROOT_CLASS`. Remaining inline classes are auth copy typography. |
 | `web/src/pages/auth_pages.tsx` | ~0 | ✅ RESOLVED. Previously used `text-slate-*`; now uses notion tokens. |
-| `web/src/components/agents_root_page.tsx` | ~8 | Root page layout with bg-white, flex, overflow-hidden. |
-| `web/src/components/workspace_panel_loading_fallback.tsx` | ~2 | Small but should use tokens. |
+| `web/src/components/agents_root_page.tsx` | ~reduced | **Partially resolved:** shared workspace content root and error-banner padding constants now cover the repeated route shell pieces. |
+| `web/src/components/workspace_panel_loading_fallback.tsx` | ~reduced | Uses the shared loading-shell constant while keeping local title/body structure. |
 | `web/src/components/create_agent_modal.tsx` | ~1 | `min-w-0` only. |
 
 ### Tier 2 — Medium Priority
@@ -103,8 +103,8 @@ It is not a canonical frontend design spec and does not replace
 1. **`rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4`** — ✅ RESOLVED.
    Extracted as `SECTION_CARD_CLASS` in `tailwind_classes.ts`, migrated in `agent_nodes_workbench.tsx`.
 
-2. **`flex h-full min-h-0 flex-col overflow-auto`** — workspace panel root pattern, repeated in
-   ~6 files. Should become a `WORKSPACE_PANEL_ROOT_CLASS`.
+2. **`flex h-full min-h-0 flex-col overflow-auto`** — ✅ PARTIALLY RESOLVED.
+   Extracted as `WORKSPACE_PANEL_ROOT_CLASS` and migrated in the node workbench.
 
 3. **`uppercase tracking-[0.08em]`** — ✅ RESOLVED.
    Extracted as `SECTION_HEADER_CLASS` in `tailwind_classes.ts`, migrated in `agent_nodes_workbench.tsx`
@@ -113,7 +113,8 @@ It is not a canonical frontend design spec and does not replace
 4. **`text-slate-900` / `text-slate-600`** — ✅ RESOLVED.
    Fixed in both `app.tsx` AuthGateCard and `pages/auth_pages.tsx`.
 
-5. **`px-4 py-2 sm:px-6`** — content padding pattern, repeated in ~4 files.
+5. **`px-4 py-2 sm:px-6`** — ✅ PARTIALLY RESOLVED.
+   Extracted as `WORKSPACE_CONTENT_PADDING_CLASS` for the agents route error banner.
 
 ## Recommended Migration Order
 
@@ -122,12 +123,14 @@ It is not a canonical frontend design spec and does not replace
    - `SECTION_HEADER_CLASS`
 2. ✅ Migrate `agent_nodes_workbench.tsx` to the new shared section primitives.
 3. ✅ Clean up the remaining `text-slate-*` auth copy in `app.tsx` and `auth_pages.tsx`.
-4. Migrate `team_task_panel.tsx` — largest file, most classes. (~3h)
-5. Migrate `team_setup_panel.tsx` and `team_page_shell.tsx`. (~2h)
-6. Extract the next repeated layout/padding patterns such as:
-   - `flex h-full min-h-0 flex-col overflow-auto`
-   - `px-4 py-2 sm:px-6`
-7. Finish the remaining Tier 2 files. (~3h)
+4. ✅ Migrate the first `team_task_panel.tsx` primitive wave.
+5. ✅ Extract the next repeated layout/padding patterns:
+   - `WORKSPACE_PANEL_ROOT_CLASS`
+   - `WORKSPACE_CONTENT_ROOT_CLASS`
+   - `WORKSPACE_CONTENT_PADDING_CLASS`
+   - Team setup info-strip/action grid constants
+6. Continue `team_setup_panel.tsx`, `team_mailbox_panel.tsx`, and Team shell/detail surfaces. (~3h)
+7. Finish the remaining Tier 2 files. (~2h)
 
 ## Validation
 
@@ -138,16 +141,18 @@ It is not a canonical frontend design spec and does not replace
   - `agent_node_detail_shared.tsx`
   - `app.tsx`
   - `auth_pages.tsx`
+  - `agents_root_page.tsx`
+  - `workspace_panel_loading_fallback.tsx`
+  - `team_setup_panel.tsx`
+  - `team/team_page_shell.tsx`
+  - `team_conversation_panel.tsx`
 - aligned the remaining-effort wording with `docs/todo.md`
 
 ## Follow-Ups
 
-- migrate `team_task_panel.tsx` next because it remains the largest single
-  inline-Tailwind offender
-- extract the next shared layout roots:
-  - `flex h-full min-h-0 flex-col overflow-auto`
-  - `px-4 py-2 sm:px-6`
+- continue the remaining Team setup and mailbox panel migrations
+- migrate remaining route shell roots and loading/error wrappers as they repeat
 - keep `docs/todo.md` pointing at the current remaining estimate instead of
   duplicating stale audit prose
 
-Total estimated remaining effort: ~8h.
+Total estimated remaining effort: ~5h.

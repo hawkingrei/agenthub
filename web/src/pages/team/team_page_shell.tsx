@@ -1,4 +1,5 @@
 import React from "react";
+import { TEAM_PAGE_SHELL_ROOT_CLASS } from "../../ui/tailwind_classes";
 
 type TeamPageShellProps = {
   header: React.ReactNode;
@@ -26,7 +27,7 @@ export const TeamPageShell = React.memo(function TeamPageShell({
   workbenchPane,
 }: TeamPageShellProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+    <div className={TEAM_PAGE_SHELL_ROOT_CLASS}>
       {header}
       {errorBanner}
       {warningNotice}

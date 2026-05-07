@@ -29,6 +29,19 @@ export const AUTH_PAGE_CLASS =
 export const AUTH_CARD_BASE_CLASS =
   "auth mx-auto w-full max-w-md rounded-2xl border border-notion-border bg-white p-6 shadow-sm";
 
+export const APP_ROOT_CLASS = "app bg-white";
+
+export const WORKSPACE_CONTENT_ROOT_CLASS =
+  "flex min-h-0 flex-1 flex-col overflow-hidden";
+
+export const WORKSPACE_CONTENT_PADDING_CLASS = "px-4 py-2 sm:px-6";
+
+export const WORKSPACE_PANEL_ROOT_CLASS =
+  "flex h-full min-h-0 flex-col overflow-auto bg-white px-4 py-4 sm:px-6";
+
+export const WORKSPACE_PANEL_LOADING_CLASS =
+  "rounded-2xl border border-notion-border bg-white/88 px-4 py-6 text-sm text-ui-text-muted shadow-sm";
+
 export const ACP_PANEL_ROOT =
   "acp acp-panel flex min-h-0 flex-1 flex-col overflow-hidden bg-notion-bg-subtle";
 
@@ -152,6 +165,12 @@ export const ACP_PAYLOAD_MARKDOWN_CLASS =
 
 export const TEAM_PANEL_CARD_CLASS =
   "teams-panel-card flex min-h-0 flex-1 flex-col overflow-hidden";
+
+export const TEAM_PAGE_SHELL_ROOT_CLASS =
+  "flex min-h-0 flex-1 flex-col overflow-hidden bg-white";
+
+export const TEAM_CONVERSATION_PANEL_ROOT_CLASS =
+  "flex h-full min-h-0 flex-1 flex-col overflow-hidden";
 
 export const TEAM_PANEL_TITLE_CLASS = "text-[22px] font-bold tracking-tight text-notion-text";
 
@@ -740,6 +759,15 @@ export const TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS =
 
 export const TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS =
   "mt-1 text-[13px] leading-relaxed text-notion-text";
+
+export const TEAM_WORKBENCH_INFO_STRIP_GRID_CLASS =
+  "grid gap-px bg-notion-border lg:grid-cols-3";
+
+export const TEAM_WORKBENCH_INFO_STRIP_STEPS_GRID_CLASS =
+  "grid gap-px border-t border-ui-border bg-ui-border lg:grid-cols-3";
+
+export const TEAM_SETUP_ACTIONS_GRID_CLASS =
+  "grid w-full min-w-0 gap-2 sm:w-auto sm:grid-cols-2";
 
 /* Shared cross-panel primitives */
 export const SECTION_HEADER_CLASS = "uppercase tracking-[0.08em]";

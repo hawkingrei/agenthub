@@ -1,3 +1,6 @@
+import { cx } from "../ui/primitives";
+import { WORKSPACE_PANEL_LOADING_CLASS } from "../ui/tailwind_classes";
+
 type WorkspacePanelLoadingFallbackProps = {
   className?: string;
   title?: string;
@@ -11,7 +14,7 @@ export function WorkspacePanelLoadingFallback({
 }: WorkspacePanelLoadingFallbackProps) {
   return (
     <div
-      className={`rounded-2xl border border-notion-border bg-white/88 px-4 py-6 text-sm text-ui-text-muted shadow-sm ${className}`.trim()}
+      className={cx(WORKSPACE_PANEL_LOADING_CLASS, className)}
       data-workspace-panel-loading="true"
       role="status"
       aria-live="polite"

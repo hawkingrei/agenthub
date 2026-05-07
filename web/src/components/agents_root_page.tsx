@@ -13,6 +13,8 @@ import {
   AUTH_INPUT_CLASS,
   AUTH_PRIMARY_BUTTON_CLASS,
   AUTH_SECONDARY_BUTTON_CLASS,
+  WORKSPACE_CONTENT_PADDING_CLASS,
+  WORKSPACE_CONTENT_ROOT_CLASS,
 } from "../ui/tailwind_classes";
 import { AgentNodeSectionProps } from "./agent_node_section";
 import { AgentsPanelProps } from "./agents_panel";
@@ -140,9 +142,9 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
         />
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className={WORKSPACE_CONTENT_ROOT_CLASS}>
         {normalizedError ? (
-          <div className="px-4 py-2 sm:px-6">
+          <div className={WORKSPACE_CONTENT_PADDING_CLASS}>
             <ErrorBanner message={normalizedError} onClose={onClearError} />
           </div>
         ) : null}
