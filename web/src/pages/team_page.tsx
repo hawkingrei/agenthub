@@ -393,15 +393,32 @@ export function resolveSelectedAgentWorkspaceSessionId(
   latestStep: TeamStepRecord | null | undefined,
   runtimeSessionId: string | null | undefined,
   previousSessionId?: string | null,
-  agentStatus?: string | null
+  agentStatus?: string | null,
+  runtimeSessionStatus?: string | null,
+  runtimeAgentStatus?: string | null
 ): string | null {
   const normalizedAgentStatus = agentStatus?.trim().toLowerCase() ?? "";
-  if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
-    return null;
-  }
+  const normalizedRuntimeSessionStatus = runtimeSessionStatus?.trim().toLowerCase() ?? "";
+  const normalizedRuntimeAgentStatus = runtimeAgentStatus?.trim().toLowerCase() ?? "";
   const normalizedRuntimeSessionId = runtimeSessionId?.trim() ?? "";
   if (normalizedRuntimeSessionId) {
+    if (
+      normalizedRuntimeSessionStatus &&
+      !isAgentActiveStatus(normalizedRuntimeSessionStatus)
+    ) {
+      return null;
+    }
+    if (
+      !normalizedRuntimeSessionStatus &&
+      normalizedRuntimeAgentStatus &&
+      !isAgentActiveStatus(normalizedRuntimeAgentStatus)
+    ) {
+      return null;
+    }
     return normalizedRuntimeSessionId;
+  }
+  if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
+    return null;
   }
   const normalizedPreviousSessionId = previousSessionId?.trim() ?? "";
   // Keep the previous ACP session identity sticky while runtime metadata catches up
@@ -1522,7 +1539,9 @@ export function TeamPage(props: TeamPageProps) {
       selectedAgentWorkspaceSnapshot?.latest_step,
       selectedAgentWorkspaceRuntimeMember?.session_id ?? null,
       previousSessionId,
-      selectedAgentWorkspaceAgent?.status ?? null
+      selectedAgentWorkspaceAgent?.status ?? null,
+      selectedAgentWorkspaceRuntimeMember?.session_status ?? null,
+      selectedAgentWorkspaceRuntimeMember?.agent_status ?? null
     );
   }, [
     selectedAgentWorkspaceAgent,

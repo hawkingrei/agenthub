@@ -258,7 +258,22 @@ describe("team_page helpers", () => {
         } as never,
         "runtime-session",
         "sticky-session",
-        "stopped"
+        "stopped",
+        "running",
+        "running"
+      )
+    ).toBe("runtime-session");
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(
+        {
+          member_id: "worker-1",
+          remote_task_id: "snapshot-session",
+        } as never,
+        "runtime-session",
+        "sticky-session",
+        "stopped",
+        "stopped",
+        "running"
       )
     ).toBeNull();
     expect(resolveSelectedAgentWorkspaceSessionId(null, null, null)).toBeNull();

@@ -594,7 +594,7 @@ describe("TeamPage agent loop profile flow", () => {
     }
   });
 
-  it("reloads member ACP events from the running session after input session mismatch", async () => {
+  it("uses the runtime session for ACP input when the agent record still looks stopped", async () => {
     const team = {
       id: "team-1",
       name: "Team One",
@@ -630,7 +630,7 @@ describe("TeamPage agent loop profile flow", () => {
         worktree_repo: null,
         worktree_ref: null,
         code_mode: true,
-        status: "running",
+        status: "stopped",
         created_at: 1,
         updated_at: 2,
       },
