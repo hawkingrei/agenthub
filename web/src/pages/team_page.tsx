@@ -1501,7 +1501,19 @@ export function TeamPage(props: TeamPageProps) {
     memberId: string;
     sessionId: string | null;
   }>({ memberId: "", sessionId: null });
+  const [selectedAgentWorkspaceSessionOverride, setSelectedAgentWorkspaceSessionOverride] =
+    useState<{
+      memberId: string;
+      sessionId: string | null;
+    }>({ memberId: "", sessionId: null });
   const selectedAgentWorkspaceResolvedSessionId = useMemo(() => {
+    const overrideSessionId =
+      selectedAgentWorkspaceSessionOverride.memberId === selectedAgentWorkspaceMemberId
+        ? selectedAgentWorkspaceSessionOverride.sessionId
+        : null;
+    if (overrideSessionId?.trim()) {
+      return overrideSessionId.trim();
+    }
     const previousSessionId =
       selectedAgentWorkspaceStickySession.memberId === selectedAgentWorkspaceMemberId
         ? selectedAgentWorkspaceStickySession.sessionId
@@ -1516,10 +1528,26 @@ export function TeamPage(props: TeamPageProps) {
     selectedAgentWorkspaceAgent,
     selectedAgentWorkspaceMemberId,
     selectedAgentWorkspaceRuntimeMember,
+    selectedAgentWorkspaceSessionOverride,
     selectedAgentWorkspaceSnapshot,
     selectedAgentWorkspaceStickySession,
   ]);
   const selectedAgentWorkspaceSessionId = selectedAgentWorkspaceResolvedSessionId;
+  useEffect(() => {
+    setSelectedAgentWorkspaceSessionOverride((previous) => {
+      if (!previous.memberId && previous.sessionId == null) {
+        return previous;
+      }
+      if (previous.memberId !== selectedAgentWorkspaceMemberId) {
+        return { memberId: "", sessionId: null };
+      }
+      const runtimeSessionId = selectedAgentWorkspaceRuntimeMember?.session_id?.trim() || null;
+      if (runtimeSessionId && runtimeSessionId === previous.sessionId) {
+        return { memberId: "", sessionId: null };
+      }
+      return previous;
+    });
+  }, [selectedAgentWorkspaceMemberId, selectedAgentWorkspaceRuntimeMember]);
   useEffect(() => {
     setSelectedAgentWorkspaceStickySession((previous) =>
       resolveNextSelectedAgentWorkspaceStickySession(
@@ -2913,7 +2941,37 @@ export function TeamPage(props: TeamPageProps) {
               memberId: selectedAgentWorkspaceMemberId.trim(),
               sessionId: mismatch.running,
             });
+            setSelectedAgentWorkspaceSessionOverride({
+              memberId: selectedAgentWorkspaceMemberId.trim(),
+              sessionId: mismatch.running,
+            });
             if (selectedTeamId) {
+              setTeamRuntimeByTeamId((prev) => {
+                const runtime = prev[selectedTeamId];
+                if (!runtime) return prev;
+                let changed = false;
+                const members = runtime.members.map((member) => {
+                  if (member.member_id !== selectedAgentWorkspaceMemberId) {
+                    return member;
+                  }
+                  if (member.session_id === mismatch.running) {
+                    return member;
+                  }
+                  changed = true;
+                  return {
+                    ...member,
+                    session_id: mismatch.running,
+                  };
+                });
+                if (!changed) return prev;
+                return {
+                  ...prev,
+                  [selectedTeamId]: {
+                    ...runtime,
+                    members,
+                  },
+                };
+              });
               void refreshTeamRuntime(selectedTeamId).catch(() => undefined);
             }
             await loadMemberEvents("replace", mismatch.running);

@@ -12,7 +12,11 @@ const {
   getTeamSharedThread,
   getTeamTask,
   listTeamTasks,
+  loadMemberEventsSpy,
+  refreshTeamRuntimeSpy,
+  sendInput,
   setAgentLoop,
+  teamMemberAcpPanelPropsSpy,
   teamPageFixture,
   updateTeamSpec,
   useMediaQueryMock,
@@ -32,7 +36,11 @@ const {
   getTeamSharedThread: vi.fn(),
   getTeamTask: vi.fn(),
   listTeamTasks: vi.fn().mockResolvedValue([]),
+  loadMemberEventsSpy: vi.fn().mockResolvedValue(undefined),
+  refreshTeamRuntimeSpy: vi.fn().mockResolvedValue(undefined),
+  sendInput: vi.fn().mockResolvedValue(undefined),
   setAgentLoop: vi.fn().mockResolvedValue({ status: "ok" }),
+  teamMemberAcpPanelPropsSpy: vi.fn(),
   updateTeamSpec: vi.fn(),
   useMediaQueryMock: vi.fn(() => false),
   teamPageFixture: {
@@ -58,6 +66,7 @@ vi.mock("../api", async () => {
       getTeamSharedThread,
       getTeamTask,
       listTeamTasks,
+      sendInput,
       setAgentLoop,
       updateTeamSpec,
     },
@@ -82,9 +91,9 @@ vi.mock("./team/use_team_actions", () => ({
       refreshSteps: vi.fn().mockResolvedValue(undefined),
       refreshEvents: vi.fn().mockResolvedValue(undefined),
       refreshSnapshot: vi.fn().mockResolvedValue(undefined),
-      refreshTeamRuntime: vi.fn().mockResolvedValue(undefined),
+      refreshTeamRuntime: refreshTeamRuntimeSpy,
       loadInbox: vi.fn().mockResolvedValue(undefined),
-      loadMemberEvents: vi.fn().mockResolvedValue(undefined),
+      loadMemberEvents: loadMemberEventsSpy,
       onCreateRun: vi.fn().mockResolvedValue(undefined),
       onLoadRunById: vi.fn().mockResolvedValue(undefined),
       onRefreshRuns: vi.fn().mockResolvedValue(undefined),
@@ -170,7 +179,22 @@ vi.mock("./team/team_workspace_header", () => ({
 }));
 
 vi.mock("./team_member_acp_panel", () => ({
-  TeamMemberAcpPanel: () => <div>Mock agent ACP panel</div>,
+  TeamMemberAcpPanel: (props: {
+    selectedSessionId?: string | null;
+    onSendInput?: (text: string, sessionId: string) => Promise<void> | void;
+  }) => {
+    teamMemberAcpPanelPropsSpy(props);
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          void props.onSendInput?.("hello from acp", props.selectedSessionId ?? "");
+        }}
+      >
+        Mock agent ACP panel
+      </button>
+    );
+  },
 }));
 
 vi.mock("./team/team_page_modals", () => ({
@@ -336,7 +360,11 @@ describe("TeamPage agent loop profile flow", () => {
     getTeamSharedThread.mockClear();
     getTeamTask.mockClear();
     listTeamTasks.mockClear();
+    loadMemberEventsSpy.mockClear();
+    refreshTeamRuntimeSpy.mockClear();
+    sendInput.mockClear();
     setAgentLoop.mockClear();
+    teamMemberAcpPanelPropsSpy.mockClear();
     updateTeamSpec.mockClear();
     useMediaQueryMock.mockReset();
     useMediaQueryMock.mockReturnValue(false);
@@ -557,6 +585,160 @@ describe("TeamPage agent loop profile flow", () => {
         "Agent loop settings were not applied: backend unavailable"
       );
       expect(document.body.textContent).not.toContain("Save Profile");
+    } finally {
+      await act(async () => {
+        root.unmount();
+        await flushEffects();
+      });
+      container.remove();
+    }
+  });
+
+  it("reloads member ACP events from the running session after input session mismatch", async () => {
+    const team = {
+      id: "team-1",
+      name: "Team One",
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        coordinator_member_id: "coordinator",
+        entrypoint: "coordinator_plan",
+        steps: [],
+        members: [
+          {
+            member_id: "worker-1",
+            role: "worker",
+            description: "Investigate regressions",
+            model: "gpt-5.4",
+            prompt: "Stay focused on regressions.",
+            skills: [],
+          },
+        ],
+      },
+      created_at: 1,
+      updated_at: 10,
+    };
+    teamPageFixture.teams = [team];
+    teamPageFixture.agents = [
+      {
+        id: "worker-1",
+        name: "Worker One",
+        workdir: "/repo",
+        command: "codex",
+        args: [],
+        worktree_mode: "create_worktree",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+        status: "running",
+        created_at: 1,
+        updated_at: 2,
+      },
+    ];
+    getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "task-all",
+        team_id: "team-1",
+        title: "all",
+        status: "in_progress",
+        created_by_actor_id: "coordinator",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-task-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+    getTeamRuntime.mockResolvedValue({
+      team_id: "team-1",
+      team_name: "Team One",
+      status: "running",
+      members: [
+        {
+          member_id: "worker-1",
+          display_name: "Worker One",
+          role: "worker",
+          session_id: "runtime-session-stale",
+          session_status: "running",
+          agent_status: "running",
+          card: {
+            card_id: "card-worker-1",
+            schema_version: "1",
+            description: "Investigate regressions",
+            capability_tags: [],
+          },
+        },
+      ],
+    });
+    sendInput
+      .mockRejectedValueOnce(
+        new Error(
+          "agent session mismatch: expected=runtime-session-stale running=runtime-session-running"
+        )
+      )
+      .mockResolvedValueOnce(undefined);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      await clickElement(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Open worker workspace")
+        ) as HTMLButtonElement | null
+      );
+      await clickElement(
+        await waitForElement(
+          () =>
+            Array.from(container.querySelectorAll("button")).find((button) =>
+              button.textContent?.includes("Mock agent ACP panel")
+            ) as HTMLButtonElement | undefined ?? null,
+          "mock ACP panel missing"
+        )
+      );
+
+      expect(sendInput).toHaveBeenCalledTimes(2);
+      expect(sendInput.mock.calls[0]?.[4]).toBe("runtime-session-stale");
+      expect(sendInput.mock.calls[1]?.[4]).toBe("runtime-session-running");
+      expect(loadMemberEventsSpy).toHaveBeenCalledWith(
+        "replace",
+        "runtime-session-running"
+      );
+      expect(teamMemberAcpPanelPropsSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          selectedSessionId: "runtime-session-running",
+        })
+      );
     } finally {
       await act(async () => {
         root.unmount();
