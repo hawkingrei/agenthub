@@ -294,21 +294,20 @@ impl TeamPermissionReviewDispatcher {
                 "human review notification was already marked while appending fallback message"
             );
         }
-        if let Some((run_id, actor_id, message_id)) = review_delivery {
-            if let Err(err) = self
+        if let Some((run_id, actor_id, message_id)) = review_delivery
+            && let Err(err) = self
                 .teams
                 .ack_actor_message(&run_id, &actor_id, message_id)
                 .await
-            {
-                tracing::debug!(
-                    permission_id = %request.request_id,
-                    run_id = %run_id,
-                    actor_id = %actor_id,
-                    message_id,
-                    error = %err,
-                    "failed to ack stale permission review mailbox message after human fallback"
-                );
-            }
+        {
+            tracing::debug!(
+                permission_id = %request.request_id,
+                run_id = %run_id,
+                actor_id = %actor_id,
+                message_id,
+                error = %err,
+                "failed to ack stale permission review mailbox message after human fallback"
+            );
         }
         self.permissions
             .record_review_dispatch(&request.request_id, None, reason, None, None)
