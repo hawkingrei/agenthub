@@ -278,6 +278,65 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
+  it("shows an interrupt action for a live tool call without a running status", () => {
+    const onInterrupt = vi.fn();
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents([
+          { type: "tool_call", id: "call-live", title: "Shell", status: "in_progress" },
+        ])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        canInterrupt={true}
+        onInterrupt={onInterrupt}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    const interruptButton = required(
+      container.querySelector('button[aria-label="Interrupt current run"]'),
+      "interrupt button missing"
+    ) as HTMLButtonElement;
+    expect(interruptButton.disabled).toBe(false);
+  });
+
+  it("loads older history through the ACP conversation hook", () => {
+    const onLoadOlder = vi.fn();
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={true}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={1}
+        onLoadOlder={onLoadOlder}
+      />
+    );
+
+    act(() => {
+      latestAcpConversationArgs().onLoadOlder();
+    });
+
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a compact ACP activity strip for loaded updates, tool calls, and older history", async () => {
     vi.mocked(useAcpConversation).mockReturnValue(
       buildConversationHookState({
@@ -510,6 +569,48 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(latestAcpConversationArgs().activeSessionId).toBe("runtime-session-1");
     expect(latestAcpConversationArgs().isAgentActive).toBe(true);
     expect(container.textContent).not.toContain("Agent is stopped");
+  });
+
+  it("falls back to the latest step runtime handle when no session prop is selected", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId={undefined}
+        selectedMemberRole="worker"
+        selectedAgentStatus="running"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "running",
+          session_status: "running",
+          latest_step: {
+            id: "step-1",
+            run_id: "run-1",
+            step_key: "analysis",
+            member_id: "worker-agent",
+            status: "working",
+            attempt: 1,
+            depends_on: [],
+            runtime_handle_id: " runtime-session-from-step ",
+            remote_task_id: null,
+          },
+        }}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "running" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(latestAcpConversationArgs().activeSessionId).toBe("runtime-session-from-step");
+    expect(latestAcpConversationArgs().isAgentActive).toBe(true);
   });
 
   it("keeps stopped member snapshots from reusing stale ACP sessions", () => {
