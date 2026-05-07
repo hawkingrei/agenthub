@@ -93,12 +93,16 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     normalizeTeamMemberStatusValue(selectedMemberSnapshot?.status) ||
     normalizeTeamMemberStatusValue(selectedMemberSnapshot?.session_status);
   const snapshotHasActiveSession = isActiveTeamMemberStatus(normalizedSnapshotStatus);
+  const explicitSelectedSessionId = selectedSessionIdProp?.trim() || null;
   const resolvedSelectedSessionId =
-    normalizedAgentStatus &&
-    !snapshotHasActiveSession &&
-    !isAgentActiveStatus(normalizedAgentStatus)
+    normalizedSnapshotStatus && !snapshotHasActiveSession
       ? null
-      : selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
+      : explicitSelectedSessionId ??
+        (normalizedAgentStatus &&
+        !snapshotHasActiveSession &&
+        !isAgentActiveStatus(normalizedAgentStatus)
+          ? null
+          : getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step));
   const {
     terminalRef,
     terminalShowJump,

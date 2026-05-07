@@ -123,7 +123,8 @@ export function useTeamMemberAcpViewModel({
   handleSubmitRequestUserInput,
 }: UseTeamMemberAcpViewModelArgs) {
   const selectedSessionId =
-    selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
+    selectedSessionIdProp?.trim() ||
+    getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
   const scopedMemberEvents = React.useMemo(() => {
     if (!selectedSessionId) {
       return memberEvents;
@@ -198,8 +199,10 @@ export function useTeamMemberAcpViewModel({
     normalizeTeamMemberStatusValue(selectedMemberSnapshot?.session_status);
   const snapshotIsActive = isActiveTeamMemberStatus(snapshotStatus);
   const normalizedAgentStatus = normalizeTeamMemberStatusValue(selectedAgentStatus);
+  const hasExplicitSelectedSession = Boolean(selectedSessionIdProp?.trim());
   const agentAllowsInput =
     snapshotIsActive ||
+    hasExplicitSelectedSession ||
     !normalizedAgentStatus ||
     isAgentActiveStatus(normalizedAgentStatus);
   const conversationEventMeta = React.useMemo(() => {
@@ -265,7 +268,8 @@ export function useTeamMemberAcpViewModel({
   const acpRunStatus = normalizeTeamMemberStatusValue(acpView.runStatus?.status);
   const hasAuthoritativeStoppedStatus =
     (Boolean(snapshotStatus) && !snapshotIsActive) ||
-    (!snapshotIsActive &&
+    (!hasExplicitSelectedSession &&
+      !snapshotIsActive &&
       Boolean(normalizedAgentStatus) &&
       !isAgentActiveStatus(normalizedAgentStatus));
   const authoritativeTerminalStatus = hasAuthoritativeStoppedStatus
@@ -289,7 +293,9 @@ export function useTeamMemberAcpViewModel({
   const memberStatus =
     (snapshotIsActive
       ? snapshotStatus
-      : normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
+      : !hasExplicitSelectedSession &&
+        normalizedAgentStatus &&
+        !isAgentActiveStatus(normalizedAgentStatus)
       ? normalizedAgentStatus
       : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
     normalizeTeamMemberStatusValue(memberRoleLabel) ||

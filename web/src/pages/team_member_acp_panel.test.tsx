@@ -784,7 +784,8 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(latestAcpConversationArgs().isAgentActive).toBe(true);
   });
 
-  it("blocks stale sessions when only the agent record is stopped", () => {
+  it("trusts an explicit selected session when only the agent record is stale stopped", async () => {
+    const onSendInput = vi.fn().mockResolvedValue(undefined);
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
@@ -799,16 +800,38 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         memberEventsLoading={false}
         eventsLoading={false}
         oldestMemberEventId={null}
-        onSendInput={vi.fn()}
+        onSendInput={onSendInput}
         onLoadOlder={vi.fn()}
       />
     );
 
-    expect(container.textContent).toContain("stopped");
-    expect(container.textContent).toContain("Agent is stopped");
-    expect(container.querySelector("textarea")).toBeNull();
-    expect(latestAcpConversationArgs().activeSessionId).toBeNull();
-    expect(latestAcpConversationArgs().isAgentActive).toBe(false);
+    const textarea = required(
+      container.querySelector("textarea") as HTMLTextAreaElement | null,
+      "input dock textarea missing"
+    );
+    const descriptor = Object.getOwnPropertyDescriptor(
+      Object.getPrototypeOf(textarea),
+      "value"
+    );
+    await act(async () => {
+      descriptor?.set?.call(textarea, "continue work");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      required(
+        container.querySelector('button[aria-label="Send input"]') as HTMLButtonElement | null,
+        "send button missing"
+      ).click();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("idle");
+    expect(container.textContent).toContain("Active thread");
+    expect(container.textContent).not.toContain("Agent is stopped");
+    expect(latestAcpConversationArgs().activeSessionId).toBe("runtime-session-1");
+    expect(latestAcpConversationArgs().isAgentActive).toBe(true);
+    expect(onSendInput).toHaveBeenCalledWith("continue work", "runtime-session-1");
   });
 
   it("shows startup state for active agents before a session is attached", () => {
