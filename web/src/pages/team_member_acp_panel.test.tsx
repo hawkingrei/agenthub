@@ -499,6 +499,61 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(container.textContent).not.toContain("running · thinking");
   });
 
+  it("uses explicit member titles when provided", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        memberTitle="Runtime debugger"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "idle",
+          session_status: "idle",
+        }}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+      />
+    );
+
+    expect(container.textContent).toContain("Runtime debugger");
+  });
+
+  it("labels coordinator members with the coordinator default title", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="coordinator-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="coordinator"
+        selectedMemberSnapshot={{
+          member_id: "coordinator-agent",
+          role: "coordinator",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "idle",
+          session_status: "idle",
+        }}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+      />
+    );
+
+    expect(container.textContent).toContain("Coordinator agent");
+  });
+
   it("prefers an active member snapshot over a stale stopped agent record", () => {
     renderWithMantine(
       root,
