@@ -79,7 +79,7 @@ test("node detail keeps mobile detail surfaces stacked without horizontal overfl
   await page.goto("/workspace/nodes", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("Node Detail", { exact: true })).toBeVisible();
-  await expect(page.getByText("Detected Runtimes", { exact: true })).toBeVisible();
+  await expect(page.getByText("Observed Agent Runtimes", { exact: true })).toBeVisible();
   await expect(page.getByText("Connect Command", { exact: true }).first()).toBeVisible();
 
   const detailLayoutColumns = await page
