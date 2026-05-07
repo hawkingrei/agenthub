@@ -672,6 +672,38 @@ describe("team page helpers", () => {
       title: "Recovered thread",
       status: "in_progress",
     });
+    const sharedTask = buildTask("task-all", 100, 120, {
+      title: DEFAULT_TEAM_THREAD_TITLE,
+      context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
+    });
+    const listedTask = buildTask("task-listed", 130, 150, {
+      title: "Listed thread",
+      status: "in_progress",
+    });
+
+    expect(
+      resolveSelectedConversationTask({
+        taskList: [listedTask],
+        selectedTaskId: "",
+        sharedConversation: sharedTask,
+      })
+    ).toEqual(sharedTask);
+
+    expect(
+      resolveSelectedConversationTask({
+        taskList: [listedTask],
+        selectedTaskId: "task-all",
+        sharedConversation: sharedTask,
+      })
+    ).toEqual(sharedTask);
+
+    expect(
+      resolveSelectedConversationTask({
+        taskList: [listedTask],
+        selectedTaskId: "task-listed",
+        sharedConversation: sharedTask,
+      })
+    ).toEqual(listedTask);
 
     expect(
       resolveSelectedConversationTask({
@@ -751,8 +783,29 @@ describe("team page helpers", () => {
 
     expect(
       resolveSelectedConversationLatestRun({
-        selectedConversation: explicitTask,
+        selectedConversation: null,
         selectedConversationDetail: null,
+        sharedConversation: sharedTask,
+        sharedConversationLatestRun: sharedRun,
+      })
+    ).toBeNull();
+
+    expect(
+      resolveSelectedConversationLatestRun({
+        selectedConversation: explicitTask,
+        selectedConversationDetail: {
+          task: buildTask("task-other", 90, 90),
+          conversation: {
+            id: "conv-task-other",
+            team_id: "team-1",
+            task_id: "task-other",
+            mode: "group_chat",
+            topic: "other",
+            created_at: 1,
+            updated_at: 1,
+          },
+          latest_run: explicitRun,
+        },
         sharedConversation: sharedTask,
         sharedConversationLatestRun: sharedRun,
       })
@@ -830,6 +883,44 @@ describe("team page helpers", () => {
         taskList: [sharedTask, explicitTask],
       })
     ).toEqual(explicitTask);
+  });
+
+  it("falls back to selected channel task when channel lane has no active selection", () => {
+    const selectedTask = buildTask("task-review", 120, 140, {
+      title: "Review lane",
+      status: "in_progress",
+      context: { channel_id: "review", bootstrap_kind: "team_channel" },
+    });
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "",
+        selectedConversation: selectedTask,
+        selectedChannelTaskId: "task-review",
+        sharedConversation: null,
+        taskList: [selectedTask],
+      })
+    ).toEqual(selectedTask);
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "review",
+        selectedConversation: null,
+        selectedChannelTaskId: "",
+        sharedConversation: null,
+        taskList: [selectedTask],
+      })
+    ).toBeNull();
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "review",
+        selectedConversation: null,
+        selectedChannelTaskId: "task-review",
+        sharedConversation: null,
+        taskList: [selectedTask],
+      })
+    ).toEqual(selectedTask);
   });
 
   it("resolves seen-by coverage from delivered mailbox fan-out", () => {
