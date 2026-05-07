@@ -17,6 +17,10 @@ import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_SECTION_TITLE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
+  TEAM_RUN_FOOT_META_CLASS,
+  TEAM_RUN_HINT_TEXT_CLASS,
+  TEAM_RUN_LIST_ITEMS_CLASS,
+  TEAM_RUN_SUBTITLE_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamRunStatusFilter = TeamRunStatus | "all";
@@ -26,10 +30,6 @@ type TeamRunStatusFilterOption = {
   label: string;
 };
 
-const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
-const RUN_PANEL_SUBTITLE_CLASS = "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
-const RUN_PANEL_HINT_TEXT_CLASS = "text-[13px] text-notion-text-muted italic";
-const RUN_PANEL_FOOT_META_CLASS = "mono text-[10px] font-bold uppercase tracking-widest text-notion-text-muted opacity-70";
 const RUN_PANEL_HELP_TEXT = "Concrete execution runs and replay partitions for this team.";
 
 type TeamRunPanelProps = {
@@ -107,14 +107,14 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
 
       <InsetSurface className="teams-run-list flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <p className={RUN_PANEL_SUBTITLE_CLASS}>Execution Run Browser</p>
+          <p className={TEAM_RUN_SUBTITLE_CLASS}>Execution Run Browser</p>
           <p className={TEAM_MUTED_TEXT_CLASS}>
             {RUN_PANEL_HELP_TEXT}
           </p>
         </div>
 
         <ToolbarRow className="border-b border-notion-border/50 pb-4">
-          <span className={RUN_PANEL_HINT_TEXT_CLASS}>
+          <span className={TEAM_RUN_HINT_TEXT_CLASS}>
             {runBlockedReason ?? "Start a new execution run for this team."}
           </span>
           <ActionButton
@@ -164,7 +164,7 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
           }
         />
 
-        <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
+        <div className={TEAM_RUN_LIST_ITEMS_CLASS}>
           {visibleRuns.length === 0 && (
             <EmptyState
               className={TEAM_MUTED_TEXT_CLASS}
@@ -203,7 +203,7 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
         </div>
 
         <ToolbarRow className="border-t border-notion-border/50 pt-2">
-          <span className={RUN_PANEL_FOOT_META_CLASS}>
+          <span className={TEAM_RUN_FOOT_META_CLASS}>
             {visibleRuns.length} of {totalLoadedRunsForTeam}
           </span>
           <ActionButton

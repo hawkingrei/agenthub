@@ -397,7 +397,39 @@ export const TEAM_MEMBER_NAME_CLASS = "min-w-0 flex-1 truncate text-[14px] font-
 
 export const TEAM_MEMBER_META_CLASS = "mono truncate text-[10px] text-notion-text-muted opacity-70";
 
+export const TEAM_MEMBER_STATUS_ROW_CLASS = "flex flex-wrap items-center gap-1.5 mt-1";
+
 export const TEAM_MEMBER_SUMMARY_CLASS = "flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+
+export const TEAM_STEPS_PANEL_CLASS = "teams-step-panel min-w-0 flex flex-col gap-3";
+
+export const TEAM_STEPS_LIST_CLASS =
+  "teams-step-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+
+export const TEAM_STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
+
+export const TEAM_STEPS_PANEL_TITLE_CLASS = "mb-2 text-ui-sm font-semibold text-ui-text-primary";
+
+export const TEAM_STEPS_ITEM_CLASS = "p-2 sm:p-2";
+
+export const TEAM_STEPS_ITEM_HEAD_CLASS =
+  "teams-step-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
+
+export const TEAM_STEPS_ITEM_BODY_CLASS =
+  "teams-step-body mono text-ui-xs text-ui-text-muted break-words";
+
+export const TEAM_STEPS_LIST_ONLY_NOTE_CLASS = "mb-3 text-ui-sm";
+
+export const TEAM_RUN_LIST_ITEMS_CLASS =
+  "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
+
+export const TEAM_RUN_SUBTITLE_CLASS =
+  "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+
+export const TEAM_RUN_HINT_TEXT_CLASS = "text-[13px] text-notion-text-muted italic";
+
+export const TEAM_RUN_FOOT_META_CLASS =
+  "mono text-[10px] font-bold uppercase tracking-widest text-notion-text-muted opacity-70";
 
 export const TASKS_BOARD_LANES_CLASS =
   "grid min-w-full auto-cols-[minmax(280px,1fr)] grid-flow-col gap-4";

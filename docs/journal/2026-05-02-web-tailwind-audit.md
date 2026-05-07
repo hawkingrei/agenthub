@@ -8,8 +8,8 @@ This checkpoint records the current Tailwind/className migration state across `w
 - current migration goal: move repeated Tailwind strings into
   `web/src/ui/tailwind_classes.ts` constants or `web/src/ui/primitives.tsx`
   wrappers
-- current remaining estimate after the latest Team setup/mailbox constant pass:
-  about `~3h`
+- current remaining estimate after the latest Team Tier 2 panel constant pass:
+  about `~2h`
 
 ## Background
 
@@ -73,12 +73,12 @@ It is not a canonical frontend design spec and does not replace
 | File | Approx Count | Notes |
 |---|---|---|
 | `web/src/pages/team_active_run_panel.tsx` | ~5 | Run panel layout. |
-| `web/src/pages/team_steps_panel.tsx` | ~4 | Steps panel. |
+| `web/src/pages/team_steps_panel.tsx` | ~reduced | **Partially resolved:** steps panel grid, panel, list, item, and list-only notice classes now use shared Tailwind constants. |
 | `web/src/pages/team_member_acp_panel.tsx` | ~5 | Member ACP. |
-| `web/src/pages/team_member_status_strip.tsx` | ~5 | Status strip. |
+| `web/src/pages/team_member_status_strip.tsx` | ~reduced | **Partially resolved:** member card, summary, name, and status-row classes now use shared Tailwind constants. |
 | `web/src/pages/team_thread_pane.tsx` | ~8 | Thread pane layout. |
 | `web/src/pages/team_sidebar.tsx` | ~5 | Sidebar. |
-| `web/src/pages/team_run_panel.tsx` | ~5 | Run panel. |
+| `web/src/pages/team_run_panel.tsx` | ~reduced | **Partially resolved:** run browser list, subtitle, hint, and footer metadata classes now use shared Tailwind constants. |
 | `web/src/pages/team_management_modals.tsx` | ~5 | Management modals. |
 | `web/src/pages/workspace_page.tsx` | ~3 | Workspace root. |
 | `web/src/pages/agent_page.tsx` | ~5 | Agent detail. |
@@ -130,7 +130,7 @@ It is not a canonical frontend design spec and does not replace
    - `WORKSPACE_CONTENT_PADDING_CLASS`
    - Team setup info-strip/action grid constants
 6. ✅ Continue `team_setup_panel.tsx` and `team_mailbox_panel.tsx` constant migration.
-7. Continue Team shell/detail surfaces and the remaining Tier 2 files. (~3h)
+7. Continue Team shell/detail surfaces and the remaining Tier 2 files. (~2h)
 
 ## Validation
 
@@ -147,6 +147,9 @@ It is not a canonical frontend design spec and does not replace
   - `team/team_page_shell.tsx`
   - `team_conversation_panel.tsx`
   - `team_mailbox_panel.tsx`
+  - `team_run_panel.tsx`
+  - `team_steps_panel.tsx`
+  - `team_member_status_strip.tsx`
 - aligned the remaining-effort wording with `docs/todo.md`
 
 ## Follow-Ups
@@ -157,4 +160,4 @@ It is not a canonical frontend design spec and does not replace
 - keep `docs/todo.md` pointing at the current remaining estimate instead of
   duplicating stale audit prose
 
-Total estimated remaining effort: ~3h.
+Total estimated remaining effort: ~2h.

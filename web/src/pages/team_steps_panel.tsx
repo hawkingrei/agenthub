@@ -14,6 +14,14 @@ import {
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
+  TEAM_STEPS_GRID_CLASS,
+  TEAM_STEPS_ITEM_BODY_CLASS,
+  TEAM_STEPS_ITEM_CLASS,
+  TEAM_STEPS_ITEM_HEAD_CLASS,
+  TEAM_STEPS_LIST_CLASS,
+  TEAM_STEPS_LIST_ONLY_NOTE_CLASS,
+  TEAM_STEPS_PANEL_CLASS,
+  TEAM_STEPS_PANEL_TITLE_CLASS,
 } from "../ui/tailwind_classes";
 
 type StepAction = "start" | "complete" | "fail" | "input_required" | "resume";
@@ -51,18 +59,6 @@ type TeamStepsPanelProps = {
   onStepResumePayloadChange: (value: string) => void;
   onApplyStepAction: () => Promise<void> | void;
 };
-
-const STEPS_PANEL_CLASS = "teams-step-panel min-w-0 flex flex-col gap-3";
-const STEPS_LIST_CLASS =
-  "teams-step-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
-const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
-const STEPS_PANEL_TITLE_CLASS = "mb-2 text-ui-sm font-semibold text-ui-text-primary";
-const STEPS_ITEM_CLASS = "p-2 sm:p-2";
-const STEPS_ITEM_HEAD_CLASS =
-  "teams-step-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
-const STEPS_ITEM_BODY_CLASS =
-  "teams-step-body mono text-ui-xs text-ui-text-muted break-words";
-const STEPS_LIST_ONLY_NOTE_CLASS = "mb-3 text-ui-sm";
 
 function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
   const {
@@ -123,9 +119,9 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
       />
 
       {showControls && (
-        <div className={STEPS_GRID_CLASS}>
-          <InsetSurface className={STEPS_PANEL_CLASS}>
-            <h4 className={STEPS_PANEL_TITLE_CLASS}>Submit Step</h4>
+        <div className={TEAM_STEPS_GRID_CLASS}>
+          <InsetSurface className={TEAM_STEPS_PANEL_CLASS}>
+            <h4 className={TEAM_STEPS_PANEL_TITLE_CLASS}>Submit Step</h4>
             <input
               className={TEAM_PANEL_INPUT_CLASS}
               placeholder="step_key"
@@ -162,8 +158,8 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
             </ActionButton>
           </InsetSurface>
 
-          <InsetSurface className={STEPS_PANEL_CLASS}>
-            <h4 className={STEPS_PANEL_TITLE_CLASS}>Step Action</h4>
+          <InsetSurface className={TEAM_STEPS_PANEL_CLASS}>
+            <h4 className={TEAM_STEPS_PANEL_TITLE_CLASS}>Step Action</h4>
             <select
               className={TEAM_PANEL_INPUT_CLASS}
               value={selectedStepId}
@@ -255,7 +251,7 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
       )}
 
       {mode === "list_only" && (
-        <InlineNotice tone="warning" className={STEPS_LIST_ONLY_NOTE_CLASS}>
+        <InlineNotice tone="warning" className={TEAM_STEPS_LIST_ONLY_NOTE_CLASS}>
           {developerMode ? (
             <>
               Step operations were moved to <strong>Debug -&gt; Step Ops</strong>.
@@ -274,16 +270,16 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
             className="mt-3"
           />
         ) : (
-          <ul className={STEPS_LIST_CLASS}>
+          <ul className={TEAM_STEPS_LIST_CLASS}>
             {steps.map((step) => (
               <li key={step.id}>
-                <InsetSurface className={STEPS_ITEM_CLASS}>
-                  <div className={STEPS_ITEM_HEAD_CLASS}>
+                <InsetSurface className={TEAM_STEPS_ITEM_CLASS}>
+                  <div className={TEAM_STEPS_ITEM_HEAD_CLASS}>
                     <span className="mono">{step.id}</span>
                     <span>{step.step_key}</span>
                     <span>{step.status}</span>
                   </div>
-                  <div className={STEPS_ITEM_BODY_CLASS}>
+                  <div className={TEAM_STEPS_ITEM_BODY_CLASS}>
                     <KeyValueList>
                       <KeyValueItem label="member_id" value={step.member_id} />
                       <KeyValueItem label="attempt" value={step.attempt} />

@@ -102,3 +102,38 @@ Remaining follow-ups:
 - Continue Team shell/detail and Tier 2 panel migrations.
 - Run a real authenticated Chrome MCP check against a backend-backed session for
   the Team setup/mailbox surfaces before closing the P0 browser-validation item.
+
+## Team Tier 2 Panel Follow-Up
+
+This follow-up moved the next Team Tier 2 panel class literals into the shared
+Tailwind constants layer without changing rendering behavior.
+
+Additional scope:
+
+- Move Team run browser list, hint, subtitle, and footer metadata classes into
+  `web/src/ui/tailwind_classes.ts`.
+- Move Team steps panel layout, list, item, and notice classes into shared
+  constants while preserving the existing semantic selectors used by tests.
+- Move the member status row class into the shared constants layer.
+- Add focused render assertions that lock these panels to the shared constants.
+
+Additional validation:
+
+```bash
+npm --prefix web run test -- src/pages/team_panels.test.tsx src/pages/team_member_status_strip.test.tsx
+cd web && npm exec tsc -- --noEmit
+npm --prefix web run lint
+git diff --check
+```
+
+Results:
+
+- focused Vitest: `2` files, `103` tests passed
+- TypeScript no-emit: pass
+- lint: pass
+- whitespace check: pass
+
+Remaining follow-ups:
+
+- Continue the remaining Tier 2 detail panels, especially active-run, member
+  ACP, thread pane, sidebar, and management modal surfaces.
