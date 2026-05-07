@@ -526,6 +526,78 @@ describe("buildAcpView", () => {
     expect(view.toolCalls[0].status).toBe("in_progress");
   });
 
+  it("uses the latest message order per session when closing stale tool calls", () => {
+    const events = [
+      {
+        ts: 30,
+        event_id: 3,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Newest message first in the array.",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-stale",
+          title: "Shell",
+          status: "running",
+        }),
+      },
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Older message later in the array.",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].status).toBe("completed");
+  });
+
+  it("keeps live tool calls open when all same-session messages are older", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Older message.",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-live",
+          title: "Shell",
+          status: "pending",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].status).toBe("pending");
+  });
+
   it("uses terminal run status before stale completion fallback", () => {
     const events = [
       {
