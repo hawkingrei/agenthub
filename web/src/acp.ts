@@ -435,6 +435,7 @@ function closeStaleLiveToolCalls(
   const terminalRunStatus = TERMINAL_RUN_STATUSES.has(normalizedRunStatus)
     ? normalizedRunStatus
     : null;
+  const latestMessageOrderBySession = buildLatestMessageOrderBySession(messages);
   for (const call of toolCalls) {
     if (!LIVE_TOOL_CALL_STATUSES.has(normalizeAcpStatus(call.status))) {
       continue;
@@ -443,28 +444,44 @@ function closeStaleLiveToolCalls(
       call.status = terminalRunStatus;
       continue;
     }
-    if (hasLaterMessageInSameSession(call, messages)) {
+    const latestMessageOrder = latestMessageOrderBySession.get(
+      call.session_id ?? null
+    );
+    if (
+      latestMessageOrder &&
+      compareEventOrder(latestMessageOrder, toolCallOrder(call)) > 0
+    ) {
       call.status = "completed";
     }
   }
 }
 
-function hasLaterMessageInSameSession(
-  call: AcpToolCall,
+function buildLatestMessageOrderBySession(
   messages: AcpMessage[]
-): boolean {
-  const callOrder = { event_id: call.event_id ?? null, ts: call.ts };
-  return messages.some((message) => {
-    if ((message.session_id ?? null) !== (call.session_id ?? null)) {
-      return false;
+): Map<string | null, EventOrder> {
+  const latest = new Map<string | null, EventOrder>();
+  for (const message of messages) {
+    const sessionId = message.session_id ?? null;
+    const order = messageOrder(message);
+    const existing = latest.get(sessionId);
+    if (!existing || compareEventOrder(order, existing) > 0) {
+      latest.set(sessionId, order);
     }
-    return (
-      compareEventOrder(
-        { event_id: message.event_id ?? null, ts: message.ts },
-        callOrder
-      ) > 0
-    );
-  });
+  }
+  return latest;
+}
+
+type EventOrder = {
+  event_id: number | null;
+  ts?: number;
+};
+
+function toolCallOrder(call: AcpToolCall): EventOrder {
+  return { event_id: call.event_id ?? null, ts: call.ts };
+}
+
+function messageOrder(message: AcpMessage): EventOrder {
+  return { event_id: message.event_id ?? null, ts: message.ts };
 }
 
 function isRunStatusForToolCall(
