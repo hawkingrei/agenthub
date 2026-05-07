@@ -26,6 +26,7 @@ export type TeamMemberAcpActivityItem = {
 };
 
 const ACTIVE_MEMBER_STATUSES = new Set([
+  "idle",
   "running",
   "working",
   "submitted",
@@ -37,8 +38,8 @@ function normalizeStatusValue(status?: string | null): string {
   return status?.trim().toLowerCase() || "";
 }
 
-function isActiveMemberStatus(status: string): boolean {
-  return ACTIVE_MEMBER_STATUSES.has(status);
+export function isActiveTeamMemberStatus(status?: string | null): boolean {
+  return ACTIVE_MEMBER_STATUSES.has(normalizeStatusValue(status));
 }
 
 type UseTeamMemberAcpViewModelArgs = {
@@ -191,9 +192,15 @@ export function useTeamMemberAcpViewModel({
   const { visibleMemberEvents, acpEventLines, terminalOutputs } = memberEventProjection;
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
   const effectiveAcpTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
+  const snapshotStatus =
+    normalizeStatusValue(selectedMemberSnapshot?.status) ||
+    normalizeStatusValue(selectedMemberSnapshot?.session_status);
+  const snapshotIsActive = isActiveTeamMemberStatus(snapshotStatus);
   const normalizedAgentStatus = normalizeStatusValue(selectedAgentStatus);
   const agentAllowsInput =
-    !normalizedAgentStatus || isAgentActiveStatus(normalizedAgentStatus);
+    snapshotIsActive ||
+    !normalizedAgentStatus ||
+    isAgentActiveStatus(normalizedAgentStatus);
   const conversationEventMeta = React.useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId || !selectedSessionId) {
@@ -267,15 +274,16 @@ export function useTeamMemberAcpViewModel({
   const memberModelLabel = selectedMemberSnapshot?.model?.trim() || null;
   const memberRoleLabel =
     selectedMemberRole?.trim() || selectedMemberSnapshot?.role?.trim() || null;
-  const snapshotStatus =
-    normalizeStatusValue(selectedMemberSnapshot?.status) ||
-    normalizeStatusValue(selectedMemberSnapshot?.session_status);
   const acpRunStatus = normalizeStatusValue(acpView.runStatus?.status);
   const hasAuthoritativeStoppedStatus =
-    (Boolean(normalizedAgentStatus) && !isAgentActiveStatus(normalizedAgentStatus)) ||
-    (Boolean(snapshotStatus) && !isActiveMemberStatus(snapshotStatus));
+    (Boolean(snapshotStatus) && !snapshotIsActive) ||
+    (!snapshotIsActive &&
+      Boolean(normalizedAgentStatus) &&
+      !isAgentActiveStatus(normalizedAgentStatus));
   const memberStatus =
-    (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
+    (snapshotIsActive
+      ? snapshotStatus
+      : normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
       ? normalizedAgentStatus
       : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
     normalizeStatusValue(memberRoleLabel) ||
@@ -286,13 +294,13 @@ export function useTeamMemberAcpViewModel({
     selectedMemberId.trim() &&
       !hasAuthoritativeStoppedStatus &&
       !selectedSessionId &&
-      ((snapshotStatus && isActiveMemberStatus(snapshotStatus)) ||
+      ((snapshotStatus && isActiveTeamMemberStatus(snapshotStatus)) ||
         (!snapshotStatus &&
           normalizedAgentStatus &&
           isAgentActiveStatus(normalizedAgentStatus)))
   );
   const thinkingLabel =
-    acpView.thinkingStartTs && isActiveMemberStatus(snapshotStatus || acpRunStatus)
+    acpView.thinkingStartTs && isActiveTeamMemberStatus(snapshotStatus || acpRunStatus)
     ? `thinking ${Math.max(0, Math.floor(Date.now() / 1000 - acpView.thinkingStartTs))}s`
     : null;
   const memberStatusLabel = thinkingLabel

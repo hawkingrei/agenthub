@@ -14,6 +14,7 @@ import { OutputHeaderDetails } from "../components/output_header";
 import { InputDock } from "../components/input_dock";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
+  isActiveTeamMemberStatus,
   TeamMemberAcpTab,
   useTeamMemberAcpViewModel,
 } from "./team/use_team_member_acp_view_model";
@@ -87,8 +88,15 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const [, setThinkingTick] = React.useState(0);
   const ansi = React.useCallback((inputValue: string) => inputValue, []);
   const normalizedAgentStatus = selectedAgentStatus?.trim().toLowerCase() ?? "";
+  const normalizedSnapshotStatus =
+    selectedMemberSnapshot?.status?.trim().toLowerCase() ||
+    selectedMemberSnapshot?.session_status?.trim().toLowerCase() ||
+    "";
+  const snapshotHasActiveSession = isActiveTeamMemberStatus(normalizedSnapshotStatus);
   const resolvedSelectedSessionId =
-    normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
+    normalizedAgentStatus &&
+    !snapshotHasActiveSession &&
+    !isAgentActiveStatus(normalizedAgentStatus)
       ? null
       : selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
   const {

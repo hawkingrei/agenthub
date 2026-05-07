@@ -431,6 +431,37 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(container.textContent).not.toContain("running · thinking");
   });
 
+  it("prefers an active member snapshot over a stale stopped agent record", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedAgentStatus="stopped"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "idle",
+          session_status: "idle",
+        }}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "idle" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("idle");
+    expect(container.textContent).toContain("Active thread");
+    expect(container.textContent).not.toContain("Agent is stopped");
+  });
+
   it("hides a partial leading ACP chunk instead of rendering it", () => {
     vi.mocked(useAcpConversation).mockReturnValue(buildConversationHookState() as never);
 
