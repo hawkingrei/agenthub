@@ -34,12 +34,12 @@ const ACTIVE_MEMBER_STATUSES = new Set([
   "pending",
 ]);
 
-function normalizeStatusValue(status?: string | null): string {
-  return status?.trim().toLowerCase() || "";
+export function normalizeTeamMemberStatusValue(status?: string | null): string {
+  return status?.trim()?.toLowerCase() || "";
 }
 
 export function isActiveTeamMemberStatus(status?: string | null): boolean {
-  return ACTIVE_MEMBER_STATUSES.has(normalizeStatusValue(status));
+  return ACTIVE_MEMBER_STATUSES.has(normalizeTeamMemberStatusValue(status));
 }
 
 type UseTeamMemberAcpViewModelArgs = {
@@ -193,10 +193,10 @@ export function useTeamMemberAcpViewModel({
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
   const effectiveAcpTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
   const snapshotStatus =
-    normalizeStatusValue(selectedMemberSnapshot?.status) ||
-    normalizeStatusValue(selectedMemberSnapshot?.session_status);
+    normalizeTeamMemberStatusValue(selectedMemberSnapshot?.status) ||
+    normalizeTeamMemberStatusValue(selectedMemberSnapshot?.session_status);
   const snapshotIsActive = isActiveTeamMemberStatus(snapshotStatus);
-  const normalizedAgentStatus = normalizeStatusValue(selectedAgentStatus);
+  const normalizedAgentStatus = normalizeTeamMemberStatusValue(selectedAgentStatus);
   const agentAllowsInput =
     snapshotIsActive ||
     !normalizedAgentStatus ||
@@ -274,7 +274,7 @@ export function useTeamMemberAcpViewModel({
   const memberModelLabel = selectedMemberSnapshot?.model?.trim() || null;
   const memberRoleLabel =
     selectedMemberRole?.trim() || selectedMemberSnapshot?.role?.trim() || null;
-  const acpRunStatus = normalizeStatusValue(acpView.runStatus?.status);
+  const acpRunStatus = normalizeTeamMemberStatusValue(acpView.runStatus?.status);
   const hasAuthoritativeStoppedStatus =
     (Boolean(snapshotStatus) && !snapshotIsActive) ||
     (!snapshotIsActive &&
@@ -286,7 +286,7 @@ export function useTeamMemberAcpViewModel({
       : normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
       ? normalizedAgentStatus
       : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
-    normalizeStatusValue(memberRoleLabel) ||
+    normalizeTeamMemberStatusValue(memberRoleLabel) ||
     "unknown";
   // Prefer authoritative snapshot/runtime status for startup gating so stale
   // ACP stream state does not keep the UI in a misleading "starting" mode.

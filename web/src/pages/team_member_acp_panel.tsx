@@ -15,6 +15,7 @@ import { InputDock } from "../components/input_dock";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   isActiveTeamMemberStatus,
+  normalizeTeamMemberStatusValue,
   TeamMemberAcpTab,
   useTeamMemberAcpViewModel,
 } from "./team/use_team_member_acp_view_model";
@@ -87,11 +88,10 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const [acpTab, setAcpTab] = React.useState<TeamMemberAcpTab>("conversation");
   const [, setThinkingTick] = React.useState(0);
   const ansi = React.useCallback((inputValue: string) => inputValue, []);
-  const normalizedAgentStatus = selectedAgentStatus?.trim().toLowerCase() ?? "";
+  const normalizedAgentStatus = normalizeTeamMemberStatusValue(selectedAgentStatus);
   const normalizedSnapshotStatus =
-    selectedMemberSnapshot?.status?.trim().toLowerCase() ||
-    selectedMemberSnapshot?.session_status?.trim().toLowerCase() ||
-    "";
+    normalizeTeamMemberStatusValue(selectedMemberSnapshot?.status) ||
+    normalizeTeamMemberStatusValue(selectedMemberSnapshot?.session_status);
   const snapshotHasActiveSession = isActiveTeamMemberStatus(normalizedSnapshotStatus);
   const resolvedSelectedSessionId =
     normalizedAgentStatus &&

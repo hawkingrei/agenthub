@@ -12,6 +12,10 @@ import {
   saveTeamMemberAcpRenderCache,
 } from "./team/team_member_acp_render_cache";
 import {
+  isActiveTeamMemberStatus,
+  normalizeTeamMemberStatusValue,
+} from "./team/use_team_member_acp_view_model";
+import {
   installReactDomTestGlobals,
   renderWithMantine,
   required,
@@ -459,6 +463,43 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
 
     expect(container.textContent).toContain("idle");
     expect(container.textContent).toContain("Active thread");
+    expect(container.textContent).not.toContain("Agent is stopped");
+  });
+
+  it("uses active session_status as a fallback for stale stopped agent records", async () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedAgentStatus="stopped"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: " ",
+          session_status: " Idle ",
+        }}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "idle" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("idle");
+    expect(container.textContent).toContain("Active thread");
+    expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
     expect(container.textContent).not.toContain("Agent is stopped");
   });
 
@@ -925,5 +966,20 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     });
 
     expect(buildAcpViewSpy).toHaveBeenCalledTimes(initialCallCount);
+  });
+});
+
+describe("team member ACP status helpers", () => {
+  it("normalizes nullish and padded status values", () => {
+    expect(normalizeTeamMemberStatusValue(null)).toBe("");
+    expect(normalizeTeamMemberStatusValue(undefined)).toBe("");
+    expect(normalizeTeamMemberStatusValue(" Idle ")).toBe("idle");
+  });
+
+  it("treats idle runtime snapshots as active", () => {
+    expect(isActiveTeamMemberStatus("idle")).toBe(true);
+    expect(isActiveTeamMemberStatus("running")).toBe(true);
+    expect(isActiveTeamMemberStatus("stopped")).toBe(false);
+    expect(isActiveTeamMemberStatus(null)).toBe(false);
   });
 });
