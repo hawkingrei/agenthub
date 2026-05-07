@@ -96,6 +96,11 @@ function buildConversationHookState(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function latestAcpConversationArgs() {
+  const calls = vi.mocked(useAcpConversation).mock.calls;
+  return required(calls[calls.length - 1]?.[0], "ACP conversation args missing");
+}
+
 describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -463,6 +468,8 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
 
     expect(container.textContent).toContain("idle");
     expect(container.textContent).toContain("Active thread");
+    expect(latestAcpConversationArgs().activeSessionId).toBe("runtime-session-1");
+    expect(latestAcpConversationArgs().isAgentActive).toBe(true);
     expect(container.textContent).not.toContain("Agent is stopped");
   });
 
@@ -500,7 +507,43 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(container.textContent).toContain("idle");
     expect(container.textContent).toContain("Active thread");
     expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
+    expect(latestAcpConversationArgs().activeSessionId).toBe("runtime-session-1");
+    expect(latestAcpConversationArgs().isAgentActive).toBe(true);
     expect(container.textContent).not.toContain("Agent is stopped");
+  });
+
+  it("keeps stopped member snapshots from reusing stale ACP sessions", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedAgentStatus="stopped"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "stopped",
+          session_status: "stopped",
+        }}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "idle" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("stopped");
+    expect(container.textContent).toContain("Agent is stopped");
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(latestAcpConversationArgs().activeSessionId).toBeNull();
+    expect(latestAcpConversationArgs().isAgentActive).toBe(false);
   });
 
   it("hides a partial leading ACP chunk instead of rendering it", () => {

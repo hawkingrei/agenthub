@@ -157,7 +157,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     selectedMemberSnapshot,
     selectedMemberRole,
     selectedAgentStatus,
-    selectedSessionId: selectedSessionIdProp,
+    selectedSessionId: resolvedSelectedSessionId,
     memberEvents,
     memberEventsHasMore,
     memberEventsLoading,
