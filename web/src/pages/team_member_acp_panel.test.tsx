@@ -546,6 +546,87 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(latestAcpConversationArgs().isAgentActive).toBe(false);
   });
 
+  it("uses active agent status when no member snapshot is available", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedAgentStatus="running"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "idle" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("idle");
+    expect(container.textContent).toContain("Active thread");
+    expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
+    expect(latestAcpConversationArgs().activeSessionId).toBe("runtime-session-1");
+    expect(latestAcpConversationArgs().isAgentActive).toBe(true);
+  });
+
+  it("blocks stale sessions when only the agent record is stopped", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedAgentStatus="stopped"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "idle" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("stopped");
+    expect(container.textContent).toContain("Agent is stopped");
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(latestAcpConversationArgs().activeSessionId).toBeNull();
+    expect(latestAcpConversationArgs().isAgentActive).toBe(false);
+  });
+
+  it("shows startup state for active agents before a session is attached", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId={undefined}
+        selectedMemberRole="worker"
+        selectedAgentStatus="running"
+        selectedMemberSnapshot={null}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("Starting ACP session...");
+    expect(container.textContent).toContain("Starting session");
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(latestAcpConversationArgs().activeSessionId).toBeNull();
+    expect(latestAcpConversationArgs().isAgentActive).toBe(false);
+  });
+
   it("hides a partial leading ACP chunk instead of rendering it", () => {
     vi.mocked(useAcpConversation).mockReturnValue(buildConversationHookState() as never);
 
