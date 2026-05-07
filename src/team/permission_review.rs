@@ -238,6 +238,14 @@ impl TeamPermissionReviewDispatcher {
         if record.status != "pending" || record.human_review_notified_at.is_some() {
             return Ok(());
         }
+        let review_delivery = record
+            .review_delivery_run_id
+            .as_deref()
+            .zip(record.review_target_actor_id.as_deref())
+            .zip(record.review_message_id)
+            .map(|((run_id, actor_id), message_id)| {
+                (run_id.to_string(), actor_id.to_string(), message_id)
+            });
         let requester_actor_id = request
             .routing
             .requester_actor_id
@@ -285,6 +293,22 @@ impl TeamPermissionReviewDispatcher {
                 permission_id = %request.request_id,
                 "human review notification was already marked while appending fallback message"
             );
+        }
+        if let Some((run_id, actor_id, message_id)) = review_delivery {
+            if let Err(err) = self
+                .teams
+                .ack_actor_message(&run_id, &actor_id, message_id)
+                .await
+            {
+                tracing::debug!(
+                    permission_id = %request.request_id,
+                    run_id = %run_id,
+                    actor_id = %actor_id,
+                    message_id,
+                    error = %err,
+                    "failed to ack stale permission review mailbox message after human fallback"
+                );
+            }
         }
         self.permissions
             .record_review_dispatch(&request.request_id, None, reason, None, None)
@@ -555,7 +579,7 @@ mod tests {
     use crate::team::mailbox_hint::RunningActorRuntime;
     use agenthub_acp::AcpPermissionRoutingMetadata;
     use agenthub_acp::acp_permission_review_timeout;
-    use agenthub_team_actor::{ActorInboxRequest, ActorMailboxService};
+    use agenthub_team_actor::{ActorInboxRequest, ActorMailboxService, ActorMessageStatus};
     use serde_json::json;
     use tokio::sync::Mutex;
     use uuid::Uuid;
@@ -921,6 +945,43 @@ mod tests {
             Some("review_timeout")
         );
         assert!(record_after_timeout.human_review_notified_at.is_some());
+
+        let reviewer_pending_inbox = state
+            .teams
+            .actor_mailbox_service()
+            .actor_inbox(ActorInboxRequest {
+                run_id: run_id.clone(),
+                actor_id: "reviewer".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: None,
+            })
+            .await
+            .expect("reload reviewer pending inbox");
+        assert_eq!(
+            reviewer_pending_inbox.messages.len(),
+            0,
+            "stale agent-review mailbox request should be acked after human fallback"
+        );
+        assert_eq!(reviewer_pending_inbox.pending_count, 0);
+
+        let reviewer_delivered_inbox = state
+            .teams
+            .actor_mailbox_service()
+            .actor_inbox(ActorInboxRequest {
+                run_id,
+                actor_id: "reviewer".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: Some(vec![ActorMessageStatus::Delivered]),
+            })
+            .await
+            .expect("reload reviewer delivered inbox");
+        assert_eq!(reviewer_delivered_inbox.messages.len(), 1);
+        assert_eq!(
+            reviewer_delivered_inbox.messages[0].payload["type"],
+            Value::from(TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE)
+        );
     }
 
     #[tokio::test]
