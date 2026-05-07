@@ -338,6 +338,70 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("loads member events from the latest step runtime handle when no session is selected", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 17,
+        agent_id: "worker-agent",
+        session_id: "runtime-handle-1",
+        seq: "17",
+        ts: 223,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Loaded from latest step runtime handle.",
+        }),
+      },
+    ]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: null,
+      selectedMemberSnapshot: {
+        member_id: "worker-agent",
+        role: "worker",
+        model: null,
+        prompt: null,
+        skills: [],
+        pending_inbox_count: 0,
+        status: "running",
+        session_status: "running",
+        latest_step: {
+          id: "step-runtime",
+          run_id: "run-1",
+          step_key: "worker",
+          member_id: "worker-agent",
+          runtime_handle_id: "runtime-handle-1",
+          status: "working",
+          attempt: 1,
+          depends_on: [],
+        } as TeamStepRecord,
+      },
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-handle-1",
+        undefined
+      );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
   it("coalesces concurrent replace loads for the same member ACP session", async () => {
     let resolveList: ((events: AgentEvent[]) => void) | null = null;
     const listAgentEvents = vi
@@ -1309,6 +1373,73 @@ describe("useTeamActions", () => {
         "runtime-session-1",
         undefined
       );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("loads member events from an explicit session override after input session mismatch", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 21,
+        agent_id: "agent-123",
+        session_id: "runtime-session-running",
+        seq: "21",
+        ts: 456,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Response from the running session.",
+        }),
+      },
+    ]);
+    const memberEventsRef = {
+      current: [
+        {
+          event_id: 9,
+          agent_id: "agent-123",
+          session_id: "runtime-session-stale",
+          seq: "9",
+          ts: 123,
+          stream: "acp" as const,
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "Old session message.",
+          }),
+        },
+      ],
+    };
+    const setMemberEvents = vi.fn();
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "agent-123",
+      selectedMemberSessionId: "runtime-session-stale",
+      memberEventsRef,
+      setMemberEvents,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace", "runtime-session-running");
+      });
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "agent-123",
+        60,
+        "runtime-session-running",
+        undefined
+      );
+      expect(memberEventsRef.current.map((event) => event.session_id)).toContain(
+        "runtime-session-running"
+      );
+      expect(setMemberEvents).toHaveBeenCalled();
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);

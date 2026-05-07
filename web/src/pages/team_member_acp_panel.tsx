@@ -14,6 +14,8 @@ import { OutputHeaderDetails } from "../components/output_header";
 import { InputDock } from "../components/input_dock";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
+  isActiveTeamMemberStatus,
+  normalizeTeamMemberStatusValue,
   TeamMemberAcpTab,
   useTeamMemberAcpViewModel,
 } from "./team/use_team_member_acp_view_model";
@@ -86,11 +88,21 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const [acpTab, setAcpTab] = React.useState<TeamMemberAcpTab>("conversation");
   const [, setThinkingTick] = React.useState(0);
   const ansi = React.useCallback((inputValue: string) => inputValue, []);
-  const normalizedAgentStatus = selectedAgentStatus?.trim().toLowerCase() ?? "";
+  const normalizedAgentStatus = normalizeTeamMemberStatusValue(selectedAgentStatus);
+  const normalizedSnapshotStatus =
+    normalizeTeamMemberStatusValue(selectedMemberSnapshot?.status) ||
+    normalizeTeamMemberStatusValue(selectedMemberSnapshot?.session_status);
+  const snapshotHasActiveSession = isActiveTeamMemberStatus(normalizedSnapshotStatus);
+  const explicitSelectedSessionId = selectedSessionIdProp?.trim() || null;
   const resolvedSelectedSessionId =
-    normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
+    normalizedSnapshotStatus && !snapshotHasActiveSession
       ? null
-      : selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
+      : explicitSelectedSessionId ??
+        (normalizedAgentStatus &&
+        !snapshotHasActiveSession &&
+        !isAgentActiveStatus(normalizedAgentStatus)
+          ? null
+          : getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step));
   const {
     terminalRef,
     terminalShowJump,
@@ -149,7 +161,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     selectedMemberSnapshot,
     selectedMemberRole,
     selectedAgentStatus,
-    selectedSessionId: selectedSessionIdProp,
+    selectedSessionId: resolvedSelectedSessionId,
     memberEvents,
     memberEventsHasMore,
     memberEventsLoading,

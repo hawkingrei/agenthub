@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { AgentEvent } from "../../api";
 import { normalizeSseOutputLines } from "../../app_live_output";
+import { isSseConnectionStale } from "../../event_polling";
 import { upsertAgentEventList } from "./page_helpers";
 import type { TeamTab } from "./state";
 import { useResumeRefresh } from "./use_resume_refresh";
@@ -18,7 +19,10 @@ type UseTeamMemberAcpEffectsOptions = {
   selectedSessionId: string | null;
   tab: TeamTab;
   eventsAutoRefresh: boolean;
-  loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
+  loadMemberEvents: (
+    mode?: "replace" | "prepend",
+    sessionIdOverride?: string | null
+  ) => Promise<void>;
   setMemberEvents: Dispatch<SetStateAction<AgentEvent[]>>;
   setMemberEventsHasMore: Dispatch<SetStateAction<boolean>>;
   onLiveActivity?: () => Promise<void> | void;
@@ -27,6 +31,7 @@ type UseTeamMemberAcpEffectsOptions = {
 const TEAM_MEMBER_ACP_POLL_INTERVAL_MS = 4000;
 const TEAM_MEMBER_ACP_ACTIVITY_SYNC_DEBOUNCE_MS = 500;
 const TEAM_MEMBER_ACP_SELECTION_REFRESH_DEDUPE_MS = 1500;
+const TEAM_MEMBER_ACP_SSE_STALE_RECONNECT_THRESHOLD_MS = 30_000;
 
 function isMemberAcpTab(tab: TeamTab): boolean {
   return tab === "agent_acp" || tab === "member_console";
@@ -50,14 +55,21 @@ export function useTeamMemberAcpEffects({
   const loadMemberEventsRef = useRef(loadMemberEvents);
   const sseConnectedRef = useRef(false);
   const sseConnectingRef = useRef(false);
+  const sseHasOpenedRef = useRef(false);
+  const lastSseMemberActivityAtRef = useRef(Date.now());
   const activitySyncInFlightRef = useRef(false);
   const activitySyncQueuedRef = useRef(false);
   const activitySyncTimerRef = useRef<number | null>(null);
   const pollFallbackAllowedRef = useRef(false);
   const [pollFallbackEnabled, setPollFallbackEnabled] = useState(false);
   const onLiveActivityRef = useRef(onLiveActivity);
+  const pollFallbackEnabledRef = useRef(pollFallbackEnabled);
   const lastSelectionRefreshKeyRef = useRef<string | null>(null);
   const lastSelectionRefreshAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    pollFallbackEnabledRef.current = pollFallbackEnabled;
+  }, [pollFallbackEnabled]);
 
   useEffect(() => {
     latestSelectionRef.current = {
@@ -84,10 +96,20 @@ export function useTeamMemberAcpEffects({
   }, [onLiveActivity]);
 
   const syncPollFallbackEnabled = useCallback(() => {
+    const now = Date.now();
+    const memberActivityStale = isSseConnectionStale(
+      sseConnectedRef.current,
+      lastSseMemberActivityAtRef.current,
+      now,
+      TEAM_MEMBER_ACP_SSE_STALE_RECONNECT_THRESHOLD_MS
+    );
     const nextEnabled =
       pollFallbackAllowedRef.current &&
       (typeof EventSource === "undefined" ||
-        (!sseConnectedRef.current && !sseConnectingRef.current));
+        memberActivityStale ||
+        (!sseConnectedRef.current &&
+          (!sseConnectingRef.current || sseHasOpenedRef.current)));
+    pollFallbackEnabledRef.current = nextEnabled;
     setPollFallbackEnabled((previous) =>
       previous === nextEnabled ? previous : nextEnabled
     );
@@ -217,12 +239,18 @@ export function useTeamMemberAcpEffects({
       (selectedSessionId?.trim() ?? "") &&
       isMemberAcpTab(tab)
   );
-  const memberAcpRefreshEnabled = memberAcpSyncEnabled && pollFallbackEnabled;
+  const memberAcpRefreshEnabled = memberAcpSyncEnabled;
 
   useResumeRefresh({
     enabled: memberAcpRefreshEnabled,
     intervalMs: TEAM_MEMBER_ACP_POLL_INTERVAL_MS,
-    refresh: () => refreshSelectedMemberEvents("poll"),
+    refresh: () => {
+      syncPollFallbackEnabled();
+      if (!pollFallbackEnabledRef.current) {
+        return Promise.resolve();
+      }
+      return refreshSelectedMemberEvents("poll");
+    },
   });
 
   useEffect(() => {
@@ -238,6 +266,7 @@ export function useTeamMemberAcpEffects({
     let source: EventSource | null = null;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
+    sseHasOpenedRef.current = false;
 
     const clearReconnectTimer = () => {
       if (reconnectTimer != null) {
@@ -300,6 +329,8 @@ export function useTeamMemberAcpEffects({
         reconnectAttempt = 0;
         sseConnectingRef.current = false;
         sseConnectedRef.current = true;
+        sseHasOpenedRef.current = true;
+        lastSseMemberActivityAtRef.current = Date.now();
         syncPollFallbackEnabled();
       };
       nextSource.onmessage = (event) => {
@@ -318,6 +349,7 @@ export function useTeamMemberAcpEffects({
         if (liveLines.length === 0) {
           return;
         }
+        lastSseMemberActivityAtRef.current = Date.now();
         setMemberEvents((prev) =>
           upsertAgentEventList(prev, liveLines, "replace", sessionId)
         );

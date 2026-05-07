@@ -393,15 +393,32 @@ export function resolveSelectedAgentWorkspaceSessionId(
   latestStep: TeamStepRecord | null | undefined,
   runtimeSessionId: string | null | undefined,
   previousSessionId?: string | null,
-  agentStatus?: string | null
+  agentStatus?: string | null,
+  runtimeSessionStatus?: string | null,
+  runtimeAgentStatus?: string | null
 ): string | null {
   const normalizedAgentStatus = agentStatus?.trim().toLowerCase() ?? "";
-  if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
-    return null;
-  }
+  const normalizedRuntimeSessionStatus = runtimeSessionStatus?.trim().toLowerCase() ?? "";
+  const normalizedRuntimeAgentStatus = runtimeAgentStatus?.trim().toLowerCase() ?? "";
   const normalizedRuntimeSessionId = runtimeSessionId?.trim() ?? "";
   if (normalizedRuntimeSessionId) {
+    if (
+      normalizedRuntimeSessionStatus &&
+      !isAgentActiveStatus(normalizedRuntimeSessionStatus)
+    ) {
+      return null;
+    }
+    if (
+      !normalizedRuntimeSessionStatus &&
+      normalizedRuntimeAgentStatus &&
+      !isAgentActiveStatus(normalizedRuntimeAgentStatus)
+    ) {
+      return null;
+    }
     return normalizedRuntimeSessionId;
+  }
+  if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
+    return null;
   }
   const normalizedPreviousSessionId = previousSessionId?.trim() ?? "";
   // Keep the previous ACP session identity sticky while runtime metadata catches up
@@ -439,6 +456,24 @@ export function resolveNextSelectedAgentWorkspaceStickySession(
     memberId: normalizedMemberId,
     sessionId: normalizedResolvedSessionId,
   };
+}
+
+export function resolveNextSelectedAgentWorkspaceSessionOverride(
+  previous: { memberId: string; sessionId: string | null },
+  memberId: string,
+  runtimeSessionId: string | null | undefined
+): { memberId: string; sessionId: string | null } {
+  if (!previous.memberId && previous.sessionId == null) {
+    return previous;
+  }
+  if (previous.memberId !== memberId) {
+    return { memberId: "", sessionId: null };
+  }
+  const normalizedRuntimeSessionId = runtimeSessionId?.trim() || null;
+  if (normalizedRuntimeSessionId && normalizedRuntimeSessionId === previous.sessionId) {
+    return { memberId: "", sessionId: null };
+  }
+  return previous;
 }
 
 export function buildTeamDetailPath(teamId: string): string {
@@ -1501,7 +1536,19 @@ export function TeamPage(props: TeamPageProps) {
     memberId: string;
     sessionId: string | null;
   }>({ memberId: "", sessionId: null });
+  const [selectedAgentWorkspaceSessionOverride, setSelectedAgentWorkspaceSessionOverride] =
+    useState<{
+      memberId: string;
+      sessionId: string | null;
+    }>({ memberId: "", sessionId: null });
   const selectedAgentWorkspaceResolvedSessionId = useMemo(() => {
+    const overrideSessionId =
+      selectedAgentWorkspaceSessionOverride.memberId === selectedAgentWorkspaceMemberId
+        ? selectedAgentWorkspaceSessionOverride.sessionId
+        : null;
+    if (overrideSessionId?.trim()) {
+      return overrideSessionId.trim();
+    }
     const previousSessionId =
       selectedAgentWorkspaceStickySession.memberId === selectedAgentWorkspaceMemberId
         ? selectedAgentWorkspaceStickySession.sessionId
@@ -1510,16 +1557,28 @@ export function TeamPage(props: TeamPageProps) {
       selectedAgentWorkspaceSnapshot?.latest_step,
       selectedAgentWorkspaceRuntimeMember?.session_id ?? null,
       previousSessionId,
-      selectedAgentWorkspaceAgent?.status ?? null
+      selectedAgentWorkspaceAgent?.status ?? null,
+      selectedAgentWorkspaceRuntimeMember?.session_status ?? null,
+      selectedAgentWorkspaceRuntimeMember?.agent_status ?? null
     );
   }, [
     selectedAgentWorkspaceAgent,
     selectedAgentWorkspaceMemberId,
     selectedAgentWorkspaceRuntimeMember,
+    selectedAgentWorkspaceSessionOverride,
     selectedAgentWorkspaceSnapshot,
     selectedAgentWorkspaceStickySession,
   ]);
   const selectedAgentWorkspaceSessionId = selectedAgentWorkspaceResolvedSessionId;
+  useEffect(() => {
+    setSelectedAgentWorkspaceSessionOverride((previous) => {
+      return resolveNextSelectedAgentWorkspaceSessionOverride(
+        previous,
+        selectedAgentWorkspaceMemberId,
+        selectedAgentWorkspaceRuntimeMember?.session_id ?? null
+      );
+    });
+  }, [selectedAgentWorkspaceMemberId, selectedAgentWorkspaceRuntimeMember]);
   useEffect(() => {
     setSelectedAgentWorkspaceStickySession((previous) =>
       resolveNextSelectedAgentWorkspaceStickySession(
@@ -1544,6 +1603,8 @@ export function TeamPage(props: TeamPageProps) {
     return memberTargetNodeById[memberId]?.trim() || null;
   }, [focusedAgentMemberId, memberTargetNodeById]);
   const selectedAgentWorkspaceAgentId = selectedAgentWorkspaceAgent?.id?.trim() ?? "";
+  const selectedAgentWorkspaceEventAgentId =
+    selectedAgentWorkspaceAgentId || selectedAgentWorkspaceMemberId.trim();
   const selectedMemberDiscoveryCard = useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) return null;
@@ -1883,7 +1944,7 @@ export function TeamPage(props: TeamPageProps) {
     inboxLimit,
     inboxAfterId,
     inboxIncludeDelivered,
-    selectedMemberAgentId: selectedAgentWorkspaceAgentId || null,
+    selectedMemberAgentId: selectedAgentWorkspaceEventAgentId || null,
     selectedMemberSessionId: selectedAgentWorkspaceSessionId,
     selectedMemberSnapshot: selectedAgentWorkspaceSnapshot,
     activeRunIdRef,
@@ -2251,7 +2312,7 @@ export function TeamPage(props: TeamPageProps) {
 
   useTeamMemberAcpEffects({
     token: props.token,
-    selectedAgentId: selectedAgentWorkspaceAgentId,
+    selectedAgentId: selectedAgentWorkspaceEventAgentId,
     selectedSessionId: selectedAgentWorkspaceSessionId,
     tab,
     eventsAutoRefresh,
@@ -2379,7 +2440,7 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useEffect(() => {
-    const agentId = selectedAgentWorkspaceAgentId.trim();
+    const agentId = selectedAgentWorkspaceEventAgentId.trim();
     const sessionId = selectedAgentWorkspaceSessionId?.trim() ?? "";
     if (!agentId || !sessionId) {
       pendingMemberAcpCacheHydrationKeyRef.current = null;
@@ -2391,10 +2452,10 @@ export function TeamPage(props: TeamPageProps) {
     lastMemberAcpCacheFingerprintRef.current = JSON.stringify(cached);
     setMemberEvents(cached);
     setMemberEventsHasMore(cached.length > 0);
-  }, [selectedAgentWorkspaceAgentId, selectedAgentWorkspaceSessionId]);
+  }, [selectedAgentWorkspaceEventAgentId, selectedAgentWorkspaceSessionId]);
 
   useEffect(() => {
-    const agentId = selectedAgentWorkspaceAgentId.trim();
+    const agentId = selectedAgentWorkspaceEventAgentId.trim();
     const sessionId = selectedAgentWorkspaceSessionId?.trim() ?? "";
     if (!agentId || !sessionId) {
       return;
@@ -2431,7 +2492,7 @@ export function TeamPage(props: TeamPageProps) {
       lastMemberAcpCacheFingerprintRef.current = nextFingerprint;
       memberAcpCachePersistTimerRef.current = null;
     }, TEAM_RUNTIME_CACHE_PERSIST_DEBOUNCE_MS);
-  }, [memberEvents, selectedAgentWorkspaceAgentId, selectedAgentWorkspaceSessionId]);
+  }, [memberEvents, selectedAgentWorkspaceEventAgentId, selectedAgentWorkspaceSessionId]);
 
   useEffect(() => {
     const runId = activeRunIdForSelectedTeam?.trim() ?? "";
@@ -2888,7 +2949,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
   const onSendAgentAcpInput = useCallback(
     async (text: string, sessionId: string) => {
-      const agentId = selectedAgentWorkspaceAgentId;
+      const agentId = selectedAgentWorkspaceEventAgentId.trim();
       const normalizedText = text.trim();
       if (!props.token || !agentId || !normalizedText || !sessionId) {
         return;
@@ -2909,10 +2970,44 @@ export function TeamPage(props: TeamPageProps) {
         if (mismatch) {
           try {
             await sendForSession(mismatch.running);
+            setSelectedAgentWorkspaceStickySession({
+              memberId: selectedAgentWorkspaceMemberId.trim(),
+              sessionId: mismatch.running,
+            });
+            setSelectedAgentWorkspaceSessionOverride({
+              memberId: selectedAgentWorkspaceMemberId.trim(),
+              sessionId: mismatch.running,
+            });
             if (selectedTeamId) {
+              setTeamRuntimeByTeamId((prev) => {
+                const runtime = prev[selectedTeamId];
+                if (!runtime) return prev;
+                let changed = false;
+                const members = runtime.members.map((member) => {
+                  if (member.member_id !== selectedAgentWorkspaceMemberId) {
+                    return member;
+                  }
+                  if (member.session_id === mismatch.running) {
+                    return member;
+                  }
+                  changed = true;
+                  return {
+                    ...member,
+                    session_id: mismatch.running,
+                  };
+                });
+                if (!changed) return prev;
+                return {
+                  ...prev,
+                  [selectedTeamId]: {
+                    ...runtime,
+                    members,
+                  },
+                };
+              });
               void refreshTeamRuntime(selectedTeamId).catch(() => undefined);
             }
-            await loadMemberEvents("replace");
+            await loadMemberEvents("replace", mismatch.running);
             return;
           } catch (retryErr) {
             setError(parseErrorMessage(retryErr));
@@ -2933,7 +3028,8 @@ export function TeamPage(props: TeamPageProps) {
       props.token,
       refreshAgents,
       refreshTeamRuntime,
-      selectedAgentWorkspaceAgentId,
+      selectedAgentWorkspaceEventAgentId,
+      selectedAgentWorkspaceMemberId,
       selectedTeamId,
       setError,
     ]

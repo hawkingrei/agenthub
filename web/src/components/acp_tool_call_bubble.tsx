@@ -26,6 +26,7 @@ import {
   formatTerminalActivityLabel,
   formatToolCallStatus,
   getToolCallStatusMark,
+  resolveEffectiveToolCallStatus,
 } from "./acp_tool_bubble_shared";
 import { formatConversationPreview, unescapeLineBreaks } from "../conversation";
 
@@ -85,12 +86,13 @@ export const ToolCallBubble = React.memo(
       () => summarizeToolPayload(outputPayload, TOOL_PAYLOAD_PREVIEW_LIMIT),
       [outputPayload]
     );
-    const statusLabel = formatToolCallStatus(msg.status);
+    const effectiveStatus = resolveEffectiveToolCallStatus(msg.status, runStatus);
+    const statusLabel = formatToolCallStatus(effectiveStatus);
     const durationLabel = React.useMemo(
       () => formatToolCallDurationLabel(msg.raw_output),
       [msg.raw_output]
     );
-    const statusMark = getToolCallStatusMark(msg.status);
+    const statusMark = getToolCallStatusMark(effectiveStatus);
     const terminalActivityPreview = React.useMemo(() => {
       const activities = msg.terminal_activities;
       const last =

@@ -67,6 +67,25 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("stdout");
   });
 
+  it("uses terminal run status for stale live tool calls", async () => {
+    const html = await renderConversation(
+      [
+        {
+          kind: "tool_call",
+          id: "call-stale",
+          title: "Shell",
+          status: "in_progress",
+          raw_input: { cmd: "cargo test" },
+        },
+      ],
+      { runStatus: "stopped" }
+    );
+
+    expect(html).toContain("Tool Call: Shell");
+    expect(html).toContain("Stopped");
+    expect(html).not.toContain("In Progress");
+  });
+
   it("renders terminal background activity as a dedicated ACP section", async () => {
     const html = await renderConversation([
       {

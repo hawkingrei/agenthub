@@ -8,7 +8,10 @@ type UseTeamPanelActionsParams = {
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   setError: (value: string | null) => void;
   parseErrorMessage: (error: unknown) => string;
-  loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
+  loadMemberEvents: (
+    mode?: "replace" | "prepend",
+    sessionIdOverride?: string | null
+  ) => Promise<void>;
   refreshEvents: (runId: string, mode?: "replace" | "prepend") => Promise<void>;
   refreshSnapshot: (runId: string) => Promise<unknown>;
   setSelectedMemberId: (memberId: string) => void;
