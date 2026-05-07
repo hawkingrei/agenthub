@@ -5,7 +5,6 @@ import { loadDeveloperModePreference, persistDeveloperModePreference } from "./u
 import { formatAgentModelLabel } from "./agent_presets";
 import { api, AgentRecord, stringifyApiError } from "./api";
 import { createAnsiRenderer } from "./app_utils";
-import { normalizeAcpModeId } from "./acp_mode";
 import type { OutputLine } from "./output_cache";
 
 export function useAppAcpUi(
@@ -83,7 +82,7 @@ export function useAppAcpUi(
   }, [token, activeAgent, setError]);
 
   const onAcpSetMode = useCallback(async (requestedModeId: string) => {
-    const modeId = normalizeAcpModeId(requestedModeId);
+    const modeId = requestedModeId.trim();
     if (!modeId) {
       setError("mode id is required");
       return;

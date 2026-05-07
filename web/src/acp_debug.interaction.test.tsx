@@ -268,7 +268,7 @@ describe("AcpDebug interactions", () => {
     clickByText(container, "Set Mode");
     clickByText(container, "Set Model");
 
-    expect(onSetMode).toHaveBeenCalledWith("full-access");
+    expect(onSetMode).toHaveBeenCalledWith("danger_full_access");
     expect(onSetModel).toHaveBeenCalledWith("gemini-2.5-pro");
   });
 

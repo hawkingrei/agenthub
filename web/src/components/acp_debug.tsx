@@ -1,7 +1,6 @@
 import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import { AcpConfigOption, AcpRawEvent } from "../acp";
-import { normalizeAcpModeId } from "../acp_mode";
 import { AcpPermissionRecord } from "../api";
 import { shouldDisplayPermissionRecord } from "../app_permission_polling";
 import { OutputLine } from "../output_cache";
@@ -368,7 +367,7 @@ function AcpDebugView({
               className="whitespace-nowrap"
               size="sm"
               tone="secondary"
-              onClick={() => onAcpSetMode(normalizeAcpModeId(resolvedModeId))}
+              onClick={() => onAcpSetMode(resolvedModeId)}
               disabled={!canApplyMode || !resolvedModeId}
             >
               Set Mode

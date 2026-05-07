@@ -30,14 +30,15 @@ change.
 
 Codex full-access mode can now be selected with either the canonical ACP mode ID
 `full-access` or the common YOLO-style aliases. This applies to `codex_acp.default_mode`,
-standalone ACP Debug mode changes, and Team member ACP Debug mode changes.
+standalone ACP Debug mode changes, and Team member ACP Debug mode changes through the
+backend ACP mode API boundary.
 
 ### Validation
 
 ```bash
 cargo fmt --check
 cargo test -p agenthub-config codex_acp_default_mode -- --nocapture
-npm --prefix web run test -- src/acp_mode.test.ts src/acp_debug.interaction.test.tsx src/pages/team_member_acp_panel.test.tsx
+npm --prefix web run test -- src/acp_debug.interaction.test.tsx src/pages/team_member_acp_panel.test.tsx
 cargo check -p agenthub
 git diff --check
 ```
