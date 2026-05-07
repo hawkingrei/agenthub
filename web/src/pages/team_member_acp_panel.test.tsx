@@ -1173,6 +1173,10 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
   it("submits selected ACP mode and model values for the team member", async () => {
     const onAcpSetMode = vi.fn();
     const onAcpSetModel = vi.fn();
+    const onAcpSetConfig = vi.fn();
+    const onForceNewSession = vi.fn();
+    const onInterrupt = vi.fn();
+    const onLoadOlder = vi.fn();
 
     renderWithMantine(
       root,
@@ -1183,6 +1187,10 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         selectedMemberRole="worker"
         selectedMemberSnapshot={null}
         memberEvents={buildAcpEvents([
+          {
+            type: "run_status",
+            status: "running",
+          },
           {
             type: "config_option_update",
             config_options: [
@@ -1212,13 +1220,18 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         eventsLoading={false}
         oldestMemberEventId={null}
         canControlAcp={true}
+        canInterrupt={true}
         onAcpSetMode={onAcpSetMode}
         onAcpSetModel={onAcpSetModel}
-        onLoadOlder={vi.fn()}
+        onAcpSetConfig={onAcpSetConfig}
+        onForceNewSession={onForceNewSession}
+        onInterrupt={onInterrupt}
+        onLoadOlder={onLoadOlder}
       />
     );
 
     await openDebugTabAndWait(container);
+    latestAcpConversationArgs().onLoadOlder();
 
     const modeSelect = required(
       container.querySelector('select[name="acp-mode"]') as HTMLSelectElement | null,
@@ -1228,12 +1241,24 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       container.querySelector('select[name="acp-model"]') as HTMLSelectElement | null,
       "model select missing"
     );
+    const configIdInput = required(
+      container.querySelector('input[name="acp-config-id"]') as HTMLInputElement | null,
+      "config id input missing"
+    );
+    const configValueInput = required(
+      container.querySelector('input[name="acp-config-value"]') as HTMLInputElement | null,
+      "config value input missing"
+    );
 
     act(() => {
       modeSelect.value = "danger_full_access";
       modeSelect.dispatchEvent(new Event("change", { bubbles: true }));
       modelSelect.value = "gemini-2.5-pro";
       modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      configIdInput.value = "approval_policy";
+      configIdInput.dispatchEvent(new Event("input", { bubbles: true }));
+      configValueInput.value = "never";
+      configValueInput.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
     act(() => {
@@ -1249,10 +1274,32 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         ) as HTMLButtonElement | undefined,
         "set model button missing"
       ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      required(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Set Config")
+        ) as HTMLButtonElement | undefined,
+        "set config button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      required(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Cancel Run")
+        ) as HTMLButtonElement | undefined,
+        "cancel run button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      required(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Force New Session")
+        ) as HTMLButtonElement | undefined,
+        "force new session button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
     expect(onAcpSetMode).toHaveBeenCalledWith("danger_full_access");
     expect(onAcpSetModel).toHaveBeenCalledWith("gemini-2.5-pro");
+    expect(onAcpSetConfig).toHaveBeenCalledTimes(1);
+    expect(onInterrupt).toHaveBeenCalledTimes(1);
+    expect(onForceNewSession).toHaveBeenCalledTimes(1);
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
   });
 
   it("does not rebuild ACP view when parent state changes without member ACP prop changes", () => {
