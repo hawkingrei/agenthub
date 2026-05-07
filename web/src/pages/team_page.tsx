@@ -458,6 +458,24 @@ export function resolveNextSelectedAgentWorkspaceStickySession(
   };
 }
 
+export function resolveNextSelectedAgentWorkspaceSessionOverride(
+  previous: { memberId: string; sessionId: string | null },
+  memberId: string,
+  runtimeSessionId: string | null | undefined
+): { memberId: string; sessionId: string | null } {
+  if (!previous.memberId && previous.sessionId == null) {
+    return previous;
+  }
+  if (previous.memberId !== memberId) {
+    return { memberId: "", sessionId: null };
+  }
+  const normalizedRuntimeSessionId = runtimeSessionId?.trim() || null;
+  if (normalizedRuntimeSessionId && normalizedRuntimeSessionId === previous.sessionId) {
+    return { memberId: "", sessionId: null };
+  }
+  return previous;
+}
+
 export function buildTeamDetailPath(teamId: string): string {
   return buildCanonicalTeamDetailPath(teamId);
 }
@@ -1554,17 +1572,11 @@ export function TeamPage(props: TeamPageProps) {
   const selectedAgentWorkspaceSessionId = selectedAgentWorkspaceResolvedSessionId;
   useEffect(() => {
     setSelectedAgentWorkspaceSessionOverride((previous) => {
-      if (!previous.memberId && previous.sessionId == null) {
-        return previous;
-      }
-      if (previous.memberId !== selectedAgentWorkspaceMemberId) {
-        return { memberId: "", sessionId: null };
-      }
-      const runtimeSessionId = selectedAgentWorkspaceRuntimeMember?.session_id?.trim() || null;
-      if (runtimeSessionId && runtimeSessionId === previous.sessionId) {
-        return { memberId: "", sessionId: null };
-      }
-      return previous;
+      return resolveNextSelectedAgentWorkspaceSessionOverride(
+        previous,
+        selectedAgentWorkspaceMemberId,
+        selectedAgentWorkspaceRuntimeMember?.session_id ?? null
+      );
     });
   }, [selectedAgentWorkspaceMemberId, selectedAgentWorkspaceRuntimeMember]);
   useEffect(() => {

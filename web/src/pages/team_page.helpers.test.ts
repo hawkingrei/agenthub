@@ -6,6 +6,7 @@ import {
   buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
   parseTeamAgentInputSessionMismatch,
+  resolveNextSelectedAgentWorkspaceSessionOverride,
   resolveNextSelectedAgentWorkspaceStickySession,
   resolveChannelRouteTaskId,
   resolveRouteScopedConversationTaskSelection,
@@ -302,6 +303,7 @@ describe("team_page helpers", () => {
         "running"
       )
     ).toBeNull();
+    expect(resolveSelectedAgentWorkspaceSessionId(null, null, null, "stopped")).toBeNull();
     expect(resolveSelectedAgentWorkspaceSessionId(null, null, null)).toBeNull();
   });
 
@@ -325,6 +327,32 @@ describe("team_page helpers", () => {
     expect(
       resolveNextSelectedAgentWorkspaceStickySession(workerOne, "", null)
     ).toEqual({ memberId: "", sessionId: null });
+  });
+
+  it("clears temporary ACP session overrides after member or runtime catch-up", () => {
+    const empty = { memberId: "", sessionId: null as string | null };
+    const override = { memberId: "worker-1", sessionId: "runtime-session-2" };
+
+    expect(
+      resolveNextSelectedAgentWorkspaceSessionOverride(empty, "worker-1", null)
+    ).toBe(empty);
+    expect(
+      resolveNextSelectedAgentWorkspaceSessionOverride(override, "worker-2", null)
+    ).toEqual({ memberId: "", sessionId: null });
+    expect(
+      resolveNextSelectedAgentWorkspaceSessionOverride(
+        override,
+        "worker-1",
+        " runtime-session-2 "
+      )
+    ).toEqual({ memberId: "", sessionId: null });
+    expect(
+      resolveNextSelectedAgentWorkspaceSessionOverride(
+        override,
+        "worker-1",
+        "runtime-session-3"
+      )
+    ).toBe(override);
   });
 
   it("extracts positive thread root message ids from conversation payloads", () => {
