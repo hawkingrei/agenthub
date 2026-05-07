@@ -670,4 +670,109 @@ describe("buildAcpView", () => {
     expect(view.toolCalls).toHaveLength(1);
     expect(view.toolCalls[0].status).toBe("running");
   });
+
+  it("applies terminal run status without a session id as a global status", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-global",
+          title: "Shell",
+          status: "RUNNING",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "run_status",
+          status: "interrupted",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.runStatus).toEqual({
+      status: "interrupted",
+      session_id: undefined,
+    });
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0]).toMatchObject({
+      id: "call-global",
+      session_id: null,
+      status: "interrupted",
+    });
+  });
+
+  it("closes stale live tool calls without session ids from later sessionless messages", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-sessionless",
+          title: "Shell",
+          status: "in-progress",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Finished without a session id.",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0]).toMatchObject({
+      id: "call-sessionless",
+      session_id: null,
+      status: "completed",
+    });
+  });
+
+  it("does not apply session-scoped terminal run status to sessionless tool calls", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-sessionless-live",
+          title: "Shell",
+          status: "running",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s2",
+        message: JSON.stringify({
+          type: "run_status",
+          status: "stopped",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.runStatus).toEqual({ status: "stopped", session_id: "s2" });
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0]).toMatchObject({
+      id: "call-sessionless-live",
+      session_id: null,
+      status: "running",
+    });
+  });
 });
