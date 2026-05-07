@@ -5,8 +5,21 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TeamThreadPane } from "./team_thread_pane";
+import {
+  TEAM_THREAD_CHANNEL_BADGE_CLASS,
+  TEAM_THREAD_MESSAGE_AVATAR_CLASS,
+  TEAM_THREAD_MESSAGE_BUBBLE_CLASS,
+  TEAM_THREAD_PANE_CLASS,
+  TEAM_THREAD_SOURCE_CARD_CLASS,
+} from "../../ui/tailwind_classes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+function expectStaticClassTokens(html: string, className: string): void {
+  for (const token of className.split(/\s+/).filter(Boolean)) {
+    expect(html).toContain(token.split("&").join("&amp;"));
+  }
+}
 
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   window.matchMedia = ((query: string) =>
@@ -99,9 +112,11 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("Reply in thread · # all");
     expect(html).toContain("@name to reply · Enter to reply");
     expect(html).toContain("Reply");
-    expect(html).toContain("max-w-[360px]");
-    expect(html).toContain("rounded-full");
-    expect(html).toContain("hover:border-black");
+    expectStaticClassTokens(html, TEAM_THREAD_PANE_CLASS);
+    expectStaticClassTokens(html, TEAM_THREAD_CHANNEL_BADGE_CLASS);
+    expectStaticClassTokens(html, TEAM_THREAD_SOURCE_CARD_CLASS);
+    expectStaticClassTokens(html, TEAM_THREAD_MESSAGE_AVATAR_CLASS);
+    expectStaticClassTokens(html, TEAM_THREAD_MESSAGE_BUBBLE_CLASS);
   });
 
   it("keeps the reply composer available when the root has no chat text body", () => {

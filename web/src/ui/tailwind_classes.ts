@@ -431,6 +431,158 @@ export const TEAM_RUN_HINT_TEXT_CLASS = "text-[13px] text-notion-text-muted ital
 export const TEAM_RUN_FOOT_META_CLASS =
   "mono text-[10px] font-bold uppercase tracking-widest text-notion-text-muted opacity-70";
 
+export const TEAM_ACTIVE_RUN_HEADER_CLASS = "mb-3";
+
+export const TEAM_ACTIVE_RUN_ACTIONS_CLASS = "justify-end gap-2";
+
+export const TEAM_ACTIVE_RUN_METADATA_CLASS =
+  "mt-3 gap-y-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
+
+export const TEAM_MEMBER_ACP_HEADER_CONTEXT_CLASS =
+  "inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-2xl border border-notion-border/80 bg-notion-sidebar/68 px-1.5 py-1 shadow-notion-row";
+
+export const TEAM_MEMBER_ACP_NODE_LINK_CLASS =
+  "inline-flex min-w-0 max-w-full items-center rounded-xl border border-transparent px-1.5 py-0.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-white/70 hover:text-notion-text";
+
+export const TEAM_MEMBER_ACP_INFO_STRIP_CLASS = "min-w-0 max-w-full";
+
+export const TEAM_MEMBER_ACP_INFO_BADGE_CLASS =
+  "max-w-full truncate border-transparent bg-transparent px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-notion-text-muted shadow-none";
+
+export const TEAM_MEMBER_ACP_ACTIVITY_STRIP_CLASS =
+  "inline-flex min-w-0 max-w-full flex-wrap items-center gap-1";
+
+export const TEAM_MEMBER_ACP_ACTIVITY_BADGE_CLASS =
+  "max-w-full truncate border-notion-border/70 bg-white/80 px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-notion-text-muted shadow-none";
+
+export const TEAM_MEMBER_ACP_STARTING_SESSION_CLASS =
+  "inline-flex min-w-[12rem] items-center gap-2 rounded-xl border border-notion-border/70 bg-white/80 px-2 py-1 text-[11px] font-medium text-notion-text-muted";
+
+export const TEAM_MEMBER_ACP_STARTING_LABEL_CLASS = "shrink-0";
+
+export const TEAM_MEMBER_ACP_STARTING_PROGRESS_TRACK_CLASS =
+  "relative h-1.5 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-notion-hover/80";
+
+export const TEAM_MEMBER_ACP_STARTING_PROGRESS_BAR_CLASS =
+  "absolute inset-y-0 left-0 w-2/5 animate-pulse rounded-full bg-notion-accent/75";
+
+export const TEAM_MEMBER_ACP_TECHNICAL_SUMMARY_CLASS =
+  "inline-flex cursor-pointer list-none items-center rounded-xl border border-transparent bg-transparent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-notion-text-muted/70 transition hover:bg-white/70 hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10";
+
+export const TEAM_MEMBER_ACP_PANEL_SHELL_CLASS = "px-2 pb-2 pt-1.5";
+
+export const TEAM_MEMBER_ACP_BODY_SHELL_CLASS =
+  "relative mt-1 flex min-h-0 flex-1 flex-col gap-0 sm:gap-1";
+
+export const TEAM_MEMBER_ACP_TITLE_SHELL_CLASS = "shrink-0 px-4 pt-0.5 sm:px-6";
+
+export const TEAM_MEMBER_ACP_DESCRIPTION_CLASS =
+  "mt-0.5 text-[12px] leading-5 text-notion-text-muted";
+
+export const TEAM_MEMBER_ACP_PANEL_BODY_CLASS = "flex min-h-0 flex-1 flex-col overflow-hidden";
+
+export const TEAM_MEMBER_ACP_INPUT_DOCK_SHELL_CLASS = "mt-1.5 shrink-0";
+
+export const TEAM_MEMBER_ACP_SENDING_TEXT_CLASS = "mt-1.5";
+
+export const TEAM_THREAD_PANE_CLASS =
+  "flex min-h-0 w-full max-w-[360px] shrink-0 flex-col overflow-hidden border-notion-border/80";
+
+export const TEAM_THREAD_HEADER_CLASS =
+  "items-start gap-2 border-b border-notion-border/70 px-2.5 py-2";
+
+export const TEAM_THREAD_HEADER_CONTENT_CLASS = "min-w-0 flex-1";
+
+export const TEAM_THREAD_HEADER_TITLE_ROW_CLASS = "flex flex-wrap items-center gap-1.5";
+
+export const TEAM_THREAD_HEADER_TITLE_CLASS =
+  "text-[11px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted";
+
+export const TEAM_THREAD_CHANNEL_BADGE_CLASS =
+  "border-black/8 bg-white/92 px-2 py-0 text-[9px] font-semibold text-notion-text-muted";
+
+export const TEAM_THREAD_REPLY_COUNT_CLASS = "text-[10px] text-notion-text-muted";
+
+export const TEAM_THREAD_HELP_TEXT_CLASS = "mt-0.5 text-[11px] text-notion-text-muted";
+
+export const TEAM_THREAD_SOURCE_CARD_CLASS =
+  "mt-1 flex max-w-full flex-col gap-0.5 rounded-md border border-black/6 bg-white/92 px-2 py-1 text-[10px] font-medium text-notion-text-muted";
+
+export const TEAM_THREAD_SOURCE_ROW_CLASS = "inline-flex min-w-0 items-center gap-1.5";
+
+export const TEAM_THREAD_SOURCE_LABEL_CLASS =
+  "uppercase tracking-[0.08em] text-notion-text-muted/70";
+
+export const TEAM_THREAD_SOURCE_VALUE_CLASS = "truncate text-notion-text";
+
+export const TEAM_THREAD_SOURCE_PREVIEW_CLASS =
+  "truncate text-[11px] font-normal leading-4 text-notion-text-muted/90";
+
+export const TEAM_THREAD_HEADER_ACTIONS_CLASS = "flex shrink-0 items-center gap-1.5";
+
+export const TEAM_THREAD_HEADER_BUTTON_CLASS = "px-1.5 text-[10px] text-notion-text-muted/80";
+
+export const TEAM_THREAD_HEADER_ICON_CLASS = "text-[10px]";
+
+export const TEAM_THREAD_BODY_CLASS = "flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 py-2";
+
+export const TEAM_THREAD_EMPTY_STATE_CLASS = "border-0 bg-transparent px-0 py-0";
+
+export const TEAM_THREAD_TRANSCRIPT_CLASS = "flex flex-col gap-3";
+
+export const TEAM_THREAD_MESSAGE_ROW_CLASS =
+  `${CONVERSATION_MESSAGE_INLINE_ROW_CLASS} rounded-xl`;
+
+export const TEAM_THREAD_MESSAGE_AVATAR_CLASS =
+  "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-black/8 bg-white text-[10px] font-semibold uppercase tracking-tight text-notion-text-muted shadow-sm";
+
+export const TEAM_THREAD_MESSAGE_META_ROW_CLASS =
+  "flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-notion-text-muted";
+
+export const TEAM_THREAD_MESSAGE_CONTENT_CLASS = "min-w-0 flex flex-1 flex-col gap-1";
+
+export const TEAM_THREAD_MESSAGE_AUTHOR_CLASS = "font-semibold text-notion-text";
+
+export const TEAM_THREAD_ORIGINAL_BADGE_CLASS =
+  "ml-0.5 border-black/8 bg-white/92 px-2 py-0 text-[9px] font-semibold uppercase tracking-[0.06em] text-notion-text-muted";
+
+export const TEAM_THREAD_MESSAGE_BUBBLE_CLASS =
+  "w-full rounded-[12px] border border-black/6 bg-white/96 px-2 py-[5px] shadow-none [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80";
+
+export const TEAM_THREAD_RICH_TEXT_CLASS = "text-[13px] leading-6 text-notion-text";
+
+export const TEAM_THREAD_MISSING_TEXT_CLASS =
+  "text-[12px] italic leading-5 text-notion-text-muted";
+
+export const TEAM_THREAD_SECTION_ROW_CLASS =
+  "flex flex-wrap items-center justify-between gap-2 px-2";
+
+export const TEAM_THREAD_SECTION_TITLE_CLASS =
+  "text-[10px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted";
+
+export const TEAM_THREAD_REPLIES_LIST_CLASS =
+  "flex flex-col gap-2 border-t border-notion-border/70 pt-3";
+
+export const TEAM_THREAD_EMPTY_REPLIES_CLASS = "px-2 text-[11px] leading-5 text-notion-text-muted";
+
+export const TEAM_THREAD_COMPOSER_REGION_CLASS =
+  "border-t border-notion-border/55 bg-white/92 px-2.5 py-1.5";
+
+export const TEAM_THREAD_COMPOSER_CONTEXT_CLASS =
+  "px-1 pb-1 text-[10px] leading-5 text-notion-text-muted";
+
+export const TEAM_THREAD_TEXTAREA_CLASS =
+  "min-h-[40px] flex-1 border-transparent px-0 py-0 text-[13px] leading-5 shadow-none focus:border-transparent focus:ring-0";
+
+export const TEAM_THREAD_MENTION_MENU_CLASS =
+  "mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm";
+
+export const TEAM_THREAD_MENTION_HINT_CLASS = "px-3 py-1 text-xs text-ui-text-muted";
+
+export const TEAM_THREAD_MENTION_LIST_CLASS = "max-h-44 overflow-auto py-1";
+
+export const TEAM_THREAD_MENTION_ALIAS_CLASS = "text-[11px] text-ui-text-muted";
+
 export const TASKS_BOARD_LANES_CLASS =
   "grid min-w-full auto-cols-[minmax(280px,1fr)] grid-flow-col gap-4";
 

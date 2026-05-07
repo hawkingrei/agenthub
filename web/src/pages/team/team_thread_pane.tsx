@@ -18,13 +18,51 @@ import {
   resolveMentionDraftQuery,
 } from "./mailbox_helpers";
 import {
-  CONVERSATION_MESSAGE_INLINE_ROW_CLASS,
   TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS,
   TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS,
   TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS,
   TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS,
   TEAM_MESSAGE_COMPOSER_SHELL_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
+  TEAM_THREAD_BODY_CLASS,
+  TEAM_THREAD_CHANNEL_BADGE_CLASS,
+  TEAM_THREAD_COMPOSER_CONTEXT_CLASS,
+  TEAM_THREAD_COMPOSER_REGION_CLASS,
+  TEAM_THREAD_EMPTY_REPLIES_CLASS,
+  TEAM_THREAD_EMPTY_STATE_CLASS,
+  TEAM_THREAD_HEADER_ACTIONS_CLASS,
+  TEAM_THREAD_HEADER_BUTTON_CLASS,
+  TEAM_THREAD_HEADER_CLASS,
+  TEAM_THREAD_HEADER_CONTENT_CLASS,
+  TEAM_THREAD_HEADER_ICON_CLASS,
+  TEAM_THREAD_HEADER_TITLE_CLASS,
+  TEAM_THREAD_HEADER_TITLE_ROW_CLASS,
+  TEAM_THREAD_HELP_TEXT_CLASS,
+  TEAM_THREAD_MENTION_ALIAS_CLASS,
+  TEAM_THREAD_MENTION_HINT_CLASS,
+  TEAM_THREAD_MENTION_LIST_CLASS,
+  TEAM_THREAD_MENTION_MENU_CLASS,
+  TEAM_THREAD_MESSAGE_AUTHOR_CLASS,
+  TEAM_THREAD_MESSAGE_AVATAR_CLASS,
+  TEAM_THREAD_MESSAGE_BUBBLE_CLASS,
+  TEAM_THREAD_MESSAGE_CONTENT_CLASS,
+  TEAM_THREAD_MESSAGE_META_ROW_CLASS,
+  TEAM_THREAD_MESSAGE_ROW_CLASS,
+  TEAM_THREAD_MISSING_TEXT_CLASS,
+  TEAM_THREAD_ORIGINAL_BADGE_CLASS,
+  TEAM_THREAD_PANE_CLASS,
+  TEAM_THREAD_REPLY_COUNT_CLASS,
+  TEAM_THREAD_REPLIES_LIST_CLASS,
+  TEAM_THREAD_RICH_TEXT_CLASS,
+  TEAM_THREAD_SECTION_ROW_CLASS,
+  TEAM_THREAD_SECTION_TITLE_CLASS,
+  TEAM_THREAD_SOURCE_CARD_CLASS,
+  TEAM_THREAD_SOURCE_LABEL_CLASS,
+  TEAM_THREAD_SOURCE_PREVIEW_CLASS,
+  TEAM_THREAD_SOURCE_ROW_CLASS,
+  TEAM_THREAD_SOURCE_VALUE_CLASS,
+  TEAM_THREAD_TEXTAREA_CLASS,
+  TEAM_THREAD_TRANSCRIPT_CLASS,
 } from "../../ui/tailwind_classes";
 import { isMobileInputViewport } from "../../components/input_dock";
 
@@ -59,17 +97,6 @@ type TeamThreadPaneProps = {
   mentionCandidates?: MentionCandidate[];
 };
 
-const TEAM_THREAD_MESSAGE_ROW_CLASS =
-  `${CONVERSATION_MESSAGE_INLINE_ROW_CLASS} rounded-xl`;
-const TEAM_THREAD_MESSAGE_AVATAR_CLASS =
-  "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-black/8 bg-white text-[10px] font-semibold uppercase tracking-tight text-notion-text-muted shadow-sm";
-const TEAM_THREAD_MESSAGE_META_ROW_CLASS =
-  "flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-notion-text-muted";
-const TEAM_THREAD_MESSAGE_CONTENT_CLASS = "min-w-0 flex flex-1 flex-col gap-1";
-const TEAM_THREAD_MESSAGE_BUBBLE_CLASS =
-  "w-full rounded-[12px] border border-black/6 bg-white/96 px-2 py-[5px] shadow-none [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80";
-const TEAM_THREAD_SECTION_ROW_CLASS =
-  "flex flex-wrap items-center justify-between gap-2 px-2";
 function formatThreadReplyCount(count: number): string {
   return count === 1 ? "1 reply" : `${count} replies`;
 }
@@ -241,73 +268,73 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
   }, [mentionCandidates, onSendReply, replyDraft]);
   return (
     <SurfaceCard
-      className="flex min-h-0 w-full max-w-[360px] shrink-0 flex-col overflow-hidden border-notion-border/80"
+      className={TEAM_THREAD_PANE_CLASS}
       data-team-surface="thread-pane"
     >
-      <ToolbarRow className="items-start gap-2 border-b border-notion-border/70 px-2.5 py-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
+      <ToolbarRow className={TEAM_THREAD_HEADER_CLASS}>
+        <div className={TEAM_THREAD_HEADER_CONTENT_CLASS}>
+          <div className={TEAM_THREAD_HEADER_TITLE_ROW_CLASS}>
+            <div className={TEAM_THREAD_HEADER_TITLE_CLASS}>
               Reply in thread
             </div>
             <Badge
               tone="outline"
               shape="pill"
-              className="border-black/8 bg-white/92 px-2 py-0 text-[9px] font-semibold text-notion-text-muted"
+              className={TEAM_THREAD_CHANNEL_BADGE_CLASS}
             >
               {channelLabel}
             </Badge>
-            <span className="text-[10px] text-notion-text-muted">{replyCountLabel}</span>
+            <span className={TEAM_THREAD_REPLY_COUNT_CLASS}>{replyCountLabel}</span>
           </div>
-          <div className="mt-0.5 text-[11px] text-notion-text-muted">
+          <div className={TEAM_THREAD_HELP_TEXT_CLASS}>
             Keep the root summary-first. Use the thread for detailed context, logs, and follow-up.
           </div>
           {sourceSummary ? (
-            <div className="mt-1 flex max-w-full flex-col gap-0.5 rounded-md border border-black/6 bg-white/92 px-2 py-1 text-[10px] font-medium text-notion-text-muted">
-              <div className="inline-flex min-w-0 items-center gap-1.5">
-                <span className="uppercase tracking-[0.08em] text-notion-text-muted/70">
+            <div className={TEAM_THREAD_SOURCE_CARD_CLASS}>
+              <div className={TEAM_THREAD_SOURCE_ROW_CLASS}>
+                <span className={TEAM_THREAD_SOURCE_LABEL_CLASS}>
                   Source
                 </span>
-                <span className="truncate text-notion-text">{sourceSummary}</span>
+                <span className={TEAM_THREAD_SOURCE_VALUE_CLASS}>{sourceSummary}</span>
               </div>
               {sourcePreview ? (
-                <div className="truncate text-[11px] font-normal leading-4 text-notion-text-muted/90">
+                <div className={TEAM_THREAD_SOURCE_PREVIEW_CLASS}>
                   {sourcePreview}
                 </div>
               ) : null}
             </div>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className={TEAM_THREAD_HEADER_ACTIONS_CLASS}>
           <CompactButton
             type="button"
-            className="px-1.5 text-[10px] text-notion-text-muted/80"
+            className={TEAM_THREAD_HEADER_BUTTON_CLASS}
             onClick={onViewInChannel}
           >
-            <i className="bi bi-arrow-left text-[10px]" aria-hidden="true" />
+            <i className={`bi bi-arrow-left ${TEAM_THREAD_HEADER_ICON_CLASS}`} aria-hidden="true" />
             View in channel
           </CompactButton>
           <CompactButton
             type="button"
-            className="px-1.5 text-[10px] text-notion-text-muted/80"
+            className={TEAM_THREAD_HEADER_BUTTON_CLASS}
             onClick={onClose}
           >
-            <i className="bi bi-x-lg text-[10px]" aria-hidden="true" />
+            <i className={`bi bi-x-lg ${TEAM_THREAD_HEADER_ICON_CLASS}`} aria-hidden="true" />
             Close thread
           </CompactButton>
         </div>
       </ToolbarRow>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 py-2">
+      <div className={TEAM_THREAD_BODY_CLASS}>
         {!hasSelectedRoot ? (
           <EmptyState
             title="Select a channel message"
-            className="border-0 bg-transparent px-0 py-0"
+            className={TEAM_THREAD_EMPTY_STATE_CLASS}
           >
             Thread roots open from existing channel messages.
           </EmptyState>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className={TEAM_THREAD_TRANSCRIPT_CLASS}>
             <div className={TEAM_THREAD_MESSAGE_ROW_CLASS}>
               <DeterministicAvatar
                 name={rootRenderMessage?.authorLabel ?? "Unknown"}
@@ -316,7 +343,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
               />
               <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
                 <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
-                  <span className="font-semibold text-notion-text">
+                  <span className={TEAM_THREAD_MESSAGE_AUTHOR_CLASS}>
                     {rootRenderMessage?.authorLabel ?? "Unknown"}
                   </span>
                   <span>{rootRenderMessage?.createdAtLabel ?? ""}</span>
@@ -324,7 +351,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                   <Badge
                     tone="outline"
                     shape="pill"
-                    className="ml-0.5 border-black/8 bg-white/92 px-2 py-0 text-[9px] font-semibold uppercase tracking-[0.06em] text-notion-text-muted"
+                    className={TEAM_THREAD_ORIGINAL_BADGE_CLASS}
                   >
                     Original
                   </Badge>
@@ -332,11 +359,11 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                 <ConversationBubble className={TEAM_THREAD_MESSAGE_BUBBLE_CLASS}>
                   {rootRenderMessage?.text ? (
                     <TeamThreadRichText
-                      className="text-[13px] leading-6 text-notion-text"
+                      className={TEAM_THREAD_RICH_TEXT_CLASS}
                       text={rootRenderMessage.text}
                     />
                   ) : (
-                    <div className="text-[12px] italic leading-5 text-notion-text-muted">
+                    <div className={TEAM_THREAD_MISSING_TEXT_CLASS}>
                       Original content is not available in chat text form.
                     </div>
                   )}
@@ -344,14 +371,14 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
               </div>
             </div>
             <div className={TEAM_THREAD_SECTION_ROW_CLASS}>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
+              <div className={TEAM_THREAD_SECTION_TITLE_CLASS}>
                 Replies
               </div>
-              <span className="text-[10px] text-notion-text-muted">{replyCountLabel}</span>
+              <span className={TEAM_THREAD_REPLY_COUNT_CLASS}>{replyCountLabel}</span>
             </div>
-            <div className="flex flex-col gap-2 border-t border-notion-border/70 pt-3">
+            <div className={TEAM_THREAD_REPLIES_LIST_CLASS}>
               {replies.length === 0 ? (
-                <div className="px-2 text-[11px] leading-5 text-notion-text-muted">
+                <div className={TEAM_THREAD_EMPTY_REPLIES_CLASS}>
                   No replies yet.
                 </div>
               ) : (
@@ -364,13 +391,13 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                     />
                     <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
                       <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
-                        <span className="font-semibold text-notion-text">{reply.authorLabel}</span>
+                        <span className={TEAM_THREAD_MESSAGE_AUTHOR_CLASS}>{reply.authorLabel}</span>
                         <span>{reply.createdAtLabel}</span>
                         <span>{`#${reply.messageId}`}</span>
                       </div>
                       <ConversationBubble className={TEAM_THREAD_MESSAGE_BUBBLE_CLASS}>
                         <TeamThreadRichText
-                          className="text-[13px] leading-6 text-notion-text"
+                          className={TEAM_THREAD_RICH_TEXT_CLASS}
                           text={reply.text}
                         />
                       </ConversationBubble>
@@ -383,15 +410,15 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
         )}
       </div>
       {hasSelectedRoot ? (
-        <div className="border-t border-notion-border/55 bg-white/92 px-2.5 py-1.5">
+        <div className={TEAM_THREAD_COMPOSER_REGION_CLASS}>
           <div className={TEAM_MESSAGE_COMPOSER_SHELL_CLASS}>
-            <div className="px-1 pb-1 text-[10px] leading-5 text-notion-text-muted">
+            <div className={TEAM_THREAD_COMPOSER_CONTEXT_CLASS}>
               Full context in thread · root message stays summary-first · {channelLabel}
             </div>
             <div className={TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS}>
               <textarea
                 ref={replyTextareaRef}
-                className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] flex-1 border-transparent px-0 py-0 text-[13px] leading-5 shadow-none focus:border-transparent focus:ring-0`}
+                className={`${TEAM_PANEL_TEXTAREA_CLASS} ${TEAM_THREAD_TEXTAREA_CLASS}`}
                 rows={2}
                 placeholder={`Reply in thread · ${channelLabel}`}
                 value={replyDraft}
@@ -469,11 +496,11 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
               </ActionButton>
             </div>
             {activeMention && filteredMentionCandidates.length > 0 && (
-              <div className="mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
-                <div className="px-3 py-1 text-xs text-ui-text-muted">
+              <div className={TEAM_THREAD_MENTION_MENU_CLASS}>
+                <div className={TEAM_THREAD_MENTION_HINT_CLASS}>
                   Select teammate mention (`@` without selection stays plain text)
                 </div>
-                <div className="max-h-44 overflow-auto py-1">
+                <div className={TEAM_THREAD_MENTION_LIST_CLASS}>
                   {filteredMentionCandidates.map((candidate, index) => (
                     <MenuOptionButton
                       key={candidate.actorId}
@@ -485,7 +512,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                       }}
                     >
                       <span>{candidate.label}</span>
-                      <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
+                      <span className={TEAM_THREAD_MENTION_ALIAS_CLASS}>{`@${candidate.label}`}</span>
                     </MenuOptionButton>
                   ))}
                 </div>
