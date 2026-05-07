@@ -22,10 +22,13 @@ import {
   DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
   formatTs,
   isChannelScopedConversationTask,
+  isCurrentTeamScopedRequest,
   listTeamWorkspaceTasks,
   mergeConversationMessages,
   pickNextWorkerAgentId,
+  removeTeamMemberLookupEntry,
   resolveTaskChannelId,
+  resolveTeamMemberAgentControlState,
   resolveTeamRuntimeControlTone,
   resolveTeamPageNotice,
   resolveTeamRuntimeStatus,
@@ -272,6 +275,56 @@ function buildMemberStatus(
 }
 
 describe("team page helpers", () => {
+  it("matches only the current team-scoped request sequence", () => {
+    const current = { teamId: "team-1", requestSeq: 7 };
+
+    expect(isCurrentTeamScopedRequest(current, "team-1", 7)).toBe(true);
+    expect(isCurrentTeamScopedRequest(current, "", 7)).toBe(false);
+    expect(isCurrentTeamScopedRequest(current, "team-2", 7)).toBe(false);
+    expect(isCurrentTeamScopedRequest(current, "team-1", 8)).toBe(false);
+  });
+
+  it("resolves member agent controls from lifecycle and busy action state", () => {
+    const agent = { id: "agent-1" };
+
+    expect(resolveTeamMemberAgentControlState(agent, "idle", null)).toEqual({
+      canStart: false,
+      canStop: true,
+      canDelete: true,
+    });
+    expect(resolveTeamMemberAgentControlState(agent, "stopped", null)).toEqual({
+      canStart: true,
+      canStop: false,
+      canDelete: true,
+    });
+    expect(
+      resolveTeamMemberAgentControlState(agent, "stopped", "start-team-member-agent")
+    ).toMatchObject({ canStart: false });
+    expect(
+      resolveTeamMemberAgentControlState(agent, "working", "stop-team-member-agent")
+    ).toMatchObject({ canStop: false });
+    expect(
+      resolveTeamMemberAgentControlState(agent, "idle", "delete-team-member-agent")
+    ).toMatchObject({ canDelete: false });
+    expect(resolveTeamMemberAgentControlState(null, "idle", null)).toEqual({
+      canStart: false,
+      canStop: false,
+      canDelete: false,
+    });
+  });
+
+  it("removes member lookup entries without copying when the member is absent", () => {
+    const lookup = { "member-1": "agent-1", "member-2": "agent-2" };
+
+    expect(removeTeamMemberLookupEntry(lookup, "missing-member")).toBe(lookup);
+
+    const next = removeTeamMemberLookupEntry(lookup, "member-1");
+
+    expect(next).not.toBe(lookup);
+    expect(next).toEqual({ "member-2": "agent-2" });
+    expect(lookup).toEqual({ "member-1": "agent-1", "member-2": "agent-2" });
+  });
+
   it("merges conversation messages while preserving unchanged object identity", () => {
     const original = buildConversationMessage(1);
     const prev = [original, buildConversationMessage(2)];
