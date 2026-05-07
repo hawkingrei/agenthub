@@ -34,8 +34,12 @@ import {
   MAILBOX_COMPOSER_TEXTAREA_CLASS,
   MAILBOX_MEMBER_UNREAD_BADGE_CLASS,
   MAILBOX_MESSAGE_PRE_CLASS,
+  TEAM_RUN_FOOT_META_CLASS,
+  TEAM_RUN_LIST_ITEMS_CLASS,
   TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS,
   TEAM_SIDEBAR_SECTION_TOGGLE_CLASS,
+  TEAM_STEPS_ITEM_CLASS,
+  TEAM_STEPS_LIST_ONLY_NOTE_CLASS,
 } from "../ui/tailwind_classes";
 import {
   installReactDomTestGlobals,
@@ -165,6 +169,13 @@ function toggleCheckboxValue(element: HTMLInputElement, checked: boolean): void 
       element.click();
     }
   });
+}
+
+function expectClassTokens(element: Element, className: string): void {
+  const renderedClassName = element.getAttribute("class") ?? "";
+  for (const token of className.split(" ")) {
+    expect(renderedClassName).toContain(token);
+  }
 }
 
 async function waitForCondition(
@@ -1232,6 +1243,19 @@ describe("team panels interactions", () => {
     expect(
       findButtonByAriaLabel(container, "Start execution run").getAttribute("title")
     ).toBe("Add at least one agent before starting the team runtime or a run.");
+    expectClassTokens(
+      required(container.querySelector(".teams-run-list-items"), "run list items missing"),
+      TEAM_RUN_LIST_ITEMS_CLASS
+    );
+    expectClassTokens(
+      required(
+        Array.from(container.querySelectorAll("span")).find((span) =>
+          span.textContent?.includes("0 of 0")
+        ) ?? null,
+        "run foot meta missing"
+      ),
+      TEAM_RUN_FOOT_META_CLASS
+    );
   });
 
   it("TeamSidebar hides selector controls in detail mode", () => {
@@ -1806,6 +1830,7 @@ describe("team panels interactions", () => {
       container.querySelector(".mb-3.text-ui-sm"),
       "warning notice missing"
     );
+    expectClassTokens(warningNotice, TEAM_STEPS_LIST_ONLY_NOTE_CLASS);
     expect(warningNotice.className).toContain("border-state-warning-border");
     expect(warningNotice.className).toContain("bg-state-warning-bg/60");
     expect(warningNotice.className).toContain("mb-3");
@@ -1823,8 +1848,7 @@ describe("team panels interactions", () => {
       container.querySelector(".teams-step-list li .min-h-0.rounded-xl"),
       "step item surface missing"
     );
-    expect(stepItem.className).toContain("p-2");
-    expect(stepItem.className).toContain("sm:p-2");
+    expectClassTokens(stepItem, TEAM_STEPS_ITEM_CLASS);
     expect(stepItem.className).not.toContain("rounded-lg");
   });
 

@@ -8,6 +8,7 @@ import {
   normalizeTeamMemberLifecycle,
   normalizeTeamMemberWorkStatus,
 } from "./team_member_status_strip";
+import { TEAM_MEMBER_STATUS_ROW_CLASS } from "../ui/tailwind_classes";
 
 function buildMember(
   patch: Partial<TeamMemberLiveState> = {}
@@ -158,6 +159,7 @@ describe("TeamMemberStatusStrip", () => {
     expect(html).toContain("work:no_run");
     expect(html).toContain("agent:working");
     expect(html).toContain("agent:missing");
+    expect(html).toContain(TEAM_MEMBER_STATUS_ROW_CLASS);
   });
 
   it("renders empty hint when team has no members", () => {

@@ -14,6 +14,7 @@ import {
 import {
   TEAM_MEMBER_CARD_CLASS,
   TEAM_MEMBER_NAME_CLASS,
+  TEAM_MEMBER_STATUS_ROW_CLASS,
   TEAM_MEMBER_SUMMARY_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_SECTION_TITLE_CLASS,
@@ -61,7 +62,6 @@ const TEAM_MEMBER_SUMMARY_BADGE_CLASS: Record<TeamMemberLifecycle, string> = {
     "border-[color:var(--status-neutral-border)] bg-[color:var(--status-neutral-bg)] text-[color:var(--status-neutral-ink)]",
 };
 
-const TEAM_MEMBER_STATUS_ROW_CLASS = "flex flex-wrap items-center gap-1.5 mt-1";
 const WORKING_STATUSES = new Set(["running", "working", "in_progress"]);
 const PENDING_STATUSES = new Set(["submitted", "pending", "input_required", "queued", "waiting"]);
 const BLOCKED_STATUSES = new Set(["failed", "blocked", "error"]);
