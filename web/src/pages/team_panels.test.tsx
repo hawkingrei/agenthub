@@ -172,9 +172,8 @@ function toggleCheckboxValue(element: HTMLInputElement, checked: boolean): void 
 }
 
 function expectClassTokens(element: Element, className: string): void {
-  const renderedClassName = element.getAttribute("class") ?? "";
-  for (const token of className.split(" ")) {
-    expect(renderedClassName).toContain(token);
+  for (const token of className.split(/\s+/).filter(Boolean)) {
+    expect(element.classList.contains(token)).toBe(true);
   }
 }
 
