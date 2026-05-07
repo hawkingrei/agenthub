@@ -18,6 +18,7 @@ import { buildMailboxChatPayload } from "./mailbox_helpers";
 import {
   mergeConversationMessages,
   refreshTeamConversationMailboxAfterSend,
+  TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT,
 } from "./page_helpers";
 import { parseErrorMessage } from "./create_helpers";
 import { uuidV7 } from "../../uuid";
@@ -30,7 +31,6 @@ function readBootstrapKind(context: unknown): string {
   return typeof bootstrapKind === "string" ? bootstrapKind.trim() : "";
 }
 
-const TEAM_CONVERSATION_MESSAGE_LIMIT = 60;
 const TEAM_CONVERSATION_MAILBOX_LIMIT = 40;
 const TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID = Number.MAX_SAFE_INTEGER - 10_000;
 const TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS = 30_000;
@@ -209,7 +209,7 @@ export function useTeamConversationActions({
         }
         const [messages, taskDetail] = await Promise.all([
           api.listTeamTaskMessages(token, teamId, taskId, {
-            limit: TEAM_CONVERSATION_MESSAGE_LIMIT,
+            limit: TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT,
           }),
           shouldFetchConversationDetail
             ? api.getTeamTask(token, teamId, taskId)

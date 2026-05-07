@@ -22,10 +22,13 @@ import {
   DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
   formatTs,
   isChannelScopedConversationTask,
+  isCurrentTeamScopedRequest,
   listTeamWorkspaceTasks,
   mergeConversationMessages,
   pickNextWorkerAgentId,
+  removeTeamMemberLookupEntry,
   resolveTaskChannelId,
+  resolveTeamMemberAgentControlState,
   resolveTeamRuntimeControlTone,
   resolveTeamPageNotice,
   resolveTeamRuntimeStatus,
@@ -272,6 +275,56 @@ function buildMemberStatus(
 }
 
 describe("team page helpers", () => {
+  it("matches only the current team-scoped request sequence", () => {
+    const current = { teamId: "team-1", requestSeq: 7 };
+
+    expect(isCurrentTeamScopedRequest(current, "team-1", 7)).toBe(true);
+    expect(isCurrentTeamScopedRequest(current, "", 7)).toBe(false);
+    expect(isCurrentTeamScopedRequest(current, "team-2", 7)).toBe(false);
+    expect(isCurrentTeamScopedRequest(current, "team-1", 8)).toBe(false);
+  });
+
+  it("resolves member agent controls from lifecycle and busy action state", () => {
+    const agent = { id: "agent-1" };
+
+    expect(resolveTeamMemberAgentControlState(agent, "idle", null)).toEqual({
+      canStart: false,
+      canStop: true,
+      canDelete: true,
+    });
+    expect(resolveTeamMemberAgentControlState(agent, "stopped", null)).toEqual({
+      canStart: true,
+      canStop: false,
+      canDelete: true,
+    });
+    expect(
+      resolveTeamMemberAgentControlState(agent, "stopped", "start-team-member-agent")
+    ).toMatchObject({ canStart: false });
+    expect(
+      resolveTeamMemberAgentControlState(agent, "working", "stop-team-member-agent")
+    ).toMatchObject({ canStop: false });
+    expect(
+      resolveTeamMemberAgentControlState(agent, "idle", "delete-team-member-agent")
+    ).toMatchObject({ canDelete: false });
+    expect(resolveTeamMemberAgentControlState(null, "idle", null)).toEqual({
+      canStart: false,
+      canStop: false,
+      canDelete: false,
+    });
+  });
+
+  it("removes member lookup entries without copying when the member is absent", () => {
+    const lookup = { "member-1": "agent-1", "member-2": "agent-2" };
+
+    expect(removeTeamMemberLookupEntry(lookup, "missing-member")).toBe(lookup);
+
+    const next = removeTeamMemberLookupEntry(lookup, "member-1");
+
+    expect(next).not.toBe(lookup);
+    expect(next).toEqual({ "member-2": "agent-2" });
+    expect(lookup).toEqual({ "member-1": "agent-1", "member-2": "agent-2" });
+  });
+
   it("merges conversation messages while preserving unchanged object identity", () => {
     const original = buildConversationMessage(1);
     const prev = [original, buildConversationMessage(2)];
@@ -619,6 +672,38 @@ describe("team page helpers", () => {
       title: "Recovered thread",
       status: "in_progress",
     });
+    const sharedTask = buildTask("task-all", 100, 120, {
+      title: DEFAULT_TEAM_THREAD_TITLE,
+      context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
+    });
+    const listedTask = buildTask("task-listed", 130, 150, {
+      title: "Listed thread",
+      status: "in_progress",
+    });
+
+    expect(
+      resolveSelectedConversationTask({
+        taskList: [listedTask],
+        selectedTaskId: "",
+        sharedConversation: sharedTask,
+      })
+    ).toEqual(sharedTask);
+
+    expect(
+      resolveSelectedConversationTask({
+        taskList: [listedTask],
+        selectedTaskId: "task-all",
+        sharedConversation: sharedTask,
+      })
+    ).toEqual(sharedTask);
+
+    expect(
+      resolveSelectedConversationTask({
+        taskList: [listedTask],
+        selectedTaskId: "task-listed",
+        sharedConversation: sharedTask,
+      })
+    ).toEqual(listedTask);
 
     expect(
       resolveSelectedConversationTask({
@@ -698,8 +783,29 @@ describe("team page helpers", () => {
 
     expect(
       resolveSelectedConversationLatestRun({
-        selectedConversation: explicitTask,
+        selectedConversation: null,
         selectedConversationDetail: null,
+        sharedConversation: sharedTask,
+        sharedConversationLatestRun: sharedRun,
+      })
+    ).toBeNull();
+
+    expect(
+      resolveSelectedConversationLatestRun({
+        selectedConversation: explicitTask,
+        selectedConversationDetail: {
+          task: buildTask("task-other", 90, 90),
+          conversation: {
+            id: "conv-task-other",
+            team_id: "team-1",
+            task_id: "task-other",
+            mode: "group_chat",
+            topic: "other",
+            created_at: 1,
+            updated_at: 1,
+          },
+          latest_run: explicitRun,
+        },
         sharedConversation: sharedTask,
         sharedConversationLatestRun: sharedRun,
       })
@@ -777,6 +883,44 @@ describe("team page helpers", () => {
         taskList: [sharedTask, explicitTask],
       })
     ).toEqual(explicitTask);
+  });
+
+  it("falls back to selected channel task when channel lane has no active selection", () => {
+    const selectedTask = buildTask("task-review", 120, 140, {
+      title: "Review lane",
+      status: "in_progress",
+      context: { channel_id: "review", bootstrap_kind: "team_channel" },
+    });
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "",
+        selectedConversation: selectedTask,
+        selectedChannelTaskId: "task-review",
+        sharedConversation: null,
+        taskList: [selectedTask],
+      })
+    ).toEqual(selectedTask);
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "review",
+        selectedConversation: null,
+        selectedChannelTaskId: "",
+        sharedConversation: null,
+        taskList: [selectedTask],
+      })
+    ).toBeNull();
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "review",
+        selectedConversation: null,
+        selectedChannelTaskId: "task-review",
+        sharedConversation: null,
+        taskList: [selectedTask],
+      })
+    ).toEqual(selectedTask);
   });
 
   it("resolves seen-by coverage from delivered mailbox fan-out", () => {
@@ -1018,6 +1162,19 @@ describe("team page helpers", () => {
     expect(updated?.members.every((member) => member.session_status === "stopped")).toBe(true);
   });
 
+  it("skips optimistic runtime synthesis when no cached runtime or member fallback exists", () => {
+    const updated = updateCachedTeamRuntimeStatus(
+      undefined,
+      "team-1",
+      "Team One",
+      "running",
+      [],
+      () => "running"
+    );
+
+    expect(updated).toBeUndefined();
+  });
+
   it("synthesizes optimistic runtime members when start-team has no cached runtime yet", () => {
     const control: TeamRuntimeControlResponse["members"] = [
       { member_id: "coordinator-agent", session_id: "session-coordinator", action: "started" },
@@ -1051,6 +1208,57 @@ describe("team page helpers", () => {
       "session-coordinator",
       "session-worker",
     ]);
+  });
+
+  it("synthesizes stopped optimistic runtime members without sessions", () => {
+    const updated = updateCachedTeamRuntimeStatus(
+      undefined,
+      "team-1",
+      "Team One",
+      "stopped",
+      [{ member_id: "coordinator-agent", session_id: "session-new", action: "stopped" }],
+      () => "running",
+      [buildMemberStatus({ status: "running" })]
+    );
+
+    expect(updated?.status).toBe("stopped");
+    expect(updated?.members).toHaveLength(1);
+    expect(updated?.members[0]?.session_id).toBeUndefined();
+    expect(updated?.members[0]?.session_status).toBe("stopped");
+    expect(updated?.members[0]?.agent_status).toBe("stopped");
+  });
+
+  it("updates cached runtime sessions for non-stopped optimistic state", () => {
+    const updated = updateCachedTeamRuntimeStatus(
+      buildRuntime({
+        members: [
+          {
+            member_id: "coordinator-agent",
+            display_name: "Coordinator Agent",
+            role: "coordinator",
+            description: "lead",
+            agent_status: "stopped",
+            session_id: undefined,
+            session_status: "stopped",
+            card: {
+              card_id: "card-coordinator",
+              schema_version: "1",
+              description: "lead",
+              capability_tags: [],
+            },
+          },
+        ],
+      }),
+      "team-1",
+      "Team One",
+      "running",
+      [{ member_id: "coordinator-agent", session_id: "session-new", action: "started" }],
+      () => "running"
+    );
+
+    expect(updated?.status).toBe("running");
+    expect(updated?.members[0]?.session_id).toBe("session-new");
+    expect(updated?.members[0]?.session_status).toBe("running");
   });
 
   it("formats timestamps and pretty prints JSON safely", () => {
