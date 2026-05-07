@@ -1317,7 +1317,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(onAcpSetMode).toHaveBeenCalledWith("danger_full_access");
+    expect(onAcpSetMode).toHaveBeenCalledWith("full-access");
     expect(onAcpSetModel).toHaveBeenCalledWith("gemini-2.5-pro");
     expect(onAcpSetConfig).toHaveBeenCalledTimes(1);
     expect(onInterrupt).toHaveBeenCalledTimes(1);

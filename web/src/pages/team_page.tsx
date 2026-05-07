@@ -23,6 +23,7 @@ import {
 } from "../api";
 import { AGENT_NOT_RUNNING_ERROR, isAgentActiveStatus } from "../agent_ws";
 import { type AgentPresetId } from "../agent_presets";
+import { normalizeAcpModeId } from "../acp_mode";
 import { ErrorBanner } from "../error_banner";
 import {
   getNavigatorOnline,
@@ -3061,7 +3062,7 @@ export function TeamPage(props: TeamPageProps) {
     if (!props.token || !selectedAgentWorkspaceAgent) {
       return;
     }
-    const trimmedModeId = modeId.trim();
+    const trimmedModeId = normalizeAcpModeId(modeId);
     if (!trimmedModeId) {
       setError("mode id is required");
       return;

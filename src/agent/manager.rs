@@ -55,6 +55,7 @@ use crate::internal::p2p::{
 };
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::push::PushService;
+use agenthub_config::normalize_codex_acp_mode_id;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 #[derive(Clone)]
@@ -1779,7 +1780,7 @@ impl AgentManager {
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id, mode_id = %mode_id), err)]
     pub async fn set_acp_mode(&self, agent_id: &str, mode_id: &str) -> anyhow::Result<()> {
         let acp = self.get_acp_handle(agent_id).await?;
-        acp.set_mode(mode_id.to_string()).await
+        acp.set_mode(normalize_codex_acp_mode_id(mode_id)).await
     }
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id, model_id = %model_id), err)]
