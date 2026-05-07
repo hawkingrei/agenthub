@@ -748,7 +748,7 @@ describe("TeamPage agent loop profile flow", () => {
     }
   });
 
-  it("loads member ACP history when the agent record is still backfilling", async () => {
+  it("uses the member id for ACP history and input while the agent record is still backfilling", async () => {
     const team = {
       id: "team-1",
       name: "Team One",
@@ -849,8 +849,24 @@ describe("TeamPage agent loop profile flow", () => {
           button.textContent?.includes("Open worker workspace")
         ) as HTMLButtonElement | null
       );
+      await clickElement(
+        await waitForElement(
+          () =>
+            Array.from(container.querySelectorAll("button")).find((button) =>
+              button.textContent?.includes("Mock agent ACP panel")
+            ) as HTMLButtonElement | undefined ?? null,
+          "mock ACP panel missing"
+        )
+      );
 
       expect(loadMemberEventsSpy).toHaveBeenCalledWith("replace");
+      expect(sendInput).toHaveBeenCalledWith(
+        "token",
+        "worker-1",
+        "hello from acp",
+        expect.any(String),
+        "runtime-session-1"
+      );
       expect(teamMemberAcpPanelPropsSpy).toHaveBeenLastCalledWith(
         expect.objectContaining({
           selectedMemberId: "worker-1",

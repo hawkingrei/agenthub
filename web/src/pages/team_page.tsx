@@ -2918,7 +2918,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
   const onSendAgentAcpInput = useCallback(
     async (text: string, sessionId: string) => {
-      const agentId = selectedAgentWorkspaceAgentId;
+      const agentId = selectedAgentWorkspaceEventAgentId.trim();
       const normalizedText = text.trim();
       if (!props.token || !agentId || !normalizedText || !sessionId) {
         return;
@@ -2997,7 +2997,7 @@ export function TeamPage(props: TeamPageProps) {
       props.token,
       refreshAgents,
       refreshTeamRuntime,
-      selectedAgentWorkspaceAgentId,
+      selectedAgentWorkspaceEventAgentId,
       selectedAgentWorkspaceMemberId,
       selectedTeamId,
       setError,
