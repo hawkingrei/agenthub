@@ -58,8 +58,8 @@ Results:
 - targeted Vitest batch: `28` files, `371` tests passed
 - `npm run build`: pass
 
-## Follow-up before closing TODO
+## Closure evidence
 
-- Record one successful `push` run ID for `Web`
-- Record one successful `pull_request` run ID for `Web`
-- Confirm the workflow remains part of the required frontend gate set before marking the TODO done
+- Pull request evidence: PR #531 `Web` check passed on run `25470904818`, job `74734378747`; the job included a successful `Typecheck` step running `npm exec tsc -- --noEmit`.
+- Main push evidence: merge commit `05b5b5ff6662241733895b10c97c3123a7a0981d` passed the `Web` workflow on run `25471294329`, job `74735547028`; the job included a successful `Typecheck` step.
+- Gate shape: `.github/workflows/web.yml` keeps `Typecheck` between `Lint` and `Test with coverage`, so type regressions fail the existing `Web` frontend gate instead of relying on an optional side workflow.
