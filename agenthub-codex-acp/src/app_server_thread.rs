@@ -154,6 +154,48 @@ struct PendingCustomToolCall {
     name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MissingCustomToolOutputs {
+    call_ids: Vec<String>,
+}
+
+impl MissingCustomToolOutputs {
+    fn from_state(state: &AppServerState) -> Option<Self> {
+        if state.pending_custom_tool_calls.is_empty() {
+            return None;
+        }
+
+        let mut call_ids = state
+            .pending_custom_tool_calls
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        call_ids.sort();
+        Some(Self { call_ids })
+    }
+
+    fn into_codex_err(self) -> CodexErr {
+        CodexErr::Fatal(format!(
+            "Codex live history is missing CustomToolCallOutput for call id(s): {}. \
+Use undo, force a new session, or clear the dirty Codex session before starting another turn or compaction.",
+            self.call_ids.join(", ")
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PrepareSubmissionStartError {
+    MissingCustomToolOutputs(MissingCustomToolOutputs),
+}
+
+impl PrepareSubmissionStartError {
+    fn into_codex_err(self) -> CodexErr {
+        match self {
+            Self::MissingCustomToolOutputs(missing) => missing.into_codex_err(),
+        }
+    }
+}
+
 struct QueuedSubmission {
     submission_id: String,
     op: Op,
@@ -391,7 +433,7 @@ impl AppServerCodexThread {
                         op.kind()
                     )));
                 }
-                Err(err) => return Err(*err),
+                Err(err) => return Err(err.into_codex_err()),
             }
         };
 
@@ -2130,29 +2172,11 @@ fn record_raw_response_item(state: &mut AppServerState, turn_id: &str, item: &Re
     }
 }
 
-fn missing_custom_tool_output_error(state: &AppServerState) -> Option<CodexErr> {
-    if state.pending_custom_tool_calls.is_empty() {
-        return None;
-    }
-
-    let mut call_ids = state
-        .pending_custom_tool_calls
-        .keys()
-        .cloned()
-        .collect::<Vec<_>>();
-    call_ids.sort();
-    Some(CodexErr::Fatal(format!(
-        "Codex live history is missing CustomToolCallOutput for call id(s): {}. \
-Use undo, force a new session, or clear the dirty Codex session before starting another turn or compaction.",
-        call_ids.join(", ")
-    )))
-}
-
 fn prepare_submission_start(
     state: &mut AppServerState,
     submission_id: &str,
     op: &Op,
-) -> Result<Option<PreparedSubmissionStart>, Box<CodexErr>> {
+) -> Result<Option<PreparedSubmissionStart>, PrepareSubmissionStartError> {
     match op {
         Op::UserInput {
             items,
@@ -2160,8 +2184,10 @@ fn prepare_submission_start(
             responsesapi_client_metadata,
             ..
         } => {
-            if let Some(err) = missing_custom_tool_output_error(state) {
-                return Err(Box::new(err));
+            if let Some(missing) = MissingCustomToolOutputs::from_state(state) {
+                return Err(PrepareSubmissionStartError::MissingCustomToolOutputs(
+                    missing,
+                ));
             }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
@@ -2198,8 +2224,10 @@ fn prepare_submission_start(
             }))
         }
         Op::Review { review_request } => {
-            if let Some(err) = missing_custom_tool_output_error(state) {
-                return Err(Box::new(err));
+            if let Some(missing) = MissingCustomToolOutputs::from_state(state) {
+                return Err(PrepareSubmissionStartError::MissingCustomToolOutputs(
+                    missing,
+                ));
             }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
@@ -2217,8 +2245,10 @@ fn prepare_submission_start(
             }))
         }
         Op::Compact => {
-            if let Some(err) = missing_custom_tool_output_error(state) {
-                return Err(Box::new(err));
+            if let Some(missing) = MissingCustomToolOutputs::from_state(state) {
+                return Err(PrepareSubmissionStartError::MissingCustomToolOutputs(
+                    missing,
+                ));
             }
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
@@ -2233,13 +2263,16 @@ fn prepare_submission_start(
                 }),
             }))
         }
-        Op::Undo => Ok(Some(PreparedSubmissionStart::Rollback {
-            request_id: next_request_id(state),
-            params: Box::new(ThreadRollbackParams {
-                thread_id: state.thread_id.clone(),
-                num_turns: 1,
-            }),
-        })),
+        Op::Undo => {
+            state.pending_custom_tool_calls.clear();
+            Ok(Some(PreparedSubmissionStart::Rollback {
+                request_id: next_request_id(state),
+                params: Box::new(ThreadRollbackParams {
+                    thread_id: state.thread_id.clone(),
+                    num_turns: 1,
+                }),
+            }))
+        }
         _ => Ok(None),
     }
 }
@@ -3343,9 +3376,12 @@ mod tests {
         )
         .expect_err("dirty custom tool history should block new turns");
 
-        let message = err.to_string();
-        assert!(message.contains("CustomToolCallOutput"));
-        assert!(message.contains("call-missing"));
+        assert_eq!(
+            err,
+            PrepareSubmissionStartError::MissingCustomToolOutputs(MissingCustomToolOutputs {
+                call_ids: vec!["call-missing".to_string()],
+            })
+        );
         assert!(state.active_turn.is_none());
     }
 
@@ -3365,6 +3401,23 @@ mod tests {
             .expect("prepared rollback");
 
         assert!(matches!(prepared, PreparedSubmissionStart::Rollback { .. }));
+        assert!(state.pending_custom_tool_calls.is_empty());
+
+        let prepared = prepare_submission_start(
+            &mut state,
+            "submission-after-undo",
+            &Op::UserInput {
+                items: Vec::new(),
+                final_output_json_schema: None,
+                responsesapi_client_metadata: None,
+                environments: None,
+            },
+        )
+        .expect("undo should clear the local pending tool guard");
+        assert!(matches!(
+            prepared,
+            Some(PreparedSubmissionStart::TurnStart { .. })
+        ));
     }
 
     #[test]
