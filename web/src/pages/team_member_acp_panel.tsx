@@ -27,6 +27,24 @@ import {
   OUTPUT_HEADER_TITLE_HEADING_CLASS,
   OUTPUT_HEADER_TITLE_MAIN_CLASS,
   OUTPUT_HEADER_TITLE_TEXT_CLASS,
+  TEAM_MEMBER_ACP_ACTIVITY_BADGE_CLASS,
+  TEAM_MEMBER_ACP_ACTIVITY_STRIP_CLASS,
+  TEAM_MEMBER_ACP_BODY_SHELL_CLASS,
+  TEAM_MEMBER_ACP_DESCRIPTION_CLASS,
+  TEAM_MEMBER_ACP_HEADER_CONTEXT_CLASS,
+  TEAM_MEMBER_ACP_INFO_BADGE_CLASS,
+  TEAM_MEMBER_ACP_INFO_STRIP_CLASS,
+  TEAM_MEMBER_ACP_INPUT_DOCK_SHELL_CLASS,
+  TEAM_MEMBER_ACP_NODE_LINK_CLASS,
+  TEAM_MEMBER_ACP_PANEL_BODY_CLASS,
+  TEAM_MEMBER_ACP_PANEL_SHELL_CLASS,
+  TEAM_MEMBER_ACP_SENDING_TEXT_CLASS,
+  TEAM_MEMBER_ACP_STARTING_LABEL_CLASS,
+  TEAM_MEMBER_ACP_STARTING_PROGRESS_BAR_CLASS,
+  TEAM_MEMBER_ACP_STARTING_PROGRESS_TRACK_CLASS,
+  TEAM_MEMBER_ACP_STARTING_SESSION_CLASS,
+  TEAM_MEMBER_ACP_TECHNICAL_SUMMARY_CLASS,
+  TEAM_MEMBER_ACP_TITLE_SHELL_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
 } from "../ui/tailwind_classes";
@@ -231,7 +249,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       ...acpPanelProps,
       subtitle: null,
       headerContext: (
-        <div className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-2xl border border-notion-border/80 bg-notion-sidebar/68 px-1.5 py-1 shadow-notion-row">
+        <div className={TEAM_MEMBER_ACP_HEADER_CONTEXT_CLASS}>
           <StatusBadge
             label={memberStatusLabel}
             tone={resolveTeamRunStatusTone(memberStatus)}
@@ -241,7 +259,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
           {attachedNodeId ? (
             <a
               href={buildWorkspaceNodePath(attachedNodeId)}
-              className="inline-flex min-w-0 max-w-full items-center rounded-xl border border-transparent px-1.5 py-0.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-white/70 hover:text-notion-text"
+              className={TEAM_MEMBER_ACP_NODE_LINK_CLASS}
               title={`Open node detail for ${attachedNodeId}`}
               onClick={(event) => {
                 if (!shouldHandleInAppLinkClick(event)) {
@@ -255,11 +273,11 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
             </a>
           ) : null}
           {infoStripSummary ? (
-            <div className="min-w-0 max-w-full">
+            <div className={TEAM_MEMBER_ACP_INFO_STRIP_CLASS}>
               <Badge
                 tone="outline"
                 shape="pill"
-                className="max-w-full truncate border-transparent bg-transparent px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-notion-text-muted shadow-none"
+                className={TEAM_MEMBER_ACP_INFO_BADGE_CLASS}
                 title={infoStripSummary}
               >
                 {infoStripSummary}
@@ -268,7 +286,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
           ) : null}
           {activitySummaryItems.length > 0 ? (
             <div
-              className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1"
+              className={TEAM_MEMBER_ACP_ACTIVITY_STRIP_CLASS}
               data-team-member-acp-activity-strip="true"
             >
               {activitySummaryItems.map((item) => (
@@ -276,7 +294,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
                   key={item.id}
                   tone="outline"
                   shape="pill"
-                  className="max-w-full truncate border-notion-border/70 bg-white/80 px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-notion-text-muted shadow-none"
+                  className={TEAM_MEMBER_ACP_ACTIVITY_BADGE_CLASS}
                   title={item.title ?? item.label}
                 >
                   {item.label}
@@ -285,21 +303,21 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
             </div>
           ) : null}
           {isStartingAcpSession ? (
-            <div className="inline-flex min-w-[12rem] items-center gap-2 rounded-xl border border-notion-border/70 bg-white/80 px-2 py-1 text-[11px] font-medium text-notion-text-muted">
-              <span className="shrink-0">Starting session</span>
+            <div className={TEAM_MEMBER_ACP_STARTING_SESSION_CLASS}>
+              <span className={TEAM_MEMBER_ACP_STARTING_LABEL_CLASS}>Starting session</span>
               <span
                 role="progressbar"
                 aria-label="Starting ACP session"
                 aria-valuetext="Starting ACP session"
-                className="relative h-1.5 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-notion-hover/80"
+                className={TEAM_MEMBER_ACP_STARTING_PROGRESS_TRACK_CLASS}
               >
-                <span className="absolute inset-y-0 left-0 w-2/5 animate-pulse rounded-full bg-notion-accent/75" />
+                <span className={TEAM_MEMBER_ACP_STARTING_PROGRESS_BAR_CLASS} />
               </span>
             </div>
           ) : null}
           <OutputHeaderDetails
             items={developerTechnicalMetadata}
-            summaryClassName="inline-flex cursor-pointer list-none items-center rounded-xl border border-transparent bg-transparent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-notion-text-muted/70 transition hover:bg-white/70 hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10"
+            summaryClassName={TEAM_MEMBER_ACP_TECHNICAL_SUMMARY_CLASS}
           />
         </div>
       ),
@@ -318,7 +336,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   );
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} px-2 pb-2 pt-1.5`}>
+    <div className={`${TEAM_PANEL_CARD_CLASS} ${TEAM_MEMBER_ACP_PANEL_SHELL_CLASS}`}>
       {!selectedMemberId.trim() && (
         <p className={`mt-1 ${TEAM_MUTED_TEXT_CLASS}`}>
           Select an agent from the left rail to inspect its thread.
@@ -326,16 +344,16 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       )}
 
       {shouldRenderPanel && (
-        <div className="relative mt-1 flex min-h-0 flex-1 flex-col gap-0 sm:gap-1">
+        <div className={TEAM_MEMBER_ACP_BODY_SHELL_CLASS}>
           {!hideMemberTitle && (
-            <div className="shrink-0 px-4 pt-0.5 sm:px-6">
+            <div className={TEAM_MEMBER_ACP_TITLE_SHELL_CLASS}>
               <div className={OUTPUT_HEADER_TITLE_CLASS}>
                 <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
                   <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
                     <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{memberTitle}</h2>
                   </div>
                   {memberDescription ? (
-                    <p className="mt-0.5 text-[12px] leading-5 text-notion-text-muted">
+                    <p className={TEAM_MEMBER_ACP_DESCRIPTION_CLASS}>
                       {memberDescription}
                     </p>
                   ) : null}
@@ -343,14 +361,14 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
               </div>
             </div>
           )}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className={TEAM_MEMBER_ACP_PANEL_BODY_CLASS}>
             <AcpPanel {...acpPanelPropsWithoutSubtitle} />
           </div>
         </div>
       )}
 
       {hasVisibleInputDock && (
-        <div className="mt-1.5 shrink-0">
+        <div className={TEAM_MEMBER_ACP_INPUT_DOCK_SHELL_CLASS}>
           <InputDock
             input={input}
             historyCommands={inputHistory}
@@ -372,7 +390,9 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
             isComposingRef={isComposingRef}
           />
           {sendingInput && (
-            <p className={`mt-1.5 ${TEAM_MUTED_TEXT_CLASS}`}>Sending prompt to selected agent...</p>
+            <p className={`${TEAM_MEMBER_ACP_SENDING_TEXT_CLASS} ${TEAM_MUTED_TEXT_CLASS}`}>
+              Sending prompt to selected agent...
+            </p>
           )}
         </div>
       )}

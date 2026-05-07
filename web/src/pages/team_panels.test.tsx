@@ -34,6 +34,11 @@ import {
   MAILBOX_COMPOSER_TEXTAREA_CLASS,
   MAILBOX_MEMBER_UNREAD_BADGE_CLASS,
   MAILBOX_MESSAGE_PRE_CLASS,
+  TEAM_ACTIVE_RUN_ACTIONS_CLASS,
+  TEAM_ACTIVE_RUN_METADATA_CLASS,
+  TEAM_MEMBER_ACP_HEADER_CONTEXT_CLASS,
+  TEAM_MEMBER_ACP_INFO_BADGE_CLASS,
+  TEAM_MEMBER_ACP_NODE_LINK_CLASS,
   TEAM_RUN_FOOT_META_CLASS,
   TEAM_RUN_LIST_ITEMS_CLASS,
   TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS,
@@ -1410,6 +1415,14 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Execution status:");
     expect(container.textContent).toContain("run-1");
     expect(container.textContent).toContain("ctx-1");
+    expect(container.innerHTML).toContain(TEAM_ACTIVE_RUN_METADATA_CLASS);
+    expectClassTokens(
+      required(
+        findButtonByText(container, "Cancel Execution Run").parentElement,
+        "active run action row missing"
+      ),
+      TEAM_ACTIVE_RUN_ACTIONS_CLASS
+    );
     expect(
       findButtonByAriaLabel(container, "Refresh active execution run").getAttribute("title")
     ).toBe("Refresh active execution run");
@@ -5396,6 +5409,23 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Active thread has no events yet");
     expect(container.textContent).toContain("Details");
     expect(container.innerHTML).toContain("/workspace/nodes/node-east");
+    expectClassTokens(
+      required(container.querySelector(".agent-status")?.parentElement ?? null, "member header context missing"),
+      TEAM_MEMBER_ACP_HEADER_CONTEXT_CLASS
+    );
+    expectClassTokens(
+      required(container.querySelector('a[href="/workspace/nodes/node-east"]'), "member node link missing"),
+      TEAM_MEMBER_ACP_NODE_LINK_CLASS
+    );
+    expectClassTokens(
+      required(
+        Array.from(container.querySelectorAll('[title="worker · gpt-5 · Active thread has no events yet"]')).find(
+          (element) => element.textContent?.includes("worker")
+        ) ?? null,
+        "member info badge missing"
+      ),
+      TEAM_MEMBER_ACP_INFO_BADGE_CLASS
+    );
     expect(container.textContent).not.toContain("member");
     expect(container.textContent).not.toContain("session");
     expect(container.textContent).not.toContain("role=worker");

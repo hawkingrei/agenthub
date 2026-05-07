@@ -9,6 +9,11 @@ import {
   SurfaceCard,
   ToolbarRow,
 } from "../ui/primitives";
+import {
+  TEAM_ACTIVE_RUN_ACTIONS_CLASS,
+  TEAM_ACTIVE_RUN_HEADER_CLASS,
+  TEAM_ACTIVE_RUN_METADATA_CLASS,
+} from "../ui/tailwind_classes";
 
 type TeamActiveRunPanelProps = {
   run: TeamRunRecord;
@@ -42,11 +47,11 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
   return (
     <SurfaceCard className={cardClassName}>
       <PanelHeader
-        className="mb-3"
+        className={TEAM_ACTIVE_RUN_HEADER_CLASS}
         title="Active Execution Run"
         titleClassName={titleClassName}
         actions={
-          <ToolbarRow className="justify-end gap-2">
+          <ToolbarRow className={TEAM_ACTIVE_RUN_ACTIONS_CLASS}>
             <ActionButton
               tone="secondary"
               size="sm"
@@ -94,7 +99,7 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
           </ToolbarRow>
         }
       />
-      <KeyValueList className="mt-3 gap-y-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3">
+      <KeyValueList className={TEAM_ACTIVE_RUN_METADATA_CLASS}>
         <KeyValueItem label="Execution run:" value={<code>{run.id}</code>} />
         <KeyValueItem
           label="Execution status:"
