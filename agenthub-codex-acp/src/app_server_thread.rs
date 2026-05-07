@@ -3351,6 +3351,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn raw_response_item_tracking_ignores_non_custom_tool_items() {
+        let mut state = test_state_with_active_turn(None).await;
+        let item = ResponseItem::FunctionCall {
+            id: None,
+            name: "read_file".to_string(),
+            namespace: None,
+            arguments: "{}".to_string(),
+            call_id: "function-call-1".to_string(),
+        };
+
+        record_raw_response_item(&mut state, "turn-1", &item);
+
+        assert!(state.pending_custom_tool_calls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn missing_custom_tool_outputs_are_sorted_and_convert_to_codex_error() {
+        let mut state = test_state_with_active_turn(None).await;
+        assert_eq!(MissingCustomToolOutputs::from_state(&state), None);
+
+        state.pending_custom_tool_calls.insert(
+            "call-z".to_string(),
+            PendingCustomToolCall {
+                turn_id: "turn-1".to_string(),
+                name: "z_tool".to_string(),
+            },
+        );
+        state.pending_custom_tool_calls.insert(
+            "call-a".to_string(),
+            PendingCustomToolCall {
+                turn_id: "turn-1".to_string(),
+                name: "a_tool".to_string(),
+            },
+        );
+
+        let missing = MissingCustomToolOutputs::from_state(&state).expect("missing outputs");
+        assert_eq!(
+            missing,
+            MissingCustomToolOutputs {
+                call_ids: vec!["call-a".to_string(), "call-z".to_string()],
+            }
+        );
+
+        let err = PrepareSubmissionStartError::MissingCustomToolOutputs(missing).into_codex_err();
+        let message = err.to_string();
+        assert!(message.contains("CustomToolCallOutput"));
+        assert!(message.contains("call-a, call-z"));
+    }
+
+    #[tokio::test]
     async fn prepare_submission_blocks_new_turn_when_custom_tool_output_is_missing() {
         let mut state = test_state_with_active_turn(None).await;
         state.pending_custom_tool_calls.insert(
@@ -3382,6 +3432,43 @@ mod tests {
                 call_ids: vec!["call-missing".to_string()],
             })
         );
+        assert!(state.active_turn.is_none());
+    }
+
+    #[tokio::test]
+    async fn prepare_submission_blocks_review_and_compact_when_custom_tool_output_is_missing() {
+        let mut state = test_state_with_active_turn(None).await;
+        state.pending_custom_tool_calls.insert(
+            "call-missing".to_string(),
+            PendingCustomToolCall {
+                turn_id: "turn-1".to_string(),
+                name: "apply_patch".to_string(),
+            },
+        );
+
+        let review_err = prepare_submission_start(
+            &mut state,
+            "review-submission",
+            &Op::Review {
+                review_request: ReviewRequest {
+                    target: ReviewTarget::UncommittedChanges,
+                    user_facing_hint: None,
+                },
+            },
+        )
+        .expect_err("dirty custom tool history should block review");
+        assert!(matches!(
+            review_err,
+            PrepareSubmissionStartError::MissingCustomToolOutputs(_)
+        ));
+        assert!(state.active_turn.is_none());
+
+        let compact_err = prepare_submission_start(&mut state, "compact-submission", &Op::Compact)
+            .expect_err("dirty custom tool history should block compaction");
+        assert!(matches!(
+            compact_err,
+            PrepareSubmissionStartError::MissingCustomToolOutputs(_)
+        ));
         assert!(state.active_turn.is_none());
     }
 
