@@ -747,4 +747,122 @@ describe("TeamPage agent loop profile flow", () => {
       container.remove();
     }
   });
+
+  it("loads member ACP history when the agent record is still backfilling", async () => {
+    const team = {
+      id: "team-1",
+      name: "Team One",
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        coordinator_member_id: "coordinator",
+        entrypoint: "coordinator_plan",
+        steps: [],
+        members: [
+          {
+            member_id: "worker-1",
+            role: "worker",
+            description: "Investigate regressions",
+            model: "gpt-5.4",
+            prompt: "Stay focused on regressions.",
+            skills: [],
+          },
+        ],
+      },
+      created_at: 1,
+      updated_at: 10,
+    };
+    teamPageFixture.teams = [team];
+    teamPageFixture.agents = [];
+    getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "task-all",
+        team_id: "team-1",
+        title: "all",
+        status: "in_progress",
+        created_by_actor_id: "coordinator",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-task-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+    getTeamRuntime.mockResolvedValue({
+      team_id: "team-1",
+      team_name: "Team One",
+      status: "running",
+      members: [
+        {
+          member_id: "worker-1",
+          display_name: "Worker One",
+          role: "worker",
+          session_id: "runtime-session-1",
+          session_status: "running",
+          agent_status: "running",
+          card: {
+            card_id: "card-worker-1",
+            schema_version: "1",
+            description: "Investigate regressions",
+            capability_tags: [],
+          },
+        },
+      ],
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      await clickElement(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Open worker workspace")
+        ) as HTMLButtonElement | null
+      );
+
+      expect(loadMemberEventsSpy).toHaveBeenCalledWith("replace");
+      expect(teamMemberAcpPanelPropsSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          selectedMemberId: "worker-1",
+          selectedSessionId: "runtime-session-1",
+        })
+      );
+    } finally {
+      await act(async () => {
+        root.unmount();
+        await flushEffects();
+      });
+      container.remove();
+    }
+  });
 });

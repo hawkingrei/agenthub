@@ -1572,6 +1572,8 @@ export function TeamPage(props: TeamPageProps) {
     return memberTargetNodeById[memberId]?.trim() || null;
   }, [focusedAgentMemberId, memberTargetNodeById]);
   const selectedAgentWorkspaceAgentId = selectedAgentWorkspaceAgent?.id?.trim() ?? "";
+  const selectedAgentWorkspaceEventAgentId =
+    selectedAgentWorkspaceAgentId || selectedAgentWorkspaceMemberId.trim();
   const selectedMemberDiscoveryCard = useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) return null;
@@ -1911,7 +1913,7 @@ export function TeamPage(props: TeamPageProps) {
     inboxLimit,
     inboxAfterId,
     inboxIncludeDelivered,
-    selectedMemberAgentId: selectedAgentWorkspaceAgentId || null,
+    selectedMemberAgentId: selectedAgentWorkspaceEventAgentId || null,
     selectedMemberSessionId: selectedAgentWorkspaceSessionId,
     selectedMemberSnapshot: selectedAgentWorkspaceSnapshot,
     activeRunIdRef,
@@ -2279,7 +2281,7 @@ export function TeamPage(props: TeamPageProps) {
 
   useTeamMemberAcpEffects({
     token: props.token,
-    selectedAgentId: selectedAgentWorkspaceAgentId,
+    selectedAgentId: selectedAgentWorkspaceEventAgentId,
     selectedSessionId: selectedAgentWorkspaceSessionId,
     tab,
     eventsAutoRefresh,
@@ -2407,7 +2409,7 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useEffect(() => {
-    const agentId = selectedAgentWorkspaceAgentId.trim();
+    const agentId = selectedAgentWorkspaceEventAgentId.trim();
     const sessionId = selectedAgentWorkspaceSessionId?.trim() ?? "";
     if (!agentId || !sessionId) {
       pendingMemberAcpCacheHydrationKeyRef.current = null;
@@ -2419,10 +2421,10 @@ export function TeamPage(props: TeamPageProps) {
     lastMemberAcpCacheFingerprintRef.current = JSON.stringify(cached);
     setMemberEvents(cached);
     setMemberEventsHasMore(cached.length > 0);
-  }, [selectedAgentWorkspaceAgentId, selectedAgentWorkspaceSessionId]);
+  }, [selectedAgentWorkspaceEventAgentId, selectedAgentWorkspaceSessionId]);
 
   useEffect(() => {
-    const agentId = selectedAgentWorkspaceAgentId.trim();
+    const agentId = selectedAgentWorkspaceEventAgentId.trim();
     const sessionId = selectedAgentWorkspaceSessionId?.trim() ?? "";
     if (!agentId || !sessionId) {
       return;
@@ -2459,7 +2461,7 @@ export function TeamPage(props: TeamPageProps) {
       lastMemberAcpCacheFingerprintRef.current = nextFingerprint;
       memberAcpCachePersistTimerRef.current = null;
     }, TEAM_RUNTIME_CACHE_PERSIST_DEBOUNCE_MS);
-  }, [memberEvents, selectedAgentWorkspaceAgentId, selectedAgentWorkspaceSessionId]);
+  }, [memberEvents, selectedAgentWorkspaceEventAgentId, selectedAgentWorkspaceSessionId]);
 
   useEffect(() => {
     const runId = activeRunIdForSelectedTeam?.trim() ?? "";
