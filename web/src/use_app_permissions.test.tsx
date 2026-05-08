@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useMemo } from "react";
+import { act, useMemo, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AcpPermissionRecord, type AgentRecord } from "./api";
@@ -49,31 +49,43 @@ function buildPermission(id: string, agentId: string): AcpPermissionRecord {
 type HookProps = {
   permissionSseConnected: boolean;
   permissionLiveSignal: AcpPermissionLiveSignal;
+  activeAgent?: string | null;
+  developerMode?: boolean;
+  acpTab?: string;
 };
 
 const agents = [buildAgent("agent-a"), buildAgent("agent-b")];
 
-function HookHarness({ permissionSseConnected, permissionLiveSignal }: HookProps) {
+function HookHarness({
+  permissionSseConnected,
+  permissionLiveSignal,
+  activeAgent = "agent-a",
+  developerMode = true,
+  acpTab = "debug",
+}: HookProps) {
+  const [acpPermissions, setAcpPermissions] = useState<AcpPermissionRecord[]>([]);
+  const [pendingPermissionCounts, setPendingPermissionCounts] = useState<Record<string, number>>({});
+  const [acpPermissionHistory, setAcpPermissionHistory] = useState<AcpPermissionRecord[]>([]);
   const permissionState = useMemo(
     () => ({
-      acpPermissions: [],
-      setAcpPermissions: vi.fn(),
-      pendingPermissionCounts: {},
-      setPendingPermissionCounts: vi.fn(),
-      acpPermissionHistory: [],
-      setAcpPermissionHistory: vi.fn(),
+      acpPermissions,
+      setAcpPermissions,
+      pendingPermissionCounts,
+      setPendingPermissionCounts,
+      acpPermissionHistory,
+      setAcpPermissionHistory,
     }),
-    []
+    [acpPermissions, pendingPermissionCounts, acpPermissionHistory]
   );
 
   useAppPermissions(
     { token: "token-1", role: "admin", userId: "user-1", username: "user-1" },
     true,
     agents,
-    "agent-a",
+    activeAgent,
     false,
-    true,
-    "debug",
+    developerMode,
+    acpTab,
     permissionSseConnected,
     permissionLiveSignal,
     permissionState
@@ -170,5 +182,61 @@ describe("useAppPermissions", () => {
     });
 
     expect(api.listAcpPermissions).toHaveBeenCalledTimes(4);
+  });
+
+  it("refreshes only signaled inactive-agent counts from live permission events", async () => {
+    await act(async () => {
+      root.render(
+        <HookHarness
+          permissionSseConnected
+          permissionLiveSignal={{ seq: 0, agentIds: [] }}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(api.listAcpPermissions).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      root.render(
+        <HookHarness
+          permissionSseConnected
+          permissionLiveSignal={{ seq: 1, agentIds: ["agent-b", "missing-agent"] }}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(api.listAcpPermissions).toHaveBeenCalledTimes(4);
+    expect(api.listAcpPermissions).toHaveBeenLastCalledWith("token-1", "agent-b", "pending");
+  });
+
+  it("does not load debug history from a live signal outside the debug tab", async () => {
+    await act(async () => {
+      root.render(
+        <HookHarness
+          acpTab="conversation"
+          permissionSseConnected
+          permissionLiveSignal={{ seq: 0, agentIds: [] }}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(api.listAcpPermissions).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      root.render(
+        <HookHarness
+          acpTab="conversation"
+          permissionSseConnected
+          permissionLiveSignal={{ seq: 1, agentIds: ["agent-a"] }}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(api.listAcpPermissions).toHaveBeenCalledTimes(4);
+    expect(api.listAcpPermissions).not.toHaveBeenCalledWith("token-1", "agent-a");
   });
 });
