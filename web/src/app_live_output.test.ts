@@ -3,6 +3,7 @@ import type { AgentRecord } from "./api";
 import type { OutputLine } from "./output_cache";
 import {
   analyzeLiveOutputBatch,
+  collectAcpPermissionSignalAgentIds,
   normalizeSseOutputLines,
   routeLiveOutputBatch,
 } from "./app_live_output";
@@ -88,6 +89,70 @@ describe("analyzeLiveOutputBatch", () => {
       "agent-1": "running",
       "agent-2": "stopped",
     });
+  });
+});
+
+describe("collectAcpPermissionSignalAgentIds", () => {
+  it("collects unique agents from ACP permission lifecycle events", () => {
+    expect(
+      collectAcpPermissionSignalAgentIds([
+        buildOutputLine({
+          agent_id: "agent-b",
+          stream: "acp",
+          message: JSON.stringify({ type: "permission_request", permission_id: "p1" }),
+        }),
+        buildOutputLine({
+          agent_id: "agent-a",
+          stream: "acp",
+          message: JSON.stringify({ type: "permission_response", permission_id: "p2" }),
+        }),
+        buildOutputLine({
+          agent_id: "agent-b",
+          stream: "acp",
+          message: JSON.stringify({ type: "permission_timeout", permission_id: "p3" }),
+        }),
+        buildOutputLine({
+          agent_id: "agent-c",
+          stream: "stdout",
+          message: JSON.stringify({ type: "permission_request", permission_id: "p4" }),
+        }),
+        buildOutputLine({
+          agent_id: "agent-d",
+          stream: "acp",
+          message: JSON.stringify({ type: "run_status", status: "running" }),
+        }),
+      ])
+    ).toEqual(["agent-a", "agent-b"]);
+  });
+
+  it("accepts dispatch-error signals and ignores malformed ACP payloads", () => {
+    expect(
+      collectAcpPermissionSignalAgentIds([
+        buildOutputLine({
+          agent_id: "agent-a",
+          stream: "acp",
+          message: JSON.stringify({
+            type: "permission_review_dispatch_error",
+            permission_id: "p1",
+          }),
+        }),
+        buildOutputLine({
+          agent_id: "agent-b",
+          stream: "acp",
+          message: "{not-json",
+        }),
+        buildOutputLine({
+          agent_id: "agent-c",
+          stream: "acp",
+          message: JSON.stringify({ permission_id: "p2" }),
+        }),
+        buildOutputLine({
+          agent_id: "agent-d",
+          stream: "acp",
+          message: "plain text",
+        }),
+      ])
+    ).toEqual(["agent-a"]);
   });
 });
 

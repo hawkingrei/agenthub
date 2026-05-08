@@ -11,6 +11,24 @@ export type LiveOutputBatchAnalysis = {
   nextStatuses: Record<string, AgentRecord["status"]>;
 };
 
+const ACP_PERMISSION_EVENT_TYPES = new Set([
+  "permission_request",
+  "permission_response",
+  "permission_timeout",
+  "permission_review_dispatch_error",
+]);
+
+function parseAcpEventType(message: string): string | null {
+  const trimmed = message.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as { type?: unknown };
+    return typeof parsed.type === "string" ? parsed.type : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseRunStatus(message: string): string | null {
   const trimmed = message.trim();
   if (!trimmed.startsWith("{")) return null;
@@ -84,6 +102,18 @@ export function analyzeLiveOutputBatch(
     activeAcpLines,
     nextStatuses,
   };
+}
+
+export function collectAcpPermissionSignalAgentIds(lines: OutputLine[]): string[] {
+  const agentIds = new Set<string>();
+  for (const line of lines) {
+    if (line.stream !== "acp") continue;
+    const eventType = parseAcpEventType(line.message);
+    if (eventType && ACP_PERMISSION_EVENT_TYPES.has(eventType)) {
+      agentIds.add(line.agent_id);
+    }
+  }
+  return Array.from(agentIds).sort();
 }
 
 export function buildLatestLiveSessionMap(

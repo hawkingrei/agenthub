@@ -26,6 +26,7 @@ import {
 import type { OutputLine } from "./output_cache";
 import { 
   buildLatestLiveSessionMap, 
+  collectAcpPermissionSignalAgentIds,
   resolveLiveSessionSwitch, 
   routeLiveOutputBatch 
 } from "./app_live_output";
@@ -44,7 +45,8 @@ export function useAppOutputCache(
   auth: AuthState | null,
   activeAgent: string | null,
   activeAgentStatus: string | null,
-  setAgents: Dispatch<SetStateAction<AgentRecord[]>>
+  setAgents: Dispatch<SetStateAction<AgentRecord[]>>,
+  onAcpPermissionSignal?: (agentIds: string[]) => void
 ) {
   const token = auth?.token ?? null;
   const eventLimit = 20;
@@ -127,6 +129,10 @@ export function useAppOutputCache(
 
   const consumeLiveOutputBatch = useCallback((lines: OutputLine[]) => {
     if (lines.length === 0) return;
+    const permissionSignalAgentIds = collectAcpPermissionSignalAgentIds(lines);
+    if (permissionSignalAgentIds.length > 0) {
+      onAcpPermissionSignal?.(permissionSignalAgentIds);
+    }
     const currentActive = activeAgentRef.current;
     const currentSessionId = activeSessionIdRef.current;
     const { activeLines, activeAcpLines } = routeLiveOutputBatch({
@@ -163,7 +169,7 @@ export function useAppOutputCache(
     if (activeAcpLines.length > 0) {
       setAcpOutputs((prev) => mergeOutputsWithLimit(prev, activeAcpLines, LIVE_ACP_OUTPUT_RETENTION_LIMIT));
     }
-  }, [updateAcpOutputCacheEntry, updateOutputCacheEntry, setAgents]);
+  }, [onAcpPermissionSignal, updateAcpOutputCacheEntry, updateOutputCacheEntry, setAgents]);
 
   const loadAgentEvents = useCallback(async (id: string, sessionId?: string | null): Promise<boolean> => {
     if (!token) return false;
