@@ -1,4 +1,4 @@
-import React, { Suspense } from "react";
+import React, { Suspense, useMemo } from "react";
 import { resolveTeamRoute } from "../app_route_selection";
 import type { AuthState } from "../types";
 import { APP_ROOT_CLASS } from "../ui/tailwind_classes";
@@ -19,7 +19,7 @@ type TeamRouteContainerProps = {
   onLogout: () => void;
 };
 
-export function TeamRouteContainer({
+export const TeamRouteContainer = React.memo(function TeamRouteContainer({
   appRootRef,
   auth,
   developerMode,
@@ -28,7 +28,7 @@ export function TeamRouteContainer({
   routeSearch,
   onLogout,
 }: TeamRouteContainerProps) {
-  const teamRoute = resolveTeamRoute(routePathname);
+  const teamRoute = useMemo(() => resolveTeamRoute(routePathname), [routePathname]);
 
   return (
     <div className={APP_ROOT_CLASS} ref={appRootRef}>
@@ -45,4 +45,4 @@ export function TeamRouteContainer({
       </Suspense>
     </div>
   );
-}
+});
