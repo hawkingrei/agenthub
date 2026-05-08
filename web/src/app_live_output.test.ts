@@ -90,6 +90,26 @@ describe("analyzeLiveOutputBatch", () => {
       "agent-2": "stopped",
     });
   });
+
+  it("keeps agents active while waiting for permission", () => {
+    const analyzed = analyzeLiveOutputBatch(
+      [
+        buildOutputLine({
+          agent_id: "agent-1",
+          session_id: "session-1",
+          stream: "acp",
+          message: JSON.stringify({
+            type: "run_status",
+            status: "waiting_permission",
+          }),
+        }),
+      ],
+      "agent-1",
+      "session-1"
+    );
+
+    expect(analyzed.nextStatuses).toEqual({ "agent-1": "running" });
+  });
 });
 
 describe("collectAcpPermissionSignalAgentIds", () => {

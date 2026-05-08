@@ -2878,6 +2878,7 @@ describe("team panels interactions", () => {
           options: [
             { option_id: "allow", name: "Allow once", kind: "allow_once" },
             { option_id: "allow_always", name: "Always allow", kind: "allow_always" },
+            { option_id: "reject", name: "Reject", kind: "reject_once" },
           ],
           tool_call: { title: "git push" },
           status: "pending",
@@ -2916,6 +2917,7 @@ describe("team panels interactions", () => {
                 options: [
                   { option_id: "allow", name: "Allow once", kind: "allow_once" },
                   { option_id: "allow_always", name: "Always allow", kind: "allow_always" },
+                  { option_id: "reject", name: "Reject", kind: "reject_once" },
                 ],
               },
             }),
@@ -2947,8 +2949,10 @@ describe("team panels interactions", () => {
       await waitForCondition(() => container.textContent?.includes("Awaiting human review") ?? false);
       expect(container.textContent).toContain("git push");
       expect(container.textContent).toContain("Awaiting human review");
-      expect(queryButtonByText(container, "Allow once")).not.toBeNull();
-      clickElement(queryButtonByText(container, "Allow once"));
+      expect(queryButtonByText(container, "Allow")).not.toBeNull();
+      expect(queryButtonByText(container, "Don't ask again")).not.toBeNull();
+      expect(queryButtonByText(container, "Deny")).not.toBeNull();
+      clickElement(queryButtonByText(container, "Allow"));
 
       await waitForCondition(() => respondPermissionSpy.mock.calls.length > 0);
       expect(respondPermissionSpy).toHaveBeenCalledWith("token-1", "worker-agent", "perm-1", {
@@ -2958,9 +2962,9 @@ describe("team panels interactions", () => {
       await waitForCondition(
         () => container.querySelector("[data-team-permission-card='true']") === null
       );
-      expect(container.textContent).not.toContain("Approved · Allow once");
-      expect(queryButtonByText(container, "Allow once")).toBeNull();
-      expect(queryButtonByText(container, "Cancel")).toBeNull();
+      expect(container.textContent).not.toContain("Approved · Allow");
+      expect(queryButtonByText(container, "Allow")).toBeNull();
+      expect(queryButtonByText(container, "Deny")).toBeNull();
       expect(container.textContent).not.toContain("worker requests permission to execute git push.");
       expect(container.textContent).not.toContain("git push");
     } finally {
@@ -3069,6 +3073,9 @@ describe("team panels interactions", () => {
         responded_at: null,
       },
     ]);
+    const respondPermissionSpy = vi.spyOn(api, "respondAcpPermission").mockResolvedValue({
+      status: "ok",
+    });
 
     try {
       renderWithMantine(
@@ -3131,17 +3138,25 @@ describe("team panels interactions", () => {
         container.querySelector("[data-team-permission-card='true']"),
         "permission card missing"
       ) as HTMLElement;
-      expect(queryButtonByText(permissionCard, "Allow once")).not.toBeNull();
+      expect(queryButtonByText(permissionCard, "Allow")).not.toBeNull();
       expect(queryButtonByText(permissionCard, "Broken id")).toBeNull();
       expect(queryButtonByText(permissionCard, "99")).toBeNull();
-      expect(queryButtonByText(permissionCard, "Cancel")).not.toBeNull();
+      expect(queryButtonByText(permissionCard, "Deny")).not.toBeNull();
       expect(
         Array.from(permissionCard.querySelectorAll("button")).filter(
-          (button) => button.textContent?.trim() === "Allow once"
+          (button) => button.textContent?.trim() === "Allow"
         )
       ).toHaveLength(1);
+      clickElement(queryButtonByText(permissionCard, "Deny"));
+      await waitForCondition(() => respondPermissionSpy.mock.calls.length > 0);
+      expect(respondPermissionSpy).toHaveBeenCalledWith("token-1", "worker-agent", "perm-2", {
+        option_id: null,
+        outcome: "cancelled",
+      });
+      await waitForCondition(() => container.textContent?.includes("Denied") ?? false);
     } finally {
       listPermissionsSpy.mockRestore();
+      respondPermissionSpy.mockRestore();
     }
   });
 
@@ -3371,9 +3386,9 @@ describe("team panels interactions", () => {
       await waitForCondition(
         () => container.querySelector("[data-team-permission-card='true']") === null
       );
-      expect(container.textContent).not.toContain("Approved · Allow once");
-      expect(queryButtonByText(container, "Allow once")).toBeNull();
-      expect(queryButtonByText(container, "Cancel")).toBeNull();
+      expect(container.textContent).not.toContain("Approved · Allow");
+      expect(queryButtonByText(container, "Allow")).toBeNull();
+      expect(queryButtonByText(container, "Deny")).toBeNull();
     } finally {
       listPermissionsSpy.mockRestore();
     }

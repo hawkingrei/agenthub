@@ -7,6 +7,11 @@ import {
   api,
 } from "../api";
 import {
+  isRejectPermissionOption,
+  resolveAcpPermissionDecisionText,
+  resolveAcpPermissionOptionLabel,
+} from "../acp_permission_options";
+import {
   shouldDefaultTeamConversationStickToBottom,
   DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE,
   deriveTeamThreadJumpState,
@@ -122,7 +127,7 @@ function isThreadReplyMessage(message: TeamConversationMessageRecord): boolean {
   return message.route === "team_thread_reply";
 }
 
-type PermissionReviewCardPayload = {
+export type PermissionReviewCardPayload = {
   type: "permission_review_card";
   permission_id: string;
   agent_id: string;
@@ -645,13 +650,7 @@ function resolvePermissionStatusText(
   if (status === "responded") {
     const normalizedRecord = record ?? buildPermissionRecordStub(payload);
     const selectedOptionId = normalizeTrimmedString(normalizedRecord.selected_option_id);
-    if (!selectedOptionId) {
-      return "Cancelled";
-    }
-    const option = normalizedRecord.options.find(
-      (candidate) => candidate.option_id === selectedOptionId
-    );
-    return option ? `Approved · ${option.name}` : "Approved";
+    return resolveAcpPermissionDecisionText(normalizedRecord.options, selectedOptionId);
   }
   if (status === "timeout") {
     return "Timed out";
@@ -896,18 +895,20 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
                     disabled={busy || !optionId}
                     onClick={() => onRespond(payload, optionId)}
                   >
-                    {option.name}
+                    {resolveAcpPermissionOptionLabel(option)}
                   </ActionButton>
                 );
               })}
-              <ActionButton
-                tone="secondary"
-                size="sm"
-                disabled={busy}
-                onClick={() => onRespond(payload)}
-              >
-                Cancel
-              </ActionButton>
+              {!payload.options.some(isRejectPermissionOption) ? (
+                <ActionButton
+                  tone="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => onRespond(payload)}
+                >
+                  Deny
+                </ActionButton>
+              ) : null}
             </div>
             {errorText ? <div className={TEAM_TASK_PERMISSION_CARD_ERROR_CLASS}>{errorText}</div> : null}
           </>

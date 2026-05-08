@@ -1,6 +1,10 @@
 import { Badge, Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { AcpPermissionRecord } from "../api";
 import {
+  isRejectPermissionOption,
+  resolveAcpPermissionOptionLabel,
+} from "../acp_permission_options";
+import {
   NOTION_MODAL_CLASSNAMES,
   NOTION_MODAL_OVERLAY_PROPS,
 } from "../ui/floating_surfaces";
@@ -66,18 +70,20 @@ export function PermissionModal({
                         onRespond(perm.agent_id, perm.id, optionId)
                       }
                     >
-                      {opt.name}
+                      {resolveAcpPermissionOptionLabel(opt)}
                     </Button>
                   );
                 })}
-                <Button
-                  size="xs"
-                  variant="default"
-                  disabled={permissionBusy === perm.id}
-                  onClick={() => onRespond(perm.agent_id, perm.id)}
-                >
-                  Cancel
-                </Button>
+                {!perm.options.some(isRejectPermissionOption) ? (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    disabled={permissionBusy === perm.id}
+                    onClick={() => onRespond(perm.agent_id, perm.id)}
+                  >
+                    Deny
+                  </Button>
+                ) : null}
               </Group>
             </SurfaceCard>
           );
