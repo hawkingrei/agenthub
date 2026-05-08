@@ -40,13 +40,15 @@ type HookProps = Parameters<typeof useAppAgents>;
 function HookHarness({
   auth,
   isAgentsRoute,
+  agentStatusSseConnected = false,
   onCapture,
 }: {
   auth: HookProps[0];
   isAgentsRoute: HookProps[1];
+  agentStatusSseConnected?: HookProps[2];
   onCapture: (value: UseAppAgentsResult) => void;
 }) {
-  const value = useAppAgents(auth, isAgentsRoute);
+  const value = useAppAgents(auth, isAgentsRoute, agentStatusSseConnected);
   useEffect(() => {
     onCapture(value);
   }, [onCapture, value]);
@@ -86,6 +88,7 @@ describe("useAppAgents", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => {
       root.unmount();
     });
@@ -273,6 +276,71 @@ describe("useAppAgents", () => {
     expect(latest.agentNodeJoinBootstrapError).toBe(
       "Agent Node Join Bootstrap: Error: boom"
     );
+  });
+
+  it("keeps fallback agent polling while app-level SSE is disconnected", async () => {
+    vi.useFakeTimers();
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listAgentsMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+    });
+
+    expect(listAgentsMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("disables fallback agent polling while app-level SSE is connected", async () => {
+    vi.useFakeTimers();
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
+
+    await act(async () => {
+      root.render(
+        <HookHarness
+          auth={auth}
+          isAgentsRoute={true}
+          agentStatusSseConnected={true}
+          onCapture={onCapture}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listAgentsMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+
+    expect(listAgentsMock).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("backfills hidden team member agents for node usage surfaces", async () => {

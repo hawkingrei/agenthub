@@ -212,6 +212,7 @@ export function App() {
   } = useAppAuth();
 
   const [agentsCollapsed, setAgentsCollapsed] = useState(true);
+  const [agentStatusSseConnected, setAgentStatusSseConnected] = useState(false);
 
   const {
     agents,
@@ -268,7 +269,7 @@ export function App() {
     openCreateAgentModal,
     refreshAgents,
     defaultWorktreeRoot,
-  } = useAppAgents(auth, isAgentsRoute);
+  } = useAppAgents(auth, isAgentsRoute, agentStatusSseConnected);
 
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
 
@@ -325,6 +326,9 @@ export function App() {
     refreshAgents
   );
 
+  useEffect(() => {
+    setAgentStatusSseConnected(sseState === "connected");
+  }, [sseState]);
 
   const [error, setError] = useState<string | null>(null);
 

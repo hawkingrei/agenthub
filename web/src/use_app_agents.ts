@@ -36,7 +36,11 @@ import {
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
 
-export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
+export function useAppAgents(
+  auth: AuthState | null,
+  isAgentsRoute: boolean,
+  agentStatusSseConnected = false
+) {
   const token = auth?.token ?? null;
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentNodes, setAgentNodes] = useState<AgentNodeRecord[]>([]);
@@ -192,12 +196,12 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
   }, [isAgentsRoute, token, refreshTeams]);
 
   useEffect(() => {
-    if (!token || !isAgentsRoute) return;
+    if (!token || !isAgentsRoute || agentStatusSseConnected) return;
     const timer = window.setInterval(() => {
       void refreshAgents({ silent: true });
     }, AGENT_STATUS_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [isAgentsRoute, token, refreshAgents]);
+  }, [agentStatusSseConnected, isAgentsRoute, token, refreshAgents]);
 
   useEffect(() => {
     if (!token) {
