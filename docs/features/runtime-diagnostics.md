@@ -15,6 +15,11 @@ stalls from CPU hotspots and avoid relying on UI status alone.
   binary installation status.
 - Codex ACP adapter diagnostics that identify live turn/tool-call completeness gaps before they
   surface as agent unresponsiveness or Codex core panics.
+- Agent-output stall diagnostics that correlate frontend-visible output state, backend session
+  state, persisted event cursors, SSE freshness, fallback refreshes, and provider-adapter progress.
+- A read-only diagnostic CLI surface for operators and AgentHub-managed agents to collect a compact
+  trace bundle for one stuck agent or Team member without manually joining database, log, and ACP
+  state by hand.
 
 ## Non-Goals
 
@@ -24,6 +29,9 @@ stalls from CPU hotspots and avoid relying on UI status alone.
 - Remote node binary inventory is out of scope until nodes explicitly report capabilities.
 - Codex-native diagnostics do not replace the ACP runtime boundary for normal prompt, permission,
   event, or UI flows.
+- The diagnostic CLI must not repair, restart, interrupt, or mutate stuck sessions by default.
+- The diagnostic CLI is not a general log-ingestion system and should not persist full prompt,
+  message, or tool-output bodies unless an explicit debug export mode is added later.
 
 ## Architecture
 
@@ -46,6 +54,22 @@ still treat ACP as the provider-neutral control and event protocol. The diagnost
 be small enough to attach to runtime logs, debug surfaces, or future support bundles without
 replaying full conversation content.
 
+Agent-output stall diagnostics sit above provider-specific adapter state. The canonical question is
+not only "is the process alive", but where the visible-output pipeline stopped:
+
+1. runtime process/session ownership;
+2. provider adapter turn progress;
+3. ACP event persistence;
+4. SSE delivery to the browser;
+5. frontend cache/render state;
+6. Team mailbox or permission-review gating.
+
+The first CLI surface should be read-only, for example `agenthub doctor agent-trace`. It should
+accept either a standalone `agent_id` or a Team-scoped `team_id + member_id`, resolve the active
+AgentHub session and provider continuity id, then print a compact timeline and machine-readable JSON
+summary. The command should be useful both to a human operator and to an AgentHub-managed agent that
+needs to inspect why its own UI output appears stuck.
+
 ## Contracts
 
 - `AGENTHUB_FASTRACE` unset or unrecognized: fastrace remains disabled.
@@ -64,6 +88,32 @@ replaying full conversation content.
   - the last Codex event class observed by the adapter
 - A missing `CustomToolCallOutput` must be reported as a recoverable diagnostic finding before
   compaction, resume normalization, or turn finalization can panic.
+- Agent-output stall diagnostics should report these provider-neutral fields:
+  - resolved `agent_id`, optional `team_id`, optional `member_id`, AgentHub `session_id`, and
+    provider continuity/session id when known
+  - process/runtime status, runtime owner node, last process heartbeat or exit observation, and
+    stale-running reconciliation status
+  - latest persisted `agent_events.id`, latest event timestamp, latest ACP event type, and latest
+    renderable message/tool-call summary
+  - latest browser-delivery evidence when available: active SSE target, last SSE event timestamp,
+    fallback polling state, and latest fetched event cursor
+  - pending permission-review requests, pending mailbox messages that can block the next turn, and
+    pending tool calls grouped by call id/status
+  - adapter-local progress fields for provider-backed sessions, including active turn/submission id,
+    queued prompt count, and last provider event class/timestamp
+- The CLI summary should classify the most likely stall layer as one of:
+  - `runtime_not_running`
+  - `provider_turn_waiting`
+  - `permission_or_tool_waiting`
+  - `events_not_persisted`
+  - `sse_delivery_stale`
+  - `frontend_render_stale`
+  - `unknown`
+- The CLI must support `--json` for agent-consumable output and a human-readable default table or
+  timeline.
+- Diagnostic output must redact prompt bodies, message bodies, tool arguments, environment values,
+  and provider tokens by default. IDs, timestamps, statuses, event classes, counts, and short
+  synthetic summaries are allowed.
 
 ## Validation Matrix
 
@@ -74,6 +124,12 @@ replaying full conversation content.
 - `npm --prefix web exec tsc -- --noEmit --project web/tsconfig.json`
 - `cargo test -p agenthub-codex-acp` focused on live-turn diagnostic accounting and dirty custom
   tool-call history repair.
+- Focused CLI tests should cover agent-output stall summaries for:
+  - a live session with no newly persisted events after a recent input;
+  - a pending permission/tool-call gate;
+  - a stale SSE cursor while persisted events advanced;
+  - a stale `running` row with no live runtime handle;
+  - redaction of prompt/tool payload bodies in both text and `--json` output.
 
 ## Operational Notes
 
@@ -90,6 +146,16 @@ For Codex-specific stalls, collect the ACP debug raw events plus the Codex ACP d
 The first triage question should be whether the adapter is waiting on prompt completion, a
 permission/tool response, an app-server request, or a tool call whose output was never observed.
 
+For browser-visible output stalls, collect the agent-trace summary first, then use Chrome DevTools
+MCP only for the browser layer:
+
+1. run the read-only CLI for the selected agent or Team member;
+2. compare the latest persisted event id/timestamp with the browser's last fetched cursor;
+3. inspect active EventSource targets and repeated `/api/agents/:id/events?...` requests;
+4. if persisted events are advancing but the UI is stale, focus on SSE/cache/render state;
+5. if persisted events are not advancing, focus on provider adapter, permission/tool gating, or
+   runtime ownership.
+
 ## Open Risks
 
 - Console output is suitable for local diagnosis, not production trace ingestion.
@@ -98,6 +164,10 @@ permission/tool response, an app-server request, or a tool call whose output was
 - Codex diagnostic state can expose adapter/accounting gaps, but it must avoid storing large prompt
   or tool-output payloads by default.
 - Remote node capability reporting still needs a separate node-reported contract.
+- Browser-visible output stalls can involve state that only exists in the current browser tab.
+  Backend CLI diagnostics should make that gap explicit instead of claiming full frontend truth.
+- Some provider adapters may not expose enough native turn state yet. The provider-neutral CLI should
+  report missing adapter diagnostics as `unknown` rather than fabricating progress.
 
 ## Source Journals
 
