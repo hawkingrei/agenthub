@@ -20,7 +20,6 @@ import {
   buildWorkspaceNodePath,
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
-  resolveTeamRoute,
   isWorkspaceWorkbenchRoute,
   resolveWorkspaceAgentRoute,
   resolveWorkspaceLens,
@@ -67,6 +66,7 @@ import { resolveDefaultWorktreeRootForTargetNode } from "./worktree_defaults";
 import { AdminRouteContainer } from "./routes/admin_route_container";
 import { AgentsRouteContainer } from "./routes/agents_route_container";
 import { RouteFallback } from "./routes/route_fallback";
+import { TeamRouteContainer } from "./routes/team_route_container";
 
 import { useAppAuth } from "./use_app_auth";
 import { useAppAgents } from "./use_app_agents";
@@ -140,11 +140,6 @@ export {
 const LazyJoinPage = React.lazy(async () => {
   const module = (await import("./pages/join_page")) as typeof import("./pages/join_page");
   return { default: module.JoinPage };
-});
-
-const LazyTeamPage = React.lazy(async () => {
-  const module = (await import("./pages/team_page")) as typeof import("./pages/team_page");
-  return { default: module.TeamPage };
 });
 
 function AuthRedirect(): null {
@@ -1223,21 +1218,16 @@ export function App() {
     case "teams-auth-redirect":
       return <AuthRedirect />;
     case "teams": {
-      const teamRoute = resolveTeamRoute(routeLocation.pathname);
       return (
-        <div className={APP_ROOT_CLASS} ref={appRootRef}>
-          <Suspense fallback={<RouteFallback label="Loading teams..." />}>
-            <LazyTeamPage
-              auth={auth!}
-              token={auth!.token}
-              onLogout={onLogout}
-              developerMode={developerMode}
-              routeTeamId={teamRoute?.teamId ?? null}
-              routeSearch={routeLocation.search}
-              defaultWorktreeRoot={defaultWorktreeRoot}
-            />
-          </Suspense>
-        </div>
+        <TeamRouteContainer
+          appRootRef={appRootRef}
+          auth={auth!}
+          onLogout={onLogout}
+          developerMode={developerMode}
+          routePathname={routeLocation.pathname}
+          routeSearch={routeLocation.search}
+          defaultWorktreeRoot={defaultWorktreeRoot}
+        />
       );
     }
     case "post-auth-redirect":
