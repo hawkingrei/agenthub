@@ -15,9 +15,9 @@ use agent_client_protocol::schema::{
     CancelNotification, ClientCapabilities, ContentBlock, ContentChunk, Implementation,
     InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, PermissionOption,
     PermissionOptionKind, PromptRequest, ProtocolVersion, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SessionNotification, SessionUpdate,
-    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, TextContent,
-    ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
+    SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
 };
 use agent_client_protocol::{Agent, ConnectionTo, Error as AcpError, ErrorCode as AcpErrorCode};
 use chrono::Utc;
@@ -629,12 +629,21 @@ impl AcpClient {
             "created_at": Utc::now().timestamp(),
         }))
         .await;
+        self.emit_json(serde_json::json!({
+            "type": "run_status",
+            "status": "waiting_permission",
+            "session_id": &self.session_id,
+        }))
+        .await;
 
         let outcome = match tokio::time::timeout(ACP_PERMISSION_REVIEW_TIMEOUT, response_rx).await {
             Ok(Ok(outcome)) => outcome,
             Ok(Err(_)) => {
-                let fallback = permission_review_failure_outcome();
-                let _ = self.permissions.mark_timeout(&request_id, None).await;
+                let fallback = permission_review_failure_outcome(&args.options);
+                let _ = self
+                    .permissions
+                    .mark_timeout(&request_id, Some(&fallback))
+                    .await;
                 self.emit_json(serde_json::json!({
                     "type": "permission_timeout",
                     "permission_id": request_id,
@@ -647,8 +656,11 @@ impl AcpClient {
                 fallback
             }
             Err(_) => {
-                let fallback = permission_review_failure_outcome();
-                let _ = self.permissions.mark_timeout(&request_id, None).await;
+                let fallback = permission_review_failure_outcome(&args.options);
+                let _ = self
+                    .permissions
+                    .mark_timeout(&request_id, Some(&fallback))
+                    .await;
                 self.emit_json(serde_json::json!({
                     "type": "permission_timeout",
                     "permission_id": request_id,
@@ -671,6 +683,12 @@ impl AcpClient {
             "responded_at": Utc::now().timestamp(),
         }))
         .await;
+        self.emit_json(serde_json::json!({
+            "type": "run_status",
+            "status": "running",
+            "session_id": &self.session_id,
+        }))
+        .await;
 
         Ok(RequestPermissionResponse::new(outcome))
     }
@@ -684,8 +702,21 @@ impl AcpClient {
     }
 }
 
-fn permission_review_failure_outcome() -> RequestPermissionOutcome {
-    RequestPermissionOutcome::Cancelled
+fn permission_review_failure_outcome(options: &[PermissionOption]) -> RequestPermissionOutcome {
+    options
+        .iter()
+        .find(|option| option.kind == PermissionOptionKind::RejectOnce)
+        .or_else(|| {
+            options
+                .iter()
+                .find(|option| option.kind == PermissionOptionKind::RejectAlways)
+        })
+        .map(|option| {
+            RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+                option.option_id.to_string(),
+            ))
+        })
+        .unwrap_or(RequestPermissionOutcome::Cancelled)
 }
 
 #[derive(Debug)]
@@ -1472,6 +1503,7 @@ impl AcpPermissionService {
         let id_for_db = id.clone();
         let agent_id = agent_id.to_string();
         let agent_session_id = agent_session_id.to_string();
+        let agent_session_id_for_status = agent_session_id.clone();
         let acp_session_id = args.session_id.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
         let routing_team_id = routing.as_ref().and_then(|value| value.team_id.clone());
@@ -1508,6 +1540,8 @@ impl AcpPermissionService {
             })
             .await
             .map_err(|err| anyhow::anyhow!("acp permission create join failed: {err}"))??;
+        self.update_agent_session_status(&agent_session_id_for_status, "waiting_permission")
+            .await;
 
         let (tx, rx) = oneshot::channel();
         let mut pending = self.pending.lock().await;
@@ -1549,6 +1583,10 @@ impl AcpPermissionService {
         if rows_affected == 0 {
             return Ok(AcpPermissionRespondResult::AlreadyResolved);
         }
+        if let Some(session_id) = self.permission_agent_session_id(request_id).await? {
+            self.restore_agent_session_status_after_permission(&session_id)
+                .await;
+        }
         let mut pending = self.pending.lock().await;
         if let Some(sender) = pending.remove(request_id) {
             let _ = sender.send(outcome);
@@ -1574,6 +1612,91 @@ impl AcpPermissionService {
             .await
             .map_err(|err| anyhow::anyhow!("acp permission ownership join failed: {err}"))??;
         Ok(row > 0)
+    }
+
+    async fn permission_agent_session_id(
+        &self,
+        request_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let db = self.db.clone();
+        let request_id = request_id.to_string();
+        self.runtime_handle
+            .spawn(async move {
+                sqlx::query_scalar::<_, String>(
+                    "SELECT session_id FROM acp_permission_requests WHERE id = ?1",
+                )
+                .bind(request_id)
+                .fetch_optional(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission session lookup join failed: {err}"))?
+            .map_err(|err| anyhow::anyhow!("acp permission session lookup failed: {err}"))
+    }
+
+    async fn update_agent_session_status(&self, session_id: &str, status: &'static str) {
+        let db = self.db.clone();
+        let session_id = session_id.to_string();
+        if let Err(err) = self
+            .runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    UPDATE agent_sessions
+                    SET status = ?1
+                    WHERE id = ?2 AND ended_at IS NULL
+                    "#,
+                )
+                .bind(status)
+                .bind(session_id)
+                .execute(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission session status join failed: {err}"))
+            .and_then(|result| {
+                result.map(|_| ()).map_err(|err| {
+                    anyhow::anyhow!("acp permission session status update failed: {err}")
+                })
+            })
+        {
+            tracing::debug!(status, error = %err, "skip acp permission session status update");
+        }
+    }
+
+    async fn restore_agent_session_status_after_permission(&self, session_id: &str) {
+        let db = self.db.clone();
+        let session_id = session_id.to_string();
+        if let Err(err) = self
+            .runtime_handle
+            .spawn(async move {
+                sqlx::query(
+                    r#"
+                    UPDATE agent_sessions
+                    SET status = 'running'
+                    WHERE id = ?1
+                      AND ended_at IS NULL
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM acp_permission_requests
+                        WHERE session_id = ?1 AND status = 'pending'
+                      )
+                    "#,
+                )
+                .bind(session_id)
+                .execute(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission session restore join failed: {err}"))
+            .and_then(|result| {
+                result
+                    .map(|_| ())
+                    .map_err(|err| anyhow::anyhow!("acp permission session restore failed: {err}"))
+            })
+        {
+            tracing::debug!(error = %err, "skip acp permission session status restore");
+        }
     }
 
     pub async fn get(&self, request_id: &str) -> anyhow::Result<Option<AcpPermissionRecord>> {
@@ -1735,6 +1858,10 @@ impl AcpPermissionService {
             .map_err(|err| anyhow::anyhow!("acp permission timeout join failed: {err}"))??
             .rows_affected();
         if rows_affected > 0 {
+            if let Some(session_id) = self.permission_agent_session_id(request_id).await? {
+                self.restore_agent_session_status_after_permission(&session_id)
+                    .await;
+            }
             let mut pending = self.pending.lock().await;
             pending.remove(request_id);
         }
@@ -1867,7 +1994,8 @@ mod tests {
         should_queue_while_prompts_active,
     };
     use agent_client_protocol::schema::{
-        ContentBlock, McpServer, RequestPermissionOutcome, SelectedPermissionOutcome,
+        ContentBlock, McpServer, PermissionOption, PermissionOptionKind, RequestPermissionOutcome,
+        SelectedPermissionOutcome,
     };
     use agent_client_protocol::{Error as AcpError, ErrorCode as AcpErrorCode};
     use agenthub_acp_core::build_skill;
@@ -2630,8 +2758,31 @@ Fallback to the user-level review contract.
         .execute(&db)
         .await
         .expect("create permission table");
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_sessions (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create agent sessions table");
         let service = AcpPermissionService::new(db.clone());
         let request_id = "perm-service-timeout".to_string();
+        sqlx::query(
+            "INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at) VALUES (?1, ?2, 'waiting_permission', ?3, NULL)",
+        )
+        .bind("session-1")
+        .bind("agent-1")
+        .bind(chrono::Utc::now().timestamp())
+        .execute(&db)
+        .await
+        .expect("insert agent session");
         sqlx::query(
             r#"
             INSERT INTO acp_permission_requests (
@@ -2651,6 +2802,11 @@ Fallback to the user-level review contract.
                     "option_id": "allow",
                     "name": "Allow once",
                     "kind": "allow_once"
+                },
+                {
+                    "option_id": "reject",
+                    "name": "Deny",
+                    "kind": "reject_once"
                 }
             ])
             .to_string(),
@@ -2661,31 +2817,198 @@ Fallback to the user-level review contract.
         .await
         .expect("insert permission request");
 
+        let timeout_outcome = permission_review_failure_outcome(&[
+            PermissionOption::new("allow", "Allow once", PermissionOptionKind::AllowOnce),
+            PermissionOption::new("reject", "Deny", PermissionOptionKind::RejectOnce),
+        ]);
         assert!(matches!(
-            permission_review_failure_outcome(),
-            RequestPermissionOutcome::Cancelled
+            &timeout_outcome,
+            RequestPermissionOutcome::Selected(selected) if selected.option_id.to_string() == "reject"
         ));
 
         service
-            .mark_timeout(&request_id, Some(&permission_review_failure_outcome()))
+            .mark_timeout(&request_id, Some(&timeout_outcome))
             .await
             .expect("mark timeout");
 
         let row = sqlx::query(
-            "SELECT status, selected_option_id FROM acp_permission_requests WHERE id = ?1",
+            r#"
+            SELECT p.status, p.selected_option_id, s.status AS session_status
+            FROM acp_permission_requests p
+            JOIN agent_sessions s ON s.id = p.session_id
+            WHERE p.id = ?1
+            "#,
         )
         .bind(&request_id)
         .fetch_one(&db)
         .await
         .expect("reload permission request");
         assert_eq!(row.get::<String, _>("status"), "timeout");
-        assert_eq!(row.get::<Option<String>, _>("selected_option_id"), None);
+        assert_eq!(
+            row.get::<Option<String>, _>("selected_option_id"),
+            Some("reject".to_string())
+        );
+        assert_eq!(row.get::<String, _>("session_status"), "running");
+    }
+
+    #[tokio::test]
+    async fn permission_timeout_keeps_session_waiting_until_all_permissions_resolve() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        sqlx::query(
+            r#"
+            CREATE TABLE acp_permission_requests (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                acp_session_id TEXT,
+                team_id TEXT,
+                requester_actor_id TEXT,
+                requester_role TEXT,
+                review_target_actor_id TEXT,
+                review_dispatch_status TEXT,
+                review_delivery_run_id TEXT,
+                review_message_id INTEGER,
+                review_dispatched_at INTEGER,
+                reviewed_by_actor_id TEXT,
+                human_review_notified_at INTEGER,
+                tool_call_id TEXT,
+                options_json TEXT NOT NULL,
+                tool_call_json TEXT,
+                status TEXT NOT NULL,
+                selected_option_id TEXT,
+                created_at INTEGER NOT NULL,
+                responded_at INTEGER
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create permission table");
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_sessions (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create agent sessions table");
+        sqlx::query(
+            "INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at) VALUES (?1, ?2, 'waiting_permission', ?3, NULL)",
+        )
+        .bind("session-1")
+        .bind("agent-1")
+        .bind(chrono::Utc::now().timestamp())
+        .execute(&db)
+        .await
+        .expect("insert agent session");
+        for request_id in ["perm-first", "perm-second"] {
+            sqlx::query(
+                r#"
+                INSERT INTO acp_permission_requests (
+                    id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json, status, created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+                "#,
+            )
+            .bind(request_id)
+            .bind("agent-1")
+            .bind("session-1")
+            .bind("acp-session-1")
+            .bind(format!("tool-call-{request_id}"))
+            .bind(
+                serde_json::json!([
+                    {
+                        "option_id": "reject",
+                        "name": "Deny",
+                        "kind": "reject_once"
+                    }
+                ])
+                .to_string(),
+            )
+            .bind(serde_json::json!({"tool":{"name":"mcp__fs__write"}}).to_string())
+            .bind(chrono::Utc::now().timestamp())
+            .execute(&db)
+            .await
+            .expect("insert permission request");
+        }
+
+        let service = AcpPermissionService::new(db.clone());
+        let timeout_outcome =
+            RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("reject"));
+        service
+            .mark_timeout("perm-first", Some(&timeout_outcome))
+            .await
+            .expect("mark first timeout");
+        let status_after_first: String =
+            sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = 'session-1'")
+                .fetch_one(&db)
+                .await
+                .expect("load session status after first timeout");
+        assert_eq!(status_after_first, "waiting_permission");
+
+        service
+            .mark_timeout("perm-second", Some(&timeout_outcome))
+            .await
+            .expect("mark second timeout");
+        let status_after_second: String =
+            sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = 'session-1'")
+                .fetch_one(&db)
+                .await
+                .expect("load session status after second timeout");
+        assert_eq!(status_after_second, "running");
     }
 
     #[test]
-    fn permission_review_failure_outcome_is_cancelled() {
+    fn permission_review_failure_outcome_selects_reject_once_first() {
+        let outcome = permission_review_failure_outcome(&[
+            PermissionOption::new("allow", "Allow once", PermissionOptionKind::AllowOnce),
+            PermissionOption::new("deny", "Deny", PermissionOptionKind::RejectOnce),
+            PermissionOption::new(
+                "deny_always",
+                "Deny always",
+                PermissionOptionKind::RejectAlways,
+            ),
+        ]);
         assert!(matches!(
-            permission_review_failure_outcome(),
+            outcome,
+            RequestPermissionOutcome::Selected(selected) if selected.option_id.to_string() == "deny"
+        ));
+    }
+
+    #[test]
+    fn permission_review_failure_outcome_falls_back_to_reject_always() {
+        let outcome = permission_review_failure_outcome(&[
+            PermissionOption::new("allow", "Allow once", PermissionOptionKind::AllowOnce),
+            PermissionOption::new(
+                "deny_always",
+                "Deny always",
+                PermissionOptionKind::RejectAlways,
+            ),
+        ]);
+        assert!(matches!(
+            outcome,
+            RequestPermissionOutcome::Selected(selected) if selected.option_id.to_string() == "deny_always"
+        ));
+    }
+
+    #[test]
+    fn permission_review_failure_outcome_cancels_without_reject_option() {
+        assert!(matches!(
+            permission_review_failure_outcome(&[PermissionOption::new(
+                "allow",
+                "Allow once",
+                PermissionOptionKind::AllowOnce,
+            )]),
             RequestPermissionOutcome::Cancelled
         ));
     }
