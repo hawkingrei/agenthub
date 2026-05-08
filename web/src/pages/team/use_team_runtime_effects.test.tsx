@@ -106,6 +106,25 @@ describe("useTeamRuntimeEffects", () => {
     expect(params.refreshTeamRuntime).toHaveBeenLastCalledWith("team-1");
   });
 
+  it("falls back to polling when the runtime SSE token is blank", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams({ token: "   " });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+
+    expect(MockEventSource.instances).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(TEAM_RUNTIME_REFRESH_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTeamRuntime).toHaveBeenCalledTimes(1);
+    expect(params.refreshTeamRuntime).toHaveBeenLastCalledWith("team-1");
+  });
+
   it("uses team runtime SSE instead of interval polling when connected", async () => {
     vi.stubGlobal("EventSource", MockEventSource);
     const params = createParams();
@@ -238,6 +257,63 @@ describe("useTeamRuntimeEffects", () => {
 
     expect(MockEventSource.instances).toHaveLength(2);
     expect(MockEventSource.instances[1]?.url).toBe(source.url);
+  });
+
+  it("does not reopen runtime SSE after unmounting during reconnect", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    const source = MockEventSource.instances[0];
+
+    act(() => {
+      source.emitOpen();
+      source.emitError();
+      root.unmount();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+
+    expect(MockEventSource.instances).toHaveLength(1);
+  });
+
+  it("ignores errors from replaced runtime SSE sources", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    const firstSource = MockEventSource.instances[0];
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={{
+            ...params,
+            selectedTeamId: "team-2",
+          }}
+        />
+      );
+    });
+
+    expect(MockEventSource.instances).toHaveLength(2);
+
+    act(() => {
+      firstSource.emitError();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+
+    expect(MockEventSource.instances).toHaveLength(2);
   });
 
   it("stays idle when runtime watching is disabled", async () => {
