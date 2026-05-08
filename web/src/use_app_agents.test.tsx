@@ -280,10 +280,6 @@ describe("useAppAgents", () => {
 
   it("keeps fallback agent polling while app-level SSE is disconnected", async () => {
     vi.useFakeTimers();
-    const captures: UseAppAgentsResult[] = [];
-    const onCapture = (value: UseAppAgentsResult) => {
-      captures.push(value);
-    };
     const auth: AuthState = {
       token: "token-1",
       userId: "user-1",
@@ -292,7 +288,7 @@ describe("useAppAgents", () => {
     };
 
     await act(async () => {
-      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={vi.fn()} />);
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -304,15 +300,10 @@ describe("useAppAgents", () => {
     });
 
     expect(listAgentsMock).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
   });
 
   it("disables fallback agent polling while app-level SSE is connected", async () => {
     vi.useFakeTimers();
-    const captures: UseAppAgentsResult[] = [];
-    const onCapture = (value: UseAppAgentsResult) => {
-      captures.push(value);
-    };
     const auth: AuthState = {
       token: "token-1",
       userId: "user-1",
@@ -326,7 +317,7 @@ describe("useAppAgents", () => {
           auth={auth}
           isAgentsRoute={true}
           agentStatusSseConnected={true}
-          onCapture={onCapture}
+          onCapture={vi.fn()}
         />
       );
       await Promise.resolve();
@@ -340,7 +331,6 @@ describe("useAppAgents", () => {
     });
 
     expect(listAgentsMock).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
   });
 
   it("backfills hidden team member agents for node usage surfaces", async () => {
