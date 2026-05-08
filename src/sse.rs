@@ -20,6 +20,7 @@ use crate::api::{ApiError, load_team_for_user};
 use crate::state::AppState;
 use crate::team::{
     TeamConversationStreamEvent, TeamRunContextFingerprint, TeamRunContextStreamEvent,
+    TeamRuntimeRecord, TeamRuntimeStatus,
 };
 
 #[derive(Debug, serde::Deserialize)]
@@ -41,6 +42,7 @@ pub fn router(state: AppState) -> Router {
             "/teams/{team_id}/runs/{run_id}/context",
             get(sse_team_run_context),
         )
+        .route("/teams/{team_id}/runtime", get(sse_team_runtime))
         .route(
             "/teams/{team_id}/tasks/{task_id}/messages",
             get(sse_team_task_messages),
@@ -159,6 +161,23 @@ async fn sse_team_run_context(
     decorate_sse_response(Sse::new(stream).into_response())
 }
 
+async fn sse_team_runtime(
+    State(state): State<AppState>,
+    Path(team_id): Path<String>,
+    Query(query): Query<SseTokenQuery>,
+) -> impl IntoResponse {
+    let user = match state.auth.validate_session(&query.token).await {
+        Ok(user) => user,
+        Err(_) => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
+    };
+    let team = match load_team_for_user(&state, &team_id, &user).await {
+        Ok(team) => team,
+        Err(error) => return error.into_response(),
+    };
+    let stream = team_runtime_stream(state, team.id);
+    decorate_sse_response(Sse::new(stream).into_response())
+}
+
 fn map_sse_not_found_error(error: anyhow::Error, msg: &str) -> ApiError {
     if matches!(
         error.downcast_ref::<SqlxError>(),
@@ -219,6 +238,8 @@ const OUTPUT_STREAM_BATCH_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
 const TEAM_CONVERSATION_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const TEAM_RUN_CONTEXT_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const TEAM_RUN_CONTEXT_STREAM_POLL_INTERVAL: Duration = Duration::from_secs(2);
+const TEAM_RUNTIME_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+const TEAM_RUNTIME_STREAM_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 fn output_stream(
     output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
@@ -630,6 +651,135 @@ fn team_run_context_stream(
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TeamRuntimeFingerprint {
+    team_id: String,
+    status: TeamRuntimeStatus,
+    members: Vec<TeamRuntimeMemberFingerprint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TeamRuntimeMemberFingerprint {
+    member_id: String,
+    agent_status: Option<String>,
+    session_id: Option<String>,
+    session_status: Option<String>,
+    pending_inbox_count: i64,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct TeamRuntimeSseMessage {
+    r#type: String,
+    payload: TeamRuntimeStreamEvent,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct TeamRuntimeStreamEvent {
+    team_id: String,
+    source: String,
+}
+
+fn team_runtime_fingerprint(runtime: TeamRuntimeRecord) -> TeamRuntimeFingerprint {
+    TeamRuntimeFingerprint {
+        team_id: runtime.team_id,
+        status: runtime.status,
+        members: runtime
+            .members
+            .into_iter()
+            .map(|member| TeamRuntimeMemberFingerprint {
+                member_id: member.member_id,
+                agent_status: member.agent_status,
+                session_id: member.session_id,
+                session_status: member.session_status,
+                pending_inbox_count: member.pending_inbox_count,
+            })
+            .collect(),
+    }
+}
+
+fn build_team_runtime_delta(
+    previous: &TeamRuntimeFingerprint,
+    next: &TeamRuntimeFingerprint,
+) -> Option<TeamRuntimeStreamEvent> {
+    if previous == next {
+        return None;
+    }
+    Some(TeamRuntimeStreamEvent {
+        team_id: next.team_id.clone(),
+        source: "poll_delta".to_string(),
+    })
+}
+
+fn team_runtime_event_to_message(event: TeamRuntimeStreamEvent) -> TeamRuntimeSseMessage {
+    TeamRuntimeSseMessage {
+        r#type: "team_runtime".to_string(),
+        payload: event,
+    }
+}
+
+fn team_runtime_stream(
+    state: AppState,
+    team_id: String,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    let mut heartbeat = tokio::time::interval(TEAM_RUNTIME_STREAM_HEARTBEAT_INTERVAL);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut poll = tokio::time::interval(TEAM_RUNTIME_STREAM_POLL_INTERVAL);
+    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    futures::stream::unfold(
+        (
+            heartbeat,
+            poll,
+            None::<TeamRuntimeFingerprint>,
+            state,
+            team_id,
+        ),
+        |(mut heartbeat, mut poll, mut previous, state, team_id)| async move {
+            loop {
+                tokio::select! {
+                    _ = heartbeat.tick() => {
+                        return Some((
+                            Ok(Event::default().data("heartbeat")),
+                            (heartbeat, poll, previous, state, team_id),
+                        ));
+                    }
+                    _ = poll.tick() => {
+                        let next = match state.teams.describe_team_runtime(&team_id).await {
+                            Ok(runtime) => team_runtime_fingerprint(runtime),
+                            Err(error) if matches!(error.downcast_ref::<SqlxError>(), Some(SqlxError::RowNotFound)) => {
+                                return None;
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    team_id = %team_id,
+                                    error = %error,
+                                    "team runtime sse fingerprint refresh failed"
+                                );
+                                continue;
+                            }
+                        };
+                        let event = previous
+                            .as_ref()
+                            .and_then(|prev| build_team_runtime_delta(prev, &next));
+                        previous = Some(next);
+                        if let Some(event) = event {
+                            let text = match serde_json::to_string(
+                                &team_runtime_event_to_message(event),
+                            ) {
+                                Ok(text) => text,
+                                Err(_) => continue,
+                            };
+                            return Some((
+                                Ok(Event::default().data(text)),
+                                (heartbeat, poll, previous, state, team_id),
+                            ));
+                        }
+                    }
+                }
+            }
+        },
+    )
+}
+
 fn push_batched_output(state: &mut OutputStreamState, output: AgentOutput) {
     state.batch_bytes = state
         .batch_bytes
@@ -709,7 +859,9 @@ mod tests {
         },
     };
 
-    use super::parse_agent_ids;
+    use super::{
+        TeamRuntimeFingerprint, TeamRuntimeMemberFingerprint, TeamRuntimeStatus, parse_agent_ids,
+    };
 
     fn build_sse_request(path: &str) -> Request<Body> {
         Request::builder()
@@ -1152,6 +1304,32 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
+    #[tokio::test]
+    async fn team_runtime_sse_requires_valid_token() {
+        let state = build_team_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "sse-team-runtime-auth".to_string(),
+                description: Some("team runtime sse auth".to_string()),
+                spec: serde_json::json!({
+                    "entrypoint":"coordinator_plan",
+                    "members":[{"member_id":"coordinator"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/teams/{}/runtime?token=bad-token",
+                team.id
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
     #[test]
     fn build_team_run_context_delta_marks_expected_refresh_targets() {
         let previous = TeamRunContextFingerprint {
@@ -1183,6 +1361,37 @@ mod tests {
         assert!(delta.refresh_mailbox);
         assert_eq!(delta.latest_event_id, Some(11));
         assert_eq!(delta.latest_mailbox_message_id, Some(6));
+    }
+
+    #[test]
+    fn build_team_runtime_delta_marks_visible_status_changes() {
+        let previous = TeamRuntimeFingerprint {
+            team_id: "team-1".to_string(),
+            status: TeamRuntimeStatus::Running,
+            members: vec![TeamRuntimeMemberFingerprint {
+                member_id: "worker-1".to_string(),
+                agent_status: Some("running".to_string()),
+                session_id: Some("session-1".to_string()),
+                session_status: Some("running".to_string()),
+                pending_inbox_count: 0,
+            }],
+        };
+        let next = TeamRuntimeFingerprint {
+            status: TeamRuntimeStatus::Degraded,
+            members: vec![TeamRuntimeMemberFingerprint {
+                agent_status: Some("failed".to_string()),
+                pending_inbox_count: 1,
+                ..previous.members[0].clone()
+            }],
+            ..previous.clone()
+        };
+
+        let delta =
+            super::build_team_runtime_delta(&previous, &next).expect("delta should be emitted");
+
+        assert_eq!(delta.team_id, "team-1");
+        assert_eq!(delta.source, "poll_delta");
+        assert!(super::build_team_runtime_delta(&next, &next).is_none());
     }
 
     #[tokio::test]
