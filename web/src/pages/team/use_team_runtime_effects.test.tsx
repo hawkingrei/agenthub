@@ -145,6 +145,55 @@ describe("useTeamRuntimeEffects", () => {
     expect(params.refreshTeamRuntime).toHaveBeenLastCalledWith("team-1");
   });
 
+  it("ignores runtime SSE heartbeats", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    const source = MockEventSource.instances[0];
+    act(() => {
+      source.emitOpen();
+    });
+
+    await act(async () => {
+      source.emitMessage("heartbeat");
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTeamRuntime).not.toHaveBeenCalled();
+  });
+
+  it("forwards runtime SSE refresh errors", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams({
+      refreshTeamRuntime: vi.fn().mockRejectedValue(new Error("runtime down")),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    const source = MockEventSource.instances[0];
+    act(() => {
+      source.emitOpen();
+    });
+
+    await act(async () => {
+      source.emitMessage(
+        JSON.stringify({
+          type: "team_runtime",
+          payload: { team_id: "team-1", source: "poll_delta" },
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(params.onRefreshError).toHaveBeenCalledTimes(1);
+    expect(params.onRefreshError).toHaveBeenCalledWith(expect.any(Error));
+  });
+
   it("reenables runtime polling while SSE reconnects after an error", async () => {
     vi.stubGlobal("EventSource", MockEventSource);
     const params = createParams();
@@ -166,6 +215,29 @@ describe("useTeamRuntimeEffects", () => {
 
     expect(params.refreshTeamRuntime).toHaveBeenCalledTimes(1);
     expect(params.refreshTeamRuntime).toHaveBeenLastCalledWith("team-1");
+  });
+
+  it("reopens runtime SSE after the reconnect delay", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+
+    const source = MockEventSource.instances[0];
+    act(() => {
+      source.emitOpen();
+      source.emitError();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+
+    expect(MockEventSource.instances).toHaveLength(2);
+    expect(MockEventSource.instances[1]?.url).toBe(source.url);
   });
 
   it("stays idle when runtime watching is disabled", async () => {

@@ -1330,6 +1330,40 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
+    #[tokio::test]
+    async fn team_runtime_sse_returns_ok_for_accessible_team() {
+        let state = build_team_test_state().await;
+        let token = create_auth_token(&state).await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "sse-team-runtime-ok".to_string(),
+                description: Some("team runtime sse ok".to_string()),
+                spec: serde_json::json!({
+                    "entrypoint":"coordinator_plan",
+                    "members":[{"member_id":"coordinator"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/teams/{}/runtime?token={token}",
+                team.id
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("cache-control")
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
+    }
+
     #[test]
     fn build_team_run_context_delta_marks_expected_refresh_targets() {
         let previous = TeamRunContextFingerprint {
@@ -1392,6 +1426,55 @@ mod tests {
         assert_eq!(delta.team_id, "team-1");
         assert_eq!(delta.source, "poll_delta");
         assert!(super::build_team_runtime_delta(&next, &next).is_none());
+    }
+
+    #[tokio::test]
+    async fn team_runtime_fingerprint_tracks_runtime_snapshot_fields() {
+        let state = build_team_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "fingerprint-runtime-team".to_string(),
+                description: Some("team runtime fingerprint".to_string()),
+                spec: serde_json::json!({
+                    "entrypoint":"coordinator_plan",
+                    "members":[{"member_id":"coordinator"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let runtime = state
+            .teams
+            .describe_team_runtime(&team.id)
+            .await
+            .expect("describe runtime");
+
+        let fingerprint = super::team_runtime_fingerprint(runtime);
+
+        assert_eq!(fingerprint.team_id, team.id);
+        assert_eq!(fingerprint.status, TeamRuntimeStatus::Stopped);
+        assert_eq!(
+            fingerprint.members,
+            vec![TeamRuntimeMemberFingerprint {
+                member_id: "coordinator".to_string(),
+                agent_status: None,
+                session_id: None,
+                session_status: None,
+                pending_inbox_count: 0,
+            }]
+        );
+    }
+
+    #[test]
+    fn team_runtime_event_message_uses_runtime_event_type() {
+        let message = super::team_runtime_event_to_message(super::TeamRuntimeStreamEvent {
+            team_id: "team-1".to_string(),
+            source: "poll_delta".to_string(),
+        });
+
+        assert_eq!(message.r#type, "team_runtime");
+        assert_eq!(message.payload.team_id, "team-1");
+        assert_eq!(message.payload.source, "poll_delta");
     }
 
     #[tokio::test]
