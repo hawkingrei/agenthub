@@ -1151,11 +1151,105 @@ pub(crate) mod agent_trace {
             let _ = std::fs::remove_dir_all(event_dir);
         }
 
+        #[tokio::test]
+        async fn agent_trace_reports_missing_standalone_target() {
+            let pool = test_pool().await;
+            let event_dir = test_event_dir();
+
+            let report = collect_from_pool(
+                &pool,
+                event_dir.clone(),
+                AgentTraceRequest {
+                    agent_id: Some("missing-agent".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("collect trace");
+
+            assert_eq!(report.target.agent_id, "missing-agent");
+            assert!(report.agent.is_none());
+            assert_eq!(report.verdict.layer, AgentTraceStallLayer::TargetNotFound);
+            assert_eq!(report.runtime.ownership, "local");
+            assert!(render_human(&report).contains("agent: <missing>"));
+            let _ = std::fs::remove_dir_all(event_dir);
+        }
+
+        #[tokio::test]
+        async fn agent_trace_reports_missing_team_member_and_applies_live_overlay() {
+            let pool = test_pool().await;
+            insert_agent_fixture(&pool).await;
+            sqlx::query("INSERT INTO team_definitions (id, spec_json) VALUES (?1, ?2)")
+                .bind("team-1")
+                .bind(r#"{"members":[{"member_id":"other","role":"worker"}]}"#)
+                .execute(&pool)
+                .await
+                .expect("insert team");
+            let event_dir = test_event_dir();
+
+            let mut report = collect_from_pool(
+                &pool,
+                event_dir.clone(),
+                AgentTraceRequest {
+                    team_id: Some("team-1".to_string()),
+                    member_id: Some("worker".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("collect trace");
+
+            let team = report.team.as_ref().expect("team summary");
+            assert!(!team.member_found);
+            assert_eq!(
+                report.verdict.layer,
+                AgentTraceStallLayer::TeamMemberNotFound
+            );
+
+            apply_live_overlay(
+                &mut report,
+                AgentTraceLiveOverlay {
+                    runtime: AgentTraceRuntimeSummary {
+                        ownership: "local".to_string(),
+                        active_session_id: Some("session-1".to_string()),
+                        live_state_source: "live_backend".to_string(),
+                    },
+                    provider_adapter: AgentTraceAvailability {
+                        status: "prompt_active".to_string(),
+                        note: "redacted provider snapshot".to_string(),
+                        details: serde_json::json!({"active_prompt_count": 1}),
+                    },
+                    sse: AgentTraceAvailability {
+                        status: "subscribers_active".to_string(),
+                        note: "redacted sse snapshot".to_string(),
+                        details: serde_json::json!({"output_subscriber_count": 2}),
+                    },
+                },
+            );
+            assert_eq!(report.runtime.live_state_source, "live_backend");
+            assert_eq!(report.provider_adapter.status, "prompt_active");
+            assert_eq!(report.sse.status, "subscribers_active");
+            let rendered = render_human(&report);
+            assert!(rendered.contains("team.member_found: false"));
+            assert!(rendered.contains("provider_adapter.status: prompt_active"));
+            let _ = std::fs::remove_dir_all(event_dir);
+        }
+
         #[test]
         fn agent_trace_request_validates_target_shape() {
             assert!(
                 AgentTraceRequest {
                     agent_id: Some("agent".to_string()),
+                    ..Default::default()
+                }
+                .validate()
+                .is_ok()
+            );
+            assert!(
+                AgentTraceRequest {
+                    agent_id: Some("  ".to_string()),
+                    team_id: Some("team".to_string()),
+                    member_id: Some("member".to_string()),
                     ..Default::default()
                 }
                 .validate()
