@@ -623,6 +623,11 @@ impl MembershipView for AgentManagerMembershipView<'_> {
 }
 
 impl AgentManager {
+    #[cfg(debug_assertions)]
+    pub(crate) fn event_db_base_dir(&self) -> &std::path::Path {
+        self.event_dbs.base_dir()
+    }
+
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -1635,6 +1640,100 @@ impl AgentManager {
         Ok(handle.output_tx.subscribe())
     }
 
+    #[cfg(debug_assertions)]
+    pub(crate) async fn collect_agent_trace_live_overlay(
+        &self,
+        agent_id: &str,
+    ) -> crate::diagnostics::agent_trace::AgentTraceLiveOverlay {
+        use crate::diagnostics::agent_trace::{
+            AgentTraceAvailability, AgentTraceLiveOverlay, AgentTraceRuntimeSummary,
+        };
+
+        let guard = self.inner.read().await;
+        let Some(handle) = guard.get(agent_id) else {
+            return AgentTraceLiveOverlay {
+                runtime: AgentTraceRuntimeSummary {
+                    ownership: "local".to_string(),
+                    active_session_id: None,
+                    live_state_source: "live_backend_no_handle".to_string(),
+                },
+                provider_adapter: AgentTraceAvailability {
+                    status: "not_running".to_string(),
+                    note: "no live local runtime handle is registered".to_string(),
+                    details: serde_json::Value::Null,
+                },
+                sse: AgentTraceAvailability {
+                    status: "not_running".to_string(),
+                    note: "no live local runtime handle is registered".to_string(),
+                    details: serde_json::Value::Null,
+                },
+            };
+        };
+
+        let (provider_status, provider_details) = match &handle.input {
+            AgentInput::Acp(acp) => {
+                let diagnostics = acp.diagnostics();
+                let status = if diagnostics.command_channel_closed {
+                    "closed"
+                } else if diagnostics.active_prompt_count > 0 {
+                    "prompt_active"
+                } else if diagnostics.pending_command_count > 0 {
+                    "commands_pending"
+                } else if diagnostics.pending_tool_call_count > 0 {
+                    "tool_calls_pending"
+                } else if diagnostics.last_command_error.is_some() {
+                    "last_command_error"
+                } else {
+                    "idle"
+                };
+                (
+                    status,
+                    serde_json::to_value(diagnostics).unwrap_or_default(),
+                )
+            }
+            AgentInput::Stdin(_) => (
+                "non_acp",
+                serde_json::json!({
+                    "input_kind": "stdin"
+                }),
+            ),
+        };
+        let subscriber_count = handle.output_tx.receiver_count();
+        let sse_diagnostics = crate::sse::agent_sse_diagnostics(agent_id);
+        let sse_status = if subscriber_count > 0 {
+            "subscribers_active"
+        } else if sse_diagnostics
+            .as_ref()
+            .and_then(|snapshot| snapshot.last_error.as_ref())
+            .is_some()
+        {
+            "last_error"
+        } else {
+            "no_subscribers"
+        };
+
+        AgentTraceLiveOverlay {
+            runtime: AgentTraceRuntimeSummary {
+                ownership: "local".to_string(),
+                active_session_id: Some(handle.session_id.clone()),
+                live_state_source: "live_backend".to_string(),
+            },
+            provider_adapter: AgentTraceAvailability {
+                status: provider_status.to_string(),
+                note: "redacted live provider command-channel snapshot".to_string(),
+                details: provider_details,
+            },
+            sse: AgentTraceAvailability {
+                status: sse_status.to_string(),
+                note: "redacted live output broadcast and SSE delivery snapshot".to_string(),
+                details: serde_json::json!({
+                    "output_subscriber_count": subscriber_count,
+                    "sse": sse_diagnostics,
+                }),
+            },
+        }
+    }
+
     #[tracing::instrument(
         skip(self, input, message_id),
         fields(agent_id = %agent_id, expected_session_id = ?expected_session_id),
@@ -1756,7 +1855,8 @@ impl AgentManager {
         };
         let _ = output_tx.send(output);
 
-        acp.prompt(input.to_string()).await?;
+        acp.prompt_with_submission(input.to_string(), message_id)
+            .await?;
         Ok(())
     }
 

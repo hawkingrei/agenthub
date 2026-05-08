@@ -11,6 +11,7 @@ mod app;
 mod auth;
 mod cli;
 mod cli_error;
+mod diagnostics;
 mod doctor_cli;
 mod init_cli;
 pub use agenthub_config as config;

@@ -8,7 +8,10 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{
+    Arc, Mutex as StdMutex,
+    atomic::{AtomicI64, AtomicUsize, Ordering},
+};
 use std::time::Duration;
 
 use agent_client_protocol::schema::{
@@ -17,7 +20,8 @@ use agent_client_protocol::schema::{
     PermissionOptionKind, PromptRequest, ProtocolVersion, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
     SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
-    SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    SetSessionModelRequest, TextContent, ToolCall, ToolCallStatus, ToolCallUpdate,
+    ToolCallUpdateFields,
 };
 use agent_client_protocol::{Agent, ConnectionTo, Error as AcpError, ErrorCode as AcpErrorCode};
 use chrono::Utc;
@@ -519,16 +523,18 @@ pub struct AcpClient {
     session_id: String,
     actor_context: Option<AcpActorSkillContext>,
     chunk_state: Arc<Mutex<AcpChunkState>>,
+    diagnostics: Arc<AcpRuntimeDiagnostics>,
 }
 
 impl AcpClient {
-    pub fn new(
+    pub(crate) fn new(
         sink: Arc<dyn AcpEventSink>,
         permissions: Arc<AcpPermissionService>,
         permission_review_dispatcher: Option<Arc<dyn AcpPermissionReviewDispatcher>>,
         agent_id: String,
         session_id: String,
         actor_context: Option<AcpActorSkillContext>,
+        diagnostics: Arc<AcpRuntimeDiagnostics>,
     ) -> Self {
         Self {
             sink,
@@ -538,6 +544,7 @@ impl AcpClient {
             session_id,
             actor_context,
             chunk_state: Arc::new(Mutex::new(AcpChunkState::default())),
+            diagnostics,
         }
     }
 
@@ -547,6 +554,9 @@ impl AcpClient {
     }
 
     async fn emit_update(&self, update: SessionUpdate) {
+        let diagnostic = session_update_diagnostic(&update);
+        self.diagnostics
+            .observe_provider_event(&diagnostic.event_type, diagnostic.tool_call);
         let value = {
             let mut chunk_state = self.chunk_state.lock().await;
             update_to_event(update, &mut chunk_state)
@@ -728,17 +738,84 @@ fn permission_review_failure_outcome(options: &[PermissionOption]) -> RequestPer
 
 #[derive(Debug)]
 enum AcpCommand {
-    Prompt(String),
+    Prompt {
+        input: String,
+        submission_id: String,
+    },
     SetMode(String),
     SetModel(String),
-    SetConfig { config_id: String, value: String },
+    SetConfig {
+        config_id: String,
+        value: String,
+    },
     Cancel,
+}
+
+impl AcpCommand {
+    fn kind(&self) -> &'static str {
+        match self {
+            AcpCommand::Prompt { .. } => "prompt",
+            AcpCommand::SetMode(_) => "set_mode",
+            AcpCommand::SetModel(_) => "set_model",
+            AcpCommand::SetConfig { .. } => "set_config",
+            AcpCommand::Cancel => "cancel",
+        }
+    }
 }
 
 #[derive(Clone)]
 pub struct AcpHandle {
     pub session_id: String,
     tx: mpsc::Sender<AcpCommand>,
+    diagnostics: Arc<AcpRuntimeDiagnostics>,
+}
+
+#[derive(Debug, Default)]
+struct AcpRuntimeDiagnostics {
+    active_prompt_count: AtomicUsize,
+    pending_command_count: AtomicUsize,
+    last_provider_event_at: AtomicI64,
+    last_command_error_at: AtomicI64,
+    state: StdMutex<AcpRuntimeDiagnosticsState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpHandleDiagnostics {
+    pub session_id: String,
+    pub command_channel_closed: bool,
+    pub command_channel_capacity: usize,
+    pub command_channel_max_capacity: usize,
+    pub active_prompt_count: usize,
+    pub pending_command_count: usize,
+    pub active_submission_ids: Vec<String>,
+    pub last_submission_id: Option<String>,
+    pub last_provider_event_type: Option<String>,
+    pub last_provider_event_at: Option<i64>,
+    pub pending_tool_call_count: usize,
+    pub pending_tool_calls: Vec<AcpToolCallDiagnostic>,
+    pub last_command_error: Option<AcpCommandErrorDiagnostic>,
+    pub last_command_error_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpToolCallDiagnostic {
+    pub tool_call_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpCommandErrorDiagnostic {
+    pub command_kind: String,
+    pub message: String,
+}
+
+#[derive(Debug, Default)]
+struct AcpRuntimeDiagnosticsState {
+    active_submission_ids: Vec<String>,
+    last_submission_id: Option<String>,
+    last_provider_event_type: Option<String>,
+    pending_tool_calls: HashMap<String, String>,
+    last_command_error: Option<AcpCommandErrorDiagnostic>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -763,8 +840,67 @@ impl std::fmt::Display for AcpSendError {
 impl std::error::Error for AcpSendError {}
 
 impl AcpHandle {
+    pub fn diagnostics(&self) -> AcpHandleDiagnostics {
+        let state = self
+            .diagnostics
+            .state
+            .lock()
+            .expect("acp diagnostics state poisoned");
+        let mut pending_tool_calls = state
+            .pending_tool_calls
+            .iter()
+            .map(|(tool_call_id, status)| AcpToolCallDiagnostic {
+                tool_call_id: tool_call_id.clone(),
+                status: status.clone(),
+            })
+            .collect::<Vec<_>>();
+        pending_tool_calls.sort_by(|left, right| left.tool_call_id.cmp(&right.tool_call_id));
+        let last_provider_event_at = optional_timestamp(
+            self.diagnostics
+                .last_provider_event_at
+                .load(Ordering::Relaxed),
+        );
+        let last_command_error_at = optional_timestamp(
+            self.diagnostics
+                .last_command_error_at
+                .load(Ordering::Relaxed),
+        );
+        AcpHandleDiagnostics {
+            session_id: self.session_id.clone(),
+            command_channel_closed: self.tx.is_closed(),
+            command_channel_capacity: self.tx.capacity(),
+            command_channel_max_capacity: self.tx.max_capacity(),
+            active_prompt_count: self.diagnostics.active_prompt_count.load(Ordering::Relaxed),
+            pending_command_count: self
+                .diagnostics
+                .pending_command_count
+                .load(Ordering::Relaxed),
+            active_submission_ids: state.active_submission_ids.clone(),
+            last_submission_id: state.last_submission_id.clone(),
+            last_provider_event_type: state.last_provider_event_type.clone(),
+            last_provider_event_at,
+            pending_tool_call_count: pending_tool_calls.len(),
+            pending_tool_calls,
+            last_command_error: state.last_command_error.clone(),
+            last_command_error_at,
+        }
+    }
+
     pub async fn prompt(&self, input: String) -> anyhow::Result<()> {
-        self.send(AcpCommand::Prompt(input)).await
+        self.prompt_with_submission(input, Uuid::now_v7().to_string())
+            .await
+    }
+
+    pub async fn prompt_with_submission(
+        &self,
+        input: String,
+        submission_id: String,
+    ) -> anyhow::Result<()> {
+        self.send(AcpCommand::Prompt {
+            input,
+            submission_id,
+        })
+        .await
     }
 
     pub async fn set_mode(&self, mode_id: String) -> anyhow::Result<()> {
@@ -788,18 +924,86 @@ impl AcpHandle {
     }
 
     async fn send_with_timeout(&self, cmd: AcpCommand, timeout: Duration) -> anyhow::Result<()> {
+        let command_kind = cmd.kind();
         match tokio::time::timeout(timeout, self.tx.send(cmd)).await {
             Ok(Ok(())) => Ok(()),
-            Ok(Err(_)) => Err(anyhow::Error::new(AcpSendError::ChannelClosed)),
+            Ok(Err(_)) => {
+                self.diagnostics
+                    .observe_command_error(command_kind, AcpSendError::ChannelClosed.to_string());
+                Err(anyhow::Error::new(AcpSendError::ChannelClosed))
+            }
             Err(_) => {
                 tracing::warn!(
                     session_id = %self.session_id,
                     timeout_ms = timeout.as_millis(),
                     "acp command send timed out due to backpressure"
                 );
+                self.diagnostics.observe_command_error(
+                    command_kind,
+                    AcpSendError::Timeout(timeout).to_string(),
+                );
                 Err(anyhow::Error::new(AcpSendError::Timeout(timeout)))
             }
         }
+    }
+}
+
+fn optional_timestamp(value: i64) -> Option<i64> {
+    (value > 0).then_some(value)
+}
+
+impl AcpRuntimeDiagnostics {
+    fn observe_prompt_start(&self, submission_id: &str) {
+        let mut state = self.state.lock().expect("acp diagnostics state poisoned");
+        if !state
+            .active_submission_ids
+            .iter()
+            .any(|existing| existing == submission_id)
+        {
+            state.active_submission_ids.push(submission_id.to_string());
+        }
+        state.last_submission_id = Some(submission_id.to_string());
+    }
+
+    fn observe_prompt_done(&self, submission_id: &str) {
+        let mut state = self.state.lock().expect("acp diagnostics state poisoned");
+        state
+            .active_submission_ids
+            .retain(|existing| existing != submission_id);
+    }
+
+    fn observe_provider_event(
+        &self,
+        event_type: &str,
+        tool_call: Option<(String, Option<String>)>,
+    ) {
+        self.last_provider_event_at
+            .store(Utc::now().timestamp(), Ordering::Relaxed);
+        let mut state = self.state.lock().expect("acp diagnostics state poisoned");
+        state.last_provider_event_type = Some(event_type.to_string());
+        if let Some((tool_call_id, status)) = tool_call {
+            match status.as_deref() {
+                Some("completed" | "failed") => {
+                    state.pending_tool_calls.remove(&tool_call_id);
+                }
+                Some(status) => {
+                    state
+                        .pending_tool_calls
+                        .insert(tool_call_id, status.to_string());
+                }
+                None => {}
+            }
+        }
+    }
+
+    fn observe_command_error(&self, command_kind: &str, message: String) {
+        self.last_command_error_at
+            .store(Utc::now().timestamp(), Ordering::Relaxed);
+        let mut state = self.state.lock().expect("acp diagnostics state poisoned");
+        state.last_command_error = Some(AcpCommandErrorDiagnostic {
+            command_kind: command_kind.to_string(),
+            message,
+        });
     }
 }
 
@@ -832,7 +1036,7 @@ fn should_queue_while_prompts_active(
 
     match cmd {
         AcpCommand::Cancel => false,
-        AcpCommand::Prompt(_) => {
+        AcpCommand::Prompt { .. } => {
             has_pending_session_mutation
                 || !matches!(
                     prompt_delivery_policy,
@@ -843,68 +1047,96 @@ fn should_queue_while_prompts_active(
     }
 }
 
-async fn dispatch_acp_command(
-    cmd: AcpCommand,
+struct AcpDispatchContext<'a> {
     conn: Rc<AcpClientConnection>,
     event_sink: Arc<dyn AcpEventSink>,
-    session_id: &str,
-    prompt_prefix_blocks: &[ContentBlock],
-    prompt_done_tx: &mpsc::UnboundedSender<()>,
+    session_id: &'a str,
+    prompt_prefix_blocks: &'a [ContentBlock],
+    prompt_done_tx: &'a mpsc::UnboundedSender<()>,
+    diagnostics: Arc<AcpRuntimeDiagnostics>,
+}
+
+async fn dispatch_acp_command(
+    cmd: AcpCommand,
+    context: AcpDispatchContext<'_>,
     active_prompt_count: &mut usize,
 ) {
     match cmd {
-        AcpCommand::Prompt(prompt) => {
+        AcpCommand::Prompt {
+            input,
+            submission_id,
+        } => {
             *active_prompt_count = active_prompt_count.saturating_add(1);
+            context.diagnostics.observe_prompt_start(&submission_id);
 
-            let conn = conn.clone();
-            let event_sink = event_sink.clone();
-            let session_id = session_id.to_string();
-            let prompt_done_tx = prompt_done_tx.clone();
-            let mut blocks = Vec::with_capacity(prompt_prefix_blocks.len() + 1);
-            blocks.extend(prompt_prefix_blocks.iter().cloned());
-            blocks.push(ContentBlock::Text(TextContent::new(prompt)));
+            let conn = context.conn.clone();
+            let event_sink = context.event_sink.clone();
+            let session_id = context.session_id.to_string();
+            let prompt_done_tx = context.prompt_done_tx.clone();
+            let diagnostics = context.diagnostics.clone();
+            let mut blocks = Vec::with_capacity(context.prompt_prefix_blocks.len() + 1);
+            blocks.extend(context.prompt_prefix_blocks.iter().cloned());
+            blocks.push(ContentBlock::Text(TextContent::new(input)));
             tokio::task::spawn_local(async move {
                 let request = PromptRequest::new(session_id, blocks);
                 if let Err(err) = send_acp_request(&conn, request).await {
+                    diagnostics.observe_command_error("prompt", err.to_string());
                     event_sink
                         .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
                         .await;
                 }
+                diagnostics.observe_prompt_done(&submission_id);
                 let _ = prompt_done_tx.send(());
             });
         }
         AcpCommand::SetMode(mode_id) => {
-            let request = SetSessionModeRequest::new(session_id.to_string(), mode_id);
-            if let Err(err) = send_acp_request(&conn, request).await {
-                event_sink
+            let request = SetSessionModeRequest::new(context.session_id.to_string(), mode_id);
+            if let Err(err) = send_acp_request(&context.conn, request).await {
+                context
+                    .diagnostics
+                    .observe_command_error("set_mode", err.to_string());
+                context
+                    .event_sink
                     .emit_raw(AcpStream::System, format!("acp set_mode error: {err}"))
                     .await;
             }
         }
         AcpCommand::SetModel(model_id) => {
-            let request = SetSessionModelRequest::new(session_id.to_string(), model_id);
-            if let Err(err) = send_acp_request(&conn, request).await {
-                event_sink
+            let request = SetSessionModelRequest::new(context.session_id.to_string(), model_id);
+            if let Err(err) = send_acp_request(&context.conn, request).await {
+                context
+                    .diagnostics
+                    .observe_command_error("set_model", err.to_string());
+                context
+                    .event_sink
                     .emit_raw(AcpStream::System, format!("acp set_model error: {err}"))
                     .await;
             }
         }
         AcpCommand::SetConfig { config_id, value } => {
             let request = SetSessionConfigOptionRequest::new(
-                session_id.to_string(),
+                context.session_id.to_string(),
                 config_id,
                 value.as_str(),
             );
-            if let Err(err) = send_acp_request(&conn, request).await {
-                event_sink
+            if let Err(err) = send_acp_request(&context.conn, request).await {
+                context
+                    .diagnostics
+                    .observe_command_error("set_config", err.to_string());
+                context
+                    .event_sink
                     .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))
                     .await;
             }
         }
         AcpCommand::Cancel => {
-            let request = CancelNotification::new(session_id.to_string());
-            if let Err(err) = conn.send_notification(request) {
-                event_sink
+            let request = CancelNotification::new(context.session_id.to_string());
+            if let Err(err) = context.conn.send_notification(request) {
+                context
+                    .diagnostics
+                    .observe_command_error("cancel", err.to_string());
+                context
+                    .event_sink
                     .emit_raw(AcpStream::System, format!("acp cancel error: {err}"))
                     .await;
             }
@@ -952,6 +1184,8 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
     } = request;
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
+    let diagnostics = Arc::new(AcpRuntimeDiagnostics::default());
+    let diagnostics_for_runtime = diagnostics.clone();
 
     std::thread::spawn(move || match runtime_location {
         AcpRuntimeLocation::LocalProcess => {
@@ -1033,6 +1267,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     agent_id.clone(),
                     agent_session_id.clone(),
                     actor_context.clone(),
+                    diagnostics_for_runtime.clone(),
                 );
                 let transport =
                     agent_client_protocol::ByteStreams::new(stdin.compat_write(), stdout.compat());
@@ -1149,21 +1384,35 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             let mut active_prompt_count = 0usize;
             let mut cmd_rx_closed = false;
             let mut pending_commands = VecDeque::<AcpCommand>::new();
+            let sync_diagnostics = |active_prompt_count: usize, pending_commands: usize| {
+                diagnostics_for_runtime
+                    .active_prompt_count
+                    .store(active_prompt_count, Ordering::Relaxed);
+                diagnostics_for_runtime
+                    .pending_command_count
+                    .store(pending_commands, Ordering::Relaxed);
+            };
+            sync_diagnostics(active_prompt_count, pending_commands.len());
 
             while !cmd_rx_closed || active_prompt_count > 0 || !pending_commands.is_empty() {
                 if active_prompt_count == 0
                     && let Some(cmd) = pending_commands.pop_front()
                 {
+                    sync_diagnostics(active_prompt_count, pending_commands.len());
                     dispatch_acp_command(
                         cmd,
-                        conn.clone(),
-                        event_sink.clone(),
-                        &session_id,
-                        &prompt_prefix_blocks,
-                        &prompt_done_tx,
+                        AcpDispatchContext {
+                            conn: conn.clone(),
+                            event_sink: event_sink.clone(),
+                            session_id: &session_id,
+                            prompt_prefix_blocks: &prompt_prefix_blocks,
+                            prompt_done_tx: &prompt_done_tx,
+                            diagnostics: diagnostics_for_runtime.clone(),
+                        },
                         &mut active_prompt_count,
                     )
                     .await;
+                    sync_diagnostics(active_prompt_count, pending_commands.len());
                     continue;
                 }
 
@@ -1179,6 +1428,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                             break;
                         }
                         active_prompt_count = active_prompt_count.saturating_sub(1);
+                        sync_diagnostics(active_prompt_count, pending_commands.len());
                     }
                     maybe_cmd = cmd_rx.recv(), if !cmd_rx_closed => {
                         match maybe_cmd {
@@ -1192,18 +1442,23 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                     &cmd,
                                 ) {
                                     pending_commands.push_back(cmd);
+                                    sync_diagnostics(active_prompt_count, pending_commands.len());
                                     continue;
                                 }
                                 dispatch_acp_command(
                                     cmd,
-                                    conn.clone(),
-                                    event_sink.clone(),
-                                    &session_id,
-                                    &prompt_prefix_blocks,
-                                    &prompt_done_tx,
+                                    AcpDispatchContext {
+                                        conn: conn.clone(),
+                                        event_sink: event_sink.clone(),
+                                        session_id: &session_id,
+                                        prompt_prefix_blocks: &prompt_prefix_blocks,
+                                        prompt_done_tx: &prompt_done_tx,
+                                        diagnostics: diagnostics_for_runtime.clone(),
+                                    },
                                     &mut active_prompt_count,
                                 )
                                 .await;
+                                sync_diagnostics(active_prompt_count, pending_commands.len());
                             }
                             None => {
                                 cmd_rx_closed = true;
@@ -1229,6 +1484,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         Ok(Ok(Ok(session_id))) => Ok(AcpHandle {
             session_id,
             tx: cmd_tx,
+            diagnostics,
         }),
         Ok(Ok(Err(err))) => Err(anyhow::anyhow!(err)),
         Ok(Err(_)) => Err(anyhow::anyhow!("acp session init cancelled")),
@@ -1249,6 +1505,73 @@ fn format_auth_required_message(provider_id: &str) -> String {
         _ => format!(
             "ACP authentication is required for provider '{provider_id}' before AgentHub can create or resume a session."
         ),
+    }
+}
+
+struct SessionUpdateDiagnostic {
+    event_type: String,
+    tool_call: Option<(String, Option<String>)>,
+}
+
+fn session_update_diagnostic(update: &SessionUpdate) -> SessionUpdateDiagnostic {
+    match update {
+        SessionUpdate::UserMessageChunk(_) => SessionUpdateDiagnostic {
+            event_type: "user_message".to_string(),
+            tool_call: None,
+        },
+        SessionUpdate::AgentMessageChunk(_) => SessionUpdateDiagnostic {
+            event_type: "agent_message".to_string(),
+            tool_call: None,
+        },
+        SessionUpdate::AgentThoughtChunk(_) => SessionUpdateDiagnostic {
+            event_type: "agent_thought".to_string(),
+            tool_call: None,
+        },
+        SessionUpdate::ToolCall(tool_call) => SessionUpdateDiagnostic {
+            event_type: "tool_call".to_string(),
+            tool_call: Some((
+                tool_call.tool_call_id.to_string(),
+                Some(tool_call_status_name(&tool_call.status).to_string()),
+            )),
+        },
+        SessionUpdate::ToolCallUpdate(update) => SessionUpdateDiagnostic {
+            event_type: "tool_call_update".to_string(),
+            tool_call: Some((
+                update.tool_call_id.to_string(),
+                update
+                    .fields
+                    .status
+                    .as_ref()
+                    .map(tool_call_status_name)
+                    .map(str::to_string),
+            )),
+        },
+        SessionUpdate::Plan(_) => SessionUpdateDiagnostic {
+            event_type: "plan".to_string(),
+            tool_call: None,
+        },
+        SessionUpdate::AvailableCommandsUpdate(_) => SessionUpdateDiagnostic {
+            event_type: "available_commands".to_string(),
+            tool_call: None,
+        },
+        SessionUpdate::CurrentModeUpdate(_) => SessionUpdateDiagnostic {
+            event_type: "current_mode".to_string(),
+            tool_call: None,
+        },
+        _ => SessionUpdateDiagnostic {
+            event_type: "session_update".to_string(),
+            tool_call: None,
+        },
+    }
+}
+
+fn tool_call_status_name(status: &ToolCallStatus) -> &'static str {
+    match status {
+        ToolCallStatus::Pending => "pending",
+        ToolCallStatus::InProgress => "in_progress",
+        ToolCallStatus::Completed => "completed",
+        ToolCallStatus::Failed => "failed",
+        _ => "unknown",
     }
 }
 
@@ -2042,12 +2365,12 @@ mod tests {
     use super::{
         ACP_PERMISSION_REVIEW_TIMEOUT, AcpActorContinuityEnvelope, AcpActorSkillContext,
         AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
-        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, acp_permission_review_timeout,
-        acp_session_start_timeout, build_prompt_prefix_blocks, dedupe_skills,
-        format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
-        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
-        permission_review_failure_outcome, remove_skills_conflicting_with_reserved,
-        should_queue_while_prompts_active,
+        AcpPromptDeliveryPolicy, AcpRuntimeDiagnostics, AcpRuntimeLocation, AcpSendError,
+        acp_permission_review_timeout, acp_session_start_timeout, build_prompt_prefix_blocks,
+        dedupe_skills, format_auth_required_message, handle_auth_required_failure,
+        is_auth_required_error, load_mcp_servers_from_path, load_skills_from_config,
+        load_workdir_skills, permission_review_failure_outcome,
+        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
     use agent_client_protocol::schema::{
         ContentBlock, McpServer, PermissionOption, PermissionOptionKind, RequestPermissionOutcome,
@@ -2064,6 +2387,7 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs as unix_fs;
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::mpsc;
     use uuid::Uuid;
@@ -2196,7 +2520,13 @@ mod tests {
         let handle = AcpHandle {
             session_id: "session-backpressure".to_string(),
             tx,
+            diagnostics: Arc::new(AcpRuntimeDiagnostics::default()),
         };
+        let diagnostics = handle.diagnostics();
+        assert_eq!(diagnostics.session_id, "session-backpressure");
+        assert_eq!(diagnostics.command_channel_capacity, 0);
+        assert_eq!(diagnostics.command_channel_max_capacity, 1);
+        assert!(!diagnostics.command_channel_closed);
 
         let err = handle
             .send_with_timeout(AcpCommand::Cancel, Duration::from_millis(25))
@@ -2210,6 +2540,15 @@ mod tests {
             err.to_string().contains("backpressured"),
             "unexpected error: {err}"
         );
+        let diagnostics = handle.diagnostics();
+        assert_eq!(
+            diagnostics
+                .last_command_error
+                .as_ref()
+                .map(|error| error.command_kind.as_str()),
+            Some("cancel")
+        );
+        assert!(diagnostics.last_command_error_at.is_some());
     }
 
     #[tokio::test]
@@ -2219,6 +2558,7 @@ mod tests {
         let handle = AcpHandle {
             session_id: "session-closed".to_string(),
             tx,
+            diagnostics: Arc::new(AcpRuntimeDiagnostics::default()),
         };
 
         let err = handle
@@ -2236,24 +2576,71 @@ mod tests {
     }
 
     #[test]
+    fn acp_runtime_diagnostics_tracks_redacted_live_state() {
+        let diagnostics = Arc::new(AcpRuntimeDiagnostics::default());
+        diagnostics.observe_prompt_start("submission-1");
+        diagnostics.observe_provider_event(
+            "tool_call",
+            Some(("tool-1".to_string(), Some("in_progress".to_string()))),
+        );
+        diagnostics.observe_provider_event("agent_message", None);
+
+        let (tx, _rx) = mpsc::channel::<AcpCommand>(1);
+        let handle = AcpHandle {
+            session_id: "session-diagnostics".to_string(),
+            tx,
+            diagnostics: diagnostics.clone(),
+        };
+        let snapshot = handle.diagnostics();
+        assert_eq!(snapshot.active_submission_ids, vec!["submission-1"]);
+        assert_eq!(snapshot.last_submission_id.as_deref(), Some("submission-1"));
+        assert_eq!(
+            snapshot.last_provider_event_type.as_deref(),
+            Some("agent_message")
+        );
+        assert!(snapshot.last_provider_event_at.is_some());
+        assert_eq!(snapshot.pending_tool_call_count, 1);
+        assert_eq!(snapshot.pending_tool_calls[0].tool_call_id, "tool-1");
+        assert_eq!(snapshot.pending_tool_calls[0].status, "in_progress");
+
+        diagnostics.observe_provider_event(
+            "tool_call_update",
+            Some(("tool-1".to_string(), Some("completed".to_string()))),
+        );
+        diagnostics.observe_prompt_done("submission-1");
+        let snapshot = handle.diagnostics();
+        assert!(snapshot.active_submission_ids.is_empty());
+        assert_eq!(snapshot.pending_tool_call_count, 0);
+    }
+
+    #[test]
     fn prompt_delivery_policy_is_provider_aware() {
         assert!(should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::StrictFifo,
             false,
-            &AcpCommand::Prompt("hello".to_string())
+            &AcpCommand::Prompt {
+                input: "hello".to_string(),
+                submission_id: "submission-1".to_string(),
+            }
         ));
         assert!(!should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             false,
-            &AcpCommand::Prompt("hello".to_string())
+            &AcpCommand::Prompt {
+                input: "hello".to_string(),
+                submission_id: "submission-1".to_string(),
+            }
         ));
         assert!(should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             true,
-            &AcpCommand::Prompt("hello".to_string())
+            &AcpCommand::Prompt {
+                input: "hello".to_string(),
+                submission_id: "submission-1".to_string(),
+            }
         ));
         assert!(should_queue_while_prompts_active(
             1,
@@ -2286,7 +2673,10 @@ mod tests {
             0,
             AcpPromptDeliveryPolicy::StrictFifo,
             false,
-            &AcpCommand::Prompt("hello".to_string())
+            &AcpCommand::Prompt {
+                input: "hello".to_string(),
+                submission_id: "submission-1".to_string(),
+            }
         ));
     }
 

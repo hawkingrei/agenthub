@@ -68,14 +68,21 @@ question is not only "is the process alive", but where the backend output pipeli
 5. SSE broadcaster fan-out;
 6. frontend cache/render state, only as downstream evidence.
 
-The canonical implementation should be a backend diagnostic module/path that can inspect both
-persisted state and live in-memory runtime/SSE state. The first CLI surface can be read-only, for example
-`agenthub doctor agent-trace`, but it should call the backend diagnostic path when a server is
-available instead of guessing from SQLite alone. The command should accept either a standalone
-`agent_id` or a Team-scoped `team_id + member_id`, resolve the active AgentHub session and provider
-continuity id, then print a compact timeline and machine-readable JSON summary. The command should
-be useful both to a human operator and to an AgentHub-managed agent that needs to inspect why its own
-backend output pipeline appears stuck.
+The implementation is staged. The first CLI surface, `agenthub doctor agent-trace`, is a
+debug-build-only read-only SQLite snapshot that accepts either a standalone `agent_id` or a
+Team-scoped `team_id + member_id`, resolves the active AgentHub session, and prints a compact
+human-readable plus machine-readable JSON summary. This snapshot is useful both to a human operator
+and to an AgentHub-managed agent.
+
+When a debug-build server is running, `agenthub doctor agent-trace --server-url <url> --token
+<root-session-token>` calls a root-authenticated live backend diagnostic endpoint and overlays the
+SQLite report with redacted in-memory runtime state. The first live overlay includes local runtime
+handle presence, ACP command-channel closure/capacity, active prompt count, pending command count,
+active AgentHub submission ids, last provider event class/timestamp, pending tool-call
+ids/statuses, last command error metadata, output broadcast subscriber count, active SSE
+stream/forwarder counts, last forwarded/emitted event ids and timestamps, and last SSE delivery
+error metadata. It still does not claim full provider truth: provider-native turn ids are
+adapter-specific and should be exposed only when the adapter can report them as safe metadata.
 
 ## Contracts
 
@@ -87,7 +94,7 @@ backend output pipeline appears stuck.
   command proved that runtime; they do not mean the CLI is missing from the host.
 - For Codex-backed ACP sessions, diagnostic snapshots should include:
   - provider session id and AgentHub session id
-  - active Codex thread id, turn id, and AgentHub submission id when available
+  - active Codex thread id, turn id, and AgentHub submission id when available from safe metadata
   - queued prompt/session-mutation counts
   - pending app-server request ids grouped by request kind
   - tool-call completeness state keyed by call id, including `started`, `output_seen`, and terminal
@@ -102,12 +109,13 @@ backend output pipeline appears stuck.
     stale-running reconciliation status
   - latest persisted `agent_events.id`, latest event timestamp, latest ACP event type, and latest
     renderable message/tool-call summary
-  - SSE broadcaster state when available: active targets, last emitted event id/timestamp, last
-    subscriber activity, and last send error
+  - SSE broadcaster state when available: active targets, last forwarded/emitted event id/timestamp,
+    subscriber/forwarder activity, and last send error
   - pending permission-review requests, pending mailbox messages that can block the next turn, and
     pending tool calls grouped by call id/status
-  - adapter-local progress fields for provider-backed sessions, including active turn/submission id,
-    queued prompt count, and last provider event class/timestamp
+  - adapter-local progress fields for provider-backed sessions, including active AgentHub submission
+    ids, queued prompt count, pending tool-call completeness, and last provider event
+    class/timestamp; provider-native turn ids are optional until the adapter exposes them safely
 - The CLI summary should classify the most likely stall layer as one of:
   - `runtime_not_running`
   - `provider_turn_waiting`
@@ -144,6 +152,12 @@ backend output pipeline appears stuck.
   - a stale SSE broadcaster cursor while persisted events advanced;
   - a stale `running` row with no live runtime handle;
   - redaction of prompt/tool payload bodies in both text and `--json` output.
+- `python3 /Users/weizhenwang/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/agenthub-agent-debug`
+- `cargo test -p agenthub diagnostics::agent_trace`
+- `cargo test -p agenthub doctor_cli`
+- `cargo test -p agenthub-acp acp_handle_send_times_out_when_channel_is_backpressured`
+- `cargo test -p agenthub-acp acp_runtime_diagnostics_tracks_redacted_live_state`
+- `cargo test -p agenthub sse::tests::output_stream_emits_events_from_forwarders`
 
 ## Operational Notes
 
@@ -191,3 +205,4 @@ the backend path shows that events were persisted and emitted:
 - [2026-04-24 Codex Custom Tool Output Hotfix](../journal/2026-04-24-codex-custom-tool-output-hotfix.md)
 - [2026-05-04 Node Detail Runtime Labels](../journal/2026-05-04-node-detail-runtime-labels.md)
 - [2026-05-07 Runtime Diagnostics Fastrace Bridge](../journal/2026-05-07-runtime-diagnostics-fastrace.md)
+- [2026-05-08 Agent Trace Diagnostics](../journal/2026-05-08-agent-trace-diagnostics.md)

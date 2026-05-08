@@ -1,4 +1,9 @@
 use std::{collections::BTreeSet, convert::Infallible, time::Duration};
+#[cfg(debug_assertions)]
+use std::{
+    collections::HashMap,
+    sync::{Mutex as StdMutex, OnceLock},
+};
 
 use axum::response::sse::Event;
 use axum::{
@@ -8,6 +13,8 @@ use axum::{
     response::{IntoResponse, Sse},
     routing::get,
 };
+#[cfg(debug_assertions)]
+use chrono::Utc;
 use futures::stream::Stream;
 use sqlx::Error as SqlxError;
 use tokio::{
@@ -32,6 +39,116 @@ struct SseTokenQuery {
 struct SseAgentsQuery {
     token: String,
     ids: String,
+}
+
+#[cfg(debug_assertions)]
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub(crate) struct AgentSseDiagnosticsSnapshot {
+    pub active_stream_count: usize,
+    pub active_forwarder_count: usize,
+    pub last_forwarded_event_id: Option<i64>,
+    pub last_forwarded_at: Option<i64>,
+    pub last_emitted_event_id: Option<i64>,
+    pub last_emitted_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub last_error_at: Option<i64>,
+}
+
+#[cfg(debug_assertions)]
+#[derive(Debug, Default)]
+struct AgentSseDiagnosticsState {
+    active_stream_count: usize,
+    active_forwarder_count: usize,
+    last_forwarded_event_id: Option<i64>,
+    last_forwarded_at: Option<i64>,
+    last_emitted_event_id: Option<i64>,
+    last_emitted_at: Option<i64>,
+    last_error: Option<String>,
+    last_error_at: Option<i64>,
+}
+
+#[cfg(debug_assertions)]
+static AGENT_SSE_DIAGNOSTICS: OnceLock<StdMutex<HashMap<String, AgentSseDiagnosticsState>>> =
+    OnceLock::new();
+
+#[cfg(debug_assertions)]
+pub(crate) fn agent_sse_diagnostics(agent_id: &str) -> Option<AgentSseDiagnosticsSnapshot> {
+    let registry = AGENT_SSE_DIAGNOSTICS.get_or_init(Default::default);
+    let guard = registry.lock().expect("agent sse diagnostics poisoned");
+    guard
+        .get(agent_id)
+        .map(|state| AgentSseDiagnosticsSnapshot {
+            active_stream_count: state.active_stream_count,
+            active_forwarder_count: state.active_forwarder_count,
+            last_forwarded_event_id: state.last_forwarded_event_id,
+            last_forwarded_at: state.last_forwarded_at,
+            last_emitted_event_id: state.last_emitted_event_id,
+            last_emitted_at: state.last_emitted_at,
+            last_error: state.last_error.clone(),
+            last_error_at: state.last_error_at,
+        })
+}
+
+#[cfg(debug_assertions)]
+fn update_agent_sse_diagnostics(
+    agent_id: &str,
+    update: impl FnOnce(&mut AgentSseDiagnosticsState),
+) {
+    let registry = AGENT_SSE_DIAGNOSTICS.get_or_init(Default::default);
+    let mut guard = registry.lock().expect("agent sse diagnostics poisoned");
+    update(guard.entry(agent_id.to_string()).or_default());
+}
+
+#[cfg(debug_assertions)]
+fn record_sse_stream_open(agent_id: &str) {
+    update_agent_sse_diagnostics(agent_id, |state| {
+        state.active_stream_count = state.active_stream_count.saturating_add(1);
+    });
+}
+
+#[cfg(debug_assertions)]
+fn record_sse_stream_close(agent_id: &str) {
+    update_agent_sse_diagnostics(agent_id, |state| {
+        state.active_stream_count = state.active_stream_count.saturating_sub(1);
+    });
+}
+
+#[cfg(debug_assertions)]
+fn record_sse_forwarder_open(agent_id: &str) {
+    update_agent_sse_diagnostics(agent_id, |state| {
+        state.active_forwarder_count = state.active_forwarder_count.saturating_add(1);
+    });
+}
+
+#[cfg(debug_assertions)]
+fn record_sse_forwarder_close(agent_id: &str) {
+    update_agent_sse_diagnostics(agent_id, |state| {
+        state.active_forwarder_count = state.active_forwarder_count.saturating_sub(1);
+    });
+}
+
+#[cfg(debug_assertions)]
+fn record_sse_forwarded(output: &AgentOutput) {
+    update_agent_sse_diagnostics(&output.agent_id, |state| {
+        state.last_forwarded_event_id = Some(output.event_id);
+        state.last_forwarded_at = Some(Utc::now().timestamp());
+    });
+}
+
+#[cfg(debug_assertions)]
+fn record_sse_emitted(output: &AgentOutput) {
+    update_agent_sse_diagnostics(&output.agent_id, |state| {
+        state.last_emitted_event_id = Some(output.event_id);
+        state.last_emitted_at = Some(Utc::now().timestamp());
+    });
+}
+
+#[cfg(debug_assertions)]
+fn record_sse_error(agent_id: &str, message: String) {
+    update_agent_sse_diagnostics(agent_id, |state| {
+        state.last_error = Some(message);
+        state.last_error_at = Some(Utc::now().timestamp());
+    });
 }
 
 pub fn router(state: AppState) -> Router {
@@ -73,7 +190,7 @@ async fn sse_agent(
         }
     };
 
-    sse_response(vec![output_rx])
+    sse_response(vec![(agent_id, output_rx)])
 }
 
 async fn sse_agents(
@@ -92,7 +209,7 @@ async fn sse_agents(
     let mut output_rxs = Vec::with_capacity(agent_ids.len());
     for agent_id in agent_ids {
         match state.agents.subscribe_output(&agent_id).await {
-            Ok(rx) => output_rxs.push(rx),
+            Ok(rx) => output_rxs.push((agent_id, rx)),
             Err(_) => {
                 if let Err(reconcile_err) = state.agents.reconcile_runtime_absence(&agent_id).await
                 {
@@ -189,7 +306,9 @@ fn map_sse_not_found_error(error: anyhow::Error, msg: &str) -> ApiError {
     ApiError::from(anyhow::anyhow!("internal server error"))
 }
 
-fn sse_response(output_rxs: Vec<broadcast::Receiver<AgentOutput>>) -> axum::response::Response {
+fn sse_response(
+    output_rxs: Vec<(String, broadcast::Receiver<AgentOutput>)>,
+) -> axum::response::Response {
     let stream = output_stream(output_rxs);
     decorate_sse_response(Sse::new(stream).into_response())
 }
@@ -242,7 +361,7 @@ const TEAM_RUNTIME_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15)
 const TEAM_RUNTIME_STREAM_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 fn output_stream(
-    output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
+    output_rxs: Vec<(String, broadcast::Receiver<AgentOutput>)>,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
     output_stream_with_limits(
         output_rxs,
@@ -252,17 +371,26 @@ fn output_stream(
 }
 
 fn output_stream_with_limits(
-    output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
+    output_rxs: Vec<(String, broadcast::Receiver<AgentOutput>)>,
     buffer_capacity: usize,
     send_timeout: Duration,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
+    let agent_ids = output_rxs
+        .iter()
+        .map(|(agent_id, _)| agent_id.clone())
+        .collect::<Vec<_>>();
+    #[cfg(debug_assertions)]
+    for agent_id in &agent_ids {
+        record_sse_stream_open(agent_id);
+    }
     let (output_tx, output_rx) = mpsc::channel::<AgentOutput>(buffer_capacity);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let (disconnect_tx, disconnect_rx) = watch::channel(false);
     let forwarders = output_rxs
         .into_iter()
-        .map(|rx| {
+        .map(|(agent_id, rx)| {
             spawn_output_forwarder(
+                agent_id,
                 rx,
                 output_tx.clone(),
                 shutdown_rx.clone(),
@@ -288,6 +416,7 @@ fn output_stream_with_limits(
             disconnect_watch_active: true,
             output_rx_open: true,
             forwarders,
+            agent_ids,
         },
         |mut state| async move {
             loop {
@@ -363,11 +492,17 @@ struct OutputStreamState {
     disconnect_watch_active: bool,
     output_rx_open: bool,
     forwarders: Vec<JoinHandle<()>>,
+    agent_ids: Vec<String>,
 }
 
 impl Drop for OutputStreamState {
     fn drop(&mut self) {
         let _ = self.shutdown_tx.send(true);
+        #[cfg(debug_assertions)]
+        for agent_id in &self.agent_ids {
+            record_sse_stream_close(agent_id);
+            record_sse_forwarder_close(agent_id);
+        }
         for task in &self.forwarders {
             task.abort();
         }
@@ -375,6 +510,7 @@ impl Drop for OutputStreamState {
 }
 
 fn spawn_output_forwarder(
+    agent_id: String,
     mut output_rx: broadcast::Receiver<AgentOutput>,
     output_tx: mpsc::Sender<AgentOutput>,
     mut shutdown_rx: watch::Receiver<bool>,
@@ -383,6 +519,8 @@ fn spawn_output_forwarder(
     buffer_capacity: usize,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
+        #[cfg(debug_assertions)]
+        record_sse_forwarder_open(&agent_id);
         loop {
             tokio::select! {
                 shutdown = shutdown_rx.changed() => {
@@ -395,11 +533,23 @@ fn spawn_output_forwarder(
                         Ok(output) => {
                             // Bounded fan-in avoids unbounded memory growth for slow/disconnected SSE clients.
                             // On sustained backpressure we close this SSE stream and let reconnect + DB replay catch up.
+                            let output_for_diagnostics = output.clone();
                             match tokio::time::timeout(send_timeout, output_tx.send(output)).await {
-                                Ok(Ok(())) => {}
+                                Ok(Ok(())) => {
+                                    #[cfg(debug_assertions)]
+                                    record_sse_forwarded(&output_for_diagnostics);
+                                }
                                 Ok(Err(_)) => break,
                                 Err(_) => {
                                     let _ = disconnect_tx.send(true);
+                                    #[cfg(debug_assertions)]
+                                    record_sse_error(
+                                        &agent_id,
+                                        format!(
+                                            "backpressure_timeout:{}ms",
+                                            send_timeout.as_millis()
+                                        ),
+                                    );
                                     tracing::warn!(
                                         ?send_timeout,
                                         buffer_capacity,
@@ -411,6 +561,8 @@ fn spawn_output_forwarder(
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                             let _ = disconnect_tx.send(true);
+                            #[cfg(debug_assertions)]
+                            record_sse_error(&agent_id, format!("broadcast_lagged:{skipped}"));
                             tracing::warn!(
                                 skipped,
                                 "sse output stream lagged; closing stream for replay recovery"
@@ -422,6 +574,8 @@ fn spawn_output_forwarder(
                 }
             }
         }
+        #[cfg(debug_assertions)]
+        record_sse_forwarder_close(&agent_id);
     })
 }
 
@@ -803,6 +957,10 @@ fn take_batched_event(state: &mut OutputStreamState) -> Option<Event> {
 
     let outputs = std::mem::take(&mut state.batch);
     state.batch_bytes = 0;
+    #[cfg(debug_assertions)]
+    for output in &outputs {
+        record_sse_emitted(output);
+    }
     let text = if outputs.len() == 1 {
         serde_json::to_string(&output_to_message(&outputs[0])).ok()?
     } else {
@@ -1592,7 +1750,7 @@ mod tests {
         use futures::StreamExt;
 
         let (tx, rx) = tokio::sync::broadcast::channel(8);
-        let mut stream = std::pin::pin!(super::output_stream(vec![rx]));
+        let mut stream = std::pin::pin!(super::output_stream(vec![("agent-x".to_string(), rx)]));
 
         let first = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
             .await
@@ -1608,6 +1766,15 @@ mod tests {
             .expect("receive second event")
             .expect("stream should not end")
             .expect("stream event should be ok");
+        #[cfg(debug_assertions)]
+        {
+            let diagnostics = super::agent_sse_diagnostics("agent-x")
+                .expect("agent sse diagnostics should exist");
+            assert_eq!(diagnostics.last_forwarded_event_id, Some(42));
+            assert_eq!(diagnostics.last_emitted_event_id, Some(42));
+            assert!(diagnostics.last_forwarded_at.is_some());
+            assert!(diagnostics.last_emitted_at.is_some());
+        }
     }
 
     #[tokio::test]
@@ -1663,7 +1830,7 @@ mod tests {
 
         let (tx, rx) = tokio::sync::broadcast::channel(8);
         let mut stream = std::pin::pin!(super::output_stream_with_limits(
-            vec![rx],
+            vec![("agent-x".to_string(), rx)],
             1,
             std::time::Duration::from_millis(30),
         ));
@@ -1718,7 +1885,7 @@ mod tests {
             .expect("send second output");
 
         let mut stream = std::pin::pin!(super::output_stream_with_limits(
-            vec![rx],
+            vec![("agent-x".to_string(), rx)],
             8,
             std::time::Duration::from_secs(1),
         ));
@@ -1739,7 +1906,7 @@ mod tests {
 
         let (tx, rx) = tokio::sync::broadcast::channel(8);
         let mut stream = std::pin::pin!(super::output_stream_with_limits(
-            vec![rx],
+            vec![("agent-x".to_string(), rx)],
             8,
             std::time::Duration::from_secs(1),
         ));
@@ -1777,7 +1944,7 @@ mod tests {
         use futures::StreamExt;
 
         let (tx, rx) = tokio::sync::broadcast::channel(8);
-        let mut stream = std::pin::pin!(super::output_stream(vec![rx]));
+        let mut stream = std::pin::pin!(super::output_stream(vec![("agent-x".to_string(), rx)]));
 
         let first = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
             .await
