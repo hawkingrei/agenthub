@@ -1047,15 +1047,19 @@ fn should_queue_while_prompts_active(
     }
 }
 
-async fn dispatch_acp_command(
-    cmd: AcpCommand,
+struct AcpDispatchContext<'a> {
     conn: Rc<AcpClientConnection>,
     event_sink: Arc<dyn AcpEventSink>,
-    session_id: &str,
-    prompt_prefix_blocks: &[ContentBlock],
-    prompt_done_tx: &mpsc::UnboundedSender<()>,
-    active_prompt_count: &mut usize,
+    session_id: &'a str,
+    prompt_prefix_blocks: &'a [ContentBlock],
+    prompt_done_tx: &'a mpsc::UnboundedSender<()>,
     diagnostics: Arc<AcpRuntimeDiagnostics>,
+}
+
+async fn dispatch_acp_command(
+    cmd: AcpCommand,
+    context: AcpDispatchContext<'_>,
+    active_prompt_count: &mut usize,
 ) {
     match cmd {
         AcpCommand::Prompt {
@@ -1063,15 +1067,15 @@ async fn dispatch_acp_command(
             submission_id,
         } => {
             *active_prompt_count = active_prompt_count.saturating_add(1);
-            diagnostics.observe_prompt_start(&submission_id);
+            context.diagnostics.observe_prompt_start(&submission_id);
 
-            let conn = conn.clone();
-            let event_sink = event_sink.clone();
-            let session_id = session_id.to_string();
-            let prompt_done_tx = prompt_done_tx.clone();
-            let diagnostics = diagnostics.clone();
-            let mut blocks = Vec::with_capacity(prompt_prefix_blocks.len() + 1);
-            blocks.extend(prompt_prefix_blocks.iter().cloned());
+            let conn = context.conn.clone();
+            let event_sink = context.event_sink.clone();
+            let session_id = context.session_id.to_string();
+            let prompt_done_tx = context.prompt_done_tx.clone();
+            let diagnostics = context.diagnostics.clone();
+            let mut blocks = Vec::with_capacity(context.prompt_prefix_blocks.len() + 1);
+            blocks.extend(context.prompt_prefix_blocks.iter().cloned());
             blocks.push(ContentBlock::Text(TextContent::new(input)));
             tokio::task::spawn_local(async move {
                 let request = PromptRequest::new(session_id, blocks);
@@ -1086,41 +1090,53 @@ async fn dispatch_acp_command(
             });
         }
         AcpCommand::SetMode(mode_id) => {
-            let request = SetSessionModeRequest::new(session_id.to_string(), mode_id);
-            if let Err(err) = send_acp_request(&conn, request).await {
-                diagnostics.observe_command_error("set_mode", err.to_string());
-                event_sink
+            let request = SetSessionModeRequest::new(context.session_id.to_string(), mode_id);
+            if let Err(err) = send_acp_request(&context.conn, request).await {
+                context
+                    .diagnostics
+                    .observe_command_error("set_mode", err.to_string());
+                context
+                    .event_sink
                     .emit_raw(AcpStream::System, format!("acp set_mode error: {err}"))
                     .await;
             }
         }
         AcpCommand::SetModel(model_id) => {
-            let request = SetSessionModelRequest::new(session_id.to_string(), model_id);
-            if let Err(err) = send_acp_request(&conn, request).await {
-                diagnostics.observe_command_error("set_model", err.to_string());
-                event_sink
+            let request = SetSessionModelRequest::new(context.session_id.to_string(), model_id);
+            if let Err(err) = send_acp_request(&context.conn, request).await {
+                context
+                    .diagnostics
+                    .observe_command_error("set_model", err.to_string());
+                context
+                    .event_sink
                     .emit_raw(AcpStream::System, format!("acp set_model error: {err}"))
                     .await;
             }
         }
         AcpCommand::SetConfig { config_id, value } => {
             let request = SetSessionConfigOptionRequest::new(
-                session_id.to_string(),
+                context.session_id.to_string(),
                 config_id,
                 value.as_str(),
             );
-            if let Err(err) = send_acp_request(&conn, request).await {
-                diagnostics.observe_command_error("set_config", err.to_string());
-                event_sink
+            if let Err(err) = send_acp_request(&context.conn, request).await {
+                context
+                    .diagnostics
+                    .observe_command_error("set_config", err.to_string());
+                context
+                    .event_sink
                     .emit_raw(AcpStream::System, format!("acp set_config error: {err}"))
                     .await;
             }
         }
         AcpCommand::Cancel => {
-            let request = CancelNotification::new(session_id.to_string());
-            if let Err(err) = conn.send_notification(request) {
-                diagnostics.observe_command_error("cancel", err.to_string());
-                event_sink
+            let request = CancelNotification::new(context.session_id.to_string());
+            if let Err(err) = context.conn.send_notification(request) {
+                context
+                    .diagnostics
+                    .observe_command_error("cancel", err.to_string());
+                context
+                    .event_sink
                     .emit_raw(AcpStream::System, format!("acp cancel error: {err}"))
                     .await;
             }
@@ -1385,13 +1401,15 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     sync_diagnostics(active_prompt_count, pending_commands.len());
                     dispatch_acp_command(
                         cmd,
-                        conn.clone(),
-                        event_sink.clone(),
-                        &session_id,
-                        &prompt_prefix_blocks,
-                        &prompt_done_tx,
+                        AcpDispatchContext {
+                            conn: conn.clone(),
+                            event_sink: event_sink.clone(),
+                            session_id: &session_id,
+                            prompt_prefix_blocks: &prompt_prefix_blocks,
+                            prompt_done_tx: &prompt_done_tx,
+                            diagnostics: diagnostics_for_runtime.clone(),
+                        },
                         &mut active_prompt_count,
-                        diagnostics_for_runtime.clone(),
                     )
                     .await;
                     sync_diagnostics(active_prompt_count, pending_commands.len());
@@ -1429,13 +1447,15 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                 }
                                 dispatch_acp_command(
                                     cmd,
-                                    conn.clone(),
-                                    event_sink.clone(),
-                                    &session_id,
-                                    &prompt_prefix_blocks,
-                                    &prompt_done_tx,
+                                    AcpDispatchContext {
+                                        conn: conn.clone(),
+                                        event_sink: event_sink.clone(),
+                                        session_id: &session_id,
+                                        prompt_prefix_blocks: &prompt_prefix_blocks,
+                                        prompt_done_tx: &prompt_done_tx,
+                                        diagnostics: diagnostics_for_runtime.clone(),
+                                    },
                                     &mut active_prompt_count,
-                                    diagnostics_for_runtime.clone(),
                                 )
                                 .await;
                                 sync_diagnostics(active_prompt_count, pending_commands.len());
