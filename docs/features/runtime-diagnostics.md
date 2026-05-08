@@ -78,9 +78,11 @@ When a debug-build server is running, `agenthub doctor agent-trace --server-url 
 <root-session-token>` calls a root-authenticated live backend diagnostic endpoint and overlays the
 SQLite report with redacted in-memory runtime state. The first live overlay includes local runtime
 handle presence, ACP command-channel closure/capacity, active prompt count, pending command count,
-and output broadcast subscriber count. It still does not claim full provider truth: active
-turn/submission ids, pending tool-call completeness, last send errors, and detailed SSE freshness
-need deeper adapter and broadcaster instrumentation.
+active AgentHub submission ids, last provider event class/timestamp, pending tool-call
+ids/statuses, last command error metadata, output broadcast subscriber count, active SSE
+stream/forwarder counts, last forwarded/emitted event ids and timestamps, and last SSE delivery
+error metadata. It still does not claim full provider truth: provider-native turn ids are
+adapter-specific and should be exposed only when the adapter can report them as safe metadata.
 
 ## Contracts
 
@@ -92,7 +94,7 @@ need deeper adapter and broadcaster instrumentation.
   command proved that runtime; they do not mean the CLI is missing from the host.
 - For Codex-backed ACP sessions, diagnostic snapshots should include:
   - provider session id and AgentHub session id
-  - active Codex thread id, turn id, and AgentHub submission id when available
+  - active Codex thread id, turn id, and AgentHub submission id when available from safe metadata
   - queued prompt/session-mutation counts
   - pending app-server request ids grouped by request kind
   - tool-call completeness state keyed by call id, including `started`, `output_seen`, and terminal
@@ -107,12 +109,13 @@ need deeper adapter and broadcaster instrumentation.
     stale-running reconciliation status
   - latest persisted `agent_events.id`, latest event timestamp, latest ACP event type, and latest
     renderable message/tool-call summary
-  - SSE broadcaster state when available: active targets, last emitted event id/timestamp, last
-    subscriber activity, and last send error
+  - SSE broadcaster state when available: active targets, last forwarded/emitted event id/timestamp,
+    subscriber/forwarder activity, and last send error
   - pending permission-review requests, pending mailbox messages that can block the next turn, and
     pending tool calls grouped by call id/status
-  - adapter-local progress fields for provider-backed sessions, including active turn/submission id,
-    queued prompt count, and last provider event class/timestamp
+  - adapter-local progress fields for provider-backed sessions, including active AgentHub submission
+    ids, queued prompt count, pending tool-call completeness, and last provider event
+    class/timestamp; provider-native turn ids are optional until the adapter exposes them safely
 - The CLI summary should classify the most likely stall layer as one of:
   - `runtime_not_running`
   - `provider_turn_waiting`
@@ -153,6 +156,8 @@ need deeper adapter and broadcaster instrumentation.
 - `cargo test -p agenthub diagnostics::agent_trace`
 - `cargo test -p agenthub doctor_cli`
 - `cargo test -p agenthub-acp acp_handle_send_times_out_when_channel_is_backpressured`
+- `cargo test -p agenthub-acp acp_runtime_diagnostics_tracks_redacted_live_state`
+- `cargo test -p agenthub sse::tests::output_stream_emits_events_from_forwarders`
 
 ## Operational Notes
 

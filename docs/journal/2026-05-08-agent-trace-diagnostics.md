@@ -30,15 +30,19 @@ SSE/frontend boundary.
   `/api/diagnostics/agent_trace`, reachable from `agenthub doctor agent-trace --server-url <url>
   --token <root-session-token>`, for live runtime handle, ACP command-channel, prompt queue, and
   output broadcast subscriber state.
+- Extended the live overlay with provider-neutral adapter and SSE delivery accounting: active
+  submission ids, last submission id, last provider event class/timestamp, pending tool-call
+  ids/statuses, last command error metadata, active SSE stream/forwarder counts, last forwarded and
+  emitted event ids/timestamps, and last SSE delivery error metadata.
 
 ## Key Decisions
 
 - The first slice intentionally uses read-only SQLite snapshots so it is safe for local diagnosis
   and AgentHub-managed agents.
 - Provider-adapter live progress and SSE broadcaster freshness are not fabricated from the database
-  snapshot. The first live overlay only reports state that the backend can read directly from live
-  runtime handles; deeper active turn/tool-call/SSE cursor state remains a separate instrumentation
-  step.
+  snapshot. The live overlay only reports state that the backend can read directly from live runtime
+  handles and SSE forwarders. Provider-native turn ids remain adapter-specific and should be added
+  only when the adapter can expose them without serializing prompt or tool payload bodies.
 - The workflow remains backend-first: browser inspection is downstream evidence, not the first
   step, unless the backend trace already proves persistence and emission are healthy.
 
@@ -50,6 +54,9 @@ cargo fmt --all --check
 cargo test -p agenthub diagnostics::agent_trace
 cargo test -p agenthub doctor_cli
 cargo test -p agenthub-acp acp_handle_send_times_out_when_channel_is_backpressured
+cargo test -p agenthub-acp acp_runtime_diagnostics_tracks_redacted_live_state
+cargo test -p agenthub-acp acp_handle_send
+cargo test -p agenthub sse::tests::output_stream_emits_events_from_forwarders
 cargo check -p agenthub
 cargo clippy -p agenthub --all-targets -- -D warnings
 gh pr checks 559 | cat
@@ -60,8 +67,7 @@ normalization, unnecessary Team member clone, and UUID-backed temporary test dir
 
 ## Follow-Ups
 
-- Extend the live backend diagnostic path with adapter-local active turn/submission ids, pending
-  tool-call completeness, SSE last emitted cursor/freshness, last send errors, and subscriber
-  activity.
+- Add provider-native turn ids when a provider adapter exposes them as safe metadata. The current
+  live overlay uses AgentHub submission ids as the provider-neutral correlation point.
 - After the live backend path lands, run Chrome DevTools MCP only for cases where persisted ACP
   events and SSE emission are both healthy but the Team ACP UI still renders stale state.

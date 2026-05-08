@@ -1679,6 +1679,10 @@ impl AgentManager {
                     "prompt_active"
                 } else if diagnostics.pending_command_count > 0 {
                     "commands_pending"
+                } else if diagnostics.pending_tool_call_count > 0 {
+                    "tool_calls_pending"
+                } else if diagnostics.last_command_error.is_some() {
+                    "last_command_error"
                 } else {
                     "idle"
                 };
@@ -1695,8 +1699,15 @@ impl AgentManager {
             ),
         };
         let subscriber_count = handle.output_tx.receiver_count();
+        let sse_diagnostics = crate::sse::agent_sse_diagnostics(agent_id);
         let sse_status = if subscriber_count > 0 {
             "subscribers_active"
+        } else if sse_diagnostics
+            .as_ref()
+            .and_then(|snapshot| snapshot.last_error.as_ref())
+            .is_some()
+        {
+            "last_error"
         } else {
             "no_subscribers"
         };
@@ -1714,9 +1725,10 @@ impl AgentManager {
             },
             sse: AgentTraceAvailability {
                 status: sse_status.to_string(),
-                note: "redacted live output broadcast subscriber snapshot".to_string(),
+                note: "redacted live output broadcast and SSE delivery snapshot".to_string(),
                 details: serde_json::json!({
-                    "output_subscriber_count": subscriber_count
+                    "output_subscriber_count": subscriber_count,
+                    "sse": sse_diagnostics,
                 }),
             },
         }
@@ -1843,7 +1855,8 @@ impl AgentManager {
         };
         let _ = output_tx.send(output);
 
-        acp.prompt(input.to_string()).await?;
+        acp.prompt_with_submission(input.to_string(), message_id)
+            .await?;
         Ok(())
     }
 
