@@ -685,6 +685,16 @@ export function buildTeamRunContextSseUrl(
   )}/context?token=${encodeURIComponent(token)}`;
 }
 
+export function buildTeamRuntimeSseUrl(
+  origin: string,
+  teamId: string,
+  token: string
+): string {
+  return `${origin}/sse/teams/${encodePathSegment(
+    teamId
+  )}/runtime?token=${encodeURIComponent(token)}`;
+}
+
 export const api = {
   registerStart: (
     username: string,

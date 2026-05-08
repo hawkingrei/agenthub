@@ -3149,6 +3149,7 @@ export function TeamPage(props: TeamPageProps) {
     };
   }, [refreshTeamRuntime, selectedTeamId, setError]);
   useTeamRuntimeEffects({
+    token: props.token,
     selectedTeamId,
     enabled: shouldWatchSelectedTeamRuntime,
     refreshTeamRuntime,
