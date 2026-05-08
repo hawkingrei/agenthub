@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import { AuthState } from "./types";
 import { AgentRecord, api, AcpPermissionRecord } from "./api";
 import { 
@@ -18,6 +18,11 @@ import {
 
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 
+export type AcpPermissionLiveSignal = {
+  seq: number;
+  agentIds: string[];
+};
+
 export function useAppPermissions(
   auth: AuthState | null,
   isAgentsRoute: boolean,
@@ -26,6 +31,8 @@ export function useAppPermissions(
   agentsCollapsed: boolean,
   developerMode: boolean,
   acpTab: string,
+  permissionSseConnected: boolean,
+  permissionLiveSignal: AcpPermissionLiveSignal,
   state: {
     acpPermissions: AcpPermissionRecord[];
     setAcpPermissions: Dispatch<SetStateAction<AcpPermissionRecord[]>>;
@@ -48,6 +55,40 @@ export function useAppPermissions(
   const permissionPollAgentIds = useMemo(() => buildPermissionPollAgentIds(agents), [agents]);
   const permissionPollAgentIdsKey = useMemo(() => permissionPollAgentIds.join(","), [permissionPollAgentIds]);
 
+  const refreshPendingPermissionCounts = useCallback(
+    async (
+      allAgentIds: string[],
+      requestedAgentIds: string[],
+      cancelled: () => boolean
+    ) => {
+      const requestedChunks = chunkPermissionPollAgentIds(
+        requestedAgentIds,
+        GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY
+      );
+      const entries: Array<readonly [string, number | null]> = [];
+      for (const chunk of requestedChunks) {
+        const batch = await Promise.all(
+          chunk.map(async (agentId) => {
+            try {
+              const items = await api.listAcpPermissions(token!, agentId, "pending");
+              return [agentId, items.length] as const;
+            } catch {
+              return [agentId, null] as const;
+            }
+          })
+        );
+        entries.push(...batch);
+        if (cancelled()) return;
+      }
+      if (cancelled()) return;
+      setPendingPermissionCounts((prev) => {
+        const nextCounts = mergePendingPermissionCountMap(prev, allAgentIds, entries);
+        return isSamePendingPermissionCountMap(prev, nextCounts) ? prev : nextCounts;
+      });
+    },
+    [setPendingPermissionCounts, token]
+  );
+
   useEffect(() => {
     if (!isAgentsRoute || !token || !permissionPollAgentIdsKey) {
       setPendingPermissionCounts({});
@@ -56,39 +97,33 @@ export function useAppPermissions(
     let cancelled = false;
     const allAgentIds = parsePermissionPollAgentIds(permissionPollAgentIdsKey);
     const requestedAgentIds = buildGlobalPermissionPollAgentIds(allAgentIds, activeAgent);
-    const requestedChunks = chunkPermissionPollAgentIds(requestedAgentIds, GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY);
     const pollIntervalMs = resolveGlobalPermissionPollIntervalMs(agentsCollapsed);
 
     const load = async () => {
-      const entries: Array<readonly [string, number | null]> = [];
-      for (const chunk of requestedChunks) {
-        const batch = await Promise.all(
-          chunk.map(async (agentId) => {
-            try {
-              const items = await api.listAcpPermissions(token, agentId, "pending");
-              return [agentId, items.length] as const;
-            } catch {
-              return [agentId, null] as const;
-            }
-          })
-        );
-        entries.push(...batch);
-        if (cancelled) return;
-      }
-      if (cancelled) return;
-      setPendingPermissionCounts((prev) => {
-        const nextCounts = mergePendingPermissionCountMap(prev, allAgentIds, entries);
-        return isSamePendingPermissionCountMap(prev, nextCounts) ? prev : nextCounts;
-      });
+      await refreshPendingPermissionCounts(allAgentIds, requestedAgentIds, () => cancelled);
     };
 
     load();
+    if (permissionSseConnected) {
+      return () => {
+        cancelled = true;
+      };
+    }
     const timer = window.setInterval(load, pollIntervalMs);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isAgentsRoute, token, permissionPollAgentIdsKey, activeAgent, agentsCollapsed, setPendingPermissionCounts]);
+  }, [
+    isAgentsRoute,
+    token,
+    permissionPollAgentIdsKey,
+    activeAgent,
+    agentsCollapsed,
+    permissionSseConnected,
+    refreshPendingPermissionCounts,
+    setPendingPermissionCounts,
+  ]);
 
   useEffect(() => {
     if (!isAgentsRoute || !token || !activeAgent) {
@@ -123,6 +158,13 @@ export function useAppPermissions(
       }
     };
 
+    if (permissionSseConnected) {
+      void pollOnce();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const schedule = (delay: number) => {
       schedulePermissionPollLoop(delay, pollState, pollOnce, () => cancelled);
     };
@@ -131,7 +173,14 @@ export function useAppPermissions(
       cancelled = true;
       if (pollState.timer) window.clearTimeout(pollState.timer);
     };
-  }, [isAgentsRoute, token, activeAgent, setAcpPermissions, setPendingPermissionCounts]);
+  }, [
+    isAgentsRoute,
+    token,
+    activeAgent,
+    permissionSseConnected,
+    setAcpPermissions,
+    setPendingPermissionCounts,
+  ]);
 
   useEffect(() => {
     if (!isAgentsRoute || !token || !activeAgent || !developerMode || acpTab !== "debug") {
@@ -151,12 +200,79 @@ export function useAppPermissions(
       }
     };
     load();
+    if (permissionSseConnected) {
+      return () => {
+        cancelled = true;
+      };
+    }
     const timer = window.setInterval(load, 5000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isAgentsRoute, token, activeAgent, developerMode, acpTab, setAcpPermissionHistory]);
+  }, [
+    isAgentsRoute,
+    token,
+    activeAgent,
+    developerMode,
+    acpTab,
+    permissionSseConnected,
+    setAcpPermissionHistory,
+  ]);
+
+  useEffect(() => {
+    if (!isAgentsRoute || !token || permissionLiveSignal.seq <= 0) return;
+    const allAgentIds = parsePermissionPollAgentIds(permissionPollAgentIdsKey);
+    if (allAgentIds.length === 0) return;
+    const allAgentSet = new Set(allAgentIds);
+    const signaledAgentIds = Array.from(
+      new Set(permissionLiveSignal.agentIds.filter((agentId) => allAgentSet.has(agentId)))
+    );
+    if (signaledAgentIds.length === 0) return;
+
+    let cancelled = false;
+    void refreshPendingPermissionCounts(allAgentIds, signaledAgentIds, () => cancelled);
+
+    if (activeAgent && signaledAgentIds.includes(activeAgent)) {
+      const requestedAgentId = activeAgent;
+      void api
+        .listAcpPermissions(token, requestedAgentId, "pending")
+        .then((items) => {
+          if (cancelled || activeAgent !== requestedAgentId) return;
+          setAcpPermissions((prev) => (isSamePermissionList(prev, items) ? prev : items));
+        })
+        .catch(() => {
+          if (!cancelled) setAcpPermissions([]);
+        });
+
+      if (developerMode && acpTab === "debug") {
+        void api
+          .listAcpPermissions(token, requestedAgentId)
+          .then((items) => {
+            if (cancelled || activeAgent !== requestedAgentId) return;
+            setAcpPermissionHistory((prev) => (isSamePermissionList(prev, items) ? prev : items));
+          })
+          .catch(() => {
+            if (!cancelled) setAcpPermissionHistory([]);
+          });
+      }
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isAgentsRoute,
+    token,
+    permissionLiveSignal,
+    permissionPollAgentIdsKey,
+    activeAgent,
+    developerMode,
+    acpTab,
+    refreshPendingPermissionCounts,
+    setAcpPermissions,
+    setAcpPermissionHistory,
+  ]);
 
   const scopedAcpPermissions = useMemo(
     () => filterVisiblePermissionsForAgent(acpPermissions, activeAgent),

@@ -36,3 +36,22 @@ cd web && npm exec tsc -- --noEmit
 ## Follow-Ups
 
 - Audit remaining non-runtime status surfaces, especially permissions and app-level agent list refresh, to decide whether they should remain fallback polling or move to dedicated SSE invalidation.
+
+## Permission State Follow-Up
+
+The app-level ACP permission state now uses existing agent SSE output as an invalidation source:
+
+- ACP live output events with `permission_request`, `permission_response`, `permission_timeout`, or `permission_review_dispatch_error` trigger permission refresh for the affected agent ids.
+- Pending permission counts, the active agent pending list, and debug permission history keep an initial load, then disable interval polling while the app-level agent SSE stream is connected.
+- The old permission polling loops remain as fallback while SSE is unavailable or disconnected.
+
+Focused checks run during this follow-up:
+
+```bash
+cd web && npm exec vitest -- run src/app_live_output.test.ts src/use_app_permissions.test.tsx
+cd web && npm exec tsc -- --noEmit
+```
+
+Remaining audit work:
+
+- Verify deployed runtime cards and app-level status surfaces on `agenthub.hawkingrei.com` after this PR merges.

@@ -71,6 +71,7 @@ import { RouteFallback } from "./routes/route_fallback";
 import { useAppAuth } from "./use_app_auth";
 import { useAppAgents } from "./use_app_agents";
 import { useAppPermissions } from "./use_app_permissions";
+import type { AcpPermissionLiveSignal } from "./use_app_permissions";
 import { useAppOutputCache } from "./use_app_output_cache";
 import { useAppAcpUi } from "./use_app_acp_ui";
 import { useAppLayout } from "./use_app_layout";
@@ -277,6 +278,17 @@ export function App() {
   );
 
   const permissionState = useAppPermissionState();
+  const [permissionLiveSignal, setPermissionLiveSignal] = useState<AcpPermissionLiveSignal>({
+    seq: 0,
+    agentIds: [],
+  });
+  const handleAcpPermissionSignal = useCallback((agentIds: string[]) => {
+    if (agentIds.length === 0) return;
+    setPermissionLiveSignal((prev) => ({
+      seq: prev.seq + 1,
+      agentIds,
+    }));
+  }, []);
 
   const {
     outputs,
@@ -289,10 +301,17 @@ export function App() {
     loadAgentEvents,
     loadOlderEvents,
     consumeLiveOutputBatch,
-  } = useAppOutputCache(auth, activeAgent, activeAgentRecord?.status ?? null, setAgents);
+  } = useAppOutputCache(
+    auth,
+    activeAgent,
+    activeAgentRecord?.status ?? null,
+    setAgents,
+    handleAcpPermissionSignal
+  );
 
   const {
     networkOnline,
+    sseState,
     error: sseError,
     connectionBadge,
   } = useAppSseEvents(
@@ -347,6 +366,8 @@ export function App() {
     agentsCollapsed,
     developerMode,
     acpTab,
+    sseState === "connected",
+    permissionLiveSignal,
     permissionState
   );
 
