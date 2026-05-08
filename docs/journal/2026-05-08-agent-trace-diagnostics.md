@@ -26,14 +26,19 @@ SSE/frontend boundary.
 - Kept diagnostic output redacted by construction: IDs, timestamps, statuses, event types, and
   counts are allowed; prompt bodies, message bodies, tool arguments, tool output bodies, environment
   values, and provider tokens are not emitted.
+- Added a debug-build-only, root-authenticated live backend overlay at
+  `/api/diagnostics/agent_trace`, reachable from `agenthub doctor agent-trace --server-url <url>
+  --token <root-session-token>`, for live runtime handle, ACP command-channel, prompt queue, and
+  output broadcast subscriber state.
 
 ## Key Decisions
 
 - The first slice intentionally uses read-only SQLite snapshots so it is safe for local diagnosis
   and AgentHub-managed agents.
 - Provider-adapter live progress and SSE broadcaster freshness are not fabricated from the database
-  snapshot. They are reported as unavailable until a live backend diagnostic path can read in-memory
-  runtime/SSE state.
+  snapshot. The first live overlay only reports state that the backend can read directly from live
+  runtime handles; deeper active turn/tool-call/SSE cursor state remains a separate instrumentation
+  step.
 - The workflow remains backend-first: browser inspection is downstream evidence, not the first
   step, unless the backend trace already proves persistence and emission are healthy.
 
@@ -44,6 +49,7 @@ python3 /Users/weizhenwang/.codex/skills/.system/skill-creator/scripts/quick_val
 cargo fmt --all --check
 cargo test -p agenthub diagnostics::agent_trace
 cargo test -p agenthub doctor_cli
+cargo test -p agenthub-acp acp_handle_send_times_out_when_channel_is_backpressured
 cargo check -p agenthub
 cargo clippy -p agenthub --all-targets -- -D warnings
 gh pr checks 559 | cat
@@ -54,8 +60,8 @@ normalization, unnecessary Team member clone, and UUID-backed temporary test dir
 
 ## Follow-Ups
 
-- Extend `agenthub doctor agent-trace` to call a live backend diagnostic path when the server is
-  available so it can include provider-adapter progress and SSE broadcaster freshness instead of
-  database-only placeholders.
+- Extend the live backend diagnostic path with adapter-local active turn/submission ids, pending
+  tool-call completeness, SSE last emitted cursor/freshness, last send errors, and subscriber
+  activity.
 - After the live backend path lands, run Chrome DevTools MCP only for cases where persisted ACP
   events and SSE emission are both healthy but the Team ACP UI still renders stale state.

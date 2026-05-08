@@ -8,6 +8,8 @@ mod agent_nodes;
 mod agents;
 mod auth;
 mod authz;
+#[cfg(debug_assertions)]
+mod diagnostics;
 mod error;
 mod join;
 mod openapi;
@@ -36,7 +38,7 @@ pub(crate) fn extract_ua(headers: &HeaderMap) -> Option<String> {
 }
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let router = Router::new()
         .nest("/agents", agents::router(state.clone()))
         .nest("/agent_nodes", agent_nodes::router(state.clone()))
         .nest("/teams", teams::router(state.clone()))
@@ -45,7 +47,10 @@ pub fn router(state: AppState) -> Router {
         .nest("/join", join::router(state.clone()))
         .nest("/settings", settings::router(state.clone()))
         .merge(openapi::router(state.clone()))
-        .nest("/push", push::router(state))
+        .nest("/push", push::router(state.clone()));
+    #[cfg(debug_assertions)]
+    let router = router.nest("/diagnostics", diagnostics::router(state));
+    router
 }
 
 pub async fn health() -> &'static str {

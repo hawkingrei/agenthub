@@ -6,7 +6,7 @@ pub(crate) mod agent_trace {
     };
 
     use anyhow::{Context, bail};
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
     use serde_json::Value;
     use sqlx::{
         Row, SqlitePool,
@@ -71,6 +71,13 @@ pub(crate) mod agent_trace {
     }
 
     #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    pub(crate) struct AgentTraceLiveOverlay {
+        pub runtime: AgentTraceRuntimeSummary,
+        pub provider_adapter: AgentTraceAvailability,
+        pub sse: AgentTraceAvailability,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceReport {
         pub build: AgentTraceBuild,
         pub target: AgentTraceTarget,
@@ -86,20 +93,20 @@ pub(crate) mod agent_trace {
         pub verdict: AgentTraceVerdict,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceBuild {
         pub diagnostics_enabled: bool,
         pub debug_assertions: bool,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceTarget {
         pub agent_id: String,
         pub team_id: Option<String>,
         pub member_id: Option<String>,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceAgent {
         pub id: String,
         pub name: String,
@@ -108,7 +115,7 @@ pub(crate) mod agent_trace {
         pub updated_at: i64,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceTeam {
         pub id: String,
         pub member_found: bool,
@@ -116,7 +123,7 @@ pub(crate) mod agent_trace {
         pub latest_run_status: Option<String>,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceSession {
         pub id: String,
         pub status: String,
@@ -124,20 +131,22 @@ pub(crate) mod agent_trace {
         pub ended_at: Option<i64>,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceRuntimeSummary {
         pub ownership: String,
         pub active_session_id: Option<String>,
         pub live_state_source: String,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceAvailability {
         pub status: String,
         pub note: String,
+        #[serde(default, skip_serializing_if = "Value::is_null")]
+        pub details: Value,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceEventSummary {
         pub event_db_path: String,
         pub event_db_exists: bool,
@@ -146,7 +155,7 @@ pub(crate) mod agent_trace {
         pub recent: Vec<AgentTraceEvent>,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceEvent {
         pub event_id: i64,
         pub session_id: String,
@@ -160,26 +169,26 @@ pub(crate) mod agent_trace {
         pub redacted_fields: Vec<String>,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTracePermissionSummary {
         pub pending_count: i64,
         pub pending_tool_call_ids: Vec<String>,
         pub pending_permission_ids: Vec<String>,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceMailboxSummary {
         pub pending_to_actor_count: i64,
         pub latest_pending_message_id: Option<i64>,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub(crate) struct AgentTraceVerdict {
         pub layer: AgentTraceStallLayer,
         pub reason: String,
     }
 
-    #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     #[serde(rename_all = "snake_case")]
     pub(crate) enum AgentTraceStallLayer {
         TargetNotFound,
@@ -251,14 +260,25 @@ pub(crate) mod agent_trace {
                 status: "unavailable_in_db_snapshot".to_string(),
                 note: "provider adapter progress requires a live backend diagnostic path"
                     .to_string(),
+                details: Value::Null,
             },
             sse: AgentTraceAvailability {
                 status: "unavailable_in_db_snapshot".to_string(),
                 note: "SSE broadcaster freshness requires a live backend diagnostic path"
                     .to_string(),
+                details: Value::Null,
             },
             verdict,
         })
+    }
+
+    pub(crate) fn apply_live_overlay(
+        report: &mut AgentTraceReport,
+        overlay: AgentTraceLiveOverlay,
+    ) {
+        report.runtime = overlay.runtime;
+        report.provider_adapter = overlay.provider_adapter;
+        report.sse = overlay.sse;
     }
 
     pub(crate) fn render_human(report: &AgentTraceReport) -> String {

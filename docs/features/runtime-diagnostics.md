@@ -72,13 +72,15 @@ The implementation is staged. The first CLI surface, `agenthub doctor agent-trac
 debug-build-only read-only SQLite snapshot that accepts either a standalone `agent_id` or a
 Team-scoped `team_id + member_id`, resolves the active AgentHub session, and prints a compact
 human-readable plus machine-readable JSON summary. This snapshot is useful both to a human operator
-and to an AgentHub-managed agent, but it cannot truthfully report in-memory provider-adapter or SSE
-broadcaster state.
+and to an AgentHub-managed agent.
 
-The next diagnostic slice should call a live backend diagnostic path when a server is available
-instead of relying on SQLite alone. That live path is the place to include provider-adapter turn
-progress, queued prompt counts, pending tool-call completeness, SSE broadcaster freshness, last send
-errors, and subscriber activity.
+When a debug-build server is running, `agenthub doctor agent-trace --server-url <url> --token
+<root-session-token>` calls a root-authenticated live backend diagnostic endpoint and overlays the
+SQLite report with redacted in-memory runtime state. The first live overlay includes local runtime
+handle presence, ACP command-channel closure/capacity, active prompt count, pending command count,
+and output broadcast subscriber count. It still does not claim full provider truth: active
+turn/submission ids, pending tool-call completeness, last send errors, and detailed SSE freshness
+need deeper adapter and broadcaster instrumentation.
 
 ## Contracts
 
@@ -150,6 +152,7 @@ errors, and subscriber activity.
 - `python3 /Users/weizhenwang/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/agenthub-agent-debug`
 - `cargo test -p agenthub diagnostics::agent_trace`
 - `cargo test -p agenthub doctor_cli`
+- `cargo test -p agenthub-acp acp_handle_send_times_out_when_channel_is_backpressured`
 
 ## Operational Notes
 

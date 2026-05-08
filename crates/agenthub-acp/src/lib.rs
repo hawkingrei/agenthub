@@ -8,7 +8,10 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use std::time::Duration;
 
 use agent_client_protocol::schema::{
@@ -739,6 +742,23 @@ enum AcpCommand {
 pub struct AcpHandle {
     pub session_id: String,
     tx: mpsc::Sender<AcpCommand>,
+    diagnostics: Arc<AcpRuntimeDiagnostics>,
+}
+
+#[derive(Debug, Default)]
+struct AcpRuntimeDiagnostics {
+    active_prompt_count: AtomicUsize,
+    pending_command_count: AtomicUsize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpHandleDiagnostics {
+    pub session_id: String,
+    pub command_channel_closed: bool,
+    pub command_channel_capacity: usize,
+    pub command_channel_max_capacity: usize,
+    pub active_prompt_count: usize,
+    pub pending_command_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -763,6 +783,20 @@ impl std::fmt::Display for AcpSendError {
 impl std::error::Error for AcpSendError {}
 
 impl AcpHandle {
+    pub fn diagnostics(&self) -> AcpHandleDiagnostics {
+        AcpHandleDiagnostics {
+            session_id: self.session_id.clone(),
+            command_channel_closed: self.tx.is_closed(),
+            command_channel_capacity: self.tx.capacity(),
+            command_channel_max_capacity: self.tx.max_capacity(),
+            active_prompt_count: self.diagnostics.active_prompt_count.load(Ordering::Relaxed),
+            pending_command_count: self
+                .diagnostics
+                .pending_command_count
+                .load(Ordering::Relaxed),
+        }
+    }
+
     pub async fn prompt(&self, input: String) -> anyhow::Result<()> {
         self.send(AcpCommand::Prompt(input)).await
     }
@@ -952,6 +986,8 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
     } = request;
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<AcpCommand>(ACP_COMMAND_CHANNEL_CAPACITY);
     let (ready_tx, ready_rx) = oneshot::channel::<Result<String, String>>();
+    let diagnostics = Arc::new(AcpRuntimeDiagnostics::default());
+    let diagnostics_for_runtime = diagnostics.clone();
 
     std::thread::spawn(move || match runtime_location {
         AcpRuntimeLocation::LocalProcess => {
@@ -1149,11 +1185,21 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             let mut active_prompt_count = 0usize;
             let mut cmd_rx_closed = false;
             let mut pending_commands = VecDeque::<AcpCommand>::new();
+            let sync_diagnostics = |active_prompt_count: usize, pending_commands: usize| {
+                diagnostics_for_runtime
+                    .active_prompt_count
+                    .store(active_prompt_count, Ordering::Relaxed);
+                diagnostics_for_runtime
+                    .pending_command_count
+                    .store(pending_commands, Ordering::Relaxed);
+            };
+            sync_diagnostics(active_prompt_count, pending_commands.len());
 
             while !cmd_rx_closed || active_prompt_count > 0 || !pending_commands.is_empty() {
                 if active_prompt_count == 0
                     && let Some(cmd) = pending_commands.pop_front()
                 {
+                    sync_diagnostics(active_prompt_count, pending_commands.len());
                     dispatch_acp_command(
                         cmd,
                         conn.clone(),
@@ -1164,6 +1210,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         &mut active_prompt_count,
                     )
                     .await;
+                    sync_diagnostics(active_prompt_count, pending_commands.len());
                     continue;
                 }
 
@@ -1179,6 +1226,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                             break;
                         }
                         active_prompt_count = active_prompt_count.saturating_sub(1);
+                        sync_diagnostics(active_prompt_count, pending_commands.len());
                     }
                     maybe_cmd = cmd_rx.recv(), if !cmd_rx_closed => {
                         match maybe_cmd {
@@ -1192,6 +1240,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                     &cmd,
                                 ) {
                                     pending_commands.push_back(cmd);
+                                    sync_diagnostics(active_prompt_count, pending_commands.len());
                                     continue;
                                 }
                                 dispatch_acp_command(
@@ -1204,6 +1253,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                     &mut active_prompt_count,
                                 )
                                 .await;
+                                sync_diagnostics(active_prompt_count, pending_commands.len());
                             }
                             None => {
                                 cmd_rx_closed = true;
@@ -1229,6 +1279,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         Ok(Ok(Ok(session_id))) => Ok(AcpHandle {
             session_id,
             tx: cmd_tx,
+            diagnostics,
         }),
         Ok(Ok(Err(err))) => Err(anyhow::anyhow!(err)),
         Ok(Err(_)) => Err(anyhow::anyhow!("acp session init cancelled")),
@@ -2042,12 +2093,12 @@ mod tests {
     use super::{
         ACP_PERMISSION_REVIEW_TIMEOUT, AcpActorContinuityEnvelope, AcpActorSkillContext,
         AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
-        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, acp_permission_review_timeout,
-        acp_session_start_timeout, build_prompt_prefix_blocks, dedupe_skills,
-        format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
-        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
-        permission_review_failure_outcome, remove_skills_conflicting_with_reserved,
-        should_queue_while_prompts_active,
+        AcpPromptDeliveryPolicy, AcpRuntimeDiagnostics, AcpRuntimeLocation, AcpSendError,
+        acp_permission_review_timeout, acp_session_start_timeout, build_prompt_prefix_blocks,
+        dedupe_skills, format_auth_required_message, handle_auth_required_failure,
+        is_auth_required_error, load_mcp_servers_from_path, load_skills_from_config,
+        load_workdir_skills, permission_review_failure_outcome,
+        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
     use agent_client_protocol::schema::{
         ContentBlock, McpServer, PermissionOption, PermissionOptionKind, RequestPermissionOutcome,
@@ -2064,6 +2115,7 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs as unix_fs;
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::mpsc;
     use uuid::Uuid;
@@ -2196,7 +2248,13 @@ mod tests {
         let handle = AcpHandle {
             session_id: "session-backpressure".to_string(),
             tx,
+            diagnostics: Arc::new(AcpRuntimeDiagnostics::default()),
         };
+        let diagnostics = handle.diagnostics();
+        assert_eq!(diagnostics.session_id, "session-backpressure");
+        assert_eq!(diagnostics.command_channel_capacity, 0);
+        assert_eq!(diagnostics.command_channel_max_capacity, 1);
+        assert!(!diagnostics.command_channel_closed);
 
         let err = handle
             .send_with_timeout(AcpCommand::Cancel, Duration::from_millis(25))
@@ -2219,6 +2277,7 @@ mod tests {
         let handle = AcpHandle {
             session_id: "session-closed".to_string(),
             tx,
+            diagnostics: Arc::new(AcpRuntimeDiagnostics::default()),
         };
 
         let err = handle

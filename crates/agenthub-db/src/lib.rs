@@ -224,6 +224,10 @@ impl AgentEventDbRouter {
         self.base_dir.join(format!("{agent_id}.db"))
     }
 
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
+    }
+
     fn suffixed_path(path: &Path, suffix: &str) -> PathBuf {
         let mut raw = path.as_os_str().to_os_string();
         raw.push(suffix);

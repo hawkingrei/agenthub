@@ -30,7 +30,11 @@ Do not start from the browser unless backend evidence already shows persistence 
 ```bash
 agenthub doctor agent-trace --agent-id <agent_id> --json
 agenthub doctor agent-trace --team-id <team_id> --member-id <member_id> --json
+agenthub doctor agent-trace --server-url http://127.0.0.1:8080 --token <root_session_token> --agent-id <agent_id> --json
 ```
+
+Use `--server-url` when the debug-build AgentHub server is running and live runtime state is needed.
+Without it, the command reads the SQLite snapshot only.
 
 3. Classify the layer from the trace verdict.
    - `runtime_not_running`: inspect agent/session lifecycle before ACP.
