@@ -127,7 +127,7 @@ function isThreadReplyMessage(message: TeamConversationMessageRecord): boolean {
   return message.route === "team_thread_reply";
 }
 
-type PermissionReviewCardPayload = {
+export type PermissionReviewCardPayload = {
   type: "permission_review_card";
   permission_id: string;
   agent_id: string;
@@ -642,7 +642,7 @@ function resolvePermissionCardStatus(
   return normalizeTrimmedString(payload.status) ?? "pending";
 }
 
-function resolvePermissionStatusText(
+export function resolvePermissionStatusText(
   payload: PermissionReviewCardPayload,
   record?: AcpPermissionRecord
 ): string {

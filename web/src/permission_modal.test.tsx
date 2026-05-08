@@ -1,8 +1,14 @@
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MantineProvider } from "@mantine/core";
 import { PermissionModal } from "./components/permission_modal";
 import { AcpPermissionRecord } from "./api";
+import { installReactDomTestGlobals, required } from "./test_utils/react_test_helpers";
+
+installReactDomTestGlobals();
 
 const basePermission: AcpPermissionRecord = {
   id: "perm-1",
@@ -50,6 +56,38 @@ const hasDisabledButton = (html: string, label: string) => {
   return button !== null && isDisabledButton(button);
 };
 
+let container: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  container.remove();
+});
+
+const renderInteractiveModal = (
+  permissions: AcpPermissionRecord[],
+  onRespond: (agentId: string, permissionId: string, optionId?: string) => void
+) => {
+  act(() => {
+    root.render(
+      <MantineProvider env="test">
+        <PermissionModal
+          permissions={permissions}
+          permissionBusy={null}
+          onRespond={onRespond}
+          withinPortal={false}
+        />
+      </MantineProvider>
+    );
+  });
+};
+
 describe("PermissionModal option id handling", () => {
   it("renders Codex-aligned option labels when option_id is present", () => {
     const html = renderModal([
@@ -94,5 +132,33 @@ describe("PermissionModal option id handling", () => {
     ]);
     expect(findButtonHtml(withReject, "Deny")).not.toBeNull();
     expect(withReject.match(/Deny/g)).toHaveLength(1);
+  });
+
+  it("submits explicit options and fallback deny decisions", () => {
+    const onRespond = vi.fn();
+    renderInteractiveModal(
+      [
+        {
+          ...basePermission,
+          options: [{ option_id: "allow_once", name: "Allow once", kind: "allow_once" }],
+        },
+      ],
+      onRespond
+    );
+
+    act(() => {
+      required(container.querySelector("button"), "allow button missing").click();
+    });
+    expect(onRespond).toHaveBeenCalledWith("agent-1", "perm-1", "allow_once");
+
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find(
+          (button) => button.textContent?.trim() === "Deny"
+        ),
+        "deny button missing"
+      ).click();
+    });
+    expect(onRespond).toHaveBeenCalledWith("agent-1", "perm-1");
   });
 });

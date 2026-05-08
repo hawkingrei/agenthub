@@ -3071,6 +3071,9 @@ describe("team panels interactions", () => {
         responded_at: null,
       },
     ]);
+    const respondPermissionSpy = vi.spyOn(api, "respondAcpPermission").mockResolvedValue({
+      status: "ok",
+    });
 
     try {
       renderWithMantine(
@@ -3142,8 +3145,16 @@ describe("team panels interactions", () => {
           (button) => button.textContent?.trim() === "Allow"
         )
       ).toHaveLength(1);
+      clickElement(queryButtonByText(permissionCard, "Deny"));
+      await waitForCondition(() => respondPermissionSpy.mock.calls.length > 0);
+      expect(respondPermissionSpy).toHaveBeenCalledWith("token-1", "worker-agent", "perm-2", {
+        option_id: null,
+        outcome: "cancelled",
+      });
+      await waitForCondition(() => container.textContent?.includes("Denied") ?? false);
     } finally {
       listPermissionsSpy.mockRestore();
+      respondPermissionSpy.mockRestore();
     }
   });
 
