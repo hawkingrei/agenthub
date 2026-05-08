@@ -33,9 +33,9 @@ stalls from CPU hotspots and avoid relying on UI status alone.
   default.
 - The diagnostic service/CLI is not a general log-ingestion system and should not persist full
   prompt, message, or tool-output bodies unless an explicit debug export mode is added later.
-- Backend stall diagnostics are debug-only at first: debug/dev builds may enable the read-only
-  diagnostic path, while release builds must keep it disabled by default unless a later reviewed
-  configuration explicitly opts in.
+- Backend stall diagnostics are debug-build-only at first: the read-only diagnostic path is compiled
+  in for debug builds and compiled out or hard-disabled for release builds. Do not ship a hidden
+  release runtime switch for this path until a later security review explicitly changes the contract.
 
 ## Architecture
 
@@ -122,10 +122,10 @@ backend output pipeline appears stuck.
   and provider tokens by default. IDs, timestamps, statuses, event classes, counts, and short
   synthetic summaries are allowed.
 - The backend diagnostic path must be gated:
-  - enabled in debug/dev mode for local investigation;
-  - disabled by default in release builds;
-  - if a future release-mode opt-in is added, it must require explicit configuration plus local or
-    admin-only authorization.
+  - compiled in and enabled only for debug builds, for example behind `cfg(debug_assertions)`;
+  - compiled out or hard-disabled in release builds;
+  - if a future release-build implementation is added, it must require a new security review before
+    introducing any explicit configuration or local/admin authorization model.
 - Remote HTTP exposure is not part of the initial contract. If added later, it must be authenticated,
   authorization-checked, rate-limited, and covered by redaction tests.
 
