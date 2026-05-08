@@ -2878,6 +2878,7 @@ describe("team panels interactions", () => {
           options: [
             { option_id: "allow", name: "Allow once", kind: "allow_once" },
             { option_id: "allow_always", name: "Always allow", kind: "allow_always" },
+            { option_id: "reject", name: "Reject", kind: "reject_once" },
           ],
           tool_call: { title: "git push" },
           status: "pending",
@@ -2916,6 +2917,7 @@ describe("team panels interactions", () => {
                 options: [
                   { option_id: "allow", name: "Allow once", kind: "allow_once" },
                   { option_id: "allow_always", name: "Always allow", kind: "allow_always" },
+                  { option_id: "reject", name: "Reject", kind: "reject_once" },
                 ],
               },
             }),

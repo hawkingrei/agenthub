@@ -8,6 +8,7 @@ import {
 } from "../api";
 import {
   isRejectPermissionOption,
+  resolveAcpPermissionDecisionText,
   resolveAcpPermissionOptionLabel,
 } from "../acp_permission_options";
 import {
@@ -641,7 +642,7 @@ function resolvePermissionCardStatus(
   return normalizeTrimmedString(payload.status) ?? "pending";
 }
 
-export function resolvePermissionStatusText(
+function resolvePermissionStatusText(
   payload: PermissionReviewCardPayload,
   record?: AcpPermissionRecord
 ): string {
@@ -649,17 +650,7 @@ export function resolvePermissionStatusText(
   if (status === "responded") {
     const normalizedRecord = record ?? buildPermissionRecordStub(payload);
     const selectedOptionId = normalizeTrimmedString(normalizedRecord.selected_option_id);
-    if (!selectedOptionId) {
-      return "Denied";
-    }
-    const option = normalizedRecord.options.find(
-      (candidate) => candidate.option_id === selectedOptionId
-    );
-    if (!option) {
-      return "Approved";
-    }
-    const decision = isRejectPermissionOption(option) ? "Denied" : "Approved";
-    return `${decision} · ${resolveAcpPermissionOptionLabel(option)}`;
+    return resolveAcpPermissionDecisionText(normalizedRecord.options, selectedOptionId);
   }
   if (status === "timeout") {
     return "Timed out";
