@@ -45,6 +45,7 @@ function parseRunStatus(message: string): string | null {
 
 function statusToAgentStatus(status: string): AgentRecord["status"] {
   if (status === "running") return "running";
+  if (status === "waiting_permission") return "running";
   if (status === "idle") return "idle";
   if (status === "failed") return "failed";
   if (status === "completed" || status === "cancelled") return "stopped";
