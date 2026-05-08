@@ -2,22 +2,51 @@ use std::path::PathBuf;
 
 use agenthub_managed_skills::install_managed_skills;
 use anyhow::Context;
-use clap::{CommandFactory, Parser, error::ErrorKind};
+use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum DoctorCommand {
     Run,
     Help,
+    AgentTrace(AgentTraceCli),
 }
 
 #[derive(Debug, Parser)]
 #[command(
     name = "doctor",
     bin_name = "agenthub doctor",
-    about = "Materialize managed AgentHub runtime skills under ~/.agents/skills/agenthub-runtime and exit.",
+    about = "Run AgentHub diagnostics. Without a subcommand, materialize managed AgentHub runtime skills.",
     disable_help_subcommand = true
 )]
-struct DoctorCli;
+struct DoctorCli {
+    #[command(subcommand)]
+    command: Option<DoctorSubcommand>,
+}
+
+#[derive(Debug, Clone, Subcommand, PartialEq, Eq)]
+enum DoctorSubcommand {
+    #[command(
+        name = "agent-trace",
+        about = "Inspect read-only agent delivery metadata for stalled ACP/team sessions. Debug builds only."
+    )]
+    AgentTrace(AgentTraceCli),
+}
+
+#[derive(Debug, Clone, Args, PartialEq, Eq)]
+struct AgentTraceCli {
+    #[arg(long, conflicts_with_all = ["team_id", "member_id"])]
+    agent_id: Option<String>,
+    #[arg(long, requires = "member_id")]
+    team_id: Option<String>,
+    #[arg(long, requires = "team_id")]
+    member_id: Option<String>,
+    #[arg(long)]
+    session_id: Option<String>,
+    #[arg(long, default_value_t = 16)]
+    event_limit: i64,
+    #[arg(long)]
+    json: bool,
+}
 
 fn render_doctor_help_result() -> anyhow::Result<String> {
     let mut command = DoctorCli::command();
@@ -35,7 +64,10 @@ fn parse_doctor_args(args: &[String]) -> anyhow::Result<DoctorCommand> {
 
     let argv = std::iter::once("doctor".to_string()).chain(args.iter().cloned());
     match DoctorCli::try_parse_from(argv) {
-        Ok(_) => Ok(DoctorCommand::Run),
+        Ok(cli) => match cli.command {
+            Some(DoctorSubcommand::AgentTrace(args)) => Ok(DoctorCommand::AgentTrace(args)),
+            None => Ok(DoctorCommand::Run),
+        },
         Err(err) if err.kind() == ErrorKind::DisplayHelp => Ok(DoctorCommand::Help),
         Err(err) => Err(err.into()),
     }
@@ -54,7 +86,7 @@ fn render_install_report(installed: &[PathBuf]) -> String {
     lines.join("\n")
 }
 
-fn run_doctor_command(command: DoctorCommand) -> anyhow::Result<()> {
+async fn run_doctor_command(command: DoctorCommand) -> anyhow::Result<()> {
     match command {
         DoctorCommand::Help => {
             print!("{}", render_doctor_help_result()?);
@@ -63,13 +95,44 @@ fn run_doctor_command(command: DoctorCommand) -> anyhow::Result<()> {
             let installed = install_managed_skills(None)?;
             println!("{}", render_install_report(&installed));
         }
+        DoctorCommand::AgentTrace(args) => {
+            run_agent_trace(args).await?;
+        }
     }
     Ok(())
 }
 
 pub async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
     let command = parse_doctor_args(args)?;
-    run_doctor_command(command)
+    run_doctor_command(command).await
+}
+
+#[cfg(debug_assertions)]
+async fn run_agent_trace(args: AgentTraceCli) -> anyhow::Result<()> {
+    use crate::diagnostics::agent_trace::{
+        AgentTraceRequest, collect_from_default_paths, render_human,
+    };
+
+    let request = AgentTraceRequest {
+        agent_id: args.agent_id,
+        team_id: args.team_id,
+        member_id: args.member_id,
+        session_id: args.session_id,
+        event_limit: args.event_limit,
+    };
+    let json_output = args.json;
+    let report = collect_from_default_paths(request).await?;
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("{}", render_human(&report));
+    }
+    Ok(())
+}
+
+#[cfg(not(debug_assertions))]
+async fn run_agent_trace(_args: AgentTraceCli) -> anyhow::Result<()> {
+    anyhow::bail!("agent-trace diagnostics are only available in debug builds")
 }
 
 #[cfg(test)]
@@ -99,6 +162,45 @@ mod tests {
     }
 
     #[test]
+    fn parse_doctor_accepts_agent_trace_agent_target() {
+        let parsed = parse_doctor_args(&[
+            "agent-trace".to_string(),
+            "--agent-id".to_string(),
+            "worker".to_string(),
+            "--session-id".to_string(),
+            "session-1".to_string(),
+            "--event-limit".to_string(),
+            "8".to_string(),
+            "--json".to_string(),
+        ])
+        .expect("parse agent trace");
+        let DoctorCommand::AgentTrace(args) = parsed else {
+            panic!("expected agent trace command");
+        };
+        assert_eq!(args.agent_id.as_deref(), Some("worker"));
+        assert_eq!(args.session_id.as_deref(), Some("session-1"));
+        assert_eq!(args.event_limit, 8);
+        assert!(args.json);
+    }
+
+    #[test]
+    fn parse_doctor_accepts_agent_trace_team_target() {
+        let parsed = parse_doctor_args(&[
+            "agent-trace".to_string(),
+            "--team-id".to_string(),
+            "team-1".to_string(),
+            "--member-id".to_string(),
+            "worker".to_string(),
+        ])
+        .expect("parse team agent trace");
+        let DoctorCommand::AgentTrace(args) = parsed else {
+            panic!("expected agent trace command");
+        };
+        assert_eq!(args.team_id.as_deref(), Some("team-1"));
+        assert_eq!(args.member_id.as_deref(), Some("worker"));
+    }
+
+    #[test]
     fn render_install_report_lists_materialized_paths() {
         let output = render_install_report(&[
             PathBuf::from("/tmp/a/SKILL.md"),
@@ -118,6 +220,8 @@ mod tests {
     #[test]
     fn doctor_help_mentions_managed_skills() {
         let help = render_doctor_help_result().expect("render doctor help");
+        assert!(help.contains("Run AgentHub diagnostics"));
         assert!(help.contains("managed AgentHub runtime skills"));
+        assert!(help.contains("agent-trace"));
     }
 }

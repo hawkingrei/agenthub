@@ -1535,12 +1535,12 @@ async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
     Ok(pool)
 }
 
-fn default_db_path() -> std::path::PathBuf {
+pub fn default_db_path() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     std::path::Path::new(&home).join(".agenthub/agenthub.db")
 }
 
-fn default_agent_event_db_dir() -> PathBuf {
+pub fn default_agent_event_db_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     std::path::Path::new(&home).join(".agenthub/agent-events")
 }
