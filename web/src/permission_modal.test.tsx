@@ -51,14 +51,20 @@ const hasDisabledButton = (html: string, label: string) => {
 };
 
 describe("PermissionModal option id handling", () => {
-  it("renders enabled buttons when option_id is present", () => {
+  it("renders Codex-aligned option labels when option_id is present", () => {
     const html = renderModal([
       {
         ...basePermission,
-        options: [{ option_id: "allow_once", name: "Allow once", kind: "allow_once" }],
+        options: [
+          { option_id: "allow_once", name: "Allow once", kind: "allow_once" },
+          { option_id: "allow_always", name: "Always allow", kind: "allow_always" },
+          { option_id: "deny", name: "Reject", kind: "reject_once" },
+        ],
       },
     ]);
-    expect(hasEnabledButton(html, "Allow once")).toBe(true);
+    expect(hasEnabledButton(html, "Allow")).toBe(true);
+    expect(hasEnabledButton(html, "ask again")).toBe(true);
+    expect(hasEnabledButton(html, "Deny")).toBe(true);
   });
 
   it("disables options with empty option IDs", () => {
@@ -68,6 +74,25 @@ describe("PermissionModal option id handling", () => {
         options: [{ option_id: "", name: "Allow once", kind: "allow_once" }],
       },
     ]);
-    expect(hasDisabledButton(html, "Allow once")).toBe(true);
+    expect(hasDisabledButton(html, "Allow")).toBe(true);
+  });
+
+  it("renders Deny fallback only when ACP does not provide a reject option", () => {
+    const withoutReject = renderModal([
+      {
+        ...basePermission,
+        options: [{ option_id: "allow_once", name: "Allow once", kind: "allow_once" }],
+      },
+    ]);
+    expect(hasEnabledButton(withoutReject, "Deny")).toBe(true);
+
+    const withReject = renderModal([
+      {
+        ...basePermission,
+        options: [{ option_id: "reject", name: "Reject", kind: "reject_once" }],
+      },
+    ]);
+    expect(findButtonHtml(withReject, "Deny")).not.toBeNull();
+    expect(withReject.match(/Deny/g)).toHaveLength(1);
   });
 });

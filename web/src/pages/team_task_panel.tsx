@@ -7,6 +7,11 @@ import {
   api,
 } from "../api";
 import {
+  hasRejectPermissionOption,
+  isRejectPermissionOption,
+  resolveAcpPermissionOptionLabel,
+} from "../acp_permission_options";
+import {
   shouldDefaultTeamConversationStickToBottom,
   DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE,
   deriveTeamThreadJumpState,
@@ -646,12 +651,16 @@ function resolvePermissionStatusText(
     const normalizedRecord = record ?? buildPermissionRecordStub(payload);
     const selectedOptionId = normalizeTrimmedString(normalizedRecord.selected_option_id);
     if (!selectedOptionId) {
-      return "Cancelled";
+      return "Denied";
     }
     const option = normalizedRecord.options.find(
       (candidate) => candidate.option_id === selectedOptionId
     );
-    return option ? `Approved · ${option.name}` : "Approved";
+    if (!option) {
+      return "Approved";
+    }
+    const decision = isRejectPermissionOption(option) ? "Denied" : "Approved";
+    return `${decision} · ${resolveAcpPermissionOptionLabel(option)}`;
   }
   if (status === "timeout") {
     return "Timed out";
@@ -896,18 +905,20 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
                     disabled={busy || !optionId}
                     onClick={() => onRespond(payload, optionId)}
                   >
-                    {option.name}
+                    {resolveAcpPermissionOptionLabel(option)}
                   </ActionButton>
                 );
               })}
-              <ActionButton
-                tone="secondary"
-                size="sm"
-                disabled={busy}
-                onClick={() => onRespond(payload)}
-              >
-                Cancel
-              </ActionButton>
+              {!hasRejectPermissionOption(payload.options) ? (
+                <ActionButton
+                  tone="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => onRespond(payload)}
+                >
+                  Deny
+                </ActionButton>
+              ) : null}
             </div>
             {errorText ? <div className={TEAM_TASK_PERMISSION_CARD_ERROR_CLASS}>{errorText}</div> : null}
           </>
