@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  hasRejectPermissionOption,
+  isRejectPermissionOption,
   resolveAcpPermissionOptionLabel,
 } from "./acp_permission_options";
 import type { AcpPermissionOption } from "./api";
@@ -25,7 +25,8 @@ describe("ACP permission option helpers", () => {
   });
 
   it("detects whether ACP already provided a reject decision", () => {
-    expect(hasRejectPermissionOption([option("allow_once")])).toBe(false);
-    expect(hasRejectPermissionOption([option("allow_once"), option("reject_once")])).toBe(true);
+    expect(isRejectPermissionOption(option("allow_once"))).toBe(false);
+    expect(isRejectPermissionOption(option("reject_once"))).toBe(true);
+    expect(isRejectPermissionOption(option("reject_always"))).toBe(true);
   });
 });

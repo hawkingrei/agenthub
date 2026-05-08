@@ -1,7 +1,7 @@
 import { Badge, Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { AcpPermissionRecord } from "../api";
 import {
-  hasRejectPermissionOption,
+  isRejectPermissionOption,
   resolveAcpPermissionOptionLabel,
 } from "../acp_permission_options";
 import {
@@ -74,7 +74,7 @@ export function PermissionModal({
                     </Button>
                   );
                 })}
-                {!hasRejectPermissionOption(perm.options) ? (
+                {!perm.options.some(isRejectPermissionOption) ? (
                   <Button
                     size="xs"
                     variant="default"

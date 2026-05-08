@@ -7,7 +7,6 @@ import {
   api,
 } from "../api";
 import {
-  hasRejectPermissionOption,
   isRejectPermissionOption,
   resolveAcpPermissionOptionLabel,
 } from "../acp_permission_options";
@@ -909,7 +908,7 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
                   </ActionButton>
                 );
               })}
-              {!hasRejectPermissionOption(payload.options) ? (
+              {!payload.options.some(isRejectPermissionOption) ? (
                 <ActionButton
                   tone="secondary"
                   size="sm"
