@@ -225,8 +225,8 @@ export function useAppPermissions(
     const allAgentIds = parsePermissionPollAgentIds(permissionPollAgentIdsKey);
     if (allAgentIds.length === 0) return;
     const allAgentSet = new Set(allAgentIds);
-    const signaledAgentIds = Array.from(
-      new Set(permissionLiveSignal.agentIds.filter((agentId) => allAgentSet.has(agentId)))
+    const signaledAgentIds = permissionLiveSignal.agentIds.filter((agentId) =>
+      allAgentSet.has(agentId)
     );
     if (signaledAgentIds.length === 0) return;
 
@@ -235,26 +235,23 @@ export function useAppPermissions(
 
     if (activeAgent && signaledAgentIds.includes(activeAgent)) {
       const requestedAgentId = activeAgent;
-      void api
-        .listAcpPermissions(token, requestedAgentId, "pending")
-        .then((items) => {
+      const refreshPermissionList = async (
+        setter: Dispatch<SetStateAction<AcpPermissionRecord[]>>,
+        status?: "pending"
+      ) => {
+        try {
+          const items = await api.listAcpPermissions(token, requestedAgentId, status);
           if (cancelled || activeAgent !== requestedAgentId) return;
-          setAcpPermissions((prev) => (isSamePermissionList(prev, items) ? prev : items));
-        })
-        .catch(() => {
-          if (!cancelled) setAcpPermissions([]);
-        });
+          setter((prev) => (isSamePermissionList(prev, items) ? prev : items));
+        } catch {
+          if (!cancelled) setter([]);
+        }
+      };
+
+      void refreshPermissionList(setAcpPermissions, "pending");
 
       if (developerMode && acpTab === "debug") {
-        void api
-          .listAcpPermissions(token, requestedAgentId)
-          .then((items) => {
-            if (cancelled || activeAgent !== requestedAgentId) return;
-            setAcpPermissionHistory((prev) => (isSamePermissionList(prev, items) ? prev : items));
-          })
-          .catch(() => {
-            if (!cancelled) setAcpPermissionHistory([]);
-          });
+        void refreshPermissionList(setAcpPermissionHistory);
       }
     }
 
