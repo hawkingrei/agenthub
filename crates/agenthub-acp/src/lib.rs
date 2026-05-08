@@ -683,12 +683,19 @@ impl AcpClient {
             "responded_at": Utc::now().timestamp(),
         }))
         .await;
-        self.emit_json(serde_json::json!({
-            "type": "run_status",
-            "status": "running",
-            "session_id": &self.session_id,
-        }))
-        .await;
+        if !self
+            .permissions
+            .has_pending_permissions_for_session(&self.session_id)
+            .await
+            .unwrap_or(false)
+        {
+            self.emit_json(serde_json::json!({
+                "type": "run_status",
+                "status": "running",
+                "session_id": &self.session_id,
+            }))
+            .await;
+        }
 
         Ok(RequestPermissionResponse::new(outcome))
     }
@@ -1697,6 +1704,31 @@ impl AcpPermissionService {
         {
             tracing::debug!(error = %err, "skip acp permission session status restore");
         }
+    }
+
+    pub async fn has_pending_permissions_for_session(
+        &self,
+        session_id: &str,
+    ) -> anyhow::Result<bool> {
+        let db = self.db.clone();
+        let session_id = session_id.to_string();
+        let count = self
+            .runtime_handle
+            .spawn(async move {
+                sqlx::query_scalar::<_, i64>(
+                    r#"
+                    SELECT COUNT(*)
+                    FROM acp_permission_requests
+                    WHERE session_id = ?1 AND status = 'pending'
+                    "#,
+                )
+                .bind(session_id)
+                .fetch_one(&db)
+                .await
+            })
+            .await
+            .map_err(|err| anyhow::anyhow!("acp permission pending count join failed: {err}"))??;
+        Ok(count > 0)
     }
 
     pub async fn get(&self, request_id: &str) -> anyhow::Result<Option<AcpPermissionRecord>> {
@@ -2949,6 +2981,12 @@ Fallback to the user-level review contract.
             .mark_timeout("perm-first", Some(&timeout_outcome))
             .await
             .expect("mark first timeout");
+        assert!(
+            service
+                .has_pending_permissions_for_session("session-1")
+                .await
+                .expect("check pending permissions after first timeout")
+        );
         let status_after_first: String =
             sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = 'session-1'")
                 .fetch_one(&db)
@@ -2960,6 +2998,12 @@ Fallback to the user-level review contract.
             .mark_timeout("perm-second", Some(&timeout_outcome))
             .await
             .expect("mark second timeout");
+        assert!(
+            !service
+                .has_pending_permissions_for_session("session-1")
+                .await
+                .expect("check pending permissions after second timeout")
+        );
         let status_after_second: String =
             sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = 'session-1'")
                 .fetch_one(&db)
