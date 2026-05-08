@@ -124,6 +124,36 @@ describe("collectAcpPermissionSignalAgentIds", () => {
       ])
     ).toEqual(["agent-a", "agent-b"]);
   });
+
+  it("accepts dispatch-error signals and ignores malformed ACP payloads", () => {
+    expect(
+      collectAcpPermissionSignalAgentIds([
+        buildOutputLine({
+          agent_id: "agent-a",
+          stream: "acp",
+          message: JSON.stringify({
+            type: "permission_review_dispatch_error",
+            permission_id: "p1",
+          }),
+        }),
+        buildOutputLine({
+          agent_id: "agent-b",
+          stream: "acp",
+          message: "{not-json",
+        }),
+        buildOutputLine({
+          agent_id: "agent-c",
+          stream: "acp",
+          message: JSON.stringify({ permission_id: "p2" }),
+        }),
+        buildOutputLine({
+          agent_id: "agent-d",
+          stream: "acp",
+          message: "plain text",
+        }),
+      ])
+    ).toEqual(["agent-a"]);
+  });
 });
 
 describe("routeLiveOutputBatch", () => {
