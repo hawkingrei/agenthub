@@ -54,4 +54,24 @@ cd web && npm exec tsc -- --noEmit
 
 Remaining audit work:
 
-- Verify deployed runtime cards and app-level status surfaces on `agenthub.hawkingrei.com` after this PR merges.
+- Verify deployed runtime cards and app-level status surfaces on `agenthub.hawkingrei.com` after these PRs merge.
+
+## Agent List Status Follow-Up
+
+The app-level agent list/status surface now follows the same SSE-first shape:
+
+- Initial agent list loading remains backed by `api.listAgents`.
+- ACP `run_status` events consumed from app-level agent SSE continue to update the affected `agents[].status` entries in-place.
+- The 10-second agent list polling loop is disabled while app-level agent SSE is connected.
+- The polling loop remains as a fallback while SSE is unavailable or disconnected.
+
+Focused checks run during this follow-up:
+
+```bash
+cd web && npm exec vitest -- run src/use_app_agents.test.tsx
+cd web && npm exec tsc -- --noEmit
+```
+
+Remaining audit work:
+
+- Verify deployed runtime cards, app-level agent status, and long-session status recovery on `agenthub.hawkingrei.com` after this PR merges.
