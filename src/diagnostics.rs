@@ -1,6 +1,9 @@
 #[cfg(debug_assertions)]
 pub(crate) mod agent_trace {
-    use std::path::{Path, PathBuf};
+    use std::{
+        path::{Path, PathBuf},
+        time::Duration,
+    };
 
     use anyhow::{Context, bail};
     use serde::Serialize;
@@ -347,7 +350,8 @@ pub(crate) mod agent_trace {
         let options = SqliteConnectOptions::new()
             .filename(path)
             .create_if_missing(false)
-            .read_only(true);
+            .read_only(true)
+            .busy_timeout(Duration::from_secs(5));
         SqlitePoolOptions::new()
             .max_connections(1)
             .connect_with(options)
@@ -366,7 +370,12 @@ pub(crate) mod agent_trace {
         db: &SqlitePool,
         request: &AgentTraceRequest,
     ) -> anyhow::Result<ResolvedTarget> {
-        if let Some(agent_id) = request.agent_id.as_deref().map(str::trim) {
+        if let Some(agent_id) = request
+            .agent_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             return Ok(ResolvedTarget {
                 target: AgentTraceTarget {
                     agent_id: agent_id.to_string(),
@@ -423,14 +432,17 @@ pub(crate) mod agent_trace {
         let member_found = row
             .and_then(|row| row.try_get::<String, _>("spec_json").ok())
             .and_then(|spec| serde_json::from_str::<Value>(&spec).ok())
-            .and_then(|spec| spec.get("members").and_then(Value::as_array).cloned())
-            .is_some_and(|members| {
-                members.iter().any(|member| {
-                    member
-                        .get("member_id")
-                        .and_then(Value::as_str)
-                        .is_some_and(|id| id == member_id)
-                })
+            .is_some_and(|spec| {
+                spec.get("members")
+                    .and_then(Value::as_array)
+                    .is_some_and(|members| {
+                        members.iter().any(|member| {
+                            member
+                                .get("member_id")
+                                .and_then(Value::as_str)
+                                .is_some_and(|id| id == member_id)
+                        })
+                    })
             });
 
         let run = sqlx::query(
@@ -904,9 +916,8 @@ pub(crate) mod agent_trace {
 
         fn test_event_dir() -> PathBuf {
             let dir = std::env::temp_dir().join(format!(
-                "agenthub-agent-trace-test-{}-{}",
-                std::process::id(),
-                chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+                "agenthub-agent-trace-test-{}",
+                uuid::Uuid::new_v4()
             ));
             std::fs::create_dir_all(&dir).expect("create event dir");
             dir
