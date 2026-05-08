@@ -68,14 +68,17 @@ question is not only "is the process alive", but where the backend output pipeli
 5. SSE broadcaster fan-out;
 6. frontend cache/render state, only as downstream evidence.
 
-The canonical implementation should be a backend diagnostic module/path that can inspect both
-persisted state and live in-memory runtime/SSE state. The first CLI surface can be read-only, for example
-`agenthub doctor agent-trace`, but it should call the backend diagnostic path when a server is
-available instead of guessing from SQLite alone. The command should accept either a standalone
-`agent_id` or a Team-scoped `team_id + member_id`, resolve the active AgentHub session and provider
-continuity id, then print a compact timeline and machine-readable JSON summary. The command should
-be useful both to a human operator and to an AgentHub-managed agent that needs to inspect why its own
-backend output pipeline appears stuck.
+The implementation is staged. The first CLI surface, `agenthub doctor agent-trace`, is a
+debug-build-only read-only SQLite snapshot that accepts either a standalone `agent_id` or a
+Team-scoped `team_id + member_id`, resolves the active AgentHub session, and prints a compact
+human-readable plus machine-readable JSON summary. This snapshot is useful both to a human operator
+and to an AgentHub-managed agent, but it cannot truthfully report in-memory provider-adapter or SSE
+broadcaster state.
+
+The next diagnostic slice should call a live backend diagnostic path when a server is available
+instead of relying on SQLite alone. That live path is the place to include provider-adapter turn
+progress, queued prompt counts, pending tool-call completeness, SSE broadcaster freshness, last send
+errors, and subscriber activity.
 
 ## Contracts
 
@@ -144,6 +147,9 @@ backend output pipeline appears stuck.
   - a stale SSE broadcaster cursor while persisted events advanced;
   - a stale `running` row with no live runtime handle;
   - redaction of prompt/tool payload bodies in both text and `--json` output.
+- `python3 /Users/weizhenwang/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/agenthub-agent-debug`
+- `cargo test -p agenthub diagnostics::agent_trace`
+- `cargo test -p agenthub doctor_cli`
 
 ## Operational Notes
 
@@ -191,3 +197,4 @@ the backend path shows that events were persisted and emitted:
 - [2026-04-24 Codex Custom Tool Output Hotfix](../journal/2026-04-24-codex-custom-tool-output-hotfix.md)
 - [2026-05-04 Node Detail Runtime Labels](../journal/2026-05-04-node-detail-runtime-labels.md)
 - [2026-05-07 Runtime Diagnostics Fastrace Bridge](../journal/2026-05-07-runtime-diagnostics-fastrace.md)
+- [2026-05-08 Agent Trace Diagnostics](../journal/2026-05-08-agent-trace-diagnostics.md)
