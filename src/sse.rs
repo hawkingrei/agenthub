@@ -680,20 +680,23 @@ struct TeamRuntimeStreamEvent {
 }
 
 fn team_runtime_fingerprint(runtime: TeamRuntimeRecord) -> TeamRuntimeFingerprint {
+    let mut members: Vec<TeamRuntimeMemberFingerprint> = runtime
+        .members
+        .into_iter()
+        .map(|member| TeamRuntimeMemberFingerprint {
+            member_id: member.member_id,
+            agent_status: member.agent_status,
+            session_id: member.session_id,
+            session_status: member.session_status,
+            pending_inbox_count: member.pending_inbox_count,
+        })
+        .collect();
+    members.sort_by(|left, right| left.member_id.cmp(&right.member_id));
+
     TeamRuntimeFingerprint {
         team_id: runtime.team_id,
         status: runtime.status,
-        members: runtime
-            .members
-            .into_iter()
-            .map(|member| TeamRuntimeMemberFingerprint {
-                member_id: member.member_id,
-                agent_status: member.agent_status,
-                session_id: member.session_id,
-                session_status: member.session_status,
-                pending_inbox_count: member.pending_inbox_count,
-            })
-            .collect(),
+        members,
     }
 }
 
@@ -1438,7 +1441,7 @@ mod tests {
                 description: Some("team runtime fingerprint".to_string()),
                 spec: serde_json::json!({
                     "entrypoint":"coordinator_plan",
-                    "members":[{"member_id":"coordinator"}]
+                    "members":[{"member_id":"worker-b"},{"member_id":"coordinator-a"}]
                 }),
             })
             .await
@@ -1455,13 +1458,22 @@ mod tests {
         assert_eq!(fingerprint.status, TeamRuntimeStatus::Stopped);
         assert_eq!(
             fingerprint.members,
-            vec![TeamRuntimeMemberFingerprint {
-                member_id: "coordinator".to_string(),
-                agent_status: None,
-                session_id: None,
-                session_status: None,
-                pending_inbox_count: 0,
-            }]
+            vec![
+                TeamRuntimeMemberFingerprint {
+                    member_id: "coordinator-a".to_string(),
+                    agent_status: None,
+                    session_id: None,
+                    session_status: None,
+                    pending_inbox_count: 0,
+                },
+                TeamRuntimeMemberFingerprint {
+                    member_id: "worker-b".to_string(),
+                    agent_status: None,
+                    session_id: None,
+                    session_status: None,
+                    pending_inbox_count: 0,
+                },
+            ]
         );
     }
 
