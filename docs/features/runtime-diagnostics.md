@@ -33,6 +33,9 @@ stalls from CPU hotspots and avoid relying on UI status alone.
   default.
 - The diagnostic service/CLI is not a general log-ingestion system and should not persist full
   prompt, message, or tool-output bodies unless an explicit debug export mode is added later.
+- Backend stall diagnostics are debug-only at first: debug/dev builds may enable the read-only
+  diagnostic path, while release builds must keep it disabled by default unless a later reviewed
+  configuration explicitly opts in.
 
 ## Architecture
 
@@ -65,8 +68,8 @@ question is not only "is the process alive", but where the backend output pipeli
 5. SSE broadcaster fan-out;
 6. frontend cache/render state, only as downstream evidence.
 
-The canonical implementation should be a backend diagnostic service that can inspect both persisted
-state and live in-memory runtime/SSE state. The first CLI surface can be read-only, for example
+The canonical implementation should be a backend diagnostic module/path that can inspect both
+persisted state and live in-memory runtime/SSE state. The first CLI surface can be read-only, for example
 `agenthub doctor agent-trace`, but it should call the backend diagnostic path when a server is
 available instead of guessing from SQLite alone. The command should accept either a standalone
 `agent_id` or a Team-scoped `team_id + member_id`, resolve the active AgentHub session and provider
@@ -118,6 +121,13 @@ backend output pipeline appears stuck.
 - Diagnostic output must redact prompt bodies, message bodies, tool arguments, environment values,
   and provider tokens by default. IDs, timestamps, statuses, event classes, counts, and short
   synthetic summaries are allowed.
+- The backend diagnostic path must be gated:
+  - enabled in debug/dev mode for local investigation;
+  - disabled by default in release builds;
+  - if a future release-mode opt-in is added, it must require explicit configuration plus local or
+    admin-only authorization.
+- Remote HTTP exposure is not part of the initial contract. If added later, it must be authenticated,
+  authorization-checked, rate-limited, and covered by redaction tests.
 
 ## Validation Matrix
 
