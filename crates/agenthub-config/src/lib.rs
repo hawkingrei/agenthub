@@ -294,7 +294,7 @@ impl AppConfig {
             .and_then(|c| c.default_mode.as_deref())
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(|value| value.to_string());
+            .map(normalize_codex_acp_mode_id);
         Some(configured.unwrap_or_else(|| DEFAULT_CODEX_ACP_MODE.to_string()))
     }
 
@@ -483,6 +483,13 @@ impl AppConfig {
         }
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         std::path::Path::new(&home).join(".agenthub/vapid.json")
+    }
+}
+
+pub fn normalize_codex_acp_mode_id(mode_id: &str) -> String {
+    match mode_id.trim() {
+        "yolo" | "yalo" | "danger_full_access" | "danger-full-access" => "full-access".to_string(),
+        value => value.to_string(),
     }
 }
 
@@ -708,12 +715,34 @@ mod tests {
         let config = AppConfig {
             codex_acp: Some(CodexAcpConfig {
                 binary: None,
-                default_mode: Some(" code ".to_string()),
+                default_mode: Some(" full-access ".to_string()),
                 multi_agent_enabled: None,
             }),
             ..Default::default()
         };
-        assert_eq!(config.codex_acp_default_mode().as_deref(), Some("code"));
+        assert_eq!(
+            config.codex_acp_default_mode().as_deref(),
+            Some("full-access")
+        );
+    }
+
+    #[test]
+    fn codex_acp_default_mode_accepts_yolo_aliases() {
+        for alias in ["yolo", "yalo", "danger_full_access", "danger-full-access"] {
+            let config = AppConfig {
+                codex_acp: Some(CodexAcpConfig {
+                    binary: None,
+                    default_mode: Some(format!(" {alias} ")),
+                    multi_agent_enabled: None,
+                }),
+                ..Default::default()
+            };
+            assert_eq!(
+                config.codex_acp_default_mode().as_deref(),
+                Some("full-access"),
+                "alias {alias} should map to Codex full access mode"
+            );
+        }
     }
 
     #[test]

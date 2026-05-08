@@ -15,9 +15,9 @@ use agent_client_protocol::schema::{
     CancelNotification, ClientCapabilities, ContentBlock, ContentChunk, Implementation,
     InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, PermissionOption,
     PermissionOptionKind, PromptRequest, ProtocolVersion, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
-    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
-    SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    RequestPermissionRequest, RequestPermissionResponse, SessionNotification, SessionUpdate,
+    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, TextContent,
+    ToolCall, ToolCallUpdate, ToolCallUpdateFields,
 };
 use agent_client_protocol::{Agent, ConnectionTo, Error as AcpError, ErrorCode as AcpErrorCode};
 use chrono::Utc;
@@ -632,13 +632,23 @@ impl AcpClient {
 
         let outcome = match tokio::time::timeout(ACP_PERMISSION_REVIEW_TIMEOUT, response_rx).await {
             Ok(Ok(outcome)) => outcome,
-            Ok(Err(_)) => RequestPermissionOutcome::Cancelled,
+            Ok(Err(_)) => {
+                let fallback = permission_review_failure_outcome();
+                let _ = self.permissions.mark_timeout(&request_id, None).await;
+                self.emit_json(serde_json::json!({
+                    "type": "permission_timeout",
+                    "permission_id": request_id,
+                    "session_id": args.session_id.to_string(),
+                    "tool_call_id": args.tool_call.tool_call_id.to_string(),
+                    "outcome": &fallback,
+                    "responded_at": Utc::now().timestamp(),
+                }))
+                .await;
+                fallback
+            }
             Err(_) => {
-                let fallback = pick_allow_option(&args);
-                let _ = self
-                    .permissions
-                    .mark_timeout(&request_id, Some(&fallback))
-                    .await;
+                let fallback = permission_review_failure_outcome();
+                let _ = self.permissions.mark_timeout(&request_id, None).await;
                 self.emit_json(serde_json::json!({
                     "type": "permission_timeout",
                     "permission_id": request_id,
@@ -674,26 +684,8 @@ impl AcpClient {
     }
 }
 
-fn pick_allow_option(args: &RequestPermissionRequest) -> RequestPermissionOutcome {
-    let option_id = args
-        .options
-        .iter()
-        .find(|opt| {
-            matches!(
-                opt.kind,
-                agent_client_protocol::schema::PermissionOptionKind::AllowAlways
-                    | agent_client_protocol::schema::PermissionOptionKind::AllowOnce
-            )
-        })
-        .or_else(|| args.options.first())
-        .map(|opt| opt.option_id.clone());
-
-    match option_id {
-        Some(option_id) => {
-            RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id))
-        }
-        None => RequestPermissionOutcome::Cancelled,
-    }
+fn permission_review_failure_outcome() -> RequestPermissionOutcome {
+    RequestPermissionOutcome::Cancelled
 }
 
 #[derive(Debug)]
@@ -1871,7 +1863,8 @@ mod tests {
         acp_session_start_timeout, build_prompt_prefix_blocks, dedupe_skills,
         format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
         load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
-        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
+        permission_review_failure_outcome, remove_skills_conflicting_with_reserved,
+        should_queue_while_prompts_active,
     };
     use agent_client_protocol::schema::{
         ContentBlock, McpServer, RequestPermissionOutcome, SelectedPermissionOutcome,
@@ -2598,6 +2591,103 @@ Fallback to the user-level review contract.
         assert_eq!(row.get::<String, _>("status"), "responded");
         assert_eq!(row.get::<String, _>("selected_option_id"), "allow");
         assert_eq!(row.get::<String, _>("reviewed_by_actor_id"), "coordinator");
+    }
+
+    #[tokio::test]
+    async fn permission_timeout_rejects_without_selecting_allow_option() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        sqlx::query(
+            r#"
+            CREATE TABLE acp_permission_requests (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                acp_session_id TEXT,
+                team_id TEXT,
+                requester_actor_id TEXT,
+                requester_role TEXT,
+                review_target_actor_id TEXT,
+                review_dispatch_status TEXT,
+                review_delivery_run_id TEXT,
+                review_message_id INTEGER,
+                review_dispatched_at INTEGER,
+                reviewed_by_actor_id TEXT,
+                human_review_notified_at INTEGER,
+                tool_call_id TEXT,
+                options_json TEXT NOT NULL,
+                tool_call_json TEXT,
+                status TEXT NOT NULL,
+                selected_option_id TEXT,
+                created_at INTEGER NOT NULL,
+                responded_at INTEGER
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create permission table");
+        let service = AcpPermissionService::new(db.clone());
+        let request_id = "perm-service-timeout".to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id, agent_id, session_id, acp_session_id, tool_call_id, options_json, tool_call_json, status, created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)
+            "#,
+        )
+        .bind(&request_id)
+        .bind("agent-1")
+        .bind("session-1")
+        .bind("acp-session-1")
+        .bind("tool-call-1")
+        .bind(
+            serde_json::json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(serde_json::json!({"tool":{"name":"mcp__fs__write"}}).to_string())
+        .bind(chrono::Utc::now().timestamp())
+        .execute(&db)
+        .await
+        .expect("insert permission request");
+
+        assert!(matches!(
+            permission_review_failure_outcome(),
+            RequestPermissionOutcome::Cancelled
+        ));
+
+        service
+            .mark_timeout(&request_id, Some(&permission_review_failure_outcome()))
+            .await
+            .expect("mark timeout");
+
+        let row = sqlx::query(
+            "SELECT status, selected_option_id FROM acp_permission_requests WHERE id = ?1",
+        )
+        .bind(&request_id)
+        .fetch_one(&db)
+        .await
+        .expect("reload permission request");
+        assert_eq!(row.get::<String, _>("status"), "timeout");
+        assert_eq!(row.get::<Option<String>, _>("selected_option_id"), None);
+    }
+
+    #[test]
+    fn permission_review_failure_outcome_is_cancelled() {
+        assert!(matches!(
+            permission_review_failure_outcome(),
+            RequestPermissionOutcome::Cancelled
+        ));
     }
 
     #[test]

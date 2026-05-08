@@ -463,4 +463,316 @@ describe("buildAcpView", () => {
     expect(view.thinkingStartTs).toBe(null);
     expect(view.runStatus?.status).toBe("running");
   });
+
+  it("closes stale live tool calls once the same session has a later message", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-stale",
+          title: "Shell",
+          status: "in_progress",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "The command finished.",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].status).toBe("completed");
+  });
+
+  it("does not close live tool calls from messages in another session", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-live",
+          title: "Shell",
+          status: "in_progress",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s2",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Different session.",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].status).toBe("in_progress");
+  });
+
+  it("uses the latest message order per session when closing stale tool calls", () => {
+    const events = [
+      {
+        ts: 30,
+        event_id: 3,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Newest message first in the array.",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-stale",
+          title: "Shell",
+          status: "running",
+        }),
+      },
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Older message later in the array.",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].status).toBe("completed");
+  });
+
+  it("keeps live tool calls open when all same-session messages are older", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Older message.",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-live",
+          title: "Shell",
+          status: "pending",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].status).toBe("pending");
+  });
+
+  it("uses terminal run status before stale completion fallback", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-cancelled",
+          title: "Shell",
+          status: "running",
+        }),
+      },
+      {
+        ts: 15,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "run_status",
+          status: "cancelled",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 3,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Stopped.",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].status).toBe("cancelled");
+  });
+
+  it("does not apply terminal run status across sessions", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-live",
+          title: "Shell",
+          status: "running",
+        }),
+      },
+      {
+        ts: 15,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s2",
+        message: JSON.stringify({
+          type: "run_status",
+          status: "cancelled",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.runStatus).toEqual({ status: "cancelled", session_id: "s2" });
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].status).toBe("running");
+  });
+
+  it("applies terminal run status without a session id as a global status", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-global",
+          title: "Shell",
+          status: "RUNNING",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "run_status",
+          status: "interrupted",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.runStatus).toEqual({
+      status: "interrupted",
+      session_id: undefined,
+    });
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0]).toMatchObject({
+      id: "call-global",
+      session_id: null,
+      status: "interrupted",
+    });
+  });
+
+  it("closes stale live tool calls without session ids from later sessionless messages", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-sessionless",
+          title: "Shell",
+          status: "in-progress",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Finished without a session id.",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0]).toMatchObject({
+      id: "call-sessionless",
+      session_id: null,
+      status: "completed",
+    });
+  });
+
+  it("does not apply session-scoped terminal run status to sessionless tool calls", () => {
+    const events = [
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "call-sessionless-live",
+          title: "Shell",
+          status: "running",
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s2",
+        message: JSON.stringify({
+          type: "run_status",
+          status: "stopped",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.runStatus).toEqual({ status: "stopped", session_id: "s2" });
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0]).toMatchObject({
+      id: "call-sessionless-live",
+      session_id: null,
+      status: "running",
+    });
+  });
 });

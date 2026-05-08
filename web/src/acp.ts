@@ -378,7 +378,9 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
     if (parsed.type === "run_status") {
       runStatus = {
         status: String(parsed.status ?? ""),
-        session_id: parsed.session_id ? String(parsed.session_id) : undefined,
+        session_id: parsed.session_id
+          ? String(parsed.session_id)
+          : event.session_id ?? undefined,
       };
       if (inThinking) {
         inThinking = false;
@@ -393,6 +395,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
     currentMode ??
     configOptions.find((option) => option.id === "mode")?.currentValueId ??
     null;
+  closeStaleLiveToolCalls(toolCalls, messages, runStatus);
   return {
     hasAcp:
       toolCalls.length > 0 ||
@@ -411,6 +414,77 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
     runStatus,
     thinkingStartTs,
   };
+}
+
+const LIVE_TOOL_CALL_STATUSES = new Set(["pending", "in_progress", "running"]);
+const TERMINAL_RUN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "canceled",
+  "interrupted",
+  "stopped",
+]);
+
+function closeStaleLiveToolCalls(
+  toolCalls: AcpToolCall[],
+  messages: AcpMessage[],
+  runStatus: AcpRunStatus | null
+): void {
+  const normalizedRunStatus = normalizeAcpStatus(runStatus?.status);
+  const terminalRunStatus = TERMINAL_RUN_STATUSES.has(normalizedRunStatus)
+    ? normalizedRunStatus
+    : null;
+  const latestMessageOrderBySession = buildLatestMessageOrderBySession(messages);
+  for (const call of toolCalls) {
+    if (!LIVE_TOOL_CALL_STATUSES.has(normalizeAcpStatus(call.status))) {
+      continue;
+    }
+    if (terminalRunStatus && isRunStatusForToolCall(runStatus, call)) {
+      call.status = terminalRunStatus;
+      continue;
+    }
+    const latestMessageOrder = latestMessageOrderBySession.get(
+      call.session_id ?? null
+    );
+    if (
+      latestMessageOrder &&
+      compareEventOrder(latestMessageOrder, {
+        event_id: call.event_id ?? null,
+        ts: call.ts,
+      }) > 0
+    ) {
+      call.status = "completed";
+    }
+  }
+}
+
+function buildLatestMessageOrderBySession(
+  messages: AcpMessage[]
+): Map<string | null, { event_id: number | null; ts?: number }> {
+  const latest = new Map<string | null, { event_id: number | null; ts?: number }>();
+  for (const message of messages) {
+    const sessionId = message.session_id ?? null;
+    const order = { event_id: message.event_id ?? null, ts: message.ts };
+    const existing = latest.get(sessionId);
+    if (!existing || compareEventOrder(order, existing) > 0) {
+      latest.set(sessionId, order);
+    }
+  }
+  return latest;
+}
+
+function isRunStatusForToolCall(
+  runStatus: AcpRunStatus | null,
+  call: AcpToolCall
+): boolean {
+  if (!runStatus?.session_id) return true;
+  return runStatus.session_id === (call.session_id ?? null);
+}
+
+function normalizeAcpStatus(status?: string | null): string {
+  if (!status) return "";
+  return status.trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
 function parseAcpTerminalActivity(value: unknown): AcpTerminalActivity | null {
