@@ -1590,13 +1590,25 @@ impl AcpPermissionService {
         if rows_affected == 0 {
             return Ok(AcpPermissionRespondResult::AlreadyResolved);
         }
-        if let Some(session_id) = self.permission_agent_session_id(request_id).await? {
-            self.restore_agent_session_status_after_permission(&session_id)
-                .await;
-        }
+        let session_id_result = self.permission_agent_session_id(request_id).await;
         let mut pending = self.pending.lock().await;
         if let Some(sender) = pending.remove(request_id) {
             let _ = sender.send(outcome);
+        }
+        drop(pending);
+        match session_id_result {
+            Ok(Some(session_id)) => {
+                self.restore_agent_session_status_after_permission(&session_id)
+                    .await;
+            }
+            Ok(None) => {}
+            Err(err) => {
+                tracing::debug!(
+                    request_id,
+                    error = %err,
+                    "skip acp permission session status restore after response"
+                );
+            }
         }
         Ok(AcpPermissionRespondResult::Applied)
     }
@@ -1890,12 +1902,24 @@ impl AcpPermissionService {
             .map_err(|err| anyhow::anyhow!("acp permission timeout join failed: {err}"))??
             .rows_affected();
         if rows_affected > 0 {
-            if let Some(session_id) = self.permission_agent_session_id(request_id).await? {
-                self.restore_agent_session_status_after_permission(&session_id)
-                    .await;
-            }
+            let session_id_result = self.permission_agent_session_id(request_id).await;
             let mut pending = self.pending.lock().await;
             pending.remove(request_id);
+            drop(pending);
+            match session_id_result {
+                Ok(Some(session_id)) => {
+                    self.restore_agent_session_status_after_permission(&session_id)
+                        .await;
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    tracing::debug!(
+                        request_id,
+                        error = %err,
+                        "skip acp permission session status restore after timeout"
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -3010,6 +3034,119 @@ Fallback to the user-level review contract.
                 .await
                 .expect("load session status after second timeout");
         assert_eq!(status_after_second, "running");
+    }
+
+    #[tokio::test]
+    async fn permission_response_cleans_pending_when_session_lookup_fails() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        sqlx::query(
+            r#"
+            CREATE TABLE acp_permission_requests (
+                id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                selected_option_id TEXT,
+                reviewed_by_actor_id TEXT,
+                responded_at INTEGER
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create permission table");
+        sqlx::query(
+            "INSERT INTO acp_permission_requests (id, status) VALUES ('perm-response-cleanup', 'pending')",
+        )
+        .execute(&db)
+        .await
+        .expect("insert permission request");
+        let service = AcpPermissionService::new(db.clone());
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        service
+            .pending
+            .lock()
+            .await
+            .insert("perm-response-cleanup".to_string(), tx);
+
+        let outcome = RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("reject"));
+        let result = service
+            .respond(
+                "perm-response-cleanup",
+                outcome,
+                Some("reject".to_string()),
+                Some("reviewer".to_string()),
+            )
+            .await
+            .expect("respond permission");
+
+        assert_eq!(result, AcpPermissionRespondResult::Applied);
+        assert!(service.pending.lock().await.is_empty());
+        assert!(rx.await.is_ok());
+        let status: String =
+            sqlx::query_scalar("SELECT status FROM acp_permission_requests WHERE id = ?1")
+                .bind("perm-response-cleanup")
+                .fetch_one(&db)
+                .await
+                .expect("load permission status");
+        assert_eq!(status, "responded");
+    }
+
+    #[tokio::test]
+    async fn permission_timeout_cleans_pending_when_session_lookup_fails() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        sqlx::query(
+            r#"
+            CREATE TABLE acp_permission_requests (
+                id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                selected_option_id TEXT,
+                responded_at INTEGER
+            )
+            "#,
+        )
+        .execute(&db)
+        .await
+        .expect("create permission table");
+        sqlx::query(
+            "INSERT INTO acp_permission_requests (id, status) VALUES ('perm-timeout-cleanup', 'pending')",
+        )
+        .execute(&db)
+        .await
+        .expect("insert permission request");
+        let service = AcpPermissionService::new(db.clone());
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        service
+            .pending
+            .lock()
+            .await
+            .insert("perm-timeout-cleanup".to_string(), tx);
+
+        let outcome = RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("reject"));
+        service
+            .mark_timeout("perm-timeout-cleanup", Some(&outcome))
+            .await
+            .expect("mark timeout");
+
+        assert!(service.pending.lock().await.is_empty());
+        let row = sqlx::query(
+            "SELECT status, selected_option_id FROM acp_permission_requests WHERE id = ?1",
+        )
+        .bind("perm-timeout-cleanup")
+        .fetch_one(&db)
+        .await
+        .expect("load permission request");
+        assert_eq!(row.get::<String, _>("status"), "timeout");
+        assert_eq!(
+            row.get::<Option<String>, _>("selected_option_id"),
+            Some("reject".to_string())
+        );
     }
 
     #[test]
