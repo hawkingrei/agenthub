@@ -397,6 +397,7 @@ fn spawn_node(
         .current_dir(&repo_root)
         .env("HOME", home_dir)
         .env("RUST_LOG", "info")
+        .env_remove("LLVM_PROFILE_FILE")
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .spawn()

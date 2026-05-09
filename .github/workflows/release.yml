@@ -69,7 +69,12 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev
+          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev protobuf-compiler
+
+      - name: Install dependencies (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          brew install protobuf
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
