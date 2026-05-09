@@ -23,14 +23,17 @@ jobs:
             os: ubuntu-22.04
             arch: amd64
             cross: true
+            agenthub_features: release-vendored-openssl,release-lance-fp16
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04
             arch: arm64
             cross: true
+            agenthub_features: release-vendored-openssl
           - target: aarch64-apple-darwin
             os: macos-14
             arch: arm64
             cross: false
+            agenthub_features: ""
 
     steps:
       - name: Checkout
@@ -53,7 +56,12 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev
+          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev protobuf-compiler
+
+      - name: Install dependencies (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          brew install protobuf
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -63,12 +71,12 @@ jobs:
       - name: Build agenthub (native)
         if: '!matrix.cross'
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} --bin agenthub
+          cargo build --locked --release --target ${{ matrix.target }} --bin agenthub ${{ matrix.agenthub_features && format('--features {0}', matrix.agenthub_features) || '' }}
 
       - name: Build agenthub (cross)
         if: matrix.cross
         run: |
-          cross build --locked --release --target ${{ matrix.target }} --bin agenthub --features release-vendored-openssl
+          cross build --locked --release --target ${{ matrix.target }} --bin agenthub --features ${{ matrix.agenthub_features }}
 
       - name: Build agenthub-codex-acp (native)
         if: '!matrix.cross'

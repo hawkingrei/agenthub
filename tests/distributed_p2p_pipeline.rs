@@ -52,6 +52,7 @@ struct InternalAccessClaims {
 struct SpawnedNode {
     name: String,
     home_dir: PathBuf,
+    coverage_profile_dir: Option<PathBuf>,
     web_addr: SocketAddr,
     grpc_addr: SocketAddr,
     stdout_path: PathBuf,
@@ -86,6 +87,9 @@ impl Drop for SpawnedNode {
         if let Some(child) = self.child.as_mut() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        if let Some(profile_dir) = &self.coverage_profile_dir {
+            let _ = fs::remove_dir_all(profile_dir);
         }
     }
 }
@@ -392,11 +396,20 @@ fn spawn_node(
     let stderr = File::create(&stderr_path).with_context(|| format!("create {name} stderr log"))?;
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let binary_path = resolve_agenthub_binary_path();
+    let coverage_profile_dir = child_coverage_profile_dir(name)?;
 
-    let child = Command::new(&binary_path)
+    let mut command = Command::new(&binary_path);
+    command
         .current_dir(&repo_root)
         .env("HOME", home_dir)
-        .env("RUST_LOG", "info")
+        .env("RUST_LOG", "info");
+    if let Some(profile_dir) = &coverage_profile_dir {
+        command.env(
+            "LLVM_PROFILE_FILE",
+            profile_dir.join(format!("{name}-%p.profraw")),
+        );
+    }
+    let child = command
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .spawn()
@@ -405,12 +418,25 @@ fn spawn_node(
     Ok(SpawnedNode {
         name: name.to_string(),
         home_dir: home_dir.to_path_buf(),
+        coverage_profile_dir,
         web_addr,
         grpc_addr,
         stdout_path,
         stderr_path,
         child: Some(child),
     })
+}
+
+fn child_coverage_profile_dir(name: &str) -> anyhow::Result<Option<PathBuf>> {
+    if std::env::var_os("LLVM_PROFILE_FILE").is_none() {
+        return Ok(None);
+    }
+
+    let profile_dir =
+        std::env::temp_dir().join(format!("agenthub-p2p-coverage-{name}-{}", Uuid::new_v4()));
+    fs::create_dir_all(&profile_dir)
+        .with_context(|| format!("create {name} coverage profile dir"))?;
+    Ok(Some(profile_dir))
 }
 
 fn resolve_agenthub_binary_path() -> PathBuf {
