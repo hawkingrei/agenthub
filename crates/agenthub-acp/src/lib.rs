@@ -2736,6 +2736,13 @@ mod tests {
             &AcpCommand::Cancel
         ));
         assert!(!should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::StrictFifo,
+            true,
+            true,
+            &AcpCommand::Cancel
+        ));
+        assert!(!should_queue_while_prompts_active(
             0,
             AcpPromptDeliveryPolicy::StrictFifo,
             false,
