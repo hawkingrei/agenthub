@@ -1,11 +1,12 @@
-# The x86 release build enables Lance fp16 kernels, which require GCC >= 12.
+# The x86 release build enables Lance fp16 kernels, which require modern toolchains (Clang 15+).
 [target.x86_64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:edge"
 pre-build = [
-    "apt-get update && apt-get install --assume-yes --no-install-recommends ca-certificates gnupg pkg-config curl unzip zlib1g-dev:$CROSS_DEB_ARCH libsqlite3-dev:$CROSS_DEB_ARCH libcap-dev:$CROSS_DEB_ARCH && mkdir -p /etc/apt/keyrings && curl --fail --location 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xC8EC952E2A0E1FBDC5090F6A2C277A0A352154E5' | gpg --dearmor --yes --output /etc/apt/keyrings/ubuntu-toolchain-r-test.gpg && echo 'deb [signed-by=/etc/apt/keyrings/ubuntu-toolchain-r-test.gpg] https://ppa.launchpadcontent.net/ubuntu-toolchain-r/test/ubuntu focal main' > /etc/apt/sources.list.d/ubuntu-toolchain-r-test.list && apt-get update && apt-get install --assume-yes --no-install-recommends gcc-12 g++-12 && apt-get clean && rm -rf /var/lib/apt/lists/*",
-    "update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100 && update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-12 100 && update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-12 100 && cc --version",
+    "apt-get update && apt-get install --assume-yes --no-install-recommends ca-certificates gnupg pkg-config curl unzip zlib1g-dev:$CROSS_DEB_ARCH libsqlite3-dev:$CROSS_DEB_ARCH libcap-dev:$CROSS_DEB_ARCH && mkdir -p /etc/apt/keyrings && curl -f https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor --yes --output /etc/apt/keyrings/llvm.gpg && echo 'deb [signed-by=/etc/apt/keyrings/llvm.gpg] http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main' > /etc/apt/sources.list.d/llvm.list && apt-get update && apt-get install --assume-yes --no-install-recommends clang-15 lld-15 && apt-get clean && rm -rf /var/lib/apt/lists/*",
+    "update-alternatives --install /usr/bin/gcc gcc /usr/bin/clang-15 100 && update-alternatives --install /usr/bin/g++ g++ /usr/bin/clang++-15 100 && update-alternatives --install /usr/bin/cc cc /usr/bin/clang-15 100 && update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-15 100 && update-alternatives --install /usr/bin/ld ld /usr/bin/ld.lld-15 100 && cc --version",
     "curl --fail --location --output /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v27.1/protoc-27.1-linux-x86_64.zip && rm -rf /opt/protoc-27.1 && mkdir -p /opt/protoc-27.1 && unzip -q /tmp/protoc.zip -d /opt/protoc-27.1 && ln -sf /opt/protoc-27.1/bin/protoc /usr/local/bin/protoc && protoc --version",
 ]
+
 env.passthrough = ["OPENSSL_STATIC=1"]
 
 [target.aarch64-unknown-linux-gnu]
