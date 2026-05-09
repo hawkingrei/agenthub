@@ -1,0 +1,18 @@
+AgentHub Codex ACP Adapter
+Copyright 2026 AgentHub contributors
+
+This adapter is licensed under the Apache License, Version 2.0.
+
+This adapter integrates with and contains code adapted from OpenAI Codex.
+OpenAI Codex is licensed under the Apache License, Version 2.0.
+
+OpenAI Codex
+Copyright 2025 OpenAI
+
+Earlier versions of this adapter were based on Zed's Codex ACP implementation.
+That implementation was licensed under the Apache License, Version 2.0.
+
+Copyright 2022 - 2025 Zed Industries, Inc.
+
+OpenAI Codex includes code derived from Ratatui. See THIRD_PARTY_NOTICES.md for
+the preserved MIT notice text.
