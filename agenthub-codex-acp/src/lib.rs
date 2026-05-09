@@ -602,6 +602,33 @@ mod tests {
     }
 
     #[test]
+    fn codex_acp_notice_files_preserve_upstream_provenance() {
+        let notice = include_str!("../NOTICE");
+        let third_party_notices = include_str!("../THIRD_PARTY_NOTICES.md");
+
+        for expected in [
+            "OpenAI Codex",
+            "Copyright 2025 OpenAI",
+            "Zed's Codex ACP implementation",
+            "Copyright 2022 - 2025 Zed Industries, Inc.",
+        ] {
+            assert!(notice.contains(expected), "NOTICE missing {expected}");
+        }
+        for expected in [
+            "Ratatui",
+            "MIT License",
+            "Copyright (c) 2016-2022 Florian Dehau",
+            "Copyright (c) 2023-2025 The Ratatui Developers",
+            "Permission is hereby granted",
+        ] {
+            assert!(
+                third_party_notices.contains(expected),
+                "THIRD_PARTY_NOTICES.md missing {expected}"
+            );
+        }
+    }
+
+    #[test]
     fn parse_agenthub_multi_agent_enabled_env_accepts_common_true_values() {
         for raw in ["1", "true", "TRUE", " yes ", "on"] {
             assert!(parse_agenthub_multi_agent_enabled_env(raw).expect("parse true"));
