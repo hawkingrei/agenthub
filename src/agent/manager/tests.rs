@@ -227,7 +227,7 @@ fn acp_provider_for_agent_requires_expected_args() {
     assert_eq!(codex.id, ACP_PROVIDER_CODEX);
     assert_eq!(
         codex.prompt_delivery_policy,
-        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+        AcpPromptDeliveryPolicy::StrictFifo
     );
     assert_eq!(
         codex.default_mode_behavior,

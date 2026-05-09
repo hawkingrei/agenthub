@@ -26,7 +26,7 @@ pub(super) struct AcpProviderSpec {
 impl AcpProviderSpec {
     const CODEX: Self = Self {
         id: ACP_PROVIDER_CODEX,
-        prompt_delivery_policy: AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+        prompt_delivery_policy: AcpPromptDeliveryPolicy::StrictFifo,
         default_mode_behavior: AcpDefaultModeBehavior::ApplyWhenConfigured,
     };
 
