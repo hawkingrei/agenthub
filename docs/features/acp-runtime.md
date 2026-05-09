@@ -144,6 +144,9 @@ ACP permission requests are first-class runtime records:
 
 - ACP protocol mapping must stay aligned with upstream provider schemas.
 - Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
+- Codex ACP ordinary prompt delivery should be serialized by AgentHub. ACP cancel is the explicit
+  interrupt path and must not wait behind active prompts, but a normal Team/member message should
+  not overlap a previous active Codex turn.
 - Codex ACP live-turn diagnostics should track enough native app-server state to explain a stuck or
   panicking turn without changing the provider-neutral ACP surface:
   - active Codex thread id, turn id, and AgentHub submission id
@@ -173,7 +176,8 @@ ACP permission requests are first-class runtime records:
   - a `CustomToolCall` without matching `CustomToolCallOutput` is recorded as diagnostic state
     before turn completion/compaction can panic
   - orphan custom-tool outputs are reported without corrupting ACP event replay
-  - concurrent prompts preserve per-submission tool-call accounting
+  - ordinary Codex prompts queue behind active prompts, while ACP cancel remains dispatchable as an
+    interrupt command
 
 ## Operational Notes
 
@@ -234,3 +238,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-03-30-codex-acp-apply-patch-deadlock.md`
 - `docs/journal/2026-03-31-pretext-acp-conversation-virtualization.md`
 - `docs/journal/2026-04-24-codex-custom-tool-output-hotfix.md`
+- `docs/journal/2026-05-09-acp-permission-tool-call-settlement.md`

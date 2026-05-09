@@ -19,8 +19,9 @@ tool call and accept later prompts safely.
 
 - `crates/agenthub-acp/src/lib.rs` settles denied or timed-out permission tool calls with a
   synthetic failed ACP `tool_call_update`.
-- Prompt delivery still allows provider-supported concurrent Codex prompts, but queues a new prompt
-  while the active prompt has pending tool calls.
+- Prompt delivery queues ordinary Codex ACP prompts with FIFO semantics so a follow-up channel or
+  member message cannot re-enter Codex while a previous turn is still active. Explicit ACP cancel
+  remains the interrupt path and is not queued behind active prompts.
 - `src/diagnostics.rs` filters mailbox pending summaries so terminal Team runs do not make
   `agenthub doctor agent-trace` report old delivered work as a current stall.
 - Web-only coverage tests were added for existing auth redirect and safe storage helpers so strict
@@ -30,8 +31,9 @@ tool call and accept later prompts safely.
 
 - Deny and timeout outcomes must be terminal for the associated tool call. Relying on provider
   follow-up output is not sufficient because the failure path is already controlled by AgentHub.
-- Codex ACP concurrent prompt support stays enabled in the normal case. The new queueing rule is a
-  narrow safety gate only when the active prompt still owns unresolved tool-call state.
+- Codex ACP ordinary prompt submission is serialized at the AgentHub ACP dispatch layer. This keeps
+  Team mailbox nudges and direct member messages from overlapping active Codex turns; operator
+  interrupt continues to use ACP cancel instead of being modeled as a queued prompt.
 - `agent-trace` should count pending mailbox work for active Team runs and
   `shared_thread_mailbox`, but not for terminal run rows that already reached a finished state.
 - This change does not close the broader Team ACP permission review routing backlog. Human-visible
@@ -42,6 +44,8 @@ tool call and accept later prompts safely.
 ```bash
 cargo fmt --all --check
 cargo test -p agenthub-acp
+cargo test -p agenthub-acp prompt_delivery_policy_is_provider_aware -- --nocapture
+cargo test -p agenthub acp_provider_for_agent_requires_expected_args -- --nocapture
 cargo test -p agenthub diagnostics::agent_trace
 cargo build -p agenthub
 cd web && npm exec vitest run src/auth_redirect.test.ts src/storage/safe_storage.test.ts
@@ -62,3 +66,6 @@ Codecov project and patch checks all passed.
   peer worker or coordinator fallback, no self-review, and human-visible review actions.
 - If a future `agent-trace` verdict is `event_stream_present` while the UI remains stale, switch to
   the ACP rendering workflow and inspect SSE or frontend cache handoff instead of the mailbox path.
+- If product requirements need "send message and interrupt current turn" semantics, add an explicit
+  interrupt input mode that sends ACP cancel before the replacement prompt. Do not treat ordinary
+  Team/member messages as implicit interrupts.
