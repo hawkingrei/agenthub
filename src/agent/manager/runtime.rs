@@ -558,6 +558,22 @@ mod tests {
     use tokio::time::Duration;
     use uuid::Uuid;
 
+    #[test]
+    fn acp_prompt_submission_failure_event_is_renderable_and_redacted() {
+        let value: serde_json::Value =
+            serde_json::from_str(&super::super::acp_prompt_submission_failure_event("msg-1"))
+                .expect("failure event should be valid JSON");
+
+        assert_eq!(value["type"], "agent_message");
+        assert_eq!(value["chunk"], false);
+        assert_eq!(value["message_id"], "msg-1:submission-error");
+        assert_eq!(value["meta"]["source"], "agenthub");
+        assert_eq!(value["meta"]["category"], "acp_prompt_submission_failed");
+        let text = value["text"].as_str().expect("text should be present");
+        assert!(text.contains("could not submit this prompt"));
+        assert!(!text.contains("msg-1"));
+    }
+
     async fn build_test_state_with_idle_gc() -> crate::state::AppState {
         let state = crate::api::team_tests::build_test_state().await;
         let idle_gc = agenthub_db::AgentEventIdleGc::new(

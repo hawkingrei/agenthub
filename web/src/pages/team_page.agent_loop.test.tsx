@@ -748,6 +748,149 @@ describe("TeamPage agent loop profile flow", () => {
     }
   });
 
+  it("refreshes Team member ACP events after input submission fails", async () => {
+    const team = {
+      id: "team-1",
+      name: "Team One",
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        coordinator_member_id: "coordinator",
+        entrypoint: "coordinator_plan",
+        steps: [],
+        members: [
+          {
+            member_id: "worker-1",
+            display_name: "Worker One",
+            role: "worker",
+            agent_id: "worker-1",
+          },
+        ],
+      },
+      created_at: 1,
+      updated_at: 1,
+    };
+    teamPageFixture.teams = [team];
+    teamPageFixture.agents = [
+      {
+        id: "worker-1",
+        name: "Worker One",
+        workdir: "/repo",
+        command: "codex",
+        args: [],
+        worktree_mode: "create_worktree",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+        status: "running",
+        created_at: 1,
+        updated_at: 2,
+      },
+    ];
+    getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "task-all",
+        team_id: "team-1",
+        title: "all",
+        status: "in_progress",
+        created_by_actor_id: "coordinator",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-task-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+    getTeamRuntime.mockResolvedValue({
+      team_id: "team-1",
+      team_name: "Team One",
+      status: "running",
+      members: [
+        {
+          member_id: "worker-1",
+          display_name: "Worker One",
+          role: "worker",
+          session_id: "runtime-session-1",
+          session_status: "running",
+          agent_status: "running",
+          card: {
+            card_id: "card-worker-1",
+            schema_version: "1",
+            description: "Investigate regressions",
+            capability_tags: [],
+          },
+        },
+      ],
+    });
+    sendInput.mockRejectedValueOnce(new Error("acp command send timed out due to backpressure"));
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      await clickElement(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Open worker workspace")
+        ) as HTMLButtonElement | null
+      );
+      await clickElement(
+        await waitForElement(
+          () =>
+            Array.from(container.querySelectorAll("button")).find((button) =>
+              button.textContent?.includes("Mock agent ACP panel")
+            ) as HTMLButtonElement | undefined ?? null,
+          "mock ACP panel missing"
+        )
+      );
+
+      expect(sendInput).toHaveBeenCalledWith(
+        "token",
+        "worker-1",
+        "hello from acp",
+        expect.any(String),
+        "runtime-session-1"
+      );
+      expect(loadMemberEventsSpy).toHaveBeenCalledWith("replace");
+      expect(refreshTeamRuntimeSpy).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => {
+        root.unmount();
+        await flushEffects();
+      });
+      container.remove();
+    }
+  });
+
   it("uses the member id for ACP history and input while the agent record is still backfilling", async () => {
     const team = {
       id: "team-1",

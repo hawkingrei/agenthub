@@ -187,6 +187,20 @@ fn short_random_token() -> String {
         .collect::<String>()
 }
 
+fn acp_prompt_submission_failure_event(message_id: &str) -> String {
+    serde_json::json!({
+        "type": "agent_message",
+        "text": "AgentHub could not submit this prompt to the ACP provider. Check agent-trace provider diagnostics for the redacted command error.",
+        "chunk": false,
+        "message_id": format!("{message_id}:submission-error"),
+        "meta": {
+            "source": "agenthub",
+            "category": "acp_prompt_submission_failed"
+        }
+    })
+    .to_string()
+}
+
 pub(crate) fn derive_worker_runtime_root(workdir: &str) -> String {
     let path = Path::new(workdir);
     path.parent()
@@ -1855,9 +1869,49 @@ impl AgentManager {
         };
         let _ = output_tx.send(output);
 
-        acp.prompt_with_submission(input.to_string(), message_id)
-            .await?;
-        Ok(())
+        match acp
+            .prompt_with_submission(input.to_string(), message_id.clone())
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                let seq = Uuid::now_v7().to_string();
+                let ts = Utc::now().timestamp();
+                let message = acp_prompt_submission_failure_event(&message_id);
+                match persist_agent_event(
+                    &self.event_dbs,
+                    self.idle_gc.as_ref(),
+                    agent_id,
+                    &session_id,
+                    &seq,
+                    ts,
+                    &OutputStream::Acp,
+                    &message,
+                )
+                .await
+                {
+                    Ok(event_id) => {
+                        let _ = output_tx.send(AgentOutput {
+                            event_id,
+                            agent_id: agent_id.to_string(),
+                            session_id,
+                            seq,
+                            ts,
+                            stream: OutputStream::Acp,
+                            message,
+                        });
+                    }
+                    Err(persist_err) => {
+                        tracing::warn!(
+                            agent_id = %agent_id,
+                            error = %persist_err,
+                            "failed to persist ACP prompt submission failure event"
+                        );
+                    }
+                }
+                Err(err)
+            }
+        }
     }
 
     async fn update_agent_status(&self, agent_id: &str, status: AgentStatus) -> anyhow::Result<()> {
