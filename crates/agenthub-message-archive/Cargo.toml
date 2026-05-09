@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 
+[features]
+default = []
+release-lance-fp16 = ["lancedb/fp16kernels"]
+
 [dependencies]
 anyhow = "1"
 arrow-array = "57.3.0"

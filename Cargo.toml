@@ -31,6 +31,7 @@ license = "Apache-2.0"
 [features]
 default = []
 release-vendored-openssl = ["dep:openssl"]
+release-lance-fp16 = ["agenthub-message-archive/release-lance-fp16"]
 
 [[bin]]
 name = "agenthub"
