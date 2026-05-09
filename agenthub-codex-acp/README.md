@@ -21,5 +21,5 @@ agenthub-codex-acp
 
 Apache-2.0
 
-See `NOTICE` and `THIRD_PARTY_NOTICES.md` for adapter provenance and preserved
-third-party notices.
+See [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for
+adapter provenance and preserved third-party notices.
