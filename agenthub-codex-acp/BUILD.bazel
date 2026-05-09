@@ -6,7 +6,10 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "agenthub_codex_acp",
     srcs = glob(["src/**/*.rs"]),
-    compile_data = glob(["src/**/*.md"]),
+    compile_data = glob(["src/**/*.md"]) + [
+        "NOTICE",
+        "THIRD_PARTY_NOTICES.md",
+    ],
     crate_name = "agenthub_codex_acp",
     crate_root = "src/lib.rs",
     edition = "2024",
@@ -32,6 +35,10 @@ rust_binary(
 rust_test(
     name = "agenthub_codex_acp_tests",
     crate = ":agenthub_codex_acp",
+    compile_data = [
+        "NOTICE",
+        "THIRD_PARTY_NOTICES.md",
+    ],
     edition = "2024",
     aliases = aliases(
         normal_dev = True,
