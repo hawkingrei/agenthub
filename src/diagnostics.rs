@@ -696,7 +696,15 @@ pub(crate) mod agent_trace {
                 FROM team_actor_messages
                 WHERE to_actor_id = ?1
                   AND status = 'pending'
-                  AND run_id IN (SELECT id FROM team_runs WHERE team_id = ?2)
+                  AND run_id IN (
+                      SELECT id
+                      FROM team_runs
+                      WHERE team_id = ?2
+                        AND (
+                            status IN ('submitted', 'working', 'input_required')
+                            OR trim(COALESCE(json_extract(input_json, '$.bootstrap_kind'), '')) = 'shared_thread_mailbox'
+                        )
+                  )
                 "#,
             )
             .bind(agent_id)
@@ -910,6 +918,7 @@ pub(crate) mod agent_trace {
                     id TEXT PRIMARY KEY,
                     team_id TEXT NOT NULL,
                     status TEXT NOT NULL,
+                    input_json TEXT,
                     created_at INTEGER NOT NULL
                 );
                 CREATE TABLE team_actor_messages (
@@ -1114,7 +1123,7 @@ pub(crate) mod agent_trace {
             )
             .bind("run-1")
             .bind("team-1")
-            .bind("running")
+            .bind("working")
             .bind(20_i64)
             .execute(&pool)
             .await
@@ -1147,6 +1156,103 @@ pub(crate) mod agent_trace {
                 report.team.as_ref().expect("team").latest_run_id.as_deref(),
                 Some("run-1")
             );
+            assert_eq!(report.verdict.layer, AgentTraceStallLayer::MailboxPending);
+            let _ = std::fs::remove_dir_all(event_dir);
+        }
+
+        #[tokio::test]
+        async fn agent_trace_ignores_pending_mailbox_for_terminal_team_runs() {
+            let pool = test_pool().await;
+            insert_agent_fixture(&pool).await;
+            sqlx::query("INSERT INTO team_definitions (id, spec_json) VALUES (?1, ?2)")
+                .bind("team-1")
+                .bind(r#"{"members":[{"member_id":"worker","role":"worker"}]}"#)
+                .execute(&pool)
+                .await
+                .expect("insert team");
+            sqlx::query(
+                "INSERT INTO team_runs (id, team_id, status, created_at) VALUES (?1, ?2, ?3, ?4)",
+            )
+            .bind("run-canceled")
+            .bind("team-1")
+            .bind("canceled")
+            .bind(20_i64)
+            .execute(&pool)
+            .await
+            .expect("insert run");
+            sqlx::query(
+                "INSERT INTO team_actor_messages (run_id, to_actor_id, status) VALUES (?1, ?2, ?3)",
+            )
+            .bind("run-canceled")
+            .bind("worker")
+            .bind("pending")
+            .execute(&pool)
+            .await
+            .expect("insert mailbox");
+
+            let event_dir = test_event_dir();
+            let report = collect_from_pool(
+                &pool,
+                event_dir.clone(),
+                AgentTraceRequest {
+                    team_id: Some("team-1".to_string()),
+                    member_id: Some("worker".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("collect trace");
+
+            assert_eq!(report.mailbox.pending_to_actor_count, 0);
+            assert_ne!(report.verdict.layer, AgentTraceStallLayer::MailboxPending);
+            let _ = std::fs::remove_dir_all(event_dir);
+        }
+
+        #[tokio::test]
+        async fn agent_trace_includes_shared_thread_mailbox_run_pending_messages() {
+            let pool = test_pool().await;
+            insert_agent_fixture(&pool).await;
+            sqlx::query("INSERT INTO team_definitions (id, spec_json) VALUES (?1, ?2)")
+                .bind("team-1")
+                .bind(r#"{"members":[{"member_id":"worker","role":"worker"}]}"#)
+                .execute(&pool)
+                .await
+                .expect("insert team");
+            sqlx::query(
+                "INSERT INTO team_runs (id, team_id, status, input_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .bind("shared-run")
+            .bind("team-1")
+            .bind("completed")
+            .bind(r#"{"bootstrap_kind":"shared_thread_mailbox"}"#)
+            .bind(20_i64)
+            .execute(&pool)
+            .await
+            .expect("insert run");
+            sqlx::query(
+                "INSERT INTO team_actor_messages (run_id, to_actor_id, status) VALUES (?1, ?2, ?3)",
+            )
+            .bind("shared-run")
+            .bind("worker")
+            .bind("pending")
+            .execute(&pool)
+            .await
+            .expect("insert mailbox");
+
+            let event_dir = test_event_dir();
+            let report = collect_from_pool(
+                &pool,
+                event_dir.clone(),
+                AgentTraceRequest {
+                    team_id: Some("team-1".to_string()),
+                    member_id: Some("worker".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("collect trace");
+
+            assert_eq!(report.mailbox.pending_to_actor_count, 1);
             assert_eq!(report.verdict.layer, AgentTraceStallLayer::MailboxPending);
             let _ = std::fs::remove_dir_all(event_dir);
         }

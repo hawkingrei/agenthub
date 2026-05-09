@@ -693,6 +693,9 @@ impl AcpClient {
             "responded_at": Utc::now().timestamp(),
         }))
         .await;
+        if !permission_outcome_allows(&outcome, &args.options) {
+            self.emit_permission_denied_tool_update(&args).await;
+        }
         if !self
             .permissions
             .has_pending_permissions_for_session(&self.session_id)
@@ -708,6 +711,26 @@ impl AcpClient {
         }
 
         Ok(RequestPermissionResponse::new(outcome))
+    }
+
+    async fn emit_permission_denied_tool_update(&self, args: &RequestPermissionRequest) {
+        let tool_call_id = args.tool_call.tool_call_id.to_string();
+        self.diagnostics.observe_provider_event(
+            "tool_call_update",
+            Some((tool_call_id.clone(), Some("failed".to_string()))),
+        );
+        self.emit_json(serde_json::json!({
+            "type": "tool_call_update",
+            "id": tool_call_id,
+            "status": "failed",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Permission request was denied or timed out."
+                }
+            ],
+        }))
+        .await;
     }
 
     async fn session_notification(
@@ -734,6 +757,22 @@ fn permission_review_failure_outcome(options: &[PermissionOption]) -> RequestPer
             ))
         })
         .unwrap_or(RequestPermissionOutcome::Cancelled)
+}
+
+fn permission_outcome_allows(
+    outcome: &RequestPermissionOutcome,
+    options: &[PermissionOption],
+) -> bool {
+    let RequestPermissionOutcome::Selected(selected) = outcome else {
+        return false;
+    };
+    options.iter().any(|option| {
+        option.option_id == selected.option_id
+            && matches!(
+                option.kind,
+                PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways
+            )
+    })
 }
 
 #[derive(Debug)]
@@ -1005,6 +1044,11 @@ impl AcpRuntimeDiagnostics {
             message,
         });
     }
+
+    fn has_pending_tool_calls(&self) -> bool {
+        let state = self.state.lock().expect("acp diagnostics state poisoned");
+        !state.pending_tool_calls.is_empty()
+    }
 }
 
 async fn send_acp_request<Req>(
@@ -1028,6 +1072,7 @@ fn should_queue_while_prompts_active(
     active_prompt_count: usize,
     prompt_delivery_policy: AcpPromptDeliveryPolicy,
     has_pending_session_mutation: bool,
+    has_pending_tool_call: bool,
     cmd: &AcpCommand,
 ) -> bool {
     if active_prompt_count == 0 {
@@ -1038,6 +1083,7 @@ fn should_queue_while_prompts_active(
         AcpCommand::Cancel => false,
         AcpCommand::Prompt { .. } => {
             has_pending_session_mutation
+                || has_pending_tool_call
                 || !matches!(
                     prompt_delivery_policy,
                     AcpPromptDeliveryPolicy::AllowConcurrentPrompts
@@ -1435,10 +1481,13 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                             Some(cmd) => {
                                 let has_pending_session_mutation =
                                     pending_commands.iter().any(is_session_mutation_command);
+                                let has_pending_tool_call =
+                                    diagnostics_for_runtime.has_pending_tool_calls();
                                 if should_queue_while_prompts_active(
                                     active_prompt_count,
                                     prompt_delivery_policy,
                                     has_pending_session_mutation,
+                                    has_pending_tool_call,
                                     &cmd,
                                 ) {
                                     pending_commands.push_back(cmd);
@@ -2369,7 +2418,7 @@ mod tests {
         acp_permission_review_timeout, acp_session_start_timeout, build_prompt_prefix_blocks,
         dedupe_skills, format_auth_required_message, handle_auth_required_failure,
         is_auth_required_error, load_mcp_servers_from_path, load_skills_from_config,
-        load_workdir_skills, permission_review_failure_outcome,
+        load_workdir_skills, permission_outcome_allows, permission_review_failure_outcome,
         remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
     use agent_client_protocol::schema::{
@@ -2619,6 +2668,7 @@ mod tests {
             1,
             AcpPromptDeliveryPolicy::StrictFifo,
             false,
+            false,
             &AcpCommand::Prompt {
                 input: "hello".to_string(),
                 submission_id: "submission-1".to_string(),
@@ -2627,6 +2677,7 @@ mod tests {
         assert!(!should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             false,
             &AcpCommand::Prompt {
                 input: "hello".to_string(),
@@ -2637,6 +2688,7 @@ mod tests {
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             true,
+            false,
             &AcpCommand::Prompt {
                 input: "hello".to_string(),
                 submission_id: "submission-1".to_string(),
@@ -2646,17 +2698,30 @@ mod tests {
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             false,
+            true,
+            &AcpCommand::Prompt {
+                input: "hello".to_string(),
+                submission_id: "submission-1".to_string(),
+            }
+        ));
+        assert!(should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
+            false,
             &AcpCommand::SetMode("auto".to_string())
         ));
         assert!(should_queue_while_prompts_active(
             2,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             false,
+            false,
             &AcpCommand::SetModel("gpt-5".to_string())
         ));
         assert!(should_queue_while_prompts_active(
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
             false,
             &AcpCommand::SetConfig {
                 config_id: "mode".to_string(),
@@ -2667,12 +2732,14 @@ mod tests {
             1,
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             true,
+            true,
             &AcpCommand::Cancel
         ));
         assert!(!should_queue_while_prompts_active(
             0,
             AcpPromptDeliveryPolicy::StrictFifo,
             false,
+            true,
             &AcpCommand::Prompt {
                 input: "hello".to_string(),
                 submission_id: "submission-1".to_string(),
@@ -3582,6 +3649,57 @@ Fallback to the user-level review contract.
             )]),
             RequestPermissionOutcome::Cancelled
         ));
+    }
+
+    #[test]
+    fn permission_outcome_allows_only_selected_allow_options() {
+        let options = [
+            PermissionOption::new("allow", "Allow once", PermissionOptionKind::AllowOnce),
+            PermissionOption::new("deny", "Deny", PermissionOptionKind::RejectOnce),
+        ];
+
+        assert!(permission_outcome_allows(
+            &RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("allow")),
+            &options,
+        ));
+        assert!(!permission_outcome_allows(
+            &RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("deny")),
+            &options,
+        ));
+        assert!(!permission_outcome_allows(
+            &RequestPermissionOutcome::Cancelled,
+            &options,
+        ));
+        assert!(!permission_outcome_allows(
+            &RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("missing")),
+            &options,
+        ));
+    }
+
+    #[test]
+    fn denied_permission_tool_update_clears_diagnostics_pending_tool_call() {
+        let diagnostics = Arc::new(AcpRuntimeDiagnostics::default());
+        diagnostics.observe_provider_event(
+            "tool_call",
+            Some(("tool-1".to_string(), Some("in_progress".to_string()))),
+        );
+        diagnostics.observe_provider_event(
+            "tool_call_update",
+            Some(("tool-1".to_string(), Some("failed".to_string()))),
+        );
+
+        let (tx, _rx) = mpsc::channel::<AcpCommand>(1);
+        let handle = AcpHandle {
+            session_id: "session-diagnostics".to_string(),
+            tx,
+            diagnostics,
+        };
+        let snapshot = handle.diagnostics();
+        assert_eq!(
+            snapshot.last_provider_event_type.as_deref(),
+            Some("tool_call_update")
+        );
+        assert_eq!(snapshot.pending_tool_call_count, 0);
     }
 
     #[test]
