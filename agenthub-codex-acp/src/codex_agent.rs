@@ -152,76 +152,65 @@ fn agenthub_managed_mcp_supports_parallel_tool_calls() -> bool {
 }
 
 fn codex_mcp_server_config(cwd: &Path, mcp_server: McpServer) -> Option<(String, McpServerConfig)> {
-    match mcp_server {
-        // Codex does not support ACP SSE MCP servers.
-        McpServer::Sse(..) => None,
+    let (name, transport) = match mcp_server {
         McpServer::Http(McpServerHttp {
             name, url, headers, ..
-        }) => Some((
-            sanitize_codex_mcp_server_name(&name),
-            McpServerConfig {
-                transport: McpServerTransportConfig::StreamableHttp {
-                    url,
-                    bearer_token_env_var: None,
-                    http_headers: if headers.is_empty() {
-                        None
-                    } else {
-                        Some(headers.into_iter().map(|h| (h.name, h.value)).collect())
-                    },
-                    env_http_headers: None,
+        }) => (
+            name,
+            McpServerTransportConfig::StreamableHttp {
+                url,
+                bearer_token_env_var: None,
+                http_headers: if headers.is_empty() {
+                    None
+                } else {
+                    Some(headers.into_iter().map(|h| (h.name, h.value)).collect())
                 },
-                experimental_environment: None,
-                required: false,
-                enabled: true,
-                supports_parallel_tool_calls: agenthub_managed_mcp_supports_parallel_tool_calls(),
-                startup_timeout_sec: None,
-                tool_timeout_sec: None,
-                default_tools_approval_mode: None,
-                disabled_tools: None,
-                enabled_tools: None,
-                disabled_reason: None,
-                scopes: None,
-                oauth_resource: None,
-                tools: HashMap::new(),
+                env_http_headers: None,
             },
-        )),
+        ),
         McpServer::Stdio(McpServerStdio {
             name,
             command,
             args,
             env,
             ..
-        }) => Some((
-            sanitize_codex_mcp_server_name(&name),
-            McpServerConfig {
-                transport: McpServerTransportConfig::Stdio {
-                    command: command.display().to_string(),
-                    args,
-                    env: if env.is_empty() {
-                        None
-                    } else {
-                        Some(env.into_iter().map(|env| (env.name, env.value)).collect())
-                    },
-                    env_vars: vec![],
-                    cwd: Some(cwd.to_path_buf()),
+        }) => (
+            name,
+            McpServerTransportConfig::Stdio {
+                command: command.display().to_string(),
+                args,
+                env: if env.is_empty() {
+                    None
+                } else {
+                    Some(env.into_iter().map(|env| (env.name, env.value)).collect())
                 },
-                experimental_environment: None,
-                required: false,
-                enabled: true,
-                supports_parallel_tool_calls: agenthub_managed_mcp_supports_parallel_tool_calls(),
-                startup_timeout_sec: None,
-                tool_timeout_sec: None,
-                default_tools_approval_mode: None,
-                disabled_tools: None,
-                enabled_tools: None,
-                disabled_reason: None,
-                scopes: None,
-                oauth_resource: None,
-                tools: HashMap::new(),
+                env_vars: vec![],
+                cwd: Some(cwd.to_path_buf()),
             },
-        )),
-        _ => None,
-    }
+        ),
+        // Codex does not support ACP SSE MCP servers.
+        _ => return None,
+    };
+
+    Some((
+        sanitize_codex_mcp_server_name(&name),
+        McpServerConfig {
+            transport,
+            experimental_environment: None,
+            required: false,
+            enabled: true,
+            supports_parallel_tool_calls: agenthub_managed_mcp_supports_parallel_tool_calls(),
+            startup_timeout_sec: None,
+            tool_timeout_sec: None,
+            default_tools_approval_mode: None,
+            disabled_tools: None,
+            enabled_tools: None,
+            disabled_reason: None,
+            scopes: None,
+            oauth_resource: None,
+            tools: HashMap::new(),
+        },
+    ))
 }
 
 fn aborted_call_output() -> FunctionCallOutputPayload {
