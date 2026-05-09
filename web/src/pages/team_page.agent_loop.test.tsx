@@ -748,7 +748,7 @@ describe("TeamPage agent loop profile flow", () => {
     }
   });
 
-  it("uses the member id for ACP history and input while the agent record is still backfilling", async () => {
+  it("uses the member id for ACP history and refreshes events after failed input while the agent record is still backfilling", async () => {
     const team = {
       id: "team-1",
       name: "Team One",
@@ -848,6 +848,10 @@ describe("TeamPage agent loop profile flow", () => {
         Array.from(container.querySelectorAll("button")).find((button) =>
           button.textContent?.includes("Open worker workspace")
         ) as HTMLButtonElement | null
+      );
+      loadMemberEventsSpy.mockClear();
+      sendInput.mockRejectedValueOnce(
+        new Error("acp command send timed out due to backpressure")
       );
       await clickElement(
         await waitForElement(

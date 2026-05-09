@@ -118,6 +118,10 @@ ACP permission requests are first-class runtime records:
 
 - Input/send paths must validate session alignment to avoid stale session writes.
 - Session mismatch and unavailable gateway states should surface deterministic, non-leaky errors.
+- If AgentHub has already persisted a user input event but cannot submit the prompt command to the
+  ACP provider, it should append a redacted visible ACP status event and keep detailed failure
+  metadata in diagnostics rather than serializing prompt bodies or provider internals into the
+  conversation.
 - `agent_sessions.id` is AgentHub's per-launch runtime/audit identifier and is expected to change on
   each real restart.
 - `agent_persistent_sessions.session_id` stores provider continuity identity separately so ACP/Codex

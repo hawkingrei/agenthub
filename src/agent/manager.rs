@@ -187,6 +187,20 @@ fn short_random_token() -> String {
         .collect::<String>()
 }
 
+fn acp_prompt_submission_failure_event(message_id: &str) -> String {
+    serde_json::json!({
+        "type": "agent_message",
+        "text": "AgentHub could not submit this prompt to the ACP provider. Check agent-trace provider diagnostics for the redacted command error.",
+        "chunk": false,
+        "message_id": format!("{message_id}:submission-error"),
+        "meta": {
+            "source": "agenthub",
+            "category": "acp_prompt_submission_failed"
+        }
+    })
+    .to_string()
+}
+
 pub(crate) fn derive_worker_runtime_root(workdir: &str) -> String {
     let path = Path::new(workdir);
     path.parent()
@@ -1855,8 +1869,62 @@ impl AgentManager {
         };
         let _ = output_tx.send(output);
 
-        acp.prompt_with_submission(input.to_string(), message_id)
-            .await?;
+        match acp
+            .prompt_with_submission(input.to_string(), message_id.clone())
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                if let Err(persist_err) = self
+                    .persist_acp_prompt_submission_failure(
+                        agent_id,
+                        &session_id,
+                        &message_id,
+                        &output_tx,
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        error = %persist_err,
+                        "failed to persist ACP prompt submission failure event"
+                    );
+                }
+                Err(err)
+            }
+        }
+    }
+
+    async fn persist_acp_prompt_submission_failure(
+        &self,
+        agent_id: &str,
+        session_id: &str,
+        message_id: &str,
+        output_tx: &broadcast::Sender<AgentOutput>,
+    ) -> anyhow::Result<()> {
+        let seq = Uuid::now_v7().to_string();
+        let ts = Utc::now().timestamp();
+        let message = acp_prompt_submission_failure_event(message_id);
+        let event_id = persist_agent_event(
+            &self.event_dbs,
+            self.idle_gc.as_ref(),
+            agent_id,
+            session_id,
+            &seq,
+            ts,
+            &OutputStream::Acp,
+            &message,
+        )
+        .await?;
+        let _ = output_tx.send(AgentOutput {
+            event_id,
+            agent_id: agent_id.to_string(),
+            session_id: session_id.to_string(),
+            seq,
+            ts,
+            stream: OutputStream::Acp,
+            message,
+        });
         Ok(())
     }
 

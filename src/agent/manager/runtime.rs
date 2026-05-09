@@ -558,6 +558,22 @@ mod tests {
     use tokio::time::Duration;
     use uuid::Uuid;
 
+    #[test]
+    fn acp_prompt_submission_failure_event_is_renderable_and_redacted() {
+        let value: serde_json::Value =
+            serde_json::from_str(&super::super::acp_prompt_submission_failure_event("msg-1"))
+                .expect("failure event should be valid JSON");
+
+        assert_eq!(value["type"], "agent_message");
+        assert_eq!(value["chunk"], false);
+        assert_eq!(value["message_id"], "msg-1:submission-error");
+        assert_eq!(value["meta"]["source"], "agenthub");
+        assert_eq!(value["meta"]["category"], "acp_prompt_submission_failed");
+        let text = value["text"].as_str().expect("text should be present");
+        assert!(text.contains("could not submit this prompt"));
+        assert!(!text.contains("msg-1"));
+    }
+
     async fn build_test_state_with_idle_gc() -> crate::state::AppState {
         let state = crate::api::team_tests::build_test_state().await;
         let idle_gc = agenthub_db::AgentEventIdleGc::new(
@@ -651,6 +667,36 @@ mod tests {
             .await
             .insert(agent_id.clone(), handle);
         (agent_id, session_id)
+    }
+
+    #[tokio::test]
+    async fn acp_prompt_submission_failure_is_persisted_and_broadcast() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "acp-submission-failure").await;
+        let (output_tx, mut output_rx) = tokio::sync::broadcast::channel(8);
+
+        state
+            .agents
+            .persist_acp_prompt_submission_failure(&agent_id, &session_id, "message-1", &output_tx)
+            .await
+            .expect("persist failure marker");
+
+        let output = output_rx.recv().await.expect("failure marker broadcast");
+        assert_eq!(output.agent_id, agent_id);
+        assert_eq!(output.session_id, session_id);
+        assert_eq!(output.stream, crate::agent::OutputStream::Acp);
+        assert!(output.message.contains("acp_prompt_submission_failed"));
+
+        let events = state
+            .agents
+            .list_events_for_session(&agent_id, &session_id, 8, None)
+            .await
+            .expect("list persisted events");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_id, output.event_id);
+        assert!(events[0].message.contains("could not submit this prompt"));
+        assert!(!events[0].message.contains("secret prompt"));
     }
 
     #[tokio::test]

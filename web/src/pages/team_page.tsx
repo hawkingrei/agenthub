@@ -3014,6 +3014,7 @@ export function TeamPage(props: TeamPageProps) {
             return;
           }
         }
+        await loadMemberEvents("replace").catch(() => undefined);
         setError(msg);
         if (msg.includes(AGENT_NOT_RUNNING_ERROR)) {
           if (selectedTeamId) {
