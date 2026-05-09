@@ -10,8 +10,7 @@ arrow-array = "57.3.0"
 arrow-schema = "57.3.0"
 async-trait = "0.1"
 futures = "0.3"
-lance = { version = "=4.0.0", default-features = false, features = ["protoc"] }
-lance-index = { version = "=4.0.0", features = ["protoc"] }
+lance-index = "=4.0.0"
 lancedb = "0.27.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
