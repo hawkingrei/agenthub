@@ -670,6 +670,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn acp_prompt_submission_failure_is_persisted_and_broadcast() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "acp-submission-failure").await;
+        let (output_tx, mut output_rx) = tokio::sync::broadcast::channel(8);
+
+        state
+            .agents
+            .persist_acp_prompt_submission_failure(&agent_id, &session_id, "message-1", &output_tx)
+            .await
+            .expect("persist failure marker");
+
+        let output = output_rx.recv().await.expect("failure marker broadcast");
+        assert_eq!(output.agent_id, agent_id);
+        assert_eq!(output.session_id, session_id);
+        assert_eq!(output.stream, crate::agent::OutputStream::Acp);
+        assert!(output.message.contains("acp_prompt_submission_failed"));
+
+        let events = state
+            .agents
+            .list_events_for_session(&agent_id, &session_id, 8, None)
+            .await
+            .expect("list persisted events");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_id, output.event_id);
+        assert!(events[0].message.contains("could not submit this prompt"));
+        assert!(!events[0].message.contains("secret prompt"));
+    }
+
+    #[tokio::test]
     async fn send_input_does_not_mark_running_session_exited_while_agent_is_starting() {
         let state = crate::api::team_tests::build_test_state().await;
         let (agent_id, session_id) =

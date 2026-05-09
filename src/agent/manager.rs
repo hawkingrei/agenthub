@@ -1875,43 +1875,57 @@ impl AgentManager {
         {
             Ok(()) => Ok(()),
             Err(err) => {
-                let seq = Uuid::now_v7().to_string();
-                let ts = Utc::now().timestamp();
-                let message = acp_prompt_submission_failure_event(&message_id);
-                match persist_agent_event(
-                    &self.event_dbs,
-                    self.idle_gc.as_ref(),
-                    agent_id,
-                    &session_id,
-                    &seq,
-                    ts,
-                    &OutputStream::Acp,
-                    &message,
-                )
-                .await
+                if let Err(persist_err) = self
+                    .persist_acp_prompt_submission_failure(
+                        agent_id,
+                        &session_id,
+                        &message_id,
+                        &output_tx,
+                    )
+                    .await
                 {
-                    Ok(event_id) => {
-                        let _ = output_tx.send(AgentOutput {
-                            event_id,
-                            agent_id: agent_id.to_string(),
-                            session_id,
-                            seq,
-                            ts,
-                            stream: OutputStream::Acp,
-                            message,
-                        });
-                    }
-                    Err(persist_err) => {
-                        tracing::warn!(
-                            agent_id = %agent_id,
-                            error = %persist_err,
-                            "failed to persist ACP prompt submission failure event"
-                        );
-                    }
+                    tracing::warn!(
+                        agent_id = %agent_id,
+                        error = %persist_err,
+                        "failed to persist ACP prompt submission failure event"
+                    );
                 }
                 Err(err)
             }
         }
+    }
+
+    async fn persist_acp_prompt_submission_failure(
+        &self,
+        agent_id: &str,
+        session_id: &str,
+        message_id: &str,
+        output_tx: &broadcast::Sender<AgentOutput>,
+    ) -> anyhow::Result<()> {
+        let seq = Uuid::now_v7().to_string();
+        let ts = Utc::now().timestamp();
+        let message = acp_prompt_submission_failure_event(message_id);
+        let event_id = persist_agent_event(
+            &self.event_dbs,
+            self.idle_gc.as_ref(),
+            agent_id,
+            session_id,
+            &seq,
+            ts,
+            &OutputStream::Acp,
+            &message,
+        )
+        .await?;
+        let _ = output_tx.send(AgentOutput {
+            event_id,
+            agent_id: agent_id.to_string(),
+            session_id: session_id.to_string(),
+            seq,
+            ts,
+            stream: OutputStream::Acp,
+            message,
+        });
+        Ok(())
     }
 
     async fn update_agent_status(&self, agent_id: &str, status: AgentStatus) -> anyhow::Result<()> {
