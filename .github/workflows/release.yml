@@ -35,7 +35,7 @@ jobs:
             os: ubuntu-22.04
             arch: amd64
             cross: true
-            agenthub_features: release-vendored-openssl,release-lance-fp16
+            agenthub_features: release-vendored-openssl
           
           # Linux ARM64
           - target: aarch64-unknown-linux-gnu
