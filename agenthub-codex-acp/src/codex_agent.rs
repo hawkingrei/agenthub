@@ -126,83 +126,8 @@ impl CodexAgent {
         // Propagate any client-provided MCP servers that codex-rs supports.
         let mut new_mcp_servers = config.mcp_servers.get().clone();
         for mcp_server in mcp_servers {
-            match mcp_server {
-                // Not supported in codex
-                McpServer::Sse(..) => {}
-                McpServer::Http(McpServerHttp {
-                    name, url, headers, ..
-                }) => {
-                    // Codex does not allow whitespace in MCP server names; replace with underscores.
-                    let name = name.replace(|c: char| c.is_whitespace(), "_");
-                    new_mcp_servers.insert(
-                        name,
-                        McpServerConfig {
-                            transport: McpServerTransportConfig::StreamableHttp {
-                                url,
-                                bearer_token_env_var: None,
-                                http_headers: if headers.is_empty() {
-                                    None
-                                } else {
-                                    Some(headers.into_iter().map(|h| (h.name, h.value)).collect())
-                                },
-                                env_http_headers: None,
-                            },
-                            experimental_environment: None,
-                            required: false,
-                            enabled: true,
-                            supports_parallel_tool_calls: false,
-                            startup_timeout_sec: None,
-                            tool_timeout_sec: None,
-                            default_tools_approval_mode: None,
-                            disabled_tools: None,
-                            enabled_tools: None,
-                            disabled_reason: None,
-                            scopes: None,
-                            oauth_resource: None,
-                            tools: HashMap::new(),
-                        },
-                    );
-                }
-                McpServer::Stdio(McpServerStdio {
-                    name,
-                    command,
-                    args,
-                    env,
-                    ..
-                }) => {
-                    // Codex does not allow whitespace in MCP server names; replace with underscores.
-                    let name = name.replace(|c: char| c.is_whitespace(), "_");
-                    new_mcp_servers.insert(
-                        name,
-                        McpServerConfig {
-                            transport: McpServerTransportConfig::Stdio {
-                                command: command.display().to_string(),
-                                args,
-                                env: if env.is_empty() {
-                                    None
-                                } else {
-                                    Some(env.into_iter().map(|env| (env.name, env.value)).collect())
-                                },
-                                env_vars: vec![],
-                                cwd: Some(cwd.to_path_buf()),
-                            },
-                            experimental_environment: None,
-                            required: false,
-                            enabled: true,
-                            supports_parallel_tool_calls: false,
-                            startup_timeout_sec: None,
-                            tool_timeout_sec: None,
-                            default_tools_approval_mode: None,
-                            disabled_tools: None,
-                            enabled_tools: None,
-                            disabled_reason: None,
-                            scopes: None,
-                            oauth_resource: None,
-                            tools: HashMap::new(),
-                        },
-                    );
-                }
-                _ => {}
+            if let Some((name, mcp_server_config)) = codex_mcp_server_config(cwd, mcp_server) {
+                new_mcp_servers.insert(name, mcp_server_config);
             }
         }
 
@@ -213,6 +138,79 @@ impl CodexAgent {
 
         Ok(config)
     }
+}
+
+fn sanitize_codex_mcp_server_name(name: &str) -> String {
+    name.replace(|c: char| c.is_whitespace(), "_")
+}
+
+fn agenthub_managed_mcp_supports_parallel_tool_calls() -> bool {
+    // Keep this opt-out until AgentHub can prove each managed MCP server is safe
+    // for concurrent calls. Codex supports the flag, but ACP does not expose a
+    // per-server concurrency contract for these passthrough definitions.
+    false
+}
+
+fn codex_mcp_server_config(cwd: &Path, mcp_server: McpServer) -> Option<(String, McpServerConfig)> {
+    let (name, transport) = match mcp_server {
+        McpServer::Http(McpServerHttp {
+            name, url, headers, ..
+        }) => (
+            name,
+            McpServerTransportConfig::StreamableHttp {
+                url,
+                bearer_token_env_var: None,
+                http_headers: if headers.is_empty() {
+                    None
+                } else {
+                    Some(headers.into_iter().map(|h| (h.name, h.value)).collect())
+                },
+                env_http_headers: None,
+            },
+        ),
+        McpServer::Stdio(McpServerStdio {
+            name,
+            command,
+            args,
+            env,
+            ..
+        }) => (
+            name,
+            McpServerTransportConfig::Stdio {
+                command: command.display().to_string(),
+                args,
+                env: if env.is_empty() {
+                    None
+                } else {
+                    Some(env.into_iter().map(|env| (env.name, env.value)).collect())
+                },
+                env_vars: vec![],
+                cwd: Some(cwd.to_path_buf()),
+            },
+        ),
+        // Codex does not support ACP SSE MCP servers.
+        _ => return None,
+    };
+
+    Some((
+        sanitize_codex_mcp_server_name(&name),
+        McpServerConfig {
+            transport,
+            experimental_environment: None,
+            required: false,
+            enabled: true,
+            supports_parallel_tool_calls: agenthub_managed_mcp_supports_parallel_tool_calls(),
+            startup_timeout_sec: None,
+            tool_timeout_sec: None,
+            default_tools_approval_mode: None,
+            disabled_tools: None,
+            enabled_tools: None,
+            disabled_reason: None,
+            scopes: None,
+            oauth_resource: None,
+            tools: HashMap::new(),
+        },
+    ))
 }
 
 fn aborted_call_output() -> FunctionCallOutputPayload {
@@ -931,9 +929,13 @@ impl CodexAgent {
 #[cfg(test)]
 mod tests {
     use super::{
-        HistoryRepairStats, persist_repaired_initial_history, repair_initial_history,
-        repair_response_item_history,
+        HistoryRepairStats, codex_mcp_server_config, persist_repaired_initial_history,
+        repair_initial_history, repair_response_item_history,
     };
+    use agent_client_protocol::schema::{
+        EnvVariable, HttpHeader, McpServer, McpServerHttp, McpServerSse, McpServerStdio,
+    };
+    use codex_config::types::McpServerTransportConfig;
     use codex_core::RolloutRecorder;
     use codex_protocol::{
         ThreadId,
@@ -946,7 +948,79 @@ mod tests {
             SessionMetaLine, SessionSource,
         },
     };
-    use std::path::PathBuf;
+    use std::{collections::HashMap, path::PathBuf};
+
+    #[test]
+    fn codex_mcp_http_servers_keep_parallel_tool_calls_disabled() {
+        let cwd = PathBuf::from("/tmp/agenthub-codex-acp-test");
+        let (name, config) = codex_mcp_server_config(
+            &cwd,
+            McpServer::Http(
+                McpServerHttp::new("AgentHub Tools", "https://mcp.example.test")
+                    .headers(vec![HttpHeader::new("Authorization", "Bearer test")]),
+            ),
+        )
+        .expect("http mcp server should be supported");
+
+        assert_eq!(name, "AgentHub_Tools");
+        assert!(!config.supports_parallel_tool_calls);
+        let McpServerTransportConfig::StreamableHttp {
+            url, http_headers, ..
+        } = config.transport
+        else {
+            panic!("expected streamable http transport");
+        };
+        assert_eq!(url, "https://mcp.example.test");
+        assert_eq!(
+            http_headers.expect("headers"),
+            HashMap::from([("Authorization".to_string(), "Bearer test".to_string())])
+        );
+    }
+
+    #[test]
+    fn codex_mcp_stdio_servers_keep_parallel_tool_calls_disabled() {
+        let cwd = PathBuf::from("/tmp/agenthub-codex-acp-test");
+        let (name, config) = codex_mcp_server_config(
+            &cwd,
+            McpServer::Stdio(
+                McpServerStdio::new("Mailbox Bridge", "agenthub")
+                    .args(vec!["actor".to_string(), "receive".to_string()])
+                    .env(vec![EnvVariable::new("AGENTHUB_TEST", "1")]),
+            ),
+        )
+        .expect("stdio mcp server should be supported");
+
+        assert_eq!(name, "Mailbox_Bridge");
+        assert!(!config.supports_parallel_tool_calls);
+        let McpServerTransportConfig::Stdio {
+            command,
+            args,
+            env,
+            cwd: config_cwd,
+            ..
+        } = config.transport
+        else {
+            panic!("expected stdio transport");
+        };
+        assert_eq!(command, "agenthub");
+        assert_eq!(args, vec!["actor".to_string(), "receive".to_string()]);
+        assert_eq!(
+            env.expect("env"),
+            HashMap::from([("AGENTHUB_TEST".to_string(), "1".to_string())])
+        );
+        assert_eq!(config_cwd, Some(cwd));
+    }
+
+    #[test]
+    fn codex_mcp_sse_servers_remain_unsupported() {
+        let cwd = PathBuf::from("/tmp/agenthub-codex-acp-test");
+        let config = codex_mcp_server_config(
+            &cwd,
+            McpServer::Sse(McpServerSse::new("legacy", "https://mcp.example.test/sse")),
+        );
+
+        assert!(config.is_none());
+    }
 
     #[test]
     fn repair_initial_history_inserts_missing_custom_tool_outputs() {

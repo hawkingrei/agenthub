@@ -29,3 +29,25 @@
 ## Validation
 
 - `cargo test -p agenthub-team-prompts`
+
+## MCP Parallel Tool Calls Follow-Up
+
+### Summary
+
+- validated the current official `openai/codex` baseline used by `agenthub-codex-acp` for AgentHub-managed MCP passthrough servers
+- kept `supports_parallel_tool_calls = false` for ACP-provided HTTP and stdio MCP server definitions
+- kept ACP SSE MCP server definitions unsupported for Codex session config propagation
+
+### Why
+
+Codex supports a per-server `supports_parallel_tool_calls` flag, and upstream built-in MCP definitions can opt in when they know the server is safe for concurrent tool calls. AgentHub-managed passthrough MCP definitions arrive through ACP as generic HTTP or stdio server declarations, and ACP does not currently provide a per-server concurrency contract or idempotency guarantee. Enabling the flag by default would make server-specific ordering assumptions that AgentHub cannot prove.
+
+### Validation
+
+- `cargo test -p agenthub-codex-acp codex_mcp -- --nocapture`
+- `cargo fmt --all --check`
+
+### Follow-Ups
+
+- Add a per-server MCP concurrency capability before enabling parallel tool calls for any AgentHub-managed MCP server by default.
+- Revisit opt-in parallel tool calls only for servers with explicit idempotency and ordering guarantees.
