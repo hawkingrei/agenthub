@@ -737,6 +737,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn worker_request_uses_coordinator_when_no_peer_worker_exists() {
+        let spec = json!({
+            "entrypoint":"coordinator",
+            "coordinator_member_id":"coordinator",
+            "members":[
+                {"member_id":"coordinator","role":"coordinator"},
+                {"member_id":"worker","role":"worker"}
+            ]
+        });
+
+        let (reviewer, dispatch_status) =
+            resolve_team_permission_review_target(&spec, "worker", "worker")
+                .expect("resolve coordinator fallback reviewer");
+
+        assert_eq!(reviewer, "coordinator");
+        assert_eq!(dispatch_status, "coordinator_dispatched");
+    }
+
+    #[test]
+    fn coordinator_request_errors_without_subordinate_reviewer() {
+        let spec = json!({
+            "entrypoint":"coordinator",
+            "coordinator_member_id":"coordinator",
+            "members":[
+                {"member_id":"coordinator","role":"coordinator"}
+            ]
+        });
+
+        let err = resolve_team_permission_review_target(&spec, "coordinator", "coordinator")
+            .expect_err("coordinator should need a subordinate reviewer");
+
+        assert!(
+            err.to_string()
+                .contains("team has no subordinate reviewer configured"),
+            "unexpected error: {err}"
+        );
+    }
+
     #[tokio::test]
     async fn dispatches_worker_permission_to_peer_worker_before_human_review() {
         let state = build_test_state().await;
@@ -1348,5 +1387,171 @@ mod tests {
             inbox.messages[0].payload["review_target_actor_id"],
             Value::from("reviewer")
         );
+    }
+
+    #[tokio::test]
+    async fn dispatch_failure_falls_back_to_human_permission_card() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("permission-review-dispatch-failure-{}", Uuid::new_v4()),
+                description: Some("permission review dispatch failure".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "coordinator_member_id":"coordinator",
+                    "members":[
+                        {"member_id":"coordinator","role":"coordinator"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("coordinator-agent-fallback")
+        .bind("coordinator-agent-fallback")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert coordinator agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("coordinator-session-fallback")
+        .bind("coordinator-agent-fallback")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert coordinator session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-review-dispatch-failure")
+        .bind("coordinator-agent-fallback")
+        .bind("coordinator-session-fallback")
+        .bind("acp-session-dispatch-failure")
+        .bind(&team.id)
+        .bind("coordinator")
+        .bind("coordinator")
+        .bind("tool-call-dispatch-failure")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__write"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert coordinator permission request");
+
+        let dispatcher = TeamPermissionReviewDispatcher::new(
+            state.teams.clone(),
+            state.agents.clone(),
+            Arc::new(AcpPermissionService::new(state.db.clone())),
+            TeamPermissionReviewDispatcherSettings {
+                human_fallback_delay: Duration::from_secs(60),
+            },
+        );
+        let request = AcpPermissionReviewRequest {
+            request_id: "perm-review-dispatch-failure".to_string(),
+            agent_id: "coordinator-agent-fallback".to_string(),
+            agent_session_id: "coordinator-session-fallback".to_string(),
+            acp_session_id: "acp-session-dispatch-failure".to_string(),
+            tool_call_id: Some("tool-call-dispatch-failure".to_string()),
+            options: vec![agenthub_acp::AcpPermissionOption {
+                option_id: "allow".to_string(),
+                name: "Allow once".to_string(),
+                kind: agent_client_protocol::schema::PermissionOptionKind::AllowOnce,
+            }],
+            tool_call: Some(json!({"tool":{"name":"mcp__fs__write"}})),
+            current_run_id: None,
+            routing: AcpPermissionRoutingMetadata {
+                team_id: Some(team.id.clone()),
+                requester_actor_id: Some("coordinator".to_string()),
+                requester_role: Some("coordinator".to_string()),
+            },
+        };
+
+        dispatcher
+            .dispatch_review(request)
+            .await
+            .expect("dispatch failure should be handled as human fallback");
+
+        let record = state
+            .acp_permissions
+            .get("perm-review-dispatch-failure")
+            .await
+            .expect("load permission record")
+            .expect("permission record");
+        assert_eq!(
+            record.review_dispatch_status.as_deref(),
+            Some("review_dispatch_failed")
+        );
+        assert!(record.review_target_actor_id.is_none());
+        assert!(record.human_review_notified_at.is_some());
+
+        let (task_id, _) = state
+            .teams
+            .ensure_shared_thread_target_for_team(&team.id, "coordinator")
+            .await
+            .expect("ensure shared thread");
+        let conversation_messages = state
+            .teams
+            .list_task_conversation_messages(&task_id, 50, None)
+            .await
+            .expect("list shared-thread messages");
+        let fallback = conversation_messages
+            .iter()
+            .find(|message| {
+                message.payload.get("type").and_then(Value::as_str)
+                    == Some(TEAM_HUMAN_PERMISSION_CARD_PAYLOAD_TYPE)
+                    && message.payload.get("permission_id").and_then(Value::as_str)
+                        == Some("perm-review-dispatch-failure")
+            })
+            .expect("human permission card");
+        assert_eq!(fallback.from_actor_id, "coordinator");
+        assert_eq!(
+            fallback.payload["reason_text"],
+            json!("Agent review dispatch failed")
+        );
+        assert_eq!(fallback.payload["status"], json!("pending"));
     }
 }
