@@ -406,7 +406,7 @@ export function App() {
     () =>
       workspaceNodeRoute
         ? "nodes"
-        : (resolveWorkspaceLens(routeLocation.search) ?? "channels"),
+        : resolveWorkspaceLens(routeLocation.pathname, routeLocation.search),
     [routeLocation.search, workspaceNodeRoute]
   );
   const selectedWorkspaceNodeId = useMemo(

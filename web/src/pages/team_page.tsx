@@ -270,6 +270,7 @@ type TeamPageProps = {
   onLogout: () => void;
   developerMode: boolean;
   routeTeamId: string | null;
+  routePathname: string;
   routeSearch?: string;
   defaultWorktreeRoot?: string | null;
 };
@@ -665,7 +666,7 @@ const teamWorkbenchInfoStripValueClassName = TEAM_WORKBENCH_INFO_STRIP_VALUE_CLA
 export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
   const routeWorkspaceLens = useMemo(
-    () => resolveWorkspaceLens(props.routeSearch ?? ""),
+    () => resolveWorkspaceLens(props.routePathname, props.routeSearch ?? ""),
     [props.routeSearch]
   );
   const routeWorkspaceTab = useMemo(

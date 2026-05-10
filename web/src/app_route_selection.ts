@@ -46,7 +46,7 @@ export type AppRouteKind =
   | "post-auth-redirect"
   | "workspace";
 
-export type WorkspaceLens = "channels" | "tasks" | "members" | "search" | "nodes";
+export type WorkspaceLens = "teams" | "channels" | "tasks" | "members" | "search" | "nodes";
 export type TeamMemberRouteTab = "agent_acp" | "mailbox" | "member_console";
 const TEAM_MEMBER_ROUTE_TABS = new Set<TeamMemberRouteTab>([
   "agent_acp",
@@ -58,23 +58,26 @@ export function isTeamMemberRouteTab(value: string | null | undefined): value is
   return value != null && TEAM_MEMBER_ROUTE_TABS.has(value as TeamMemberRouteTab);
 }
 
-export function resolveWorkspaceLens(search: string): WorkspaceLens | null {
-  const params = new URLSearchParams(search);
-  const lens = params.get("lens");
-  switch (lens) {
-    case "channels":
-    case "chat":
-    case "threads":
-      return "channels";
-    case "tasks":
-    case "members":
-    case "search":
-    case "nodes":
-      return lens;
-    default:
-      return null;
-  }
-}
+export function resolveWorkspaceLens(pathname: string, search: string): WorkspaceLens { 
+  const params = new URLSearchParams(search); 
+  const lens = params.get("lens"); 
+  if (lens === "channels" || lens === "chat" || lens === "threads") { 
+    return "channels"; 
+  } 
+  if (lens === "tasks" || lens === "members" || lens === "search" || lens === "nodes") { 
+    return lens as WorkspaceLens; 
+  } 
+  if (lens === "teams") { 
+    return "teams"; 
+  } 
+  if (isTeamsRoute(pathname)) { 
+    return "teams"; 
+  } 
+  if (pathname.startsWith("/workspace/nodes")) { 
+    return "nodes"; 
+  } 
+  return "teams"; 
+} 
 
 export function buildWorkspacePath(agentId?: string | null, lens?: WorkspaceLens | null): string {
   const pathname = agentId
@@ -285,7 +288,7 @@ export function resolveWorkspaceNodeRoute(pathname: string, search: string): Wor
     }
   }
   const legacyNodeId = resolveWorkspaceNodeId(search);
-  const legacyLens = resolveWorkspaceLens(search);
+  const legacyLens = resolveWorkspaceLens(pathname, search);
   if (isWorkspaceRootRoute(pathname) && legacyLens === "nodes") {
     return legacyNodeId
       ? { mode: "detail", nodeId: legacyNodeId }

@@ -39,6 +39,7 @@ export const TeamRouteContainer = React.memo(function TeamRouteContainer({
           onLogout={onLogout}
           developerMode={developerMode}
           routeTeamId={teamRoute?.teamId ?? null}
+          routePathname={routePathname}
           routeSearch={routeSearch}
           defaultWorktreeRoot={defaultWorktreeRoot}
         />

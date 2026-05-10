@@ -87,11 +87,13 @@ describe("app route selection", () => {
   });
 
   it("maps legacy chat and threads lens values to channels", () => {
-    expect(resolveWorkspaceLens("?lens=channels")).toBe("channels");
-    expect(resolveWorkspaceLens("?lens=chat")).toBe("channels");
-    expect(resolveWorkspaceLens("?lens=threads")).toBe("channels");
-    expect(resolveWorkspaceLens("?lens=nodes")).toBe("nodes");
-    expect(resolveWorkspaceLens("?lens=unknown")).toBe(null);
+    expect(resolveWorkspaceLens("/workspace", "?lens=channels")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace", "?lens=chat")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace", "?lens=threads")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace", "?lens=nodes")).toBe("nodes");
+    expect(resolveWorkspaceLens("/workspace", "?lens=unknown")).toBe("teams");
+    expect(resolveWorkspaceLens("/workspace/nodes", "?lens=unknown")).toBe("nodes");
+    expect(resolveWorkspaceLens("/workspace/teams/team-1", "")).toBe("teams");
     expect(buildWorkspacePath("agent-1", "channels")).toBe(
       "/workspace/agents/agent-1?lens=channels"
     );
