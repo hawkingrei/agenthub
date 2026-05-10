@@ -73,13 +73,11 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
   loading,
   hasTeams,
   items,
-  bodyTextClassName,
-  accentButtonClassName,
   onFilterChange,
   onRefreshTeams,
   onCreateTeam,
   onSelectTeam,
-}: TeamSelectorPanelProps) {
+}: Omit<TeamSelectorPanelProps, "bodyTextClassName" | "accentButtonClassName">) {
   return (
     <div className="flex min-h-0 flex-1 justify-center">
       <section className="flex min-h-0 w-full max-w-[680px] flex-col">
@@ -91,7 +89,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
             type="button"
             tone="ghost"
             size="sm"
-            className={`h-7 rounded-md px-2 text-[11px] text-notion-text-muted hover:bg-notion-text/[0.05] hover:text-notion-text ${accentButtonClassName}`}
+            className="h-7 rounded-md px-2 text-[11px] text-notion-text-muted hover:bg-notion-text/[0.05] hover:text-notion-text"
             onClick={onCreateTeam}
           >
             New Team
@@ -136,12 +134,14 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
               />
             )}
             {!loading && !hasTeams && (
-              <p className={`${bodyTextClassName} px-2`}>
+              <p className="px-2 text-[13px] leading-relaxed text-notion-text-muted">
                 No teams yet. Create one to begin.
               </p>
             )}
             {!loading && hasTeams && items.length === 0 && (
-              <p className={`${bodyTextClassName} px-2`}>No teams match the current filter.</p>
+              <p className="px-2 text-[13px] leading-relaxed text-notion-text-muted">
+                No teams match the current filter.
+              </p>
             )}
             {items.map((team) => (
               <TeamSelectorEntry key={team.id} team={team} onSelectTeam={onSelectTeam} />

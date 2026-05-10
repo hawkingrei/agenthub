@@ -4214,8 +4214,6 @@ export function TeamPage(props: TeamPageProps) {
             loading={!teamCatalogSettled && teams.length === 0}
             hasTeams={teams.length > 0}
             items={selectorTeamItems}
-            bodyTextClassName={teamSectionBodyTextClassName}
-            accentButtonClassName={teamWorkbenchAccentButtonClassName}
             onFilterChange={setTeamSelectorFilter}
             onRefreshTeams={() => {
               void refreshTeams();

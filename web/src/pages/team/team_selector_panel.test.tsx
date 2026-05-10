@@ -13,8 +13,6 @@ describe("TeamSelectorPanel", () => {
           loading={true}
           hasTeams={false}
           items={[]}
-          bodyTextClassName="body"
-          accentButtonClassName="accent"
           onFilterChange={vi.fn()}
           onRefreshTeams={vi.fn()}
           onCreateTeam={vi.fn()}
@@ -39,8 +37,6 @@ describe("TeamSelectorPanel", () => {
           loading={false}
           hasTeams={false}
           items={[]}
-          bodyTextClassName="body"
-          accentButtonClassName="accent"
           onFilterChange={vi.fn()}
           onRefreshTeams={vi.fn()}
           onCreateTeam={vi.fn()}
@@ -70,8 +66,6 @@ describe("TeamSelectorPanel", () => {
               runtimeLabel: "running",
             },
           ]}
-          bodyTextClassName="body"
-          accentButtonClassName="accent"
           onFilterChange={vi.fn()}
           onRefreshTeams={vi.fn()}
           onCreateTeam={vi.fn()}

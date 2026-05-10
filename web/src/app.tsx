@@ -8,9 +8,6 @@ import {
   AGENT_NOT_RUNNING_ERROR,
 } from "./agent_ws";
 import {
-  clearAuthAndRedirect,
-} from "./auth_redirect";
-import {
   canManageAgentNodes,
   clampAgentsPanelWidth,
   resolveAgentsPanelMaxWidth,
@@ -57,8 +54,6 @@ import {
   pushInputHistory,
 } from "./input_history";
 import {
-  AUTH_CARD_BASE_CLASS,
-  AUTH_PAGE_CLASS,
   APP_ROOT_CLASS,
 } from "./ui/tailwind_classes";
 import { parseSendInputSessionMismatch } from "./app_utils";
@@ -67,6 +62,13 @@ import { AdminRouteContainer } from "./routes/admin_route_container";
 import { AgentsRouteContainer } from "./routes/agents_route_container";
 import { RouteFallback } from "./routes/route_fallback";
 import { TeamRouteContainer } from "./routes/team_route_container";
+import {
+  LazyJoinPage,
+  AuthRedirect,
+  PostLoginRedirect,
+  AuthRequiredGate,
+  ForbiddenRoute,
+} from "./routes/auth_routes";
 
 import { useAppAuth } from "./use_app_auth";
 import { useAppAgents } from "./use_app_agents";
@@ -137,50 +139,7 @@ export {
   shouldRedirectTeamsToLogin,
 } from "./app_route_selection";
 
-const LazyJoinPage = React.lazy(async () => {
-  const module = (await import("./pages/join_page")) as typeof import("./pages/join_page");
-  return { default: module.JoinPage };
-});
-
-function AuthRedirect(): null {
-  useEffect(() => {
-    clearAuthAndRedirect(`${location.pathname}${location.search}${location.hash}`);
-  }, []);
-  return null;
-}
-
-function PostLoginRedirect({ target }: { target: string }): null {
-  useEffect(() => {
-    location.replace(target);
-  }, [target]);
-  return null;
-}
-
-export { RouteFallback } from "./routes/route_fallback";
-
-function AuthGateCard({ title, message }: { title: string; message: string }) {
-  return (
-    <div className={AUTH_PAGE_CLASS}>
-      <section className={AUTH_CARD_BASE_CLASS}>
-        <h2 className="text-xl font-semibold tracking-tight text-notion-text">{title}</h2>
-        <p className="mt-2 text-sm text-notion-text-muted">{message}</p>
-      </section>
-    </div>
-  );
-}
-
-function AuthRequiredGate() {
-  return <AuthGateCard title="Login Required" message="Please login to continue." />;
-}
-
-function ForbiddenRoute() {
-  return (
-    <AuthGateCard
-      title="Forbidden"
-      message="You do not have access to this page."
-    />
-  );
-}
+export { RouteFallback };
 
 export function App() {
   const [routeLocation, setRouteLocation] = useState(() => ({
