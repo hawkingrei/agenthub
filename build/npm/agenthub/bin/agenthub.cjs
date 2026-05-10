@@ -5,9 +5,9 @@ const { spawnSync } = require("node:child_process");
 const { createRequire } = require("node:module");
 
 const PLATFORM_PACKAGE_NAMES = {
-  "darwin:arm64": "@linkerdao/agenthub-darwin-arm64",
-  "linux:arm64": "@linkerdao/agenthub-linux-arm64",
-  "linux:x64": "@linkerdao/agenthub-linux-x64",
+  "darwin:arm64": "@linkerdog/agenthub-darwin-arm64",
+  "linux:arm64": "@linkerdog/agenthub-linux-arm64",
+  "linux:x64": "@linkerdog/agenthub-linux-x64",
 };
 
 function resolvePlatformPackageName(platform = process.platform, arch = process.arch) {
@@ -16,7 +16,7 @@ function resolvePlatformPackageName(platform = process.platform, arch = process.
 
 function buildUnsupportedPlatformMessage(platform = process.platform, arch = process.arch) {
   return [
-    `No published @linkerdao/agenthub binary is available for ${platform}/${arch}.`,
+    `No published @linkerdog/agenthub binary is available for ${platform}/${arch}.`,
     "Supported targets currently are: darwin/arm64, linux/arm64, linux/x64.",
   ].join(" ");
 }
@@ -24,7 +24,7 @@ function buildUnsupportedPlatformMessage(platform = process.platform, arch = pro
 function buildMissingPackageMessage(packageName) {
   return [
     `The platform package ${packageName} is not installed.`,
-    "Reinstall @linkerdao/agenthub or verify that npm optional dependencies are enabled for this platform.",
+    "Reinstall @linkerdog/agenthub or verify that npm optional dependencies are enabled for this platform.",
   ].join(" ");
 }
 

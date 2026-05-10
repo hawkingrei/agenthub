@@ -1,5 +1,5 @@
 {
-  "name": "@linkerdao/agenthub",
+  "name": "@linkerdog/agenthub",
   "version": "0.0.3",
   "private": false,
   "description": "AgentHub CLI distributed through npm with platform-specific native binaries.",
@@ -18,8 +18,8 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@linkerdao/agenthub-darwin-arm64": "0.0.3",
-    "@linkerdao/agenthub-linux-arm64": "0.0.3",
-    "@linkerdao/agenthub-linux-x64": "0.0.3"
+    "@linkerdog/agenthub-darwin-arm64": "0.0.3",
+    "@linkerdog/agenthub-linux-arm64": "0.0.3",
+    "@linkerdog/agenthub-linux-x64": "0.0.3"
   }
 }

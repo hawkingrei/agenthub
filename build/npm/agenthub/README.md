@@ -1,9 +1,9 @@
-# @linkerdao/agenthub
+# @linkerdog/agenthub
 
 Install the AgentHub CLI from npm:
 
 ```bash
-npm install -g @linkerdao/agenthub
+npm install -g @linkerdog/agenthub
 agenthub --help
 ```
 

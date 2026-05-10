@@ -1,8 +1,8 @@
 {
-  "name": "@linkerdao/agenthub-linux-x64",
+  "name": "@linkerdog/agenthub-linux-x64",
   "version": "0.0.3",
   "private": false,
-  "description": "Linux x64 native binary for @linkerdao/agenthub.",
+  "description": "Linux x64 native binary for @linkerdog/agenthub.",
   "license": "MIT",
   "files": [
     "bin",

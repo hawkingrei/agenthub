@@ -1,12 +1,12 @@
 # Summary
 
 Added the first release-time npm distribution path for the `agenthub` binary under the
-`@linkerdao` scope.
+`@linkerdog` scope.
 
 # Background
 
 The repository already produced Rust release archives, but there was no supported npm install
-path for operators who want `npm install -g @linkerdao/agenthub`.
+path for operators who want `npm install -g @linkerdog/agenthub`.
 
 The existing `web` and `userdocs` packages are private application packages, so they are not
 appropriate npm publish targets. The correct distribution unit is the Rust CLI binary itself.
@@ -36,5 +36,5 @@ appropriate npm publish targets. The correct distribution unit is the Rust CLI b
 # Follow-Ups
 
 - add additional platform packages if release coverage expands beyond the current three targets
-- verify the `@linkerdao` npm scope and `NPM_TOKEN` publish permissions before the first live
+- verify the `@linkerdog` npm scope and `NPM_TOKEN` publish permissions before the first live
   semver release

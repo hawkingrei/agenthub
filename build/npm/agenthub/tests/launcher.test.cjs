@@ -9,9 +9,9 @@ const {
 } = require("../bin/agenthub.cjs");
 
 test("resolvePlatformPackageName maps supported targets", () => {
-  assert.equal(resolvePlatformPackageName("darwin", "arm64"), "@linkerdao/agenthub-darwin-arm64");
-  assert.equal(resolvePlatformPackageName("linux", "arm64"), "@linkerdao/agenthub-linux-arm64");
-  assert.equal(resolvePlatformPackageName("linux", "x64"), "@linkerdao/agenthub-linux-x64");
+  assert.equal(resolvePlatformPackageName("darwin", "arm64"), "@linkerdog/agenthub-darwin-arm64");
+  assert.equal(resolvePlatformPackageName("linux", "arm64"), "@linkerdog/agenthub-linux-arm64");
+  assert.equal(resolvePlatformPackageName("linux", "x64"), "@linkerdog/agenthub-linux-x64");
   assert.equal(resolvePlatformPackageName("darwin", "x64"), null);
 });
 
@@ -38,7 +38,7 @@ test("resolveBinaryPath reports missing optional platform packages clearly", () 
       }),
     (error) =>
       error instanceof Error &&
-      error.message === buildMissingPackageMessage("@linkerdao/agenthub-linux-arm64") &&
+      error.message === buildMissingPackageMessage("@linkerdog/agenthub-linux-arm64") &&
       error.code === "MISSING_PLATFORM_PACKAGE"
   );
 });
