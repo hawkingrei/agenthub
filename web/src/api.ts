@@ -8,10 +8,9 @@ export const AGENT_SOURCE_TEAM_FORGE = "team_forge";
 export const AGENT_EVENT_PAGE_SIZE = 20;
 export const AGENT_NOT_RUNNING_ERROR = "agent not running"; 
 
-export function isAgentActiveStatus(status: string | null): boolean { 
-  return status === "running" || status === "starting"; 
-} 
-
+export function isAgentActiveStatus(status: string | null): boolean {
+  return status === "running" || status === "starting" || status === "idle";
+}
 
 export type AgentConfig = {
   name: string;
