@@ -406,8 +406,8 @@ export function App() {
     () =>
       workspaceNodeRoute
         ? "nodes"
-        : (resolveWorkspaceLens(routeLocation.search) ?? "channels"),
-    [routeLocation.search, workspaceNodeRoute]
+        : resolveWorkspaceLens(routeLocation.pathname, routeLocation.search),
+    [routeLocation.pathname, routeLocation.search, workspaceNodeRoute]
   );
   const selectedWorkspaceNodeId = useMemo(
     () =>
@@ -428,6 +428,10 @@ export function App() {
   const onSelectWorkspaceLens = useCallback(
     (value: string) => {
       const lens = value as WorkspaceLens;
+      if (lens === "teams") {
+        navigateWorkbenchRoute("/workspace/teams");
+        return;
+      }
       if (lens === "nodes") {
         navigateWorkbenchRoute(buildWorkspaceNodePath(selectedWorkspaceNodeId));
         return;
@@ -511,7 +515,7 @@ export function App() {
     setActiveSessionId(agentSessions[id] ?? null);
     setAgentsCollapsed(true);
     navigateWorkbenchRoute(buildWorkspacePath(id, activeWorkspaceLens === "nodes" ? "channels" : activeWorkspaceLens));
-  }, [agentSessions, navigateWorkbenchRoute, setActiveSessionId, activeWorkspaceLens]);
+  }, [agentSessions, navigateWorkbenchRoute, setActiveAgent, setActiveSessionId, activeWorkspaceLens, setAgentsCollapsed]);
 
   const onRespondPermission = useCallback(async (
     agentId: string,
@@ -530,7 +534,7 @@ export function App() {
     } finally {
       setPermissionBusy(null);
     }
-  }, [auth?.token]);
+  }, [auth?.token, setError, setPermissionBusy]);
 
   const onInputChange = useCallback(
     (value: string) => {
@@ -540,7 +544,7 @@ export function App() {
       }
       inputHistoryDraftRef.current = value;
     },
-    [inputHistoryCursor]
+    [inputHistoryCursor, setInput, setInputHistoryCursor]
   );
 
   const onNavigateInputHistory = useCallback(
@@ -568,7 +572,7 @@ export function App() {
       setInputHistoryCursor(nextCursor);
       setInput(inputHistory[nextCursor]);
     },
-    [input, inputHistory, inputHistoryCursor]
+    [input, inputHistory, inputHistoryCursor, setInput, setInputHistoryCursor]
   );
 
   const onSelectInputHistory = useCallback(
@@ -578,7 +582,7 @@ export function App() {
       setInput(value);
       inputHistoryDraftRef.current = value;
     },
-    [inputHistory]
+    [inputHistory, setInput, setInputHistoryCursor]
   );
 
   const sendAcpInput = useCallback(async (
@@ -657,7 +661,11 @@ export function App() {
     loadAgentEvents,
     refreshAgents,
     setActiveSessionId,
-    setAgentSessions
+    setAgentSessions,
+    setError,
+    setInput,
+    setInputHistory,
+    setInputHistoryCursor,
   ]);
 
   const handleAgentsSplitterPointerDown = useCallback(
@@ -704,11 +712,11 @@ export function App() {
 
   const handleCollapseAgents = useCallback(() => {
     setAgentsCollapsed(true);
-  }, []);
+  }, [setAgentsCollapsed]);
 
   const handleExpandAgents = useCallback(() => {
     setAgentsCollapsed(false);
-  }, []);
+  }, [setAgentsCollapsed]);
 
   useEffect(() => {
     if (agents.length === 0) {

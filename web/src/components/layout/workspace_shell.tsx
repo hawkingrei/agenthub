@@ -79,28 +79,30 @@ export const WorkspaceShell = React.memo(function WorkspaceShell({
       className="flex h-screen flex-col overflow-hidden bg-white" 
       ref={appRootRef as React.Ref<HTMLDivElement>}
     >
-      <WorkspaceShellHeader
-        ref={headerRef as React.Ref<HTMLElement>}
-        activeSurface={activeSurface}
-        title={title}
-        subtitle={subtitle}
-        sidebarToggleLabel={sidebarToggleLabel ?? defaultSidebarToggleLabel}
-        sidebarCollapsed={agentsCollapsed}
-        onToggleSidebar={onToggleAgents}
-        username={username}
-        isRoot={isRoot}
-        headerShellClassName={APP_WORKBENCH_HEADER_CLASS}
-        headerIconButtonClassName={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${
-          agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"
-        }`}
-        menuButtonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
-        connectionBadge={connectionBadge}
-        headerStatusClassName={APP_WORKBENCH_HEADER_STATUS_CLASS}
-        lensItems={lensItems}
-        onSelectLens={onSelectLens}
-        onNavigate={onNavigate}
-        onLogout={onLogout}
-      />
+      {username ? (
+        <WorkspaceShellHeader
+          ref={headerRef as React.Ref<HTMLElement>}
+          activeSurface={activeSurface}
+          title={title}
+          subtitle={subtitle}
+          sidebarToggleLabel={sidebarToggleLabel ?? defaultSidebarToggleLabel}
+          sidebarCollapsed={agentsCollapsed}
+          onToggleSidebar={onToggleAgents}
+          username={username}
+          isRoot={isRoot}
+          headerShellClassName={APP_WORKBENCH_HEADER_CLASS}
+          headerIconButtonClassName={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${
+            agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"
+          }`}
+          menuButtonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
+          connectionBadge={connectionBadge}
+          headerStatusClassName={APP_WORKBENCH_HEADER_STATUS_CLASS}
+          lensItems={lensItems}
+          onSelectLens={onSelectLens}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+        />
+      ) : null}
 
       <div className={WORKSPACE_CONTENT_ROOT_CLASS}>
         {normalizedError ? (

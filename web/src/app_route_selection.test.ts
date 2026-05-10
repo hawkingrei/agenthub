@@ -87,13 +87,16 @@ describe("app route selection", () => {
   });
 
   it("maps legacy chat and threads lens values to channels", () => {
-    expect(resolveWorkspaceLens("?lens=channels")).toBe("channels");
-    expect(resolveWorkspaceLens("?lens=chat")).toBe("channels");
-    expect(resolveWorkspaceLens("?lens=threads")).toBe("channels");
-    expect(resolveWorkspaceLens("?lens=nodes")).toBe("nodes");
-    expect(resolveWorkspaceLens("?lens=unknown")).toBe(null);
+    expect(resolveWorkspaceLens("/workspace", "?lens=channels")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace", "?lens=chat")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace", "?lens=threads")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace", "?lens=nodes")).toBe("nodes");
+    expect(resolveWorkspaceLens("/workspace", "?lens=unknown")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace", "")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace/nodes", "?lens=unknown")).toBe("nodes");
+    expect(resolveWorkspaceLens("/workspace/teams/team-1", "")).toBe("channels");
     expect(buildWorkspacePath("agent-1", "channels")).toBe(
-      "/workspace/agents/agent-1?lens=channels"
+      "/workspace/agents/agent-1"
     );
     expect(buildTeamDetailPath("team-1")).toBe("/workspace/teams/team-1");
     expect(buildTeamDetailPath("team/1")).toBe("/workspace/teams/team%2F1");
@@ -105,19 +108,19 @@ describe("app route selection", () => {
       buildTeamWorkspacePath("team-1", "members", null, null, " worker-2 ", "member_console")
     ).toBe("/workspace/teams/team-1?lens=members&member=worker-2&tab=member_console");
     expect(buildTeamWorkspacePath("team-1", "channels", "review", 42)).toBe(
-      "/workspace/teams/team-1?lens=channels&channel=review&thread=42"
+      "/workspace/teams/team-1?channel=review&thread=42"
     );
     expect(buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "task-77")).toBe(
-      "/workspace/teams/team-1?lens=channels&channel=review&task=task-77"
+      "/workspace/teams/team-1?channel=review&task=task-77"
     );
     expect(
       buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, " task-77 ")
-    ).toBe("/workspace/teams/team-1?lens=channels&channel=review&task=task-77");
+    ).toBe("/workspace/teams/team-1?channel=review&task=task-77");
     expect(
       buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "   ")
-    ).toBe("/workspace/teams/team-1?lens=channels&channel=review");
+    ).toBe("/workspace/teams/team-1?channel=review");
     expect(buildTeamWorkspacePath("team-1", "channels", "all", 42, null, null, "task-77")).toBe(
-      "/workspace/teams/team-1?lens=channels&thread=42&task=task-77"
+      "/workspace/teams/team-1?thread=42&task=task-77"
     );
     expect(
       buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp", "task-9")

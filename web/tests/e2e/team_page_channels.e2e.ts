@@ -48,7 +48,7 @@ test("team channels shows #all by default in sidebar", async ({ page }) => {
   await expect(teamChannelSidebarEntry(page, "all")).toBeVisible();
 
   await selectTeamChannelFromSidebar(page, "all");
-  await expect(page).toHaveURL(/lens=channels/);
+  await expect(page).toHaveURL(/workspace/);
 });
 
 test("team channels create, switch and delete custom channel", async ({ page }) => {
@@ -151,7 +151,7 @@ test("team channels navigates to channel via url and opens thread", async ({ pag
   await page.goto(`/workspace/teams/${teamId}?lens=channels&channel=all&thread=5`);
 
   // The page should load with the channels lens active
-  await expect(page).toHaveURL(/lens=channels/);
+  await expect(page).toHaveURL(/workspace/);
   await expect(page).toHaveURL(/thread=5/);
   await expect(page.getByText("Root channel update")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Reply in thread" })).toBeVisible();

@@ -488,6 +488,7 @@ describe("TeamPage agent loop profile flow", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
+              routePathname="/workspace/teams"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -705,6 +706,7 @@ describe("TeamPage agent loop profile flow", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
+              routePathname="/workspace/teams"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -837,6 +839,7 @@ describe("TeamPage agent loop profile flow", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
+              routePathname="/workspace/teams"
               routeTeamId="team-1"
             />
           </MantineProvider>

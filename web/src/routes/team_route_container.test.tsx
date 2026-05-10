@@ -66,6 +66,7 @@ describe("TeamRouteContainer", () => {
       auth,
       token: "token-1",
       developerMode: true,
+      routePathname: "/workspace/teams/team-1",
       routeTeamId: "team-1",
       routeSearch: "?lens=channels&channel=ops",
       defaultWorktreeRoot: "/tmp/work",

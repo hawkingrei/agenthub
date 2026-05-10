@@ -7,6 +7,7 @@ describe("buildStandardWorkspaceLensItems", () => {
     const items = buildStandardWorkspaceLensItems("tasks");
 
     expect(items.map((item) => item.value)).toEqual([
+      "teams",
       "channels",
       "tasks",
       "members",
@@ -26,6 +27,7 @@ describe("buildStandardWorkspaceLensItems", () => {
     });
 
     expect(items.map((item) => item.value)).toEqual([
+      "teams",
       "channels",
       "tasks",
       "members",
