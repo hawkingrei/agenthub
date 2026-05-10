@@ -6,7 +6,6 @@ import {
   navigateToPath,
   shouldHandleInAppLinkClick,
 } from "../app_route_selection";
-import { isAgentActiveStatus } from "../agent_ws";
 import type { AgentNodeUpdate, TeamDefinitionRecord } from "../api";
 import {
   AgentNodeJoinBootstrapInfo,
@@ -189,7 +188,7 @@ function deriveNodeTeamUsageSummaries(
       }
       const activeAgentCount = matchedMembers.filter((memberId) => {
         const status = agentsById.get(memberId.memberId)?.status ?? "";
-        return isAgentActiveStatus(status);
+        return status === "running" || status === "starting";
       }).length;
       return {
         teamId: team.id,

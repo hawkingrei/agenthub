@@ -5,9 +5,6 @@ import {
   stringifyApiError,
 } from "./api";
 import {
-  AGENT_NOT_RUNNING_ERROR,
-} from "./agent_ws";
-import {
   canManageAgentNodes,
   clampAgentsPanelWidth,
   resolveAgentsPanelMaxWidth,

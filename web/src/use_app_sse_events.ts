@@ -16,7 +16,6 @@ import {
 } from "./event_polling";
 import { normalizeSseOutputLines } from "./app_live_output";
 import { encodeSseTargetAgentIds, buildSseTargetAgentIds } from "./sse_targets";
-import { shouldIgnoreAgentWsError } from "./agent_ws";
 import { 
   clearAuthAndRedirect,
   isInvalidTokenMessage 
@@ -138,9 +137,7 @@ export function useAppSseEvents(
               event.data,
               getNavigatorOnline()
             );
-            if (!shouldIgnoreAgentWsError(normalizedStreamError, activeAgentStatusRef.current)) {
-              setError(normalizedStreamError);
-            }
+            setError(normalizedStreamError);
           }
         }
       };

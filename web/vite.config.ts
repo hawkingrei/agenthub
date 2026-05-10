@@ -16,7 +16,6 @@ const ROUTE_AGENTS_IDS = [
   "/src/components/agents_panel.tsx",
   "/src/components/output_header.tsx",
   "/src/components/output_error_boundary.tsx",
-  "/src/agent_ws.ts",
   "/src/output_cache.ts",
 ];
 

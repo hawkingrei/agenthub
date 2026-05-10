@@ -1,11 +1,10 @@
 import { AgentRecord } from "./api";
-import { shouldOpenAgentSocket } from "./agent_ws";
 
 export function buildSseTargetAgentIds(agents: AgentRecord[]): string[] {
   const seen = new Set<string>();
   const ids: string[] = [];
   for (const agent of agents) {
-    if (!shouldOpenAgentSocket(agent.status)) continue;
+    if (!(agent.status === "running" || agent.status === "starting")) continue;
     if (agent.target_node_id) continue;
     const id = agent.id.trim();
     if (!id || seen.has(id)) continue;

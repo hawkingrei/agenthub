@@ -1,6 +1,5 @@
 import type { TeamPromptDefaultsRecord } from "../../api";
 import { AgentRecord, TeamRunSnapshotRecord, TeamRuntimeMemberRecord } from "../../api";
-import { isAgentActiveStatus } from "../../agent_ws";
 
 export const DEFAULT_TEAM_COORDINATOR_SKILLS = [
   "agenthub-actor-runtime",
@@ -297,7 +296,7 @@ export function summarizeTeamMemberAgentStatuses(
       missing += 1;
       continue;
     }
-    if (isAgentActiveStatus(member.status)) {
+    if ((member.status === "running" || member.status === "starting")) {
       active += 1;
     }
   }
@@ -369,7 +368,7 @@ export function resolveTeamMemberLifecycleTone(
   if (member.missing_agent) {
     return "missing";
   }
-  return isAgentActiveStatus(member.status) ? "active" : "inactive";
+  return (member.status === "running" || member.status === "starting") ? "active" : "inactive";
 }
 
 export function buildTeamMemberLiveStates(

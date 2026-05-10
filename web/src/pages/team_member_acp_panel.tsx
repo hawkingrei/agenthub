@@ -1,5 +1,4 @@
 import React from "react";
-import { isAgentActiveStatus } from "../agent_ws";
 import { AgentEvent, TeamMemberSnapshot } from "../api";
 import { getTeamStepRuntimeHandleId } from "../api";
 import {
@@ -118,7 +117,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       : explicitSelectedSessionId ??
         (normalizedAgentStatus &&
         !snapshotHasActiveSession &&
-        !isAgentActiveStatus(normalizedAgentStatus)
+        !(normalizedAgentStatus === "running" || normalizedAgentStatus === "starting")
           ? null
           : getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step));
   const {

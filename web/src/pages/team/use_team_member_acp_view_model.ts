@@ -1,6 +1,5 @@
 import React from "react";
 import { buildAcpView } from "../../acp";
-import { isAgentActiveStatus } from "../../agent_ws";
 import type { AgentEvent, TeamMemberSnapshot } from "../../api";
 import { getTeamStepRuntimeHandleId } from "../../api";
 import { getAcpConversationCacheStats } from "../../components/acp_conversation_cache_stats";
@@ -204,7 +203,7 @@ export function useTeamMemberAcpViewModel({
     snapshotIsActive ||
     hasExplicitSelectedSession ||
     !normalizedAgentStatus ||
-    isAgentActiveStatus(normalizedAgentStatus);
+    (normalizedAgentStatus === "running" || normalizedAgentStatus === "starting");
   const conversationEventMeta = React.useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId || !selectedSessionId) {
@@ -271,7 +270,7 @@ export function useTeamMemberAcpViewModel({
     (!hasExplicitSelectedSession &&
       !snapshotIsActive &&
       Boolean(normalizedAgentStatus) &&
-      !isAgentActiveStatus(normalizedAgentStatus));
+      !(normalizedAgentStatus === "running" || normalizedAgentStatus === "starting"));
   const authoritativeTerminalStatus = hasAuthoritativeStoppedStatus
     ? snapshotStatus || normalizedAgentStatus || "stopped"
     : null;
@@ -295,7 +294,7 @@ export function useTeamMemberAcpViewModel({
       ? snapshotStatus
       : !hasExplicitSelectedSession &&
         normalizedAgentStatus &&
-        !isAgentActiveStatus(normalizedAgentStatus)
+        !(normalizedAgentStatus === "running" || normalizedAgentStatus === "starting")
       ? normalizedAgentStatus
       : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
     normalizeTeamMemberStatusValue(memberRoleLabel) ||
@@ -309,7 +308,7 @@ export function useTeamMemberAcpViewModel({
       ((snapshotStatus && isActiveTeamMemberStatus(snapshotStatus)) ||
         (!snapshotStatus &&
           normalizedAgentStatus &&
-          isAgentActiveStatus(normalizedAgentStatus)))
+          (normalizedAgentStatus === "running" || normalizedAgentStatus === "starting")))
   );
   const thinkingLabel =
     acpView.thinkingStartTs && isActiveTeamMemberStatus(snapshotStatus || acpRunStatus)

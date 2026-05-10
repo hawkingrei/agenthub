@@ -5,7 +5,6 @@ import {
   AgentRecord,
 } from "./api";
 import { buildAcpView, EMPTY_ACP_VIEW, type AcpView } from "./acp";
-import { isAgentActiveStatus } from "./agent_ws";
 import { compareEventOrder } from "./seq_order";
 import { getLocalStorageItemSafe, setLocalStorageItemSafe } from "./storage/safe_storage";
 import { AuthState } from "./types";
@@ -27,7 +26,7 @@ export type PendingPermissionJumpState = {
 export type PermissionJumpDecision = "idle" | "wait" | "attempt" | "clear";
 
 export function resolveDefaultActiveAgentId(agents: AgentRecord[]): string | null {
-  return agents.find((agent) => isAgentActiveStatus(agent.status))?.id ?? null;
+  return agents.find((agent) => agent.status === "running" || agent.status === "starting")?.id ?? null;
 }
 
 export function resolveActiveAcpView(
@@ -44,7 +43,7 @@ export function buildPermissionPollAgentIds(agents: AgentRecord[]): string[] {
   return Array.from(
     new Set(
       agents
-        .filter((agent) => isAgentActiveStatus(agent.status))
+        .filter((agent) => agent.status === "running" || agent.status === "starting")
         .map((agent) => agent.id)
     )
   ).sort();

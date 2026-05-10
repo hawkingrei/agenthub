@@ -30,7 +30,6 @@ import {
   resolveLiveSessionSwitch, 
   routeLiveOutputBatch 
 } from "./app_live_output";
-import { isAgentActiveStatus } from "./agent_ws";
 import { 
   getMaxEventCursor, 
   isCursorNewer, 
@@ -159,7 +158,7 @@ export function useAppOutputCache(
     }
 
     const liveSessionSwitch = resolveLiveSessionSwitch(lines, currentActive, currentSessionId);
-    if (liveSessionSwitch && liveSessionSwitch !== currentSessionId && isAgentActiveStatus(activeAgentStatusRef.current)) {
+    if (liveSessionSwitch && liveSessionSwitch !== currentSessionId && (activeAgentStatusRef.current === "running" || activeAgentStatusRef.current === "starting")) {
       setActiveSessionId(liveSessionSwitch);
     }
 

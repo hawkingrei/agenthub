@@ -6,6 +6,7 @@ import {
   AgentDiscoveryCardRecord,
   AgentRecord,
   AgentEvent,
+  AGENT_NOT_RUNNING_ERROR,
   api,
   getTeamStepRuntimeHandleId,
   TeamConversationMessageRecord,
@@ -21,7 +22,6 @@ import {
   TeamRunSnapshotRecord,
   TeamStepRecord,
 } from "../api";
-import { AGENT_NOT_RUNNING_ERROR, isAgentActiveStatus } from "../agent_ws";
 import { type AgentPresetId } from "../agent_presets";
 import { ErrorBanner } from "../error_banner";
 import {
@@ -404,20 +404,20 @@ export function resolveSelectedAgentWorkspaceSessionId(
   if (normalizedRuntimeSessionId) {
     if (
       normalizedRuntimeSessionStatus &&
-      !isAgentActiveStatus(normalizedRuntimeSessionStatus)
+      !(normalizedRuntimeSessionStatus === "running" || normalizedRuntimeSessionStatus === "starting")
     ) {
       return null;
     }
     if (
       !normalizedRuntimeSessionStatus &&
       normalizedRuntimeAgentStatus &&
-      !isAgentActiveStatus(normalizedRuntimeAgentStatus)
+      !(normalizedRuntimeAgentStatus === "running" || normalizedRuntimeAgentStatus === "starting")
     ) {
       return null;
     }
     return normalizedRuntimeSessionId;
   }
-  if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
+  if (normalizedAgentStatus && !(normalizedAgentStatus === "running" || normalizedAgentStatus === "starting")) {
     return null;
   }
   const normalizedPreviousSessionId = previousSessionId?.trim() ?? "";
@@ -3571,8 +3571,8 @@ export function TeamPage(props: TeamPageProps) {
         eventsLoading={eventsLoading}
         oldestMemberEventId={oldestMemberEventId}
         onSendInput={onSendAgentAcpInput}
-        canControlAcp={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
-        canInterrupt={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
+        canControlAcp={(selectedAgentWorkspaceAgent?.status === "running" || selectedAgentWorkspaceAgent?.status === "starting")}
+        canInterrupt={(selectedAgentWorkspaceAgent?.status === "running" || selectedAgentWorkspaceAgent?.status === "starting")}
         onInterrupt={onCancelTeamMemberAcp}
         onAcpSetMode={onSetTeamMemberAcpMode}
         onAcpSetModel={onSetTeamMemberAcpModel}

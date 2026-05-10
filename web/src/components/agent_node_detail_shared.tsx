@@ -5,7 +5,6 @@ import {
   AgentNodeRecord,
   AgentRecord,
 } from "../api";
-import { isAgentActiveStatus } from "../agent_ws";
 import {
   ActionButton,
   Badge,
@@ -189,7 +188,7 @@ export function deriveNodeRuntimeSummary(
       hint: `The latest bootstrap credential issuance was recorded ${formatNodeTimestamp(node.last_seen_at)}, so the node identity is known but not recently refreshed.`,
     };
   }
-  if (agents.some((agent) => isAgentActiveStatus(agent.status))) {
+  if (agents.some((agent) => agent.status === "running" || agent.status === "starting")) {
     return {
       status: "degraded",
       label: "Degraded",
