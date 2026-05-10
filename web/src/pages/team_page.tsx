@@ -4136,6 +4136,14 @@ export function TeamPage(props: TeamPageProps) {
     return shouldHideErrorBannerMessage(message) ? null : message;
   }, [error]);
 
+  const teamPanelToggleLabel = isCompactWorkbench
+    ? teamsSidebarCollapsed
+      ? "Show teams panel"
+      : "Show workbench"
+    : teamsSidebarCollapsed
+      ? "Show teams panel"
+      : "Hide teams panel";
+
   return (
     <WorkspaceShell
       title={isSelectorRoute ? "Teams" : (selectedTeam?.name ?? "Team")}
@@ -4145,6 +4153,7 @@ export function TeamPage(props: TeamPageProps) {
       isRoot={props.auth.role === "root"}
       agentsCollapsed={teamsSidebarCollapsed}
       onToggleAgents={() => setTeamsSidebarCollapsed((previous) => !previous)}
+      sidebarToggleLabel={teamPanelToggleLabel}
       normalizedError={normalizedTeamPageError}
       onClearError={() => setError(null)}
       onLogout={props.onLogout}

@@ -5,6 +5,7 @@ cmd/agenthub/Cargo.lock
 .cache
 .cargo
 .DS_Store
+node_modules
 web/node_modules
 web/dist
 web/dist-debug

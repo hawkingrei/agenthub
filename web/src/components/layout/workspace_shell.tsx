@@ -26,6 +26,7 @@ export type WorkspaceShellProps = {
   // Sidebar/Agents state
   agentsCollapsed: boolean;
   onToggleAgents: () => void;
+  sidebarToggleLabel?: string | null;
   
   // Realtime/Global Error
   normalizedError: string | null;
@@ -70,6 +71,8 @@ export const WorkspaceShell = React.memo(function WorkspaceShell({
   warningNotice,
   modals,
 }: WorkspaceShellProps) {
+  const defaultSidebarToggleLabel = agentsCollapsed ? "Show agents" : "Hide agents";
+
   return (
     <div 
       className="flex h-screen flex-col overflow-hidden bg-white" 
@@ -80,7 +83,7 @@ export const WorkspaceShell = React.memo(function WorkspaceShell({
         activeSurface={activeSurface}
         title={title}
         subtitle={subtitle}
-        sidebarToggleLabel={agentsCollapsed ? "Show agents" : "Hide agents"}
+        sidebarToggleLabel={sidebarToggleLabel ?? defaultSidebarToggleLabel}
         sidebarCollapsed={agentsCollapsed}
         onToggleSidebar={onToggleAgents}
         username={username}
