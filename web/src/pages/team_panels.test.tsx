@@ -1960,7 +1960,7 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByAriaLabel(container, "Refresh snapshot"));
-    clickElement(required(container.querySelectorAll(".teams-member-list .team-item")[1], "member button missing"));
+    clickElement(required(container.querySelectorAll(".team-member-row")[1], "member button missing"));
 
     expect(onRefreshSnapshot).toHaveBeenCalledTimes(1);
     expect(onOpenMailboxForMember).toHaveBeenCalledWith("worker-agent");
@@ -1968,7 +1968,6 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Coordinator startup");
     expect(container.textContent).toContain("Worker startup");
     expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
-    expect(container.querySelector(".teams-member-list")).not.toBeNull();
     expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
     expect(container.textContent).toContain("Machine main");
     expect(container.textContent).toContain("Machine node-east");
