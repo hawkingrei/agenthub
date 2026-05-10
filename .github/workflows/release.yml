@@ -196,7 +196,7 @@ jobs:
         shell: bash
         run: |
           if [[ -z "${NPM_TOKEN}" ]]; then
-            echo "::error::NPM_TOKEN is required to publish @linkerdao/agenthub packages."
+            echo "::error::NPM_TOKEN is required to publish @linkerdog/agenthub packages."
             exit 1
           fi
 

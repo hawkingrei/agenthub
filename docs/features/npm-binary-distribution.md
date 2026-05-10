@@ -14,7 +14,7 @@ That blocks the common operator flow of:
 ## Scope
 
 - npm distribution for the `agenthub` CLI binary
-- package naming under the `@linkerdao` scope
+- package naming under the `@linkerdog` scope
 - release-time publish automation
 - supported platform contract for npm-distributed binaries
 
@@ -31,10 +31,10 @@ That blocks the common operator flow of:
 
 The npm distribution uses one wrapper package plus platform-specific binary packages:
 
-- `@linkerdao/agenthub`
-- `@linkerdao/agenthub-darwin-arm64`
-- `@linkerdao/agenthub-linux-arm64`
-- `@linkerdao/agenthub-linux-x64`
+- `@linkerdog/agenthub`
+- `@linkerdog/agenthub-darwin-arm64`
+- `@linkerdog/agenthub-linux-arm64`
+- `@linkerdog/agenthub-linux-x64`
 
 Repository package skeletons live under `build/npm/` because they are release/distribution assets,
 not runtime app packages.
@@ -73,8 +73,8 @@ Unsupported targets must fail with a clear runtime message from the wrapper pack
 
 ### Scope Contract
 
-- all npm packages publish under `@linkerdao`
-- the main public install target is `@linkerdao/agenthub`
+- all npm packages publish under `@linkerdog`
+- the main public install target is `@linkerdog/agenthub`
 - platform packages stay implementation detail packages and should not be the primary install path
 
 ## Validation Matrix
@@ -87,6 +87,6 @@ Unsupported targets must fail with a clear runtime message from the wrapper pack
 
 ## Operational Notes
 
-- repository maintainers must provide `NPM_TOKEN` with publish access to the `@linkerdao` scope
+- repository maintainers must provide `NPM_TOKEN` with publish access to the `@linkerdog` scope
 - package versions are derived from the release tag without the leading `v`
 - GitHub release archives remain available for direct binary download even when npm publish is used
