@@ -4146,7 +4146,7 @@ export function TeamPage(props: TeamPageProps) {
 
   return (
     <WorkspaceShell
-      title={isSelectorRoute ? "Teams" : (selectedTeam?.name ?? "Team")}
+      title={isSelectorRoute ? "Teams" : "Workspace"}
       subtitle={null}
       activeSurface="teams"
       username={props.auth.username}

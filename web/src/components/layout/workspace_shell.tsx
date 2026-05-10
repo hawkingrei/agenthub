@@ -61,6 +61,7 @@ export const WorkspaceShell = React.memo(function WorkspaceShell({
   connectionBadge,
   agentsCollapsed,
   onToggleAgents,
+  sidebarToggleLabel,
   normalizedError,
   onClearError,
   lensItems = [],
