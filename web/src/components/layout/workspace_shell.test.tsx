@@ -1,10 +1,10 @@
 import { MantineProvider } from "@mantine/core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { WorkspaceShell } from "./workspace_shell";
+import { WorkspaceShell, type WorkspaceShellProps } from "./workspace_shell";
 
 describe("WorkspaceShell", () => {
-  const baseProps = {
+  const baseProps: WorkspaceShellProps = {
     title: "Test Workspace",
     subtitle: "Testing...",
     activeSurface: "workspace" as const,
@@ -19,7 +19,7 @@ describe("WorkspaceShell", () => {
     children: <div>Content</div>,
   };
 
-  function renderHtml(props: any = {}) {
+  function renderHtml(props: Partial<WorkspaceShellProps> = {}) {
     return renderToStaticMarkup(
       <MantineProvider>
         <WorkspaceShell {...baseProps} {...props} />

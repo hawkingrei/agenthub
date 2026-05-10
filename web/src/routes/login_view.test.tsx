@@ -1,10 +1,10 @@
 import { MantineProvider } from "@mantine/core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { LoginView } from "./login_view";
+import { LoginView, type LoginViewProps } from "./login_view";
 
 describe("LoginView", () => {
-  const baseProps = {
+  const baseProps: LoginViewProps = {
     authBusy: null,
     rootInitialized: true,
     username: "user1",
@@ -17,7 +17,7 @@ describe("LoginView", () => {
     onRegister: vi.fn(),
   };
 
-  function renderHtml(props: any = {}) {
+  function renderHtml(props: Partial<LoginViewProps> = {}) {
     return renderToStaticMarkup(
       <MantineProvider>
         <LoginView {...baseProps} {...props} />
