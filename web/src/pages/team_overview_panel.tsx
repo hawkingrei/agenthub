@@ -112,7 +112,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
             <KeyValueItem label="Recent events" value={snapshot.latest_events.length} />
           </KeyValueList>
 
-          <div className="flex flex-col gap-2">
+          <div className="teams-member-list flex flex-col gap-2">
             {snapshot.members.map((member) => {
               const attachedNodeId = memberTargetNodeById[member.member_id]?.trim() || null;
               const attachedNodeIsMain = attachedNodeId ? isMainNode(attachedNodeId) : false;
