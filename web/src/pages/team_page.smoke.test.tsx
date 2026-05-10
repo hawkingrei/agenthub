@@ -364,7 +364,7 @@ describe("TeamPage smoke render", () => {
             onLogout={() => {}}
             developerMode={false}
             routeTeamId="team-1"
-            routePathname="/workspace/teams"
+            routePathname="/workspace/teams/team-1"
             routeSearch=""
           />
         </MantineProvider>
@@ -469,7 +469,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -552,7 +552,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-b"
               routeTeamId="team-b"
             />
           </MantineProvider>
@@ -631,7 +631,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -651,7 +651,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -732,7 +732,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -753,7 +753,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-2"
               routeTeamId="team-2"
             />
           </MantineProvider>
@@ -874,9 +874,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&channel=review"
+              routeSearch="?channel=review"
             />
           </MantineProvider>
         );
@@ -971,7 +971,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
               routeSearch="?channel=review"
             />
@@ -1035,7 +1035,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
               routeSearch="?channel=review"
             />
@@ -1098,7 +1098,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
               routeSearch="?channel=review"
             />
@@ -1191,9 +1191,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&channel=review&thread=17"
+              routeSearch="?channel=review&thread=17"
             />
           </MantineProvider>
         );
@@ -1211,7 +1211,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?lens=channels&channel=review");
+      expect(window.location.search).toBe("?channel=review");
     } finally {
       act(() => {
         root.unmount();
@@ -1292,9 +1292,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&channel=review&task=task-review&thread=17"
+              routeSearch="?channel=review&task=task-review&thread=17"
             />
           </MantineProvider>
         );
@@ -1312,7 +1312,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?lens=channels&channel=review");
+      expect(window.location.search).toBe("?channel=review");
     } finally {
       act(() => {
         root.unmount();
@@ -1393,9 +1393,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&channel=review&thread=17"
+              routeSearch="?channel=review&thread=17"
             />
           </MantineProvider>
         );
@@ -1413,7 +1413,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?lens=channels&channel=review");
+      expect(window.location.search).toBe("?channel=review");
     } finally {
       act(() => {
         root.unmount();
@@ -1494,9 +1494,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&channel=review&task=task-work&thread=17"
+              routeSearch="?channel=review&task=task-work&thread=17"
             />
           </MantineProvider>
         );
@@ -1514,7 +1514,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?lens=channels&channel=review&task=task-work");
+      expect(window.location.search).toBe("?channel=review&task=task-work");
     } finally {
       act(() => {
         root.unmount();
@@ -1582,9 +1582,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&channel=all&thread=17"
+              routeSearch="?channel=all&thread=17"
             />
           </MantineProvider>
         );
@@ -1678,9 +1678,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&channel=all&thread=17"
+              routeSearch="?channel=all&thread=17"
             />
           </MantineProvider>
         );
@@ -1790,7 +1790,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
               routeSearch="?channel=review&thread=17"
             />
@@ -1891,7 +1891,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
               routeSearch="?channel=review&thread=17"
             />
@@ -1992,7 +1992,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
               routeSearch="?channel=review&task=task-work&thread=17"
             />
@@ -2081,7 +2081,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -2169,7 +2169,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -2252,7 +2252,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -2356,7 +2356,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -2491,7 +2491,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>
@@ -2530,8 +2530,31 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
+      // Re-render with updated search to simulate parent route change
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routePathname="/workspace/teams/team-1"
+              routeTeamId="team-1"
+              routeSearch={window.location.search}
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?lens=channels&task=task-work");
+      expect(window.location.search).toBe("?task=task-work");
 
       const lastOptions =
         teamConversationActionsOptionsSpy.mock.calls[
@@ -2634,9 +2657,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&channel=review&task=task-work"
+              routeSearch="?channel=review&task=task-work"
             />
           </MantineProvider>
         );
@@ -2750,9 +2773,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
-              routeSearch="?lens=channels&task=task-work"
+              routeSearch="?task=task-work"
             />
           </MantineProvider>
         );
@@ -2760,7 +2783,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?lens=channels&channel=review&task=task-work");
+      expect(window.location.search).toBe("?channel=review&task=task-work");
 
       const lastOptions =
         teamConversationActionsOptionsSpy.mock.calls[
@@ -2868,7 +2891,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
               routeSearch="?lens=tasks"
             />
@@ -2901,7 +2924,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?lens=channels&channel=review&task=task-work");
+      expect(window.location.search).toBe("?channel=review&task=task-work");
     } finally {
       act(() => {
         root.unmount();
@@ -3007,7 +3030,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams"
+              routePathname="/workspace/teams/team-1"
               routeTeamId="team-1"
             />
           </MantineProvider>

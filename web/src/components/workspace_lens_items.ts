@@ -14,6 +14,12 @@ export function buildStandardWorkspaceLensItems(
   const { includeNodes = false, onPrefetch } = options;
   const items: WorkspaceShellLensItem[] = [
     {
+      value: "teams",
+      label: "Teams",
+      active: activeLens === "teams",
+      onPrefetch: onPrefetch ? () => onPrefetch("teams") : undefined,
+    },
+    {
       value: "channels",
       label: "Channels",
       active: activeLens === "channels",

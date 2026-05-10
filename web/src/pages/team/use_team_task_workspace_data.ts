@@ -76,7 +76,7 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     setCompilePreviewContextId,
   } = options;
 
-  const resolvedSelectedConversationTaskId = selectedConversationTaskId.trim();
+  const resolvedSelectedConversationTaskId = (routeSelectedTaskId?.trim() || selectedConversationTaskId.trim()).trim();
   const [selectedConversationDetailMissing, setSelectedConversationDetailMissing] = useState(false);
 
   const selectedConversation = useMemo(() => {

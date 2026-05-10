@@ -520,10 +520,14 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
 
   const onSelectWorkspaceLens = useCallback(
     (value: string) => {
+      const lens = value as WorkspaceLens;
+      if (lens === "teams") {
+        navigateToTeamDetail(""); // Navigate to selector
+        return;
+      }
       if (!selectedTeamId) {
         return;
       }
-      const lens = value as WorkspaceLens;
       // Shell-level lens switches should also reset the hidden Team-local tab
       // state so the URL and the in-memory workspace context stay aligned.
       if (lens === "tasks") {

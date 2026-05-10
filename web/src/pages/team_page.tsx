@@ -667,7 +667,7 @@ export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
   const routeWorkspaceLens = useMemo(
     () => resolveWorkspaceLens(props.routePathname, props.routeSearch ?? ""),
-    [props.routeSearch]
+    [props.routePathname, props.routeSearch]
   );
   const routeWorkspaceTab = useMemo(
     () => resolveTeamWorkspaceTab(props.routeSearch ?? ""),
@@ -754,13 +754,13 @@ export function TeamPage(props: TeamPageProps) {
   const eventsAutoRefresh = teamUiState.eventsAutoRefresh;
   const setTab = useCallback((next: TeamTab) => {
     dispatchTeamUi({ type: "set_tab", tab: next });
-  }, []);
+  }, [dispatchTeamUi]);
   const setRunLookupId = useCallback((next: string) => {
     dispatchTeamUi({ type: "set_run_lookup_id", runLookupId: next });
-  }, []);
+  }, [dispatchTeamUi]);
   const setEventsAutoRefresh = useCallback((next: boolean) => {
     dispatchTeamUi({ type: "set_events_auto_refresh", eventsAutoRefresh: next });
-  }, []);
+  }, [dispatchTeamUi]);
 
   useEffect(() => {
     if (routeWorkspaceTab) {
@@ -797,7 +797,7 @@ export function TeamPage(props: TeamPageProps) {
   const stepResumePayload = teamControlState.stepResumePayload;
   const patchTeamControl = useCallback((patch: Partial<TeamControlState>) => {
     dispatchTeamControl({ type: "patch", patch });
-  }, []);
+  }, [dispatchTeamControl]);
   const setRunContextId = useCallback(
     (next: string) => patchTeamControl({ runContextId: next }),
     [patchTeamControl]
@@ -881,7 +881,7 @@ export function TeamPage(props: TeamPageProps) {
         return resolved;
       });
     },
-    [isSelectorRoute, routeTeamId]
+    [isSelectorRoute, routeTeamId, setSelectedTeamId]
   );
   useEffect(() => {
     if (isSelectorRoute && !wasSelectorRouteRef.current) {
@@ -920,7 +920,7 @@ export function TeamPage(props: TeamPageProps) {
   const [showTeamMemberEditModal, setShowTeamMemberEditModal] = useState(false);
   const patchTeamCreate = useCallback((patch: Partial<TeamCreateState>) => {
     dispatchTeamCreate({ type: "patch", patch });
-  }, []);
+  }, [dispatchTeamCreate]);
   const setNewTeamName = useCallback(
     (next: string) => patchTeamCreate({ newTeamName: next }),
     [patchTeamCreate]
@@ -1085,7 +1085,7 @@ export function TeamPage(props: TeamPageProps) {
   const selectedMemberId = teamMailboxState.selectedMemberId;
   const patchTeamMailbox = useCallback((patch: Partial<TeamMailboxState>) => {
     dispatchTeamMailbox({ type: "patch", patch });
-  }, []);
+  }, [dispatchTeamMailbox]);
   const setMsgFromActorId = useCallback(
     (next: string) => patchTeamMailbox({ msgFromActorId: next }),
     [patchTeamMailbox]
