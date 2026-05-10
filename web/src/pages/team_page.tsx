@@ -23,7 +23,6 @@ import {
 } from "../api";
 import { AGENT_NOT_RUNNING_ERROR, isAgentActiveStatus } from "../agent_ws";
 import { type AgentPresetId } from "../agent_presets";
-import { ErrorBanner } from "../error_banner";
 import {
   getNavigatorOnline,
   sanitizeErrorBannerMessage,
@@ -54,8 +53,7 @@ import {
   TeamRunRequiredPanel,
   type TeamDebugTag,
 } from "./team/team_debug_panels";
-import { TeamPageHeader } from "./team/team_page_header";
-import { TeamPageShell } from "./team/team_page_shell";
+import { WorkspaceShell } from "../components/layout/workspace_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
 import { TeamThreadPane } from "./team/team_thread_pane";
 import { WorkspacePanelLoadingFallback } from "../components/workspace_panel_loading_fallback";
@@ -176,7 +174,6 @@ import {
   TEAM_DEBUG_TABS_CLASS,
   TEAM_DEBUG_TAB_ACTIVE_CLASS,
   TEAM_DEBUG_TAB_IDLE_CLASS,
-  TEAM_PAGE_ROOT_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_SECTION_BODY_TEXT_CLASS,
@@ -184,8 +181,6 @@ import {
   TEAM_SECTION_HEADING_CLASS,
   TEAM_SECTION_HINT_TEXT_CLASS,
   TEAM_SECTION_TITLE_CLASS,
-  TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS,
-  TEAM_WORKBENCH_HEADER_SHELL_CLASS,
   TEAM_SOFT_CHROME_SHADOW_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS,
@@ -655,8 +650,6 @@ const teamWorkbenchMutedButtonClassName =
 const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
   "inline-flex items-center rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
-const teamWorkbenchHeaderShellClassName = TEAM_WORKBENCH_HEADER_SHELL_CLASS;
-const teamWorkbenchHeaderIconButtonClassName = TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS;
 const teamWorkbenchDetailLayoutCollapsedClassName =
   "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)] bg-white";
 const teamWorkbenchDetailLayoutExpandedClassName =
@@ -3860,13 +3853,6 @@ export function TeamPage(props: TeamPageProps) {
     Boolean(effectiveSelectedTeamId) &&
     !selectedTeam &&
     teamCatalogSettled;
-  const teamPanelToggleLabel = isCompactWorkbench
-    ? teamsSidebarCollapsed
-      ? "Show teams panel"
-      : "Show workbench"
-    : teamsSidebarCollapsed
-      ? "Show teams panel"
-      : "Hide teams panel";
   const detailLayoutClassName = isCompactWorkbench
     ? "teams-layout flex min-h-0 flex-1 flex-col"
     : teamsSidebarCollapsed
@@ -4150,90 +4136,90 @@ export function TeamPage(props: TeamPageProps) {
     return shouldHideErrorBannerMessage(message) ? null : message;
   }, [error]);
 
-  return (
-    <div className={TEAM_PAGE_ROOT_CLASS}>
-      <TeamPageShell
-        header={
-          <TeamPageHeader
-            isSelectorRoute={isSelectorRoute}
-            teamsSidebarCollapsed={teamsSidebarCollapsed}
-            teamPanelToggleLabel={teamPanelToggleLabel}
-            username={props.auth.username}
-            isRoot={props.auth.role === "root"}
-            headerShellClassName={teamWorkbenchHeaderShellClassName}
-            headerIconButtonClassName={teamWorkbenchHeaderIconButtonClassName}
-            lensItems={workspaceLensItems}
-            onToggleSidebar={() => setTeamsSidebarCollapsed((previous) => !previous)}
-            onSelectLens={onSelectWorkspaceLens}
-            onNavigate={navigateTeamRoute}
-            onLogout={props.onLogout}
-          />
-        }
-        errorBanner={
-          normalizedTeamPageError ? (
-            <ErrorBanner message={normalizedTeamPageError} onClose={() => setError(null)} />
-          ) : null
-        }
-        warningNotice={
-          warningNotice?.kind === "runtime" ? (
-            <div className={teamRuntimeNoticeClassName} role="status">
-              <div className="min-w-0 flex-1">
-                <div className={teamRuntimeNoticeTitleClassName}>{warningNotice.title}</div>
-                <div className={teamRuntimeNoticeBodyClassName}>{warningNotice.message}</div>
-              </div>
-              <IconButton
-                tone="subtle"
-                size="md"
-                className="h-8 w-8 shrink-0 rounded-full border border-emerald-200 bg-white/80 text-emerald-700 hover:bg-white"
-                aria-label="Dismiss runtime notice"
-                onClick={() => setWarning(null)}
-              >
-                <i className="bi bi-x-lg" aria-hidden="true" />
-              </IconButton>
-            </div>
-          ) : warningNotice?.kind === "warning" ? (
-            <Alert
-              color="yellow"
-              variant="light"
-              radius="xl"
-              role="status"
-              title={warningNotice.title}
-              icon={<i className="bi bi-exclamation-triangle" aria-hidden="true" />}
-              withCloseButton
-              onClose={() => setWarning(null)}
-            >
-              <span className="text-sm text-amber-900">{warningNotice.message}</span>
-            </Alert>
-          ) : null
-        }
-        isSelectorRoute={isSelectorRoute}
-        selectorContent={
-          <TeamSelectorPanel
-            busy={busy}
-            filter={teamSelectorFilter}
-            loading={!teamCatalogSettled && teams.length === 0}
-            hasTeams={teams.length > 0}
-            items={selectorTeamItems}
-            onFilterChange={setTeamSelectorFilter}
-            onRefreshTeams={() => {
-              void refreshTeams();
-            }}
-            onCreateTeam={openCreateTeamModal}
-            onSelectTeam={navigateToTeamDetail}
-          />
-        }
-        detailLayoutClassName={detailLayoutClassName}
-        showSidebarPane={showSidebarPane}
-        sidebarPane={<TeamSidebar {...sidebarProps} />}
-        showWorkbenchPane={showWorkbenchPane}
-        workbenchPane={<TeamWorkbenchContent {...workbenchContentProps} />}
-      />
+  const teamPanelToggleLabel = isCompactWorkbench
+    ? teamsSidebarCollapsed
+      ? "Show teams panel"
+      : "Show workbench"
+    : teamsSidebarCollapsed
+      ? "Show teams panel"
+      : "Hide teams panel";
 
-      {hasOpenTeamModal && (
-        <Suspense fallback={null}>
-          <LazyTeamPageModals {...teamPageModalsProps} />
-        </Suspense>
+  return (
+    <WorkspaceShell
+      title={isSelectorRoute ? "Teams" : "Workspace"}
+      subtitle={null}
+      activeSurface="teams"
+      username={props.auth.username}
+      isRoot={props.auth.role === "root"}
+      agentsCollapsed={teamsSidebarCollapsed}
+      onToggleAgents={() => setTeamsSidebarCollapsed((previous) => !previous)}
+      sidebarToggleLabel={teamPanelToggleLabel}
+      normalizedError={normalizedTeamPageError}
+      onClearError={() => setError(null)}
+      onLogout={props.onLogout}
+      lensItems={workspaceLensItems}
+      onSelectLens={onSelectWorkspaceLens}
+      onNavigate={navigateTeamRoute}
+      warningNotice={
+        warningNotice?.kind === "runtime" ? (
+          <div className={teamRuntimeNoticeClassName} role="status">
+            <div className="min-w-0 flex-1">
+              <div className={teamRuntimeNoticeTitleClassName}>{warningNotice.title}</div>
+              <div className={teamRuntimeNoticeBodyClassName}>{warningNotice.message}</div>
+            </div>
+            <IconButton
+              tone="subtle"
+              size="md"
+              className="h-8 w-8 shrink-0 rounded-full border border-emerald-200 bg-white/80 text-emerald-700 hover:bg-white"
+              aria-label="Dismiss runtime notice"
+              onClick={() => setWarning(null)}
+            >
+              <i className="bi bi-x-lg" aria-hidden="true" />
+            </IconButton>
+          </div>
+        ) : warningNotice?.kind === "warning" ? (
+          <Alert
+            color="yellow"
+            variant="light"
+            radius="xl"
+            role="status"
+            title={warningNotice.title}
+            icon={<i className="bi bi-exclamation-triangle" aria-hidden="true" />}
+            withCloseButton
+            onClose={() => setWarning(null)}
+          >
+            <span className="text-sm text-amber-900">{warningNotice.message}</span>
+          </Alert>
+        ) : null
+      }
+      modals={
+        hasOpenTeamModal && (
+          <Suspense fallback={null}>
+            <LazyTeamPageModals {...teamPageModalsProps} />
+          </Suspense>
+        )
+      }
+    >
+      {isSelectorRoute ? (
+        <TeamSelectorPanel
+          busy={busy}
+          filter={teamSelectorFilter}
+          loading={!teamCatalogSettled && teams.length === 0}
+          hasTeams={teams.length > 0}
+          items={selectorTeamItems}
+          onFilterChange={setTeamSelectorFilter}
+          onRefreshTeams={() => {
+            void refreshTeams();
+          }}
+          onCreateTeam={openCreateTeamModal}
+          onSelectTeam={navigateToTeamDetail}
+        />
+      ) : (
+        <div className={detailLayoutClassName}>
+          {showSidebarPane ? <TeamSidebar {...sidebarProps} /> : null}
+          {showWorkbenchPane ? <TeamWorkbenchContent {...workbenchContentProps} /> : null}
+        </div>
       )}
-    </div>
+    </WorkspaceShell>
   );
 }

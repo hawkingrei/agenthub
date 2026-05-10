@@ -1,21 +1,6 @@
 import React, { Suspense } from "react";
 import type { ConnectionBadge } from "../connection_status";
-import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
-import { ActionButton } from "../ui/primitives";
-import {
-  APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
-  APP_WORKBENCH_HEADER_CLASS,
-  APP_WORKBENCH_HEADER_STATUS_CLASS,
-  APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
-  AUTH_ACTIONS_CLASS,
-  AUTH_FORM_CARD_CLASS,
-  AUTH_INPUT_CLASS,
-  AUTH_PRIMARY_BUTTON_CLASS,
-  AUTH_SECONDARY_BUTTON_CLASS,
-  WORKSPACE_CONTENT_PADDING_CLASS,
-  WORKSPACE_CONTENT_ROOT_CLASS,
-} from "../ui/tailwind_classes";
 import { AgentNodeSectionProps } from "./agent_node_section";
 import { AgentsPanelProps } from "./agents_panel";
 import { AgentsRouteShell } from "./agents_route_shell";
@@ -23,7 +8,10 @@ import { AgentsWorkbenchProps } from "./agents_workbench_types";
 import { CreateAgentModalProps } from "./create_agent_modal";
 import { OutputHeaderProps } from "./output_header";
 import { PermissionModalProps } from "./permission_modal";
-import { WorkspaceShellHeader, type WorkspaceShellLensItem } from "./workspace_shell_header";
+import { type WorkspaceShellLensItem } from "./workspace_shell_header";
+
+import { WorkspaceShell } from "./layout/workspace_shell";
+import { LoginView, type LoginViewProps } from "../routes/login_view";
 
 const LazyCreateAgentModal = React.lazy(async () => {
   const module = await import("./create_agent_modal");
@@ -40,22 +28,12 @@ const LazyPermissionModal = React.lazy(async () => {
   return { default: module.PermissionModal };
 });
 
-export type AgentsRootPageProps = {
+export type AgentsRootPageProps = LoginViewProps & {
   appRootRef: React.RefObject<HTMLDivElement | null>;
   appHeaderRef: React.RefObject<HTMLElement | null>;
   auth: AuthState | null;
   normalizedError: string | null;
   onClearError: () => void;
-  authBusy: "login" | "register" | null;
-  rootInitialized: boolean | null;
-  username: string;
-  password: string;
-  displayName: string;
-  setUsername: (value: string) => void;
-  setPassword: (value: string) => void;
-  setDisplayName: (value: string) => void;
-  onLogin: () => Promise<void>;
-  onRegister: (role: string) => Promise<void>;
   agentsCollapsed: boolean;
   onCollapseAgents: () => void;
   onExpandAgents: () => void;
@@ -115,121 +93,8 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
   lensItems = [],
   onSelectLens,
 }: AgentsRootPageProps) {
-  return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white" ref={appRootRef as React.Ref<HTMLDivElement>}>
-      {auth ? (
-        <WorkspaceShellHeader
-          ref={appHeaderRef as React.Ref<HTMLElement>}
-          activeSurface="workspace"
-          title="Workspace"
-          subtitle={null}
-          sidebarToggleLabel={agentsCollapsed ? "Show agents" : "Hide agents"}
-          sidebarCollapsed={agentsCollapsed}
-          onToggleSidebar={agentsCollapsed ? onExpandAgents : onCollapseAgents}
-          username={auth.username}
-          isRoot={auth.role === "root"}
-          headerShellClassName={APP_WORKBENCH_HEADER_CLASS}
-          headerIconButtonClassName={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${
-            agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"
-          }`}
-          menuButtonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
-          connectionBadge={connectionBadge}
-          headerStatusClassName={APP_WORKBENCH_HEADER_STATUS_CLASS}
-          lensItems={lensItems}
-          onSelectLens={onSelectLens}
-          onNavigate={navigateWorkbenchRoute}
-          onLogout={onLogout}
-        />
-      ) : null}
-
-      <div className={WORKSPACE_CONTENT_ROOT_CLASS}>
-        {normalizedError ? (
-          <div className={WORKSPACE_CONTENT_PADDING_CLASS}>
-            <ErrorBanner message={normalizedError} onClose={onClearError} />
-          </div>
-        ) : null}
-
-      {!auth ? (
-        <form
-          className={AUTH_FORM_CARD_CLASS}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onLogin();
-          }}
-        >
-          <h2 className="text-xl font-bold tracking-tight text-notion-text">
-            Login
-          </h2>
-          <input
-            className={AUTH_INPUT_CLASS}
-            id="login-username"
-            name="username"
-            placeholder="Username"
-            value={username}
-            disabled={authBusy !== null}
-            autoComplete="username"
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <input
-            className={AUTH_INPUT_CLASS}
-            id="login-password"
-            name="password"
-            placeholder="Password"
-            type="password"
-            value={password}
-            disabled={authBusy !== null}
-            autoComplete="current-password"
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          {rootInitialized === false ? (
-            <input
-              className={AUTH_INPUT_CLASS}
-              id="login-display-name"
-              name="display_name"
-              placeholder="Display Name"
-              value={displayName}
-              disabled={authBusy !== null}
-              autoComplete="name"
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          ) : null}
-          <div className={AUTH_ACTIONS_CLASS}>
-            {rootInitialized === false ? (
-              <ActionButton
-                tone="secondary"
-                className={AUTH_SECONDARY_BUTTON_CLASS}
-                disabled={authBusy !== null}
-                onClick={() => onRegister("root")}
-              >
-                {authBusy === "register" ? "Bootstrapping..." : "Initialize Root"}
-              </ActionButton>
-            ) : null}
-            <ActionButton
-              tone="primary"
-              type="submit"
-              className={AUTH_PRIMARY_BUTTON_CLASS}
-              disabled={authBusy !== null}
-            >
-              {authBusy === "login" ? "Logging in..." : "Login"}
-            </ActionButton>
-          </div>
-        </form>
-      ) : (
-        <AgentsRouteShell
-          agentsCollapsed={agentsCollapsed}
-          workspaceRef={workspaceRef}
-          authToken={auth?.token ?? null}
-          workspaceStyle={workspaceStyle}
-          onAgentsSplitterPointerDown={onAgentsSplitterPointerDown}
-          agentsPanelProps={agentsPanelProps}
-          outputHeaderProps={outputHeaderProps}
-          showOutputHeader={showOutputHeader}
-          workbenchProps={workbenchProps}
-          rootWorkbenchNode={rootWorkbenchNode}
-        />
-      )}
-      </div>
-
+  const modals = (
+    <>
       {auth && showCreateAgent ? (
         <Suspense fallback={null}>
           <LazyCreateAgentModal {...createAgentModalProps}>
@@ -247,7 +112,57 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
           <LazyPermissionModal {...permissionModalProps} />
         </Suspense>
       ) : null}
-    </div>
+    </>
+  );
+
+  return (
+    <WorkspaceShell
+      appRootRef={appRootRef}
+      headerRef={appHeaderRef}
+      activeSurface="workspace"
+      title="Workspace"
+      subtitle={null}
+      username={auth?.username ?? ""}
+      isRoot={auth?.role === "root"}
+      connectionBadge={connectionBadge}
+      agentsCollapsed={agentsCollapsed}
+      onToggleAgents={agentsCollapsed ? onExpandAgents : onCollapseAgents}
+      normalizedError={normalizedError}
+      onClearError={onClearError}
+      lensItems={lensItems}
+      onSelectLens={onSelectLens}
+      onNavigate={navigateWorkbenchRoute}
+      onLogout={onLogout}
+      modals={modals}
+    >
+      {!auth ? (
+        <LoginView
+          authBusy={authBusy}
+          rootInitialized={rootInitialized}
+          username={username}
+          password={password}
+          displayName={displayName}
+          setUsername={setUsername}
+          setPassword={setPassword}
+          setDisplayName={setDisplayName}
+          onLogin={onLogin}
+          onRegister={onRegister}
+        />
+      ) : (
+        <AgentsRouteShell
+          agentsCollapsed={agentsCollapsed}
+          workspaceRef={workspaceRef}
+          authToken={auth?.token ?? null}
+          workspaceStyle={workspaceStyle}
+          onAgentsSplitterPointerDown={onAgentsSplitterPointerDown}
+          agentsPanelProps={agentsPanelProps}
+          outputHeaderProps={outputHeaderProps}
+          showOutputHeader={showOutputHeader}
+          workbenchProps={workbenchProps}
+          rootWorkbenchNode={rootWorkbenchNode}
+        />
+      )}
+    </WorkspaceShell>
   );
 });
 AgentsRootPage.displayName = "AgentsRootPage";
