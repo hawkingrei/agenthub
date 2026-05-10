@@ -1189,21 +1189,6 @@ export function App() {
         />
       );
     }
-    case "teams-auth-redirect":
-      return <AuthRedirect />;
-    case "teams": {
-      return (
-        <TeamRouteContainer
-          appRootRef={appRootRef}
-          auth={auth!}
-          onLogout={onLogout}
-          developerMode={developerMode}
-          routePathname={routeLocation.pathname}
-          routeSearch={routeLocation.search}
-          defaultWorktreeRoot={defaultWorktreeRoot}
-        />
-      );
-    }
     case "post-auth-redirect":
       return <PostLoginRedirect target={postAuthRedirectTarget!} />;
     case "workspace":
