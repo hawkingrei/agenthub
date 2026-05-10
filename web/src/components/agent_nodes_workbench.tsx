@@ -11,6 +11,7 @@ import {
   AgentNodeJoinBootstrapInfo,
   AgentNodeRecord,
   AgentRecord,
+  isAgentActiveStatus,
 } from "../api";
 import { Badge, EmptyState, SelectableListItem } from "../ui/primitives";
 import {
@@ -188,7 +189,7 @@ function deriveNodeTeamUsageSummaries(
       }
       const activeAgentCount = matchedMembers.filter((memberId) => {
         const status = agentsById.get(memberId.memberId)?.status ?? "";
-        return status === "running" || status === "starting";
+        return isAgentActiveStatus(status);
       }).length;
       return {
         teamId: team.id,

@@ -1,6 +1,6 @@
 import { Box } from "@mantine/core";
 import React from "react";
-import { AgentRecord } from "../api";
+import { AgentRecord, isAgentActiveStatus } from "../api";
 import { formatAgentModelLabel } from "../agent_presets";
 import { resolveAgentStatusTone } from "./status_badge";
 import { ActionButton, IconButton, cx } from "../ui/primitives";
@@ -82,7 +82,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   onDeleteAgent,
 }: AgentsPanelProps) {
   function resolveAgentMetaParts(agent: AgentRecord, modelLabel: string | null): string[] {
-    const parts = [(agent.status === "running" || agent.status === "starting") ? "online" : agent.status];
+    const parts = [(isAgentActiveStatus(agent.status)) ? "online" : agent.status];
     if (modelLabel) {
       parts.push(modelLabel);
     }
@@ -173,7 +173,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                 {agents.map((agent) => {
                   const isStarting = Boolean(startingAgentIds[agent.id]);
                   const isRemoteTarget = Boolean(agent.target_node_id);
-                  const isActive = agent.status === "running" || agent.status === "starting";
+                  const isActive = isAgentActiveStatus(agent.status);
                   const pendingPermissionCount =
                     pendingPermissionCounts[agent.id] ?? 0;
                   const pendingPermissionLabel = `${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""} for ${agent.name}`;
@@ -271,7 +271,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             aria-hidden="true"
                             />
                             </IconButton>
-                            {(agent.status === "running" || agent.status === "starting") && (
+                            {(isAgentActiveStatus(agent.status)) && (
                             <IconButton
                             size="sm"
                             tone="subtle"                              className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}

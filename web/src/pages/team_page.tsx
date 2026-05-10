@@ -6,6 +6,7 @@ import {
   AgentDiscoveryCardRecord,
   AgentRecord,
   AgentEvent,
+  isAgentActiveStatus,
   AGENT_NOT_RUNNING_ERROR,
   api,
   getTeamStepRuntimeHandleId,
@@ -404,20 +405,20 @@ export function resolveSelectedAgentWorkspaceSessionId(
   if (normalizedRuntimeSessionId) {
     if (
       normalizedRuntimeSessionStatus &&
-      !(normalizedRuntimeSessionStatus === "running" || normalizedRuntimeSessionStatus === "starting")
+      !isAgentActiveStatus(normalizedRuntimeSessionStatus)
     ) {
       return null;
     }
     if (
       !normalizedRuntimeSessionStatus &&
       normalizedRuntimeAgentStatus &&
-      !(normalizedRuntimeAgentStatus === "running" || normalizedRuntimeAgentStatus === "starting")
+      !isAgentActiveStatus(normalizedRuntimeAgentStatus)
     ) {
       return null;
     }
     return normalizedRuntimeSessionId;
   }
-  if (normalizedAgentStatus && !(normalizedAgentStatus === "running" || normalizedAgentStatus === "starting")) {
+  if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
     return null;
   }
   const normalizedPreviousSessionId = previousSessionId?.trim() ?? "";

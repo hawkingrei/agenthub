@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { resolveActiveAcpView } from "./app_agents_helpers";
 import { loadDeveloperModePreference, persistDeveloperModePreference } from "./ui/developer_mode";
 import { formatAgentModelLabel } from "./agent_presets";
-import { api, AgentRecord, stringifyApiError } from "./api";
+import { api, AgentRecord, stringifyApiError, isAgentActiveStatus } from "./api";
 import { createAnsiRenderer } from "./app_utils";
 import type { OutputLine } from "./output_cache";
 
@@ -54,7 +54,7 @@ export function useAppAcpUi(
     return Object.values(pendingPermissionCounts).some((count) => count > 0);
   }, [pendingPermissionCounts]);
 
-  const isAgentActive = activeAgentRecord?.status === "running" || activeAgentRecord?.status === "starting";
+  const isAgentActive = isAgentActiveStatus(activeAgentRecord?.status ?? null);
   const thinkingStartTs = acpView.thinkingStartTs;
 
   useEffect(() => {

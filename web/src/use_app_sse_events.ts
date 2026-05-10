@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { AuthState } from "./types";
-import { AgentRecord } from "./api";
+import { AgentRecord, isAgentActiveStatus } from "./api";
 import type { OutputLine } from "./output_cache";
 import { 
   deriveConnectionBadge, 
@@ -137,7 +137,9 @@ export function useAppSseEvents(
               event.data,
               getNavigatorOnline()
             );
-            setError(normalizedStreamError);
+            if (isAgentActiveStatus(activeAgentStatusRef.current)) {
+              setError(normalizedStreamError);
+            }
           }
         }
       };

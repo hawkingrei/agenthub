@@ -1,10 +1,10 @@
-import { AgentRecord } from "./api";
+import { AgentRecord, isAgentActiveStatus } from "./api";
 
 export function buildSseTargetAgentIds(agents: AgentRecord[]): string[] {
   const seen = new Set<string>();
   const ids: string[] = [];
   for (const agent of agents) {
-    if (!(agent.status === "running" || agent.status === "starting")) continue;
+    if (!isAgentActiveStatus(agent.status)) continue;
     if (agent.target_node_id) continue;
     const id = agent.id.trim();
     if (!id || seen.has(id)) continue;

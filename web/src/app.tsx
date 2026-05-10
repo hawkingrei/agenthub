@@ -3,6 +3,7 @@ import {
   api,
   parseApiErrorMessage,
   stringifyApiError,
+  AGENT_NOT_RUNNING_ERROR,
 } from "./api";
 import {
   canManageAgentNodes,

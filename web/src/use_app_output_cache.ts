@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, type Dispatch, type SetStateAction } from "react";
 import { AuthState } from "./types";
-import { api, type AgentRecord } from "./api";
+import { api, type AgentRecord, isAgentActiveStatus } from "./api";
 import { hasPotentialOlderAgentEvents } from "./agent_event_pagination";
 import { compareEventOrder } from "./seq_order";
 import { 
@@ -158,7 +158,7 @@ export function useAppOutputCache(
     }
 
     const liveSessionSwitch = resolveLiveSessionSwitch(lines, currentActive, currentSessionId);
-    if (liveSessionSwitch && liveSessionSwitch !== currentSessionId && (activeAgentStatusRef.current === "running" || activeAgentStatusRef.current === "starting")) {
+    if (liveSessionSwitch && liveSessionSwitch !== currentSessionId && isAgentActiveStatus(activeAgentStatusRef.current)) {
       setActiveSessionId(liveSessionSwitch);
     }
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { buildAcpView } from "../../acp";
 import type { AgentEvent, TeamMemberSnapshot } from "../../api";
-import { getTeamStepRuntimeHandleId } from "../../api";
+import { getTeamStepRuntimeHandleId, isAgentActiveStatus } from "../../api";
 import { getAcpConversationCacheStats } from "../../components/acp_conversation_cache_stats";
 import { resolveAcpInputDockConversationClearance } from "../../components/acp_input_dock_clearance";
 import { isToolCallEffectivelyLive } from "../../components/acp_tool_fold";
@@ -308,7 +308,7 @@ export function useTeamMemberAcpViewModel({
       ((snapshotStatus && isActiveTeamMemberStatus(snapshotStatus)) ||
         (!snapshotStatus &&
           normalizedAgentStatus &&
-          (normalizedAgentStatus === "running" || normalizedAgentStatus === "starting")))
+          isAgentActiveStatus(normalizedAgentStatus)))
   );
   const thinkingLabel =
     acpView.thinkingStartTs && isActiveTeamMemberStatus(snapshotStatus || acpRunStatus)
