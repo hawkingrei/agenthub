@@ -146,6 +146,7 @@ describe("useTeamWorkspaceViewModel", () => {
       const snapshot = mounted.getSnapshot();
       expect(snapshot?.activeWorkspaceLens).toBe("channels");
       expect(snapshot?.workspaceLensItems.map((item) => item.label)).toEqual([
+        "Teams",
         "Channels",
         "Tasks",
         "Members",
@@ -213,7 +214,7 @@ describe("useTeamWorkspaceViewModel", () => {
       expect(params.setFocusedAgentMemberId).toHaveBeenCalledWith("");
       expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "search");
       act(() => {
-        snapshot?.workspaceLensItems[2]?.onPrefetch?.();
+        snapshot?.workspaceLensItems[3]?.onPrefetch?.();
       });
       expect(prefetchWorkspaceLens).toHaveBeenCalledWith("members");
     } finally {

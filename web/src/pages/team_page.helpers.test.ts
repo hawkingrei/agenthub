@@ -44,30 +44,28 @@ describe("team_page helpers", () => {
 
   it("builds team workspace paths with optional lens, task, and thread query", () => {
     expect(buildTeamWorkspacePath("team-1")).toBe("/workspace/teams/team-1");
-    expect(buildTeamWorkspacePath("team-1", "channels")).toBe(
-      "/workspace/teams/team-1?lens=channels"
-    );
+    expect(buildTeamWorkspacePath("team-1", "channels")).toBe("/workspace/teams/team-1");
     expect(buildTeamWorkspacePath("team-1", "channels", "review")).toBe(
-      "/workspace/teams/team-1?lens=channels&channel=review"
+      "/workspace/teams/team-1?channel=review"
     );
     expect(buildTeamWorkspacePath("team-1", "channels", "all", 42)).toBe(
-      "/workspace/teams/team-1?lens=channels&thread=42"
+      "/workspace/teams/team-1?thread=42"
     );
     expect(buildTeamWorkspacePath("team-1", "channels", "review", -1)).toBe(
-      "/workspace/teams/team-1?lens=channels&channel=review"
+      "/workspace/teams/team-1?channel=review"
     );
     expect(buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "task-9")).toBe(
-      "/workspace/teams/team-1?lens=channels&channel=review&task=task-9"
+      "/workspace/teams/team-1?channel=review&task=task-9"
     );
     expect(buildTeamWorkspacePath("team-1", "channels", "all", 42, null, null, "task-9")).toBe(
-      "/workspace/teams/team-1?lens=channels&thread=42&task=task-9"
+      "/workspace/teams/team-1?thread=42&task=task-9"
     );
     expect(
       buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
     ).toBe("/workspace/teams/team-1?lens=members&member=worker-1&tab=thread");
     expect(
       buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "task-9")
-    ).toBe("/workspace/teams/team-1?lens=channels&channel=review&task=task-9");
+    ).toBe("/workspace/teams/team-1?channel=review&task=task-9");
     expect(buildTeamWorkspacePath("team-1", "members", null, null, " worker-2 ", null)).toBe(
       "/workspace/teams/team-1?lens=members&member=worker-2"
     );
@@ -75,10 +73,10 @@ describe("team_page helpers", () => {
       buildTeamWorkspacePath("team-1", "members", null, null, "worker-3", "conversation" as never)
     ).toBe("/workspace/teams/team-1?lens=members&member=worker-3");
     expect(buildTeamLensNavigationPath("team-1", "channels", null, "task-9")).toBe(
-      "/workspace/teams/team-1?lens=channels&task=task-9"
+      "/workspace/teams/team-1?task=task-9"
     );
     expect(buildTeamLensNavigationPath("team-1", "channels", "review", "task-9")).toBe(
-      "/workspace/teams/team-1?lens=channels&channel=review&task=task-9"
+      "/workspace/teams/team-1?channel=review&task=task-9"
     );
     expect(buildTeamLensNavigationPath("team-1", "members", null, "task-9")).toBe(
       "/workspace/teams/team-1?lens=members"
