@@ -18,7 +18,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@chenglou/pretext": "^0.0.6",
+    "@chenglou/pretext": "^0.0.7",
     "@mantine/core": "9.1.1",
     "@mantine/hooks": "9.1.1",
     "bootstrap-icons": "^1.11.3",
