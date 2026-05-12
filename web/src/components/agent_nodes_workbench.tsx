@@ -43,7 +43,8 @@ const NODE_TEAM_METRIC_ITEM_CLASS =
   "rounded-xl border border-ui-border/70 bg-white/80 px-2.5 py-2 text-left shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
 const NODE_TEAM_METRIC_LABEL_CLASS =
   "text-[10px] font-bold uppercase tracking-[0.08em] text-notion-text-muted/80";
-const NODE_TEAM_METRIC_VALUE_CLASS = "mt-1 text-[13px] font-semibold text-notion-text";
+const NODE_TEAM_METRIC_VALUE_CLASS =
+  "mt-1 text-[13px] font-semibold text-notion-text";
 
 type NodeTeamUsageSummary = {
   teamId: string;
@@ -78,7 +79,7 @@ export function buildNodeEditDraft(node: AgentNodeRecord): NodeEditDraft {
 
 export function buildNodeNameUpdatePayload(
   node: AgentNodeRecord,
-  draft: NodeEditDraft
+  draft: NodeEditDraft,
 ): AgentNodeUpdate | null {
   const grpcTarget = node.grpc_target?.trim() || "";
   if (!grpcTarget) {
@@ -94,7 +95,10 @@ export function buildNodeNameUpdatePayload(
 
 export function buildNodeSettingsUpdatePayload(
   node: AgentNodeRecord,
-  draft: Pick<NodeEditDraft, "grpcTarget" | "tlsServerName" | "defaultWorktreeRoot">
+  draft: Pick<
+    NodeEditDraft,
+    "grpcTarget" | "tlsServerName" | "defaultWorktreeRoot"
+  >,
 ): AgentNodeUpdate {
   return {
     name: node.name.trim(),
@@ -104,7 +108,10 @@ export function buildNodeSettingsUpdatePayload(
   };
 }
 
-function resolveNameUpdateError(node: AgentNodeRecord, draft: NodeEditDraft): string | null {
+function resolveNameUpdateError(
+  node: AgentNodeRecord,
+  draft: NodeEditDraft,
+): string | null {
   if (!draft.name.trim()) {
     return "Node name is required.";
   }
@@ -115,7 +122,7 @@ function resolveNameUpdateError(node: AgentNodeRecord, draft: NodeEditDraft): st
 }
 
 function parseTeamSpecMembers(
-  spec: unknown
+  spec: unknown,
 ): Array<{ memberId: string; role: string | null }> {
   if (!spec || typeof spec !== "object") {
     return [];
@@ -131,7 +138,8 @@ function parseTeamSpecMembers(
       }
       const memberId = (member as { member_id?: unknown }).member_id;
       const role = (member as { role?: unknown }).role;
-      const normalizedMemberId = typeof memberId === "string" ? memberId.trim() : "";
+      const normalizedMemberId =
+        typeof memberId === "string" ? memberId.trim() : "";
       if (!normalizedMemberId) {
         return null;
       }
@@ -140,8 +148,8 @@ function parseTeamSpecMembers(
         role: typeof role === "string" ? role.trim() || null : null,
       };
     })
-    .filter(
-      (member): member is { memberId: string; role: string | null } => Boolean(member)
+    .filter((member): member is { memberId: string; role: string | null } =>
+      Boolean(member),
     );
 }
 
@@ -153,7 +161,7 @@ function deriveNodeTeamUsageSummaries(
   teams: TeamDefinitionRecord[],
   agents: AgentRecord[],
   fallbackAgentsById: Record<string, AgentRecord | null>,
-  nodeId: string
+  nodeId: string,
 ): NodeTeamUsageSummary[] {
   const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
   for (const [memberId, agent] of Object.entries(fallbackAgentsById)) {
@@ -177,12 +185,12 @@ function deriveNodeTeamUsageSummaries(
         })
         .filter(
           (
-            member
+            member,
           ): member is {
             memberId: string;
             label: string;
             role: string | null;
-          } => Boolean(member)
+          } => Boolean(member),
         );
       if (matchedMembers.length === 0) {
         return null;
@@ -209,7 +217,7 @@ function deriveNodeTeamUsageSummaries(
 
 function handleInAppLinkClick(
   event: React.MouseEvent<HTMLAnchorElement>,
-  pathname: string
+  pathname: string,
 ): void {
   if (!shouldHandleInAppLinkClick(event)) {
     return;
@@ -218,12 +226,211 @@ function handleInAppLinkClick(
   navigateToPath(pathname);
 }
 
+type RemoteNodeEditorProps = {
+  node: AgentNodeRecord;
+  draft: NodeEditDraft;
+  updating: boolean;
+  onDraftChange: (draft: NodeEditDraft) => void;
+  onSaveName: (draft: NodeEditDraft) => void;
+  onSaveSettings: (
+    draft: Pick<
+      NodeEditDraft,
+      "grpcTarget" | "tlsServerName" | "defaultWorktreeRoot"
+    >,
+  ) => void;
+};
+
+function RemoteNodeNameEditor({
+  node,
+  draft,
+  updating,
+  onDraftChange,
+  onSaveName,
+}: Pick<
+  RemoteNodeEditorProps,
+  "node" | "draft" | "updating" | "onDraftChange" | "onSaveName"
+>) {
+  const nameError = resolveNameUpdateError(node, draft);
+  return (
+    <div className={SECTION_CARD_CLASS}>
+      <Stack gap="sm">
+        <div>
+          <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+            Rename Node
+          </Text>
+          <Text size="sm" c="dimmed" mt={4}>
+            Update the operator-facing display name for this remote node.
+          </Text>
+        </div>
+        <TextInput
+          label="Display name"
+          value={draft.name}
+          onChange={(event) =>
+            onDraftChange({ ...draft, name: event.currentTarget.value })
+          }
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Text size="xs" c={nameError ? "red" : "dimmed"}>
+            {nameError ??
+              "This name is used in rosters and team attachment maps."}
+          </Text>
+          <Button
+            variant="light"
+            size="xs"
+            loading={updating}
+            disabled={updating || nameError !== null}
+            onClick={() => onSaveName(draft)}
+          >
+            Save Name
+          </Button>
+        </div>
+      </Stack>
+    </div>
+  );
+}
+
+function RemoteNodeSettingsEditor({
+  node,
+  draft,
+  updating,
+  onDraftChange,
+  onSaveSettings,
+}: Pick<
+  RemoteNodeEditorProps,
+  "node" | "draft" | "updating" | "onDraftChange" | "onSaveSettings"
+>) {
+  const updateError = validateAgentNodeUpdateDraft({
+    nodeName: node.name,
+    grpcTarget: draft.grpcTarget,
+  });
+  return (
+    <div className={SECTION_CARD_CLASS}>
+      <Stack gap="sm">
+        <div>
+          <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+            Routing & Infrastructure
+          </Text>
+          <Text size="sm" c="dimmed" mt={4}>
+            Update the technical connectivity parameters for this remote host.
+          </Text>
+        </div>
+        <TextInput
+          label="gRPC target"
+          description="Host and port for remote execution, such as 10.0.1.5:50051."
+          value={draft.grpcTarget}
+          onChange={(event) =>
+            onDraftChange({ ...draft, grpcTarget: event.currentTarget.value })
+          }
+        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextInput
+            label="TLS server name"
+            description="Used for certificate verification."
+            value={draft.tlsServerName}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                tlsServerName: event.currentTarget.value,
+              })
+            }
+          />
+          <TextInput
+            label="Default worktree root"
+            description="Remote filesystem base path."
+            placeholder="Optional"
+            value={draft.defaultWorktreeRoot}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                defaultWorktreeRoot: event.currentTarget.value,
+              })
+            }
+          />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Text size="xs" c={updateError ? "red" : "dimmed"}>
+            {updateError ??
+              "Leave Default worktree root blank to require explicit workdir."}
+          </Text>
+          <Button
+            variant="light"
+            size="xs"
+            loading={updating}
+            disabled={updating || updateError !== null}
+            onClick={() =>
+              onSaveSettings({
+                grpcTarget: draft.grpcTarget,
+                tlsServerName: draft.tlsServerName,
+                defaultWorktreeRoot: draft.defaultWorktreeRoot,
+              })
+            }
+          >
+            Save Settings
+          </Button>
+        </div>
+      </Stack>
+    </div>
+  );
+}
+
+function RemoteNodeDangerZone({
+  attachedAgentCount,
+  deleting,
+  onDelete,
+}: {
+  attachedAgentCount: number;
+  deleting: boolean;
+  onDelete: () => void;
+}) {
+  const hasAttachedAgents = attachedAgentCount > 0;
+  return (
+    <div className="rounded-xl border border-red-100 bg-red-50/40 p-4">
+      <Stack gap="sm">
+        <Text size="xs" fw={700} c="red" className={SECTION_HEADER_CLASS}>
+          Danger Zone
+        </Text>
+        <Text size="xs" c={hasAttachedAgents ? "red" : "dimmed"}>
+          {hasAttachedAgents
+            ? `This node still has ${attachedAgentCount} attached agent${
+                attachedAgentCount === 1 ? "" : "s"
+              }.`
+            : "No attached agents remain on this node."}
+        </Text>
+        <Button
+          color="red"
+          variant="light"
+          size="xs"
+          loading={deleting}
+          disabled={deleting || hasAttachedAgents}
+          onClick={onDelete}
+        >
+          Delete Node
+        </Button>
+      </Stack>
+    </div>
+  );
+}
+
 function buildTeamMemberAcpPath(teamId: string, memberId: string): string {
-  return buildTeamWorkspacePath(teamId, "members", null, null, memberId, "agent_acp");
+  return buildTeamWorkspacePath(
+    teamId,
+    "members",
+    null,
+    null,
+    memberId,
+    "agent_acp",
+  );
 }
 
 function buildTeamMemberConsolePath(teamId: string, memberId: string): string {
-  return buildTeamWorkspacePath(teamId, "members", null, null, memberId, "member_console");
+  return buildTeamWorkspacePath(
+    teamId,
+    "members",
+    null,
+    null,
+    memberId,
+    "member_console",
+  );
 }
 
 type AgentNodesWorkbenchProps = {
@@ -261,7 +468,10 @@ export function AgentNodesWorkbench({
   onUpdateNode,
   onDeleteNode,
 }: AgentNodesWorkbenchProps) {
-  const availableNodes = React.useMemo(() => resolveAvailableNodes(nodes), [nodes]);
+  const availableNodes = React.useMemo(
+    () => resolveAvailableNodes(nodes),
+    [nodes],
+  );
   const agentsByNodeId = React.useMemo(() => {
     const buckets = new Map<string, AgentRecord[]>();
     for (const agent of agents) {
@@ -277,7 +487,12 @@ export function AgentNodesWorkbench({
     for (const node of availableNodes) {
       summaries.set(
         node.id,
-        deriveNodeTeamUsageSummaries(teams, agents, teamMemberAgentsById, node.id)
+        deriveNodeTeamUsageSummaries(
+          teams,
+          agents,
+          teamMemberAgentsById,
+          node.id,
+        ),
       );
     }
     return summaries;
@@ -289,28 +504,33 @@ export function AgentNodesWorkbench({
     "";
   const selectedNode =
     availableNodes.find((node) => node.id === effectiveSelectedNodeId) ?? null;
-  const selectedNodeAgents = selectedNode ? (agentsByNodeId.get(selectedNode.id) ?? []) : [];
+  const selectedNodeAgents = selectedNode
+    ? (agentsByNodeId.get(selectedNode.id) ?? [])
+    : [];
   const selectedNodeTeams = React.useMemo(
     () => (selectedNode ? (teamUsageByNodeId.get(selectedNode.id) ?? []) : []),
-    [selectedNode, teamUsageByNodeId]
+    [selectedNode, teamUsageByNodeId],
   );
   const selectedNodeTeamMemberCount = selectedNodeTeams.reduce(
     (sum, team) => sum + team.matchedMembers.length,
-    0
+    0,
   );
   const selectedNodeActiveTeamAgentCount = selectedNodeTeams.reduce(
     (sum, team) => sum + team.activeAgentCount,
-    0
+    0,
   );
   const selectedNodeCoordinatorCount = selectedNodeTeams.reduce(
     (sum, team) =>
-      sum + team.matchedMembers.filter((member) => member.role === "coordinator").length,
-    0
+      sum +
+      team.matchedMembers.filter((member) => member.role === "coordinator")
+        .length,
+    0,
   );
   const selectedNodeWorkerCount = selectedNodeTeams.reduce(
     (sum, team) =>
-      sum + team.matchedMembers.filter((member) => member.role === "worker").length,
-    0
+      sum +
+      team.matchedMembers.filter((member) => member.role === "worker").length,
+    0,
   );
   const [editDrafts, setEditDrafts] = React.useState<
     Record<string, NodeEditDraft>
@@ -341,7 +561,7 @@ export function AgentNodesWorkbench({
       }
       onUpdateNode?.(nodeId, payload);
     },
-    [availableNodes, onUpdateNode]
+    [availableNodes, onUpdateNode],
   );
 
   const handleSaveNodeSettings = React.useCallback(
@@ -351,7 +571,7 @@ export function AgentNodesWorkbench({
         grpcTarget: string;
         tlsServerName: string;
         defaultWorktreeRoot: string;
-      }
+      },
     ) => {
       const node = availableNodes.find((candidate) => candidate.id === nodeId);
       if (!node) {
@@ -359,7 +579,7 @@ export function AgentNodesWorkbench({
       }
       onUpdateNode?.(nodeId, buildNodeSettingsUpdatePayload(node, draft));
     },
-    [availableNodes, onUpdateNode]
+    [availableNodes, onUpdateNode],
   );
 
   if (!selectedNode) {
@@ -382,8 +602,8 @@ export function AgentNodesWorkbench({
             Node Detail
           </Text>
           <Text size="sm" c="dimmed" mt={4}>
-            Inspect node routing metadata, copy the connect command, and trace which teams currently
-            depend on this global node.
+            Inspect node routing metadata, copy the connect command, and trace
+            which teams currently depend on this global node.
           </Text>
         </div>
 
@@ -397,7 +617,12 @@ export function AgentNodesWorkbench({
               data-node-roster="true"
             >
               <Stack gap="xs">
-                <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                <Text
+                  size="xs"
+                  fw={700}
+                  c="dimmed"
+                  className={SECTION_HEADER_CLASS}
+                >
                   Nodes
                 </Text>
                 <Text size="xs" c="dimmed">
@@ -424,13 +649,18 @@ export function AgentNodesWorkbench({
                             <Text size="sm" fw={600}>
                               {node.name}
                             </Text>
-                            <Badge tone={node.is_main ? "subtle" : "outline"} className="uppercase">
+                            <Badge
+                              tone={node.is_main ? "subtle" : "outline"}
+                              className="uppercase"
+                            >
                               {resolveNodeRoleLabel(node)}
                             </Badge>
                           </div>
                           <Text size="xs" c="dimmed" mt={4}>
-                            {nodeAgents.length} agent{nodeAgents.length === 1 ? "" : "s"} ·{" "}
-                            {nodeTeams.length} team{nodeTeams.length === 1 ? "" : "s"}
+                            {nodeAgents.length} agent
+                            {nodeAgents.length === 1 ? "" : "s"} ·{" "}
+                            {nodeTeams.length} team
+                            {nodeTeams.length === 1 ? "" : "s"}
                           </Text>
                         </div>
                       </div>
@@ -456,7 +686,12 @@ export function AgentNodesWorkbench({
                 <div className={SECTION_CARD_CLASS}>
                   <Stack gap="sm">
                     <div>
-                      <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                      <Text
+                        size="xs"
+                        fw={700}
+                        c="dimmed"
+                        className={SECTION_HEADER_CLASS}
+                      >
                         Name
                       </Text>
                       <Text size="sm" c="dimmed" mt={6}>
@@ -468,196 +703,72 @@ export function AgentNodesWorkbench({
                         {selectedNode.name}
                       </Text>
                       <Text size="xs" c="dimmed" mt={6}>
-                        The local control-plane node name is currently read only from this surface.
+                        The local control-plane node name is currently read only
+                        from this surface.
                       </Text>
                     </div>
                   </Stack>
                 </div>
                 <div className={SECTION_CARD_CLASS}>
-                  <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                  <Text
+                    size="xs"
+                    fw={700}
+                    c="dimmed"
+                    className={SECTION_HEADER_CLASS}
+                  >
                     Danger Zone
                   </Text>
                   <Text size="sm" c="dimmed" mt={8}>
-                    The local control-plane node cannot be deleted or re-pointed from this surface.
+                    The local control-plane node cannot be deleted or re-pointed
+                    from this surface.
                   </Text>
                 </div>
               </>
             ) : (
               <div className="space-y-4">
-                <div className={SECTION_CARD_CLASS}>
-                  <Stack gap="sm">
-                    <div>
-                      <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-                        Name
-                      </Text>
-                      <Text size="sm" c="dimmed" mt={6}>
-                        Keep the node display name visible and editable as a first-class object field.
-                      </Text>
-                    </div>
-                    {(() => {
-                      const draft = editDrafts[selectedNode.id] ?? buildNodeEditDraft(selectedNode);
-                      const nameError = resolveNameUpdateError(selectedNode, draft);
-                      return (
-                        <>
-                          <TextInput
-                            label="Node name"
-                            value={draft.name}
-                            onChange={(event) =>
-                              setEditDrafts((prev) => ({
-                                ...prev,
-                                [selectedNode.id]: {
-                                  ...draft,
-                                  name: event.currentTarget.value,
-                                },
-                              }))
-                            }
-                          />
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <Text size="xs" c={nameError ? "red" : "dimmed"}>
-                              {nameError ??
-                                "This is the canonical operator-facing name shown in global node rosters and detail pages."}
-                            </Text>
-                            <Button
-                              variant="light"
-                              size="xs"
-                              loading={Boolean(updatingNodeIds[selectedNode.id])}
-                              disabled={
-                                Boolean(updatingNodeIds[selectedNode.id]) || nameError !== null
-                              }
-                              onClick={() => handleSaveNodeName(selectedNode.id, draft)}
-                            >
-                              Save Name
-                            </Button>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </Stack>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                  <RemoteNodeNameEditor
+                    node={selectedNode}
+                    draft={
+                      editDrafts[selectedNode.id] ??
+                      buildNodeEditDraft(selectedNode)
+                    }
+                    updating={Boolean(updatingNodeIds[selectedNode.id])}
+                    onDraftChange={(draft) =>
+                      setEditDrafts((prev) => ({
+                        ...prev,
+                        [selectedNode.id]: draft,
+                      }))
+                    }
+                    onSaveName={(draft) =>
+                      handleSaveNodeName(selectedNode.id, draft)
+                    }
+                  />
+
+                  <RemoteNodeDangerZone
+                    attachedAgentCount={selectedNodeAgents.length}
+                    deleting={Boolean(deletingNodeIds[selectedNode.id])}
+                    onDelete={() => onDeleteNode?.(selectedNode.id)}
+                  />
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-                  <div className={SECTION_CARD_CLASS}>
-                    <Stack gap="sm">
-                      <div>
-                        <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-                          Settings
-                        </Text>
-                        <Text size="sm" c="dimmed" mt={6}>
-                          Update routing and default worktree behavior for this node without mixing
-                          in the object name field.
-                        </Text>
-                      </div>
-                      {(() => {
-                        const draft =
-                          editDrafts[selectedNode.id] ?? buildNodeEditDraft(selectedNode);
-                        const updateError = validateAgentNodeUpdateDraft({
-                          nodeName: selectedNode.name,
-                          grpcTarget: draft.grpcTarget,
-                        });
-                        return (
-                          <>
-                            <TextInput
-                              label="gRPC target"
-                              value={draft.grpcTarget}
-                              onChange={(event) =>
-                                setEditDrafts((prev) => ({
-                                  ...prev,
-                                  [selectedNode.id]: {
-                                    ...draft,
-                                    grpcTarget: event.currentTarget.value,
-                                  },
-                                }))
-                              }
-                            />
-                            <div className="grid gap-3 lg:grid-cols-2">
-                              <TextInput
-                                label="TLS server name"
-                                value={draft.tlsServerName}
-                                onChange={(event) =>
-                                  setEditDrafts((prev) => ({
-                                    ...prev,
-                                    [selectedNode.id]: {
-                                      ...draft,
-                                      tlsServerName: event.currentTarget.value,
-                                    },
-                                  }))
-                                }
-                              />
-                              <TextInput
-                                label="Default worktree root"
-                                placeholder="Optional"
-                                value={draft.defaultWorktreeRoot}
-                                onChange={(event) =>
-                                  setEditDrafts((prev) => ({
-                                    ...prev,
-                                    [selectedNode.id]: {
-                                      ...draft,
-                                      defaultWorktreeRoot: event.currentTarget.value,
-                                    },
-                                  }))
-                                }
-                              />
-                            </div>
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <Text size="xs" c={updateError ? "red" : "dimmed"}>
-                                {updateError ??
-                                  "Leave Default worktree root blank to require explicit remote workdir."}
-                              </Text>
-                              <Button
-                                variant="light"
-                                size="xs"
-                                loading={Boolean(updatingNodeIds[selectedNode.id])}
-                                disabled={
-                                  Boolean(updatingNodeIds[selectedNode.id]) ||
-                                  updateError !== null
-                                }
-                                onClick={() =>
-                                  handleSaveNodeSettings(selectedNode.id, {
-                                    grpcTarget: draft.grpcTarget,
-                                    tlsServerName: draft.tlsServerName,
-                                    defaultWorktreeRoot: draft.defaultWorktreeRoot,
-                                  })
-                                }
-                              >
-                                Save Settings
-                              </Button>
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </Stack>
-                  </div>
-
-                  <div className="rounded-xl border border-red-200 bg-red-50/70 px-4 py-4">
-                    <Stack gap="sm">
-                      <div>
-                        <Text size="xs" fw={700} c="red" className={SECTION_HEADER_CLASS}>
-                          Danger Zone
-                        </Text>
-                        <Text size="sm" c="dimmed" mt={6}>
-                          Delete this node only after its attached agents have been removed or rerouted.
-                        </Text>
-                      </div>
-                      <Text size="xs" c={selectedNodeAgents.length > 0 ? "red" : "dimmed"}>
-                        {selectedNodeAgents.length > 0
-                          ? `This node still has ${selectedNodeAgents.length} attached agent${selectedNodeAgents.length === 1 ? "" : "s"}.`
-                          : "No attached agents remain on this node."}
-                      </Text>
-                      <Button
-                        color="red"
-                        variant="light"
-                        size="xs"
-                        loading={Boolean(deletingNodeIds[selectedNode.id])}
-                        disabled={
-                          Boolean(deletingNodeIds[selectedNode.id]) || selectedNodeAgents.length > 0
-                        }
-                        onClick={() => onDeleteNode?.(selectedNode.id)}
-                      >
-                        Delete Node
-                      </Button>
-                    </Stack>
-                  </div>
-                </div>
+                <RemoteNodeSettingsEditor
+                  node={selectedNode}
+                  draft={
+                    editDrafts[selectedNode.id] ??
+                    buildNodeEditDraft(selectedNode)
+                  }
+                  updating={Boolean(updatingNodeIds[selectedNode.id])}
+                  onDraftChange={(draft) =>
+                    setEditDrafts((prev) => ({
+                      ...prev,
+                      [selectedNode.id]: draft,
+                    }))
+                  }
+                  onSaveSettings={(draft) =>
+                    handleSaveNodeSettings(selectedNode.id, draft)
+                  }
+                />
               </div>
             )}
           </div>
@@ -669,10 +780,18 @@ export function AgentNodesWorkbench({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <div className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-ui-border/70 bg-white/85 text-notion-text-muted shadow-notion-row">
-                    <i className="bi bi-diagram-3 text-[13px]" aria-hidden="true" />
+                    <i
+                      className="bi bi-diagram-3 text-[13px]"
+                      aria-hidden="true"
+                    />
                   </div>
                   <div>
-                    <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                    <Text
+                      size="xs"
+                      fw={700}
+                      c="dimmed"
+                      className={SECTION_HEADER_CLASS}
+                    >
                       Teams Using This Node
                     </Text>
                     <Text size="sm" fw={600} mt={2}>
@@ -683,7 +802,8 @@ export function AgentNodesWorkbench({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="outline">
-                  {selectedNodeTeams.length} team{selectedNodeTeams.length === 1 ? "" : "s"}
+                  {selectedNodeTeams.length} team
+                  {selectedNodeTeams.length === 1 ? "" : "s"}
                 </Badge>
                 <Badge tone="outline">
                   {pluralize(selectedNodeTeamMemberCount, "member")}
@@ -694,8 +814,9 @@ export function AgentNodesWorkbench({
               </div>
             </div>
             <Text size="sm" c="dimmed" mt={10}>
-              Because nodes are global resources, this section shows which teams currently land
-              members on the selected node rather than treating node usage as team-local state.
+              Because nodes are global resources, this section shows which teams
+              currently land members on the selected node rather than treating
+              node usage as team-local state.
             </Text>
             <div
               className="mt-3 grid gap-2 min-[420px]:grid-cols-2 sm:grid-cols-4"
@@ -703,11 +824,15 @@ export function AgentNodesWorkbench({
             >
               <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                 <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Teams</div>
-                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeTeams.length}</div>
+                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
+                  {selectedNodeTeams.length}
+                </div>
               </div>
               <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                 <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Members</div>
-                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeTeamMemberCount}</div>
+                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
+                  {selectedNodeTeamMemberCount}
+                </div>
               </div>
               <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                 <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Coordinators</div>
@@ -717,7 +842,9 @@ export function AgentNodesWorkbench({
               </div>
               <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                 <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Workers</div>
-                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeWorkerCount}</div>
+                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
+                  {selectedNodeWorkerCount}
+                </div>
               </div>
             </div>
           </div>
@@ -733,7 +860,10 @@ export function AgentNodesWorkbench({
                           className={NODE_TEAM_LINK_CLASS}
                           title={`Open team detail for ${team.teamName}`}
                           onClick={(event) =>
-                            handleInAppLinkClick(event, buildTeamDetailPath(team.teamId))
+                            handleInAppLinkClick(
+                              event,
+                              buildTeamDetailPath(team.teamId),
+                            )
                           }
                         >
                           <Text size="sm" fw={700} span inherit>
@@ -743,7 +873,9 @@ export function AgentNodesWorkbench({
                         <Badge tone="outline">
                           {pluralize(team.matchedMembers.length, "member")}
                         </Badge>
-                        <Badge tone="subtle">{team.activeAgentCount} active</Badge>
+                        <Badge tone="subtle">
+                          {team.activeAgentCount} active
+                        </Badge>
                       </div>
                       <Text size="xs" c="dimmed" mt={4}>
                         <a
@@ -751,7 +883,10 @@ export function AgentNodesWorkbench({
                           className={NODE_TEAM_LINK_CLASS}
                           title={`Open team detail for ${team.teamId}`}
                           onClick={(event) =>
-                            handleInAppLinkClick(event, buildTeamDetailPath(team.teamId))
+                            handleInAppLinkClick(
+                              event,
+                              buildTeamDetailPath(team.teamId),
+                            )
                           }
                         >
                           {`team_id=${team.teamId}`}
@@ -760,49 +895,76 @@ export function AgentNodesWorkbench({
                     </div>
                     <div className="grid min-w-0 w-full gap-2 min-[420px]:grid-cols-2 sm:max-w-[280px] sm:grid-cols-3">
                       <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
-                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Members</div>
+                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>
+                          Members
+                        </div>
                         <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
                           {team.matchedMembers.length}
                         </div>
                       </div>
                       <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
-                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Coordinators</div>
+                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>
+                          Coordinators
+                        </div>
                         <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
-                          {team.matchedMembers.filter((member) => member.role === "coordinator").length}
+                          {
+                            team.matchedMembers.filter(
+                              (member) => member.role === "coordinator",
+                            ).length
+                          }
                         </div>
                       </div>
                       <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
-                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Workers</div>
+                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>
+                          Workers
+                        </div>
                         <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
-                          {team.matchedMembers.filter((member) => member.role === "worker").length}
+                          {
+                            team.matchedMembers.filter(
+                              (member) => member.role === "worker",
+                            ).length
+                          }
                         </div>
                       </div>
                     </div>
                   </div>
                   <div className="mt-3 border-t border-ui-border/60 pt-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                      <Text
+                        size="xs"
+                        fw={700}
+                        c="dimmed"
+                        className={SECTION_HEADER_CLASS}
+                      >
                         Member Runtime Drill-down
                       </Text>
                       <Text size="xs" c="dimmed">
-                        Jump straight into the thread or console without re-finding the member inside the
-                        team shell.
+                        Jump straight into the thread or console without
+                        re-finding the member inside the team shell.
                       </Text>
                     </div>
                     <div className="mt-2 grid gap-2 lg:grid-cols-2">
                       {team.matchedMembers.map((member) => {
-                        const acpPath = buildTeamMemberAcpPath(team.teamId, member.memberId);
+                        const acpPath = buildTeamMemberAcpPath(
+                          team.teamId,
+                          member.memberId,
+                        );
                         const consolePath = buildTeamMemberConsolePath(
                           team.teamId,
-                          member.memberId
+                          member.memberId,
                         );
                         return (
-                          <div key={member.memberId} className={NODE_MEMBER_DRILLDOWN_CLASS}>
+                          <div
+                            key={member.memberId}
+                            className={NODE_MEMBER_DRILLDOWN_CLASS}
+                          >
                             <a
                               href={acpPath}
                               className="min-w-0 flex-1 truncate text-notion-text no-underline"
                               title={`Open thread for ${member.label}`}
-                              onClick={(event) => handleInAppLinkClick(event, acpPath)}
+                              onClick={(event) =>
+                                handleInAppLinkClick(event, acpPath)
+                              }
                             >
                               {member.label}
                               {member.role ? ` · ${member.role}` : ""}
@@ -812,7 +974,9 @@ export function AgentNodesWorkbench({
                                 href={acpPath}
                                 className={NODE_MEMBER_ACTION_CLASS}
                                 title={`Open member thread for ${member.label}`}
-                                onClick={(event) => handleInAppLinkClick(event, acpPath)}
+                                onClick={(event) =>
+                                  handleInAppLinkClick(event, acpPath)
+                                }
                               >
                                 Thread
                               </a>
@@ -820,7 +984,9 @@ export function AgentNodesWorkbench({
                                 href={consolePath}
                                 className={NODE_MEMBER_ACTION_CLASS}
                                 title={`Open member console for ${member.label}`}
-                                onClick={(event) => handleInAppLinkClick(event, consolePath)}
+                                onClick={(event) =>
+                                  handleInAppLinkClick(event, consolePath)
+                                }
                               >
                                 Console
                               </a>
