@@ -18,12 +18,7 @@ import {
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   isWorkspaceWorkbenchRoute,
-  resolveWorkspaceAgentRoute,
-  resolveWorkspaceLens,
-  resolveWorkspaceNodeId,
-  resolveWorkspaceNodeRoute,
   buildWorkspacePath,
-  type WorkspaceLens,
 } from "./app_route_selection";
 import {
   OFFLINE_MESSAGE,
@@ -43,7 +38,6 @@ import {
   buildAgentsPanelProps,
   buildOutputHeaderProps,
 } from "./components/agents_route_shell_props";
-import { buildStandardWorkspaceLensItems } from "./components/workspace_lens_items";
 import {
   getLocalStorageItemSafe,
   setLocalStorageItemSafe,
@@ -62,6 +56,7 @@ import { AdminRouteContainer } from "./routes/admin_route_container";
 import { AgentsRouteContainer } from "./routes/agents_route_container";
 import { RouteFallback } from "./routes/route_fallback";
 import { TeamRouteContainer } from "./routes/team_route_container";
+import { useWorkspaceRouteState } from "./routes/use_workspace_route_state";
 import {
   LazyJoinPage,
   AuthRedirect,
@@ -393,53 +388,18 @@ export function App() {
   const terminalStickToBottomRef = useRef(true);
   const isComposingRef = useRef(false);
   const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
-  const workspaceAgentRoute = useMemo(
-    () => resolveWorkspaceAgentRoute(routeLocation.pathname),
-    [routeLocation.pathname]
-  );
-  const workspaceNodeRoute = useMemo(
-    () => resolveWorkspaceNodeRoute(routeLocation.pathname, routeLocation.search),
-    [routeLocation.pathname, routeLocation.search]
-  );
-  const routeAgentId = workspaceAgentRoute?.mode === "agent" ? workspaceAgentRoute.agentId : null;
-  const activeWorkspaceLens = useMemo(
-    () =>
-      workspaceNodeRoute
-        ? "nodes"
-        : resolveWorkspaceLens(routeLocation.pathname, routeLocation.search),
-    [routeLocation.pathname, routeLocation.search, workspaceNodeRoute]
-  );
-  const selectedWorkspaceNodeId = useMemo(
-    () =>
-      workspaceNodeRoute?.nodeId ??
-      resolveWorkspaceNodeId(routeLocation.search),
-    [routeLocation.search, workspaceNodeRoute]
-  );
-  const effectiveSelectedWorkspaceNodeId = selectedWorkspaceNodeId ?? "main";
-
-  const workspaceLensItems = useMemo(
-    () =>
-      buildStandardWorkspaceLensItems(activeWorkspaceLens, {
-        includeNodes: canManageAgentNodes(auth),
-      }),
-    [activeWorkspaceLens, auth]
-  );
-
-  const onSelectWorkspaceLens = useCallback(
-    (value: string) => {
-      const lens = value as WorkspaceLens;
-      if (lens === "teams") {
-        navigateWorkbenchRoute("/workspace/teams");
-        return;
-      }
-      if (lens === "nodes") {
-        navigateWorkbenchRoute(buildWorkspaceNodePath(selectedWorkspaceNodeId));
-        return;
-      }
-      navigateWorkbenchRoute(buildWorkspacePath(activeAgent, lens));
-    },
-    [activeAgent, navigateWorkbenchRoute, selectedWorkspaceNodeId]
-  );
+  const {
+    activeWorkspaceLens,
+    effectiveSelectedWorkspaceNodeId,
+    onSelectWorkspaceLens,
+    routeAgentId,
+    workspaceLensItems,
+  } = useWorkspaceRouteState({
+    activeAgent,
+    auth,
+    navigateWorkbenchRoute,
+    routeLocation,
+  });
 
   useEffect(() => {
     setLocalStorageItemSafe(
