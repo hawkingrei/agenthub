@@ -40,3 +40,21 @@ cd web && npm exec tsc -- --noEmit
 
 - Continue extracting stable Team view-model or route prop boundaries from `TeamPage`.
 - Run the standard web lint/build gates before the PR is opened.
+
+## Workspace Route-State Hook Follow-Up
+
+The root workspace route/lens state has moved from `web/src/app.tsx` into
+`web/src/routes/use_workspace_route_state.ts`. The hook owns canonical workspace agent/node
+route parsing, legacy `?lens=nodes&node=...` compatibility, root-only node lens visibility,
+and lens navigation target selection.
+
+This keeps `App` responsible for wiring shell props while moving route-derived workspace
+state behind a focused test boundary. It does not close the broader P0 cleanup item because
+Team page view-model extraction and deeper shared shell cleanup still remain.
+
+Additional validation:
+
+```bash
+npm --prefix web run test -- src/routes/use_workspace_route_state.test.tsx src/app_route_selection.test.ts src/app.route_shell.test.tsx
+cd web && npm exec tsc -- --noEmit
+```
