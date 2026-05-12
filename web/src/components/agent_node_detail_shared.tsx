@@ -28,7 +28,9 @@ const MACHINE_DETAIL_METRIC_VALUE_CLASS =
 const MACHINE_DETAIL_SECTION_HEADER_CLASS =
   "flex flex-wrap items-start justify-between gap-3";
 
-export function resolveAvailableNodes(nodes: AgentNodeRecord[]): AgentNodeRecord[] {
+export function resolveAvailableNodes(
+  nodes: AgentNodeRecord[],
+): AgentNodeRecord[] {
   return nodes.length > 0
     ? nodes
     : [
@@ -46,7 +48,9 @@ export function resolveAvailableNodes(nodes: AgentNodeRecord[]): AgentNodeRecord
       ];
 }
 
-export function formatNodeTimestamp(timestamp: number | null | undefined): string {
+export function formatNodeTimestamp(
+  timestamp: number | null | undefined,
+): string {
   if (!timestamp || timestamp <= 0) {
     return "Not recorded";
   }
@@ -80,7 +84,9 @@ type AgentRuntimeLabel = {
   tone: "subtle" | "outline";
 };
 
-export function resolveAgentRuntimeLabels(agent: AgentRecord): AgentRuntimeLabel[] {
+export function resolveAgentRuntimeLabels(
+  agent: AgentRecord,
+): AgentRuntimeLabel[] {
   const command = (agent.command ?? "").trim().toLowerCase();
   const labels = new Map<string, AgentRuntimeLabel>();
   if (command.includes("agenthub")) {
@@ -123,13 +129,15 @@ function formatAgentStatusLabel(status: string): string {
       return "Stopped";
     default:
       return normalized
-        ? normalized.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+        ? normalized
+            .replace(/[_-]+/g, " ")
+            .replace(/\b\w/g, (char) => char.toUpperCase())
         : "Unknown";
   }
 }
 
 function formatWorktreeModeLabel(
-  worktreeMode: AgentRecord["worktree_mode"] | null | undefined
+  worktreeMode: AgentRecord["worktree_mode"] | null | undefined,
 ): string | null {
   switch (worktreeMode) {
     case "use_existing":
@@ -159,7 +167,7 @@ const NODE_LAST_SEEN_RECENT_WINDOW_SECONDS = 10 * 60;
 
 export function deriveNodeRuntimeSummary(
   node: AgentNodeRecord,
-  agents: AgentRecord[]
+  agents: AgentRecord[],
 ): NodeRuntimeSummary {
   if (node.is_main) {
     return {
@@ -172,7 +180,7 @@ export function deriveNodeRuntimeSummary(
   if (node.last_seen_at && node.last_seen_at > 0) {
     const ageSeconds = Math.max(
       0,
-      Math.floor(Date.now() / 1000) - node.last_seen_at
+      Math.floor(Date.now() / 1000) - node.last_seen_at,
     );
     if (ageSeconds <= NODE_LAST_SEEN_RECENT_WINDOW_SECONDS) {
       return {
@@ -207,7 +215,7 @@ export function deriveNodeRuntimeSummary(
 
 export function deriveDetectedNodeRuntimes(
   node: AgentNodeRecord,
-  agents: AgentRecord[]
+  agents: AgentRecord[],
 ): NodeDetectedRuntime[] {
   const observed = new Set<string>();
   if (node.is_main) {
@@ -305,10 +313,7 @@ export function buildNodeConnectCommandSpec(args: {
       `AGENTHUB_INTERNAL_GRPC_BOOTSTRAP_TOKEN=${escapeShellValue(token || "<bootstrap-token-from-main-control-plane>")}`,
       `agenthub --config /etc/agenthub/config.toml`,
     ].join(" "),
-    substituted: [
-      `node_id=${node.id}`,
-      ...(token ? ["bootstrap token"] : []),
-    ],
+    substituted: [`node_id=${node.id}`, ...(token ? ["bootstrap token"] : [])],
     manual: [
       "config path",
       "listen addr if 50051 is not correct",
@@ -351,11 +356,14 @@ export function AgentNodeDetailCard({
   onCreateAgent,
   compact = false,
 }: AgentNodeDetailCardProps) {
-  const connectCommand = buildNodeConnectCommandSpec({ node, bootstrap: nodeJoinBootstrap });
+  const connectCommand = buildNodeConnectCommandSpec({
+    node,
+    bootstrap: nodeJoinBootstrap,
+  });
   const runtimeSummary = deriveNodeRuntimeSummary(node, agents);
   const detectedRuntimes = React.useMemo(
     () => deriveDetectedNodeRuntimes(node, agents),
-    [node, agents]
+    [node, agents],
   );
   const infoItems = React.useMemo(
     () =>
@@ -373,10 +381,16 @@ export function AgentNodeDetailCard({
         : [
             { label: "Node ID", value: node.id },
             { label: "Role", value: "Remote execution node" },
-            { label: "TLS server name", value: node.tls_server_name ?? "Uses target host" },
+            {
+              label: "TLS server name",
+              value: node.tls_server_name ?? "Uses target host",
+            },
             { label: "Created", value: formatNodeTimestamp(node.created_at) },
             { label: "Updated", value: formatNodeTimestamp(node.updated_at) },
-            { label: "Last seen", value: formatNodeTimestamp(node.last_seen_at) },
+            {
+              label: "Last seen",
+              value: formatNodeTimestamp(node.last_seen_at),
+            },
             {
               label: "Registry evidence",
               value: node.last_seen_at
@@ -384,16 +398,18 @@ export function AgentNodeDetailCard({
                 : "No bootstrap-based last-seen signal is persisted for this node yet.",
             },
           ],
-    [node]
+    [node],
   );
   const [copied, setCopied] = React.useState(false);
   const [copyError, setCopyError] = React.useState<string | null>(null);
   const resetCopiedTimeoutRef = React.useRef<number | null>(null);
-  const connectTone =
-    runtimeSummary.status === "connected" && (node.is_main || connectCommand?.hasBootstrapToken)
-      ? "border-ui-border/80 bg-white/72"
-      : "border-amber-300 bg-amber-50/70";
-  const showConnectFirst = runtimeSummary.status !== "connected";
+
+  const isOffline =
+    runtimeSummary.status === "offline" || runtimeSummary.status === "degraded";
+  const connectTone = isOffline
+    ? "border-amber-300 bg-amber-50/70 shadow-sm"
+    : "border-ui-border/80 bg-white/72";
+  const showConnectProminent = isOffline && !node.is_main;
 
   React.useEffect(() => {
     return () => {
@@ -433,7 +449,10 @@ export function AgentNodeDetailCard({
               <Text size={compact ? "md" : "lg"} fw={700}>
                 {node.name}
               </Text>
-              <Badge tone={node.is_main ? "subtle" : "outline"} className="uppercase">
+              <Badge
+                tone={node.is_main ? "subtle" : "outline"}
+                className="uppercase"
+              >
                 {resolveNodeRoleLabel(node)}
               </Badge>
               <Badge tone={runtimeSummary.tone}>{runtimeSummary.label}</Badge>
@@ -451,17 +470,27 @@ export function AgentNodeDetailCard({
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
           <div className={MACHINE_DETAIL_METRIC_ITEM_CLASS}>
-            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>Runtime signal</div>
-            <div className={MACHINE_DETAIL_METRIC_VALUE_CLASS}>{runtimeSummary.label}</div>
-          </div>
-          <div className={MACHINE_DETAIL_METRIC_ITEM_CLASS}>
-            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>Route target</div>
-            <div className={`${MACHINE_DETAIL_METRIC_VALUE_CLASS} break-all`}>
-              {node.is_main ? "local control plane" : (node.grpc_target ?? "encrypted gRPC")}
+            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>
+              Runtime signal
+            </div>
+            <div className={MACHINE_DETAIL_METRIC_VALUE_CLASS}>
+              {runtimeSummary.label}
             </div>
           </div>
           <div className={MACHINE_DETAIL_METRIC_ITEM_CLASS}>
-            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>Worktree root</div>
+            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>
+              Route target
+            </div>
+            <div className={`${MACHINE_DETAIL_METRIC_VALUE_CLASS} break-all`}>
+              {node.is_main
+                ? "local control plane"
+                : (node.grpc_target ?? "encrypted gRPC")}
+            </div>
+          </div>
+          <div className={MACHINE_DETAIL_METRIC_ITEM_CLASS}>
+            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>
+              Worktree root
+            </div>
             <div className={`${MACHINE_DETAIL_METRIC_VALUE_CLASS} break-all`}>
               {node.default_worktree_root ?? "Explicit workdir required"}
             </div>
@@ -470,66 +499,31 @@ export function AgentNodeDetailCard({
       </div>
 
       <div className="grid gap-3 xl:grid-cols-2">
-        <div className={`${MACHINE_DETAIL_SECTION_CLASS} ${showConnectFirst ? "xl:order-2" : ""}`}>
-          <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
-            <div>
-              <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-                Info
-              </Text>
-              <Text size="xs" c="dimmed" mt={4}>
-                Stable registry identity and lightweight runtime evidence for this node.
-              </Text>
-            </div>
-          </div>
-          <KeyValueList className="mt-3 grid gap-2">
-            {infoItems.map((item) => (
-              <KeyValueItem
-                key={item.label}
-                label={item.label}
-                value={item.value}
-                labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                valueClassName="text-xs text-ui-text break-all"
-              />
-            ))}
-          </KeyValueList>
-          <div className="mt-3 rounded-lg border border-ui-border/80 bg-white/80 px-3 py-3">
-            <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-              Observed Agent Runtimes
-            </Text>
-            <Text size="xs" c="dimmed" mt={4}>
-              Derived from attached agent commands and known operator-facing runtime surfaces; this is not a host binary probe.
-            </Text>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {detectedRuntimes.map((runtime) => (
-                <Badge
-                  key={runtime.label}
-                  tone={runtime.available ? "subtle" : "outline"}
-                >
-                  {runtime.label}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
-
         <div
-          className={`${MACHINE_DETAIL_SECTION_CLASS} ${connectTone} ${showConnectFirst ? "xl:order-1" : ""}`}
+          className={`${MACHINE_DETAIL_SECTION_CLASS} ${connectTone} ${showConnectProminent ? "xl:order-1" : "xl:order-2"}`}
         >
           <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
             <div>
-              <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+              <Text
+                size="xs"
+                fw={700}
+                c="dimmed"
+                className={SECTION_HEADER_CLASS}
+              >
                 Connect Command
               </Text>
               <Text size="xs" c="dimmed" mt={4}>
-                Bootstrap this node from the control plane, or inspect the canonical reconnect
-                contract if you need to wire it into longer-lived infra.
+                Bootstrap this node from the control plane, or inspect the
+                canonical reconnect contract if you need to wire it into
+                longer-lived infra.
               </Text>
             </div>
           </div>
           <div className="mt-3">
             {node.is_main ? (
               <Text size="sm" c="dimmed">
-                The local control plane node does not need a remote bootstrap command.
+                The local control plane node does not need a remote bootstrap
+                command.
               </Text>
             ) : nodeJoinBootstrapLoading ? (
               <Text size="sm" c="dimmed">
@@ -541,13 +535,9 @@ export function AgentNodeDetailCard({
               </Alert>
             ) : connectCommand ? (
               <Stack gap="xs">
-                <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-                  Connect Command
-                </Text>
                 <Text size="sm" c="dimmed">
-                  Start the node process with the registered node id, then keep the process
-                  running. The command below only substitutes values this page can derive
-                  canonically.
+                  Start the node process with the registered node id, then keep
+                  the process running.
                 </Text>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap gap-1.5">
@@ -562,11 +552,15 @@ export function AgentNodeDetailCard({
                       </Badge>
                     ))}
                   </div>
-                  <ActionButton tone="secondary" size="sm" onClick={() => void handleCopyConnectCommand()}>
+                  <ActionButton
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => void handleCopyConnectCommand()}
+                  >
                     {copied ? "Copied" : "Copy"}
                   </ActionButton>
                 </div>
-                <pre className="overflow-x-auto rounded-lg border border-ui-border/80 bg-slate-950 px-3 py-3 text-[12px] leading-5 text-slate-50">
+                <pre className="overflow-x-auto rounded-lg border border-ui-border/80 bg-slate-950 px-3 py-3 text-[12px] font-mono leading-5 text-slate-50">
                   {connectCommand.command}
                 </pre>
                 {copyError ? (
@@ -576,12 +570,17 @@ export function AgentNodeDetailCard({
                 ) : null}
                 {!connectCommand.hasBootstrapToken ? (
                   <Text size="xs" c="dimmed">
-                    Bootstrap data is missing from the current API response, so the command keeps an
-                    explicit token placeholder instead of pretending it is fully resolved.
+                    Bootstrap data is missing from the current API response, so
+                    the command keeps an explicit token placeholder.
                   </Text>
                 ) : null}
                 <div className="mt-2 rounded-lg border border-ui-border/80 bg-white/80 px-3 py-3">
-                  <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                  <Text
+                    size="xs"
+                    fw={700}
+                    c="dimmed"
+                    className={SECTION_HEADER_CLASS}
+                  >
                     Connect Config
                   </Text>
                   <KeyValueList className="mt-3 grid gap-2">
@@ -599,10 +598,65 @@ export function AgentNodeDetailCard({
               </Stack>
             ) : (
               <Text size="sm" c="dimmed">
-                Bootstrap token details are not available yet. Load them from the root control
-                plane before starting this node.
+                Bootstrap token details are not available yet.
               </Text>
             )}
+          </div>
+        </div>
+
+        <div
+          className={`${MACHINE_DETAIL_SECTION_CLASS} ${showConnectProminent ? "xl:order-2" : "xl:order-1"}`}
+        >
+          <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
+            <div>
+              <Text
+                size="xs"
+                fw={700}
+                c="dimmed"
+                className={SECTION_HEADER_CLASS}
+              >
+                Info
+              </Text>
+              <Text size="xs" c="dimmed" mt={4}>
+                Stable registry identity and lightweight runtime evidence for
+                this node.
+              </Text>
+            </div>
+          </div>
+          <KeyValueList className="mt-3 grid gap-2">
+            {infoItems.map((item) => (
+              <KeyValueItem
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+                valueClassName="text-xs text-ui-text break-all"
+              />
+            ))}
+          </KeyValueList>
+          <div className="mt-3 rounded-lg border border-ui-border/80 bg-white/80 px-3 py-3">
+            <Text
+              size="xs"
+              fw={700}
+              c="dimmed"
+              className={SECTION_HEADER_CLASS}
+            >
+              Observed Agent Runtimes
+            </Text>
+            <Text size="xs" c="dimmed" mt={4}>
+              Derived from attached agent signals; this is not a host binary
+              probe.
+            </Text>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {detectedRuntimes.map((runtime) => (
+                <Badge
+                  key={runtime.label}
+                  tone={runtime.available ? "subtle" : "outline"}
+                >
+                  {runtime.label}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -610,11 +664,17 @@ export function AgentNodeDetailCard({
       <div className={MACHINE_DETAIL_SECTION_CLASS}>
         <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
           <div className="min-w-0 flex-1">
-            <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+            <Text
+              size="xs"
+              fw={700}
+              c="dimmed"
+              className={SECTION_HEADER_CLASS}
+            >
               Agents on this node ({agents.length})
             </Text>
             <Text size="xs" c="dimmed" mt={4}>
-              Route new agents here or open an attached agent for deeper runtime inspection.
+              Route new agents here or open an attached agent for deeper runtime
+              inspection.
             </Text>
           </div>
           {onCreateAgent ? (
