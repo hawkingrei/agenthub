@@ -2,7 +2,8 @@
 
 ## Scope
 
-- added a canonical workspace route for node inspection: `"/workspace?lens=nodes&node=<node_id>"`;
+- added a canonical workspace route for node inspection, now resolved as
+  `"/workspace/nodes/<node_id>"` with the older query-parameter shape retained as a legacy alias;
 - introduced a dedicated node-detail workbench surface for root operators;
 - extracted the shared node detail rendering so the existing `Agents` node-management panel can
   reuse the same `Info`, `Connect Command`, and `Agents On This Node` structure;
@@ -113,7 +114,7 @@
 - this keeps Team workspace lens bars team-local (`Channels / Tasks / Members / Search`) while
   still giving operators one stable way to jump into the global machine/node surface from any
   workspace shell;
-- the menu entry reuses the canonical `/workspace?lens=nodes` route instead of introducing another
+- the menu entry reuses the canonical `/workspace/nodes` route instead of introducing another
   machine-specific navigation path.
 
 ### Additional Validation
@@ -216,3 +217,28 @@
 
 - `cd web && pnpm exec vitest run src/app_route_selection.test.ts src/pages/team_page.helpers.test.ts src/pages/team/page_helpers.test.ts src/components/agent_nodes_workbench.test.tsx src/pages/team_panels.test.tsx src/pages/team_member_acp_panel.test.tsx`
 - `cd web && npm exec tsc -- --noEmit`
+
+## Node Detail P1 Closure
+
+- PR [#581](https://github.com/hawkingrei/agenthub/pull/581) closed the remaining operator-facing
+  node detail polish:
+  - kept the connect-command config block visible after the shared detail-card layout cleanup;
+  - promoted the connect command only for offline or degraded remote nodes;
+  - extracted remote node rename, routing settings, and danger-zone controls into focused local
+    components;
+  - preserved the main-node read-only name and delete-boundary messaging.
+- With that follow-up, the P1 node-detail backlog item is complete against the current feature
+  contract:
+  - canonical node detail route: `/workspace/nodes/<node_id>`;
+  - first-class `Info`, `Connect Command`, `Agents On This Node`, team usage, and danger-zone
+    sections;
+  - links from the existing Agents node-management surface into the canonical detail model;
+  - stable operator evidence for bootstrap recovery without overclaiming host runtime probing.
+
+### Additional Validation
+
+- `npm --prefix web run test -- src/components/agent_nodes_workbench.test.tsx`
+- `npm --prefix web exec tsc -- --noEmit`
+- `npm --prefix web run build`
+- `npm --prefix web run lint`
+- `git diff --check`
