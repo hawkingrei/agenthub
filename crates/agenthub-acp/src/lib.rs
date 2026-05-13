@@ -49,7 +49,6 @@ const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
-const ACP_PERMISSION_DENIED_PROMPT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 // Team workers may need a long resume/bootstrap window after service restarts,
 // so ACP startup should tolerate late session readiness instead of failing fast.
 const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(300);
@@ -1173,29 +1172,11 @@ async fn send_acp_prompt_with_denied_recovery(
                     .await;
             }
 
-            match tokio::time::timeout(ACP_PERMISSION_DENIED_PROMPT_DRAIN_TIMEOUT, &mut prompt_fut).await {
-                Ok(Ok(_)) => {}
-                Ok(Err(err)) => {
-                    diagnostics.observe_command_error("prompt", err.to_string());
-                    event_sink
-                        .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
-                        .await;
-                }
-                Err(_) => {
-                    diagnostics.observe_command_error(
-                        "prompt",
-                        format!(
-                            "permission-denied prompt did not finish within {}s after cancel",
-                            ACP_PERMISSION_DENIED_PROMPT_DRAIN_TIMEOUT.as_secs()
-                        ),
-                    );
-                    event_sink
-                        .emit_raw(
-                            AcpStream::System,
-                            "acp prompt abandoned after permission denial timeout".to_string(),
-                        )
-                        .await;
-                }
+            if let Err(err) = prompt_fut.await {
+                diagnostics.observe_command_error("prompt", err.to_string());
+                event_sink
+                    .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
+                    .await;
             }
         }
     }
