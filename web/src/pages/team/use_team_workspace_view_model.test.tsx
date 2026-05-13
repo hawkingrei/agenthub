@@ -24,6 +24,18 @@ function HookHarness({
   return null;
 }
 
+function HookRenderHarness({
+  params,
+  onRender,
+}: {
+  params: HookParams;
+  onRender: (snapshot: HookSnapshot) => void;
+}) {
+  const snapshot = useTeamWorkspaceViewModel(params);
+  onRender(snapshot);
+  return null;
+}
+
 function createParams(overrides: Partial<HookParams> = {}): HookParams {
   return {
     selectedTeam: {
@@ -160,6 +172,47 @@ describe("useTeamWorkspaceViewModel", () => {
       expect(snapshot?.workspaceNoticeText).toBeNull();
     } finally {
       mounted.cleanup();
+    }
+  });
+
+  it("keeps the returned view-model object stable across equivalent renders", async () => {
+    const params = createParams();
+    const snapshots: HookSnapshot[] = [];
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <HookRenderHarness
+            params={params}
+            onRender={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        );
+        await Promise.resolve();
+      });
+      await act(async () => {
+        root.render(
+          <HookRenderHarness
+            params={params}
+            onRender={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        );
+        await Promise.resolve();
+      });
+
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots[1]).toBe(snapshots[0]);
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
     }
   });
 
