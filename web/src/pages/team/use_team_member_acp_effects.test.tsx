@@ -471,6 +471,48 @@ describe("useTeamMemberAcpEffects", () => {
     );
   });
 
+  it("ignores deferred ACP hints that do not match the persisted event id", async () => {
+    const memberEvents = createStateSetter<AgentEvent[]>([buildAgentEvent(1)]);
+    const deferredEvent = buildAgentEvent(11, {
+      message: JSON.stringify({
+        type: "tool_call_update",
+        id: "call-1",
+        status: "completed",
+        deferred_event_id: 99,
+        deferred_fields: ["raw_output"],
+      }),
+    });
+    const getAgentEvent = vi.spyOn(api, "getAgentEvent");
+    const params = createParams({
+      eventsAutoRefresh: true,
+      setMemberEvents: memberEvents.setter,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const source = MockEventSource.instances[0];
+    await act(async () => {
+      source.emitOpen();
+      source.emitMessage(
+        JSON.stringify({
+          type: "acp",
+          payload: deferredEvent,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(getAgentEvent).not.toHaveBeenCalled();
+    expect(memberEvents.state.current.find((event) => event.event_id === 11)?.message).toBe(
+      deferredEvent.message
+    );
+  });
+
   it("syncs related ACP consumers after matching SSE activity", async () => {
     vi.useFakeTimers();
     const params = createParams({

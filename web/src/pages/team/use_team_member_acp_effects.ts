@@ -44,8 +44,10 @@ function isDeferredAcpEvent(event: AgentEvent): boolean {
       deferred_event_id?: unknown;
       deferred_fields?: unknown;
     };
+    // Treat the ACP payload as a hydration hint only; the event API returns the
+    // persisted SQLite row that replaces this SSE summary.
     return (
-      typeof parsed.deferred_event_id === "number" &&
+      parsed.deferred_event_id === event.event_id &&
       Array.isArray(parsed.deferred_fields) &&
       parsed.deferred_fields.length > 0
     );
