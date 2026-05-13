@@ -200,6 +200,11 @@ export function useTeamMemberAcpViewModel({
   const snapshotIsActive = isActiveTeamMemberStatus(snapshotStatus);
   const normalizedAgentStatus = normalizeTeamMemberStatusValue(selectedAgentStatus);
   const hasExplicitSelectedSession = Boolean(selectedSessionIdProp?.trim());
+  const hasTerminalSelectedAgentStatus = Boolean(
+    normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
+  );
+  const hasRuntimeTerminalStatus =
+    !hasExplicitSelectedSession && hasTerminalSelectedAgentStatus;
   const agentAllowsInput =
     snapshotIsActive ||
     hasExplicitSelectedSession ||
@@ -267,13 +272,11 @@ export function useTeamMemberAcpViewModel({
     selectedMemberRole?.trim() || selectedMemberSnapshot?.role?.trim() || null;
   const acpRunStatus = normalizeTeamMemberStatusValue(acpView.runStatus?.status);
   const hasAuthoritativeStoppedStatus =
-    (Boolean(snapshotStatus) && !snapshotIsActive) ||
-    (!hasExplicitSelectedSession &&
-      !snapshotIsActive &&
-      Boolean(normalizedAgentStatus) &&
-      !isAgentActiveStatus(normalizedAgentStatus));
+    (Boolean(snapshotStatus) && !snapshotIsActive) || hasRuntimeTerminalStatus;
   const authoritativeTerminalStatus = hasAuthoritativeStoppedStatus
-    ? snapshotStatus || normalizedAgentStatus || "stopped"
+    ? hasRuntimeTerminalStatus
+      ? normalizedAgentStatus
+      : snapshotStatus || normalizedAgentStatus || "stopped"
     : null;
   const effectiveRunStatus =
     authoritativeTerminalStatus ?? acpView.runStatus?.status ?? null;
@@ -291,13 +294,14 @@ export function useTeamMemberAcpViewModel({
   const canControlAcpSession =
     canSetMode || canSetModel || canSetConfig || canCancelRun || canClearSession;
   const memberStatus =
-    (snapshotIsActive
+    (authoritativeTerminalStatus ||
+      (snapshotIsActive
       ? snapshotStatus
       : !hasExplicitSelectedSession &&
         normalizedAgentStatus &&
         !isAgentActiveStatus(normalizedAgentStatus)
       ? normalizedAgentStatus
-      : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
+      : snapshotStatus || acpRunStatus || normalizedAgentStatus)) ||
     normalizeTeamMemberStatusValue(memberRoleLabel) ||
     "unknown";
   // Prefer authoritative snapshot/runtime status for startup gating so stale

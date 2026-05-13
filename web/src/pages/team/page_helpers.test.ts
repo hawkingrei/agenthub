@@ -35,6 +35,7 @@ import {
   resolveSelectedTeamTask,
   shouldClearSelectedConversationTask,
   shouldClearSelectedTeamMember,
+  shouldWatchTeamRuntime,
   resolveTaskConversationMemberIds,
   resolveTaskMessageSeenByActors,
   refreshTeamConversationMailboxAfterSend,
@@ -1142,6 +1143,19 @@ describe("team page helpers", () => {
       message: "Unable to initialize shared team thread.",
     });
     expect(resolveTeamPageNotice("   ")).toBeNull();
+  });
+
+  it("keeps runtime watching enabled for configured teams even when cached status is stopped", () => {
+    expect(
+      shouldWatchTeamRuntime({
+        selectedTeamHasConfiguredMembers: true,
+      })
+    ).toBe(true);
+    expect(
+      shouldWatchTeamRuntime({
+        selectedTeamHasConfiguredMembers: false,
+      })
+    ).toBe(false);
   });
 
   it("clears cached runtime session ids when stop-team optimistic update applies", () => {
