@@ -1245,6 +1245,11 @@ export const api = {
       token
     );
   },
+  getAgentEvent: (token: string, id: string, eventId: number) =>
+    apiFetch<AgentEvent>(
+      `/api/agents/${encodePathSegment(id)}/events/${encodePathSegment(String(eventId))}`,
+      token
+    ),
   setAgentCodeMode: (token: string, id: string, code_mode: boolean) =>
     apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/code_mode`, token, {
       method: "POST",
