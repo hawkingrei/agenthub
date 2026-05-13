@@ -148,6 +148,7 @@ import { useTeamTaskEffects } from "./team/use_team_task_effects";
 import { useTeamRuntimeEffects } from "./team/use_team_runtime_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
 import { useTeamStepActions } from "./team/use_team_step_actions";
+import { useTeamMemberAcpSessionDiscovery } from "./team/use_team_member_acp_session_discovery";
 import {
   DEFAULT_TEAM_CONTROL_STATE,
   DEFAULT_TEAM_MAILBOX_STATE,
@@ -2303,6 +2304,18 @@ export function TeamPage(props: TeamPageProps) {
     }
     await loadMemberEvents("prepend");
   }, [loadMemberEvents, selectedAgentWorkspaceMemberId, selectedAgentWorkspaceSessionId]);
+
+  useTeamMemberAcpSessionDiscovery({
+    activeRunId: activeRunIdForSelectedTeam,
+    tab,
+    selectedMemberId: selectedAgentWorkspaceMemberId,
+    selectedSessionId: selectedAgentWorkspaceSessionId,
+    snapshotStatus: selectedAgentWorkspaceSnapshot?.status ?? null,
+    agentStatus: selectedAgentWorkspaceAgent?.status ?? null,
+    runtimeSessionStatus: selectedAgentWorkspaceRuntimeMember?.session_status ?? null,
+    runtimeAgentStatus: selectedAgentWorkspaceRuntimeMember?.agent_status ?? null,
+    refreshSnapshot,
+  });
 
   useTeamMemberAcpEffects({
     token: props.token,
