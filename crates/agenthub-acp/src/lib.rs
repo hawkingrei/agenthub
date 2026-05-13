@@ -30,7 +30,7 @@ use serde_json::{Map, Number, Value};
 use sqlx::{Row, SqlitePool};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::runtime::Handle;
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{Mutex, mpsc, oneshot, watch};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use uuid::Uuid;
 
@@ -49,6 +49,7 @@ const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
+const ACP_PERMISSION_DENIED_PROMPT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 // Team workers may need a long resume/bootstrap window after service restarts,
 // so ACP startup should tolerate late session readiness instead of failing fast.
 const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(300);
@@ -695,6 +696,8 @@ impl AcpClient {
         .await;
         if !permission_outcome_allows(&outcome, &args.options) {
             self.emit_permission_denied_tool_update(&args).await;
+            self.diagnostics
+                .observe_permission_denied_for_active_prompt();
         }
         if !self
             .permissions
@@ -809,13 +812,28 @@ pub struct AcpHandle {
     diagnostics: Arc<AcpRuntimeDiagnostics>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct AcpRuntimeDiagnostics {
     active_prompt_count: AtomicUsize,
     pending_command_count: AtomicUsize,
     last_provider_event_at: AtomicI64,
     last_command_error_at: AtomicI64,
+    permission_denied_tx: watch::Sender<u64>,
     state: StdMutex<AcpRuntimeDiagnosticsState>,
+}
+
+impl Default for AcpRuntimeDiagnostics {
+    fn default() -> Self {
+        let (permission_denied_tx, _permission_denied_rx) = watch::channel(0);
+        Self {
+            active_prompt_count: AtomicUsize::new(0),
+            pending_command_count: AtomicUsize::new(0),
+            last_provider_event_at: AtomicI64::new(0),
+            last_command_error_at: AtomicI64::new(0),
+            permission_denied_tx,
+            state: StdMutex::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -992,6 +1010,10 @@ fn optional_timestamp(value: i64) -> Option<i64> {
 }
 
 impl AcpRuntimeDiagnostics {
+    fn permission_denied_rx(&self) -> watch::Receiver<u64> {
+        self.permission_denied_tx.subscribe()
+    }
+
     fn observe_prompt_start(&self, submission_id: &str) {
         let mut state = self.state.lock().expect("acp diagnostics state poisoned");
         if !state
@@ -1009,6 +1031,11 @@ impl AcpRuntimeDiagnostics {
         state
             .active_submission_ids
             .retain(|existing| existing != submission_id);
+    }
+
+    fn observe_permission_denied_for_active_prompt(&self) {
+        let next = self.permission_denied_tx.borrow().saturating_add(1);
+        let _ = self.permission_denied_tx.send(next);
     }
 
     fn observe_provider_event(
@@ -1102,6 +1129,78 @@ struct AcpDispatchContext<'a> {
     diagnostics: Arc<AcpRuntimeDiagnostics>,
 }
 
+async fn send_acp_prompt_with_denied_recovery(
+    conn: Rc<AcpClientConnection>,
+    request: PromptRequest,
+    session_id: String,
+    mut permission_denied_rx: watch::Receiver<u64>,
+    event_sink: Arc<dyn AcpEventSink>,
+    diagnostics: Arc<AcpRuntimeDiagnostics>,
+) {
+    let conn_for_prompt = conn.clone();
+    let conn_for_cancel = conn.clone();
+    let prompt_fut = send_acp_request(&conn_for_prompt, request);
+    tokio::pin!(prompt_fut);
+
+    tokio::select! {
+        result = &mut prompt_fut => {
+            if let Err(err) = result {
+                diagnostics.observe_command_error("prompt", err.to_string());
+                event_sink
+                    .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
+                    .await;
+            }
+        }
+        changed = permission_denied_rx.changed() => {
+            if changed.is_err() {
+                match prompt_fut.await {
+                    Ok(_) => {}
+                    Err(err) => {
+                        diagnostics.observe_command_error("prompt", err.to_string());
+                        event_sink
+                            .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
+                            .await;
+                    }
+                }
+                return;
+            }
+
+            let cancel = CancelNotification::new(session_id);
+            if let Err(err) = conn_for_cancel.send_notification(cancel) {
+                diagnostics.observe_command_error("cancel", err.to_string());
+                event_sink
+                    .emit_raw(AcpStream::System, format!("acp cancel error: {err}"))
+                    .await;
+            }
+
+            match tokio::time::timeout(ACP_PERMISSION_DENIED_PROMPT_DRAIN_TIMEOUT, &mut prompt_fut).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(err)) => {
+                    diagnostics.observe_command_error("prompt", err.to_string());
+                    event_sink
+                        .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
+                        .await;
+                }
+                Err(_) => {
+                    diagnostics.observe_command_error(
+                        "prompt",
+                        format!(
+                            "permission-denied prompt did not finish within {}s after cancel",
+                            ACP_PERMISSION_DENIED_PROMPT_DRAIN_TIMEOUT.as_secs()
+                        ),
+                    );
+                    event_sink
+                        .emit_raw(
+                            AcpStream::System,
+                            "acp prompt abandoned after permission denial timeout".to_string(),
+                        )
+                        .await;
+                }
+            }
+        }
+    }
+}
+
 async fn dispatch_acp_command(
     cmd: AcpCommand,
     context: AcpDispatchContext<'_>,
@@ -1124,13 +1223,17 @@ async fn dispatch_acp_command(
             blocks.extend(context.prompt_prefix_blocks.iter().cloned());
             blocks.push(ContentBlock::Text(TextContent::new(input)));
             tokio::task::spawn_local(async move {
-                let request = PromptRequest::new(session_id, blocks);
-                if let Err(err) = send_acp_request(&conn, request).await {
-                    diagnostics.observe_command_error("prompt", err.to_string());
-                    event_sink
-                        .emit_raw(AcpStream::System, format!("acp prompt error: {err}"))
-                        .await;
-                }
+                let request = PromptRequest::new(session_id.clone(), blocks);
+                let permission_denied_rx = diagnostics.permission_denied_rx();
+                send_acp_prompt_with_denied_recovery(
+                    conn,
+                    request,
+                    session_id,
+                    permission_denied_rx,
+                    event_sink,
+                    diagnostics.clone(),
+                )
+                .await;
                 diagnostics.observe_prompt_done(&submission_id);
                 let _ = prompt_done_tx.send(());
             });
@@ -2660,6 +2763,27 @@ mod tests {
         let snapshot = handle.diagnostics();
         assert!(snapshot.active_submission_ids.is_empty());
         assert_eq!(snapshot.pending_tool_call_count, 0);
+    }
+
+    #[tokio::test]
+    async fn acp_runtime_diagnostics_notifies_active_prompts_after_permission_denial() {
+        let diagnostics = AcpRuntimeDiagnostics::default();
+        let mut denied_rx = diagnostics.permission_denied_rx();
+
+        assert_eq!(*denied_rx.borrow(), 0);
+        diagnostics.observe_permission_denied_for_active_prompt();
+        denied_rx
+            .changed()
+            .await
+            .expect("permission-denied signal should stay open");
+        assert_eq!(*denied_rx.borrow(), 1);
+
+        diagnostics.observe_permission_denied_for_active_prompt();
+        denied_rx
+            .changed()
+            .await
+            .expect("second permission-denied signal should be delivered");
+        assert_eq!(*denied_rx.borrow(), 2);
     }
 
     #[test]
