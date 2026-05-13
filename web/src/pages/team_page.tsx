@@ -126,6 +126,7 @@ import {
   resolveTeamMemberAgentControlState,
   shouldClearSelectedConversationTask,
   shouldClearSelectedTeamMember,
+  shouldWatchTeamRuntime,
   toPrettyJson,
   upsertRun,
 } from "./team/page_helpers";
@@ -1355,9 +1356,10 @@ export function TeamPage(props: TeamPageProps) {
   });
   const shouldWatchSelectedTeamRuntime = useMemo(
     () =>
-      selectedTeamHasConfiguredMembers &&
-      (busy === "start-team" || selectedTeamRuntimeStatus.status !== "stopped"),
-    [busy, selectedTeamHasConfiguredMembers, selectedTeamRuntimeStatus.status]
+      shouldWatchTeamRuntime({
+        selectedTeamHasConfiguredMembers,
+      }),
+    [selectedTeamHasConfiguredMembers]
   );
   const teamMemberRoleProfile = useMemo(
     () => (teamMemberDraft ? resolveTeamMemberRoleProfile(teamMemberDraft.role) : null),
