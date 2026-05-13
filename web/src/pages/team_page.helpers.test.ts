@@ -20,6 +20,7 @@ import {
   validateRunInputJson,
 } from "./team_page";
 import { isCurrentTeamScopedRequest } from "./team/page_helpers";
+import { shouldRefreshSelectedAgentWorkspaceSession } from "./team/use_team_member_acp_session_discovery";
 
 describe("team_page helpers", () => {
   it("parses agent session mismatch payloads and rejects malformed messages", () => {
@@ -351,6 +352,94 @@ describe("team_page helpers", () => {
         "runtime-session-3"
       )
     ).toBe(override);
+  });
+
+  it("refreshes selected member ACP session metadata while an active member has no session id", () => {
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "agent_acp",
+        selectedMemberId: "worker-1",
+        selectedSessionId: null,
+        snapshotStatus: "working",
+        agentStatus: "running",
+      })
+    ).toBe(true);
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "member_console",
+        selectedMemberId: "worker-1",
+        selectedSessionId: null,
+        runtimeAgentStatus: "running",
+      })
+    ).toBe(true);
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "agent_acp",
+        selectedMemberId: "worker-1",
+        selectedSessionId: null,
+        agentStatus: "WORKING",
+      })
+    ).toBe(true);
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "agent_acp",
+        selectedMemberId: "worker-1",
+        selectedSessionId: "session-1",
+        snapshotStatus: "working",
+      })
+    ).toBe(false);
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "mailbox",
+        selectedMemberId: "worker-1",
+        selectedSessionId: null,
+        snapshotStatus: "working",
+      })
+    ).toBe(false);
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "agent_acp",
+        selectedMemberId: null,
+        selectedSessionId: null,
+        snapshotStatus: "working",
+      })
+    ).toBe(false);
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "agent_acp",
+        selectedMemberId: "worker-1",
+        selectedSessionId: null,
+        snapshotStatus: "working",
+        runtimeSessionStatus: "stopped",
+      })
+    ).toBe(false);
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "agent_acp",
+        selectedMemberId: "worker-1",
+        selectedSessionId: null,
+        snapshotStatus: "working",
+        runtimeAgentStatus: "stopped",
+      })
+    ).toBe(false);
+    expect(
+      shouldRefreshSelectedAgentWorkspaceSession({
+        activeRunId: "run-1",
+        tab: "agent_acp",
+        selectedMemberId: "worker-1",
+        selectedSessionId: null,
+        snapshotStatus: "stopped",
+        agentStatus: "stopped",
+      })
+    ).toBe(false);
   });
 
   it("extracts positive thread root message ids from conversation payloads", () => {
