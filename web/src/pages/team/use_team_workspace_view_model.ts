@@ -559,6 +559,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     },
     [
       isCompactWorkbench,
+      navigateToTeamDetail,
       navigateToTeamLens,
       selectedChannelId,
       selectedConversationRouteTaskId,
