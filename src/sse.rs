@@ -30,6 +30,9 @@ use crate::team::{
     TeamRuntimeRecord, TeamRuntimeStatus,
 };
 
+const ACP_SSE_INLINE_MESSAGE_LIMIT: usize = 16 * 1024;
+const ACP_DEFERRED_FIELD_NAMES: &[&str] = &["content", "raw_input", "raw_output"];
+
 #[derive(Debug, serde::Deserialize)]
 struct SseTokenQuery {
     token: String,
@@ -605,8 +608,65 @@ fn output_to_message(output: &AgentOutput) -> SseServerMessage {
     };
     SseServerMessage {
         r#type: msg_type.to_string(),
-        payload: serde_json::json!(output),
+        payload: serde_json::json!(compact_output_for_sse(output)),
     }
+}
+
+fn compact_output_for_sse(output: &AgentOutput) -> AgentOutput {
+    if !matches!(output.stream, crate::agent::OutputStream::Acp)
+        || output.message.len() <= ACP_SSE_INLINE_MESSAGE_LIMIT
+    {
+        return output.clone();
+    }
+
+    let Some(message) = compact_acp_message_for_sse(&output.message, output.event_id) else {
+        return output.clone();
+    };
+
+    AgentOutput {
+        message,
+        ..output.clone()
+    }
+}
+
+fn compact_acp_message_for_sse(message: &str, event_id: i64) -> Option<String> {
+    let mut value = serde_json::from_str::<serde_json::Value>(message).ok()?;
+    let obj = value.as_object_mut()?;
+    let event_type = obj.get("type").and_then(serde_json::Value::as_str)?;
+    if !matches!(event_type, "tool_call" | "tool_call_update") {
+        return None;
+    }
+
+    let mut deferred_fields = Vec::new();
+    for field in ACP_DEFERRED_FIELD_NAMES {
+        if obj.remove(*field).is_some() {
+            deferred_fields.push(serde_json::Value::String((*field).to_string()));
+        }
+    }
+    if deferred_fields.is_empty() {
+        return None;
+    }
+
+    obj.insert(
+        "deferred_event_id".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(event_id)),
+    );
+    obj.insert(
+        "deferred_fields".to_string(),
+        serde_json::Value::Array(deferred_fields),
+    );
+    obj.insert(
+        "deferred_reason".to_string(),
+        serde_json::Value::String("large_acp_payload".to_string()),
+    );
+    obj.insert(
+        "preview".to_string(),
+        serde_json::Value::String(format!(
+            "Large ACP payload deferred from SSE event {event_id}"
+        )),
+    );
+
+    serde_json::to_string(&value).ok()
 }
 
 fn team_conversation_event_to_message(
@@ -964,6 +1024,10 @@ fn take_batched_event(state: &mut OutputStreamState) -> Option<Event> {
     let text = if outputs.len() == 1 {
         serde_json::to_string(&output_to_message(&outputs[0])).ok()?
     } else {
+        let outputs = outputs
+            .iter()
+            .map(compact_output_for_sse)
+            .collect::<Vec<_>>();
         serde_json::to_string(&SseServerBatchMessage {
             r#type: "batch".to_string(),
             payload: outputs,
@@ -994,6 +1058,8 @@ fn estimate_output_size(output: &AgentOutput) -> usize {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+
+    use super::{ACP_SSE_INLINE_MESSAGE_LIMIT, compact_output_for_sse};
 
     use axum::{
         body::Body,
@@ -1301,6 +1367,54 @@ mod tests {
             stream,
             message: message.to_string(),
         }
+    }
+
+    #[test]
+    fn compact_output_for_sse_defers_large_acp_tool_payload() {
+        let message = serde_json::json!({
+            "type": "tool_call_update",
+            "id": "call-1",
+            "title": "Run command",
+            "status": "completed",
+            "content": "x".repeat(ACP_SSE_INLINE_MESSAGE_LIMIT),
+            "raw_input": {"cmd": "cargo test"},
+            "raw_output": {"stdout": "y".repeat(ACP_SSE_INLINE_MESSAGE_LIMIT)}
+        })
+        .to_string();
+        let output = sample_output_with(77, OutputStream::Acp, &message);
+
+        let compact = compact_output_for_sse(&output);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&compact.message).expect("compact message JSON");
+
+        assert_eq!(parsed["type"], "tool_call_update");
+        assert_eq!(parsed["id"], "call-1");
+        assert_eq!(parsed["status"], "completed");
+        assert_eq!(parsed["deferred_event_id"], 77);
+        assert_eq!(parsed["deferred_reason"], "large_acp_payload");
+        assert!(parsed.get("content").is_none());
+        assert!(parsed.get("raw_input").is_none());
+        assert!(parsed.get("raw_output").is_none());
+        assert_eq!(
+            parsed["deferred_fields"],
+            serde_json::json!(["content", "raw_input", "raw_output"])
+        );
+    }
+
+    #[test]
+    fn compact_output_for_sse_keeps_small_acp_payload_inline() {
+        let message = serde_json::json!({
+            "type": "tool_call_update",
+            "id": "call-1",
+            "status": "completed",
+            "raw_output": {"stdout": "ok"}
+        })
+        .to_string();
+        let output = sample_output_with(78, OutputStream::Acp, &message);
+
+        let compact = compact_output_for_sse(&output);
+
+        assert_eq!(compact.message, output.message);
     }
 
     #[test]

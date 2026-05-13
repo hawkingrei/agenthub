@@ -1466,6 +1466,44 @@ impl AgentManager {
         Ok(events)
     }
 
+    pub async fn get_event(&self, agent_id: &str, event_id: i64) -> anyhow::Result<AgentEvent> {
+        let agent = self.get_agent(agent_id).await?;
+        if let Some(target_node_id) = agent.target_node_id.as_deref() {
+            let client = self
+                .remote_control_client_for_target_node(target_node_id)
+                .await?;
+            return client
+                .list_agent_events(agent_id, 1, None, Some(event_id.saturating_add(1)))
+                .await?
+                .into_iter()
+                .find(|event| event.event_id == event_id)
+                .ok_or_else(|| anyhow::anyhow!("agent event not found"));
+        }
+        let event_db = self.event_dbs.pool_for_agent(agent_id).await?;
+        let row = sqlx::query(
+            r#"
+            SELECT id, session_id, seq, ts, stream, message
+            FROM agent_events
+            WHERE id = ?1
+            LIMIT 1
+            "#,
+        )
+        .bind(event_id)
+        .fetch_optional(&event_db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("agent event not found"))?;
+        let stream_str: String = row.get("stream");
+        Ok(AgentEvent {
+            event_id: row.get("id"),
+            agent_id: agent_id.to_string(),
+            session_id: row.get("session_id"),
+            seq: row.get("seq"),
+            ts: row.get("ts"),
+            stream: stream_from_str(&stream_str),
+            message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
+        })
+    }
+
     #[cfg(test)]
     pub(crate) async fn test_event_pool_for_agent(
         &self,

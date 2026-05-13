@@ -184,6 +184,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/{id}", delete(delete_agent))
         .route("/{id}/events", get(list_events))
+        .route("/{id}/events/{event_id}", get(get_event))
         .route("/{id}/code_mode", post(set_code_mode))
         .route("/{id}/agent_loop", post(set_agent_loop))
         .route("/{id}/acp/session/clear", post(clear_acp_session))
@@ -497,6 +498,26 @@ async fn list_events(
             .await?
     };
     Ok(Json(events))
+}
+
+async fn get_event(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((agent_id, event_id)): Path<(String, i64)>,
+) -> Result<Json<crate::agent::AgentEvent>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let event = state
+        .agents
+        .get_event(&agent_id, event_id)
+        .await
+        .map_err(|err| {
+            if err.to_string().contains("agent event not found") {
+                ApiError::not_found("agent event not found")
+            } else {
+                ApiError::from(err)
+            }
+        })?;
+    Ok(Json(event))
 }
 
 async fn set_code_mode(

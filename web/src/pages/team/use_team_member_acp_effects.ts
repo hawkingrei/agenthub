@@ -6,7 +6,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import type { AgentEvent } from "../../api";
+import { api, type AgentEvent } from "../../api";
 import { normalizeSseOutputLines } from "../../app_live_output";
 import { isSseConnectionStale } from "../../event_polling";
 import { upsertAgentEventList } from "./page_helpers";
@@ -35,6 +35,23 @@ const TEAM_MEMBER_ACP_SSE_STALE_RECONNECT_THRESHOLD_MS = 30_000;
 
 function isMemberAcpTab(tab: TeamTab): boolean {
   return tab === "agent_acp" || tab === "member_console";
+}
+
+function isDeferredAcpEvent(event: AgentEvent): boolean {
+  if (event.stream !== "acp") return false;
+  try {
+    const parsed = JSON.parse(event.message) as {
+      deferred_event_id?: unknown;
+      deferred_fields?: unknown;
+    };
+    return (
+      typeof parsed.deferred_event_id === "number" &&
+      Array.isArray(parsed.deferred_fields) &&
+      parsed.deferred_fields.length > 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function useTeamMemberAcpEffects({
@@ -66,6 +83,7 @@ export function useTeamMemberAcpEffects({
   const pollFallbackEnabledRef = useRef(pollFallbackEnabled);
   const lastSelectionRefreshKeyRef = useRef<string | null>(null);
   const lastSelectionRefreshAtRef = useRef<number>(0);
+  const deferredHydrationInFlightRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     pollFallbackEnabledRef.current = pollFallbackEnabled;
@@ -197,6 +215,40 @@ export function useTeamMemberAcpEffects({
       void runSync().catch(() => undefined);
     }, TEAM_MEMBER_ACP_ACTIVITY_SYNC_DEBOUNCE_MS);
   }, []);
+
+  const hydrateDeferredEvents = useCallback(
+    (events: AgentEvent[]) => {
+      const deferred = events.filter(isDeferredAcpEvent);
+      if (deferred.length === 0) {
+        return;
+      }
+      for (const event of deferred) {
+        if (deferredHydrationInFlightRef.current.has(event.event_id)) {
+          continue;
+        }
+        deferredHydrationInFlightRef.current.add(event.event_id);
+        void api
+          .getAgentEvent(token, event.agent_id, event.event_id)
+          .then((fullEvent) => {
+            const current = latestSelectionRef.current;
+            if (
+              fullEvent.agent_id !== current.agentId ||
+              fullEvent.session_id !== current.sessionId
+            ) {
+              return;
+            }
+            setMemberEvents((prev) =>
+              upsertAgentEventList(prev, [fullEvent], "replace", current.sessionId)
+            );
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            deferredHydrationInFlightRef.current.delete(event.event_id);
+          });
+      }
+    },
+    [setMemberEvents, token]
+  );
 
   useEffect(() => {
     if (!isMemberAcpTab(tab) || !selectedAgentId.trim()) {
@@ -353,6 +405,7 @@ export function useTeamMemberAcpEffects({
         setMemberEvents((prev) =>
           upsertAgentEventList(prev, liveLines, "replace", sessionId)
         );
+        hydrateDeferredEvents(liveLines);
         scheduleLiveActivitySync();
       };
       nextSource.onerror = () => {
@@ -376,6 +429,7 @@ export function useTeamMemberAcpEffects({
     };
   }, [
     scheduleLiveActivitySync,
+    hydrateDeferredEvents,
     memberAcpSyncEnabled,
     selectedAgentId,
     selectedSessionId,
