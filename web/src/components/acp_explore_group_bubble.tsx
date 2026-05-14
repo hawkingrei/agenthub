@@ -88,7 +88,7 @@ export const ExploreGroupBubble = React.memo(
           >
             <summary className={ACP_TOOL_SUMMARY_CLASS}>
               <span className={`${ACP_TOOL_TITLE_CLASS} acp-tool-group-title`}>
-                Explore ({calls.length} tools)
+                Explore ({calls.length} {calls.length === 1 ? "tool" : "tools"})
                 {titlePreview ? (
                   <span className="ml-2 font-normal text-notion-text-muted">· {titlePreview}</span>
                 ) : (

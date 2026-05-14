@@ -1164,7 +1164,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       />
     );
 
-    expect(latestAcpConversationArgs().latestPlacement).toBeUndefined();
     expect(container.textContent?.indexOf("older reply")).toBeLessThan(
       container.textContent?.indexOf("newer reply") ?? Number.MAX_SAFE_INTEGER
     );

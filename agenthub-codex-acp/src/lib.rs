@@ -331,6 +331,23 @@ fn resolve_agenthub_codex_acp_otel_enabled() -> Result<bool, String> {
     parse_agenthub_bool_env(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV, &raw)
 }
 
+fn prepare_agenthub_codex_acp_otel(log_user_prompt: &mut bool) -> (bool, Vec<String>) {
+    let mut startup_warnings = Vec::new();
+    let otel_enabled = match resolve_agenthub_codex_acp_otel_enabled() {
+        Ok(enabled) => enabled,
+        Err(err) => {
+            startup_warnings.push(format!(
+                "ignoring invalid AgentHub Codex ACP OTEL override: {err}"
+            ));
+            false
+        }
+    };
+    if otel_enabled {
+        *log_user_prompt = false;
+    }
+    (otel_enabled, startup_warnings)
+}
+
 fn apply_agenthub_multi_agent_override<T: CollabFeatureState>(
     features: &mut T,
     enabled: Option<bool>,
@@ -376,19 +393,8 @@ pub async fn run_main(
                 )
             })?;
 
-    let mut startup_warnings = Vec::new();
-    let otel_enabled = match resolve_agenthub_codex_acp_otel_enabled() {
-        Ok(enabled) => enabled,
-        Err(err) => {
-            startup_warnings.push(format!(
-                "ignoring invalid AgentHub Codex ACP OTEL override: {err}"
-            ));
-            false
-        }
-    };
-    if otel_enabled {
-        config.otel.log_user_prompt = false;
-    }
+    let (otel_enabled, mut startup_warnings) =
+        prepare_agenthub_codex_acp_otel(&mut config.otel.log_user_prompt);
 
     let otel = if otel_enabled {
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -595,9 +601,9 @@ mod tests {
     use super::{
         AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV,
         apply_agenthub_multi_agent_override, parse_agenthub_multi_agent_enabled_env,
-        resolve_agenthub_codex_acp_otel_enabled, resolve_agenthub_multi_agent_enabled_override,
-        responses_websocket_feature_opt_in_enabled, rewrite_misleading_timeout_message,
-        should_disable_implicit_responses_websockets,
+        prepare_agenthub_codex_acp_otel, resolve_agenthub_codex_acp_otel_enabled,
+        resolve_agenthub_multi_agent_enabled_override, responses_websocket_feature_opt_in_enabled,
+        rewrite_misleading_timeout_message, should_disable_implicit_responses_websockets,
     };
     use codex_features::{Feature, Features};
     use std::sync::{Mutex, MutexGuard};
@@ -801,6 +807,53 @@ mod tests {
             assert!(err.contains("must not be empty"));
         } else {
             assert!(!result.expect("release builds ignore the debug-only env"));
+        }
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV);
+        }
+    }
+
+    #[test]
+    fn prepare_agenthub_codex_acp_otel_disables_prompt_logging_when_enabled() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::set_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV, "true");
+        }
+        let mut log_user_prompt = true;
+
+        let (enabled, warnings) = prepare_agenthub_codex_acp_otel(&mut log_user_prompt);
+
+        assert_eq!(enabled, cfg!(debug_assertions));
+        assert!(warnings.is_empty());
+        assert_eq!(log_user_prompt, !cfg!(debug_assertions));
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV);
+        }
+    }
+
+    #[test]
+    fn prepare_agenthub_codex_acp_otel_keeps_prompt_logging_on_invalid_env() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::set_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV, "maybe");
+        }
+        let mut log_user_prompt = true;
+
+        let (enabled, warnings) = prepare_agenthub_codex_acp_otel(&mut log_user_prompt);
+
+        if cfg!(debug_assertions) {
+            assert!(!enabled);
+            assert!(log_user_prompt);
+            assert_eq!(warnings.len(), 1);
+            assert!(warnings[0].contains("ignoring invalid AgentHub Codex ACP OTEL override"));
+        } else {
+            assert!(!enabled);
+            assert!(warnings.is_empty());
+            assert!(log_user_prompt);
         }
         // SAFETY: tests serialize environment mutation and restore state before exit.
         unsafe {
