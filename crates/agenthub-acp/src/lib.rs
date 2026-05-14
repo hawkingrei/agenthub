@@ -49,6 +49,7 @@ const MCP_CONFIG_FILE: &str = ".agenthub/mcp.json";
 const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
+const ACP_PENDING_TOOL_CALL_PROMPT_BLOCK_SECONDS: i64 = 300;
 // Team workers may need a long resume/bootstrap window after service restarts,
 // so ACP startup should tolerate late session readiness instead of failing fast.
 const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(300);
@@ -62,6 +63,10 @@ pub const fn acp_permission_review_timeout() -> Duration {
 
 pub const fn acp_session_start_timeout() -> Duration {
     ACP_SESSION_START_TIMEOUT
+}
+
+pub const fn acp_pending_tool_call_prompt_block_seconds() -> i64 {
+    ACP_PENDING_TOOL_CALL_PROMPT_BLOCK_SECONDS
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorContinuityEnvelope {
@@ -852,6 +857,7 @@ pub struct AcpHandleDiagnostics {
 pub struct AcpToolCallDiagnostic {
     pub tool_call_id: String,
     pub status: String,
+    pub updated_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -865,8 +871,14 @@ struct AcpRuntimeDiagnosticsState {
     active_submission_ids: Vec<String>,
     last_submission_id: Option<String>,
     last_provider_event_type: Option<String>,
-    pending_tool_calls: HashMap<String, String>,
+    pending_tool_calls: HashMap<String, AcpPendingToolCallState>,
     last_command_error: Option<AcpCommandErrorDiagnostic>,
+}
+
+#[derive(Debug)]
+struct AcpPendingToolCallState {
+    status: String,
+    updated_at: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -902,7 +914,8 @@ impl AcpHandle {
             .iter()
             .map(|(tool_call_id, status)| AcpToolCallDiagnostic {
                 tool_call_id: tool_call_id.clone(),
-                status: status.clone(),
+                status: status.status.clone(),
+                updated_at: optional_timestamp(status.updated_at),
             })
             .collect::<Vec<_>>();
         pending_tool_calls.sort_by(|left, right| left.tool_call_id.cmp(&right.tool_call_id));
@@ -1030,6 +1043,7 @@ impl AcpRuntimeDiagnostics {
     ) {
         self.last_provider_event_at
             .store(Utc::now().timestamp(), Ordering::Relaxed);
+        let now = Utc::now().timestamp();
         let mut state = self.state.lock().expect("acp diagnostics state poisoned");
         state.last_provider_event_type = Some(event_type.to_string());
         if let Some((tool_call_id, status)) = tool_call {
@@ -1038,9 +1052,13 @@ impl AcpRuntimeDiagnostics {
                     state.pending_tool_calls.remove(&tool_call_id);
                 }
                 Some(status) => {
-                    state
-                        .pending_tool_calls
-                        .insert(tool_call_id, status.to_string());
+                    state.pending_tool_calls.insert(
+                        tool_call_id,
+                        AcpPendingToolCallState {
+                            status: status.to_string(),
+                            updated_at: now,
+                        },
+                    );
                 }
                 None => {}
             }
@@ -1057,9 +1075,15 @@ impl AcpRuntimeDiagnostics {
         });
     }
 
-    fn has_pending_tool_calls(&self) -> bool {
+    fn has_blocking_pending_tool_calls(&self) -> bool {
+        self.has_blocking_pending_tool_calls_at(Utc::now().timestamp())
+    }
+
+    fn has_blocking_pending_tool_calls_at(&self, now: i64) -> bool {
         let state = self.state.lock().expect("acp diagnostics state poisoned");
-        !state.pending_tool_calls.is_empty()
+        state.pending_tool_calls.values().any(|tool_call| {
+            now.saturating_sub(tool_call.updated_at) <= ACP_PENDING_TOOL_CALL_PROMPT_BLOCK_SECONDS
+        })
     }
 }
 
@@ -1503,7 +1527,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                 let has_pending_session_mutation =
                                     pending_commands.iter().any(is_session_mutation_command);
                                 let has_pending_tool_call =
-                                    diagnostics_for_runtime.has_pending_tool_calls();
+                                    diagnostics_for_runtime.has_blocking_pending_tool_calls();
                                 if should_queue_while_prompts_active(
                                     active_prompt_count,
                                     prompt_delivery_policy,
@@ -2436,10 +2460,11 @@ mod tests {
         ACP_PERMISSION_REVIEW_TIMEOUT, AcpActorContinuityEnvelope, AcpActorSkillContext,
         AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
         AcpPromptDeliveryPolicy, AcpRuntimeDiagnostics, AcpRuntimeLocation, AcpSendError,
-        acp_permission_review_timeout, acp_session_start_timeout, build_prompt_prefix_blocks,
-        dedupe_skills, format_auth_required_message, handle_auth_required_failure,
-        is_auth_required_error, load_mcp_servers_from_path, load_skills_from_config,
-        load_workdir_skills, permission_outcome_allows, permission_review_failure_outcome,
+        acp_pending_tool_call_prompt_block_seconds, acp_permission_review_timeout,
+        acp_session_start_timeout, build_prompt_prefix_blocks, dedupe_skills,
+        format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
+        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
+        permission_outcome_allows, permission_review_failure_outcome,
         remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
     use agent_client_protocol::schema::{
@@ -2672,6 +2697,13 @@ mod tests {
         assert_eq!(snapshot.pending_tool_call_count, 1);
         assert_eq!(snapshot.pending_tool_calls[0].tool_call_id, "tool-1");
         assert_eq!(snapshot.pending_tool_calls[0].status, "in_progress");
+        let updated_at = snapshot.pending_tool_calls[0]
+            .updated_at
+            .expect("pending tool call should track update time");
+        assert!(diagnostics.has_blocking_pending_tool_calls_at(updated_at));
+        assert!(!diagnostics.has_blocking_pending_tool_calls_at(
+            updated_at + acp_pending_tool_call_prompt_block_seconds() + 1
+        ));
 
         diagnostics.observe_provider_event(
             "tool_call_update",
