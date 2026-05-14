@@ -1134,7 +1134,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     ).not.toBeNull();
   });
 
-  it("uses Team-specific newest-first collapsed-tool ACP rendering", () => {
+  it("uses chronological Team ACP rendering with collapsed tools", () => {
     vi.mocked(useAcpConversation).mockReturnValue(
       buildConversationHookState({
         conversationRenderItems: [
@@ -1164,9 +1164,9 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       />
     );
 
-    expect(latestAcpConversationArgs().latestPlacement).toBe("top");
-    expect(container.textContent?.indexOf("newer reply")).toBeLessThan(
-      container.textContent?.indexOf("older reply") ?? Number.MAX_SAFE_INTEGER
+    expect(latestAcpConversationArgs().latestPlacement).toBeUndefined();
+    expect(container.textContent?.indexOf("older reply")).toBeLessThan(
+      container.textContent?.indexOf("newer reply") ?? Number.MAX_SAFE_INTEGER
     );
   });
 

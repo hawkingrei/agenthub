@@ -238,7 +238,6 @@ export function useTeamMemberAcpViewModel({
     acpTab: effectiveAcpTab,
     eventMeta: conversationEventMeta,
     isAgentActive: Boolean(selectedSessionId) && agentAllowsInput,
-    latestPlacement: "top",
     onLoadOlder: () => {
       void onLoadOlder?.();
     },
@@ -332,7 +331,7 @@ export function useTeamMemberAcpViewModel({
     () => ({
       items: acpConversation.conversationRenderItems,
       windowOffset: acpConversation.conversationWindowOffset,
-      order: "newest_first" as const,
+      order: "oldest_first" as const,
       isFrozenView: acpConversation.isFrozenView,
       shouldAutoCollapse: acpConversation.shouldAutoCollapse,
       collapseCutoff: acpConversation.collapseCutoff,
