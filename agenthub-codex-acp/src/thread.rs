@@ -70,7 +70,7 @@ use heck::ToTitleCase;
 use itertools::Itertools;
 use serde_json::json;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{error, info, warn};
+use tracing::{Instrument, error, info, info_span, warn};
 use uuid::Uuid;
 
 use crate::{ACP_CLIENT, prompt_args::parse_slash_name};
@@ -252,19 +252,49 @@ impl Thread {
     }
 
     pub async fn prompt(&self, request: PromptRequest) -> Result<StopReason, Error> {
-        let (response_tx, response_rx) = oneshot::channel();
+        let acp_session_id = request.session_id.to_string();
+        let prompt_block_count = request.prompt.len();
+        let span = info_span!(
+            target: "codex_otel.trace_safe",
+            "acp_prompt_request",
+            otel.name = "acp.prompt.request",
+            otel.kind = "server",
+            acp.session_id = %acp_session_id,
+            prompt_block_count,
+        );
 
-        let message = ThreadMessage::Prompt {
-            request,
-            response_tx,
-        };
-        drop(self.message_tx.send(message));
+        async move {
+            let (response_tx, response_rx) = oneshot::channel();
 
-        response_rx
-            .await
-            .map_err(|e| Error::internal_error().data(e.to_string()))??
-            .await
-            .map_err(|e| Error::internal_error().data(e.to_string()))?
+            let message = ThreadMessage::Prompt {
+                request,
+                response_tx,
+            };
+            drop(self.message_tx.send(message));
+
+            let response_rx = response_rx
+                .await
+                .map_err(|e| Error::internal_error().data(e.to_string()))??;
+
+            info!(
+                target: "codex_otel.trace_safe",
+                "acp prompt request is waiting for Codex stop reason"
+            );
+
+            let stop_reason = response_rx
+                .await
+                .map_err(|e| Error::internal_error().data(e.to_string()))?;
+
+            info!(
+                target: "codex_otel.trace_safe",
+                stop_reason = ?stop_reason,
+                "acp prompt request received Codex stop reason"
+            );
+
+            stop_reason
+        }
+        .instrument(span)
+        .await
     }
 
     pub async fn set_mode(&self, mode: SessionModeId) -> Result<(), Error> {
@@ -3377,10 +3407,20 @@ impl<A: Auth> ThreadActor<A> {
         request: PromptRequest,
     ) -> Result<oneshot::Receiver<Result<StopReason, Error>>, Error> {
         let (response_tx, response_rx) = oneshot::channel();
+        let prompt_block_count = request.prompt.len();
 
         if let Some((submission_id, prepared)) =
             self.find_pending_user_input_answer(request.prompt.as_slice())?
         {
+            let submit_span = info_span!(
+                target: "codex_otel.trace_safe",
+                "acp_user_input_answer_submit",
+                otel.name = "acp.prompt.user_input_answer.submit",
+                otel.kind = "client",
+                submission_id = %submission_id,
+                prompt_block_count,
+            );
+
             self.thread
                 .submit(
                     submission_id.clone(),
@@ -3389,6 +3429,7 @@ impl<A: Auth> ThreadActor<A> {
                         response: prepared.response.clone(),
                     },
                 )
+                .instrument(submit_span)
                 .await
                 .map_err(|e| {
                     let err = Error::internal_error().data(e.to_string());
@@ -3487,12 +3528,27 @@ impl<A: Auth> ThreadActor<A> {
             }
         }
 
+        let submission_seed = Uuid::new_v4().to_string();
+        let submit_span = info_span!(
+            target: "codex_otel.trace_safe",
+            "acp_prompt_submit",
+            otel.name = "acp.prompt.submit",
+            otel.kind = "client",
+            submission_seed = %submission_seed,
+            prompt_block_count,
+        );
         let submission_id = self
             .thread
-            .submit(Uuid::new_v4().to_string(), op.clone())
+            .submit(submission_seed, op.clone())
+            .instrument(submit_span)
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
 
+        info!(
+            target: "codex_otel.trace_safe",
+            submission_id = %submission_id,
+            "acp prompt submitted to Codex"
+        );
         info!("Submitted prompt with submission_id: {submission_id}");
         info!("Starting to wait for conversation events for submission_id: {submission_id}");
 

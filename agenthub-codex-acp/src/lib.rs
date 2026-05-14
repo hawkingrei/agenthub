@@ -40,6 +40,7 @@ mod thread;
 
 pub static ACP_CLIENT: OnceLock<Arc<ConnectionTo<Client>>> = OnceLock::new();
 const AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV: &str = "AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED";
+const AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV: &str = "AGENTHUB_CODEX_ACP_OTEL";
 
 #[derive(Clone)]
 struct LocalCodexAgent(Rc<codex_agent::CodexAgent>);
@@ -283,15 +284,19 @@ fn enable_default_multi_agent_collab<T: CollabFeatureState>(
     Ok(true)
 }
 
-fn parse_agenthub_multi_agent_enabled_env(raw: &str) -> Result<bool, String> {
+fn parse_agenthub_bool_env(env_name: &str, raw: &str) -> Result<bool, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
         "0" | "false" | "no" | "off" => Ok(false),
         value => Err(format!(
             "invalid {} value '{}'; expected one of 1/0/true/false/on/off/yes/no",
-            AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, value
+            env_name, value
         )),
     }
+}
+
+fn parse_agenthub_multi_agent_enabled_env(raw: &str) -> Result<bool, String> {
+    parse_agenthub_bool_env(AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, raw)
 }
 
 fn resolve_agenthub_multi_agent_enabled_override() -> Result<Option<bool>, String> {
@@ -306,6 +311,24 @@ fn resolve_agenthub_multi_agent_enabled_override() -> Result<Option<bool>, Strin
         ));
     }
     parse_agenthub_multi_agent_enabled_env(&raw).map(Some)
+}
+
+fn resolve_agenthub_codex_acp_otel_enabled() -> Result<bool, String> {
+    if !cfg!(debug_assertions) {
+        return Ok(false);
+    }
+
+    let Some(raw) = std::env::var_os(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV) else {
+        return Ok(false);
+    };
+    let raw = raw.to_string_lossy();
+    if raw.trim().is_empty() {
+        return Err(format!(
+            "{} must not be empty",
+            AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV
+        ));
+    }
+    parse_agenthub_bool_env(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV, &raw)
 }
 
 fn apply_agenthub_multi_agent_override<T: CollabFeatureState>(
@@ -330,17 +353,6 @@ pub async fn run_main(
     codex_linux_sandbox_exe: Option<PathBuf>,
     cli_config_overrides: CliConfigOverrides,
 ) -> IoResult<()> {
-    // Install a simple subscriber so `tracing` output is visible.
-    // Users can control the log level with `RUST_LOG`.
-    tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env())
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_writer(std::io::stderr)
-                .event_format(AgenthubEventFormat::default()),
-        )
-        .init();
-
     // Parse CLI overrides and load configuration
     let cli_kv_overrides = cli_config_overrides.parse_overrides().map_err(|e| {
         std::io::Error::new(
@@ -363,6 +375,73 @@ pub async fn run_main(
                     format!("error loading config: {e}"),
                 )
             })?;
+
+    let mut startup_warnings = Vec::new();
+    let otel_enabled = match resolve_agenthub_codex_acp_otel_enabled() {
+        Ok(enabled) => enabled,
+        Err(err) => {
+            startup_warnings.push(format!(
+                "ignoring invalid AgentHub Codex ACP OTEL override: {err}"
+            ));
+            false
+        }
+    };
+    if otel_enabled {
+        config.otel.log_user_prompt = false;
+    }
+
+    let otel = if otel_enabled {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            codex_core::otel_init::build_provider(
+                &config,
+                env!("CARGO_PKG_VERSION"),
+                Some("agenthub-codex-acp"),
+                false,
+            )
+        })) {
+            Ok(Ok(provider)) => provider,
+            Ok(Err(err)) => {
+                startup_warnings.push(format!("could not create Codex OTEL exporter: {err}"));
+                None
+            }
+            Err(_) => {
+                startup_warnings.push(
+                    "could not create Codex OTEL exporter: panicked during initialization"
+                        .to_string(),
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let otel_logger_layer = otel.as_ref().and_then(|provider| provider.logger_layer());
+    let otel_tracing_layer = otel.as_ref().and_then(|provider| provider.tracing_layer());
+
+    // Install tracing after loading Codex config so the optional Codex OTEL
+    // provider can observe the ACP adapter and the Codex core turn path.
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .event_format(AgenthubEventFormat::default()),
+        )
+        .with(otel_logger_layer)
+        .with(otel_tracing_layer)
+        .init();
+
+    if otel_enabled && otel.is_none() {
+        tracing::warn!(
+            "{} is enabled, but Codex OTEL has no active exporter",
+            AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV
+        );
+    }
+    for warning in startup_warnings {
+        tracing::warn!(warning = %warning, "agenthub-codex-acp startup warning");
+    }
+
     match resolve_agenthub_multi_agent_enabled_override() {
         Ok(enabled) => {
             if let Err(err) = apply_agenthub_multi_agent_override(&mut config.features, enabled) {
@@ -514,8 +593,9 @@ pub use codex_mcp_server::{
 #[cfg(test)]
 mod tests {
     use super::{
-        AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, apply_agenthub_multi_agent_override,
-        parse_agenthub_multi_agent_enabled_env, resolve_agenthub_multi_agent_enabled_override,
+        AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV,
+        apply_agenthub_multi_agent_override, parse_agenthub_multi_agent_enabled_env,
+        resolve_agenthub_codex_acp_otel_enabled, resolve_agenthub_multi_agent_enabled_override,
         responses_websocket_feature_opt_in_enabled, rewrite_misleading_timeout_message,
         should_disable_implicit_responses_websockets,
     };
@@ -679,6 +759,52 @@ mod tests {
         // SAFETY: tests serialize environment mutation and restore state before exit.
         unsafe {
             std::env::remove_var(AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV);
+        }
+    }
+
+    #[test]
+    fn resolve_agenthub_codex_acp_otel_enabled_defaults_to_false() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV);
+        }
+
+        assert!(!resolve_agenthub_codex_acp_otel_enabled().expect("resolve env"));
+    }
+
+    #[test]
+    fn resolve_agenthub_codex_acp_otel_enabled_reads_env_in_debug_builds() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::set_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV, "true");
+        }
+        let enabled = resolve_agenthub_codex_acp_otel_enabled().expect("resolve env");
+        assert_eq!(enabled, cfg!(debug_assertions));
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV);
+        }
+    }
+
+    #[test]
+    fn resolve_agenthub_codex_acp_otel_enabled_rejects_blank_env_in_debug_builds() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::set_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV, "   ");
+        }
+        let result = resolve_agenthub_codex_acp_otel_enabled();
+        if cfg!(debug_assertions) {
+            let err = result.expect_err("blank env should be rejected");
+            assert!(err.contains("must not be empty"));
+        } else {
+            assert!(!result.expect("release builds ignore the debug-only env"));
+        }
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV);
         }
     }
 
