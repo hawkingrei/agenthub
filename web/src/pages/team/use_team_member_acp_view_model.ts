@@ -323,6 +323,7 @@ export function useTeamMemberAcpViewModel({
     ? `${memberStatus} · ${thinkingLabel}`
     : memberStatus;
   const memberStatusClassToken = memberStatus.replace(/[^a-z0-9_-]+/g, "-");
+  const hasStalePromptWarning = acpRunStatus === "stale_prompt";
   const developerTechnicalMetadata = React.useMemo(
     () => [{ label: "role", value: memberRoleLabel || "-" }],
     [memberRoleLabel]
@@ -421,6 +422,13 @@ export function useTeamMemberAcpViewModel({
       return [];
     }
     const items: TeamMemberAcpActivityItem[] = [];
+    if (hasStalePromptWarning) {
+      items.push({
+        id: "stale-prompt",
+        label: "ACP provider stalled",
+        title: "The ACP provider has an active prompt without recent provider events or pending permission",
+      });
+    }
     // Use renderable ACP conversation items here instead of raw event count so the
     // summary matches what the operator can actually read in the panel.
     if (acpConversation.conversationSourceItems > 0) {
@@ -458,6 +466,7 @@ export function useTeamMemberAcpViewModel({
     acpConversation.conversationSourceItems,
     acpView.toolCalls.length,
     hasAuthoritativeStoppedStatus,
+    hasStalePromptWarning,
     isStartingAcpSession,
     memberEventsHasMore,
     memberEventsLoading,
@@ -480,6 +489,9 @@ export function useTeamMemberAcpViewModel({
     if (memberEventsLoading && !hasRenderableConversationContent) {
       return "Loading activity...";
     }
+    if (hasStalePromptWarning) {
+      return "ACP provider appears stalled";
+    }
     if (!acpView.hasAcp && visibleMemberEvents.length === 0) {
       return "Active thread has no events yet";
     }
@@ -487,6 +499,7 @@ export function useTeamMemberAcpViewModel({
   }, [
     acpView.hasAcp,
     hasAuthoritativeStoppedStatus,
+    hasStalePromptWarning,
     hasRenderableConversationContent,
     memberEventsLoading,
     isStartingAcpSession,
