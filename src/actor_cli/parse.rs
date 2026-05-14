@@ -1753,8 +1753,7 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::Ack {
-                run_id: take_optional(run_id)
-                    .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)),
+                run_id: resolve_implicit_inbox_run_id(run_id),
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 message_ids: (!message_ids.is_empty())
                     .then_some(message_ids)
