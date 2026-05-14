@@ -331,7 +331,6 @@ export function useTeamMemberAcpViewModel({
     () => ({
       items: acpConversation.conversationRenderItems,
       windowOffset: acpConversation.conversationWindowOffset,
-      order: "oldest_first" as const,
       isFrozenView: acpConversation.isFrozenView,
       shouldAutoCollapse: acpConversation.shouldAutoCollapse,
       collapseCutoff: acpConversation.collapseCutoff,
