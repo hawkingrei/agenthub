@@ -1837,8 +1837,8 @@ impl PromptState {
                     .await;
             }
 
-            let update = if client.supports_terminal_output(active_command) {
-                ToolCallUpdate::new(
+            if client.supports_terminal_output(active_command) {
+                let update = ToolCallUpdate::new(
                     active_command.tool_call_id.clone(),
                     ToolCallUpdateFields::new(),
                 )
@@ -1848,27 +1848,13 @@ impl PromptState {
                         "terminal_id": call_id,
                         "data": data_str
                     }),
-                )]))
+                )]));
+                client.send_tool_call_update(update).await;
             } else {
+                // The non-terminal fallback emits the full buffer once at command end.
+                // Re-sending the accumulated output for every chunk grows O(N^2).
                 active_command.output.push_str(&data_str);
-                let content = match active_command.file_extension.as_deref() {
-                    Some("md") => active_command.output.clone(),
-                    Some(ext) => format!(
-                        "```{ext}\n{}\n```\n",
-                        active_command.output.trim_end_matches('\n')
-                    ),
-                    None => format!(
-                        "```sh\n{}\n```\n",
-                        active_command.output.trim_end_matches('\n')
-                    ),
-                };
-                ToolCallUpdate::new(
-                    active_command.tool_call_id.clone(),
-                    ToolCallUpdateFields::new().content(vec![content.into()]),
-                )
-            };
-
-            client.send_tool_call_update(update).await;
+            }
         }
     }
 
@@ -1900,8 +1886,28 @@ impl PromptState {
                 ExecCommandStatus::Failed | ExecCommandStatus::Declined => ToolCallStatus::Failed,
             };
 
+            let supports_terminal = client.supports_terminal_output(&active_command);
+            let mut fields = ToolCallUpdateFields::new()
+                .status(status)
+                .raw_output(raw_output);
+
+            if !supports_terminal && !active_command.output.is_empty() {
+                let content = match active_command.file_extension.as_deref() {
+                    Some("md") => active_command.output.clone(),
+                    Some(ext) => format!(
+                        "```{ext}\n{}\n```\n",
+                        active_command.output.trim_end_matches('\n')
+                    ),
+                    None => format!(
+                        "```sh\n{}\n```\n",
+                        active_command.output.trim_end_matches('\n')
+                    ),
+                };
+                fields = fields.content(vec![content.into()]);
+            }
+
             let meta = match (
-                client.supports_terminal_output(&active_command),
+                supports_terminal,
                 active_command.background_terminal_waiting,
             ) {
                 (true, true) => Some(Meta::from_iter([
@@ -1938,13 +1944,7 @@ impl PromptState {
 
             client
                 .send_tool_call_update(
-                    ToolCallUpdate::new(
-                        active_command.tool_call_id.clone(),
-                        ToolCallUpdateFields::new()
-                            .status(status)
-                            .raw_output(raw_output),
-                    )
-                    .meta(meta),
+                    ToolCallUpdate::new(active_command.tool_call_id.clone(), fields).meta(meta),
                 )
                 .await;
         }
@@ -7202,6 +7202,31 @@ mod tests {
                     )
                     .await;
 
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::ExecCommandEnd(ExecCommandEndEvent {
+                            call_id: "call-1".to_string(),
+                            process_id: None,
+                            turn_id: "turn-1".to_string(),
+                            command: vec!["cargo".to_string(), "test".to_string()],
+                            cwd: AbsolutePathBuf::from_absolute_path(
+                                std::env::current_dir()?.join("."),
+                            )?,
+                            parsed_cmd: vec![],
+                            source: Default::default(),
+                            interaction_input: None,
+                            stdout: "stdout\n".to_string(),
+                            stderr: String::new(),
+                            aggregated_output: "stdout\n".to_string(),
+                            exit_code: 0,
+                            duration: std::time::Duration::from_millis(10),
+                            formatted_output: "stdout\n".to_string(),
+                            status: ExecCommandStatus::Completed,
+                        }),
+                    )
+                    .await;
+
                 let notifications = client.notifications.lock().unwrap();
                 let updates: Vec<_> = notifications
                     .iter()
@@ -7230,6 +7255,18 @@ mod tests {
                     Some("waited")
                 );
                 assert!(updates[2].fields.content.is_some());
+                assert_eq!(updates[2].fields.status, Some(ToolCallStatus::Completed));
+                assert!(matches!(
+                    updates[2]
+                        .fields
+                        .content
+                        .as_ref()
+                        .and_then(|content| content.first()),
+                    Some(ToolCallContent::Content(Content {
+                        content: ContentBlock::Text(TextContent { text, .. }),
+                        ..
+                    })) if text.contains("stdout")
+                ));
 
                 anyhow::Ok(())
             })
