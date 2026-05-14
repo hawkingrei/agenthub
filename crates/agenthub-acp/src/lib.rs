@@ -50,6 +50,7 @@ const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const ACP_PENDING_TOOL_CALL_PROMPT_BLOCK_SECONDS: i64 = 300;
+const ACP_STALE_PROVIDER_PROMPT_SECONDS: i64 = 300;
 const ACP_PROMPT_INTERRUPT_AFTER_PERMISSION_RESOLUTION: Duration = Duration::from_secs(5);
 const ACP_PROMPT_INTERRUPT_RELEASE_GRACE: Duration = Duration::from_secs(5);
 // Team workers may need a long resume/bootstrap window after service restarts,
@@ -69,6 +70,10 @@ pub const fn acp_session_start_timeout() -> Duration {
 
 pub const fn acp_pending_tool_call_prompt_block_seconds() -> i64 {
     ACP_PENDING_TOOL_CALL_PROMPT_BLOCK_SECONDS
+}
+
+pub const fn acp_stale_provider_prompt_seconds() -> i64 {
+    ACP_STALE_PROVIDER_PROMPT_SECONDS
 }
 
 pub const fn acp_prompt_interrupt_after_permission_resolution() -> Duration {
@@ -645,6 +650,7 @@ impl AcpClient {
                 .await;
             }
         }
+        let _permission_guard = AcpPendingPermissionGuard::new(self.diagnostics.clone());
         self.emit_json(serde_json::json!({
             "type": "permission_request",
             "permission_id": request_id,
@@ -698,7 +704,6 @@ impl AcpClient {
                 fallback
             }
         };
-
         self.emit_json(serde_json::json!({
             "type": "permission_response",
             "permission_id": request_id,
@@ -824,6 +829,7 @@ pub struct AcpHandle {
 struct AcpRuntimeDiagnostics {
     active_prompt_count: AtomicUsize,
     pending_command_count: AtomicUsize,
+    pending_permission_count: AtomicUsize,
     last_provider_event_at: AtomicI64,
     last_terminal_permission_at: AtomicI64,
     last_command_error_at: AtomicI64,
@@ -835,6 +841,7 @@ impl Default for AcpRuntimeDiagnostics {
         Self {
             active_prompt_count: AtomicUsize::new(0),
             pending_command_count: AtomicUsize::new(0),
+            pending_permission_count: AtomicUsize::new(0),
             last_provider_event_at: AtomicI64::new(0),
             last_terminal_permission_at: AtomicI64::new(0),
             last_command_error_at: AtomicI64::new(0),
@@ -851,12 +858,14 @@ pub struct AcpHandleDiagnostics {
     pub command_channel_max_capacity: usize,
     pub active_prompt_count: usize,
     pub pending_command_count: usize,
+    pub pending_permission_count: usize,
     pub active_submission_ids: Vec<String>,
     pub last_submission_id: Option<String>,
     pub last_provider_event_type: Option<String>,
     pub last_provider_event_at: Option<i64>,
     pub pending_tool_call_count: usize,
     pub pending_tool_calls: Vec<AcpToolCallDiagnostic>,
+    pub stale_prompt: Option<AcpStalePromptDiagnostic>,
     pub last_command_error: Option<AcpCommandErrorDiagnostic>,
     pub last_command_error_at: Option<i64>,
 }
@@ -874,9 +883,19 @@ pub struct AcpCommandErrorDiagnostic {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpStalePromptDiagnostic {
+    pub active_prompt_count: usize,
+    pub pending_permission_count: usize,
+    pub stale_for_seconds: i64,
+    pub last_activity_at: Option<i64>,
+    pub active_submission_ids: Vec<String>,
+}
+
 #[derive(Debug, Default)]
 struct AcpRuntimeDiagnosticsState {
     active_submission_ids: Vec<String>,
+    active_prompt_started_at: HashMap<String, i64>,
     last_submission_id: Option<String>,
     last_provider_event_type: Option<String>,
     pending_tool_calls: HashMap<String, AcpPendingToolCallState>,
@@ -887,6 +906,23 @@ struct AcpRuntimeDiagnosticsState {
 struct AcpPendingToolCallState {
     status: String,
     updated_at: i64,
+}
+
+struct AcpPendingPermissionGuard {
+    diagnostics: Arc<AcpRuntimeDiagnostics>,
+}
+
+impl AcpPendingPermissionGuard {
+    fn new(diagnostics: Arc<AcpRuntimeDiagnostics>) -> Self {
+        diagnostics.observe_permission_request_start();
+        Self { diagnostics }
+    }
+}
+
+impl Drop for AcpPendingPermissionGuard {
+    fn drop(&mut self) {
+        self.diagnostics.observe_permission_request_done();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -912,20 +948,34 @@ impl std::error::Error for AcpSendError {}
 
 impl AcpHandle {
     pub fn diagnostics(&self) -> AcpHandleDiagnostics {
-        let state = self
-            .diagnostics
-            .state
-            .lock()
-            .expect("acp diagnostics state poisoned");
-        let mut pending_tool_calls = state
-            .pending_tool_calls
-            .iter()
-            .map(|(tool_call_id, status)| AcpToolCallDiagnostic {
-                tool_call_id: tool_call_id.clone(),
-                status: status.status.clone(),
-                updated_at: optional_timestamp(status.updated_at),
-            })
-            .collect::<Vec<_>>();
+        let (
+            mut pending_tool_calls,
+            active_submission_ids,
+            last_submission_id,
+            last_provider_event_type,
+            last_command_error,
+        ) = {
+            let state = self
+                .diagnostics
+                .state
+                .lock()
+                .expect("acp diagnostics state poisoned");
+            (
+                state
+                    .pending_tool_calls
+                    .iter()
+                    .map(|(tool_call_id, status)| AcpToolCallDiagnostic {
+                        tool_call_id: tool_call_id.clone(),
+                        status: status.status.clone(),
+                        updated_at: optional_timestamp(status.updated_at),
+                    })
+                    .collect::<Vec<_>>(),
+                state.active_submission_ids.clone(),
+                state.last_submission_id.clone(),
+                state.last_provider_event_type.clone(),
+                state.last_command_error.clone(),
+            )
+        };
         pending_tool_calls.sort_by(|left, right| left.tool_call_id.cmp(&right.tool_call_id));
         let last_provider_event_at = optional_timestamp(
             self.diagnostics
@@ -937,6 +987,7 @@ impl AcpHandle {
                 .last_command_error_at
                 .load(Ordering::Relaxed),
         );
+        let now = Utc::now().timestamp();
         AcpHandleDiagnostics {
             session_id: self.session_id.clone(),
             command_channel_closed: self.tx.is_closed(),
@@ -947,13 +998,18 @@ impl AcpHandle {
                 .diagnostics
                 .pending_command_count
                 .load(Ordering::Relaxed),
-            active_submission_ids: state.active_submission_ids.clone(),
-            last_submission_id: state.last_submission_id.clone(),
-            last_provider_event_type: state.last_provider_event_type.clone(),
+            pending_permission_count: self
+                .diagnostics
+                .pending_permission_count
+                .load(Ordering::Relaxed),
+            active_submission_ids,
+            last_submission_id,
+            last_provider_event_type,
             last_provider_event_at,
             pending_tool_call_count: pending_tool_calls.len(),
             pending_tool_calls,
-            last_command_error: state.last_command_error.clone(),
+            stale_prompt: self.diagnostics.stale_prompt_at(now),
+            last_command_error,
             last_command_error_at,
         }
     }
@@ -1027,6 +1083,7 @@ fn optional_timestamp(value: i64) -> Option<i64> {
 impl AcpRuntimeDiagnostics {
     fn observe_prompt_start(&self, submission_id: &str) {
         self.last_terminal_permission_at.store(0, Ordering::Relaxed);
+        let now = Utc::now().timestamp();
         let mut state = self.state.lock().expect("acp diagnostics state poisoned");
         if !state
             .active_submission_ids
@@ -1035,6 +1092,9 @@ impl AcpRuntimeDiagnostics {
         {
             state.active_submission_ids.push(submission_id.to_string());
         }
+        state
+            .active_prompt_started_at
+            .insert(submission_id.to_string(), now);
         state.last_submission_id = Some(submission_id.to_string());
     }
 
@@ -1043,6 +1103,7 @@ impl AcpRuntimeDiagnostics {
         state
             .active_submission_ids
             .retain(|existing| existing != submission_id);
+        state.active_prompt_started_at.remove(submission_id);
     }
 
     fn observe_provider_event(
@@ -1089,6 +1150,19 @@ impl AcpRuntimeDiagnostics {
             .store(Utc::now().timestamp(), Ordering::Relaxed);
     }
 
+    fn observe_permission_request_start(&self) {
+        self.pending_permission_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn observe_permission_request_done(&self) {
+        self.pending_permission_count
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                Some(count.saturating_sub(1))
+            })
+            .ok();
+    }
+
     fn has_blocking_pending_tool_calls(&self) -> bool {
         self.has_blocking_pending_tool_calls_at(Utc::now().timestamp())
     }
@@ -1112,6 +1186,44 @@ impl AcpRuntimeDiagnostics {
         let last_activity_at = terminal_permission_at.max(last_provider_event_at);
         now.saturating_sub(last_activity_at)
             >= ACP_PROMPT_INTERRUPT_AFTER_PERMISSION_RESOLUTION.as_secs() as i64
+    }
+
+    fn stale_prompt_at(&self, now: i64) -> Option<AcpStalePromptDiagnostic> {
+        let active_prompt_count = self.active_prompt_count.load(Ordering::Relaxed);
+        let pending_permission_count = self.pending_permission_count.load(Ordering::Relaxed);
+        if active_prompt_count == 0 || pending_permission_count > 0 {
+            return None;
+        }
+        if self.has_blocking_pending_tool_calls_at(now) {
+            return None;
+        }
+
+        let (active_submission_ids, first_prompt_started_at) = {
+            let state = self.state.lock().expect("acp diagnostics state poisoned");
+            (
+                state.active_submission_ids.clone(),
+                state.active_prompt_started_at.values().min().copied(),
+            )
+        };
+        let last_provider_event_at = self.last_provider_event_at.load(Ordering::Relaxed);
+        let last_activity_at = first_prompt_started_at
+            .unwrap_or(0)
+            .max(last_provider_event_at);
+        if last_activity_at <= 0 {
+            return None;
+        }
+        let stale_for_seconds = now.saturating_sub(last_activity_at);
+        if stale_for_seconds < ACP_STALE_PROVIDER_PROMPT_SECONDS {
+            return None;
+        }
+
+        Some(AcpStalePromptDiagnostic {
+            active_prompt_count,
+            pending_permission_count,
+            stale_for_seconds,
+            last_activity_at: optional_timestamp(last_activity_at),
+            active_submission_ids,
+        })
     }
 }
 
@@ -1201,6 +1313,48 @@ async fn send_acp_cancel_notification(
             format!("acp prompt interrupt requested: {reason}"),
         )
         .await;
+}
+
+async fn emit_acp_run_status(
+    event_sink: &Arc<dyn AcpEventSink>,
+    session_id: &str,
+    status: &str,
+    reason: &str,
+) {
+    event_sink
+        .emit_raw(
+            AcpStream::Acp,
+            serde_json::json!({
+                "type": "run_status",
+                "status": status,
+                "session_id": session_id,
+                "reason": reason,
+                "ts": Utc::now().timestamp(),
+            })
+            .to_string(),
+        )
+        .await;
+}
+
+async fn release_active_prompt_tasks(
+    active_prompt_tasks: &mut HashMap<String, tokio::task::JoinHandle<()>>,
+    diagnostics: &AcpRuntimeDiagnostics,
+    event_sink: &Arc<dyn AcpEventSink>,
+    session_id: &str,
+    system_message: &str,
+    status_reason: &str,
+) {
+    let submission_ids = active_prompt_tasks.keys().cloned().collect::<Vec<_>>();
+    for (_submission_id, task) in active_prompt_tasks.drain() {
+        task.abort();
+    }
+    for submission_id in submission_ids {
+        diagnostics.observe_prompt_done(&submission_id);
+    }
+    event_sink
+        .emit_raw(AcpStream::System, system_message.to_string())
+        .await;
+    emit_acp_run_status(event_sink, session_id, "running", status_reason).await;
 }
 
 async fn dispatch_acp_command(
@@ -1527,6 +1681,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             let mut pending_commands = VecDeque::<AcpCommand>::new();
             let mut stuck_prompt_tick = tokio::time::interval(Duration::from_secs(1));
             let mut interrupt_sent_at = None::<i64>;
+            let mut stale_status_emitted = false;
             let sync_diagnostics = |active_prompt_count: usize, pending_commands: usize| {
                 diagnostics_for_runtime
                     .active_prompt_count
@@ -1575,12 +1730,73 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         }
                         if active_prompt_tasks.is_empty() {
                             interrupt_sent_at = None;
+                            stale_status_emitted = false;
                         }
                         sync_diagnostics(active_prompt_tasks.len(), pending_commands.len());
                     }
-                    _ = stuck_prompt_tick.tick(), if !active_prompt_tasks.is_empty() && !pending_commands.is_empty() => {
+                    _ = stuck_prompt_tick.tick(), if !active_prompt_tasks.is_empty() => {
                         let now = Utc::now().timestamp();
-                        if diagnostics_for_runtime.should_interrupt_after_terminal_permission(now) {
+                        let stale_prompt = diagnostics_for_runtime.stale_prompt_at(now);
+                        if let Some(stale_prompt) = stale_prompt {
+                            if !stale_status_emitted {
+                                emit_acp_run_status(
+                                    &event_sink,
+                                    &session_id,
+                                    "stale_prompt",
+                                    "active prompt has no provider event and no pending permission",
+                                )
+                                .await;
+                                stale_status_emitted = true;
+                            }
+                            match interrupt_sent_at {
+                                None => {
+                                    send_acp_cancel_notification(
+                                        &conn,
+                                        &session_id,
+                                        &event_sink,
+                                        &diagnostics_for_runtime,
+                                        "active prompt has no provider event and no pending permission",
+                                    )
+                                    .await;
+                                    tracing::warn!(
+                                        session_id = %session_id,
+                                        stale_for_seconds = stale_prompt.stale_for_seconds,
+                                        active_prompt_count = stale_prompt.active_prompt_count,
+                                        pending_permission_count = stale_prompt.pending_permission_count,
+                                        "acp stale prompt interrupt requested"
+                                    );
+                                    interrupt_sent_at = Some(now);
+                                }
+                                Some(sent_at)
+                                    if now.saturating_sub(sent_at)
+                                        >= ACP_PROMPT_INTERRUPT_RELEASE_GRACE.as_secs() as i64 =>
+                                {
+                                    release_active_prompt_tasks(
+                                        &mut active_prompt_tasks,
+                                        &diagnostics_for_runtime,
+                                        &event_sink,
+                                        &session_id,
+                                        "acp prompt interrupt released a stale prompt",
+                                        "stale prompt was released",
+                                    )
+                                    .await;
+                                    interrupt_sent_at = None;
+                                    stale_status_emitted = false;
+                                    sync_diagnostics(active_prompt_tasks.len(), pending_commands.len());
+                                }
+                                Some(_) => {}
+                            }
+                        } else if diagnostics_for_runtime.should_interrupt_after_terminal_permission(now) {
+                            if !stale_status_emitted {
+                                emit_acp_run_status(
+                                    &event_sink,
+                                    &session_id,
+                                    "stale_prompt",
+                                    "terminal permission resolution left prompt active",
+                                )
+                                .await;
+                                stale_status_emitted = true;
+                            }
                             match interrupt_sent_at {
                                 None => {
                                     send_acp_cancel_notification(
@@ -1597,29 +1813,24 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                     if now.saturating_sub(sent_at)
                                         >= ACP_PROMPT_INTERRUPT_RELEASE_GRACE.as_secs() as i64 =>
                                 {
-                                    let submission_ids = active_prompt_tasks
-                                        .keys()
-                                        .cloned()
-                                        .collect::<Vec<_>>();
-                                    for (_submission_id, task) in active_prompt_tasks.drain() {
-                                        task.abort();
-                                    }
-                                    for submission_id in submission_ids {
-                                        diagnostics_for_runtime.observe_prompt_done(&submission_id);
-                                    }
-                                    event_sink
-                                        .emit_raw(
-                                            AcpStream::System,
-                                            "acp prompt interrupt released a stuck prompt".to_string(),
-                                        )
-                                        .await;
+                                    release_active_prompt_tasks(
+                                        &mut active_prompt_tasks,
+                                        &diagnostics_for_runtime,
+                                        &event_sink,
+                                        &session_id,
+                                        "acp prompt interrupt released a stuck prompt",
+                                        "stuck prompt was released",
+                                    )
+                                    .await;
                                     interrupt_sent_at = None;
+                                    stale_status_emitted = false;
                                     sync_diagnostics(active_prompt_tasks.len(), pending_commands.len());
                                 }
                                 Some(_) => {}
                             }
                         } else {
                             interrupt_sent_at = None;
+                            stale_status_emitted = false;
                         }
                     }
                     maybe_cmd = cmd_rx.recv(), if !cmd_rx_closed => {
@@ -2563,11 +2774,11 @@ mod tests {
         AcpPromptDeliveryPolicy, AcpRuntimeDiagnostics, AcpRuntimeLocation, AcpSendError,
         acp_pending_tool_call_prompt_block_seconds, acp_permission_review_timeout,
         acp_prompt_interrupt_after_permission_resolution, acp_session_start_timeout,
-        build_prompt_prefix_blocks, dedupe_skills, format_auth_required_message,
-        handle_auth_required_failure, is_auth_required_error, load_mcp_servers_from_path,
-        load_skills_from_config, load_workdir_skills, permission_outcome_allows,
-        permission_review_failure_outcome, remove_skills_conflicting_with_reserved,
-        should_queue_while_prompts_active,
+        acp_stale_provider_prompt_seconds, build_prompt_prefix_blocks, dedupe_skills,
+        format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
+        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
+        permission_outcome_allows, permission_review_failure_outcome,
+        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
     use agent_client_protocol::schema::{
         ContentBlock, McpServer, PermissionOption, PermissionOptionKind, RequestPermissionOutcome,
@@ -2862,6 +3073,51 @@ mod tests {
                 + acp_prompt_interrupt_after_permission_resolution().as_secs() as i64
                 + 3
         ));
+    }
+
+    #[test]
+    fn acp_runtime_diagnostics_marks_provider_idle_prompt_stale() {
+        let diagnostics = AcpRuntimeDiagnostics::default();
+        diagnostics.active_prompt_count.store(1, Ordering::Relaxed);
+        diagnostics.observe_prompt_start("submission-1");
+        diagnostics.observe_provider_event("session_update", None);
+        let last_activity_at = diagnostics.last_provider_event_at.load(Ordering::Relaxed);
+
+        assert!(
+            diagnostics
+                .stale_prompt_at(last_activity_at + acp_stale_provider_prompt_seconds() - 1)
+                .is_none()
+        );
+
+        let stale = diagnostics
+            .stale_prompt_at(last_activity_at + acp_stale_provider_prompt_seconds())
+            .expect("provider idle prompt should become stale");
+        assert_eq!(stale.active_prompt_count, 1);
+        assert_eq!(stale.pending_permission_count, 0);
+        assert_eq!(stale.active_submission_ids, vec!["submission-1"]);
+    }
+
+    #[test]
+    fn acp_runtime_diagnostics_pending_permission_suppresses_stale_prompt() {
+        let diagnostics = AcpRuntimeDiagnostics::default();
+        diagnostics.active_prompt_count.store(1, Ordering::Relaxed);
+        diagnostics.observe_prompt_start("submission-1");
+        diagnostics.observe_provider_event("session_update", None);
+        diagnostics.observe_permission_request_start();
+        let last_activity_at = diagnostics.last_provider_event_at.load(Ordering::Relaxed);
+
+        assert!(
+            diagnostics
+                .stale_prompt_at(last_activity_at + acp_stale_provider_prompt_seconds() + 1)
+                .is_none()
+        );
+
+        diagnostics.observe_permission_request_done();
+        assert!(
+            diagnostics
+                .stale_prompt_at(last_activity_at + acp_stale_provider_prompt_seconds() + 1)
+                .is_some()
+        );
     }
 
     #[test]

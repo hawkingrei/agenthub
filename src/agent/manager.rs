@@ -1727,6 +1727,8 @@ impl AgentManager {
                 let diagnostics = acp.diagnostics();
                 let status = if diagnostics.command_channel_closed {
                     "closed"
+                } else if diagnostics.stale_prompt.is_some() {
+                    "prompt_stale"
                 } else if diagnostics.active_prompt_count > 0 {
                     "prompt_active"
                 } else if diagnostics.pending_command_count > 0 {
