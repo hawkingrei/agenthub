@@ -122,6 +122,38 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("acp-conversation-inner flex w-full flex-col gap-1 min-h-full justify-end");
   });
 
+  it("can render newest conversation items first for Team threads", async () => {
+    const html = await renderConversation(
+      [
+        { kind: "agent_message", text: "older reply", event_id: 1 },
+        { kind: "agent_message", text: "newer reply", event_id: 2 },
+      ],
+      { order: "newest_first" }
+    );
+
+    expect(html.indexOf("newer reply")).toBeLessThan(html.indexOf("older reply"));
+  });
+
+  it("keeps live tool calls collapsed when requested by the surface", async () => {
+    const html = await renderConversation(
+      [
+        {
+          kind: "tool_call",
+          id: "call-collapsed",
+          title: "Shell",
+          status: "in_progress",
+          raw_input: { cmd: "cargo test" },
+        },
+      ],
+      { toolCallsDefaultCollapsed: true }
+    );
+
+    expect(html).toContain("Tool Call: Shell");
+    expect(html).toContain("In Progress");
+    expect(html).toContain("acp-tool-fold");
+    expect(html).not.toContain("open");
+  });
+
   it("renders grouped tool calls with a shared fold and nested tool entries", async () => {
     const html = await renderConversation([
       {

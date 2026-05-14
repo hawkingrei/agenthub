@@ -90,6 +90,22 @@ describe("shouldAutoCollapseConversationItem", () => {
     ).toBe(false);
   });
 
+  it("collapses tool bubbles when the surface requests default-collapsed tools", () => {
+    expect(
+      shouldAutoCollapseConversationItem(
+        { kind: "tool_call", id: "call-1", title: "Read" },
+        {
+          globalIndex: 4,
+          latestVisibleGlobalIndex: 4,
+          shouldAutoCollapse: false,
+          collapseCutoff: 0,
+          toolCallsDefaultCollapsed: true,
+          isFrozenView: false,
+        }
+      )
+    ).toBe(true);
+  });
+
   it("does not auto-collapse ordinary messages just because newer items exist", () => {
     expect(
       shouldAutoCollapseConversationItem(

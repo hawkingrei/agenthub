@@ -36,12 +36,15 @@ export const ToolCallBubble = React.memo(
     ansi,
     runStatus,
     autoCollapse = false,
+    defaultCollapsed = false,
     grouped = false,
     indexLabel,
     onSubmitRequestUserInput,
   }: ToolCallBubbleProps) {
     const isLive = isToolCallEffectivelyLive(msg.status, runStatus);
-    const [open, setOpen] = React.useState(() => !autoCollapse && isLive);
+    const [open, setOpen] = React.useState(
+      () => !defaultCollapsed && !autoCollapse && isLive
+    );
     const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
     const handleAutoCollapse = React.useCallback(() => {
       setOpen((prev) => (prev ? false : prev));
@@ -103,9 +106,17 @@ export const ToolCallBubble = React.memo(
     }, [msg.terminal_activities]);
 
     React.useEffect(() => {
+      if (defaultCollapsed) {
+        return;
+      }
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
       wasLiveRef.current = isLive;
-    }, [isLive]);
+    }, [defaultCollapsed, isLive]);
+    React.useEffect(() => {
+      if (defaultCollapsed) {
+        setOpen(false);
+      }
+    }, [defaultCollapsed]);
     React.useEffect(() => {
       if (autoCollapse && !wasAutoCollapseRef.current) {
         setOpen(false);
@@ -265,6 +276,7 @@ export const ToolCallBubble = React.memo(
     prev.ansi === next.ansi &&
     prev.runStatus === next.runStatus &&
     prev.autoCollapse === next.autoCollapse &&
+    prev.defaultCollapsed === next.defaultCollapsed &&
     prev.grouped === next.grouped &&
     prev.indexLabel === next.indexLabel &&
     prev.onSubmitRequestUserInput === next.onSubmitRequestUserInput

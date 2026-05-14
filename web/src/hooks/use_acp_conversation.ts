@@ -46,6 +46,7 @@ type UseAcpConversationArgs = {
   acpTab: "conversation" | "plan" | "debug";
   eventMeta: Record<string, AcpConversationEventMeta>;
   isAgentActive: boolean;
+  latestPlacement?: "bottom" | "top";
   onLoadOlder: () => void;
 };
 
@@ -369,8 +370,10 @@ export function useAcpConversation({
   acpTab,
   eventMeta,
   isAgentActive,
+  latestPlacement = "bottom",
   onLoadOlder,
 }: UseAcpConversationArgs): UseAcpConversationResult {
+  const latestAtTop = latestPlacement === "top";
   const acpConversationElementRef = useRef<HTMLDivElement | null>(null);
   const [conversationViewportNode, setConversationViewportNode] =
     useState<HTMLDivElement | null>(null);
@@ -466,6 +469,7 @@ export function useAcpConversation({
   const conversationSourceOffset = isFrozenView ? 0 : conversationWindow.offset;
   const shouldVirtualizeConversation =
     acpTab === "conversation" &&
+    !latestAtTop &&
     shouldUseConversationVirtualization(
       conversationStickToBottom,
       conversationSourceItems.length
@@ -635,7 +639,7 @@ export function useAcpConversation({
   const jumpToConversationBottom = useCallback(() => {
     const el = acpConversationElementRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    el.scrollTop = latestAtTop ? 0 : el.scrollHeight;
     lastConversationScrollTopRef.current = el.scrollTop;
     syncConversationViewport();
     acpStickToBottomRef.current = true;
@@ -646,7 +650,7 @@ export function useAcpConversation({
     setConversationFrozenItems([]);
     setConversationPendingCount(0);
     setFocusedConversationToolCallId(null);
-  }, [syncConversationViewport]);
+  }, [latestAtTop, syncConversationViewport]);
 
   const jumpToConversationToolCall = useCallback(
     (toolCallId: string): boolean => {
@@ -704,9 +708,12 @@ export function useAcpConversation({
     if (!el) return;
     if (acpTab !== "conversation") return;
     if (!conversationStickToBottom && !acpStickToBottomRef.current) return;
-    el.scrollTop = el.scrollHeight;
+    el.scrollTop = latestAtTop ? 0 : el.scrollHeight;
     lastConversationScrollTopRef.current = el.scrollTop;
     syncConversationViewport();
+    if (latestAtTop) {
+      return;
+    }
     if (
       typeof window === "undefined" ||
       typeof window.requestAnimationFrame !== "function"
@@ -740,7 +747,7 @@ export function useAcpConversation({
         syncConversationViewport();
       });
     });
-  }, [acpTab, conversationStickToBottom, syncConversationViewport]);
+  }, [acpTab, conversationStickToBottom, latestAtTop, syncConversationViewport]);
 
   useEffect(() => {
     alignConversationBottomNowRef.current = alignConversationBottomNow;
@@ -762,13 +769,15 @@ export function useAcpConversation({
       syncConversationViewport();
     }
     const previousTop = lastConversationScrollTopRef.current;
-    const stick = deriveConversationStickToBottom(
-      el.scrollHeight,
-      el.scrollTop,
-      el.clientHeight,
-      acpStickToBottomRef.current,
-      previousTop
-    );
+    const stick = latestAtTop
+      ? el.scrollTop <= STICK_BOTTOM_STRICT_THRESHOLD
+      : deriveConversationStickToBottom(
+          el.scrollHeight,
+          el.scrollTop,
+          el.clientHeight,
+          acpStickToBottomRef.current,
+          previousTop
+        );
     lastConversationScrollTopRef.current = el.scrollTop;
     acpStickToBottomRef.current = stick;
     if (stick !== conversationStickToBottom) {
@@ -815,6 +824,7 @@ export function useAcpConversation({
   }, [
     conversationStickToBottom,
     conversationMessages,
+    latestAtTop,
     shouldVirtualizeConversation,
     syncConversationViewport,
     shouldLoadOlder,
@@ -1101,7 +1111,7 @@ export function useAcpConversation({
     conversationHeightEstimateModel?.totalHeight ??
     conversationSourceItems.length * Math.max(24, conversationAvgHeight);
   const conversationShouldBottomAlignLatest = shouldBottomAlignConversationLatest(
-    conversationStickToBottom,
+    latestAtTop ? false : conversationStickToBottom,
     conversationSourceItems.length,
     estimatedConversationSourceHeight,
     conversationViewport.height

@@ -28,9 +28,11 @@ export {
 type AcpConversationProps = {
   items: ConversationItem[];
   windowOffset: number;
+  order?: "oldest_first" | "newest_first";
   isFrozenView: boolean;
   shouldAutoCollapse: boolean;
   collapseCutoff: number;
+  toolCallsDefaultCollapsed?: boolean;
   runStatus?: string | null;
   virtualTopSpacer: number;
   virtualBottomSpacer: number;
@@ -62,9 +64,11 @@ export function renderMarkdownCached(text: string): string {
 export function AcpConversation({
   items,
   windowOffset,
+  order = "oldest_first",
   isFrozenView,
   shouldAutoCollapse,
   collapseCutoff,
+  toolCallsDefaultCollapsed = false,
   runStatus,
   virtualTopSpacer,
   virtualBottomSpacer,
@@ -82,6 +86,13 @@ export function AcpConversation({
   onSubmitRequestUserInput,
 }: AcpConversationProps) {
   const markdownRenderVersion = useAcpMarkdownRenderVersion();
+  const displayItems = React.useMemo(
+    () =>
+      items.map((msg, idx) => ({ msg, idx })).sort((left, right) =>
+        order === "newest_first" ? right.idx - left.idx : left.idx - right.idx
+      ),
+    [items, order]
+  );
 
   const bottomClearance = Number.isFinite(bottomClearancePx)
     ? Math.max(0, Math.round(bottomClearancePx))
@@ -117,7 +128,7 @@ export function AcpConversation({
             style={{ height: virtualTopSpacer }}
           />
         )}
-        {items.map((msg, idx) => {
+        {displayItems.map(({ msg, idx }) => {
           const globalIndex = windowOffset + idx;
           const latestVisibleGlobalIndex = windowOffset + items.length - 1;
           return (
@@ -129,6 +140,7 @@ export function AcpConversation({
               focusedToolCallId={focusedToolCallId}
               shouldAutoCollapse={shouldAutoCollapse}
               collapseCutoff={collapseCutoff}
+              toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
               isFrozenView={isFrozenView}
               runStatus={runStatus}
               ansi={ansi}

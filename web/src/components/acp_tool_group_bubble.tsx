@@ -19,13 +19,16 @@ export const ToolCallGroupBubble = React.memo(
     ansi,
     runStatus,
     autoCollapse = false,
+    defaultCollapsed = false,
     onSubmitRequestUserInput,
   }: ToolCallGroupBubbleProps) {
     const isLive = React.useMemo(
       () => msg.calls.some((call) => isToolCallEffectivelyLive(call.status, runStatus)),
       [msg.calls, runStatus]
     );
-    const [open, setOpen] = React.useState(() => !autoCollapse && isLive);
+    const [open, setOpen] = React.useState(
+      () => !defaultCollapsed && !autoCollapse && isLive
+    );
     const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
     const handleAutoCollapse = React.useCallback(() => {
       setOpen((prev) => (prev ? false : prev));
@@ -39,9 +42,17 @@ export const ToolCallGroupBubble = React.memo(
     );
 
     React.useEffect(() => {
+      if (defaultCollapsed) {
+        return;
+      }
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
       wasLiveRef.current = isLive;
-    }, [isLive]);
+    }, [defaultCollapsed, isLive]);
+    React.useEffect(() => {
+      if (defaultCollapsed) {
+        setOpen(false);
+      }
+    }, [defaultCollapsed]);
     React.useEffect(() => {
       if (autoCollapse && !wasAutoCollapseRef.current) {
         setOpen(false);
@@ -92,6 +103,7 @@ export const ToolCallGroupBubble = React.memo(
                     ansi={ansi}
                     runStatus={runStatus}
                     autoCollapse={autoCollapse}
+                    defaultCollapsed={defaultCollapsed}
                     grouped={true}
                     indexLabel={`#${idx + 1}`}
                     onSubmitRequestUserInput={onSubmitRequestUserInput}
@@ -109,5 +121,6 @@ export const ToolCallGroupBubble = React.memo(
     prev.ansi === next.ansi &&
     prev.runStatus === next.runStatus &&
     prev.autoCollapse === next.autoCollapse &&
+    prev.defaultCollapsed === next.defaultCollapsed &&
     prev.onSubmitRequestUserInput === next.onSubmitRequestUserInput
 );

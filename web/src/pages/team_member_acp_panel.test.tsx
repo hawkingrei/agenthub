@@ -1134,6 +1134,42 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     ).not.toBeNull();
   });
 
+  it("uses Team-specific newest-first collapsed-tool ACP rendering", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationRenderItems: [
+          { kind: "agent_message", text: "older reply", event_id: 1 },
+          { kind: "agent_message", text: "newer reply", event_id: 2 },
+        ],
+        conversationSourceItems: 2,
+        conversationRenderedItems: 2,
+        conversationTotalItems: 2,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(latestAcpConversationArgs().latestPlacement).toBe("top");
+    expect(container.textContent?.indexOf("newer reply")).toBeLessThan(
+      container.textContent?.indexOf("older reply") ?? Number.MAX_SAFE_INTEGER
+    );
+  });
+
   it("reuses cached ACP events while the selected member session is refreshing", () => {
     vi.mocked(useAcpConversation).mockImplementation(
       ((args: { acpView: { messages: Array<{ text?: string | null }> } }) =>
