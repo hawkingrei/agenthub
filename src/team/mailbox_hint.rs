@@ -113,7 +113,7 @@ impl TeamMailboxHintAgentNudger for AgentManager {
         expected_session_id: Option<&str>,
         prompt: &str,
     ) -> anyhow::Result<()> {
-        self.send_input(actor_id, prompt, None, expected_session_id)
+        self.send_mailbox_hint_input(actor_id, prompt, expected_session_id)
             .await
     }
 }

@@ -44,8 +44,8 @@ use super::{
     normalize_target_node_id, validate_agent_node_config_input, validate_agent_node_update_input,
 };
 use crate::acp::{
-    AcpActorSkillContext, AcpHandle, AcpPermissionReviewDispatcher, AcpPermissionService,
-    load_safe_paths,
+    AcpActorSkillContext, AcpHandle, AcpHandleDiagnostics, AcpPermissionReviewDispatcher,
+    AcpPermissionService, load_safe_paths,
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
@@ -480,6 +480,16 @@ fn is_agent_loop_activity_output(output: &AgentOutput) -> bool {
 
 fn should_rearm_agent_loop_for_output(session_id: &str, output: &AgentOutput) -> bool {
     output.session_id == session_id && is_agent_loop_activity_output(output)
+}
+
+fn acp_accepts_best_effort_hint(diagnostics: &AcpHandleDiagnostics) -> bool {
+    !diagnostics.command_channel_closed
+        && diagnostics.command_channel_capacity > 0
+        && diagnostics.active_prompt_count == 0
+        && diagnostics.pending_command_count == 0
+        && diagnostics.pending_permission_count == 0
+        && diagnostics.pending_tool_call_count == 0
+        && diagnostics.stale_prompt.is_none()
 }
 
 fn is_agent_user_message(message: &str) -> bool {
@@ -1933,6 +1943,45 @@ impl AgentManager {
                 Err(err)
             }
         }
+    }
+
+    pub(crate) async fn send_mailbox_hint_input(
+        &self,
+        agent_id: &str,
+        input: &str,
+        expected_session_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let agent = self.get_agent(agent_id).await?;
+        if agent.target_node_id.is_some() {
+            return self
+                .send_input(agent_id, input, None, expected_session_id)
+                .await;
+        }
+
+        {
+            let guard = self.inner.read().await;
+            let handle = guard
+                .get(agent_id)
+                .ok_or_else(|| anyhow::anyhow!("agent not running"))?;
+            if let Some(expected_session_id) = expected_session_id
+                && expected_session_id != handle.session_id
+            {
+                return Err(AgentSendInputError::SessionMismatch {
+                    expected: expected_session_id.to_string(),
+                    running: handle.session_id.clone(),
+                }
+                .into());
+            }
+            if let AgentInput::Acp(acp) = &handle.input {
+                let diagnostics = acp.diagnostics();
+                if !acp_accepts_best_effort_hint(&diagnostics) {
+                    anyhow::bail!("agent ACP input is busy; skip best-effort mailbox hint");
+                }
+            }
+        }
+
+        self.send_input(agent_id, input, None, expected_session_id)
+            .await
     }
 
     async fn persist_acp_prompt_submission_failure(

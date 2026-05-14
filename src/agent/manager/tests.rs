@@ -6,11 +6,14 @@ use super::codec::{is_acp_message, status_from_str, stream_to_str};
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
     AGENT_LOOP_MESSAGE_ID_PREFIX, AgentOutput, AgentRecord, AgentStatus, OutputStream,
-    WorktreeMode, build_runtime_start_policy, ensure_team_runtime_workspace_layout,
-    is_agent_loop_activity_output, should_rearm_agent_loop_for_output, status_to_str,
-    stream_from_str,
+    WorktreeMode, acp_accepts_best_effort_hint, build_runtime_start_policy,
+    ensure_team_runtime_workspace_layout, is_agent_loop_activity_output,
+    should_rearm_agent_loop_for_output, status_to_str, stream_from_str,
 };
-use crate::acp::{AcpActorSkillContext, AcpPromptDeliveryPolicy, AcpRuntimeLocation};
+use crate::acp::{
+    AcpActorSkillContext, AcpCommandErrorDiagnostic, AcpHandleDiagnostics, AcpPromptDeliveryPolicy,
+    AcpRuntimeLocation, AcpStalePromptDiagnostic,
+};
 use crate::path_utils::expand_tilde;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -111,6 +114,73 @@ fn agent_loop_activity_counts_non_loop_acp_output_only() {
         !is_agent_loop_activity_output(&system_output),
         "non-ACP output should not reset ACP silence tracking"
     );
+}
+
+fn idle_acp_hint_diagnostics() -> AcpHandleDiagnostics {
+    AcpHandleDiagnostics {
+        session_id: "session-1".to_string(),
+        command_channel_closed: false,
+        command_channel_capacity: 8,
+        command_channel_max_capacity: 8,
+        active_prompt_count: 0,
+        pending_command_count: 0,
+        pending_permission_count: 0,
+        active_submission_ids: Vec::new(),
+        last_submission_id: None,
+        last_provider_event_type: None,
+        last_provider_event_at: None,
+        pending_tool_call_count: 0,
+        pending_tool_calls: Vec::new(),
+        stale_prompt: None,
+        last_command_error: None,
+        last_command_error_at: None,
+    }
+}
+
+#[test]
+fn best_effort_mailbox_hints_require_idle_acp_input() {
+    assert!(acp_accepts_best_effort_hint(&idle_acp_hint_diagnostics()));
+
+    let mut active_prompt = idle_acp_hint_diagnostics();
+    active_prompt.active_prompt_count = 1;
+    assert!(!acp_accepts_best_effort_hint(&active_prompt));
+
+    let mut queued_command = idle_acp_hint_diagnostics();
+    queued_command.pending_command_count = 1;
+    assert!(!acp_accepts_best_effort_hint(&queued_command));
+
+    let mut pending_permission = idle_acp_hint_diagnostics();
+    pending_permission.pending_permission_count = 1;
+    assert!(!acp_accepts_best_effort_hint(&pending_permission));
+
+    let mut pending_tool = idle_acp_hint_diagnostics();
+    pending_tool.pending_tool_call_count = 1;
+    assert!(!acp_accepts_best_effort_hint(&pending_tool));
+
+    let mut stale_prompt = idle_acp_hint_diagnostics();
+    stale_prompt.stale_prompt = Some(AcpStalePromptDiagnostic {
+        active_prompt_count: 1,
+        pending_permission_count: 0,
+        stale_for_seconds: 300,
+        last_activity_at: Some(100),
+        active_submission_ids: vec!["submission-1".to_string()],
+    });
+    assert!(!acp_accepts_best_effort_hint(&stale_prompt));
+
+    let mut closed_channel = idle_acp_hint_diagnostics();
+    closed_channel.command_channel_closed = true;
+    assert!(!acp_accepts_best_effort_hint(&closed_channel));
+
+    let mut full_channel = idle_acp_hint_diagnostics();
+    full_channel.command_channel_capacity = 0;
+    assert!(!acp_accepts_best_effort_hint(&full_channel));
+
+    let mut previous_error = idle_acp_hint_diagnostics();
+    previous_error.last_command_error = Some(AcpCommandErrorDiagnostic {
+        command_kind: "prompt".to_string(),
+        message: "previous transient error".to_string(),
+    });
+    assert!(acp_accepts_best_effort_hint(&previous_error));
 }
 
 #[test]
