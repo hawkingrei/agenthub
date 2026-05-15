@@ -242,6 +242,7 @@ describe("useTeamMemberAcpEffects", () => {
 
     expect(loadMemberEvents).toHaveBeenCalledTimes(2);
     expect(loadMemberEvents.mock.calls[1]?.[0]).toBe("replace");
+    expect(loadMemberEvents.mock.calls[1]?.[2]).toEqual({ silent: true });
   });
 
   it("polls member ACP when EventSource is unavailable", async () => {
@@ -266,6 +267,10 @@ describe("useTeamMemberAcpEffects", () => {
     });
 
     expect(params.loadMemberEvents).toHaveBeenCalledTimes(baseCalls + 1);
+    {
+      const calls = (params.loadMemberEvents as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls[calls.length - 1]?.[2]).toEqual({ silent: true });
+    }
   });
 
   it("does not poll member ACP while SSE is still connecting", async () => {
@@ -354,6 +359,10 @@ describe("useTeamMemberAcpEffects", () => {
     });
 
     expect(params.loadMemberEvents).toHaveBeenCalledTimes(baseCalls + 1);
+    {
+      const calls = (params.loadMemberEvents as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls[calls.length - 1]?.[2]).toEqual({ silent: true });
+    }
   });
 
   it("falls back to polling when member ACP SSE only receives heartbeats", async () => {
@@ -386,6 +395,10 @@ describe("useTeamMemberAcpEffects", () => {
     }
 
     expect(params.loadMemberEvents).toHaveBeenCalledTimes(baseCalls + 1);
+    {
+      const calls = (params.loadMemberEvents as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls[calls.length - 1]?.[2]).toEqual({ silent: true });
+    }
   });
 
   it("appends matching SSE lines for the selected agent session", async () => {

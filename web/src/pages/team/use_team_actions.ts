@@ -427,7 +427,8 @@ export function useTeamActions(options: UseTeamActionsOptions) {
   const loadMemberEvents = useCallback(
     async (
       mode: "replace" | "prepend" = "replace",
-      sessionIdOverride?: string | null
+      sessionIdOverride?: string | null,
+      options: { silent?: boolean } = {}
     ) => {
       const agentId = selectedMemberAgentId?.trim() ?? "";
       if (!agentId) {
@@ -473,7 +474,10 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       }
 
       const runLoad = async () => {
-        setMemberEventsLoading(true);
+        const showLoading = options.silent !== true;
+        if (showLoading) {
+          setMemberEventsLoading(true);
+        }
         try {
           let list = await teamApi.listAgentEvents(
             agentId,
@@ -558,7 +562,9 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             setMemberEventsHasMore(hasPotentialOlderAgentEvents(lastFetchedCount));
           }
         } finally {
-          setMemberEventsLoading(false);
+          if (showLoading) {
+            setMemberEventsLoading(false);
+          }
         }
       };
 
