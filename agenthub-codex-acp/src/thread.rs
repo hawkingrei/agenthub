@@ -765,8 +765,8 @@ impl PromptState {
                     }) => option_map
                         .get(option_id.0.as_ref())
                         .cloned()
-                        .unwrap_or(ReviewDecision::Abort),
-                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Abort,
+                        .unwrap_or(ReviewDecision::Denied),
+                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Denied,
                 };
 
                 self.thread
@@ -792,8 +792,8 @@ impl PromptState {
                     }) => option_map
                         .get(option_id.0.as_ref())
                         .cloned()
-                        .unwrap_or(ReviewDecision::Abort),
-                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Abort,
+                        .unwrap_or(ReviewDecision::Denied),
+                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Denied,
                 };
 
                 self.thread
@@ -1390,8 +1390,8 @@ impl PromptState {
         let options = vec![
             PermissionOption::new("approved", "Yes", PermissionOptionKind::AllowOnce),
             PermissionOption::new(
-                "abort",
-                "No, provide feedback",
+                "denied",
+                "No, continue without applying",
                 PermissionOptionKind::RejectOnce,
             ),
         ];
@@ -1402,7 +1402,7 @@ impl PromptState {
                 call_id: call_id.clone(),
                 option_map: HashMap::from([
                     ("approved".to_string(), ReviewDecision::Approved),
-                    ("abort".to_string(), ReviewDecision::Abort),
+                    ("denied".to_string(), ReviewDecision::Denied),
                 ]),
             },
             ToolCallUpdate::new(
@@ -2209,7 +2209,7 @@ impl PromptState {
                     PermissionOptionKind::AllowAlways,
                 ),
                 PermissionOption::new("approved", "Yes", PermissionOptionKind::AllowOnce),
-                PermissionOption::new("abort", "No", PermissionOptionKind::RejectOnce),
+                PermissionOption::new("denied", "No", PermissionOptionKind::RejectOnce),
             ],
         );
 
@@ -2311,7 +2311,7 @@ fn build_exec_permission_options(
     network_approval_context: Option<&NetworkApprovalContext>,
     additional_permissions: Option<&AdditionalPermissionProfile>,
 ) -> Vec<ExecPermissionOption> {
-    available_decisions
+    let mut options = available_decisions
         .iter()
         .filter_map(|decision| match decision {
             ReviewDecision::Approved => Some(ExecPermissionOption {
@@ -2402,16 +2402,25 @@ fn build_exec_permission_options(
             }),
             ReviewDecision::TimedOut => None,
             ReviewDecision::Abort => Some(ExecPermissionOption {
-                option_id: "abort",
+                option_id: "denied",
                 permission_option: PermissionOption::new(
-                    "abort",
-                    "No, and tell Codex what to do differently",
+                    "denied",
+                    "No, continue without running it",
                     PermissionOptionKind::RejectOnce,
                 ),
-                decision: ReviewDecision::Abort,
+                decision: ReviewDecision::Denied,
             }),
         })
-        .collect()
+        .collect::<Vec<_>>();
+    let mut seen_option_ids = Vec::new();
+    options.retain(|option| {
+        if seen_option_ids.contains(&option.option_id) {
+            return false;
+        }
+        seen_option_ids.push(option.option_id);
+        true
+    });
+    options
 }
 
 fn resolve_runtime_actor_cli_path() -> Option<PathBuf> {
@@ -6439,6 +6448,92 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_exec_approval_maps_abort_option_to_denied() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::with_permission_responses(vec![
+                    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                        SelectedPermissionOutcome::new("denied"),
+                    )),
+                ]));
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state = PromptState::new(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                );
+
+                prompt_state
+                    .exec_approval(
+                        &session_client,
+                        ExecApprovalRequestEvent {
+                            call_id: "call-id".to_string(),
+                            approval_id: Some("approval-id".to_string()),
+                            turn_id: "turn-id".to_string(),
+                            command: vec!["echo".to_string(), "hi".to_string()],
+                            cwd: current_dir_abs()?,
+                            reason: None,
+                            network_approval_context: None,
+                            proposed_execpolicy_amendment: None,
+                            proposed_network_policy_amendments: None,
+                            additional_permissions: None,
+                            available_decisions: Some(vec![
+                                ReviewDecision::Approved,
+                                ReviewDecision::Abort,
+                            ]),
+                            parsed_cmd: vec![ParsedCommand::Unknown {
+                                cmd: "echo hi".to_string(),
+                            }],
+                        },
+                    )
+                    .await?;
+
+                let ThreadMessage::PermissionRequestResolved {
+                    submission_id,
+                    request_key,
+                    response,
+                } = message_rx.recv().await.unwrap()
+                else {
+                    panic!("expected permission resolution message");
+                };
+                assert_eq!(submission_id, "submission-id");
+                prompt_state
+                    .handle_permission_request_resolved(&session_client, request_key, response)
+                    .await?;
+
+                let requests = client.permission_requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                let option_ids = request
+                    .options
+                    .iter()
+                    .map(|option| option.option_id.0.to_string())
+                    .collect::<Vec<_>>();
+                assert_eq!(option_ids, vec!["approved", "denied"]);
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::ExecApproval {
+                        id,
+                        turn_id,
+                        decision: ReviewDecision::Denied,
+                    }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_patch_approval_submits_selected_decision() -> anyhow::Result<()> {
         LocalSet::new()
             .run_until(async {
@@ -6506,6 +6601,165 @@ mod tests {
                         id,
                         decision: ReviewDecision::Approved,
                     }) if id == "patch-call"
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_patch_approval_rejects_without_aborting_turn() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::with_permission_responses(vec![
+                    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                        SelectedPermissionOutcome::new("denied"),
+                    )),
+                ]));
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state = PromptState::new(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                );
+                let mut changes = HashMap::new();
+                changes.insert(
+                    PathBuf::from("src/lib.rs"),
+                    FileChange::Update {
+                        unified_diff: "@@ -1 +1 @@\n-old\n+new\n".to_string(),
+                        move_path: None,
+                    },
+                );
+
+                prompt_state
+                    .patch_approval(
+                        &session_client,
+                        ApplyPatchApprovalRequestEvent {
+                            call_id: "patch-call".to_string(),
+                            changes,
+                            reason: Some("Need write approval".to_string()),
+                            grant_root: None,
+                            turn_id: "turn-id".to_string(),
+                        },
+                    )
+                    .await?;
+
+                let ThreadMessage::PermissionRequestResolved {
+                    submission_id,
+                    request_key,
+                    response,
+                } = message_rx.recv().await.unwrap()
+                else {
+                    panic!("expected permission resolution message");
+                };
+                assert_eq!(submission_id, "submission-id");
+                assert_eq!(request_key, patch_request_key("patch-call"));
+                prompt_state
+                    .handle_permission_request_resolved(&session_client, request_key, response)
+                    .await?;
+
+                let requests = client.permission_requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                let option_ids = request
+                    .options
+                    .iter()
+                    .map(|option| option.option_id.0.to_string())
+                    .collect::<Vec<_>>();
+                assert_eq!(option_ids, vec!["approved", "denied"]);
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::PatchApproval {
+                        id,
+                        decision: ReviewDecision::Denied,
+                    }) if id == "patch-call"
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_request_permissions_reject_option_is_denied() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::with_permission_responses(vec![
+                    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                        SelectedPermissionOutcome::new("denied"),
+                    )),
+                ]));
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state = PromptState::new(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                );
+
+                prompt_state
+                    .request_permissions(
+                        &session_client,
+                        RequestPermissionsEvent {
+                            call_id: "permissions-call".to_string(),
+                            turn_id: "turn-id".to_string(),
+                            reason: Some("Need additional permissions".to_string()),
+                            permissions:
+                                codex_protocol::request_permissions::RequestPermissionProfile::default(),
+                            cwd: None,
+                        },
+                    )
+                    .await?;
+
+                let ThreadMessage::PermissionRequestResolved {
+                    submission_id,
+                    request_key,
+                    response,
+                } = message_rx.recv().await.unwrap()
+                else {
+                    panic!("expected permission resolution message");
+                };
+                assert_eq!(submission_id, "submission-id");
+                assert_eq!(request_key, permissions_request_key("permissions-call"));
+                prompt_state
+                    .handle_permission_request_resolved(&session_client, request_key, response)
+                    .await?;
+
+                let requests = client.permission_requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                let option_ids = request
+                    .options
+                    .iter()
+                    .map(|option| option.option_id.0.to_string())
+                    .collect::<Vec<_>>();
+                assert_eq!(option_ids, vec!["approved-for-session", "approved", "denied"]);
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::RequestPermissionsResponse {
+                        id,
+                        response,
+                    }) if id == "permissions-call"
+                        && response.permissions.is_empty()
+                        && response.scope == PermissionGrantScope::Turn
                 ));
 
                 anyhow::Ok(())
