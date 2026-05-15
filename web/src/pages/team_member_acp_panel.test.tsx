@@ -668,6 +668,41 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(latestAcpConversationArgs().isAgentActive).toBe(true);
   });
 
+  it("uses snapshot session ids while waiting for permission", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId={undefined}
+        selectedMemberRole="worker"
+        selectedAgentStatus="running"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "waiting_permission",
+          session_id: "session-waiting-permission",
+          session_status: "waiting_permission",
+          latest_step: null,
+        }}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(latestAcpConversationArgs().activeSessionId).toBe("session-waiting-permission");
+    expect(latestAcpConversationArgs().isAgentActive).toBe(true);
+    expect(container.textContent).toContain("Active thread has no events yet");
+    expect(container.textContent).not.toContain("No active thread session yet");
+  });
+
   it("keeps stopped member snapshots from reusing stale ACP sessions", () => {
     renderWithMantine(
       root,

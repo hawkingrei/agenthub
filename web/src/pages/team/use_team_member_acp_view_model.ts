@@ -32,6 +32,8 @@ const ACTIVE_MEMBER_STATUSES = new Set([
   "working",
   "submitted",
   "input_required",
+  "waiting_permission",
+  "stale_prompt",
   "pending",
 ]);
 
@@ -124,6 +126,7 @@ export function useTeamMemberAcpViewModel({
 }: UseTeamMemberAcpViewModelArgs) {
   const selectedSessionId =
     selectedSessionIdProp?.trim() ||
+    selectedMemberSnapshot?.session_id?.trim() ||
     getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
   const scopedMemberEvents = React.useMemo(() => {
     if (!selectedSessionId) {

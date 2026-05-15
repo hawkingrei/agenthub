@@ -116,6 +116,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     normalizedSnapshotStatus && !snapshotHasActiveSession
       ? null
       : explicitSelectedSessionId ??
+        selectedMemberSnapshot?.session_id?.trim() ??
         (normalizedAgentStatus &&
         !snapshotHasActiveSession &&
         !isAgentActiveStatus(normalizedAgentStatus)

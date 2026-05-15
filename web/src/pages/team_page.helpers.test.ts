@@ -223,6 +223,8 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
+        null,
+        null,
         "runtime-session",
         null,
         "running"
@@ -234,6 +236,8 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
+        null,
+        null,
         "runtime-session",
         "sticky-session",
         "stopped",
@@ -247,6 +251,8 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
+        null,
+        null,
         "runtime-session",
         "sticky-session",
         "stopped",
@@ -260,6 +266,8 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
+        null,
+        null,
         "   ",
         null,
         null
@@ -271,6 +279,8 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "new-snapshot-session",
         } as never,
+        null,
+        null,
         "   ",
         "sticky-session",
         "running"
@@ -282,6 +292,8 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
+        null,
+        null,
         "runtime-session",
         "sticky-session",
         "stopped",
@@ -295,6 +307,8 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
+        null,
+        null,
         "runtime-session",
         "sticky-session",
         "stopped",
@@ -302,8 +316,36 @@ describe("team_page helpers", () => {
         "running"
       )
     ).toBeNull();
-    expect(resolveSelectedAgentWorkspaceSessionId(null, null, null, "stopped")).toBeNull();
-    expect(resolveSelectedAgentWorkspaceSessionId(null, null, null)).toBeNull();
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(
+        {
+          member_id: "worker-1",
+          remote_task_id: "snapshot-session",
+        } as never,
+        "snapshot-api-session",
+        "waiting_permission",
+        null,
+        null,
+        "running"
+      )
+    ).toBe("snapshot-api-session");
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(
+        {
+          member_id: "worker-1",
+          remote_task_id: "snapshot-session",
+        } as never,
+        "snapshot-api-session",
+        "stopped",
+        null,
+        null,
+        "running"
+      )
+    ).toBeNull();
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(null, null, null, null, null, "stopped")
+    ).toBeNull();
+    expect(resolveSelectedAgentWorkspaceSessionId(null, null, null, null)).toBeNull();
   });
 
   it("updates sticky ACP session state declaratively across member changes", () => {

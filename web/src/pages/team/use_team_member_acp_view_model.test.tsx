@@ -35,6 +35,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
       pending_inbox_count: 0,
       status: "idle",
       latest_step: null,
+      session_id: null,
       session_status: null,
     },
     selectedMemberRole: "worker",
@@ -158,6 +159,41 @@ describe("useTeamMemberAcpViewModel", () => {
     expect(result.isStartingAcpSession).toBe(false);
     expect(result.panelSubtitle).toBe("No active thread session yet");
     expect(result.memberStatus).toBe("running");
+  });
+
+  it("uses snapshot session ids while waiting for permission", () => {
+    const onCapture = vi.fn();
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={createParams({
+            selectedMemberSnapshot: {
+              member_id: "worker-1",
+              role: "worker",
+              model: "codex",
+              description: null,
+              prompt: null,
+              skills: [],
+              pending_inbox_count: 0,
+              status: "waiting_permission",
+              latest_step: null,
+              session_id: "session-waiting-permission",
+              session_status: "waiting_permission",
+            },
+            selectedSessionId: null,
+            selectedAgentStatus: "running",
+          })}
+          onCapture={onCapture}
+        />
+      );
+    });
+
+    const result = onCapture.mock.lastCall?.[0] as HookResult;
+    expect(result.selectedSessionId).toBe("session-waiting-permission");
+    expect(result.isStartingAcpSession).toBe(false);
+    expect(result.panelSubtitle).toBe("Active thread has no events yet");
+    expect(result.memberStatus).toBe("waiting_permission");
   });
 
 });

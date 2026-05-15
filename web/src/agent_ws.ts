@@ -1,7 +1,12 @@
 export const AGENT_NOT_RUNNING_ERROR = "agent not running";
 
 export function isAgentActiveStatus(status: string | null): boolean {
-  return status === "running" || status === "idle";
+  return (
+    status === "running" ||
+    status === "idle" ||
+    status === "waiting_permission" ||
+    status === "stale_prompt"
+  );
 }
 
 export function isAgentUnexpectedExitStatus(status: string | null): boolean {
