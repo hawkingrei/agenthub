@@ -437,8 +437,8 @@ export function resolveSelectedAgentWorkspaceSessionId(
   if (normalizedPreviousSessionId) {
     return normalizedPreviousSessionId;
   }
-  const snapshotSessionId = getTeamStepRuntimeHandleId(latestStep);
-  return snapshotSessionId?.trim() || null;
+  const stepRuntimeSessionId = getTeamStepRuntimeHandleId(latestStep);
+  return stepRuntimeSessionId?.trim() || null;
 }
 
 export function resolveNextSelectedAgentWorkspaceStickySession(
