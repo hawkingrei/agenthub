@@ -63,6 +63,8 @@ function createConversationState() {
     conversationSourceItems: 6,
     conversationRenderedItems: 6,
     conversationVirtualized: false,
+    conversationViewportUnderfilled: false,
+    conversationNeedsViewportFill: false,
     focusedConversationToolCallId: null,
     showConversationJump: true,
     showConversationBadge: false,

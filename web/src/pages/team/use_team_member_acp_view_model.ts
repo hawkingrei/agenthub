@@ -249,6 +249,10 @@ export function useTeamMemberAcpViewModel({
     acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
   const hasRenderableConversationContent =
     acpConversation.conversationSourceItems > 0;
+  const isFillingUnderfilledConversation =
+    memberEventsLoading &&
+    hasRenderableConversationContent &&
+    acpConversation.conversationViewportUnderfilled;
   const canSendInput = Boolean(
     selectedMemberId.trim() && selectedSessionId && onSendInput && agentAllowsInput
   );
@@ -345,6 +349,8 @@ export function useTeamMemberAcpViewModel({
       avgHeight: acpConversation.conversationAvgHeight,
       topHint: memberEventsLoading && !hasRenderableConversationContent
         ? "Loading ACP events..."
+        : isFillingUnderfilledConversation
+          ? "Loading older ACP events..."
         : acpConversation.showConversationTopReachedHint
           ? "Already at top"
           : null,
@@ -377,6 +383,7 @@ export function useTeamMemberAcpViewModel({
       effectiveRunStatus,
       handleSubmitRequestUserInput,
       hasRenderableConversationContent,
+      isFillingUnderfilledConversation,
       memberEventsLoading,
     ]
   );

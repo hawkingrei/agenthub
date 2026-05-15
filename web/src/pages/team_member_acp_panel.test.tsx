@@ -82,6 +82,9 @@ function buildConversationHookState(overrides: Record<string, unknown> = {}) {
     conversationVirtualTopSpacer: 0,
     conversationWindowOffset: 0,
     conversationStickToBottom: false,
+    conversationShouldBottomAlignLatest: false,
+    conversationViewportUnderfilled: false,
+    conversationNeedsViewportFill: false,
     conversationVirtualized: false,
     focusedConversationToolCallId: null,
     handleConversationScroll: vi.fn(),
@@ -173,6 +176,47 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       "acp conversation missing"
     );
     expect(conversation.classList.contains("py-0.5")).toBe(true);
+  });
+
+  it("shows a loading hint while filling an underfilled renderable thread", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationRenderItems: [
+          {
+            kind: "agent_message",
+            text: "Short renderable reply.",
+            event_id: 1,
+          },
+        ],
+        conversationSourceItems: 1,
+        conversationRenderedItems: 1,
+        conversationTotalItems: 1,
+        conversationStickToBottom: true,
+        conversationShouldBottomAlignLatest: true,
+        conversationViewportUnderfilled: true,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={true}
+        memberEventsLoading={true}
+        eventsLoading={true}
+        oldestMemberEventId={1}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("Loading older ACP events...");
+    expect(container.textContent).toContain("Short renderable reply.");
+    expect(container.querySelector("[data-acp-conversation-loading-skeleton]")).toBeNull();
   });
 
   it("pads the ACP conversation above the measured input dock height", () => {
