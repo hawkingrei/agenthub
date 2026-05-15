@@ -116,6 +116,8 @@ adapter-specific and should be exposed only when the adapter can report them as 
   - adapter-local progress fields for provider-backed sessions, including active AgentHub submission
     ids, queued prompt count, pending tool-call completeness, and last provider event
     class/timestamp; provider-native turn ids are optional until the adapter exposes them safely
+  - stale active-prompt state when the provider has produced no event for the configured stale
+    window and there are no pending permissions or fresh blocking tool calls
 - The CLI summary should classify the most likely stall layer as one of:
   - `runtime_not_running`
   - `provider_turn_waiting`
@@ -124,6 +126,14 @@ adapter-specific and should be exposed only when the adapter can report them as 
   - `sse_broadcaster_stale`
   - `frontend_downstream_stale`
   - `unknown`
+- A stale active prompt with no pending permission should be attributed to provider-turn progress,
+  not to mailbox delivery, even when mailbox rows are also pending. Pending mailbox rows in that
+  shape are usually blocked by prompt serialization rather than the original stall source.
+- Permission diagnostics must distinguish:
+  - pending permission requests, which are expected to block the turn;
+  - terminal deny/timeout responses, which should unblock the provider through the permission
+    response channel;
+  - provider silence after terminal permission settlement, which is a stale provider prompt.
 - The CLI must support `--json` for agent-consumable output and a human-readable default table or
   timeline.
 - Diagnostic output must redact prompt bodies, message bodies, tool arguments, environment values,
@@ -149,6 +159,7 @@ adapter-specific and should be exposed only when the adapter can report them as 
 - Focused backend/CLI tests should cover agent-output stall summaries for:
   - a live session with no newly persisted events after a recent input;
   - a pending permission/tool-call gate;
+  - a stale active prompt after terminal permission settlement with no pending permission;
   - a stale SSE broadcaster cursor while persisted events advanced;
   - a stale `running` row with no live runtime handle;
   - redaction of prompt/tool payload bodies in both text and `--json` output.
@@ -173,6 +184,9 @@ busy process.
 For Codex-specific stalls, collect the ACP debug raw events plus the Codex ACP diagnostic snapshot.
 The first triage question should be whether the adapter is waiting on prompt completion, a
 permission/tool response, an app-server request, or a tool call whose output was never observed.
+If the last permission row is terminal (`responded` or `timeout`) but the live overlay still shows
+an active prompt with no fresh provider events, treat the active prompt as the primary stall. Do not
+infer that pending mailbox rows are the cause unless the provider prompt is idle and dispatchable.
 
 For output stalls, collect the backend agent-trace summary first. Use Chrome DevTools MCP only after
 the backend path shows that events were persisted and emitted:

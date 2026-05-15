@@ -90,6 +90,8 @@ ACP permission requests are first-class runtime records:
 - request list/history
 - scoped rendering to active agent/session
 - copy/jump interactions to trace request <-> conversation context
+- timeout/failure settlement through the permission-response channel, not through prompt/session
+  cancellation
 
 ## Contracts
 
@@ -113,6 +115,18 @@ ACP permission requests are first-class runtime records:
 - Permission pending/history must be scoped to active agent context.
 - Agent switch must clear stale permission view state immediately.
 - Late async responses from previous agent context must be ignored.
+- Permission review timeout is a deny decision, not an ACP prompt cancellation. AgentHub should
+  choose a concrete reject option when one exists, persist that selected option, and return it as a
+  `RequestPermissionResponse`.
+- `RequestPermissionOutcome::Cancelled` is reserved for true prompt/session cancellation or for the
+  degenerate case where the provider supplied no reject option. It must not be the normal timeout or
+  review-dispatch-failure result.
+- A denied permission may still emit a terminal failed tool-call update for UI clarity, but that
+  synthetic UI event does not replace the provider's prompt completion. AgentHub must keep draining
+  the provider prompt future until it returns or fails.
+- Permission denial must not send `CancelNotification`, locally abandon the active prompt, kill the
+  ACP process, or restart the agent. Explicit user interrupt/cancel remains the only path that maps
+  to provider prompt/session cancellation.
 
 ### 4) Session Safety Contract
 
@@ -155,6 +169,12 @@ ACP permission requests are first-class runtime records:
   - whether each custom tool call has observed a matching output item before turn completion,
     compaction, resume, or shutdown
   - the last Codex `EventMsg` class and timestamp seen by the adapter
+- Codex `ReviewDecision::Abort` is a whole-turn interrupt in upstream Codex core. AgentHub's
+  provider adapter must not expose it as the default "No" permission-review option and must not map
+  permission timeout or failed review delivery to it. Ordinary denial should map to
+  `ReviewDecision::Denied` so Codex can continue the turn and decide the next model-visible step.
+- Codex `RequestPermissions` denial should return an empty permission profile scoped to the turn,
+  not an abort/cancel outcome.
 - Gemini/Kimi ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
 - Gemini CLI bootstrap should track the current upstream ACP contract (`gemini --acp`) while continuing to tolerate the legacy `--experimental-acp` flag in provider detection for backward compatibility.
 - When an ACP provider returns `auth_required`, AgentHub should surface an explicit setup error instead of silently retrying interactive auth flows on behalf of a remote user.
@@ -178,6 +198,17 @@ ACP permission requests are first-class runtime records:
   - orphan custom-tool outputs are reported without corrupting ACP event replay
   - ordinary Codex prompts queue behind active prompts, while ACP cancel remains dispatchable as an
     interrupt command
+- Focused `agenthub-codex-acp` permission-decision tests:
+  - Codex exec approval options derived from upstream `Abort` are exposed to AgentHub as a deny
+    option and submit `ReviewDecision::Denied`
+  - patch approval rejection submits `ReviewDecision::Denied`, not `ReviewDecision::Abort`
+  - `RequestPermissions` rejection submits an empty turn-scoped permission response
+- Focused `agenthub-acp` permission-runtime tests:
+  - timeout selects a concrete reject option when available and persists `selected_option_id`
+  - denied permission tool-call settlement clears pending tool-call diagnostics without cancelling
+    the prompt
+  - stale-prompt diagnostics stay suppressed while a permission is pending and activate only after
+    pending permissions have resolved
 
 ## Operational Notes
 
@@ -214,6 +245,15 @@ ACP permission requests are first-class runtime records:
 - Treat Codex app-server/protocol state as an adapter-local observability source. It can explain
   Codex-specific failures such as missing custom-tool outputs, but it should not become the primary
   AgentHub runtime contract while Gemini/Kimi and future providers still rely on ACP.
+- When a Codex ACP agent appears stuck after permission timeout, first verify the option id and
+  submitted Codex decision. If the persisted option is `abort` or the adapter submits
+  `ReviewDecision::Abort`, the adapter is using interrupt semantics and should be fixed before
+  adding recovery timers.
+- A pending mailbox message after a stale active prompt is usually a downstream symptom: the mailbox
+  hint cannot be delivered because prompt serialization is still occupied. Diagnose the active
+  provider prompt and permission/tool gates before treating mailbox delivery as the root cause.
+- Synthetic AgentHub events should be labeled and reasoned as synthetic UI/runtime settlement. They
+  must not be counted as proof that the provider emitted a new event or that a prompt completed.
 
 ## Open Risks
 
@@ -223,6 +263,9 @@ ACP permission requests are first-class runtime records:
   compaction or resume paths run.
 - Long-session rendering can regress if virtualization/stick-bottom heuristics are bypassed.
 - Permission UX still needs periodic real-browser verification under rapid agent switching.
+- A provider may still fail to finish after receiving a valid deny response. AgentHub should expose
+  that as a stale provider prompt with safe diagnostics; automatic cancel, kill, or prompt
+  abandonment remains out of scope unless a future provider-specific contract explicitly requires it.
 
 ## Source Journals
 
@@ -238,4 +281,6 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-03-30-codex-acp-apply-patch-deadlock.md`
 - `docs/journal/2026-03-31-pretext-acp-conversation-virtualization.md`
 - `docs/journal/2026-04-24-codex-custom-tool-output-hotfix.md`
+- `docs/journal/2026-05-08-acp-permission-timeout-deny.md`
 - `docs/journal/2026-05-09-acp-permission-tool-call-settlement.md`
+- `docs/journal/2026-05-13-acp-permission-deny-drain.md`
