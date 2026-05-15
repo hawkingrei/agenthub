@@ -29,6 +29,7 @@ import {
   resolveAdaptiveAcpHistoryPageCap,
   resolveAdaptiveAcpHistoryPageLimit,
   resolveInitialAcpHistoryDecision,
+  shouldContinueInitialAcpHistoryPrefetch,
 } from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
 import {
@@ -480,10 +481,11 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             sessionId,
             beforeId
           );
+          let lastFetchLimit = MEMBER_EVENT_PAGE_LIMIT;
           let lastFetchedCount = list.length;
           if (mode === "replace") {
             const cachedSessionEvents = peekTeamMemberAcpRenderCache(agentId, sessionId);
-            const hasWarmVisibleCache =
+            const hasWarmRenderableContext =
               resolveInitialAcpHistoryDecision(
                 cachedSessionEvents,
                 sessionId,
@@ -501,13 +503,17 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             );
             let pageCount = 1;
             while (
-              !hasWarmVisibleCache &&
+              !hasWarmRenderableContext &&
               pageCount < maxInitialPrefetchPages &&
-              resolveInitialAcpHistoryDecision(
-                list,
-                sessionId,
-                hasPotentialOlderAgentEvents(lastFetchedCount)
-              ).shouldPrefetchInitialHistory
+              shouldContinueInitialAcpHistoryPrefetch(
+                resolveInitialAcpHistoryDecision(
+                  list,
+                  sessionId,
+                  hasPotentialOlderAgentEvents(lastFetchedCount)
+                ),
+                lastFetchedCount,
+                lastFetchLimit
+              )
             ) {
               const oldestLoadedId = list[0]?.event_id;
               if (!oldestLoadedId) {
@@ -524,6 +530,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
                 sessionId,
                 oldestLoadedId
               );
+              lastFetchLimit = nextPageLimit;
               lastFetchedCount = older.length;
               if (older.length === 0) {
                 break;
