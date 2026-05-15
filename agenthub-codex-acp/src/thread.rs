@@ -13,10 +13,10 @@ use agent_client_protocol::schema::{
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse, ResourceLink,
     SelectedPermissionOutcome, SessionConfigId, SessionConfigOption, SessionConfigOptionCategory,
     SessionConfigOptionValue, SessionConfigSelectOption, SessionConfigValueId, SessionId,
-    SessionInfoUpdate, SessionMode, SessionModeId, SessionModeState, SessionModelState,
-    SessionNotification, SessionUpdate, StopReason, Terminal, TextResourceContents, ToolCall,
-    ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
-    ToolCallUpdateFields, ToolKind, UnstructuredCommandInput, UsageUpdate,
+    SessionMode, SessionModeId, SessionModeState, SessionModelState, SessionNotification,
+    SessionUpdate, StopReason, Terminal, TextResourceContents, ToolCall, ToolCallContent,
+    ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    UnstructuredCommandInput, UsageUpdate,
 };
 use agent_client_protocol::{Client, Error};
 use agenthub_managed_skills::managed_skills_root;
@@ -40,18 +40,18 @@ use codex_protocol::{
     parse_command::ParsedCommand,
     plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs},
     protocol::{
-        AgentMessageContentDeltaEvent, AgentMessageEvent, AgentReasoningDeltaEvent,
-        AgentReasoningEvent, AgentReasoningRawContentDeltaEvent, AgentReasoningRawContentEvent,
-        AgentReasoningSectionBreakEvent, ApplyPatchApprovalRequestEvent, DeprecationNoticeEvent,
-        DynamicToolCallResponseEvent, ElicitationAction, ErrorEvent, Event, EventMsg,
-        ExecApprovalRequestEvent, ExecCommandBeginEvent, ExecCommandEndEvent,
-        ExecCommandOutputDeltaEvent, ExecCommandStatus, ExitedReviewModeEvent, FileChange,
-        ItemCompletedEvent, ItemStartedEvent, McpInvocation, McpStartupCompleteEvent,
-        McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent, ModelRerouteEvent,
-        NetworkApprovalContext, NetworkPolicyRuleAction, Op, PatchApplyBeginEvent,
-        PatchApplyEndEvent, PatchApplyStatus, PatchApplyUpdatedEvent, ReasoningContentDeltaEvent,
-        ReasoningRawContentDeltaEvent, ReviewDecision, ReviewOutputEvent, ReviewRequest,
-        ReviewTarget, RolloutItem, SandboxPolicy, StreamErrorEvent, TerminalInteractionEvent,
+        AgentMessageContentDeltaEvent, AgentMessageEvent, AgentReasoningEvent,
+        AgentReasoningRawContentEvent, AgentReasoningSectionBreakEvent,
+        ApplyPatchApprovalRequestEvent, DeprecationNoticeEvent, DynamicToolCallResponseEvent,
+        ElicitationAction, ErrorEvent, Event, EventMsg, ExecApprovalRequestEvent,
+        ExecCommandBeginEvent, ExecCommandEndEvent, ExecCommandOutputDeltaEvent, ExecCommandStatus,
+        ExitedReviewModeEvent, FileChange, ItemCompletedEvent, ItemStartedEvent, McpInvocation,
+        McpStartupCompleteEvent, McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent,
+        ModelRerouteEvent, NetworkApprovalContext, NetworkPolicyRuleAction, Op,
+        PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus, PatchApplyUpdatedEvent,
+        ReasoningContentDeltaEvent, ReasoningRawContentDeltaEvent, ReviewDecision,
+        ReviewOutputEvent, ReviewRequest, ReviewTarget, RolloutItem, SandboxPolicy,
+        StreamErrorEvent, TerminalInteractionEvent, ThreadGoalStatus, ThreadGoalUpdatedEvent,
         TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, UserMessageEvent,
         ViewImageToolCallEvent, WarningEvent, WebSearchBeginEvent, WebSearchEndEvent,
     },
@@ -77,6 +77,23 @@ use crate::{ACP_CLIENT, prompt_args::parse_slash_name};
 
 static APPROVAL_PRESETS: LazyLock<Vec<ApprovalPreset>> = LazyLock::new(builtin_approval_presets);
 const INIT_COMMAND_PROMPT: &str = include_str!("./prompt_for_init_command.md");
+
+fn format_thread_goal_update(event: &ThreadGoalUpdatedEvent) -> String {
+    let status = match event.goal.status {
+        ThreadGoalStatus::Active => "active",
+        ThreadGoalStatus::Paused => "paused",
+        ThreadGoalStatus::BudgetLimited => "budget limited",
+        ThreadGoalStatus::Complete => "complete",
+    };
+
+    let objective = event.goal.objective.trim();
+    if objective.contains('\n') {
+        format!("Goal updated ({status}):\n{objective}")
+    } else {
+        format!("Goal updated ({status}): {objective}")
+    }
+}
+
 /// Trait for abstracting over the `CodexThread` to make testing easier.
 #[async_trait::async_trait]
 pub trait CodexThreadImpl {
@@ -470,6 +487,11 @@ impl SubmissionState {
         state.abort_pending_interactions();
     }
 
+    async fn cancel(&mut self, client: &SessionClient) {
+        let Self::Prompt(state) = self;
+        state.cancel(client).await;
+    }
+
     fn has_pending_user_input(&self) -> bool {
         match self {
             Self::Prompt(state) => state.has_pending_user_input(),
@@ -644,6 +666,43 @@ impl PromptState {
             interaction.task.abort();
         }
         self.pending_user_input_request = None;
+    }
+
+    async fn cancel(&mut self, client: &SessionClient) {
+        self.abort_pending_interactions();
+        for (_, active_command) in self.active_commands.drain() {
+            let fields = ToolCallUpdateFields::new()
+                .status(ToolCallStatus::Failed)
+                .content(vec!["Interrupted by user.".into()]);
+            let meta = if client.supports_terminal_output(&active_command) {
+                Some(Meta::from_iter([(
+                    "terminal_exit".into(),
+                    serde_json::json!({
+                        "terminal_id": active_command.tool_call_id.to_string(),
+                        "exit_code": null,
+                        "signal": "interrupt"
+                    }),
+                )]))
+            } else {
+                None
+            };
+            client
+                .send_tool_call_update(
+                    ToolCallUpdate::new(active_command.tool_call_id.clone(), fields).meta(meta),
+                )
+                .await;
+        }
+        if let Some(call_id) = self.active_web_search.take() {
+            client
+                .send_tool_call_update(ToolCallUpdate::new(
+                    call_id,
+                    ToolCallUpdateFields::new()
+                        .status(ToolCallStatus::Failed)
+                        .content(vec!["Interrupted by user.".into()]),
+                ))
+                .await;
+        }
+        self.finish_ok(StopReason::Cancelled);
     }
 
     fn spawn_permission_request(
@@ -851,7 +910,12 @@ impl PromptState {
                             .await;
                     }
             }
-            EventMsg::ItemStarted(ItemStartedEvent { thread_id, turn_id, item }) => {
+            EventMsg::ItemStarted(ItemStartedEvent {
+                thread_id,
+                turn_id,
+                item,
+                started_at_ms: _,
+            }) => {
                 info!("Item started with thread_id: {thread_id}, turn_id: {turn_id}, item: {item:?}");
             }
             EventMsg::UserMessage(UserMessageEvent {
@@ -892,14 +956,6 @@ impl PromptState {
                 self.seen_reasoning_deltas = true;
                 client.send_agent_thought(delta).await;
             }
-            EventMsg::AgentReasoningDelta(AgentReasoningDeltaEvent { delta })
-            | EventMsg::AgentReasoningRawContentDelta(AgentReasoningRawContentDeltaEvent {
-                delta,
-            }) => {
-                info!("Agent legacy reasoning delta received: {delta:?}");
-                self.seen_reasoning_deltas = true;
-                client.send_agent_thought(delta).await;
-            }
             EventMsg::AgentReasoningSectionBreak(AgentReasoningSectionBreakEvent {
                 item_id,
                 summary_index,
@@ -928,15 +984,11 @@ impl PromptState {
                     client.send_agent_thought(text).await;
                 }
             }
-            EventMsg::ThreadNameUpdated(event) => {
-                info!("Thread name updated: {:?}", event.thread_name);
-                if let Some(title) = event.thread_name {
-                    client
-                        .send_notification(SessionUpdate::SessionInfoUpdate(
-                            SessionInfoUpdate::new().title(title),
-                        ))
-                        .await;
-                }
+            EventMsg::ThreadGoalUpdated(event) => {
+                info!("Thread goal updated: {:?}", event.goal.objective);
+                client
+                    .send_agent_text(format_thread_goal_update(&event))
+                    .await;
             }
             EventMsg::PlanUpdate(UpdatePlanArgs { explanation, plan }) => {
                 // Send this to the client via session/update notification
@@ -1074,6 +1126,7 @@ impl PromptState {
                 thread_id,
                 turn_id,
                 item,
+                completed_at_ms: _,
             }) => {
                 info!("Item completed: thread_id={}, turn_id={}, item={:?}", thread_id, turn_id, item);
             }
@@ -1090,23 +1143,6 @@ impl PromptState {
                 );
                 self.abort_pending_interactions();
                 self.finish_ok(StopReason::EndTurn);
-            }
-            EventMsg::UndoStarted(event) => {
-                client
-                    .send_agent_text(
-                        event
-                            .message
-                            .unwrap_or_else(|| "Undo in progress...".to_string()),
-                    )
-                    .await;
-            }
-            EventMsg::UndoCompleted(event) => {
-                let fallback = if event.success {
-                    "Undo completed.".to_string()
-                } else {
-                    "Undo failed.".to_string()
-                };
-                client.send_agent_text(event.message.unwrap_or(fallback)).await;
             }
             EventMsg::StreamError(StreamErrorEvent {
                 message,
@@ -1241,10 +1277,7 @@ impl PromptState {
             // we already have a way to diff the turn, so ignore
             | EventMsg::TurnDiff(..)
             // Revisit when we can emit status updates
-            | EventMsg::BackgroundEvent(..)
             | EventMsg::SkillsUpdateAvailable
-            // Old events
-            | EventMsg::AgentMessageDelta(..)
             | EventMsg::RawResponseItem(..)
             | EventMsg::SessionConfigured(..)
             // TODO: Subagent UI?
@@ -1263,15 +1296,8 @@ impl PromptState {
             | EventMsg::CollabResumeEnd(..)
             | EventMsg::CollabCloseBegin(..)
             | EventMsg::CollabCloseEnd(..)
-            | EventMsg::PlanDelta(..)
-            | EventMsg::ThreadGoalUpdated(..) => {}
+            | EventMsg::PlanDelta(..) => {}
             EventMsg::GuardianAssessment(..) => {}
-            e @ (EventMsg::McpListToolsResponse(..)
-            | EventMsg::ListSkillsResponse(..)
-            // Used for returning a single history entry
-            | EventMsg::GetHistoryEntryResponse(..)) => {
-                warn!("Unexpected event: {:?}", e);
-            }
         }
     }
 
@@ -1760,6 +1786,7 @@ impl PromptState {
             cwd,
             parsed_cmd,
             process_id: _,
+            started_at_ms: _,
         } = event;
         // Create a new tool call for the command execution
         let tool_call_id = ToolCallId::new(call_id.clone());
@@ -1876,6 +1903,7 @@ impl PromptState {
             formatted_output: _,
             process_id: _,
             status,
+            completed_at_ms: _,
         } = event;
         if let Some(active_command) = self.active_commands.remove(&call_id) {
             let is_success = exit_code == 0;
@@ -3454,7 +3482,7 @@ impl<A: Auth> ThreadActor<A> {
         if let Some((name, rest)) = extract_slash_command(&items) {
             match name {
                 "compact" => op = Op::Compact,
-                "undo" => op = Op::Undo,
+                "undo" => op = Op::ThreadRollback { num_turns: 1 },
                 "init" => {
                     op = Op::UserInput {
                         items: vec![UserInput::Text {
@@ -3691,11 +3719,13 @@ impl<A: Auth> ThreadActor<A> {
     }
 
     async fn handle_cancel(&mut self) -> Result<(), Error> {
-        self.abort_pending_interactions();
-        self.thread
-            .submit("interrupt".to_string(), Op::Interrupt)
-            .await
-            .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+        self.cancel_active_submissions().await;
+        let thread = self.thread.clone();
+        tokio::task::spawn_local(async move {
+            if let Err(err) = thread.submit("interrupt".to_string(), Op::Interrupt).await {
+                warn!("failed to submit best-effort interrupt to Codex: {err}");
+            }
+        });
         Ok(())
     }
 
@@ -3711,6 +3741,12 @@ impl<A: Auth> ThreadActor<A> {
     fn abort_pending_interactions(&mut self) {
         for submission in self.submissions.values_mut() {
             submission.abort_pending_interactions();
+        }
+    }
+
+    async fn cancel_active_submissions(&mut self) {
+        for submission in self.submissions.values_mut() {
+            submission.cancel(&self.client).await;
         }
     }
 
@@ -4069,12 +4105,11 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::AgentMessageContentDelta(..)
             | EventMsg::ReasoningContentDelta(..)
             | EventMsg::ReasoningRawContentDelta(..)
-            | EventMsg::AgentReasoningDelta(..)
-            | EventMsg::AgentReasoningRawContentDelta(..)
             | EventMsg::AgentReasoningSectionBreak(..)
             | EventMsg::AgentMessage(..)
             | EventMsg::AgentReasoning(..)
             | EventMsg::AgentReasoningRawContent(..)
+            | EventMsg::ThreadGoalUpdated(..)
             | EventMsg::PlanUpdate(..)
             | EventMsg::ExecApprovalRequest(..)
             | EventMsg::DynamicToolCallRequest(..)
@@ -4095,8 +4130,6 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::ViewImageToolCall(..)
             | EventMsg::TurnStarted(..)
             | EventMsg::TurnComplete(..)
-            | EventMsg::UndoStarted(..)
-            | EventMsg::UndoCompleted(..)
             | EventMsg::StreamError(..)
             | EventMsg::Error(..)
             | EventMsg::TurnAborted(..)
@@ -4909,7 +4942,7 @@ mod tests {
         ));
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(ops.as_slice(), &[Op::Undo]);
+        assert_eq!(ops.as_slice(), &[Op::ThreadRollback { num_turns: 1 }]);
 
         Ok(())
     }
@@ -5840,6 +5873,7 @@ mod tests {
                             }],
                             source: Default::default(),
                             interaction_input: None,
+                            started_at_ms: 0,
                         }));
                         send(EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                             call_id: "call-b".into(),
@@ -5852,6 +5886,7 @@ mod tests {
                             }],
                             source: Default::default(),
                             interaction_input: None,
+                            started_at_ms: 0,
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-a".into(),
@@ -5869,6 +5904,7 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: "a\n".into(),
                             status: ExecCommandStatus::Completed,
+                            completed_at_ms: 0,
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-b".into(),
@@ -5886,6 +5922,7 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: "b\n".into(),
                             status: ExecCommandStatus::Completed,
+                            completed_at_ms: 0,
                         }));
                         send(EventMsg::TurnComplete(TurnCompleteEvent {
                             last_agent_message: None,
@@ -5894,6 +5931,25 @@ mod tests {
                             duration_ms: None,
                             time_to_first_token_ms: None,
                         }));
+                    } else if prompt == "hanging-exec" {
+                        self.op_tx
+                            .send(Event {
+                                id: submission_id.clone(),
+                                msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
+                                    call_id: "call-hanging".into(),
+                                    process_id: None,
+                                    turn_id: id.to_string(),
+                                    command: vec!["sleep".into(), "999".into()],
+                                    cwd: current_dir_abs().unwrap(),
+                                    parsed_cmd: vec![ParsedCommand::Unknown {
+                                        cmd: "sleep 999".into(),
+                                    }],
+                                    source: Default::default(),
+                                    interaction_input: None,
+                                    started_at_ms: 0,
+                                }),
+                            })
+                            .unwrap();
                     } else if prompt == "approval-block" {
                         self.op_tx
                             .send(Event {
@@ -5996,28 +6052,27 @@ mod tests {
                         })
                         .unwrap();
                 }
-                Op::Undo => {
+                Op::ThreadRollback { .. } => {
                     self.op_tx
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::UndoStarted(
-                                codex_protocol::protocol::UndoStartedEvent {
-                                    message: Some("Undo in progress...".to_string()),
-                                },
-                            ),
+                            msg: EventMsg::AgentMessage(AgentMessageEvent {
+                                message: "Undo in progress...".to_string(),
+                                phase: None,
+                                memory_citation: None,
+                            }),
                         })
                         .unwrap();
                     self.op_tx
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::UndoCompleted(
-                                codex_protocol::protocol::UndoCompletedEvent {
-                                    success: true,
-                                    message: Some("Undo completed.".to_string()),
-                                },
-                            ),
+                            msg: EventMsg::AgentMessage(AgentMessageEvent {
+                                message: "Undo completed.".to_string(),
+                                phase: None,
+                                memory_citation: None,
+                            }),
                         })
                         .unwrap();
                     self.op_tx
@@ -6803,7 +6858,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_legacy_reasoning_events_emit_agent_thought_chunks() -> anyhow::Result<()> {
+    async fn test_reasoning_delta_events_emit_agent_thought_chunks() -> anyhow::Result<()> {
         LocalSet::new()
             .run_until(async {
                 let session_id = SessionId::new("test");
@@ -6819,8 +6874,12 @@ mod tests {
                 prompt_state
                     .handle_event(
                         &session_client,
-                        EventMsg::AgentReasoningDelta(AgentReasoningDeltaEvent {
+                        EventMsg::ReasoningContentDelta(ReasoningContentDeltaEvent {
+                            thread_id: "thread-1".to_string(),
+                            turn_id: "turn-1".to_string(),
+                            item_id: "item-1".to_string(),
                             delta: "thinking chunk".to_string(),
+                            summary_index: 0,
                         }),
                     )
                     .await;
@@ -7223,6 +7282,7 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: "stdout\n".to_string(),
                             status: ExecCommandStatus::Completed,
+                            completed_at_ms: 0,
                         }),
                     )
                     .await;
@@ -7328,6 +7388,7 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: String::new(),
                             status: ExecCommandStatus::Completed,
+                            completed_at_ms: 0,
                         }),
                     )
                     .await;
@@ -7638,6 +7699,68 @@ mod tests {
 
         let ops = thread.ops.lock().unwrap();
         assert!(matches!(ops.as_slice(), [Op::Interrupt]));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cancel_releases_hanging_prompt_and_marks_tool_failed() -> anyhow::Result<()> {
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
+
+        local_set
+            .run_until(async {
+                let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
+                let (cancel_response_tx, cancel_response_rx) = tokio::sync::oneshot::channel();
+
+                message_tx.send(ThreadMessage::Prompt {
+                    request: PromptRequest::new(session_id.clone(), vec!["hanging-exec".into()]),
+                    response_tx: prompt_response_tx,
+                })?;
+                let prompt_done_rx = prompt_response_rx.await??;
+
+                message_tx.send(ThreadMessage::Cancel {
+                    response_tx: cancel_response_tx,
+                })?;
+                cancel_response_rx.await??;
+
+                let stop_reason = prompt_done_rx.await??;
+                assert_eq!(stop_reason, StopReason::Cancelled);
+
+                tokio::time::timeout(Duration::from_millis(100), async {
+                    loop {
+                        if thread
+                            .submission_ids
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .any(|id| id == "interrupt")
+                        {
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await?;
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        let submission_ids = thread.submission_ids.lock().unwrap();
+        assert_eq!(submission_ids.len(), 2);
+        assert_ne!(submission_ids[0], "interrupt");
+        assert_eq!(submission_ids[1], "interrupt");
+        drop(submission_ids);
+
+        let notifications = client.notifications.lock().unwrap();
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::ToolCallUpdate(update)
+                    if update.tool_call_id == ToolCallId::new("call-hanging")
+                        && update.fields.status == Some(ToolCallStatus::Failed)
+            )
+        }));
 
         Ok(())
     }

@@ -26,7 +26,6 @@ use codex_arg0::Arg0DispatchPaths;
 use codex_config::{CloudRequirementsLoader, LoaderOverrides};
 use codex_core::config::Config;
 use codex_feedback::CodexFeedback;
-use codex_protocol::ThreadId;
 use codex_protocol::approvals::{
     ApplyPatchApprovalRequestEvent, ElicitationAction, ElicitationRequest, ElicitationRequestEvent,
     ExecApprovalRequestEvent,
@@ -45,9 +44,9 @@ use codex_protocol::protocol::{
     ExitedReviewModeEvent, FileChange, McpInvocation, McpToolCallBeginEvent, McpToolCallEndEvent,
     ModelRerouteEvent, Op, PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus,
     ReviewDecision, ReviewOutputEvent, ReviewRequest, ReviewTarget, StreamErrorEvent,
-    TerminalInteractionEvent, ThreadNameUpdatedEvent, TokenCountEvent, TokenUsage, TokenUsageInfo,
-    TurnAbortReason, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, ViewImageToolCallEvent,
-    WarningEvent, WebSearchBeginEvent, WebSearchEndEvent,
+    TerminalInteractionEvent, TokenCountEvent, TokenUsage, TokenUsageInfo, TurnAbortReason,
+    TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, ViewImageToolCallEvent, WarningEvent,
+    WebSearchBeginEvent, WebSearchEndEvent,
 };
 use codex_protocol::request_permissions::{
     PermissionGrantScope, RequestPermissionProfile, RequestPermissionsEvent,
@@ -153,6 +152,12 @@ struct MissingCustomToolOutputs {
     call_ids: Vec<String>,
 }
 
+struct PendingTurnInterrupt {
+    request_id: RequestId,
+    thread_id: String,
+    turn_id: String,
+}
+
 impl MissingCustomToolOutputs {
     fn from_state(state: &AppServerState) -> Option<Self> {
         if state.pending_custom_tool_calls.is_empty() {
@@ -236,7 +241,7 @@ struct OverrideTurnContextArgs {
     effort: Option<Option<ReasoningEffort>>,
     summary: Option<ReasoningSummary>,
     personality: Option<codex_protocol::config_types::Personality>,
-    service_tier: Option<Option<codex_protocol::config_types::ServiceTier>>,
+    service_tier: Option<Option<String>>,
 }
 
 impl AppServerCodexThread {
@@ -518,12 +523,11 @@ impl AppServerCodexThread {
                     Ok(_) => {
                         state.local_events.push_back(Event {
                             id: submission_id.clone(),
-                            msg: EventMsg::UndoCompleted(
-                                codex_protocol::protocol::UndoCompletedEvent {
-                                    success: true,
-                                    message: Some("Undo completed.".to_string()),
-                                },
-                            ),
+                            msg: EventMsg::AgentMessage(AgentMessageEvent {
+                                message: "Undo completed.".to_string(),
+                                phase: None,
+                                memory_citation: None,
+                            }),
                         });
                         state.local_events.push_back(Event {
                             id: submission_id,
@@ -577,31 +581,30 @@ impl AppServerCodexThread {
     }
 
     async fn interrupt_active_turn(&self) -> Result<String, CodexErr> {
-        let mut state = self.state.lock().await;
-        cancel_queued_submissions(&mut state);
-
-        let Some(active_turn) = state.active_turn.clone() else {
-            return Ok(noop_submission_id());
+        let (submission_id, pending_interrupt) = {
+            let mut state = self.state.lock().await;
+            mark_active_turn_interrupted(&mut state)
         };
 
-        let Some(turn_id) = active_turn.turn_id.clone() else {
-            state.interrupt_after_turn_starts = true;
-            return Ok(active_turn.submission_id);
-        };
+        if let Some(pending_interrupt) = pending_interrupt {
+            let request_handle = self.request_handle.clone();
+            tokio::task::spawn_local(async move {
+                if let Err(err) = request_handle
+                    .request_typed::<TurnInterruptResponse>(ClientRequest::TurnInterrupt {
+                        request_id: pending_interrupt.request_id,
+                        params: TurnInterruptParams {
+                            thread_id: pending_interrupt.thread_id,
+                            turn_id: pending_interrupt.turn_id,
+                        },
+                    })
+                    .await
+                {
+                    warn!("best-effort turn interrupt request failed: {err}");
+                }
+            });
+        }
 
-        let _: TurnInterruptResponse = self
-            .request_handle
-            .request_typed(ClientRequest::TurnInterrupt {
-                request_id: next_request_id(&mut state),
-                params: TurnInterruptParams {
-                    thread_id: state.thread_id.clone(),
-                    turn_id,
-                },
-            })
-            .await
-            .map_err(typed_request_error_to_codex)?;
-
-        Ok(active_turn.submission_id)
+        Ok(submission_id)
     }
 
     async fn shutdown_thread(&self) -> Result<String, CodexErr> {
@@ -1046,20 +1049,7 @@ impl AppServerCodexThread {
         notification: ServerNotification,
     ) -> Result<Option<Event>, CodexErr> {
         match notification {
-            ServerNotification::ThreadNameUpdated(payload) => {
-                let submission_id = {
-                    let state = self.state.lock().await;
-                    active_submission_id(&state).unwrap_or_else(noop_submission_id)
-                };
-                Ok(Some(Event {
-                    id: submission_id,
-                    msg: EventMsg::ThreadNameUpdated(ThreadNameUpdatedEvent {
-                        thread_id: ThreadId::from_string(&payload.thread_id)
-                            .map_err(|err| CodexErr::Fatal(err.to_string()))?,
-                        thread_name: payload.thread_name,
-                    }),
-                }))
-            }
+            ServerNotification::ThreadNameUpdated(_) => Ok(None),
             ServerNotification::FileChangePatchUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
                 Ok(submission_id.map(|id| Event {
@@ -1288,6 +1278,7 @@ impl AppServerCodexThread {
                                 call_id,
                                 process_id,
                                 turn_id: payload.turn_id,
+                                started_at_ms: payload.started_at_ms,
                                 command: command_vec.clone(),
                                 cwd,
                                 parsed_cmd: parse_command(&command_vec),
@@ -1331,6 +1322,7 @@ impl AppServerCodexThread {
                         msg: EventMsg::DynamicToolCallRequest(DynamicToolCallRequest {
                             call_id,
                             turn_id: payload.turn_id,
+                            started_at_ms: payload.started_at_ms,
                             tool,
                             arguments,
                             namespace: None,
@@ -1463,6 +1455,7 @@ impl AppServerCodexThread {
                                 call_id,
                                 process_id,
                                 turn_id: payload.turn_id,
+                                completed_at_ms: payload.completed_at_ms,
                                 command: command_vec.clone(),
                                 cwd,
                                 parsed_cmd: parse_command(&command_vec),
@@ -1570,6 +1563,7 @@ impl AppServerCodexThread {
                             codex_protocol::protocol::DynamicToolCallResponseEvent {
                                 call_id,
                                 turn_id: payload.turn_id,
+                                completed_at_ms: payload.completed_at_ms,
                                 tool,
                                 arguments,
                                 namespace: None,
@@ -1747,6 +1741,8 @@ impl AppServerCodexThread {
             | ServerNotification::ThreadRealtimeError(_)
             | ServerNotification::ThreadRealtimeClosed(_)
             | ServerNotification::CommandExecOutputDelta(_)
+            | ServerNotification::ProcessOutputDelta(_)
+            | ServerNotification::ProcessExited(_)
             | ServerNotification::McpServerOauthLoginCompleted(_)
             | ServerNotification::AccountRateLimitsUpdated(_)
             | ServerNotification::AppListUpdated(_)
@@ -1786,9 +1782,10 @@ impl AppServerCodexThread {
 impl CodexThreadImpl for AppServerCodexThread {
     async fn submit(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
         match op {
-            op @ (Op::UserInput { .. } | Op::Review { .. } | Op::Compact | Op::Undo) => {
-                self.submit_prompt_like(submission_id, op).await
-            }
+            op @ (Op::UserInput { .. }
+            | Op::Review { .. }
+            | Op::Compact
+            | Op::ThreadRollback { .. }) => self.submit_prompt_like(submission_id, op).await,
             Op::Interrupt => self.interrupt_active_turn().await,
             Op::Shutdown => self.shutdown_thread().await,
             Op::OverrideTurnContext {
@@ -1877,6 +1874,29 @@ fn cancel_queued_submissions(state: &mut AppServerState) {
             }),
         });
     }
+}
+
+fn mark_active_turn_interrupted(
+    state: &mut AppServerState,
+) -> (String, Option<PendingTurnInterrupt>) {
+    cancel_queued_submissions(state);
+
+    let Some(active_turn) = state.active_turn.clone() else {
+        return (noop_submission_id(), None);
+    };
+
+    let Some(turn_id) = active_turn.turn_id.clone() else {
+        state.interrupt_after_turn_starts = true;
+        return (active_turn.submission_id, None);
+    };
+
+    let pending_interrupt = PendingTurnInterrupt {
+        request_id: next_request_id(state),
+        thread_id: state.thread_id.clone(),
+        turn_id,
+    };
+    clear_active_turn_state(state);
+    (active_turn.submission_id, Some(pending_interrupt))
 }
 
 fn clear_active_turn_state(state: &mut AppServerState) {
@@ -2199,7 +2219,7 @@ fn prepare_submission_start(
                             .into(),
                     ),
                     model: state.config.model.clone(),
-                    service_tier: Some(state.config.service_tier),
+                    service_tier: Some(state.config.service_tier.clone()),
                     effort: state.config.model_reasoning_effort,
                     summary: state.config.model_reasoning_summary,
                     personality: state.config.personality,
@@ -2251,13 +2271,13 @@ fn prepare_submission_start(
                 }),
             }))
         }
-        Op::Undo => {
+        Op::ThreadRollback { num_turns } => {
             state.pending_custom_tool_calls.clear();
             Ok(Some(PreparedSubmissionStart::Rollback {
                 request_id: next_request_id(state),
                 params: Box::new(ThreadRollbackParams {
                     thread_id: state.thread_id.clone(),
-                    num_turns: 1,
+                    num_turns: *num_turns,
                 }),
             }))
         }
@@ -2711,6 +2731,7 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         cloud_requirements: CloudRequirementsLoader::default(),
         feedback: CodexFeedback::new(),
         log_db: None,
+        state_db: None,
         environment_manager: build_environment_manager(config).await?,
         config_warnings: Vec::new(),
         session_source: codex_protocol::protocol::SessionSource::Unknown,
@@ -2930,6 +2951,7 @@ mod tests {
                 phase: None,
                 memory_citation: None,
             }],
+            items_view: codex_app_server_protocol::TurnItemsView::Full,
             status: TurnStatus::InProgress,
             error: None,
             started_at: None,
@@ -2958,6 +2980,7 @@ mod tests {
                 id: "review-1".to_string(),
                 review: "pending review".to_string(),
             }],
+            items_view: codex_app_server_protocol::TurnItemsView::Full,
             status: TurnStatus::InProgress,
             error: None,
             started_at: None,
@@ -3081,6 +3104,7 @@ mod tests {
         let turn = Turn {
             id: "turn-1".to_string(),
             items: Vec::new(),
+            items_view: codex_app_server_protocol::TurnItemsView::Full,
             status: TurnStatus::InProgress,
             error: None,
             started_at: None,
@@ -3309,6 +3333,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn interrupt_marks_active_turn_inactive_before_provider_ack() {
+        let mut state = test_state_with_active_turn(Some(ActiveTurn {
+            submission_id: "active-submission".to_string(),
+            turn_id: Some("turn-1".to_string()),
+            steerable: true,
+            last_agent_message: None,
+        }))
+        .await;
+
+        let (submission_id, pending_interrupt) = mark_active_turn_interrupted(&mut state);
+
+        assert_eq!(submission_id, "active-submission");
+        let pending_interrupt = pending_interrupt.expect("interrupt request");
+        assert_eq!(pending_interrupt.thread_id, "thread-1");
+        assert_eq!(pending_interrupt.turn_id, "turn-1");
+        assert!(
+            state.active_turn.is_none(),
+            "local active turn should be released before provider ack"
+        );
+    }
+
+    #[tokio::test]
     async fn raw_response_item_tracking_clears_custom_tool_call_after_output() {
         let mut state = test_state_with_active_turn(None).await;
         let call = ResponseItem::CustomToolCall {
@@ -3441,9 +3487,13 @@ mod tests {
             .pending_custom_tool_calls
             .insert("call-missing".to_string());
 
-        let prepared = prepare_submission_start(&mut state, "undo-submission", &Op::Undo)
-            .expect("undo should remain available")
-            .expect("prepared rollback");
+        let prepared = prepare_submission_start(
+            &mut state,
+            "undo-submission",
+            &Op::ThreadRollback { num_turns: 1 },
+        )
+        .expect("undo should remain available")
+        .expect("prepared rollback");
 
         assert!(matches!(prepared, PreparedSubmissionStart::Rollback { .. }));
         assert!(state.pending_custom_tool_calls.is_empty());
@@ -3478,6 +3528,7 @@ mod tests {
                 }],
                 status: codex_app_server_protocol::PatchApplyStatus::InProgress,
             }],
+            items_view: codex_app_server_protocol::TurnItemsView::Full,
             status: TurnStatus::InProgress,
             error: None,
             started_at: None,
