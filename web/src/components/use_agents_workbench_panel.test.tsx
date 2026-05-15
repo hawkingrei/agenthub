@@ -56,6 +56,7 @@ function createConversationState() {
     collapseCutoff: 0,
     shouldAutoCollapse: false,
     conversationStickToBottom: true,
+    conversationShouldBottomAlignLatest: true,
     conversationPendingCount: 0,
     conversationAvgHeight: 48,
     conversationTotalItems: 6,
@@ -241,6 +242,7 @@ describe("useAgentsWorkbenchPanel", () => {
     expect(latestResult?.acpPanelProps.acpTab).toBe("conversation");
     expect(latestResult?.acpPanelProps.subtitle).toBe("/repo/workdir");
     expect(latestResult?.acpPanelProps.mobileTitle).toBe("Agent one");
+    expect(latestResult?.acpPanelProps.conversation.bottomAlignLatest).toBe(true);
   });
 
   it("records composer history and clears the composer when sending input", async () => {

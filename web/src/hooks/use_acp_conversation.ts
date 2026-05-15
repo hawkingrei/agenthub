@@ -211,7 +211,8 @@ export function shouldDefaultConversationStickToBottom(
   total: number,
   minItems: number = DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
 ): boolean {
-  return total >= Math.max(1, minItems);
+  void minItems;
+  return total > 0;
 }
 
 export function shouldBottomAlignConversationLatest(
@@ -221,19 +222,17 @@ export function shouldBottomAlignConversationLatest(
   viewportHeight: number,
   minItems: number = DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
 ): boolean {
+  void minItems;
   if (!stickToBottom) {
     return false;
   }
-  if (!shouldDefaultConversationStickToBottom(total, minItems)) {
+  if (total <= 0) {
     return false;
   }
   if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
     return false;
   }
-  if (!Number.isFinite(estimatedTotalHeight) || estimatedTotalHeight <= 0) {
-    return false;
-  }
-  return estimatedTotalHeight >= viewportHeight;
+  return Number.isFinite(estimatedTotalHeight) && estimatedTotalHeight > 0;
 }
 
 export { normalizeThreadAvgHeightEstimate as normalizeConversationAvgHeightEstimate };

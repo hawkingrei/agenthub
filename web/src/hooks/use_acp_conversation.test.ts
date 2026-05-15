@@ -192,12 +192,9 @@ describe("buildConversationTailKey", () => {
 });
 
 describe("default ACP conversation pinning", () => {
-  it("only defaults to bottom pinning for sufficiently large conversations", () => {
-    expect(
-      shouldDefaultConversationStickToBottom(
-        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS - 1
-      )
-    ).toBe(false);
+  it("defaults non-empty conversations to bottom pinning", () => {
+    expect(shouldDefaultConversationStickToBottom(0)).toBe(false);
+    expect(shouldDefaultConversationStickToBottom(1)).toBe(true);
     expect(
       shouldDefaultConversationStickToBottom(
         DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
@@ -205,15 +202,15 @@ describe("default ACP conversation pinning", () => {
     ).toBe(true);
   });
 
-  it("only bottom-aligns when the rendered content is tall enough for the viewport", () => {
+  it("bottom-aligns non-empty pinned conversations once the viewport is known", () => {
     expect(
       shouldBottomAlignConversationLatest(
         true,
-        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
+        1,
         720,
         960
       )
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldBottomAlignConversationLatest(
         true,
