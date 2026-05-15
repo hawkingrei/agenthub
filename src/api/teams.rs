@@ -384,6 +384,7 @@ pub struct TeamMemberSnapshot {
     pub pending_inbox_count: i64,
     pub status: String,
     pub latest_step: Option<TeamStepRecord>,
+    pub session_id: Option<String>,
     pub session_status: Option<String>,
 }
 
@@ -1339,12 +1340,14 @@ async fn get_team_run_snapshot(
         let latest_step = latest_step_by_member
             .get(member.member_id.as_str())
             .cloned();
-        let session_status = state
+        let live_session = state
             .teams
             .get_live_member_session(member.member_id.as_str())
             .await
-            .map_err(map_team_internal_error)?
-            .map(|(_session_id, status)| status);
+            .map_err(map_team_internal_error)?;
+        let (session_id, session_status) = live_session
+            .map(|(session_id, status)| (Some(session_id), Some(status)))
+            .unwrap_or((None, None));
         let status = latest_step
             .as_ref()
             .map(|step| step_status_to_str(&step.status).to_string())
@@ -1374,6 +1377,7 @@ async fn get_team_run_snapshot(
             pending_inbox_count: pending_counts.get(&member.member_id).copied().unwrap_or(0),
             status,
             latest_step,
+            session_id,
             session_status,
         });
     }

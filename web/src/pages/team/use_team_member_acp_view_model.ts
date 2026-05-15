@@ -304,18 +304,13 @@ export function useTeamMemberAcpViewModel({
       : snapshotStatus || acpRunStatus || normalizedAgentStatus)) ||
     normalizeTeamMemberStatusValue(memberRoleLabel) ||
     "unknown";
-  // Prefer authoritative snapshot/runtime status for startup gating so stale
-  // ACP stream state does not keep the UI in a misleading "starting" mode.
-  const hasTransientSessionSelectionGap = Boolean(!selectedSessionId && memberEventsLoading);
+  // Runtime state alone is not a reliable startup signal. A running agent can
+  // temporarily lose its selected session metadata during refresh/reconnect.
   const isStartingAcpSession = Boolean(
     selectedMemberId.trim() &&
       !hasAuthoritativeStoppedStatus &&
       !selectedSessionId &&
-      !hasTransientSessionSelectionGap &&
-      ((snapshotStatus && isActiveTeamMemberStatus(snapshotStatus)) ||
-        (!snapshotStatus &&
-          normalizedAgentStatus &&
-          isAgentActiveStatus(normalizedAgentStatus)))
+      normalizedAgentStatus === "starting"
   );
   const thinkingLabel =
     acpView.thinkingStartTs && isActiveTeamMemberStatus(snapshotStatus || acpRunStatus)

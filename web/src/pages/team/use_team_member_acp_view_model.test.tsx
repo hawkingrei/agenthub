@@ -137,4 +137,27 @@ describe("useTeamMemberAcpViewModel", () => {
     expect(result.panelSubtitle).toBe("Loading activity...");
     expect(result.memberStatus).toBe("running");
   });
+
+  it("does not report starting only because an agent is running without a selected session", () => {
+    const onCapture = vi.fn();
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={createParams({
+            selectedMemberSnapshot: null,
+            selectedAgentStatus: "running",
+            selectedSessionId: null,
+          })}
+          onCapture={onCapture}
+        />
+      );
+    });
+
+    const result = onCapture.mock.lastCall?.[0] as HookResult;
+    expect(result.isStartingAcpSession).toBe(false);
+    expect(result.panelSubtitle).toBe("No active thread session yet");
+    expect(result.memberStatus).toBe("running");
+  });
+
 });

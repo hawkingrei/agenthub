@@ -407,6 +407,7 @@ export type TeamMemberSnapshot = {
   pending_inbox_count: number;
   status: string;
   latest_step?: TeamStepRecord | null;
+  session_id?: string | null;
   session_status?: string | null;
 };
 

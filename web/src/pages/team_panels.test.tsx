@@ -5921,35 +5921,36 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Plan");
   });
 
-  it("TeamMemberAcpPanel shows startup progress when the member is active but has no ACP session yet", () => {
+  it("TeamMemberAcpPanel does not show startup progress for active members without an ACP session", () => {
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
-          developerMode={false}
-          selectedMemberId="worker-agent"
-          memberTitle="Worker agent"
-          selectedMemberSnapshot={buildMemberSnapshot({
-            member_id: "worker-agent",
-            role: "worker",
-            status: "running",
-          })}
-          selectedMemberRole="worker"
-          selectedAgentStatus="running"
-          memberEvents={[]}
-          memberEventsHasMore={false}
-          memberEventsLoading={false}
-          eventsLoading={false}
-          oldestMemberEventId={null}
-          onSendInput={vi.fn()}
-          onLoadOlder={vi.fn()}
-        />
+        developerMode={false}
+        selectedMemberId="worker-agent"
+        memberTitle="Worker agent"
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          status: "running",
+        })}
+        selectedMemberRole="worker"
+        selectedAgentStatus="running"
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
     );
 
-    expect(container.textContent).toContain("Starting ACP session...");
-    expect(container.textContent).toContain("Starting session");
+    expect(container.textContent).toContain("No active thread session yet");
+    expect(container.textContent).not.toContain("Starting ACP session...");
+    expect(container.textContent).not.toContain("Starting session");
     expect(
       container.querySelector('[role="progressbar"][aria-label="Starting ACP session"]')
-    ).not.toBeNull();
+    ).toBeNull();
     expect(container.querySelector("textarea")).toBeNull();
   });
 

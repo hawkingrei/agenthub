@@ -389,6 +389,8 @@ export function parseTeamAgentInputSessionMismatch(
 
 export function resolveSelectedAgentWorkspaceSessionId(
   latestStep: TeamStepRecord | null | undefined,
+  snapshotSessionId: string | null | undefined,
+  snapshotSessionStatus: string | null | undefined,
   runtimeSessionId: string | null | undefined,
   previousSessionId?: string | null,
   agentStatus?: string | null,
@@ -396,6 +398,7 @@ export function resolveSelectedAgentWorkspaceSessionId(
   runtimeAgentStatus?: string | null
 ): string | null {
   const normalizedAgentStatus = agentStatus?.trim().toLowerCase() ?? "";
+  const normalizedSnapshotSessionStatus = snapshotSessionStatus?.trim().toLowerCase() ?? "";
   const normalizedRuntimeSessionStatus = runtimeSessionStatus?.trim().toLowerCase() ?? "";
   const normalizedRuntimeAgentStatus = runtimeAgentStatus?.trim().toLowerCase() ?? "";
   const normalizedRuntimeSessionId = runtimeSessionId?.trim() ?? "";
@@ -414,6 +417,16 @@ export function resolveSelectedAgentWorkspaceSessionId(
       return null;
     }
     return normalizedRuntimeSessionId;
+  }
+  const normalizedSnapshotSessionId = snapshotSessionId?.trim() ?? "";
+  if (normalizedSnapshotSessionId) {
+    if (
+      normalizedSnapshotSessionStatus &&
+      !isAgentActiveStatus(normalizedSnapshotSessionStatus)
+    ) {
+      return null;
+    }
+    return normalizedSnapshotSessionId;
   }
   if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
     return null;
@@ -1552,6 +1565,8 @@ export function TeamPage(props: TeamPageProps) {
         : null;
     return resolveSelectedAgentWorkspaceSessionId(
       selectedAgentWorkspaceSnapshot?.latest_step,
+      selectedAgentWorkspaceSnapshot?.session_id ?? null,
+      selectedAgentWorkspaceSnapshot?.session_status ?? null,
       selectedAgentWorkspaceRuntimeMember?.session_id ?? null,
       previousSessionId,
       selectedAgentWorkspaceAgent?.status ?? null,

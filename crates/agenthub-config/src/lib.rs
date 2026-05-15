@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use path_utils::expand_tilde;
 
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
-const DEFAULT_CODEX_ACP_MODE: &str = "auto";
+const DEFAULT_CODEX_ACP_MODE: &str = "full-access";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
 const MAIN_SERVER_NODE_ID: &str = "main";
@@ -705,9 +705,12 @@ mod tests {
     }
 
     #[test]
-    fn codex_acp_default_mode_falls_back_to_auto() {
+    fn codex_acp_default_mode_falls_back_to_full_access() {
         let config = AppConfig::default();
-        assert_eq!(config.codex_acp_default_mode().as_deref(), Some("auto"));
+        assert_eq!(
+            config.codex_acp_default_mode().as_deref(),
+            Some("full-access")
+        );
     }
 
     #[test]
@@ -755,7 +758,10 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert_eq!(config.codex_acp_default_mode().as_deref(), Some("auto"));
+        assert_eq!(
+            config.codex_acp_default_mode().as_deref(),
+            Some("full-access")
+        );
     }
 
     #[test]

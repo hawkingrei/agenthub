@@ -138,6 +138,9 @@ ACP permission requests are first-class runtime records:
   conversation.
 - `agent_sessions.id` is AgentHub's per-launch runtime/audit identifier and is expected to change on
   each real restart.
+- Team member snapshot/runtime APIs must expose the current open AgentHub `session_id` for active
+  members. A running member with an open `agent_sessions` row must not be rendered as
+  `Starting session` just because one refresh path temporarily missed the session projection.
 - `agent_persistent_sessions.session_id` stores provider continuity identity separately so ACP/Codex
   memory can survive across multiple AgentHub launches until an explicit reset path clears it.
 - Stable project workdirs must not be keyed by the per-launch runtime session id; workspace identity
@@ -161,6 +164,10 @@ ACP permission requests are first-class runtime records:
 - Codex ACP ordinary prompt delivery should be serialized by AgentHub. ACP cancel is the explicit
   interrupt path and must not wait behind active prompts, but a normal Team/member message should
   not overlap a previous active Codex turn.
+- AgentHub-managed Codex ACP sessions default to `full-access` mode so Team workers do not depend on
+  permission-review round trips for ordinary repository operations. Permission deny/timeout
+  semantics still matter for explicit provider permission requests and must not be implemented as
+  turn abort/cancel.
 - Codex ACP live-turn diagnostics should track enough native app-server state to explain a stuck or
   panicking turn without changing the provider-neutral ACP surface:
   - active Codex thread id, turn id, and AgentHub submission id

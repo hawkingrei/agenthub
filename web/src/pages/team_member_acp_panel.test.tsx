@@ -834,7 +834,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onSendInput).toHaveBeenCalledWith("continue work", "runtime-session-1");
   });
 
-  it("shows startup state for active agents before a session is attached", () => {
+  it("does not show startup state for active agents without an attached session", () => {
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
@@ -854,8 +854,9 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       />
     );
 
-    expect(container.textContent).toContain("Starting ACP session...");
-    expect(container.textContent).toContain("Starting session");
+    expect(container.textContent).toContain("No active thread session yet");
+    expect(container.textContent).not.toContain("Starting ACP session...");
+    expect(container.textContent).not.toContain("Starting session");
     expect(container.querySelector("textarea")).toBeNull();
     expect(latestAcpConversationArgs().activeSessionId).toBeNull();
     expect(latestAcpConversationArgs().isAgentActive).toBe(false);
