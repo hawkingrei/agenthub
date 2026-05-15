@@ -63,6 +63,10 @@ use crate::build_environment_manager;
 use crate::thread::CodexThreadImpl;
 
 const ACP_CLIENT_NAME: &str = "agenthub-codex-acp";
+// The in-process client exposes event reads and server-request replies through
+// the same client object. Do not hold its mutex forever while waiting for
+// provider events, otherwise permission replies and interrupts can be starved.
+const APP_SERVER_EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 pub async fn start_new_thread(
     config: Config,
@@ -1846,14 +1850,25 @@ impl CodexThreadImpl for AppServerCodexThread {
                 return Ok(event);
             }
 
-            let server_event = {
-                let mut guard = self.client.lock().await;
-                let Some(client) = guard.as_mut() else {
-                    return Err(CodexErr::InternalAgentDied);
+            let server_event = loop {
+                let poll_result = {
+                    let mut guard = self.client.lock().await;
+                    let Some(client) = guard.as_mut() else {
+                        return Err(CodexErr::InternalAgentDied);
+                    };
+                    tokio::time::timeout(APP_SERVER_EVENT_POLL_INTERVAL, client.next_event()).await
                 };
-                client.next_event().await
-            }
-            .ok_or(CodexErr::InternalAgentDied)?;
+
+                match poll_result {
+                    Ok(Some(event)) => break event,
+                    Ok(None) => return Err(CodexErr::InternalAgentDied),
+                    Err(_) => {
+                        if let Some(event) = self.pop_local_event().await {
+                            return Ok(event);
+                        }
+                    }
+                }
+            };
 
             if let Some(event) = self.translate_server_event(server_event).await? {
                 return Ok(event);

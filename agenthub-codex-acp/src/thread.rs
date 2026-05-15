@@ -6439,6 +6439,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_patch_approval_submits_selected_decision() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::with_permission_responses(vec![
+                    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                        SelectedPermissionOutcome::new("approved"),
+                    )),
+                ]));
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state = PromptState::new(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                );
+                let mut changes = HashMap::new();
+                changes.insert(
+                    PathBuf::from("src/lib.rs"),
+                    FileChange::Update {
+                        unified_diff: "@@ -1 +1 @@\n-old\n+new\n".to_string(),
+                        move_path: None,
+                    },
+                );
+
+                prompt_state
+                    .patch_approval(
+                        &session_client,
+                        ApplyPatchApprovalRequestEvent {
+                            call_id: "patch-call".to_string(),
+                            changes,
+                            reason: Some("Need write approval".to_string()),
+                            grant_root: None,
+                            turn_id: "turn-id".to_string(),
+                        },
+                    )
+                    .await?;
+
+                let ThreadMessage::PermissionRequestResolved {
+                    submission_id,
+                    request_key,
+                    response,
+                } = message_rx.recv().await.unwrap()
+                else {
+                    panic!("expected permission resolution message");
+                };
+                assert_eq!(submission_id, "submission-id");
+                assert_eq!(request_key, patch_request_key("patch-call"));
+                prompt_state
+                    .handle_permission_request_resolved(&session_client, request_key, response)
+                    .await?;
+
+                let requests = client.permission_requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                assert_eq!(request.tool_call.tool_call_id.to_string(), "patch-call");
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::PatchApproval {
+                        id,
+                        decision: ReviewDecision::Approved,
+                    }) if id == "patch-call"
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_exec_approval_auto_approves_runtime_actor_cli_command() -> anyhow::Result<()> {
         LocalSet::new()
             .run_until(async {
