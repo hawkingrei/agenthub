@@ -102,4 +102,39 @@ describe("useTeamMemberAcpViewModel", () => {
     expect(result.panelSubtitle).toBe("Agent is stopped");
     expect(result.memberStatus).toBe("exited");
   });
+
+  it("does not report starting while member session selection is loading", () => {
+    const onCapture = vi.fn();
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={createParams({
+            selectedMemberSnapshot: {
+              member_id: "worker-2",
+              role: "worker",
+              model: "codex",
+              description: null,
+              prompt: null,
+              skills: [],
+              pending_inbox_count: 0,
+              status: "running",
+              latest_step: null,
+              session_status: "running",
+            },
+            selectedMemberId: "worker-2",
+            selectedSessionId: null,
+            memberEventsLoading: true,
+            selectedAgentStatus: "running",
+          })}
+          onCapture={onCapture}
+        />
+      );
+    });
+
+    const result = onCapture.mock.lastCall?.[0] as HookResult;
+    expect(result.isStartingAcpSession).toBe(false);
+    expect(result.panelSubtitle).toBe("Loading activity...");
+    expect(result.memberStatus).toBe("running");
+  });
 });

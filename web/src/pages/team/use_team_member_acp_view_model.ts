@@ -306,10 +306,12 @@ export function useTeamMemberAcpViewModel({
     "unknown";
   // Prefer authoritative snapshot/runtime status for startup gating so stale
   // ACP stream state does not keep the UI in a misleading "starting" mode.
+  const hasTransientSessionSelectionGap = Boolean(!selectedSessionId && memberEventsLoading);
   const isStartingAcpSession = Boolean(
     selectedMemberId.trim() &&
       !hasAuthoritativeStoppedStatus &&
       !selectedSessionId &&
+      !hasTransientSessionSelectionGap &&
       ((snapshotStatus && isActiveTeamMemberStatus(snapshotStatus)) ||
         (!snapshotStatus &&
           normalizedAgentStatus &&
@@ -484,7 +486,7 @@ export function useTeamMemberAcpViewModel({
       return "Starting ACP session...";
     }
     if (!selectedSessionId) {
-      return "No active thread session yet";
+      return memberEventsLoading ? "Loading activity..." : "No active thread session yet";
     }
     if (memberEventsLoading && !hasRenderableConversationContent) {
       return "Loading activity...";
