@@ -32,6 +32,12 @@ pub(crate) struct ActorMailboxImmediateHintPlan {
     pub reason: ActorMailboxImmediateHintReason,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ActorMailboxImmediateHintDelivery {
+    pub sent_actor_ids: Vec<String>,
+    pub failed_actor_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct TeamMailboxUnreadHintWorkerSettings {
     pub poll_interval_secs: i64,
@@ -335,6 +341,38 @@ pub(crate) async fn plan_actor_mailbox_immediate_hint(
     )
 }
 
+pub(crate) async fn dispatch_actor_mailbox_immediate_hint(
+    nudger: &dyn TeamMailboxHintAgentNudger,
+    run_id: &str,
+    plan: &ActorMailboxImmediateHintPlan,
+) -> ActorMailboxImmediateHintDelivery {
+    let prompt = build_actor_mailbox_immediate_hint_prompt(run_id, plan.reason);
+    let mut sent_actor_ids = Vec::new();
+    let mut failed_actor_ids = Vec::new();
+    for target_actor_id in &plan.target_actor_ids {
+        match nudger
+            .nudge_mailbox_prompt(target_actor_id, None, prompt.as_str())
+            .await
+        {
+            Ok(()) => sent_actor_ids.push(target_actor_id.clone()),
+            Err(err) => {
+                tracing::debug!(
+                    run_id = %run_id,
+                    actor_id = %target_actor_id,
+                    reason = ?plan.reason,
+                    "skip mailbox hint push because agent input is unavailable: {}",
+                    err
+                );
+                failed_actor_ids.push(target_actor_id.clone());
+            }
+        }
+    }
+    ActorMailboxImmediateHintDelivery {
+        sent_actor_ids,
+        failed_actor_ids,
+    }
+}
+
 pub(crate) fn build_actor_mailbox_immediate_hint_prompt(
     run_id: &str,
     reason: ActorMailboxImmediateHintReason,
@@ -443,17 +481,66 @@ fn is_user_message_payload(message: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use agenthub_team_actor::{
         ACTOR_MAIN_PEER_ID, ActorMessageRecord, ActorMessageStatus, ActorMessageTransport,
     };
+    use async_trait::async_trait;
     use serde_json::{Value, json};
+    use tokio::sync::Mutex;
 
     use super::{
         ActorMailboxImmediateHintPlan, ActorMailboxImmediateHintReason, ActorMailboxPriorityClass,
-        IdleUnreadHintState, actor_mailbox_is_idle, actor_mailbox_priority_label,
+        IdleUnreadHintState, RunningActorRuntime, TeamMailboxHintAgentNudger,
+        actor_mailbox_is_idle, actor_mailbox_priority_label,
         build_actor_mailbox_immediate_hint_prompt, build_actor_mailbox_unread_summary_prompt,
-        collect_channel_mention_actor_ids, decide_idle_unread_hint_action, is_user_message_payload,
+        collect_channel_mention_actor_ids, decide_idle_unread_hint_action,
+        dispatch_actor_mailbox_immediate_hint, is_user_message_payload,
     };
+
+    #[derive(Default)]
+    struct RecordingNudger {
+        sent: Mutex<Vec<String>>,
+        failed: Mutex<HashSet<String>>,
+    }
+
+    impl RecordingNudger {
+        fn failing(targets: impl IntoIterator<Item = &'static str>) -> Self {
+            Self {
+                sent: Mutex::default(),
+                failed: Mutex::new(targets.into_iter().map(str::to_string).collect()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl TeamMailboxHintAgentNudger for RecordingNudger {
+        async fn running_actor_runtime(&self, _actor_id: &str) -> Option<RunningActorRuntime> {
+            None
+        }
+
+        async fn mailbox_idle_anchor_ts(
+            &self,
+            _actor_id: &str,
+            _session_id: &str,
+        ) -> anyhow::Result<Option<i64>> {
+            Ok(None)
+        }
+
+        async fn nudge_mailbox_prompt(
+            &self,
+            actor_id: &str,
+            _expected_session_id: Option<&str>,
+            _prompt: &str,
+        ) -> anyhow::Result<()> {
+            if self.failed.lock().await.contains(actor_id) {
+                anyhow::bail!("busy");
+            }
+            self.sent.lock().await.push(actor_id.to_string());
+            Ok(())
+        }
+    }
 
     fn actor_send_response(
         from_actor_kind: agenthub_team_actor::ActorIdentityKind,
@@ -609,5 +696,20 @@ mod tests {
             reason: ActorMailboxImmediateHintReason::DirectAgentMessage,
         };
         assert_eq!(plan.target_actor_ids, vec!["reviewer".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn immediate_mailbox_hint_dispatch_uses_best_effort_nudger() {
+        let nudger = RecordingNudger::failing(["busy-worker"]);
+        let plan = ActorMailboxImmediateHintPlan {
+            target_actor_ids: vec!["idle-worker".to_string(), "busy-worker".to_string()],
+            reason: ActorMailboxImmediateHintReason::DirectAgentMessage,
+        };
+
+        let delivery = dispatch_actor_mailbox_immediate_hint(&nudger, "run-1", &plan).await;
+
+        assert_eq!(delivery.sent_actor_ids, vec!["idle-worker".to_string()]);
+        assert_eq!(delivery.failed_actor_ids, vec!["busy-worker".to_string()]);
+        assert_eq!(*nudger.sent.lock().await, vec!["idle-worker".to_string()]);
     }
 }

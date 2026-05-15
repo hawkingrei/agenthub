@@ -39,7 +39,7 @@ use crate::team::{
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskExecutionPlan, TeamTaskRecord,
-    TeamTaskStepExecutionSpec, TeamThreadReplyRecord, build_actor_mailbox_immediate_hint_prompt,
+    TeamTaskStepExecutionSpec, TeamThreadReplyRecord, dispatch_actor_mailbox_immediate_hint,
     effective_team_member_skills, ensure_team_runtime_started, force_team_member_new_session,
     normalize_optional_idempotency_key_input, parse_task_execution_plan,
     plan_actor_mailbox_immediate_hint, stop_team_runtime,
@@ -1720,44 +1720,24 @@ async fn maybe_notify_actor_new_mailbox_message_type(
     else {
         return Ok(());
     };
-    let prompt = build_actor_mailbox_immediate_hint_prompt(run_id, plan.reason);
     let reason_label = match plan.reason {
         crate::team::ActorMailboxImmediateHintReason::DirectAgentMessage => "direct_agent_message",
         crate::team::ActorMailboxImmediateHintReason::CoordinatorChannelMention => {
             "coordinator_channel_mention"
         }
     };
-    let mut sent_targets = Vec::new();
-    let mut failed_targets = Vec::new();
-    for target_actor_id in &plan.target_actor_ids {
-        match state
-            .agents
-            .send_input(target_actor_id, &prompt, None, None)
-            .await
-        {
-            Ok(()) => sent_targets.push(target_actor_id.clone()),
-            Err(err) => {
-                tracing::debug!(
-                    run_id = %run_id,
-                    actor_id = %target_actor_id,
-                    reason = ?plan.reason,
-                    "skip mailbox hint push because agent input is unavailable: {}",
-                    err
-                );
-                failed_targets.push(target_actor_id.clone());
-            }
-        }
-    }
+    let delivery =
+        dispatch_actor_mailbox_immediate_hint(state.agents.as_ref(), run_id, &plan).await;
     append_actor_mailbox_type_hint_event(
         state,
         run_id,
         serde_json::json!({
-            "status": if failed_targets.is_empty() { "sent" } else if sent_targets.is_empty() { "send_failed" } else { "partial" },
+            "status": if delivery.failed_actor_ids.is_empty() { "sent" } else if delivery.sent_actor_ids.is_empty() { "send_failed" } else { "partial" },
             "message_id": send_result.message_id,
             "reason": reason_label,
             "target_actor_ids": plan.target_actor_ids,
-            "sent_actor_ids": sent_targets,
-            "failed_actor_ids": failed_targets,
+            "sent_actor_ids": delivery.sent_actor_ids,
+            "failed_actor_ids": delivery.failed_actor_ids,
         }),
     )
     .await;

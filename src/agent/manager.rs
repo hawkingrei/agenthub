@@ -484,7 +484,7 @@ fn should_rearm_agent_loop_for_output(session_id: &str, output: &AgentOutput) ->
 
 fn acp_accepts_best_effort_hint(diagnostics: &AcpHandleDiagnostics) -> bool {
     !diagnostics.command_channel_closed
-        && diagnostics.command_channel_capacity > 0
+        && diagnostics.command_channel_capacity == diagnostics.command_channel_max_capacity
         && diagnostics.active_prompt_count == 0
         && diagnostics.pending_command_count == 0
         && diagnostics.pending_permission_count == 0

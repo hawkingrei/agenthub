@@ -175,6 +175,10 @@ fn best_effort_mailbox_hints_require_idle_acp_input() {
     full_channel.command_channel_capacity = 0;
     assert!(!acp_accepts_best_effort_hint(&full_channel));
 
+    let mut queued_channel_send = idle_acp_hint_diagnostics();
+    queued_channel_send.command_channel_capacity = 7;
+    assert!(!acp_accepts_best_effort_hint(&queued_channel_send));
+
     let mut previous_error = idle_acp_hint_diagnostics();
     previous_error.last_command_error = Some(AcpCommandErrorDiagnostic {
         command_kind: "prompt".to_string(),
