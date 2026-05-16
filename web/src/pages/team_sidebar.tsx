@@ -182,9 +182,9 @@ const TEAM_CONTROLS_BUTTON_CLASS =
 const TEAM_SUBJECT_SWITCHER_CLASS =
   "grid grid-cols-3 gap-1 rounded-xl border border-notion-border bg-notion-sidebar/60 p-1 shadow-sm";
 const TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS =
-  "inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-white px-2 text-[11px] font-semibold text-notion-text shadow-sm";
+  "inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg bg-white px-1.5 text-[11px] font-semibold text-notion-text shadow-sm sm:px-2";
 const TEAM_SUBJECT_SWITCHER_IDLE_CLASS =
-  "inline-flex h-8 items-center justify-center gap-1 rounded-lg px-2 text-[11px] font-medium text-notion-text-muted transition hover:bg-white/70 hover:text-notion-text";
+  "inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-white/70 hover:text-notion-text sm:px-2";
 
 function resolveTeamSidebarSubjectPane(tab: TeamTab): TeamSidebarSubjectPane {
   if (tab === "tasks") {

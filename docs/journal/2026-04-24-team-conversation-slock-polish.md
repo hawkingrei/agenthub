@@ -98,6 +98,9 @@ This follow-up keeps the mobile Team workspace focused on the message stream:
 - agent rows in the Team sidebar no longer show machine labels or pending
   inbox counts; those runtime diagnostics are too stale-prone for primary
   navigation chrome.
+- the Team workspace applies golden-ratio-derived sizing with a narrower
+  navigation rail (`23.6 / 76.4`) and a `1.618 / 1` conversation/thread split,
+  keeping the message stream dominant while preserving sidebar scanability.
 
 Production browser note:
 

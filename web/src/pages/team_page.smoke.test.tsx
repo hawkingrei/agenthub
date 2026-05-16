@@ -2090,6 +2090,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
+      expect(container.innerHTML).toContain("teams-layout flex min-h-0 flex-1 flex-col");
       expect(container.textContent).toContain("Workspace");
       expect(container.textContent).toContain("# all");
       expect(container.textContent).not.toContain("ChannelsTasksMembersSearch");
