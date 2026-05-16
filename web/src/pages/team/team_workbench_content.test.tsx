@@ -175,7 +175,7 @@ describe("team_workbench_content", () => {
     );
     expect(withThread).toContain("data-testid=\"thread-pane\"");
     expect(withThread).toContain("max-h-[40vh]");
-    expect(withThread).toContain("lg:grid-cols-[minmax(0,1.618fr)_minmax(20rem,1fr)]");
+    expect(withThread).toContain("lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.92fr)]");
     expect(withThread).toContain("flex-col");
     expect(withThread).not.toContain("overflow-y-auto");
   });

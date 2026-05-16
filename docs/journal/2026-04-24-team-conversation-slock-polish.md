@@ -99,8 +99,9 @@ This follow-up keeps the mobile Team workspace focused on the message stream:
   inbox counts; those runtime diagnostics are too stale-prone for primary
   navigation chrome.
 - the Team workspace applies golden-ratio-derived sizing with a narrower
-  navigation rail (`23.6 / 76.4`) and a `1.618 / 1` conversation/thread split,
-  keeping the message stream dominant while preserving sidebar scanability.
+  navigation rail (`23.6 / 76.4`) and a near-even conversation/thread split
+  (`1 / 0.92`), keeping the message stream dominant without making the
+  right-side thread column feel secondary.
 
 Production browser note:
 
