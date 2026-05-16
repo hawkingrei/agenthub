@@ -1,16 +1,15 @@
 import React from "react";
 import {
-  ActionButton,
   Badge,
   CompactButton,
   ConversationBubble,
   EmptyState,
-  MenuOptionButton,
   SurfaceCard,
   ToolbarRow,
 } from "../../ui/primitives";
 import { DeterministicAvatar } from "../../components/deterministic_avatar";
 import { TeamThreadRichText } from "./team_thread_rich_text";
+import { TeamMessageComposer } from "./team_message_composer";
 import {
   applyMentionAtTag,
   canonicalizeMentionDraft,
@@ -18,15 +17,8 @@ import {
   resolveMentionDraftQuery,
 } from "./mailbox_helpers";
 import {
-  TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS,
-  TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS,
-  TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS,
-  TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS,
-  TEAM_MESSAGE_COMPOSER_SHELL_CLASS,
-  TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_THREAD_BODY_CLASS,
   TEAM_THREAD_CHANNEL_BADGE_CLASS,
-  TEAM_THREAD_COMPOSER_CONTEXT_CLASS,
   TEAM_THREAD_COMPOSER_REGION_CLASS,
   TEAM_THREAD_EMPTY_REPLIES_CLASS,
   TEAM_THREAD_EMPTY_STATE_CLASS,
@@ -38,10 +30,6 @@ import {
   TEAM_THREAD_HEADER_TITLE_CLASS,
   TEAM_THREAD_HEADER_TITLE_ROW_CLASS,
   TEAM_THREAD_HELP_TEXT_CLASS,
-  TEAM_THREAD_MENTION_ALIAS_CLASS,
-  TEAM_THREAD_MENTION_HINT_CLASS,
-  TEAM_THREAD_MENTION_LIST_CLASS,
-  TEAM_THREAD_MENTION_MENU_CLASS,
   TEAM_THREAD_MESSAGE_AUTHOR_CLASS,
   TEAM_THREAD_MESSAGE_AVATAR_CLASS,
   TEAM_THREAD_MESSAGE_BUBBLE_CLASS,
@@ -411,121 +399,88 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
       </div>
       {hasSelectedRoot ? (
         <div className={TEAM_THREAD_COMPOSER_REGION_CLASS}>
-          <div className={TEAM_MESSAGE_COMPOSER_SHELL_CLASS}>
-            <div className={TEAM_THREAD_COMPOSER_CONTEXT_CLASS}>
-              Full context in thread · root message stays summary-first · {channelLabel}
-            </div>
-            <div className={TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS}>
-              <textarea
-                ref={replyTextareaRef}
-                className={`${TEAM_PANEL_TEXTAREA_CLASS} ${TEAM_THREAD_TEXTAREA_CLASS}`}
-                rows={2}
-                placeholder={`Reply in thread · ${channelLabel}`}
-                value={replyDraft}
-                onChange={(event) => {
-                  const nextDraft = event.currentTarget.value;
-                  onReplyDraftChange(nextDraft);
-                  updateMentionQuery(nextDraft, event.currentTarget.selectionStart);
-                }}
-                onClick={(event) =>
-                  updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+          <TeamMessageComposer
+            textareaRef={replyTextareaRef}
+            draft={replyDraft}
+            rows={2}
+            placeholder={`Reply in thread · ${channelLabel}`}
+            contextText={`Full context in thread · root message stays summary-first · ${channelLabel}`}
+            helperText={
+              sendOnEnter
+                ? "@name to reply · Enter to reply"
+                : "@name to reply · Enter adds a new line"
+            }
+            sendLabel="Reply"
+            busyLabel="Replying..."
+            busy={replyBusy}
+            disabled={replyBusy || replyDraft.trim().length === 0}
+            textareaClassName={TEAM_THREAD_TEXTAREA_CLASS}
+            mentionOptions={activeMention ? filteredMentionCandidates : []}
+            activeMentionIndex={activeMentionIndex}
+            onSelectMention={applyMentionSelection}
+            onDraftChange={(event) => {
+              const nextDraft = event.currentTarget.value;
+              onReplyDraftChange(nextDraft);
+              updateMentionQuery(nextDraft, event.currentTarget.selectionStart);
+            }}
+            onTextareaClick={(event) =>
+              updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+            }
+            onTextareaKeyUp={(event) =>
+              updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+            }
+            onTextareaBlur={() => {
+              setTimeout(() => {
+                setActiveMention(null);
+                setActiveMentionIndex(0);
+              }, 0);
+            }}
+            onTextareaKeyDown={(event) => {
+              if (activeMention && filteredMentionCandidates.length > 0) {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setActiveMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
+                  return;
                 }
-                onKeyUp={(event) =>
-                  updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setActiveMentionIndex((prev) =>
+                    prev === 0 ? filteredMentionCandidates.length - 1 : prev - 1
+                  );
+                  return;
                 }
-                onBlur={() => {
-                  setTimeout(() => {
-                    setActiveMention(null);
-                    setActiveMentionIndex(0);
-                  }, 0);
-                }}
-                onKeyDown={(event) => {
-                  if (activeMention && filteredMentionCandidates.length > 0) {
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      setActiveMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
-                      return;
-                    }
-                    if (event.key === "ArrowUp") {
-                      event.preventDefault();
-                      setActiveMentionIndex((prev) =>
-                        prev === 0 ? filteredMentionCandidates.length - 1 : prev - 1
-                      );
-                      return;
-                    }
-                    if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
-                      event.preventDefault();
-                      const selected =
-                        filteredMentionCandidates[activeMentionIndex] ?? filteredMentionCandidates[0];
-                      if (selected) {
-                        applyMentionSelection(selected);
-                      }
-                      return;
-                    }
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      setActiveMention(null);
-                      setActiveMentionIndex(0);
-                      return;
-                    }
+                if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
+                  event.preventDefault();
+                  const selected =
+                    filteredMentionCandidates[activeMentionIndex] ?? filteredMentionCandidates[0];
+                  if (selected) {
+                    applyMentionSelection(selected);
                   }
-                  if (
-                    event.key === "Enter" &&
-                    !event.shiftKey &&
-                    !event.altKey &&
-                    !event.metaKey &&
-                    !event.ctrlKey &&
-                    sendOnEnter &&
-                    !replyBusy &&
-                    replyDraft.trim().length > 0
-                  ) {
-                    event.preventDefault();
-                    sendCurrentReply();
-                  }
-                }}
-              />
-              <ActionButton
-                type="button"
-                className={TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS}
-                onClick={() => {
-                  sendCurrentReply();
-                }}
-                disabled={replyBusy || replyDraft.trim().length === 0}
-              >
-                {replyBusy ? "Replying..." : "Reply"}
-              </ActionButton>
-            </div>
-            {activeMention && filteredMentionCandidates.length > 0 && (
-              <div className={TEAM_THREAD_MENTION_MENU_CLASS}>
-                <div className={TEAM_THREAD_MENTION_HINT_CLASS}>
-                  Select teammate mention (`@` without selection stays plain text)
-                </div>
-                <div className={TEAM_THREAD_MENTION_LIST_CLASS}>
-                  {filteredMentionCandidates.map((candidate, index) => (
-                    <MenuOptionButton
-                      key={candidate.actorId}
-                      active={index === activeMentionIndex}
-                      data-team-mention-option={candidate.actorId}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        applyMentionSelection(candidate);
-                      }}
-                    >
-                      <span>{candidate.label}</span>
-                      <span className={TEAM_THREAD_MENTION_ALIAS_CLASS}>{`@${candidate.label}`}</span>
-                    </MenuOptionButton>
-                  ))}
-                </div>
-              </div>
-            )}
-            <ToolbarRow className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
-              <span className={TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS}>
-                {sendOnEnter
-                  ? "@name to reply · Enter to reply"
-                  : "@name to reply · Enter adds a new line"}
-              </span>
-            </ToolbarRow>
-          </div>
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setActiveMention(null);
+                  setActiveMentionIndex(0);
+                  return;
+                }
+              }
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.altKey &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                sendOnEnter &&
+                !replyBusy &&
+                replyDraft.trim().length > 0
+              ) {
+                event.preventDefault();
+                sendCurrentReply();
+              }
+            }}
+            onSend={sendCurrentReply}
+          />
         </div>
       ) : null}
     </SurfaceCard>

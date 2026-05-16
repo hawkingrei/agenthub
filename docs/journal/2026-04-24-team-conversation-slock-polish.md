@@ -46,6 +46,29 @@ This pass tightened the Team chat, thread, and ACP presentation so they read lik
   - rounded send action
   - low-emphasis helper text / secondary actions
 
+## 2026-05-16 Team Composer Component Checkpoint
+
+This follow-up moves the Team channel and Team thread composers from parallel
+page-local markup to a shared `TeamMessageComposer` component. The goal is not a
+visual redesign; it narrows drift by making both surfaces reuse the same shell,
+editor row, mention menu, helper row, and send-button structure while leaving
+channel/thread-specific submit semantics in their owning panels.
+
+What changed:
+
+- `TeamTaskPanel` now uses the shared composer for the channel lane.
+- `TeamThreadPane` now uses the same composer for thread replies.
+- shared composer class names now own the mention-menu and context-row styling;
+  existing thread constants alias those shared names for compatibility.
+- focused component coverage locks the shared shell and mention-selection
+  behavior.
+
+Browser note:
+
+- local Vite loaded successfully at `http://127.0.0.1:4176/workspace/teams`,
+  but the unauthenticated local session redirected to the login page, so this
+  checkpoint does not close the deployed Chrome MCP validation item.
+
 ## Chrome DevTools MCP Baseline Notes
 
 Chrome DevTools MCP was used against logged-in `app.slock.ai` surfaces during this pass to keep the target interaction language honest.
@@ -70,6 +93,16 @@ Executed during this pass:
 ```bash
 cd web && pnpm exec vitest run src/markdown.test.ts src/pages/team/team_markdown.test.ts src/pages/team_panels.test.tsx
 cd web && pnpm exec vitest run src/acp_panel.test.tsx src/pages/team/team_thread_pane.test.tsx src/input_dock_render.test.tsx
+cd web && npm run build
+```
+
+Additional validation for the 2026-05-16 composer checkpoint:
+
+```bash
+cd web && npm exec vitest run src/pages/team/team_message_composer.test.tsx src/pages/team/team_thread_pane.test.tsx
+cd web && npm exec vitest run src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx
+cd web && npm exec tsc -- --noEmit
+cd web && npm run lint
 cd web && npm run build
 ```
 

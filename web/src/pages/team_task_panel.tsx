@@ -30,10 +30,9 @@ import {
   IconButton,
   KeyValueItem,
   KeyValueList,
-  MenuOptionButton,
   SurfaceCard,
-  ToolbarRow,
 } from "../ui/primitives";
+import { TeamMessageComposer } from "./team/team_message_composer";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
@@ -53,12 +52,6 @@ import { isMobileInputViewport } from "../components/input_dock";
 import { DeterministicAvatar } from "../components/deterministic_avatar";
 import {
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_TEXTAREA_CLASS,
-  TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS,
-  TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS,
-  TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS,
-  TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS,
-  TEAM_MESSAGE_COMPOSER_SHELL_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
   TEAM_TASK_ACTIVITY_BODY_CLASS,
   TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS,
@@ -183,7 +176,6 @@ type TeamTaskPanelAudioWindow = Window &
     webkitAudioContext?: PermissionToneAudioContextConstructor;
   };
 
-const TEAM_TASK_SHORTCUT_CLASS = TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS;
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-8 py-4 text-sm text-notion-text-muted italic";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
@@ -1785,131 +1777,97 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         className={TEAM_TASK_COMPOSER_PANEL_CLASS}
         data-team-channel-composer="true"
       >
-        <div className={TEAM_MESSAGE_COMPOSER_SHELL_CLASS}>
-          <div className={TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS}>
-            <textarea
-              id="team-task-panel-message"
-              name="team_task_message"
-              ref={messageTextareaRef}
-              className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] flex-1 border-transparent px-0 py-0 text-[13px] leading-5 shadow-none focus:border-transparent focus:ring-0`}
-              rows={1}
-              placeholder={messagePlaceholder}
-              value={messageDraft}
-              onChange={(event) => {
-                const nextDraft = event.target.value;
-                onMessageDraftChange(nextDraft);
-                updateMentionQuery(nextDraft, event.target.selectionStart);
-              }}
-              onClick={(event) =>
-                updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+        <TeamMessageComposer
+          id="team-task-panel-message"
+          name="team_task_message"
+          textareaRef={messageTextareaRef}
+          draft={messageDraft}
+          rows={1}
+          placeholder={messagePlaceholder}
+          helperText={composerHelperText}
+          sendLabel="Send"
+          disabled={!canSendMessage}
+          textareaClassName="min-h-[40px] flex-1 border-transparent px-0 py-0 text-[13px] leading-5 shadow-none focus:border-transparent focus:ring-0"
+          mentionOptions={activeMention ? filteredMentionCandidates : []}
+          activeMentionIndex={activeMentionIndex}
+          onSelectMention={applyMentionSelection}
+          onDraftChange={(event) => {
+            const nextDraft = event.target.value;
+            onMessageDraftChange(nextDraft);
+            updateMentionQuery(nextDraft, event.target.selectionStart);
+          }}
+          onTextareaClick={(event) =>
+            updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+          }
+          onTextareaKeyUp={(event) =>
+            updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+          }
+          onTextareaBlur={() => {
+            setTimeout(() => {
+              setActiveMention(null);
+              setActiveMentionIndex(0);
+            }, 0);
+          }}
+          onCompositionStart={() => {
+            messageDraftComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            messageDraftComposingRef.current = false;
+          }}
+          onTextareaKeyDown={(event) => {
+            const composing = isTeamImeComposing(
+              messageDraftComposingRef.current,
+              event.nativeEvent.isComposing,
+              "keyCode" in event.nativeEvent
+                ? Number((event.nativeEvent as KeyboardEvent).keyCode)
+                : undefined
+            );
+            if (activeMention && filteredMentionCandidates.length > 0) {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
+                return;
               }
-              onKeyUp={(event) =>
-                updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
-              }
-              onBlur={() => {
-                setTimeout(() => {
-                  setActiveMention(null);
-                  setActiveMentionIndex(0);
-                }, 0);
-              }}
-              onCompositionStart={() => {
-                messageDraftComposingRef.current = true;
-              }}
-              onCompositionEnd={() => {
-                messageDraftComposingRef.current = false;
-              }}
-              onKeyDown={(event) => {
-                const composing = isTeamImeComposing(
-                  messageDraftComposingRef.current,
-                  event.nativeEvent.isComposing,
-                  "keyCode" in event.nativeEvent
-                    ? Number((event.nativeEvent as KeyboardEvent).keyCode)
-                    : undefined
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveMentionIndex((prev) =>
+                  prev === 0 ? filteredMentionCandidates.length - 1 : prev - 1
                 );
-                if (activeMention && filteredMentionCandidates.length > 0) {
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setActiveMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
-                    return;
-                  }
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setActiveMentionIndex((prev) =>
-                      prev === 0 ? filteredMentionCandidates.length - 1 : prev - 1
-                    );
-                    return;
-                  }
-                  if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
-                    event.preventDefault();
-                    const selected =
-                      filteredMentionCandidates[activeMentionIndex] ?? filteredMentionCandidates[0];
-                    if (selected) {
-                      applyMentionSelection(selected);
-                    }
-                    return;
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setActiveMention(null);
-                    setActiveMentionIndex(0);
-                    return;
-                  }
+                return;
+              }
+              if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
+                event.preventDefault();
+                const selected =
+                  filteredMentionCandidates[activeMentionIndex] ?? filteredMentionCandidates[0];
+                if (selected) {
+                  applyMentionSelection(selected);
                 }
-                if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !event.altKey &&
-                  !event.metaKey &&
-                  !event.ctrlKey &&
-                  !composing &&
-                  sendOnEnter &&
-                  canSendMessage
-                ) {
-                  event.preventDefault();
-                  sendCurrentMessage();
-                  return;
-                }
-              }}
-            />
-            <ActionButton
-              tone="primary"
-              size="sm"
-              className={TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS}
-              onClick={() => {
-                sendCurrentMessage();
-              }}
-              disabled={!canSendMessage}
-            >
-              Send
-            </ActionButton>
-          </div>
-          {activeMention && filteredMentionCandidates.length > 0 && (
-            <div className="mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
-              <div className="px-3 py-1 text-xs text-ui-text-muted">
-                Select teammate mention (`@` without selection stays plain text)
-              </div>
-              <div className="max-h-44 overflow-auto py-1">
-                {filteredMentionCandidates.map((candidate, index) => (
-                  <MenuOptionButton
-                    key={candidate.actorId}
-                    active={index === activeMentionIndex}
-                    data-team-mention-option={candidate.actorId}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      applyMentionSelection(candidate);
-                    }}
-                  >
-                    <span>{candidate.label}</span>
-                    <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
-                  </MenuOptionButton>
-                ))}
-              </div>
-            </div>
-          )}
-          <ToolbarRow className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
-            <span className={TEAM_TASK_SHORTCUT_CLASS}>{composerHelperText}</span>
-          </ToolbarRow>
-        </div>
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setActiveMention(null);
+                setActiveMentionIndex(0);
+                return;
+              }
+            }
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.ctrlKey &&
+              !composing &&
+              sendOnEnter &&
+              canSendMessage
+            ) {
+              event.preventDefault();
+              sendCurrentMessage();
+              return;
+            }
+          }}
+          onSend={sendCurrentMessage}
+        />
       </div>
     </SurfaceCard>
   );

@@ -307,6 +307,19 @@ export const TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS =
 export const TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS =
   "text-[11px] font-normal tracking-[0.01em] text-notion-text-muted/65";
 
+export const TEAM_MESSAGE_COMPOSER_CONTEXT_CLASS =
+  "px-1 pb-1 text-[10px] leading-5 text-notion-text-muted";
+
+export const TEAM_MESSAGE_COMPOSER_MENTION_MENU_CLASS =
+  "mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm";
+
+export const TEAM_MESSAGE_COMPOSER_MENTION_HINT_CLASS =
+  "px-3 py-1 text-xs text-ui-text-muted";
+
+export const TEAM_MESSAGE_COMPOSER_MENTION_LIST_CLASS = "max-h-44 overflow-auto py-1";
+
+export const TEAM_MESSAGE_COMPOSER_MENTION_ALIAS_CLASS = "text-[11px] text-ui-text-muted";
+
 export const TEAM_TASK_ACTIVITY_SHELL_CLASS = "min-h-full bg-white py-1.5";
 
 export const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col";
@@ -568,20 +581,18 @@ export const TEAM_THREAD_EMPTY_REPLIES_CLASS = "px-2 text-[11px] leading-5 text-
 export const TEAM_THREAD_COMPOSER_REGION_CLASS =
   "border-t border-notion-border/55 bg-white/92 px-2.5 py-1.5";
 
-export const TEAM_THREAD_COMPOSER_CONTEXT_CLASS =
-  "px-1 pb-1 text-[10px] leading-5 text-notion-text-muted";
+export const TEAM_THREAD_COMPOSER_CONTEXT_CLASS = TEAM_MESSAGE_COMPOSER_CONTEXT_CLASS;
 
 export const TEAM_THREAD_TEXTAREA_CLASS =
   "min-h-[40px] flex-1 border-transparent px-0 py-0 text-[13px] leading-5 shadow-none focus:border-transparent focus:ring-0";
 
-export const TEAM_THREAD_MENTION_MENU_CLASS =
-  "mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm";
+export const TEAM_THREAD_MENTION_MENU_CLASS = TEAM_MESSAGE_COMPOSER_MENTION_MENU_CLASS;
 
-export const TEAM_THREAD_MENTION_HINT_CLASS = "px-3 py-1 text-xs text-ui-text-muted";
+export const TEAM_THREAD_MENTION_HINT_CLASS = TEAM_MESSAGE_COMPOSER_MENTION_HINT_CLASS;
 
-export const TEAM_THREAD_MENTION_LIST_CLASS = "max-h-44 overflow-auto py-1";
+export const TEAM_THREAD_MENTION_LIST_CLASS = TEAM_MESSAGE_COMPOSER_MENTION_LIST_CLASS;
 
-export const TEAM_THREAD_MENTION_ALIAS_CLASS = "text-[11px] text-ui-text-muted";
+export const TEAM_THREAD_MENTION_ALIAS_CLASS = TEAM_MESSAGE_COMPOSER_MENTION_ALIAS_CLASS;
 
 export const TASKS_BOARD_LANES_CLASS =
   "grid min-w-full auto-cols-[minmax(280px,1fr)] grid-flow-col gap-4";
