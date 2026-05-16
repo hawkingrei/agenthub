@@ -319,27 +319,35 @@ export function teamSelectorPanel(page: import("@playwright/test").Page) {
   }).first();
 }
 
+function escapeCssAttributeValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 export async function selectAgentFromSidebar(
   page: import("@playwright/test").Page,
   agentLabel: string
 ): Promise<void> {
   const sidebar = page.locator(".teams-sidebar");
-  const subjectsScopeButton = sidebar
-    .getByLabel("Team sidebar scope switch")
-    .getByText("Channels & Agents", { exact: true })
-    .first();
-  if (await subjectsScopeButton.isVisible()) {
-    await subjectsScopeButton.click();
-  }
+  await revealTeamSidebarSubject(page, "agents");
 
-  const agentsToggle = sidebar.getByRole("button", { name: "Toggle agents section" });
-  if ((await agentsToggle.getAttribute("aria-expanded")) !== "true") {
-    await agentsToggle.click();
-  }
-
-  const agentItem = sidebar
-    .locator("button", { hasText: agentLabel })
+  const agentItemByMemberId = sidebar
+    .locator(`[data-team-member-id="${escapeCssAttributeValue(agentLabel)}"]`)
     .first();
+  const agentItemByLabel = sidebar.locator("button", { hasText: agentLabel }).first();
+  await expect
+    .poll(async () => {
+      if (await agentItemByMemberId.isVisible().catch(() => false)) {
+        return "member-id";
+      }
+      if (await agentItemByLabel.isVisible().catch(() => false)) {
+        return "label";
+      }
+      return "missing";
+    }, { timeout: 5000 })
+    .not.toBe("missing");
+  const agentItem = (await agentItemByMemberId.isVisible().catch(() => false))
+    ? agentItemByMemberId
+    : agentItemByLabel;
   await expect(agentItem).toBeVisible();
   await agentItem.click();
   const teamsMain = page.locator(".teams-main");
@@ -461,18 +469,74 @@ export async function selectPrimaryTeamEntryFromSidebar(
   label: string
 ): Promise<void> {
   const sidebar = page.locator(".teams-sidebar");
-  const entry = sidebar
-    .locator("button", { hasText: label })
-    .first();
+  let entry = sidebar.locator("button", { hasText: label }).first();
+  if ((await entry.count()) === 0 && label === "Kanban") {
+    await revealTeamSidebarSubject(page, "tasks");
+    entry = sidebar.locator("button", { hasText: label }).first();
+  }
   await expect(entry).toBeVisible();
   await entry.click();
+}
+
+async function revealTeamSidebarSubject(
+  page: import("@playwright/test").Page,
+  subject: "channels" | "tasks" | "agents" | "search"
+): Promise<void> {
+  const sidebar = page.locator(".teams-sidebar");
+  const subjectButtonName =
+    subject === "channels"
+      ? "Show channels"
+      : subject === "tasks"
+        ? "Show tasks"
+        : subject === "agents"
+          ? "Show agents"
+          : "Show search";
+  const subjectButton = sidebar.getByRole("button", { name: subjectButtonName }).first();
+  if (await subjectButton.isVisible().catch(() => false)) {
+    await subjectButton.click();
+    return;
+  }
+
+  await page.evaluate((nextLens) => {
+    const nextUrl = new URL(window.location.href);
+    if (nextLens === "channels") {
+      nextUrl.searchParams.delete("lens");
+    } else if (nextLens === "agents") {
+      nextUrl.searchParams.set("lens", "members");
+    } else {
+      nextUrl.searchParams.set("lens", nextLens);
+    }
+    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, subject);
+}
+
+async function restoreTeamChannelWorkspace(
+  page: import("@playwright/test").Page
+): Promise<boolean> {
+  await revealTeamSidebarSubject(page, "channels");
+  const sidebarConversationEntry = teamChannelSidebarEntry(page, "all");
+  const isVisible = await sidebarConversationEntry.isVisible().catch(() => false);
+  if (!isVisible) {
+    await navigateToTeamChannelWorkspace(page, "all");
+  }
+  if (!(await sidebarConversationEntry.isVisible().catch(() => false))) {
+    return false;
+  }
+  await expect(sidebarConversationEntry).toBeVisible();
+  await sidebarConversationEntry.click();
+  return true;
 }
 
 export async function selectTeamChannelFromSidebar(
   page: import("@playwright/test").Page,
   channelId: string
 ): Promise<void> {
+  await revealTeamSidebarSubject(page, "channels");
   const channelEntry = teamChannelSidebarEntry(page, channelId);
+  if (!(await channelEntry.isVisible().catch(() => false))) {
+    await navigateToTeamChannelWorkspace(page, channelId);
+  }
   await expect(channelEntry).toBeVisible();
   await channelEntry.click();
 }
@@ -501,6 +565,44 @@ function assertRawChannelId(channelId: string): void {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function navigateToTeamChannelWorkspace(
+  page: import("@playwright/test").Page,
+  channelId: string
+): Promise<void> {
+  assertRawChannelId(channelId);
+  await page.evaluate((nextChannelId) => {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("lens");
+    nextUrl.searchParams.delete("member");
+    nextUrl.searchParams.delete("tab");
+    nextUrl.searchParams.delete("thread");
+    nextUrl.searchParams.delete("task");
+    if (nextChannelId === "all") {
+      nextUrl.searchParams.delete("channel");
+    } else {
+      nextUrl.searchParams.set("channel", nextChannelId);
+    }
+    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, channelId);
+}
+
+async function navigateToTeamTab(
+  page: import("@playwright/test").Page,
+  tab: string
+): Promise<void> {
+  await page.evaluate((nextTab) => {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("lens");
+    nextUrl.searchParams.delete("member");
+    nextUrl.searchParams.delete("thread");
+    nextUrl.searchParams.delete("task");
+    nextUrl.searchParams.set("tab", nextTab);
+    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, tab);
 }
 
 export async function openMainTeamAction(
@@ -564,13 +666,16 @@ export async function openMainTeamAction(
   }
 
   if (allowSidebarReset) {
-    const sidebarConversationEntry = teamChannelSidebarEntry(page, "all");
-    if ((await sidebarConversationEntry.count()) > 0) {
-      await expect(sidebarConversationEntry).toBeVisible();
-      await sidebarConversationEntry.click();
+    if (await restoreTeamChannelWorkspace(page)) {
       await openMainTeamAction(page, label, false);
       return;
     }
+  }
+
+  if (label === "Execution Runs") {
+    await navigateToTeamTab(page, "runs");
+    await expect(page.locator(".teams-main")).toContainText("Execution Runs");
+    return;
   }
 
   throw new Error(`Team action not found: ${label}`);
@@ -578,12 +683,19 @@ export async function openMainTeamAction(
 
 export async function openAdvancedView(
   page: import("@playwright/test").Page,
-  label: string
+  label: string,
+  allowSidebarReset = true
 ): Promise<void> {
   await closeTaskDetailModalIfOpen(page);
   const trigger = page
     .getByRole("button", { name: /^(More|Open more workspace actions)$/ })
     .first();
+  if ((await trigger.count()) === 0 && allowSidebarReset) {
+    if (await restoreTeamChannelWorkspace(page)) {
+      await openAdvancedView(page, label, false);
+      return;
+    }
+  }
   await expect(trigger).toBeVisible();
   await trigger.click();
   const menuItem = page.getByRole("menuitem", { name: label, exact: true });

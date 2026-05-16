@@ -28,6 +28,7 @@ import {
 } from "./team/channel_metadata";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
+import type { WorkspaceLens } from "../app_route_selection";
 import type { TeamTab } from "./team/state";
 
 type TeamMemberSummary = {
@@ -63,6 +64,7 @@ type TeamSidebarProps = {
   channelItems?: ReadonlyArray<TeamChannelItem>;
   selectedChannelId?: TeamChannelItem["id"];
   focusedAgentMemberId: string;
+  activeWorkspaceLens?: WorkspaceLens;
   tab: TeamTab;
   onSelectTeam: (teamId: string) => void;
   onBackToSelector?: () => void;
@@ -75,6 +77,7 @@ type TeamSidebarProps = {
   creatingChannel?: boolean;
   deletingChannelId?: string | null;
   onSelectKanban: () => void;
+  onSelectSearch?: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
   onOpenTeamMemberCopyExisting?: () => void;
@@ -89,6 +92,7 @@ type TeamSidebarProps = {
 
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
+type TeamSidebarSubjectPane = "channels" | "tasks" | "agents" | "search";
 const NO_ACTIVE_RUN_CONTEXT = "No active run context.";
 const DEBUG_CURRENT_WORK_PATTERN = /^(?:run_status|step_status)\s*=/i;
 
@@ -170,26 +174,6 @@ function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
   return currentWork;
 }
 
-function resolveMemberNodeSummary(nodeId: string | null | undefined): {
-  tone: "local" | "remote";
-  label: string;
-} | null {
-  const normalized = nodeId?.trim() || null;
-  if (!normalized) {
-    return null;
-  }
-  if (normalized.toLowerCase() === "main") {
-    return {
-      tone: "local",
-      label: "main",
-    };
-  }
-  return {
-    tone: "remote",
-    label: normalized,
-  };
-}
-
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS = "px-2 py-1.5";
 const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS = TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS;
 const TEAM_SIDEBAR_VIRTUAL_LIST_CLASS =
@@ -198,6 +182,34 @@ const TEAM_SWITCH_BUTTON_CLASS =
   "inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-notion-border bg-white px-2.5 py-1.5 text-left shadow-sm transition hover:border-notion-accent/25 hover:bg-notion-hover";
 const TEAM_CONTROLS_BUTTON_CLASS =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-notion-border bg-notion-sidebar/40 text-[12px] text-notion-text-muted shadow-sm transition hover:border-notion-accent/25 hover:bg-notion-hover hover:text-notion-text";
+const TEAM_SUBJECT_SWITCHER_CLASS =
+  "grid grid-cols-4 gap-1 rounded-xl border border-notion-border bg-notion-sidebar/60 p-1 shadow-sm";
+const TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS =
+  "inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg bg-white px-1.5 text-[11px] font-semibold text-notion-text shadow-sm sm:px-2";
+const TEAM_SUBJECT_SWITCHER_IDLE_CLASS =
+  "inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-white/70 hover:text-notion-text sm:px-2";
+
+function resolveTeamSidebarSubjectPane(
+  tab: TeamTab,
+  activeWorkspaceLens?: WorkspaceLens
+): TeamSidebarSubjectPane {
+  if (activeWorkspaceLens === "search") {
+    return "search";
+  }
+  if (activeWorkspaceLens === "tasks") {
+    return "tasks";
+  }
+  if (activeWorkspaceLens === "members") {
+    return "agents";
+  }
+  if (tab === "tasks") {
+    return "tasks";
+  }
+  if (AGENT_FOCUS_TABS.has(tab)) {
+    return "agents";
+  }
+  return "channels";
+}
 
 export function resolveMemberIndicatorClassName(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
@@ -235,10 +247,10 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     selectedTeamRuntimeStatus,
     selectedTeamHasConfiguredMembers = false,
     memberLiveStates,
-    memberTargetNodeById = {},
     channelItems = DEFAULT_TEAM_CHANNEL_ITEMS,
     selectedChannelId = "all",
     focusedAgentMemberId,
+    activeWorkspaceLens,
     tab,
     onSelectTeam,
     onBackToSelector,
@@ -248,6 +260,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     creatingChannel = false,
     deletingChannelId = null,
     onSelectKanban,
+    onSelectSearch = () => {},
     onSelectAgentTab,
     onOpenTeamMemberForge,
     onOpenTeamMemberCopyExisting,
@@ -268,6 +281,12 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     teams: true,
     agents: true,
   });
+  const [activeSubjectPane, setActiveSubjectPane] = React.useState<TeamSidebarSubjectPane>(() =>
+    resolveTeamSidebarSubjectPane(tab, activeWorkspaceLens)
+  );
+  React.useEffect(() => {
+    setActiveSubjectPane(resolveTeamSidebarSubjectPane(tab, activeWorkspaceLens));
+  }, [activeWorkspaceLens, tab]);
   React.useEffect(() => {
     setShowCreateChannelForm(false);
     setNewChannelId("");
@@ -305,6 +324,37 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     }));
   }, []);
   const canSubmitChannelCreate = newChannelId.trim().length > 0 && !creatingChannel;
+  const subjectPaneItems: ReadonlyArray<{
+    value: TeamSidebarSubjectPane;
+    label: string;
+    icon: string;
+    ariaLabel: string;
+  }> = [
+    {
+      value: "channels",
+      label: "Channels",
+      icon: "bi-chat-left-text",
+      ariaLabel: "Show channels",
+    },
+    {
+      value: "tasks",
+      label: "Tasks",
+      icon: "bi-kanban",
+      ariaLabel: "Show tasks",
+    },
+    {
+      value: "agents",
+      label: "Agents",
+      icon: "bi-people",
+      ariaLabel: "Show agents",
+    },
+    {
+      value: "search",
+      label: "Search",
+      icon: "bi-search",
+      ariaLabel: "Show search",
+    },
+  ];
   const resetCreateChannelForm = React.useCallback(() => {
     setShowCreateChannelForm(false);
     setNewChannelId("");
@@ -678,7 +728,40 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
 
       {selectedTeam && (
         <>
-          <div className="mt-4 flex flex-col gap-0.5">
+          <div className="mt-4 px-2">
+            <div className={TEAM_SUBJECT_SWITCHER_CLASS} role="tablist" aria-label="Team sidebar sections">
+              {subjectPaneItems.map((item) => {
+                const isSelected = activeSubjectPane === item.value;
+                return (
+                  <button
+                    key={item.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={isSelected}
+                    aria-label={item.ariaLabel}
+                    className={
+                      isSelected
+                        ? TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS
+                        : TEAM_SUBJECT_SWITCHER_IDLE_CLASS
+                    }
+                    onClick={() => {
+                      setActiveSubjectPane(item.value);
+                      if (item.value === "search") {
+                        onSelectSearch();
+                      }
+                    }}
+                  >
+                    <i className={`bi ${item.icon}`} aria-hidden="true" />
+                    <span className="hidden sm:inline">{item.label}</span>
+                    <span className="sm:hidden">{item.label.slice(0, 1)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {activeSubjectPane === "channels" && (
+          <div className="mt-3 flex flex-col gap-0.5">
             <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
               Channels
               {onCreateChannel ? (
@@ -789,8 +872,10 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               );
             })}
           </div>
+          )}
 
-          <div className="mt-4 flex flex-col gap-0.5">
+          {activeSubjectPane === "tasks" && (
+          <div className="mt-3 flex flex-col gap-0.5">
             <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
               Tasks
             </div>
@@ -812,22 +897,13 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               </span>
             </UnstyledButton>
           </div>
+          )}
 
-          <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
-            <button
-              type="button"
-              className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
-              onClick={() => toggleSection("agents")}
-              aria-expanded={sectionOpen.agents}
-              aria-label="Toggle agents section"
-            >
-              <span>Agents</span>
-              <i
-                className={sectionOpen.agents ? "bi bi-chevron-down" : "bi bi-chevron-right"}
-                aria-hidden="true"
-              />
-            </button>
-            {sectionOpen.agents && (
+          {activeSubjectPane === "agents" && (
+          <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-3`}>
+            <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
+              Agents
+            </div>
               <div className={`${TEAM_SIDEBAR_NAV_LIST_CLASS} ${TEAM_SIDEBAR_VIRTUAL_LIST_CLASS} px-1`}>
                 {memberLiveStates.length === 0 && (
                   <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No agents joined yet.</p>
@@ -839,9 +915,6 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                     focusedAgentMemberId === member.member_id && AGENT_FOCUS_TABS.has(tab);
                   const primaryLabel = resolveMemberPrimaryLabel(member);
                   const currentWorkLabel = resolveCurrentWorkLabel(member);
-                  const nodeSummary = resolveMemberNodeSummary(
-                    memberTargetNodeById[member.member_id]
-                  );
                   const memberStateLabel = formatMemberStateLabel(lifecycle, workStatus);
                   const showMemberStateLabel = shouldShowMemberStateLabel(memberStateLabel);
                   return (
@@ -855,6 +928,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       }
                       onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
                       title={primaryLabel}
+                      data-team-member-id={member.member_id}
                     >
                       <span className="flex w-full items-center justify-between gap-1.5">
                         <span className="min-w-0 flex items-center gap-1.5">
@@ -877,30 +951,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1">
-                          {nodeSummary && (
-                            <span
-                              className={
-                                nodeSummary.tone === "local"
-                                  ? "inline-flex max-w-[6.75rem] items-center rounded-full border border-emerald-200/80 bg-emerald-50 px-1 py-0.5 text-[9px] font-semibold text-emerald-700"
-                                  : "inline-flex max-w-[6.75rem] items-center rounded-full border border-sky-200/80 bg-sky-50 px-1 py-0.5 text-[9px] font-semibold text-sky-700"
-                              }
-                              title={
-                                nodeSummary.tone === "local"
-                                  ? `Local machine: ${nodeSummary.label}`
-                                  : `Remote machine: ${nodeSummary.label}`
-                              }
-                            >
-                              <span className="truncate">{`Machine ${nodeSummary.label}`}</span>
-                            </span>
-                          )}
                           {showMemberStateLabel && (
                             <span className="shrink-0 text-[9px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/80">
                               {memberStateLabel}
-                            </span>
-                          )}
-                          {(member.pending_inbox_count ?? 0) > 0 && (
-                            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-notion-text/[0.06] px-1 py-0.5 text-[9px] font-medium leading-none text-notion-text-muted">
-                              {member.pending_inbox_count}
                             </span>
                           )}
                         </span>
@@ -914,8 +967,33 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   );
                 })}
               </div>
-            )}
           </section>
+          )}
+
+          {activeSubjectPane === "search" && (
+          <div className="mt-3 flex flex-col gap-2 px-2">
+            <div className="text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
+              Search
+            </div>
+            <button
+              type="button"
+              className={
+                activeWorkspaceLens === "search"
+                  ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
+                  : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
+              }
+              onClick={onSelectSearch}
+            >
+              <i className="bi bi-search text-[14px]" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[12px] font-medium">Search workspace</span>
+                <span className="block truncate text-[10px] text-notion-text-muted">
+                  Find Team messages and workspace context.
+                </span>
+              </span>
+            </button>
+          </div>
+          )}
         </>
       )}
     </aside>

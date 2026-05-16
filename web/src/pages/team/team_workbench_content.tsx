@@ -164,6 +164,8 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   memberConsolePanelProps,
   debugPanel,
 }: TeamWorkbenchContentProps) {
+  const showWorkspaceHeader = activeWorkspaceLens !== "tasks" && tab !== "tasks";
+
   return (
     <div
       className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden pb-3 pr-1 lg:w-full lg:pr-0"
@@ -179,13 +181,15 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
             isAgentWorkspace ? "gap-2" : "gap-4"
           }`}
         >
-          <div
-            className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
-              isAgentWorkspace ? "py-0.5" : ""
-            }`}
-          >
-            <TeamWorkspaceHeader {...workspaceHeaderProps} />
-          </div>
+          {showWorkspaceHeader && (
+            <div
+              className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
+                isAgentWorkspace ? "py-0.5" : ""
+              }`}
+            >
+              <TeamWorkspaceHeader {...workspaceHeaderProps} />
+            </div>
+          )}
 
           {!selectedTeamHasConfiguredMembers && (
             <React.Suspense fallback={<TeamPanelLoadingFallback />}>
@@ -244,10 +248,16 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               )}
 
               {activeWorkspaceLens !== "search" && tab === "conversation" && (
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row">
+                <div
+                  className={
+                    threadPane
+                      ? "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.92fr)]"
+                      : "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden"
+                  }
+                >
                   <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{conversationPanel}</div>
                   {threadPane && (
-                    <div className="flex max-h-[40vh] min-h-0 shrink-0 flex-col lg:max-h-none lg:w-[380px] lg:flex-shrink-0">
+                    <div className="flex max-h-[40vh] min-h-0 shrink-0 flex-col lg:max-h-none lg:min-w-0 lg:flex-shrink">
                       {threadPane}
                     </div>
                   )}

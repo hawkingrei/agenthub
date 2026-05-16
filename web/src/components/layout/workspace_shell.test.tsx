@@ -37,12 +37,16 @@ describe("WorkspaceShell", () => {
 
   it("renders with custom sidebar labels when provided (e.g. for Teams)", () => {
     const html = renderHtml({ 
+      activeSurface: "teams",
       agentsCollapsed: false,
       sidebarToggleLabel: "Hide teams panel" 
     });
     expect(html).toContain("aria-label=\"Hide teams panel\"");
+    expect(html).toContain("inline-flex h-8 w-8 shrink-0");
+    expect(html).not.toContain("lg:hidden bg-notion-hover");
     
     const collapsedHtml = renderHtml({ 
+      activeSurface: "teams",
       agentsCollapsed: true,
       sidebarToggleLabel: "Show teams panel"
     });

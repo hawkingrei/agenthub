@@ -567,9 +567,6 @@ function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
   }
 }
 
-const TEAM_WORKFLOW_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
-  
-];
 const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
   "mailbox",
   "member_console",
@@ -669,7 +666,7 @@ const teamWorkbenchBadgeClassName =
 const teamWorkbenchDetailLayoutCollapsedClassName =
   "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)] bg-white";
 const teamWorkbenchDetailLayoutExpandedClassName =
-  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)] bg-white";
+  "teams-layout grid min-h-0 flex-1 gap-3 bg-white lg:grid-cols-[minmax(16rem,23.6fr)_minmax(0,76.4fr)]";
 const teamWorkbenchWorkspaceShellClassName = TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS;
 const teamWorkbenchSetupChecklistClassName =
   "overflow-hidden rounded-xl border border-notion-border bg-white shadow-md";
@@ -2674,7 +2671,6 @@ export function TeamPage(props: TeamPageProps) {
   );
   const {
     activeWorkspaceLens,
-    workspaceLensItems,
     isAgentWorkspace,
     selectedAgentLabel,
     selectedAgentSpecDraft,
@@ -2693,9 +2689,9 @@ export function TeamPage(props: TeamPageProps) {
     onOpenMailboxForMember,
     onSelectConversationSubject,
     onSelectKanbanSubject,
+    onSelectWorkspaceLens,
     onSelectAgentWorkspace,
     onSelectSidebarTeam,
-    onSelectWorkspaceLens,
     showRunContextLoading,
     showNoActiveRunNotice,
   } = useTeamWorkspaceViewModel({
@@ -3998,6 +3994,7 @@ export function TeamPage(props: TeamPageProps) {
     channelItems,
     selectedChannelId: routeChannelId,
     focusedAgentMemberId,
+    activeWorkspaceLens,
     tab,
     onSelectTeam: onSelectSidebarTeam,
     onBackToSelector: navigateToTeamSelector,
@@ -4007,6 +4004,7 @@ export function TeamPage(props: TeamPageProps) {
     creatingChannel: busy === "create-team-channel",
     deletingChannelId,
     onSelectKanban: onSelectKanbanSubject,
+    onSelectSearch: () => onSelectWorkspaceLens("search"),
     onSelectAgentTab: onSelectAgentWorkspace,
     onOpenTeamMemberForge: openTeamMemberForgeModal,
     onOpenTeamMemberCopyExisting: openCopyExistingAgentModal,
@@ -4059,8 +4057,6 @@ export function TeamPage(props: TeamPageProps) {
           workspaceDetailItems,
           workspaceNoticeText,
           workspaceNoticeDotClassName,
-          workflowTabItems: TEAM_WORKFLOW_TAB_ITEMS,
-          tab,
           busy,
           chrome: {
             mutedButtonClassName: teamWorkbenchMutedButtonClassName,
@@ -4200,8 +4196,6 @@ export function TeamPage(props: TeamPageProps) {
       normalizedError={normalizedTeamPageError}
       onClearError={() => setError(null)}
       onLogout={props.onLogout}
-      lensItems={workspaceLensItems}
-      onSelectLens={onSelectWorkspaceLens}
       onNavigate={navigateTeamRoute}
       warningNotice={
         warningNotice?.kind === "runtime" ? (

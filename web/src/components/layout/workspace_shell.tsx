@@ -73,6 +73,10 @@ export const WorkspaceShell = React.memo(function WorkspaceShell({
   modals,
 }: WorkspaceShellProps) {
   const defaultSidebarToggleLabel = agentsCollapsed ? "Show agents" : "Hide agents";
+  const sidebarToggleClassName =
+    activeSurface === "teams"
+      ? APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS.replace(" lg:hidden", "")
+      : APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS;
 
   return (
     <div 
@@ -91,7 +95,7 @@ export const WorkspaceShell = React.memo(function WorkspaceShell({
           username={username}
           isRoot={isRoot}
           headerShellClassName={APP_WORKBENCH_HEADER_CLASS}
-          headerIconButtonClassName={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${
+          headerIconButtonClassName={`${sidebarToggleClassName} ${
             agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"
           }`}
           menuButtonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}

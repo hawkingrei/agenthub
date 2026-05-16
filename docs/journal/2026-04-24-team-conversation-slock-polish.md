@@ -69,6 +69,48 @@ Browser note:
   but the unauthenticated local session redirected to the login page, so this
   checkpoint does not close the deployed Chrome MCP validation item.
 
+## 2026-05-16 Mobile Stream-First Checkpoint
+
+This follow-up keeps the mobile Team workspace focused on the message stream:
+
+- Team member ACP now passes `mobileTitle` into the shared ACP panel, so small
+  screens render a compact title plus `Thread` / `Plan` / `Inspect` tabs while
+  member status, node, activity, and technical context stay in the desktop
+  header layer.
+- the Team workspace runtime badge is hidden below the `sm` breakpoint, leaving
+  the mobile header for navigation and the conversation body instead of status
+  chrome.
+- the workspace header no longer renders the workflow tab bar; Teams, Channels,
+  Tasks, and Search stay owned by the left sidebar while the header keeps the
+  title and configuration/menu controls on one compact row.
+- the shared workspace description is no longer rendered as a second header
+  line, so the same stream-first header density applies on desktop and mobile.
+- Tasks now render as a separate workspace surface instead of inheriting the
+  chat/channel header, matching the Slock-style split between conversation
+  lanes and task management.
+- the Team sidebar now uses a three-way Channels / Tasks / Agents switcher so
+  each subject rail is shown independently instead of stacking all three
+  sections at once.
+- the global workspace shell no longer receives Team lens items, removing the
+  remaining top-level Teams / Channels / Tasks / Search bar from Team pages.
+- the Team workspace keeps its sidebar collapse toggle visible on desktop as
+  well as mobile, while regular workspace pages keep the mobile-only toggle.
+- agent rows in the Team sidebar no longer show machine labels or pending
+  inbox counts; those runtime diagnostics are too stale-prone for primary
+  navigation chrome.
+- the Team workspace applies golden-ratio-derived sizing with a narrower
+  navigation rail (`23.6 / 76.4`); channel chat stays single-column and
+  full-width until a thread is opened, then switches to a near-even
+  conversation/thread split (`1 / 0.92`) so the message stream remains dominant
+  without making the right-side thread column feel secondary.
+
+Production browser note:
+
+- `agenthub.hawkingrei.com` was opened at a mobile viewport with the Team member
+  thread URL, but the available browser session was unauthenticated and
+  redirected to Login. A logged-in production pass is still needed before
+  closing the deployed validation TODO.
+
 ## Chrome DevTools MCP Baseline Notes
 
 Chrome DevTools MCP was used against logged-in `app.slock.ai` surfaces during this pass to keep the target interaction language honest.
@@ -101,6 +143,27 @@ Additional validation for the 2026-05-16 composer checkpoint:
 ```bash
 cd web && npm exec vitest run src/pages/team/team_message_composer.test.tsx src/pages/team/team_thread_pane.test.tsx
 cd web && npm exec vitest run src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx
+cd web && npm exec tsc -- --noEmit
+cd web && npm run lint
+cd web && npm run build
+```
+
+Additional validation for the 2026-05-16 mobile stream-first checkpoint:
+
+```bash
+cd web && npm exec vitest run src/pages/team/team_workspace_header.test.tsx src/pages/team_panels.test.tsx
+cd web && npm exec tsc -- --noEmit
+cd web && npm run lint
+cd web && npm run build
+```
+
+Additional validation for the 2026-05-16 compact header follow-up:
+
+```bash
+cd web && npm exec vitest run src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
+cd web && npm exec vitest run src/pages/team_panels.test.tsx src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
+cd web && npm exec vitest run src/pages/team_page.smoke.test.tsx src/pages/team_panels.test.tsx src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
+cd web && npm exec vitest run src/components/layout/workspace_shell.test.tsx src/pages/team_page.smoke.test.tsx src/pages/team_panels.test.tsx src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
 cd web && npm exec tsc -- --noEmit
 cd web && npm run lint
 cd web && npm run build
