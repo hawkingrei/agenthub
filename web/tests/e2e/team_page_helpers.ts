@@ -324,18 +324,7 @@ export async function selectAgentFromSidebar(
   agentLabel: string
 ): Promise<void> {
   const sidebar = page.locator(".teams-sidebar");
-  const subjectsScopeButton = sidebar
-    .getByLabel("Team sidebar scope switch")
-    .getByText("Channels & Agents", { exact: true })
-    .first();
-  if (await subjectsScopeButton.isVisible()) {
-    await subjectsScopeButton.click();
-  }
-
-  const agentsToggle = sidebar.getByRole("button", { name: "Toggle agents section" });
-  if ((await agentsToggle.getAttribute("aria-expanded")) !== "true") {
-    await agentsToggle.click();
-  }
+  await revealTeamSidebarSubject(page, "agents");
 
   const agentItem = sidebar
     .locator("button", { hasText: agentLabel })
@@ -472,10 +461,11 @@ export async function selectPrimaryTeamEntryFromSidebar(
 
 async function revealTeamSidebarSubject(
   page: import("@playwright/test").Page,
-  subject: "channels" | "tasks"
+  subject: "channels" | "tasks" | "agents"
 ): Promise<void> {
   const sidebar = page.locator(".teams-sidebar");
-  const subjectButtonName = subject === "channels" ? "Show channels" : "Show tasks";
+  const subjectButtonName =
+    subject === "channels" ? "Show channels" : subject === "tasks" ? "Show tasks" : "Show agents";
   const subjectButton = sidebar.getByRole("button", { name: subjectButtonName }).first();
   if (await subjectButton.isVisible().catch(() => false)) {
     await subjectButton.click();
@@ -486,6 +476,8 @@ async function revealTeamSidebarSubject(
     const nextUrl = new URL(window.location.href);
     if (nextLens === "channels") {
       nextUrl.searchParams.delete("lens");
+    } else if (nextLens === "agents") {
+      nextUrl.searchParams.set("lens", "members");
     } else {
       nextUrl.searchParams.set("lens", nextLens);
     }
