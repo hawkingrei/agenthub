@@ -51,11 +51,18 @@ fn should_force_fresh_session_after_resume_failures(failure_count: i64) -> bool 
 
 pub(super) fn effective_acp_default_mode<'a>(
     provider: AcpProviderSpec,
+    agent_mode: Option<&'a str>,
     configured_mode: Option<&'a str>,
     has_actor_context: bool,
 ) -> Option<&'a str> {
     if provider.id == ACP_PROVIDER_CODEX && has_actor_context {
+        if let Some(agent_mode) = agent_mode {
+            return Some(agent_mode);
+        }
         return Some(TEAM_CODEX_ACP_DEFAULT_MODE);
+    }
+    if provider.id == ACP_PROVIDER_CODEX && agent_mode.is_some() {
+        return agent_mode;
     }
     configured_mode
 }
@@ -802,6 +809,7 @@ impl AgentManager {
             }
             let default_mode = effective_acp_default_mode(
                 provider,
+                agent.codex_acp_default_mode.as_deref(),
                 self.acp_default_mode.as_deref(),
                 actor_context.is_some(),
             );

@@ -493,6 +493,13 @@ pub fn normalize_codex_acp_mode_id(mode_id: &str) -> String {
     }
 }
 
+pub fn normalize_optional_codex_acp_mode_id(mode_id: Option<&str>) -> Option<String> {
+    mode_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_codex_acp_mode_id)
+}
+
 fn detect_env_overrides() -> Vec<String> {
     let keys = [
         "AGENTHUB_LISTEN",
@@ -746,6 +753,23 @@ mod tests {
                 "alias {alias} should map to Codex full access mode"
             );
         }
+    }
+
+    #[test]
+    fn normalize_optional_codex_acp_mode_id_ignores_blank_and_accepts_aliases() {
+        assert_eq!(super::normalize_optional_codex_acp_mode_id(None), None);
+        assert_eq!(
+            super::normalize_optional_codex_acp_mode_id(Some("  ")),
+            None
+        );
+        assert_eq!(
+            super::normalize_optional_codex_acp_mode_id(Some(" yolo ")).as_deref(),
+            Some("full-access")
+        );
+        assert_eq!(
+            super::normalize_optional_codex_acp_mode_id(Some(" auto ")).as_deref(),
+            Some("auto")
+        );
     }
 
     #[test]

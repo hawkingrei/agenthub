@@ -103,6 +103,7 @@ describe("Team management modals", () => {
             agent_loop_enabled: true,
             agent_loop_idle_seconds: "900",
             agent_loop_prompt: "Resume by checking inbox.",
+            codex_acp_default_mode: "full-access",
           }}
           onPatchDraft={vi.fn()}
           onClose={vi.fn()}
@@ -116,6 +117,9 @@ describe("Team management modals", () => {
     expect(html).toContain("gpt-5.4");
     expect(html).toContain("Description");
     expect(html).toContain("What should this agent help with?");
+    expect(html).toContain("Codex permissions");
+    expect(html).toContain("Yolo / full access");
+    expect(html).toContain("Restart the agent for changes to apply.");
     expect(html).toContain("Save Profile");
     expect(html).toContain("Role-bound Team skills come from the system-managed skill path");
   });
@@ -136,6 +140,7 @@ describe("Team management modals", () => {
             agent_loop_enabled: false,
             agent_loop_idle_seconds: "",
             agent_loop_prompt: "",
+            codex_acp_default_mode: "full-access",
           }}
           roleProfile={{
             profileLabel: "Coordinator Profile",
@@ -214,6 +219,7 @@ describe("Team management modals", () => {
             agent_loop_enabled: false,
             agent_loop_idle_seconds: "",
             agent_loop_prompt: "",
+            codex_acp_default_mode: "full-access",
           }}
           roleProfile={{
             profileLabel: "Worker Profile",

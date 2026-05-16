@@ -1,4 +1,5 @@
 import type { AgentRecord, TeamPromptDefaultsRecord } from "../../api";
+import { normalizeCodexAcpModeId } from "../../codex_acp_modes";
 import {
   DEFAULT_TEAM_COORDINATOR_SKILLS,
   DEFAULT_TEAM_WORKER_SKILLS,
@@ -29,6 +30,7 @@ export type TeamMemberProfileDraft = {
   agent_loop_enabled: boolean;
   agent_loop_idle_seconds: string;
   agent_loop_prompt: string;
+  codex_acp_default_mode: string;
 };
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -231,6 +233,11 @@ function readRuntimeLoopPrompt(member: Record<string, unknown>): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readRuntimeCodexAcpDefaultMode(member: Record<string, unknown>): string {
+  const value = readRuntimeRecord(member)?.codex_acp_default_mode;
+  return normalizeCodexAcpModeId(typeof value === "string" ? value : null);
+}
+
 export function buildTeamMemberDraftFromSpec(
   spec: unknown,
   memberId: string,
@@ -274,6 +281,9 @@ export function buildTeamMemberDraftFromSpec(
         ? normalizeAgentLoopIdleSeconds(agent.agent_loop_idle_seconds)
         : readRuntimeLoopIdleSeconds(member),
     agent_loop_prompt: agent?.agent_loop_prompt?.trim() || readRuntimeLoopPrompt(member),
+    codex_acp_default_mode: normalizeCodexAcpModeId(
+      agent?.codex_acp_default_mode ?? readRuntimeCodexAcpDefaultMode(member)
+    ),
   };
 }
 
@@ -323,6 +333,7 @@ export function updateTeamMemberProfileInSpec(
       agent_loop_enabled: draft.agent_loop_enabled || undefined,
       agent_loop_idle_seconds: normalizedLoopIdleSeconds,
       agent_loop_prompt: draft.agent_loop_prompt.trim() || undefined,
+      codex_acp_default_mode: normalizeCodexAcpModeId(draft.codex_acp_default_mode),
     },
   };
   nextSpec.members = existingMembers;
@@ -341,6 +352,7 @@ function buildMemberRuntimeHint(agent: AgentRecord | undefined): Record<string, 
     worktree_repo: agent.worktree_repo ?? null,
     worktree_ref: agent.worktree_ref ?? null,
     code_mode: agent.code_mode,
+    codex_acp_default_mode: normalizeCodexAcpModeId(agent.codex_acp_default_mode),
     agent_loop_enabled: agent.agent_loop_enabled ?? false,
     agent_loop_idle_seconds: agent.agent_loop_idle_seconds ?? null,
     agent_loop_prompt: agent.agent_loop_prompt ?? null,

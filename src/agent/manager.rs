@@ -55,7 +55,7 @@ use crate::internal::p2p::{
 };
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::push::PushService;
-use agenthub_config::normalize_codex_acp_mode_id;
+use agenthub_config::{normalize_codex_acp_mode_id, normalize_optional_codex_acp_mode_id};
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 #[derive(Clone)]
@@ -884,6 +884,7 @@ impl AgentManager {
             worktree_repo: agent.worktree_repo.clone(),
             worktree_ref: agent.worktree_ref.clone(),
             code_mode: agent.code_mode,
+            codex_acp_default_mode: agent.codex_acp_default_mode.clone(),
             agent_loop_enabled: agent.agent_loop_enabled,
             agent_loop_idle_seconds: agent.agent_loop_idle_seconds,
             agent_loop_prompt: agent.agent_loop_prompt.clone(),
@@ -1120,6 +1121,9 @@ impl AgentManager {
             worktree_repo,
             worktree_ref: config.worktree_ref,
             code_mode: config.code_mode,
+            codex_acp_default_mode: normalize_optional_codex_acp_mode_id(
+                config.codex_acp_default_mode.as_deref(),
+            ),
             agent_loop_enabled: config.agent_loop_enabled,
             agent_loop_idle_seconds: config.agent_loop_idle_seconds,
             agent_loop_prompt: config.agent_loop_prompt.and_then(|value| {

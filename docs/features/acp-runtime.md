@@ -175,6 +175,13 @@ ACP permission requests are first-class runtime records:
   permission-review round trips for ordinary repository operations. Permission deny/timeout
   semantics still matter for explicit provider permission requests and must not be implemented as
   turn abort/cancel.
+- Codex ACP startup permission mode is an agent configuration, not a live-session control. The
+  canonical persisted field is `agents.codex_acp_default_mode`; `full-access` is the default and
+  `yolo` is accepted as an alias. Updating this setting must not mutate the active ACP provider
+  session; the selected mode applies only after the agent is restarted.
+- Team-managed Codex members inherit `full-access` unless their persisted
+  `codex_acp_default_mode` overrides it. The web UI may label the default as
+  `Yolo / full access`, but stored/runtime values must stay canonicalized to `full-access`.
 - Codex ACP live-turn diagnostics should track enough native app-server state to explain a stuck or
   panicking turn without changing the provider-neutral ACP surface:
   - active Codex thread id, turn id, and AgentHub submission id
@@ -225,6 +232,11 @@ ACP permission requests are first-class runtime records:
     the prompt
   - stale-prompt diagnostics stay suppressed while a permission is pending and activate only after
     pending permissions have resolved
+- Focused `agenthub` API/web tests:
+  - create-agent and update-config routes canonicalize `yolo` to `full-access`
+  - updating `codex_acp_default_mode` changes persisted agent configuration without restarting or
+    controlling the active provider session
+  - web create/edit controls send the startup mode and label it as restart-required configuration
 
 ## Operational Notes
 

@@ -13,8 +13,13 @@ import {
   DEFAULT_AGENT_PRESET_ID,
   formatAgentModelLabel,
   getAgentPreset,
+  resolveAcpProvider,
   type AgentPresetId,
 } from "../../agent_presets";
+import {
+  DEFAULT_CODEX_ACP_MODE,
+  normalizeCodexAcpModeId,
+} from "../../codex_acp_modes";
 import { normalizeWorkdirInput } from "../../worktree_defaults";
 import {
   appendTeamMemberToSpec,
@@ -67,6 +72,7 @@ type UseTeamManagementActionsOptions = {
   forgeAgentName: string;
   forgeAgentWorkdir: string;
   forgeAgentPresetId: AgentPresetId;
+  forgeAgentCodexAcpDefaultMode: string;
   forgeAgentWorktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
   forgeAgentWorktreeRepo: string;
   forgeAgentWorktreeRef: string;
@@ -99,6 +105,7 @@ type UseTeamManagementActionsOptions = {
   setForgeAgentName: (next: string) => void;
   setForgeAgentWorkdir: (next: string | ((prev: string) => string)) => void;
   setForgeAgentPresetId: (next: AgentPresetId) => void;
+  setForgeAgentCodexAcpDefaultMode: (next: string) => void;
   setForgeAgentWorktreeMode: (next: "use_existing" | "create_worktree" | "reuse_worktree") => void;
   setForgeAgentWorktreeRepo: (next: string) => void;
   setForgeAgentWorktreeRef: (next: string) => void;
@@ -138,6 +145,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     forgeAgentName,
     forgeAgentWorkdir,
     forgeAgentPresetId,
+    forgeAgentCodexAcpDefaultMode,
     forgeAgentWorktreeMode,
     forgeAgentWorktreeRepo,
     forgeAgentWorktreeRef,
@@ -170,6 +178,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setForgeAgentName,
     setForgeAgentWorkdir,
     setForgeAgentPresetId,
+    setForgeAgentCodexAcpDefaultMode,
     setForgeAgentWorktreeMode,
     setForgeAgentWorktreeRepo,
     setForgeAgentWorktreeRef,
@@ -300,6 +309,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setForgeAgentWorktreeRepo(defaults.worktreeRepo);
     setForgeAgentWorktreeRef(defaults.worktreeRef);
     setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+    setForgeAgentCodexAcpDefaultMode(DEFAULT_CODEX_ACP_MODE);
     setForgeAgentCodeMode(true);
     setForgeAgentWorktreeError(null);
     setForgeAgentWorkdir(defaults.agentWorkdir);
@@ -316,6 +326,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setForgeAgentCodeMode,
     setForgeAgentName,
     setForgeAgentPresetId,
+    setForgeAgentCodexAcpDefaultMode,
     setForgeAgentWorkdir,
     setForgeAgentWorktreeError,
     setForgeAgentWorktreeMode,
@@ -436,6 +447,10 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     let createdAgentId: string | null = null;
     try {
       const preset = getAgentPreset(forgeAgentPresetId);
+      const codexAcpDefaultMode =
+        preset.provider === "codex"
+          ? normalizeCodexAcpModeId(forgeAgentCodexAcpDefaultMode)
+          : null;
       const created = await api.createAgent(token, {
         name,
         workdir: workdirPayload,
@@ -446,6 +461,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         worktree_repo: effectiveWorktreeRepo || null,
         worktree_ref: effectiveWorktreeRef || null,
         code_mode: forgeAgentCodeMode,
+        codex_acp_default_mode: codexAcpDefaultMode,
       });
       createdAgentId = created.id;
       const nextSpec = appendTeamMemberToSpec(
@@ -495,6 +511,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     forgeAgentName,
     forgeAgentWorkdir,
     forgeAgentPresetId,
+    forgeAgentCodexAcpDefaultMode,
     forgeAgentCodeMode,
     setError,
     setForgeAgentBusy,
@@ -541,11 +558,19 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       agent_loop_enabled: false,
       agent_loop_idle_seconds: "",
       agent_loop_prompt: "",
+      codex_acp_default_mode:
+        resolveAcpProvider(sourceAgent.command) === "codex"
+          ? normalizeCodexAcpModeId(sourceAgent.codex_acp_default_mode)
+          : DEFAULT_CODEX_ACP_MODE,
     };
 
     const copiedWorktreeMode = role === "coordinator" ? "use_existing" : sourceAgent.worktree_mode;
     const copiedWorktreeRepo = role === "coordinator" ? null : sourceAgent.worktree_repo ?? null;
     const copiedWorktreeRef = role === "coordinator" ? null : sourceAgent.worktree_ref ?? null;
+    const copiedCodexAcpDefaultMode =
+      resolveAcpProvider(sourceAgent.command) === "codex"
+        ? normalizeCodexAcpModeId(sourceAgent.codex_acp_default_mode)
+        : null;
 
     setBusy("copy-team-agent");
     setError(null);
@@ -563,6 +588,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         worktree_repo: copiedWorktreeRepo,
         worktree_ref: copiedWorktreeRef,
         code_mode: sourceAgent.code_mode,
+        codex_acp_default_mode: copiedCodexAcpDefaultMode,
       });
       createdAgentId = created.id;
       const updated = await api.updateTeamSpec(token, selectedTeam.id, {
@@ -679,6 +705,45 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       } catch (loopErr) {
         setWarning(`Agent loop settings were not applied: ${parseErrorMessage(loopErr)}`);
       }
+      if (
+        selectedAgentWorkspaceAgent &&
+        resolveAcpProvider(selectedAgentWorkspaceAgent.command) === "codex"
+      ) {
+        const codexMode = normalizeCodexAcpModeId(
+          teamMemberEditDraft.codex_acp_default_mode
+        );
+        try {
+          await api.setAgentCodexAcpDefaultMode(
+            token,
+            teamMemberEditDraft.member_id,
+            codexMode
+          );
+          setAgents((prev) =>
+            prev.map((agent) =>
+              agent.id === teamMemberEditDraft.member_id
+                ? { ...agent, codex_acp_default_mode: codexMode }
+                : agent
+            )
+          );
+          setTeamMemberAgentsById((prev) => ({
+            ...prev,
+            [teamMemberEditDraft.member_id]: (() => {
+              const existingAgent = prev[teamMemberEditDraft.member_id];
+              if (!existingAgent) {
+                return existingAgent;
+              }
+              return {
+                ...existingAgent,
+                codex_acp_default_mode: codexMode,
+              } satisfies AgentRecord;
+            })(),
+          }));
+        } catch (codexModeErr) {
+          setWarning(
+            `Codex permission settings were not applied: ${parseErrorMessage(codexModeErr)}`
+          );
+        }
+      }
       setTeams((prev) =>
         [...prev.filter((team) => team.id !== updated.id), updated].sort((left, right) =>
           left.name.localeCompare(right.name)
@@ -695,6 +760,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     }
   }, [
     selectedTeam,
+    selectedAgentWorkspaceAgent,
     teamMemberEditDraft,
     setBusy,
     setError,

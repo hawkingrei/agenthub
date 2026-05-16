@@ -11,6 +11,7 @@ use super::{
     spawn_agent_loop_controller, worktree_mode_to_str,
 };
 use crate::agent::{AgentRecord, WorktreeMode};
+use agenthub_config::normalize_optional_codex_acp_mode_id;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentSessionExitMarkSummary {
@@ -340,6 +341,29 @@ impl AgentManager {
             "#,
         )
         .bind(if code_mode { 1 } else { 0 })
+        .bind(now)
+        .bind(agent_id)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id, mode_id = ?mode_id), err)]
+    pub async fn set_codex_acp_default_mode(
+        &self,
+        agent_id: &str,
+        mode_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let normalized_mode_id = normalize_optional_codex_acp_mode_id(mode_id);
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE agents
+            SET codex_acp_default_mode = ?1, updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(normalized_mode_id.as_deref())
         .bind(now)
         .bind(agent_id)
         .execute(&self.db)

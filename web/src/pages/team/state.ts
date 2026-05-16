@@ -1,5 +1,6 @@
 import { DEFAULT_AGENT_PRESET_ID, type AgentPresetId } from "../../agent_presets";
 import type { TeamActorMessageRecord } from "../../api";
+import { DEFAULT_CODEX_ACP_MODE } from "../../codex_acp_modes";
 import type { MailboxTemplateKey } from "./mailbox_helpers";
 import { createInitialTeamDraftState, type TeamCreateDraftState } from "./member_helpers";
 import type { TeamRunStatusFilter } from "./run_helpers";
@@ -117,6 +118,7 @@ export type TeamCreateState = TeamCreateDraftState & {
   forgeAgentName: string;
   forgeAgentWorkdir: string;
   forgeAgentPresetId: AgentPresetId;
+  forgeAgentCodexAcpDefaultMode: string;
   forgeAgentWorktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
   forgeAgentWorktreeRepo: string;
   forgeAgentWorktreeRef: string;
@@ -302,6 +304,7 @@ export function createInitialTeamCreateState(): TeamCreateState {
     forgeAgentName: "",
     forgeAgentWorkdir: "",
     forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
+    forgeAgentCodexAcpDefaultMode: DEFAULT_CODEX_ACP_MODE,
     forgeAgentWorktreeMode: "use_existing",
     forgeAgentWorktreeRepo: "",
     forgeAgentWorktreeRef: "",

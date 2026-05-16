@@ -919,6 +919,7 @@ export function TeamPage(props: TeamPageProps) {
   const forgeAgentName = teamCreateState.forgeAgentName;
   const forgeAgentWorkdir = teamCreateState.forgeAgentWorkdir;
   const forgeAgentPresetId = teamCreateState.forgeAgentPresetId;
+  const forgeAgentCodexAcpDefaultMode = teamCreateState.forgeAgentCodexAcpDefaultMode;
   const forgeAgentWorktreeMode = teamCreateState.forgeAgentWorktreeMode;
   const forgeAgentWorktreeRepo = teamCreateState.forgeAgentWorktreeRepo;
   const forgeAgentWorktreeRef = teamCreateState.forgeAgentWorktreeRef;
@@ -977,6 +978,10 @@ export function TeamPage(props: TeamPageProps) {
       patchTeamMemberDraft({ model: next });
     },
     [patchTeamCreate, patchTeamMemberDraft]
+  );
+  const setForgeAgentCodexAcpDefaultMode = useCallback(
+    (next: string) => patchTeamCreate({ forgeAgentCodexAcpDefaultMode: next }),
+    [patchTeamCreate]
   );
   const setForgeAgentWorktreeMode = useCallback(
     (next: "use_existing" | "create_worktree" | "reuse_worktree") =>
@@ -1748,6 +1753,7 @@ export function TeamPage(props: TeamPageProps) {
       forgeAgentName: initial.forgeAgentName,
       forgeAgentWorkdir: initial.forgeAgentWorkdir,
       forgeAgentPresetId: initial.forgeAgentPresetId,
+      forgeAgentCodexAcpDefaultMode: initial.forgeAgentCodexAcpDefaultMode,
       forgeAgentWorktreeMode: initial.forgeAgentWorktreeMode,
       forgeAgentWorktreeRepo: initial.forgeAgentWorktreeRepo,
       forgeAgentWorktreeRef: initial.forgeAgentWorktreeRef,
@@ -2916,6 +2922,7 @@ export function TeamPage(props: TeamPageProps) {
     forgeAgentName,
     forgeAgentWorkdir,
     forgeAgentPresetId,
+    forgeAgentCodexAcpDefaultMode,
     forgeAgentWorktreeMode,
     forgeAgentWorktreeRepo,
     forgeAgentWorktreeRef,
@@ -2948,6 +2955,7 @@ export function TeamPage(props: TeamPageProps) {
     setForgeAgentName,
     setForgeAgentWorkdir,
     setForgeAgentPresetId,
+    setForgeAgentCodexAcpDefaultMode,
     setForgeAgentWorktreeMode,
     setForgeAgentWorktreeRepo,
     setForgeAgentWorktreeRef,
@@ -3925,6 +3933,8 @@ export function TeamPage(props: TeamPageProps) {
       setAgentWorkdir: setForgeAgentWorkdir,
       agentPresetId: forgeAgentPresetId,
       setAgentPresetId: setForgeAgentPresetId,
+      codexAcpDefaultMode: forgeAgentCodexAcpDefaultMode,
+      setCodexAcpDefaultMode: setForgeAgentCodexAcpDefaultMode,
       worktreeMode: forgeAgentWorktreeMode,
       setWorktreeMode: handleForgeWorktreeModeChange,
       worktreeRepo: forgeAgentWorktreeRepo,
@@ -3945,6 +3955,7 @@ export function TeamPage(props: TeamPageProps) {
       forgeAgentCodeMode,
       forgeAgentName,
       forgeAgentPresetId,
+      forgeAgentCodexAcpDefaultMode,
       forgeAgentWorkdir,
       forgeAgentWorktreeError,
       forgeAgentWorktreeMode,
@@ -3956,6 +3967,7 @@ export function TeamPage(props: TeamPageProps) {
       setForgeAgentCodeMode,
       setForgeAgentName,
       setForgeAgentPresetId,
+      setForgeAgentCodexAcpDefaultMode,
       setForgeAgentWorkdir,
       setForgeAgentWorktreeRef,
       setForgeAgentWorktreeRepo,

@@ -320,15 +320,23 @@ fn team_codex_acp_default_mode_uses_full_access() {
             .expect("resolve gemini acp provider");
 
     assert_eq!(
-        effective_acp_default_mode(codex, Some("auto"), true),
+        effective_acp_default_mode(codex, None, Some("auto"), true),
         Some("full-access")
     );
     assert_eq!(
-        effective_acp_default_mode(codex, Some("auto"), false),
+        effective_acp_default_mode(codex, Some("read-only"), Some("auto"), true),
+        Some("read-only")
+    );
+    assert_eq!(
+        effective_acp_default_mode(codex, Some("read-only"), Some("auto"), false),
+        Some("read-only")
+    );
+    assert_eq!(
+        effective_acp_default_mode(codex, None, Some("auto"), false),
         Some("auto")
     );
     assert_eq!(
-        effective_acp_default_mode(gemini, Some("auto"), true),
+        effective_acp_default_mode(gemini, None, Some("auto"), true),
         Some("auto")
     );
 }
@@ -435,6 +443,7 @@ fn build_agent_record_for_policy(
         worktree_repo: worktree_repo.map(str::to_string),
         worktree_ref: None,
         code_mode: true,
+        codex_acp_default_mode: None,
         agent_loop_enabled: false,
         agent_loop_idle_seconds: None,
         agent_loop_prompt: None,

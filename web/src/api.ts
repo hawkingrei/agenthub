@@ -27,6 +27,7 @@ export type AgentConfig = {
   worktree_repo?: string | null;
   worktree_ref?: string | null;
   code_mode: boolean;
+  codex_acp_default_mode?: string | null;
   agent_loop_enabled?: boolean;
   agent_loop_idle_seconds?: number | null;
   agent_loop_prompt?: string | null;
@@ -43,6 +44,7 @@ export type AgentRecord = {
   worktree_repo?: string | null;
   worktree_ref?: string | null;
   code_mode: boolean;
+  codex_acp_default_mode?: string | null;
   agent_loop_enabled?: boolean;
   agent_loop_idle_seconds?: number | null;
   agent_loop_prompt?: string | null;
@@ -74,6 +76,7 @@ export type AgentDiscoveryIdentityRecord = {
 export type AgentDiscoveryRuntimeRecord = {
   acp_provider?: string | null;
   code_mode: boolean;
+  codex_acp_default_mode?: string | null;
   agent_loop_enabled?: boolean;
   agent_loop_idle_seconds?: number | null;
   target_node_id?: string | null;
@@ -1256,6 +1259,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ code_mode }),
     }),
+  setAgentCodexAcpDefaultMode: (
+    token: string,
+    id: string,
+    mode_id: string | null
+  ) =>
+    apiFetch<{ status: string }>(
+      `/api/agents/${encodePathSegment(id)}/codex_acp_default_mode`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify({ mode_id }),
+      }
+    ),
   setAgentLoop: (
     token: string,
     id: string,
