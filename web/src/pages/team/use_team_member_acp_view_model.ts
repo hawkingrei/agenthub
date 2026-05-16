@@ -523,7 +523,7 @@ export function useTeamMemberAcpViewModel({
     () => ({
       acpView,
       subtitle: panelSubtitle,
-      mobileTitle: null,
+      mobileTitle: memberTitle,
       acpTab: effectiveAcpTab,
       developerMode,
       conversationLoading:
@@ -621,6 +621,7 @@ export function useTeamMemberAcpViewModel({
       panelSubtitle,
       conversationBottomClearance,
       hasVisibleInputDock,
+      memberTitle,
       memberEventsLoading,
       terminalOutputs,
       terminalShowJump,

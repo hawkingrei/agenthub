@@ -111,6 +111,8 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).toContain("Shared channel");
     expect(html).toContain("team running");
     expect(html).toContain("3/3");
+    expect(html).toContain("hidden items-center gap-1.5 rounded-md");
+    expect(html).toContain("sm:inline-flex");
     expect(html).toContain("aria-label=\"More\"");
     expect(html).toContain("team=abc");
     expect(html).toContain("max-w-[64ch]");

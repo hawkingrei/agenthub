@@ -5383,6 +5383,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Thread");
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).toContain("Inspect");
+    expect(container.innerHTML).toContain("sm:hidden");
+    expect(container.innerHTML).toContain("hidden sm:flex");
     expect(container.textContent).toContain("Please investigate this issue.");
     expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
     expect(onLoadOlder).toHaveBeenCalledTimes(0);
@@ -5422,6 +5424,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("worker");
     expect(container.textContent).toContain("Active thread has no events yet");
     expect(container.textContent).toContain("Details");
+    expect(container.innerHTML).toContain("sm:hidden");
+    expect(container.innerHTML).toContain("hidden sm:flex");
     expect(container.innerHTML).toContain("/workspace/nodes/node-east");
     expectClassTokens(
       required(container.querySelector(".agent-status")?.parentElement ?? null, "member header context missing"),
@@ -5470,7 +5474,10 @@ describe("team panels interactions", () => {
       />
     );
 
-    expect(container.textContent).not.toContain("Worker agent");
+    expect(container.querySelector("h2")).toBeNull();
+    expect(container.textContent).toContain("Worker agent");
+    expect(container.innerHTML).toContain("sm:hidden");
+    expect(container.innerHTML).toContain("hidden sm:flex");
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
     expect(container.textContent).toContain("Active thread has no events yet");

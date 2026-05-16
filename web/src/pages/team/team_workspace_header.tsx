@@ -298,7 +298,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               withArrow
             >
               <div
-                className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-notion-text-muted ${TEAM_SOFT_CHROME_SHADOW_CLASS}`}
+                className={`hidden items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-notion-text-muted sm:inline-flex ${TEAM_SOFT_CHROME_SHADOW_CLASS}`}
               >
                 <span className={`inline-flex h-1.5 w-1.5 rounded-full ${runtimeDotClassName}`} aria-hidden="true" />
                 <span>{selectedTeamRuntimeStatusLabel}</span>
