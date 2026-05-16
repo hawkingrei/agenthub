@@ -927,16 +927,6 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                               {memberStateLabel}
                             </span>
                           )}
-                          {(member.pending_inbox_count ?? 0) > 0 && (
-                            <span
-                              className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-notion-text/[0.06] px-1.5 py-0.5 text-[9px] font-medium leading-none text-notion-text-muted"
-                              title={`${member.pending_inbox_count} pending inbox item${
-                                member.pending_inbox_count === 1 ? "" : "s"
-                              }`}
-                            >
-                              {`Inbox ${member.pending_inbox_count}`}
-                            </span>
-                          )}
                         </span>
                       </span>
                       {currentWorkLabel && (

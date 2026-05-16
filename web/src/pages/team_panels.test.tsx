@@ -626,7 +626,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("collecting evidence");
     expect(container.textContent).not.toContain("Machine main");
     expect(container.textContent).not.toContain("Machine node-east");
-    expect(container.textContent).toContain("Inbox 3");
+    expect(container.textContent).not.toContain("Inbox 3");
     expect(container.textContent).toContain("Working");
     expect(container.textContent).not.toContain("id coordinator-agent");
     expect(container.textContent).not.toContain("id worker-agent");

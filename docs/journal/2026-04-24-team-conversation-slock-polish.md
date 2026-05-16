@@ -95,8 +95,9 @@ This follow-up keeps the mobile Team workspace focused on the message stream:
   remaining top-level Teams / Channels / Tasks / Search bar from Team pages.
 - the Team workspace keeps its sidebar collapse toggle visible on desktop as
   well as mobile, while regular workspace pages keep the mobile-only toggle.
-- agent rows in the Team sidebar no longer show machine labels; pending inbox
-  counts are rendered as `Inbox N` instead of a bare number next to the state.
+- agent rows in the Team sidebar no longer show machine labels or pending
+  inbox counts; those runtime diagnostics are too stale-prone for primary
+  navigation chrome.
 
 Production browser note:
 
