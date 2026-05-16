@@ -74,7 +74,14 @@ export function TeamMessageComposer({
   onCompositionStart,
   onCompositionEnd,
 }: TeamMessageComposerProps) {
+  const reactId = React.useId();
   const hasMentionOptions = mentionOptions.length > 0 && onSelectMention != null;
+  const listboxId = `${id ?? reactId}-mention-listbox`;
+  const activeMentionOption = mentionOptions[activeMentionIndex] ?? mentionOptions[0];
+  const activeMentionOptionId =
+    hasMentionOptions && activeMentionOption
+      ? `${listboxId}-option-${activeMentionOption.actorId}`
+      : undefined;
   return (
     <div className={cx(TEAM_MESSAGE_COMPOSER_SHELL_CLASS, className)}>
       {contextText ? (
@@ -89,6 +96,10 @@ export function TeamMessageComposer({
           rows={rows}
           placeholder={placeholder}
           value={draft}
+          aria-haspopup="listbox"
+          aria-expanded={hasMentionOptions}
+          aria-controls={hasMentionOptions ? listboxId : undefined}
+          aria-activedescendant={activeMentionOptionId}
           onChange={onDraftChange}
           onClick={onTextareaClick}
           onKeyUp={onTextareaKeyUp}
@@ -112,10 +123,17 @@ export function TeamMessageComposer({
           <div className={TEAM_MESSAGE_COMPOSER_MENTION_HINT_CLASS}>
             Select teammate mention (`@` without selection stays plain text)
           </div>
-          <div className={TEAM_MESSAGE_COMPOSER_MENTION_LIST_CLASS}>
+          <div
+            id={listboxId}
+            role="listbox"
+            className={TEAM_MESSAGE_COMPOSER_MENTION_LIST_CLASS}
+          >
             {mentionOptions.map((option, index) => (
               <MenuOptionButton
                 key={option.actorId}
+                id={`${listboxId}-option-${option.actorId}`}
+                role="option"
+                aria-selected={index === activeMentionIndex}
                 active={index === activeMentionIndex}
                 data-team-mention-option={option.actorId}
                 onMouseDown={(event) => {

@@ -110,8 +110,23 @@ describe("TeamMessageComposer", () => {
     expect(container.innerHTML).toContain(TEAM_MESSAGE_COMPOSER_MENTION_MENU_CLASS);
     expect(container.innerHTML).toContain(TEAM_MESSAGE_COMPOSER_MENTION_ALIAS_CLASS);
 
+    const textarea = container.querySelector("textarea");
+    expect(textarea?.getAttribute("aria-haspopup")).toBe("listbox");
+    expect(textarea?.getAttribute("aria-expanded")).toBe("true");
+    const listboxId = textarea?.getAttribute("aria-controls");
+    expect(listboxId).toBeTruthy();
+    expect(textarea?.getAttribute("aria-activedescendant")).toBe(
+      `${listboxId}-option-worker-agent`
+    );
+    const listbox = Array.from(container.querySelectorAll("[role='listbox']")).find(
+      (node) => node.getAttribute("id") === listboxId
+    );
+    expect(listbox?.getAttribute("role")).toBe("listbox");
     const option = container.querySelector('[data-team-mention-option="worker-agent"]');
     expect(option).not.toBeNull();
+    expect(option?.getAttribute("role")).toBe("option");
+    expect(option?.getAttribute("aria-selected")).toBe("true");
+    expect(option?.getAttribute("id")).toBe(`${listboxId}-option-worker-agent`);
     act(() => {
       option?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
     });
