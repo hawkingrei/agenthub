@@ -139,24 +139,43 @@ fn idle_acp_hint_diagnostics() -> AcpHandleDiagnostics {
 }
 
 #[test]
-fn best_effort_mailbox_hints_require_idle_acp_input() {
-    assert!(acp_accepts_best_effort_hint(&idle_acp_hint_diagnostics()));
+fn best_effort_mailbox_hints_respect_provider_prompt_policy() {
+    assert!(acp_accepts_best_effort_hint(
+        &idle_acp_hint_diagnostics(),
+        AcpPromptDeliveryPolicy::StrictFifo
+    ));
 
     let mut active_prompt = idle_acp_hint_diagnostics();
     active_prompt.active_prompt_count = 1;
-    assert!(!acp_accepts_best_effort_hint(&active_prompt));
+    assert!(!acp_accepts_best_effort_hint(
+        &active_prompt,
+        AcpPromptDeliveryPolicy::StrictFifo
+    ));
+    assert!(acp_accepts_best_effort_hint(
+        &active_prompt,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
 
     let mut queued_command = idle_acp_hint_diagnostics();
     queued_command.pending_command_count = 1;
-    assert!(!acp_accepts_best_effort_hint(&queued_command));
+    assert!(!acp_accepts_best_effort_hint(
+        &queued_command,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
 
     let mut pending_permission = idle_acp_hint_diagnostics();
     pending_permission.pending_permission_count = 1;
-    assert!(!acp_accepts_best_effort_hint(&pending_permission));
+    assert!(!acp_accepts_best_effort_hint(
+        &pending_permission,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
 
     let mut pending_tool = idle_acp_hint_diagnostics();
     pending_tool.pending_tool_call_count = 1;
-    assert!(!acp_accepts_best_effort_hint(&pending_tool));
+    assert!(!acp_accepts_best_effort_hint(
+        &pending_tool,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
 
     let mut stale_prompt = idle_acp_hint_diagnostics();
     stale_prompt.stale_prompt = Some(AcpStalePromptDiagnostic {
@@ -166,26 +185,41 @@ fn best_effort_mailbox_hints_require_idle_acp_input() {
         last_activity_at: Some(100),
         active_submission_ids: vec!["submission-1".to_string()],
     });
-    assert!(!acp_accepts_best_effort_hint(&stale_prompt));
+    assert!(!acp_accepts_best_effort_hint(
+        &stale_prompt,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
 
     let mut closed_channel = idle_acp_hint_diagnostics();
     closed_channel.command_channel_closed = true;
-    assert!(!acp_accepts_best_effort_hint(&closed_channel));
+    assert!(!acp_accepts_best_effort_hint(
+        &closed_channel,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
 
     let mut full_channel = idle_acp_hint_diagnostics();
     full_channel.command_channel_capacity = 0;
-    assert!(!acp_accepts_best_effort_hint(&full_channel));
+    assert!(!acp_accepts_best_effort_hint(
+        &full_channel,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
 
     let mut queued_channel_send = idle_acp_hint_diagnostics();
     queued_channel_send.command_channel_capacity = 7;
-    assert!(!acp_accepts_best_effort_hint(&queued_channel_send));
+    assert!(acp_accepts_best_effort_hint(
+        &queued_channel_send,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
 
     let mut previous_error = idle_acp_hint_diagnostics();
     previous_error.last_command_error = Some(AcpCommandErrorDiagnostic {
         command_kind: "prompt".to_string(),
         message: "previous transient error".to_string(),
     });
-    assert!(acp_accepts_best_effort_hint(&previous_error));
+    assert!(acp_accepts_best_effort_hint(
+        &previous_error,
+        AcpPromptDeliveryPolicy::StrictFifo
+    ));
 }
 
 #[test]

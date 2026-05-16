@@ -628,6 +628,7 @@ mod tests {
             input: AgentInput::Stdin(std::sync::Arc::new(Mutex::new(None))),
             session_id: new_session_id.clone(),
             actor_context: None,
+            acp_prompt_delivery_policy: None,
             loop_controller: None,
         };
         state
@@ -704,6 +705,7 @@ mod tests {
             input: AgentInput::Stdin(std::sync::Arc::new(Mutex::new(None))),
             session_id: new_session_id.clone(),
             actor_context: None,
+            acp_prompt_delivery_policy: None,
             loop_controller: None,
         };
         state

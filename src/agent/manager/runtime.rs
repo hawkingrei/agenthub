@@ -739,6 +739,7 @@ mod tests {
             ))),
             session_id: session_id.clone(),
             actor_context: None,
+            acp_prompt_delivery_policy: None,
             loop_controller: None,
         };
         state

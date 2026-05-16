@@ -45,7 +45,7 @@ use super::{
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpHandleDiagnostics, AcpPermissionReviewDispatcher,
-    AcpPermissionService, load_safe_paths,
+    AcpPermissionService, AcpPromptDeliveryPolicy, load_safe_paths,
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
@@ -482,10 +482,19 @@ fn should_rearm_agent_loop_for_output(session_id: &str, output: &AgentOutput) ->
     output.session_id == session_id && is_agent_loop_activity_output(output)
 }
 
-fn acp_accepts_best_effort_hint(diagnostics: &AcpHandleDiagnostics) -> bool {
+fn acp_accepts_best_effort_hint(
+    diagnostics: &AcpHandleDiagnostics,
+    prompt_delivery_policy: AcpPromptDeliveryPolicy,
+) -> bool {
+    let accepts_active_prompt = diagnostics.active_prompt_count == 0
+        || matches!(
+            prompt_delivery_policy,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+        );
+
     !diagnostics.command_channel_closed
-        && diagnostics.command_channel_capacity == diagnostics.command_channel_max_capacity
-        && diagnostics.active_prompt_count == 0
+        && diagnostics.command_channel_capacity > 0
+        && accepts_active_prompt
         && diagnostics.pending_command_count == 0
         && diagnostics.pending_permission_count == 0
         && diagnostics.pending_tool_call_count == 0
@@ -615,6 +624,7 @@ pub struct AgentHandle {
     input: AgentInput,
     session_id: String,
     actor_context: Option<AcpActorSkillContext>,
+    acp_prompt_delivery_policy: Option<AcpPromptDeliveryPolicy>,
     loop_controller: Option<AgentLoopController>,
 }
 
@@ -1978,7 +1988,10 @@ impl AgentManager {
             }
             if let AgentInput::Acp(acp) = &handle.input {
                 let diagnostics = acp.diagnostics();
-                if !acp_accepts_best_effort_hint(&diagnostics) {
+                let prompt_delivery_policy = handle
+                    .acp_prompt_delivery_policy
+                    .unwrap_or(AcpPromptDeliveryPolicy::StrictFifo);
+                if !acp_accepts_best_effort_hint(&diagnostics, prompt_delivery_policy) {
                     anyhow::bail!("agent ACP input is busy; skip best-effort mailbox hint");
                 }
             }

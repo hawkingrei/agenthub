@@ -670,7 +670,9 @@ impl AgentManager {
         let mut resumed_provider_id = None::<String>;
         let mut resumed_persistent_session_id = None::<String>;
         let mut active_acp_session_id = None::<String>;
+        let mut acp_prompt_delivery_policy = None;
         let input = if let Some(provider) = acp_provider {
+            acp_prompt_delivery_policy = Some(provider.prompt_delivery_policy);
             // Provider continuity is stored separately from the AgentHub runtime launch id
             // above so restarts can keep ACP memory while still recording a new local start.
             let resume_session_id = self.get_persistent_session(&agent.id, provider.id).await?;
@@ -861,6 +863,7 @@ impl AgentManager {
             input,
             session_id: session_id.clone(),
             actor_context: actor_context.clone(),
+            acp_prompt_delivery_policy,
             loop_controller,
         };
 
