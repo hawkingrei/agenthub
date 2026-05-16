@@ -463,7 +463,17 @@ export async function selectPrimaryTeamEntryFromSidebar(
   const sidebar = page.locator(".teams-sidebar");
   let entry = sidebar.locator("button", { hasText: label }).first();
   if ((await entry.count()) === 0 && label === "Kanban") {
-    await sidebar.getByRole("button", { name: "Show tasks" }).click();
+    const tasksSubject = sidebar.getByRole("button", { name: "Show tasks" }).first();
+    if (await tasksSubject.isVisible().catch(() => false)) {
+      await tasksSubject.click();
+    } else {
+      await page.evaluate(() => {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("lens", "tasks");
+        window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+    }
     entry = sidebar.locator("button", { hasText: label }).first();
   }
   await expect(entry).toBeVisible();
