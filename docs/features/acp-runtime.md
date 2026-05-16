@@ -161,10 +161,17 @@ ACP permission requests are first-class runtime records:
 
 - ACP protocol mapping must stay aligned with upstream provider schemas.
 - Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
-- Codex ACP ordinary prompt delivery should be serialized by AgentHub. ACP cancel is the explicit
-  interrupt path and must not wait behind active prompts, but a normal Team/member message should
-  not overlap a previous active Codex turn.
-- AgentHub-managed Codex ACP sessions default to `full-access` mode so Team workers do not depend on
+- Codex ACP behavior should use upstream Codex TUI/core behavior as the compatibility reference
+  when ACP semantics are ambiguous. In particular, a permission denial is a model-visible failed
+  tool result, not a turn cancellation, and follow-up user input may be steered into the same
+  active turn after permission gates clear.
+- Codex ACP ordinary prompt delivery should allow follow-up prompts to reach the Codex app-server
+  while a steerable turn is still active, so Codex can append the new input to that turn instead of
+  forcing AgentHub to wait for a terminal turn event. AgentHub still queues prompts while a session
+  mutation is pending or while a permission request is pending. AgentHub must not use its pending
+  tool-call diagnostic as an outer prompt-dispatch gate for Codex; Codex owns tool/turn ordering.
+- ACP cancel is the explicit interrupt path and must not wait behind active prompts.
+- Team-managed Codex ACP sessions default to `full-access` mode so Team workers do not depend on
   permission-review round trips for ordinary repository operations. Permission deny/timeout
   semantics still matter for explicit provider permission requests and must not be implemented as
   turn abort/cancel.
@@ -203,13 +210,15 @@ ACP permission requests are first-class runtime records:
   - a `CustomToolCall` without matching `CustomToolCallOutput` is recorded as diagnostic state
     before turn completion/compaction can panic
   - orphan custom-tool outputs are reported without corrupting ACP event replay
-  - ordinary Codex prompts queue behind active prompts, while ACP cancel remains dispatchable as an
-    interrupt command
+  - ordinary Codex prompts are dispatched for app-server turn steering once permission gates clear,
+    while ACP cancel remains dispatchable as an interrupt command
 - Focused `agenthub-codex-acp` permission-decision tests:
   - Codex exec approval options derived from upstream `Abort` are exposed to AgentHub as a deny
     option and submit `ReviewDecision::Denied`
   - patch approval rejection submits `ReviewDecision::Denied`, not `ReviewDecision::Abort`
   - `RequestPermissions` rejection submits an empty turn-scoped permission response
+  - denied approvals produce model-visible failed tool results, matching Codex TUI/core recovery
+    semantics rather than cancelling the active turn
 - Focused `agenthub-acp` permission-runtime tests:
   - timeout selects a concrete reject option when available and persists `selected_option_id`
   - denied permission tool-call settlement clears pending tool-call diagnostics without cancelling
@@ -258,7 +267,7 @@ ACP permission requests are first-class runtime records:
   adding recovery timers.
 - A pending mailbox message after a stale active prompt is usually a downstream symptom: the mailbox
   hint cannot be delivered because prompt serialization is still occupied. Diagnose the active
-  provider prompt and permission/tool gates before treating mailbox delivery as the root cause.
+  provider prompt and permission gate before treating mailbox delivery as the root cause.
 - Synthetic AgentHub events should be labeled and reasoned as synthetic UI/runtime settlement. They
   must not be counted as proof that the provider emitted a new event or that a prompt completed.
 
@@ -291,3 +300,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-05-08-acp-permission-timeout-deny.md`
 - `docs/journal/2026-05-09-acp-permission-tool-call-settlement.md`
 - `docs/journal/2026-05-13-acp-permission-deny-drain.md`
+- `docs/journal/2026-05-15-codex-acp-prompt-steering.md`

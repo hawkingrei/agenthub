@@ -3,6 +3,7 @@ use super::acp_provider::{
     acp_provider_for_agent_with_binary, acp_provider_spec_for_agent_with_binary,
 };
 use super::codec::{is_acp_message, status_from_str, stream_to_str};
+use super::session::effective_acp_default_mode;
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
     AGENT_LOOP_MESSAGE_ID_PREFIX, AgentOutput, AgentRecord, AgentStatus, OutputStream,
@@ -301,11 +302,34 @@ fn acp_provider_for_agent_requires_expected_args() {
     assert_eq!(codex.id, ACP_PROVIDER_CODEX);
     assert_eq!(
         codex.prompt_delivery_policy,
-        AcpPromptDeliveryPolicy::StrictFifo
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
     );
     assert_eq!(
         codex.default_mode_behavior,
         AcpDefaultModeBehavior::ApplyWhenConfigured
+    );
+}
+
+#[test]
+fn team_codex_acp_default_mode_uses_full_access() {
+    let codex_bin = "agenthub-codex-acp";
+    let codex = acp_provider_spec_for_agent_with_binary(codex_bin, codex_bin, &[])
+        .expect("resolve codex acp provider");
+    let gemini =
+        acp_provider_spec_for_agent_with_binary(codex_bin, "gemini", &["--acp".to_string()])
+            .expect("resolve gemini acp provider");
+
+    assert_eq!(
+        effective_acp_default_mode(codex, Some("auto"), true),
+        Some("full-access")
+    );
+    assert_eq!(
+        effective_acp_default_mode(codex, Some("auto"), false),
+        Some("auto")
+    );
+    assert_eq!(
+        effective_acp_default_mode(gemini, Some("auto"), true),
+        Some("auto")
     );
 }
 

@@ -6,7 +6,9 @@ use sqlx::Row;
 use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
-use super::acp_provider::{AcpDefaultModeBehavior, default_env_for_acp_provider};
+use super::acp_provider::{
+    ACP_PROVIDER_CODEX, AcpDefaultModeBehavior, AcpProviderSpec, default_env_for_acp_provider,
+};
 use super::executor::LocalExecutionRequest;
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
@@ -24,6 +26,7 @@ use agent_client_protocol::schema::Implementation;
 const RESUMED_ACP_SESSION_GRACE_PERIOD: Duration = Duration::from_secs(2);
 const RESUMED_ACP_SESSION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY: i64 = 3;
+const TEAM_CODEX_ACP_DEFAULT_MODE: &str = "full-access";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResumedSessionStartupState {
@@ -44,6 +47,17 @@ fn should_retry_resumed_acp_session(
 
 fn should_force_fresh_session_after_resume_failures(failure_count: i64) -> bool {
     failure_count >= RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY
+}
+
+pub(super) fn effective_acp_default_mode<'a>(
+    provider: AcpProviderSpec,
+    configured_mode: Option<&'a str>,
+    has_actor_context: bool,
+) -> Option<&'a str> {
+    if provider.id == ACP_PROVIDER_CODEX && has_actor_context {
+        return Some(TEAM_CODEX_ACP_DEFAULT_MODE);
+    }
+    configured_mode
 }
 
 async fn observe_resumed_session_startup(
@@ -786,8 +800,13 @@ impl AgentManager {
             {
                 tracing::error!("persist acp session failed: {}", err);
             }
+            let default_mode = effective_acp_default_mode(
+                provider,
+                self.acp_default_mode.as_deref(),
+                actor_context.is_some(),
+            );
             if provider.uses_default_mode_config() {
-                if let Some(mode_id) = self.acp_default_mode.as_deref()
+                if let Some(mode_id) = default_mode
                     && let Err(err) = handle.set_mode(mode_id.to_string()).await
                 {
                     tracing::warn!(
@@ -800,7 +819,7 @@ impl AgentManager {
             } else if matches!(
                 provider.default_mode_behavior,
                 AcpDefaultModeBehavior::IgnoreConfigured
-            ) && self.acp_default_mode.is_some()
+            ) && default_mode.is_some()
             {
                 tracing::debug!(
                     "acp default mode ignored for provider {} (agent_id={})",

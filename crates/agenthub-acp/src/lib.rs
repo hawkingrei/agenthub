@@ -1145,8 +1145,8 @@ impl AcpRuntimeDiagnostics {
             .ok();
     }
 
-    fn has_blocking_pending_tool_calls(&self) -> bool {
-        self.has_blocking_pending_tool_calls_at(Utc::now().timestamp())
+    fn has_pending_permission_request(&self) -> bool {
+        self.pending_permission_count.load(Ordering::Relaxed) > 0
     }
 
     fn has_blocking_pending_tool_calls_at(&self, now: i64) -> bool {
@@ -1216,7 +1216,7 @@ fn should_queue_while_prompts_active(
     active_prompt_count: usize,
     prompt_delivery_policy: AcpPromptDeliveryPolicy,
     has_pending_session_mutation: bool,
-    has_pending_tool_call: bool,
+    has_pending_permission_request: bool,
     cmd: &AcpCommand,
 ) -> bool {
     if active_prompt_count == 0 {
@@ -1227,7 +1227,7 @@ fn should_queue_while_prompts_active(
         AcpCommand::Cancel => false,
         AcpCommand::Prompt { .. } => {
             has_pending_session_mutation
-                || has_pending_tool_call
+                || has_pending_permission_request
                 || !matches!(
                     prompt_delivery_policy,
                     AcpPromptDeliveryPolicy::AllowConcurrentPrompts
@@ -1709,13 +1709,13 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                             Some(cmd) => {
                                 let has_pending_session_mutation =
                                     pending_commands.iter().any(is_session_mutation_command);
-                                let has_pending_tool_call =
-                                    diagnostics_for_runtime.has_blocking_pending_tool_calls();
+                                let has_pending_permission_request =
+                                    diagnostics_for_runtime.has_pending_permission_request();
                                 if should_queue_while_prompts_active(
                                     active_prompt_tasks.len(),
                                     prompt_delivery_policy,
                                     has_pending_session_mutation,
-                                    has_pending_tool_call,
+                                    has_pending_permission_request,
                                     &cmd,
                                 ) {
                                     pending_commands.push_back(cmd);
@@ -2981,6 +2981,16 @@ mod tests {
             AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
             false,
             true,
+            &AcpCommand::Prompt {
+                input: "hello".to_string(),
+                submission_id: "submission-1".to_string(),
+            }
+        ));
+        assert!(!should_queue_while_prompts_active(
+            1,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts,
+            false,
+            false,
             &AcpCommand::Prompt {
                 input: "hello".to_string(),
                 submission_id: "submission-1".to_string(),
