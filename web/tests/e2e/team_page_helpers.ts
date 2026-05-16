@@ -461,9 +461,11 @@ export async function selectPrimaryTeamEntryFromSidebar(
   label: string
 ): Promise<void> {
   const sidebar = page.locator(".teams-sidebar");
-  const entry = sidebar
-    .locator("button", { hasText: label })
-    .first();
+  let entry = sidebar.locator("button", { hasText: label }).first();
+  if ((await entry.count()) === 0 && label === "Kanban") {
+    await sidebar.getByRole("button", { name: "Show tasks" }).click();
+    entry = sidebar.locator("button", { hasText: label }).first();
+  }
   await expect(entry).toBeVisible();
   await entry.click();
 }

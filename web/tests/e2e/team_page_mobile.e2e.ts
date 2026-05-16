@@ -45,12 +45,9 @@ test("team page keeps single-column proportions on mobile viewport", async ({
 
   const titleBox = await page.locator('[data-workspace-shell-primary="true"]').boundingBox();
   const actionsBox = await page.locator('[data-workspace-shell-actions="true"]').boundingBox();
-  const lensesBox = await page.locator('[data-workspace-shell-lenses="true"]').boundingBox();
   expect(titleBox).not.toBeNull();
   expect(actionsBox).not.toBeNull();
-  expect(lensesBox).not.toBeNull();
-  expect(actionsBox!.y).toBeGreaterThan(titleBox!.y + 2);
-  expect(lensesBox!.y).toBeGreaterThan(actionsBox!.y + 2);
+  await expect(page.locator('[data-workspace-shell-lenses="true"]')).toHaveCount(0);
 
   const { runFilterWidth, runFilterParentWidth } = await page
     .getByLabel("Run status filter")
