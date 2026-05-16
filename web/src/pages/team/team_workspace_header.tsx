@@ -4,7 +4,6 @@ import { NOTION_FLOATING_MENU_PROPS } from "../../ui/floating_surfaces";
 import { DeterministicAvatar } from "../../components/deterministic_avatar";
 import { ActionButton } from "../../ui/primitives";
 import { TEAM_SOFT_CHROME_SHADOW_CLASS } from "../../ui/tailwind_classes";
-import { TeamTabsBar } from "../team_tabs_bar";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type {
   AgentWorkspaceStatusView,
@@ -56,8 +55,6 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
   workspaceDetailItems,
   workspaceNoticeText,
   workspaceNoticeDotClassName,
-  workflowTabItems,
-  tab,
   busy,
   chrome,
   onTabChange,
@@ -142,9 +139,9 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
     selectedAgentSpecDraft?.description?.trim() || "No agent identity description yet.";
 
   return (
-    <div className={`flex flex-col ${isAgentWorkspace ? "gap-2" : "gap-3"}`}>
+    <div className={`flex flex-col ${isAgentWorkspace ? "gap-1.5" : "gap-2"}`}>
       <div
-        className={`flex flex-wrap items-start justify-between ${
+        className={`flex min-w-0 flex-nowrap items-center justify-between ${
           isAgentWorkspace ? "gap-1.5" : "gap-2"
         }`}
       >
@@ -166,12 +163,12 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
             </h2>
           ) : null}
           {workspaceDescription && (
-            <p className="mt-1 max-w-[64ch] text-[12px] leading-[1.55] text-notion-text-muted">
+            <p className="mt-0.5 hidden max-w-[64ch] text-[12px] leading-[1.45] text-notion-text-muted sm:block">
               {workspaceDescription}
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="flex shrink-0 items-center justify-end gap-1.5">
           {isAgentWorkspace ? (
             <HoverCard
               width={300}
@@ -188,7 +185,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                       type="button"
                       tone="ghost"
                       size="sm"
-                      className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex max-w-full items-center gap-1.5 rounded-xl border border-black/6 bg-white/88 px-2 py-1 text-left text-[11px] font-medium shadow-notion-row backdrop-blur-[2px] hover:border-black/10 hover:bg-white`}
+                      className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex max-w-[12rem] items-center gap-1.5 rounded-xl border border-black/6 bg-white/88 px-2 py-1 text-left text-[11px] font-medium shadow-notion-row backdrop-blur-[2px] hover:border-black/10 hover:bg-white sm:max-w-full`}
                       aria-label="Agent"
                       title={selectedAgentIdentityDescription}
                     >
@@ -198,7 +195,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                         className="h-5 w-5 border border-sky-200/80"
                       />
                       <span className="min-w-0 flex items-center gap-1.5">
-                        <span className="max-w-[11rem] truncate text-[12px] font-semibold leading-5 text-notion-text">
+                        <span className="max-w-[7rem] truncate text-[12px] font-semibold leading-5 text-notion-text sm:max-w-[11rem]">
                           {selectedAgentLabel}
                         </span>
                         <span className="rounded-md bg-notion-sidebar/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-notion-text-muted">
@@ -380,9 +377,6 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
           </div>
         </div>
       </div>
-      {!isAgentWorkspace && workflowTabItems.length > 0 && (
-        <TeamTabsBar tab={tab} onTabChange={onTabChange} items={workflowTabItems} />
-      )}
       {workspaceNoticeText && (
         <div className={chrome.noticeClassName}>
           <div className={chrome.noticeTextClassName}>

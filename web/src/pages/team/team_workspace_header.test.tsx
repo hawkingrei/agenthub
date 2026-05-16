@@ -111,6 +111,7 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).toContain("Shared channel");
     expect(html).toContain("team running");
     expect(html).toContain("3/3");
+    expect(html).toContain("flex min-w-0 flex-nowrap items-center justify-between");
     expect(html).toContain("hidden items-center gap-1.5 rounded-md");
     expect(html).toContain("sm:inline-flex");
     expect(html).toContain("aria-label=\"More\"");
@@ -125,8 +126,8 @@ describe("TeamWorkspaceHeader", () => {
       workspaceTitle: "worker-1",
       workspaceDescription: null,
       showWorkspaceRuntimeBadge: false,
-        showRunActionsInAdvanced: false,
-        workspaceAdvancedTabItems: [],
+      showRunActionsInAdvanced: false,
+      workspaceAdvancedTabItems: [],
     });
     expect(html).toContain("aria-label=\"Agent\"");
     expect(html).toContain("worker-1");
@@ -134,6 +135,21 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).toContain('data-avatar-seed="worker-1::member-1"');
     expect(html).toContain("team=abc");
     expect(html).not.toContain("3/3 online");
+  });
+
+  it("keeps workflow navigation out of the compact workspace header", () => {
+    const html = renderHtml({
+      workflowTabItems: [
+        { value: "conversation", label: "Channels" },
+        { value: "tasks", label: "Tasks" },
+        { value: "runs", label: "Runs" },
+      ],
+    });
+
+    expect(html).not.toContain('data-team-surface="workflow-tabs"');
+    expect(html).not.toContain(">Channels<");
+    expect(html).not.toContain(">Tasks<");
+    expect(html).toContain('aria-label="More"');
   });
 
   it("renders agent identity fallback text and enabled loop summary when the profile is sparse", () => {

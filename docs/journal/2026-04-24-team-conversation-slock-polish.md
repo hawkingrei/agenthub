@@ -80,6 +80,9 @@ This follow-up keeps the mobile Team workspace focused on the message stream:
 - the Team workspace runtime badge is hidden below the `sm` breakpoint, leaving
   the mobile header for navigation and the conversation body instead of status
   chrome.
+- the workspace header no longer renders the workflow tab bar; Teams, Channels,
+  Tasks, and Search stay owned by the left sidebar while the header keeps the
+  title and configuration/menu controls on one compact row.
 
 Production browser note:
 
@@ -129,6 +132,15 @@ Additional validation for the 2026-05-16 mobile stream-first checkpoint:
 
 ```bash
 cd web && npm exec vitest run src/pages/team/team_workspace_header.test.tsx src/pages/team_panels.test.tsx
+cd web && npm exec tsc -- --noEmit
+cd web && npm run lint
+cd web && npm run build
+```
+
+Additional validation for the 2026-05-16 compact header follow-up:
+
+```bash
+cd web && npm exec vitest run src/pages/team/team_workspace_header.test.tsx
 cd web && npm exec tsc -- --noEmit
 cd web && npm run lint
 cd web && npm run build
