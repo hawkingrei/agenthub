@@ -463,21 +463,48 @@ export async function selectPrimaryTeamEntryFromSidebar(
   const sidebar = page.locator(".teams-sidebar");
   let entry = sidebar.locator("button", { hasText: label }).first();
   if ((await entry.count()) === 0 && label === "Kanban") {
-    const tasksSubject = sidebar.getByRole("button", { name: "Show tasks" }).first();
-    if (await tasksSubject.isVisible().catch(() => false)) {
-      await tasksSubject.click();
-    } else {
-      await page.evaluate(() => {
-        const nextUrl = new URL(window.location.href);
-        nextUrl.searchParams.set("lens", "tasks");
-        window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      });
-    }
+    await revealTeamSidebarSubject(page, "tasks");
     entry = sidebar.locator("button", { hasText: label }).first();
   }
   await expect(entry).toBeVisible();
   await entry.click();
+}
+
+async function revealTeamSidebarSubject(
+  page: import("@playwright/test").Page,
+  subject: "channels" | "tasks"
+): Promise<void> {
+  const sidebar = page.locator(".teams-sidebar");
+  const subjectButtonName = subject === "channels" ? "Show channels" : "Show tasks";
+  const subjectButton = sidebar.getByRole("button", { name: subjectButtonName }).first();
+  if (await subjectButton.isVisible().catch(() => false)) {
+    await subjectButton.click();
+    return;
+  }
+
+  await page.evaluate((nextLens) => {
+    const nextUrl = new URL(window.location.href);
+    if (nextLens === "channels") {
+      nextUrl.searchParams.delete("lens");
+    } else {
+      nextUrl.searchParams.set("lens", nextLens);
+    }
+    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, subject);
+}
+
+async function restoreTeamChannelWorkspace(
+  page: import("@playwright/test").Page
+): Promise<boolean> {
+  await revealTeamSidebarSubject(page, "channels");
+  const sidebarConversationEntry = teamChannelSidebarEntry(page, "all");
+  if ((await sidebarConversationEntry.count()) === 0) {
+    return false;
+  }
+  await expect(sidebarConversationEntry).toBeVisible();
+  await sidebarConversationEntry.click();
+  return true;
 }
 
 export async function selectTeamChannelFromSidebar(
@@ -576,10 +603,7 @@ export async function openMainTeamAction(
   }
 
   if (allowSidebarReset) {
-    const sidebarConversationEntry = teamChannelSidebarEntry(page, "all");
-    if ((await sidebarConversationEntry.count()) > 0) {
-      await expect(sidebarConversationEntry).toBeVisible();
-      await sidebarConversationEntry.click();
+    if (await restoreTeamChannelWorkspace(page)) {
       await openMainTeamAction(page, label, false);
       return;
     }
@@ -590,12 +614,19 @@ export async function openMainTeamAction(
 
 export async function openAdvancedView(
   page: import("@playwright/test").Page,
-  label: string
+  label: string,
+  allowSidebarReset = true
 ): Promise<void> {
   await closeTaskDetailModalIfOpen(page);
   const trigger = page
     .getByRole("button", { name: /^(More|Open more workspace actions)$/ })
     .first();
+  if ((await trigger.count()) === 0 && allowSidebarReset) {
+    if (await restoreTeamChannelWorkspace(page)) {
+      await openAdvancedView(page, label, false);
+      return;
+    }
+  }
   await expect(trigger).toBeVisible();
   await trigger.click();
   const menuItem = page.getByRole("menuitem", { name: label, exact: true });
