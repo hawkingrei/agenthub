@@ -319,6 +319,10 @@ export function teamSelectorPanel(page: import("@playwright/test").Page) {
   }).first();
 }
 
+function escapeCssAttributeValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 export async function selectAgentFromSidebar(
   page: import("@playwright/test").Page,
   agentLabel: string
@@ -326,9 +330,24 @@ export async function selectAgentFromSidebar(
   const sidebar = page.locator(".teams-sidebar");
   await revealTeamSidebarSubject(page, "agents");
 
-  const agentItem = sidebar
-    .locator("button", { hasText: agentLabel })
+  const agentItemByMemberId = sidebar
+    .locator(`[data-team-member-id="${escapeCssAttributeValue(agentLabel)}"]`)
     .first();
+  const agentItemByLabel = sidebar.locator("button", { hasText: agentLabel }).first();
+  await expect
+    .poll(async () => {
+      if (await agentItemByMemberId.isVisible().catch(() => false)) {
+        return "member-id";
+      }
+      if (await agentItemByLabel.isVisible().catch(() => false)) {
+        return "label";
+      }
+      return "missing";
+    }, { timeout: 5000 })
+    .not.toBe("missing");
+  const agentItem = (await agentItemByMemberId.isVisible().catch(() => false))
+    ? agentItemByMemberId
+    : agentItemByLabel;
   await expect(agentItem).toBeVisible();
   await agentItem.click();
   const teamsMain = page.locator(".teams-main");
@@ -461,11 +480,17 @@ export async function selectPrimaryTeamEntryFromSidebar(
 
 async function revealTeamSidebarSubject(
   page: import("@playwright/test").Page,
-  subject: "channels" | "tasks" | "agents"
+  subject: "channels" | "tasks" | "agents" | "search"
 ): Promise<void> {
   const sidebar = page.locator(".teams-sidebar");
   const subjectButtonName =
-    subject === "channels" ? "Show channels" : subject === "tasks" ? "Show tasks" : "Show agents";
+    subject === "channels"
+      ? "Show channels"
+      : subject === "tasks"
+        ? "Show tasks"
+        : subject === "agents"
+          ? "Show agents"
+          : "Show search";
   const subjectButton = sidebar.getByRole("button", { name: subjectButtonName }).first();
   if (await subjectButton.isVisible().catch(() => false)) {
     await subjectButton.click();

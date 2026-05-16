@@ -492,6 +492,7 @@ describe("team panels interactions", () => {
     const onSelectTeam = vi.fn();
     const onSelectChannel = vi.fn();
     const onSelectKanban = vi.fn();
+    const onSelectSearch = vi.fn();
     const onSelectAgentTab = vi.fn();
     const teamOne = buildTeam();
     const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
@@ -549,6 +550,7 @@ describe("team panels interactions", () => {
             onSelectTeam={onSelectTeam}
             onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
+            onSelectSearch={onSelectSearch}
             onSelectAgentTab={onSelectAgentTab}
           />
         </MantineProvider>
@@ -595,6 +597,10 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Show agents"));
     expect(container.textContent).toContain("Worker Agent");
     clickElement(findButtonByText(container, "Worker Agent"));
+    expect(container.querySelector('[data-team-member-id="worker-agent"]')).not.toBeNull();
+    clickElement(findButtonByAriaLabel(container, "Show search"));
+    expect(container.textContent).toContain("Search workspace");
+    clickElement(findButtonByText(container, "Search workspace"));
     clickElement(findButtonByAriaLabel(container, "Show channels"));
     clickElement(findButtonByText(container, "# all"));
 
@@ -603,6 +609,7 @@ describe("team panels interactions", () => {
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectChannel).toHaveBeenCalledWith("all");
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
+    expect(onSelectSearch).toHaveBeenCalledTimes(2);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
     expect(container.textContent).toContain("Channels");

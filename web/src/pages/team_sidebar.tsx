@@ -28,6 +28,7 @@ import {
 } from "./team/channel_metadata";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
+import type { WorkspaceLens } from "../app_route_selection";
 import type { TeamTab } from "./team/state";
 
 type TeamMemberSummary = {
@@ -63,6 +64,7 @@ type TeamSidebarProps = {
   channelItems?: ReadonlyArray<TeamChannelItem>;
   selectedChannelId?: TeamChannelItem["id"];
   focusedAgentMemberId: string;
+  activeWorkspaceLens?: WorkspaceLens;
   tab: TeamTab;
   onSelectTeam: (teamId: string) => void;
   onBackToSelector?: () => void;
@@ -75,6 +77,7 @@ type TeamSidebarProps = {
   creatingChannel?: boolean;
   deletingChannelId?: string | null;
   onSelectKanban: () => void;
+  onSelectSearch?: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
   onOpenTeamMemberCopyExisting?: () => void;
@@ -89,7 +92,7 @@ type TeamSidebarProps = {
 
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
-type TeamSidebarSubjectPane = "channels" | "tasks" | "agents";
+type TeamSidebarSubjectPane = "channels" | "tasks" | "agents" | "search";
 const NO_ACTIVE_RUN_CONTEXT = "No active run context.";
 const DEBUG_CURRENT_WORK_PATTERN = /^(?:run_status|step_status)\s*=/i;
 
@@ -180,13 +183,25 @@ const TEAM_SWITCH_BUTTON_CLASS =
 const TEAM_CONTROLS_BUTTON_CLASS =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-notion-border bg-notion-sidebar/40 text-[12px] text-notion-text-muted shadow-sm transition hover:border-notion-accent/25 hover:bg-notion-hover hover:text-notion-text";
 const TEAM_SUBJECT_SWITCHER_CLASS =
-  "grid grid-cols-3 gap-1 rounded-xl border border-notion-border bg-notion-sidebar/60 p-1 shadow-sm";
+  "grid grid-cols-4 gap-1 rounded-xl border border-notion-border bg-notion-sidebar/60 p-1 shadow-sm";
 const TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS =
   "inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg bg-white px-1.5 text-[11px] font-semibold text-notion-text shadow-sm sm:px-2";
 const TEAM_SUBJECT_SWITCHER_IDLE_CLASS =
   "inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-white/70 hover:text-notion-text sm:px-2";
 
-function resolveTeamSidebarSubjectPane(tab: TeamTab): TeamSidebarSubjectPane {
+function resolveTeamSidebarSubjectPane(
+  tab: TeamTab,
+  activeWorkspaceLens?: WorkspaceLens
+): TeamSidebarSubjectPane {
+  if (activeWorkspaceLens === "search") {
+    return "search";
+  }
+  if (activeWorkspaceLens === "tasks") {
+    return "tasks";
+  }
+  if (activeWorkspaceLens === "members") {
+    return "agents";
+  }
   if (tab === "tasks") {
     return "tasks";
   }
@@ -235,6 +250,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     channelItems = DEFAULT_TEAM_CHANNEL_ITEMS,
     selectedChannelId = "all",
     focusedAgentMemberId,
+    activeWorkspaceLens,
     tab,
     onSelectTeam,
     onBackToSelector,
@@ -244,6 +260,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     creatingChannel = false,
     deletingChannelId = null,
     onSelectKanban,
+    onSelectSearch = () => {},
     onSelectAgentTab,
     onOpenTeamMemberForge,
     onOpenTeamMemberCopyExisting,
@@ -265,11 +282,11 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     agents: true,
   });
   const [activeSubjectPane, setActiveSubjectPane] = React.useState<TeamSidebarSubjectPane>(() =>
-    resolveTeamSidebarSubjectPane(tab)
+    resolveTeamSidebarSubjectPane(tab, activeWorkspaceLens)
   );
   React.useEffect(() => {
-    setActiveSubjectPane(resolveTeamSidebarSubjectPane(tab));
-  }, [tab]);
+    setActiveSubjectPane(resolveTeamSidebarSubjectPane(tab, activeWorkspaceLens));
+  }, [activeWorkspaceLens, tab]);
   React.useEffect(() => {
     setShowCreateChannelForm(false);
     setNewChannelId("");
@@ -330,6 +347,12 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
       label: "Agents",
       icon: "bi-people",
       ariaLabel: "Show agents",
+    },
+    {
+      value: "search",
+      label: "Search",
+      icon: "bi-search",
+      ariaLabel: "Show search",
     },
   ];
   const resetCreateChannelForm = React.useCallback(() => {
@@ -721,7 +744,12 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                         ? TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS
                         : TEAM_SUBJECT_SWITCHER_IDLE_CLASS
                     }
-                    onClick={() => setActiveSubjectPane(item.value)}
+                    onClick={() => {
+                      setActiveSubjectPane(item.value);
+                      if (item.value === "search") {
+                        onSelectSearch();
+                      }
+                    }}
                   >
                     <i className={`bi ${item.icon}`} aria-hidden="true" />
                     <span className="hidden sm:inline">{item.label}</span>
@@ -900,6 +928,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       }
                       onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
                       title={primaryLabel}
+                      data-team-member-id={member.member_id}
                     >
                       <span className="flex w-full items-center justify-between gap-1.5">
                         <span className="min-w-0 flex items-center gap-1.5">
@@ -939,6 +968,31 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 })}
               </div>
           </section>
+          )}
+
+          {activeSubjectPane === "search" && (
+          <div className="mt-3 flex flex-col gap-2 px-2">
+            <div className="text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
+              Search
+            </div>
+            <button
+              type="button"
+              className={
+                activeWorkspaceLens === "search"
+                  ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
+                  : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
+              }
+              onClick={onSelectSearch}
+            >
+              <i className="bi bi-search text-[14px]" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[12px] font-medium">Search workspace</span>
+                <span className="block truncate text-[10px] text-notion-text-muted">
+                  Find Team messages and workspace context.
+                </span>
+              </span>
+            </button>
+          </div>
           )}
         </>
       )}
