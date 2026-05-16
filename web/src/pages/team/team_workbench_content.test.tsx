@@ -166,6 +166,8 @@ describe("team_workbench_content", () => {
       <TeamWorkbenchContent {...baseProps} threadPane={null} />
     );
     expect(withoutThread).not.toContain("max-h-[40vh]");
+    expect(withoutThread).not.toContain("lg:grid");
+    expect(withoutThread).not.toContain("lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.92fr)]");
 
     const withThread = renderToStaticMarkup(
       <TeamWorkbenchContent
