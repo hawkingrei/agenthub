@@ -2671,7 +2671,6 @@ export function TeamPage(props: TeamPageProps) {
   );
   const {
     activeWorkspaceLens,
-    workspaceLensItems,
     isAgentWorkspace,
     selectedAgentLabel,
     selectedAgentSpecDraft,
@@ -2692,7 +2691,6 @@ export function TeamPage(props: TeamPageProps) {
     onSelectKanbanSubject,
     onSelectAgentWorkspace,
     onSelectSidebarTeam,
-    onSelectWorkspaceLens,
     showRunContextLoading,
     showNoActiveRunNotice,
   } = useTeamWorkspaceViewModel({
@@ -4195,8 +4193,6 @@ export function TeamPage(props: TeamPageProps) {
       normalizedError={normalizedTeamPageError}
       onClearError={() => setError(null)}
       onLogout={props.onLogout}
-      lensItems={workspaceLensItems}
-      onSelectLens={onSelectWorkspaceLens}
       onNavigate={navigateTeamRoute}
       warningNotice={
         warningNotice?.kind === "runtime" ? (

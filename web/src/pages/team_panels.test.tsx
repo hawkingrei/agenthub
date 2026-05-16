@@ -581,13 +581,22 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Team Two"));
     expect(container.querySelector("input[aria-label='Search teams']")).not.toBeNull();
     expect(container.textContent).toContain("Team One");
-    clickElement(findButtonByText(container, "Kanban"));
-    clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
-    expect(container.textContent).not.toContain("Worker Agent");
-    clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
     expect(container.textContent).toContain("Worker Agent");
-    clickElement(findButtonByText(container, "# all"));
+    clickElement(findButtonByAriaLabel(container, "Show channels"));
+    expect(container.textContent).toContain("Channels");
+    expect(container.textContent).not.toContain("Kanban");
+    expect(container.textContent).not.toContain("Worker Agent");
+    clickElement(findButtonByAriaLabel(container, "Show tasks"));
+    expect(container.textContent).toContain("Kanban");
+    expect(container.textContent).not.toContain(
+      "Shared coordination lane for requests, updates, and cross-cutting discussion."
+    );
+    clickElement(findButtonByText(container, "Kanban"));
+    clickElement(findButtonByAriaLabel(container, "Show agents"));
+    expect(container.textContent).toContain("Worker Agent");
     clickElement(findButtonByText(container, "Worker Agent"));
+    clickElement(findButtonByAriaLabel(container, "Show channels"));
+    clickElement(findButtonByText(container, "# all"));
 
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeam).toHaveBeenCalledTimes(1);
@@ -596,8 +605,6 @@ describe("team panels interactions", () => {
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
-    expect(container.textContent).toContain("Kanban");
-    expect(container.textContent).toContain("Agents");
     expect(container.textContent).toContain("Channels");
     expect(container.textContent).toContain("# all");
     expect(container.textContent).toContain(
@@ -605,19 +612,21 @@ describe("team panels interactions", () => {
     );
     expect(findButtonByText(container, "Team Two").className).toContain("rounded-md");
     expect(findButtonByText(container, "Team Two").className).toContain("px-2");
+    clickElement(findButtonByAriaLabel(container, "Show tasks"));
     const kanbanButton = findButtonByText(container, "Kanban");
+    clickElement(findButtonByAriaLabel(container, "Show channels"));
     const channelButton = findButtonByText(container, "# all");
     expect(kanbanButton.className).toContain("rounded-md");
     expect(kanbanButton.className).toContain("px-2");
-    expect(
-      Boolean(channelButton.compareDocumentPosition(kanbanButton) & Node.DOCUMENT_POSITION_FOLLOWING)
-    ).toBe(true);
+    expect(channelButton.className).toContain("rounded-md");
+    clickElement(findButtonByAriaLabel(container, "Show agents"));
     expect(container.textContent).toContain("Coordinator Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("planning handoff");
     expect(container.textContent).toContain("collecting evidence");
-    expect(container.textContent).toContain("Machine main");
-    expect(container.textContent).toContain("Machine node-east");
+    expect(container.textContent).not.toContain("Machine main");
+    expect(container.textContent).not.toContain("Machine node-east");
+    expect(container.textContent).toContain("Inbox 3");
     expect(container.textContent).toContain("Working");
     expect(container.textContent).not.toContain("id coordinator-agent");
     expect(container.textContent).not.toContain("id worker-agent");
@@ -683,6 +692,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("team-1");
 
     expect(container.textContent).toContain("Teams");
+    expect(container.textContent).toContain("Worker Agent");
+    clickElement(findButtonByAriaLabel(container, "Show channels"));
     expect(container.textContent).toContain("# all");
     expect(container.textContent).not.toContain("Execution Runs");
     expect(container.textContent).not.toContain("Advanced");
@@ -862,7 +873,7 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("Idle");
-    expect(container.textContent).toContain("Machine main");
+    expect(container.textContent).not.toContain("Machine main");
     expect(container.textContent).not.toContain("run_status=idle");
   });
 

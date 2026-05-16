@@ -88,6 +88,15 @@ This follow-up keeps the mobile Team workspace focused on the message stream:
 - Tasks now render as a separate workspace surface instead of inheriting the
   chat/channel header, matching the Slock-style split between conversation
   lanes and task management.
+- the Team sidebar now uses a three-way Channels / Tasks / Agents switcher so
+  each subject rail is shown independently instead of stacking all three
+  sections at once.
+- the global workspace shell no longer receives Team lens items, removing the
+  remaining top-level Teams / Channels / Tasks / Search bar from Team pages.
+- the Team workspace keeps its sidebar collapse toggle visible on desktop as
+  well as mobile, while regular workspace pages keep the mobile-only toggle.
+- agent rows in the Team sidebar no longer show machine labels; pending inbox
+  counts are rendered as `Inbox N` instead of a bare number next to the state.
 
 Production browser note:
 
@@ -146,6 +155,9 @@ Additional validation for the 2026-05-16 compact header follow-up:
 
 ```bash
 cd web && npm exec vitest run src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
+cd web && npm exec vitest run src/pages/team_panels.test.tsx src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
+cd web && npm exec vitest run src/pages/team_page.smoke.test.tsx src/pages/team_panels.test.tsx src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
+cd web && npm exec vitest run src/components/layout/workspace_shell.test.tsx src/pages/team_page.smoke.test.tsx src/pages/team_panels.test.tsx src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
 cd web && npm exec tsc -- --noEmit
 cd web && npm run lint
 cd web && npm run build

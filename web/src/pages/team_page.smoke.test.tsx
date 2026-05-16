@@ -476,7 +476,7 @@ describe("TeamPage smoke render", () => {
         );
       });
 
-      expect(container.textContent).toContain("No agents joined yet.");
+      expect(container.textContent).toContain("No agents have joined this team yet.");
       expect(container.textContent).not.toContain("This team is unavailable.");
       expect(container.textContent).not.toContain("Loading team workspace...");
     } finally {
@@ -2092,9 +2092,7 @@ describe("TeamPage smoke render", () => {
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
       expect(container.textContent).toContain("Workspace");
       expect(container.textContent).toContain("# all");
-      expect(container.textContent).toContain(
-        "Shared coordination lane for requests, updates, and cross-cutting discussion."
-      );
+      expect(container.textContent).not.toContain("ChannelsTasksMembersSearch");
       expect(container.textContent).not.toContain("Toggle agents section");
       const buttonLabels = Array.from(container.querySelectorAll("button")).map((button) =>
         button.textContent?.replace(/\s+/g, " ").trim() ?? ""
@@ -2271,6 +2269,11 @@ describe("TeamPage smoke render", () => {
         await Promise.resolve();
       });
 
+      await act(async () => {
+        (container.querySelector('[aria-label="Show tasks"]') as HTMLButtonElement | null)?.click();
+        await Promise.resolve();
+      });
+
       const showWorkbenchButton = container.querySelector(
         '[aria-label="Show workbench"]'
       ) as HTMLButtonElement | null;
@@ -2375,6 +2378,11 @@ describe("TeamPage smoke render", () => {
         await Promise.resolve();
       });
 
+      await act(async () => {
+        (container.querySelector('[aria-label="Show tasks"]') as HTMLButtonElement | null)?.click();
+        await Promise.resolve();
+      });
+
       const kanbanButtons = Array.from(container.querySelectorAll("button")).filter(
         (button) => button.textContent?.includes("Kanban")
       ) as HTMLButtonElement[];
@@ -2387,7 +2395,7 @@ describe("TeamPage smoke render", () => {
 
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
       expect(container.querySelector('[aria-label="Show workbench"]')).toBeNull();
-      expect(container.textContent).toContain("Canonical Kanban");
+      expect(container.textContent).toContain("Kanban is the canonical Team task surface.");
     } finally {
       act(() => {
         root.unmount();
@@ -2497,6 +2505,11 @@ describe("TeamPage smoke render", () => {
           </MantineProvider>
         );
         await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        (container.querySelector('[aria-label="Show tasks"]') as HTMLButtonElement | null)?.click();
         await Promise.resolve();
       });
 
@@ -3043,6 +3056,11 @@ describe("TeamPage smoke render", () => {
         'textarea[placeholder="Message #all"]'
       ) as HTMLTextAreaElement | null;
       expect(sharedChannelTextarea).not.toBeNull();
+
+      await act(async () => {
+        (container.querySelector('[aria-label="Show agents"]') as HTMLButtonElement | null)?.click();
+        await Promise.resolve();
+      });
 
       const workerAgentButton = Array.from(container.querySelectorAll("button")).find((button) =>
         button.textContent?.includes("Worker Agent")
