@@ -77,6 +77,7 @@ one LanceDB lookup per row:
 - `archive_document_id`;
 - `created_at`;
 - `source_kind`;
+- `message_kind`;
 - `authority_message_id`;
 - `correlation_id`;
 - optional `group_id`;
@@ -100,14 +101,24 @@ msg/by_channel/<group_id>/<channel_id>/<sort_id> -> MessageRef
 msg/by_agent/<agent_id>/<sort_id> -> MessageRef
 msg/by_run/<run_id>/<sort_id> -> MessageRef
 msg/by_id/<message_id> -> MessageRef
-inbox/by_actor/<actor_id>/<run_id>/<sort_id> -> MessageRef
+inbox/by_actor/<actor_id>/<sort_id> -> MessageRef
 ack/by_actor/<actor_id>/<channel_id>/<sort_id> -> AckState
 cursor/by_actor/<actor_id>/<channel_id> -> CursorState
 ```
 
-`sort_id` must be monotonic and stable enough for replay. The preferred shape is a fixed-width
-encoding of the SQLite authority row id or a UUIDv7-derived timestamp/order tuple. String keys must
-use an encoding that preserves bytewise order.
+`message_kind` is a compact presentation hint such as `text`, `tool_call`, `event`, `thought`, or
+`system`. It lets ordered list views render icons and summaries without fetching the full archive
+document.
+
+`inbox/by_actor` intentionally keeps `run_id` in `MessageRef` instead of the key prefix so one actor
+can scan a unified chronological inbox across multiple runs. If a future query needs a run-scoped
+actor inbox, it should add a separate secondary prefix instead of weakening the unified inbox order.
+
+`sort_id` must be monotonic and stable enough for replay and must be collision-safe when one prefix
+aggregates rows from multiple authority tables. Preferred shapes are either a UUIDv7-derived
+timestamp/order tuple or a composite fixed-width encoding such as
+`timestamp:source_kind:source_row_id`. String keys must use an encoding that preserves bytewise
+order.
 
 `message_id` is the logical delivery id for the delivery index. `archive_document_id` points to the
 LanceDB document. They are related but not interchangeable.
@@ -165,7 +176,8 @@ Required repair operations:
 - rebuild namespace for one team, channel, agent, run, or actor;
 - rebuild all delivery indexes from SQLite authority rows;
 - verify RocksDB refs point to existing archive document ids when archive is enabled;
-- detect and report orphan RocksDB refs without deleting them by default.
+- detect and report orphan RocksDB refs, with an explicit prune mode that deletes refs not backed by
+  authority rows.
 
 ### 7) Distributed Node Semantics
 
