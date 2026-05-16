@@ -63,6 +63,7 @@ When multiple journal notes describe the same area:
 - `docs/features/distributed-node-registry-and-gossip.md`
 - `docs/features/logical-message-metadata-contract.md`
 - `docs/features/message-archive-lancedb.md`
+- `docs/features/message-storage-tiering.md`
 
 ## Historical References
 
