@@ -567,9 +567,6 @@ function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
   }
 }
 
-const TEAM_WORKFLOW_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
-  
-];
 const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
   "mailbox",
   "member_console",
@@ -4059,8 +4056,6 @@ export function TeamPage(props: TeamPageProps) {
           workspaceDetailItems,
           workspaceNoticeText,
           workspaceNoticeDotClassName,
-          workflowTabItems: TEAM_WORKFLOW_TAB_ITEMS,
-          tab,
           busy,
           chrome: {
             mutedButtonClassName: teamWorkbenchMutedButtonClassName,

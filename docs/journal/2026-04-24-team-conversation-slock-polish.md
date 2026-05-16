@@ -83,6 +83,11 @@ This follow-up keeps the mobile Team workspace focused on the message stream:
 - the workspace header no longer renders the workflow tab bar; Teams, Channels,
   Tasks, and Search stay owned by the left sidebar while the header keeps the
   title and configuration/menu controls on one compact row.
+- the shared workspace description is no longer rendered as a second header
+  line, so the same stream-first header density applies on desktop and mobile.
+- Tasks now render as a separate workspace surface instead of inheriting the
+  chat/channel header, matching the Slock-style split between conversation
+  lanes and task management.
 
 Production browser note:
 
@@ -140,7 +145,7 @@ cd web && npm run build
 Additional validation for the 2026-05-16 compact header follow-up:
 
 ```bash
-cd web && npm exec vitest run src/pages/team/team_workspace_header.test.tsx
+cd web && npm exec vitest run src/pages/team/team_workspace_header.test.tsx src/pages/team/team_workbench_content.test.tsx
 cd web && npm exec tsc -- --noEmit
 cd web && npm run lint
 cd web && npm run build

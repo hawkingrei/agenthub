@@ -164,6 +164,8 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   memberConsolePanelProps,
   debugPanel,
 }: TeamWorkbenchContentProps) {
+  const showWorkspaceHeader = activeWorkspaceLens !== "tasks" && tab !== "tasks";
+
   return (
     <div
       className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden pb-3 pr-1 lg:w-full lg:pr-0"
@@ -179,13 +181,15 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
             isAgentWorkspace ? "gap-2" : "gap-4"
           }`}
         >
-          <div
-            className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
-              isAgentWorkspace ? "py-0.5" : ""
-            }`}
-          >
-            <TeamWorkspaceHeader {...workspaceHeaderProps} />
-          </div>
+          {showWorkspaceHeader && (
+            <div
+              className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
+                isAgentWorkspace ? "py-0.5" : ""
+              }`}
+            >
+              <TeamWorkspaceHeader {...workspaceHeaderProps} />
+            </div>
+          )}
 
           {!selectedTeamHasConfiguredMembers && (
             <React.Suspense fallback={<TeamPanelLoadingFallback />}>

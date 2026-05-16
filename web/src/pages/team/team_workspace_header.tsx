@@ -32,7 +32,6 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
   workspaceEyebrow,
   showDedicatedWorkspaceHeading,
   workspaceTitle,
-  workspaceDescription,
   isAgentWorkspace,
   selectedAgentLabel,
   selectedAgentWorkspaceMemberId,
@@ -94,8 +93,6 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
   workspaceDetailItems: readonly string[];
   workspaceNoticeText: string | null;
   workspaceNoticeDotClassName: string;
-  workflowTabItems: ReadonlyArray<WorkspaceTabItem>;
-  tab: TeamTab;
   busy: string | null;
   chrome: TeamWorkspaceHeaderChrome;
   onTabChange: (tab: TeamTab) => void;
@@ -162,11 +159,6 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               {workspaceTitle}
             </h2>
           ) : null}
-          {workspaceDescription && (
-            <p className="mt-0.5 hidden max-w-[64ch] text-[12px] leading-[1.45] text-notion-text-muted sm:block">
-              {workspaceDescription}
-            </p>
-          )}
         </div>
         <div className="flex shrink-0 items-center justify-end gap-1.5">
           {isAgentWorkspace ? (

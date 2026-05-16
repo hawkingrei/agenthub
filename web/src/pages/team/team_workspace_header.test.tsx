@@ -84,8 +84,6 @@ function renderHtml(override: Partial<React.ComponentProps<typeof TeamWorkspaceH
         workspaceDetailItems={["team=abc", "run=working"]}
         workspaceNoticeText="team running · 3 online"
         workspaceNoticeDotClassName="dot"
-        workflowTabItems={[]}
-        tab="conversation"
         busy={null}
         chrome={baseChrome}
         onTabChange={vi.fn()}
@@ -108,7 +106,7 @@ describe("TeamWorkspaceHeader", () => {
   it("renders shared workspace header with runtime badge and details", () => {
     const html = renderHtml();
     expect(html).toContain("# all");
-    expect(html).toContain("Shared channel");
+    expect(html).not.toContain("Shared channel");
     expect(html).toContain("team running");
     expect(html).toContain("3/3");
     expect(html).toContain("flex min-w-0 flex-nowrap items-center justify-between");
@@ -116,7 +114,7 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).toContain("sm:inline-flex");
     expect(html).toContain("aria-label=\"More\"");
     expect(html).toContain("team=abc");
-    expect(html).toContain("max-w-[64ch]");
+    expect(html).not.toContain("max-w-[64ch]");
     expect(html).toContain("rounded-md");
   });
 
@@ -138,13 +136,7 @@ describe("TeamWorkspaceHeader", () => {
   });
 
   it("keeps workflow navigation out of the compact workspace header", () => {
-    const html = renderHtml({
-      workflowTabItems: [
-        { value: "conversation", label: "Channels" },
-        { value: "tasks", label: "Tasks" },
-        { value: "runs", label: "Runs" },
-      ],
-    });
+    const html = renderHtml();
 
     expect(html).not.toContain('data-team-surface="workflow-tabs"');
     expect(html).not.toContain(">Channels<");
