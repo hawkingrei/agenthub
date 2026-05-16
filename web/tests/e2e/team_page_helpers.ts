@@ -516,7 +516,11 @@ async function restoreTeamChannelWorkspace(
 ): Promise<boolean> {
   await revealTeamSidebarSubject(page, "channels");
   const sidebarConversationEntry = teamChannelSidebarEntry(page, "all");
-  if ((await sidebarConversationEntry.count()) === 0) {
+  const isVisible = await sidebarConversationEntry.isVisible().catch(() => false);
+  if (!isVisible) {
+    await navigateToTeamChannelWorkspace(page, "all");
+  }
+  if (!(await sidebarConversationEntry.isVisible().catch(() => false))) {
     return false;
   }
   await expect(sidebarConversationEntry).toBeVisible();
@@ -528,7 +532,11 @@ export async function selectTeamChannelFromSidebar(
   page: import("@playwright/test").Page,
   channelId: string
 ): Promise<void> {
+  await revealTeamSidebarSubject(page, "channels");
   const channelEntry = teamChannelSidebarEntry(page, channelId);
+  if (!(await channelEntry.isVisible().catch(() => false))) {
+    await navigateToTeamChannelWorkspace(page, channelId);
+  }
   await expect(channelEntry).toBeVisible();
   await channelEntry.click();
 }
@@ -557,6 +565,44 @@ function assertRawChannelId(channelId: string): void {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function navigateToTeamChannelWorkspace(
+  page: import("@playwright/test").Page,
+  channelId: string
+): Promise<void> {
+  assertRawChannelId(channelId);
+  await page.evaluate((nextChannelId) => {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("lens");
+    nextUrl.searchParams.delete("member");
+    nextUrl.searchParams.delete("tab");
+    nextUrl.searchParams.delete("thread");
+    nextUrl.searchParams.delete("task");
+    if (nextChannelId === "all") {
+      nextUrl.searchParams.delete("channel");
+    } else {
+      nextUrl.searchParams.set("channel", nextChannelId);
+    }
+    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, channelId);
+}
+
+async function navigateToTeamTab(
+  page: import("@playwright/test").Page,
+  tab: string
+): Promise<void> {
+  await page.evaluate((nextTab) => {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("lens");
+    nextUrl.searchParams.delete("member");
+    nextUrl.searchParams.delete("thread");
+    nextUrl.searchParams.delete("task");
+    nextUrl.searchParams.set("tab", nextTab);
+    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, tab);
 }
 
 export async function openMainTeamAction(
@@ -624,6 +670,12 @@ export async function openMainTeamAction(
       await openMainTeamAction(page, label, false);
       return;
     }
+  }
+
+  if (label === "Execution Runs") {
+    await navigateToTeamTab(page, "runs");
+    await expect(page.locator(".teams-main")).toContainText("Execution Runs");
+    return;
   }
 
   throw new Error(`Team action not found: ${label}`);
