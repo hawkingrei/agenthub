@@ -24,6 +24,7 @@ describe("team forge helpers", () => {
 
     expect(coordinatorDraft.role).toBe("coordinator");
     expect(coordinatorDraft.model).toBe("codex");
+    expect(coordinatorDraft.codex_acp_default_mode).toBe("full-access");
     expect(coordinatorDraft.skills).toEqual([]);
     expect(coordinatorDraft.prompt).toBe(TEST_PROMPT_DEFAULTS.coordinator_prompt);
     expect(workerDraft.role).toBe("worker");

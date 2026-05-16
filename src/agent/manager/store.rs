@@ -1,5 +1,7 @@
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool, sqlite::SqliteRow};
 
+use agenthub_config::normalize_optional_codex_acp_mode_id;
+
 use super::codec::{status_from_str, worktree_mode_from_opt};
 use super::codec::{status_to_str, worktree_mode_to_str};
 use super::{AGENT_SOURCE_MANUAL, AGENT_SOURCE_TEAM_FORGE};
@@ -9,6 +11,7 @@ use crate::agent::{AgentConfig, AgentRecord, AgentStatus, normalize_target_node_
 pub(super) struct AgentSchemaCaps {
     pub(super) has_source_column: bool,
     pub(super) has_target_node_id_column: bool,
+    pub(super) has_codex_acp_default_mode_column: bool,
 }
 
 impl AgentSchemaCaps {
@@ -16,11 +19,13 @@ impl AgentSchemaCaps {
         let mut caps = Self {
             has_source_column: false,
             has_target_node_id_column: false,
+            has_codex_acp_default_mode_column: false,
         };
         for column in columns {
             match column {
                 "source" => caps.has_source_column = true,
                 "target_node_id" => caps.has_target_node_id_column = true,
+                "codex_acp_default_mode" => caps.has_codex_acp_default_mode_column = true,
                 _ => {}
             }
         }
@@ -53,65 +58,50 @@ pub(super) fn decode_target_node_id(row: &SqliteRow) -> Option<String> {
     )
 }
 
+fn agent_select_columns(caps: AgentSchemaCaps) -> String {
+    let mut columns = vec![
+        "id",
+        "name",
+        "workdir",
+        "command",
+        "args",
+        "worktree_mode",
+        "worktree_repo",
+        "worktree_ref",
+        "code_mode",
+    ];
+    if caps.has_target_node_id_column {
+        columns.insert(5, "target_node_id");
+    }
+    if caps.has_codex_acp_default_mode_column {
+        columns.push("codex_acp_default_mode");
+    }
+    columns.extend([
+        "agent_loop_enabled",
+        "agent_loop_idle_seconds",
+        "agent_loop_prompt",
+        "status",
+        "created_at",
+        "updated_at",
+    ]);
+    columns.join(", ")
+}
+
 pub(super) async fn list_agent_rows(
     db: &SqlitePool,
     caps: AgentSchemaCaps,
     excluded_source: Option<&str>,
 ) -> anyhow::Result<Vec<SqliteRow>> {
-    match (caps.has_source_column, caps.has_target_node_id_column, excluded_source) {
-        (true, true, Some(source)) => {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                WHERE COALESCE(source, 'manual') != ?1
-                ORDER BY created_at DESC
-                "#,
-            )
-            .bind(source)
-            .fetch_all(db)
-            .await
-            .map_err(Into::into)
-        }
-        (true, false, Some(source)) => {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                WHERE COALESCE(source, 'manual') != ?1
-                ORDER BY created_at DESC
-                "#,
-            )
-            .bind(source)
-            .fetch_all(db)
-            .await
-            .map_err(Into::into)
-        }
-        (_, true, _) => {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                ORDER BY created_at DESC
-                "#,
-            )
-            .fetch_all(db)
-            .await
-            .map_err(Into::into)
-        }
-        _ => {
-            sqlx::query(
-                r#"
-                SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-                FROM agents
-                ORDER BY created_at DESC
-                "#,
-            )
-            .fetch_all(db)
-            .await
-            .map_err(Into::into)
-        }
+    let mut query = format!("SELECT {} FROM agents", agent_select_columns(caps));
+    if caps.has_source_column && excluded_source.is_some() {
+        query.push_str(" WHERE COALESCE(source, 'manual') != ?1");
     }
+    query.push_str(" ORDER BY created_at DESC");
+    let mut query = sqlx::query(&query);
+    if let Some(source) = excluded_source.filter(|_| caps.has_source_column) {
+        query = query.bind(source);
+    }
+    query.fetch_all(db).await.map_err(Into::into)
 }
 
 pub(super) async fn get_agent_row(
@@ -119,31 +109,15 @@ pub(super) async fn get_agent_row(
     caps: AgentSchemaCaps,
     agent_id: &str,
 ) -> anyhow::Result<SqliteRow> {
-    if caps.has_target_node_id_column {
-        return sqlx::query(
-            r#"
-            SELECT id, name, workdir, command, args, target_node_id, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-            FROM agents
-            WHERE id = ?1
-            "#,
-        )
+    let query = format!(
+        "SELECT {} FROM agents WHERE id = ?1",
+        agent_select_columns(caps)
+    );
+    sqlx::query(&query)
         .bind(agent_id)
         .fetch_one(db)
         .await
-        .map_err(Into::into);
-    }
-
-    sqlx::query(
-        r#"
-        SELECT id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
-        FROM agents
-        WHERE id = ?1
-        "#,
-    )
-    .bind(agent_id)
-    .fetch_one(db)
-    .await
-    .map_err(Into::into)
+        .map_err(Into::into)
 }
 
 pub(super) fn decode_agent_record(row: &SqliteRow) -> anyhow::Result<AgentRecord> {
@@ -162,6 +136,12 @@ pub(super) fn decode_agent_record(row: &SqliteRow) -> anyhow::Result<AgentRecord
         worktree_repo: row.try_get("worktree_repo").ok(),
         worktree_ref: row.try_get("worktree_ref").ok(),
         code_mode: code_mode != 0,
+        codex_acp_default_mode: normalize_optional_codex_acp_mode_id(
+            row.try_get::<Option<String>, _>("codex_acp_default_mode")
+                .ok()
+                .flatten()
+                .as_deref(),
+        ),
         agent_loop_enabled: agent_loop_enabled != 0,
         agent_loop_idle_seconds: row.try_get("agent_loop_idle_seconds").ok(),
         agent_loop_prompt: row.try_get("agent_loop_prompt").ok(),
@@ -206,6 +186,9 @@ pub(super) async fn insert_agent_record(
     push_insert_column(&mut builder, &mut first, "worktree_repo");
     push_insert_column(&mut builder, &mut first, "worktree_ref");
     push_insert_column(&mut builder, &mut first, "code_mode");
+    if caps.has_codex_acp_default_mode_column {
+        push_insert_column(&mut builder, &mut first, "codex_acp_default_mode");
+    }
     push_insert_column(&mut builder, &mut first, "agent_loop_enabled");
     push_insert_column(&mut builder, &mut first, "agent_loop_idle_seconds");
     push_insert_column(&mut builder, &mut first, "agent_loop_prompt");
@@ -242,6 +225,13 @@ pub(super) async fn insert_agent_record(
         &mut first,
         if record.config.code_mode { 1 } else { 0 },
     );
+    if caps.has_codex_acp_default_mode_column {
+        push_bound_value(
+            &mut builder,
+            &mut first,
+            normalize_optional_codex_acp_mode_id(record.config.codex_acp_default_mode.as_deref()),
+        );
+    }
     push_bound_value(
         &mut builder,
         &mut first,
@@ -294,6 +284,7 @@ struct RemoteManagedAgentPersisted<'a> {
     worktree_repo: Option<&'a str>,
     worktree_ref: Option<&'a str>,
     code_mode: i64,
+    codex_acp_default_mode: Option<String>,
     source: &'a str,
     now: i64,
 }
@@ -310,6 +301,9 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
             worktree_repo: record.worktree_repo,
             worktree_ref: record.config.worktree_ref.as_deref(),
             code_mode: if record.config.code_mode { 1 } else { 0 },
+            codex_acp_default_mode: normalize_optional_codex_acp_mode_id(
+                record.config.codex_acp_default_mode.as_deref(),
+            ),
             source: record.source,
             now: record.now,
         }
@@ -329,6 +323,9 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
         push_insert_column(builder, &mut first, "worktree_repo");
         push_insert_column(builder, &mut first, "worktree_ref");
         push_insert_column(builder, &mut first, "code_mode");
+        if caps.has_codex_acp_default_mode_column {
+            push_insert_column(builder, &mut first, "codex_acp_default_mode");
+        }
         if caps.has_source_column {
             push_insert_column(builder, &mut first, "source");
         }
@@ -337,7 +334,7 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
         push_insert_column(builder, &mut first, "updated_at");
     }
 
-    fn push_insert_values(&self, builder: &mut QueryBuilder<'a, Sqlite>, caps: AgentSchemaCaps) {
+    fn push_insert_values(&'a self, builder: &mut QueryBuilder<'a, Sqlite>, caps: AgentSchemaCaps) {
         let mut first = true;
         push_bound_value(builder, &mut first, self.agent_id);
         push_bound_value(builder, &mut first, self.name);
@@ -351,6 +348,9 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
         push_bound_value(builder, &mut first, self.worktree_repo);
         push_bound_value(builder, &mut first, self.worktree_ref);
         push_bound_value(builder, &mut first, self.code_mode);
+        if caps.has_codex_acp_default_mode_column {
+            push_bound_value(builder, &mut first, self.codex_acp_default_mode.as_deref());
+        }
         if caps.has_source_column {
             push_bound_value(builder, &mut first, self.source);
         }
@@ -360,7 +360,7 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
     }
 
     fn push_update_assignments(
-        &self,
+        &'a self,
         builder: &mut QueryBuilder<'a, Sqlite>,
         caps: AgentSchemaCaps,
     ) {
@@ -376,6 +376,14 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
         push_assignment(builder, &mut first, "worktree_repo", self.worktree_repo);
         push_assignment(builder, &mut first, "worktree_ref", self.worktree_ref);
         push_assignment(builder, &mut first, "code_mode", self.code_mode);
+        if caps.has_codex_acp_default_mode_column {
+            push_assignment(
+                builder,
+                &mut first,
+                "codex_acp_default_mode",
+                self.codex_acp_default_mode.as_deref(),
+            );
+        }
         if caps.has_source_column {
             push_assignment(builder, &mut first, "source", self.source);
         }
@@ -456,9 +464,16 @@ mod tests {
 
     #[test]
     fn agent_schema_caps_detects_supported_columns() {
-        let caps = AgentSchemaCaps::from_column_names(["id", "name", "source", "target_node_id"]);
+        let caps = AgentSchemaCaps::from_column_names([
+            "id",
+            "name",
+            "source",
+            "target_node_id",
+            "codex_acp_default_mode",
+        ]);
         assert!(caps.has_source_column);
         assert!(caps.has_target_node_id_column);
+        assert!(caps.has_codex_acp_default_mode_column);
     }
 
     #[test]
@@ -466,6 +481,7 @@ mod tests {
         let caps = AgentSchemaCaps::from_column_names(["id", "name", "status"]);
         assert!(!caps.has_source_column);
         assert!(!caps.has_target_node_id_column);
+        assert!(!caps.has_codex_acp_default_mode_column);
     }
 
     async fn create_test_db() -> sqlx::SqlitePool {
@@ -501,6 +517,13 @@ mod tests {
                 worktree_repo TEXT,
                 worktree_ref TEXT,
                 code_mode INTEGER NOT NULL DEFAULT 0,
+            "#,
+        );
+        if caps.has_codex_acp_default_mode_column {
+            builder.push_str("codex_acp_default_mode TEXT,\n");
+        }
+        builder.push_str(
+            r#"
                 agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
                 agent_loop_idle_seconds INTEGER,
                 agent_loop_prompt TEXT,
@@ -534,6 +557,7 @@ mod tests {
             worktree_repo: Some("/tmp/repo".to_string()),
             worktree_ref: Some("HEAD".to_string()),
             code_mode: true,
+            codex_acp_default_mode: Some("yolo".to_string()),
             agent_loop_enabled: true,
             agent_loop_idle_seconds: Some(900),
             agent_loop_prompt: Some("follow up".to_string()),
@@ -545,6 +569,7 @@ mod tests {
         let caps = AgentSchemaCaps {
             has_source_column: true,
             has_target_node_id_column: true,
+            has_codex_acp_default_mode_column: true,
         };
         let db = create_test_db().await;
         create_agents_table(&db, caps).await;
@@ -588,6 +613,10 @@ mod tests {
             Some("HEAD".to_string())
         );
         assert_eq!(row.get::<i64, _>("code_mode"), 1);
+        assert_eq!(
+            row.get::<Option<String>, _>("codex_acp_default_mode"),
+            Some("full-access".to_string())
+        );
         assert_eq!(row.get::<String, _>("source"), "team_forge");
         assert_eq!(row.get::<String, _>("status"), "created");
         assert_eq!(row.get::<i64, _>("created_at"), 123);
@@ -602,6 +631,7 @@ mod tests {
         let caps = AgentSchemaCaps {
             has_source_column: false,
             has_target_node_id_column: false,
+            has_codex_acp_default_mode_column: false,
         };
         let db = create_test_db().await;
         create_agents_table(&db, caps).await;

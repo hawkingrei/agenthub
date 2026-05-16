@@ -134,6 +134,30 @@ describe("AgentsPanel", () => {
     expect(html).toContain('aria-label="1 pending permission for Beta"');
   });
 
+  it("renders codex startup permission selector for codex agents", () => {
+    const html = renderHtml(
+      <AgentsPanel
+        {...baseProps}
+        agentsCollapsed={false}
+        agents={[
+          {
+            ...agents[0],
+            id: "agent-codex",
+            name: "Codex",
+            command: "agenthub-codex-acp",
+            codex_acp_default_mode: "auto",
+          },
+        ]}
+        activeAgent="agent-codex"
+      />
+    );
+    expect(html).toContain('aria-label="Codex permissions for Codex"');
+    expect(html).toContain("Yolo / full access");
+    expect(html).toContain("Auto");
+    expect(html).toContain("Read only");
+    expect(html).toContain("Restart the agent for changes to apply");
+  });
+
   it("omits per-agent indicator when count is zero", () => {
     const html = renderHtml(
       <AgentsPanel

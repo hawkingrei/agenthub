@@ -13,10 +13,10 @@ use agent_client_protocol::schema::{
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse, ResourceLink,
     SelectedPermissionOutcome, SessionConfigId, SessionConfigOption, SessionConfigOptionCategory,
     SessionConfigOptionValue, SessionConfigSelectOption, SessionConfigValueId, SessionId,
-    SessionInfoUpdate, SessionMode, SessionModeId, SessionModeState, SessionModelState,
-    SessionNotification, SessionUpdate, StopReason, Terminal, TextResourceContents, ToolCall,
-    ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
-    ToolCallUpdateFields, ToolKind, UnstructuredCommandInput, UsageUpdate,
+    SessionMode, SessionModeId, SessionModeState, SessionModelState, SessionNotification,
+    SessionUpdate, StopReason, Terminal, TextResourceContents, ToolCall, ToolCallContent,
+    ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    UnstructuredCommandInput, UsageUpdate,
 };
 use agent_client_protocol::{Client, Error};
 use agenthub_managed_skills::managed_skills_root;
@@ -40,18 +40,18 @@ use codex_protocol::{
     parse_command::ParsedCommand,
     plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs},
     protocol::{
-        AgentMessageContentDeltaEvent, AgentMessageEvent, AgentReasoningDeltaEvent,
-        AgentReasoningEvent, AgentReasoningRawContentDeltaEvent, AgentReasoningRawContentEvent,
-        AgentReasoningSectionBreakEvent, ApplyPatchApprovalRequestEvent, DeprecationNoticeEvent,
-        DynamicToolCallResponseEvent, ElicitationAction, ErrorEvent, Event, EventMsg,
-        ExecApprovalRequestEvent, ExecCommandBeginEvent, ExecCommandEndEvent,
-        ExecCommandOutputDeltaEvent, ExecCommandStatus, ExitedReviewModeEvent, FileChange,
-        ItemCompletedEvent, ItemStartedEvent, McpInvocation, McpStartupCompleteEvent,
-        McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent, ModelRerouteEvent,
-        NetworkApprovalContext, NetworkPolicyRuleAction, Op, PatchApplyBeginEvent,
-        PatchApplyEndEvent, PatchApplyStatus, PatchApplyUpdatedEvent, ReasoningContentDeltaEvent,
-        ReasoningRawContentDeltaEvent, ReviewDecision, ReviewOutputEvent, ReviewRequest,
-        ReviewTarget, RolloutItem, SandboxPolicy, StreamErrorEvent, TerminalInteractionEvent,
+        AgentMessageContentDeltaEvent, AgentMessageEvent, AgentReasoningEvent,
+        AgentReasoningRawContentEvent, AgentReasoningSectionBreakEvent,
+        ApplyPatchApprovalRequestEvent, DeprecationNoticeEvent, DynamicToolCallResponseEvent,
+        ElicitationAction, ErrorEvent, Event, EventMsg, ExecApprovalRequestEvent,
+        ExecCommandBeginEvent, ExecCommandEndEvent, ExecCommandOutputDeltaEvent, ExecCommandStatus,
+        ExitedReviewModeEvent, FileChange, ItemCompletedEvent, ItemStartedEvent, McpInvocation,
+        McpStartupCompleteEvent, McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent,
+        ModelRerouteEvent, NetworkApprovalContext, NetworkPolicyRuleAction, Op,
+        PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus, PatchApplyUpdatedEvent,
+        ReasoningContentDeltaEvent, ReasoningRawContentDeltaEvent, ReviewDecision,
+        ReviewOutputEvent, ReviewRequest, ReviewTarget, RolloutItem, SandboxPolicy,
+        StreamErrorEvent, TerminalInteractionEvent, ThreadGoalStatus, ThreadGoalUpdatedEvent,
         TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, UserMessageEvent,
         ViewImageToolCallEvent, WarningEvent, WebSearchBeginEvent, WebSearchEndEvent,
     },
@@ -70,13 +70,30 @@ use heck::ToTitleCase;
 use itertools::Itertools;
 use serde_json::json;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{error, info, warn};
+use tracing::{Instrument, error, info, info_span, warn};
 use uuid::Uuid;
 
 use crate::{ACP_CLIENT, prompt_args::parse_slash_name};
 
 static APPROVAL_PRESETS: LazyLock<Vec<ApprovalPreset>> = LazyLock::new(builtin_approval_presets);
 const INIT_COMMAND_PROMPT: &str = include_str!("./prompt_for_init_command.md");
+
+fn format_thread_goal_update(event: &ThreadGoalUpdatedEvent) -> String {
+    let status = match event.goal.status {
+        ThreadGoalStatus::Active => "active",
+        ThreadGoalStatus::Paused => "paused",
+        ThreadGoalStatus::BudgetLimited => "budget limited",
+        ThreadGoalStatus::Complete => "complete",
+    };
+
+    let objective = event.goal.objective.trim();
+    if objective.contains('\n') {
+        format!("Goal updated ({status}):\n{objective}")
+    } else {
+        format!("Goal updated ({status}): {objective}")
+    }
+}
+
 /// Trait for abstracting over the `CodexThread` to make testing easier.
 #[async_trait::async_trait]
 pub trait CodexThreadImpl {
@@ -252,19 +269,49 @@ impl Thread {
     }
 
     pub async fn prompt(&self, request: PromptRequest) -> Result<StopReason, Error> {
-        let (response_tx, response_rx) = oneshot::channel();
+        let acp_session_id = request.session_id.to_string();
+        let prompt_block_count = request.prompt.len();
+        let span = info_span!(
+            target: "codex_otel.trace_safe",
+            "acp_prompt_request",
+            otel.name = "acp.prompt.request",
+            otel.kind = "server",
+            acp.session_id = %acp_session_id,
+            prompt_block_count,
+        );
 
-        let message = ThreadMessage::Prompt {
-            request,
-            response_tx,
-        };
-        drop(self.message_tx.send(message));
+        async move {
+            let (response_tx, response_rx) = oneshot::channel();
 
-        response_rx
-            .await
-            .map_err(|e| Error::internal_error().data(e.to_string()))??
-            .await
-            .map_err(|e| Error::internal_error().data(e.to_string()))?
+            let message = ThreadMessage::Prompt {
+                request,
+                response_tx,
+            };
+            drop(self.message_tx.send(message));
+
+            let response_rx = response_rx
+                .await
+                .map_err(|e| Error::internal_error().data(e.to_string()))??;
+
+            info!(
+                target: "codex_otel.trace_safe",
+                "acp prompt request is waiting for Codex stop reason"
+            );
+
+            let stop_reason = response_rx
+                .await
+                .map_err(|e| Error::internal_error().data(e.to_string()))?;
+
+            info!(
+                target: "codex_otel.trace_safe",
+                stop_reason = ?stop_reason,
+                "acp prompt request received Codex stop reason"
+            );
+
+            stop_reason
+        }
+        .instrument(span)
+        .await
     }
 
     pub async fn set_mode(&self, mode: SessionModeId) -> Result<(), Error> {
@@ -438,6 +485,11 @@ impl SubmissionState {
     fn abort_pending_interactions(&mut self) {
         let Self::Prompt(state) = self;
         state.abort_pending_interactions();
+    }
+
+    async fn cancel(&mut self, client: &SessionClient) {
+        let Self::Prompt(state) = self;
+        state.cancel(client).await;
     }
 
     fn has_pending_user_input(&self) -> bool {
@@ -616,6 +668,43 @@ impl PromptState {
         self.pending_user_input_request = None;
     }
 
+    async fn cancel(&mut self, client: &SessionClient) {
+        self.abort_pending_interactions();
+        for (_, active_command) in self.active_commands.drain() {
+            let fields = ToolCallUpdateFields::new()
+                .status(ToolCallStatus::Failed)
+                .content(vec!["Interrupted by user.".into()]);
+            let meta = if client.supports_terminal_output(&active_command) {
+                Some(Meta::from_iter([(
+                    "terminal_exit".into(),
+                    serde_json::json!({
+                        "terminal_id": active_command.tool_call_id.to_string(),
+                        "exit_code": null,
+                        "signal": "interrupt"
+                    }),
+                )]))
+            } else {
+                None
+            };
+            client
+                .send_tool_call_update(
+                    ToolCallUpdate::new(active_command.tool_call_id.clone(), fields).meta(meta),
+                )
+                .await;
+        }
+        if let Some(call_id) = self.active_web_search.take() {
+            client
+                .send_tool_call_update(ToolCallUpdate::new(
+                    call_id,
+                    ToolCallUpdateFields::new()
+                        .status(ToolCallStatus::Failed)
+                        .content(vec!["Interrupted by user.".into()]),
+                ))
+                .await;
+        }
+        self.finish_ok(StopReason::Cancelled);
+    }
+
     fn spawn_permission_request(
         &mut self,
         client: &SessionClient,
@@ -676,8 +765,8 @@ impl PromptState {
                     }) => option_map
                         .get(option_id.0.as_ref())
                         .cloned()
-                        .unwrap_or(ReviewDecision::Abort),
-                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Abort,
+                        .unwrap_or(ReviewDecision::Denied),
+                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Denied,
                 };
 
                 self.thread
@@ -703,8 +792,8 @@ impl PromptState {
                     }) => option_map
                         .get(option_id.0.as_ref())
                         .cloned()
-                        .unwrap_or(ReviewDecision::Abort),
-                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Abort,
+                        .unwrap_or(ReviewDecision::Denied),
+                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Denied,
                 };
 
                 self.thread
@@ -821,7 +910,12 @@ impl PromptState {
                             .await;
                     }
             }
-            EventMsg::ItemStarted(ItemStartedEvent { thread_id, turn_id, item }) => {
+            EventMsg::ItemStarted(ItemStartedEvent {
+                thread_id,
+                turn_id,
+                item,
+                started_at_ms: _,
+            }) => {
                 info!("Item started with thread_id: {thread_id}, turn_id: {turn_id}, item: {item:?}");
             }
             EventMsg::UserMessage(UserMessageEvent {
@@ -862,14 +956,6 @@ impl PromptState {
                 self.seen_reasoning_deltas = true;
                 client.send_agent_thought(delta).await;
             }
-            EventMsg::AgentReasoningDelta(AgentReasoningDeltaEvent { delta })
-            | EventMsg::AgentReasoningRawContentDelta(AgentReasoningRawContentDeltaEvent {
-                delta,
-            }) => {
-                info!("Agent legacy reasoning delta received: {delta:?}");
-                self.seen_reasoning_deltas = true;
-                client.send_agent_thought(delta).await;
-            }
             EventMsg::AgentReasoningSectionBreak(AgentReasoningSectionBreakEvent {
                 item_id,
                 summary_index,
@@ -898,15 +984,11 @@ impl PromptState {
                     client.send_agent_thought(text).await;
                 }
             }
-            EventMsg::ThreadNameUpdated(event) => {
-                info!("Thread name updated: {:?}", event.thread_name);
-                if let Some(title) = event.thread_name {
-                    client
-                        .send_notification(SessionUpdate::SessionInfoUpdate(
-                            SessionInfoUpdate::new().title(title),
-                        ))
-                        .await;
-                }
+            EventMsg::ThreadGoalUpdated(event) => {
+                info!("Thread goal updated: {:?}", event.goal.objective);
+                client
+                    .send_agent_text(format_thread_goal_update(&event))
+                    .await;
             }
             EventMsg::PlanUpdate(UpdatePlanArgs { explanation, plan }) => {
                 // Send this to the client via session/update notification
@@ -1044,6 +1126,7 @@ impl PromptState {
                 thread_id,
                 turn_id,
                 item,
+                completed_at_ms: _,
             }) => {
                 info!("Item completed: thread_id={}, turn_id={}, item={:?}", thread_id, turn_id, item);
             }
@@ -1060,23 +1143,6 @@ impl PromptState {
                 );
                 self.abort_pending_interactions();
                 self.finish_ok(StopReason::EndTurn);
-            }
-            EventMsg::UndoStarted(event) => {
-                client
-                    .send_agent_text(
-                        event
-                            .message
-                            .unwrap_or_else(|| "Undo in progress...".to_string()),
-                    )
-                    .await;
-            }
-            EventMsg::UndoCompleted(event) => {
-                let fallback = if event.success {
-                    "Undo completed.".to_string()
-                } else {
-                    "Undo failed.".to_string()
-                };
-                client.send_agent_text(event.message.unwrap_or(fallback)).await;
             }
             EventMsg::StreamError(StreamErrorEvent {
                 message,
@@ -1211,10 +1277,7 @@ impl PromptState {
             // we already have a way to diff the turn, so ignore
             | EventMsg::TurnDiff(..)
             // Revisit when we can emit status updates
-            | EventMsg::BackgroundEvent(..)
             | EventMsg::SkillsUpdateAvailable
-            // Old events
-            | EventMsg::AgentMessageDelta(..)
             | EventMsg::RawResponseItem(..)
             | EventMsg::SessionConfigured(..)
             // TODO: Subagent UI?
@@ -1233,15 +1296,8 @@ impl PromptState {
             | EventMsg::CollabResumeEnd(..)
             | EventMsg::CollabCloseBegin(..)
             | EventMsg::CollabCloseEnd(..)
-            | EventMsg::PlanDelta(..)
-            | EventMsg::ThreadGoalUpdated(..) => {}
+            | EventMsg::PlanDelta(..) => {}
             EventMsg::GuardianAssessment(..) => {}
-            e @ (EventMsg::McpListToolsResponse(..)
-            | EventMsg::ListSkillsResponse(..)
-            // Used for returning a single history entry
-            | EventMsg::GetHistoryEntryResponse(..)) => {
-                warn!("Unexpected event: {:?}", e);
-            }
         }
     }
 
@@ -1334,8 +1390,8 @@ impl PromptState {
         let options = vec![
             PermissionOption::new("approved", "Yes", PermissionOptionKind::AllowOnce),
             PermissionOption::new(
-                "abort",
-                "No, provide feedback",
+                "denied",
+                "No, continue without applying",
                 PermissionOptionKind::RejectOnce,
             ),
         ];
@@ -1346,7 +1402,7 @@ impl PromptState {
                 call_id: call_id.clone(),
                 option_map: HashMap::from([
                     ("approved".to_string(), ReviewDecision::Approved),
-                    ("abort".to_string(), ReviewDecision::Abort),
+                    ("denied".to_string(), ReviewDecision::Denied),
                 ]),
             },
             ToolCallUpdate::new(
@@ -1730,6 +1786,7 @@ impl PromptState {
             cwd,
             parsed_cmd,
             process_id: _,
+            started_at_ms: _,
         } = event;
         // Create a new tool call for the command execution
         let tool_call_id = ToolCallId::new(call_id.clone());
@@ -1807,8 +1864,8 @@ impl PromptState {
                     .await;
             }
 
-            let update = if client.supports_terminal_output(active_command) {
-                ToolCallUpdate::new(
+            if client.supports_terminal_output(active_command) {
+                let update = ToolCallUpdate::new(
                     active_command.tool_call_id.clone(),
                     ToolCallUpdateFields::new(),
                 )
@@ -1818,27 +1875,13 @@ impl PromptState {
                         "terminal_id": call_id,
                         "data": data_str
                     }),
-                )]))
+                )]));
+                client.send_tool_call_update(update).await;
             } else {
+                // The non-terminal fallback emits the full buffer once at command end.
+                // Re-sending the accumulated output for every chunk grows O(N^2).
                 active_command.output.push_str(&data_str);
-                let content = match active_command.file_extension.as_deref() {
-                    Some("md") => active_command.output.clone(),
-                    Some(ext) => format!(
-                        "```{ext}\n{}\n```\n",
-                        active_command.output.trim_end_matches('\n')
-                    ),
-                    None => format!(
-                        "```sh\n{}\n```\n",
-                        active_command.output.trim_end_matches('\n')
-                    ),
-                };
-                ToolCallUpdate::new(
-                    active_command.tool_call_id.clone(),
-                    ToolCallUpdateFields::new().content(vec![content.into()]),
-                )
-            };
-
-            client.send_tool_call_update(update).await;
+            }
         }
     }
 
@@ -1860,6 +1903,7 @@ impl PromptState {
             formatted_output: _,
             process_id: _,
             status,
+            completed_at_ms: _,
         } = event;
         if let Some(active_command) = self.active_commands.remove(&call_id) {
             let is_success = exit_code == 0;
@@ -1870,8 +1914,28 @@ impl PromptState {
                 ExecCommandStatus::Failed | ExecCommandStatus::Declined => ToolCallStatus::Failed,
             };
 
+            let supports_terminal = client.supports_terminal_output(&active_command);
+            let mut fields = ToolCallUpdateFields::new()
+                .status(status)
+                .raw_output(raw_output);
+
+            if !supports_terminal && !active_command.output.is_empty() {
+                let content = match active_command.file_extension.as_deref() {
+                    Some("md") => active_command.output.clone(),
+                    Some(ext) => format!(
+                        "```{ext}\n{}\n```\n",
+                        active_command.output.trim_end_matches('\n')
+                    ),
+                    None => format!(
+                        "```sh\n{}\n```\n",
+                        active_command.output.trim_end_matches('\n')
+                    ),
+                };
+                fields = fields.content(vec![content.into()]);
+            }
+
             let meta = match (
-                client.supports_terminal_output(&active_command),
+                supports_terminal,
                 active_command.background_terminal_waiting,
             ) {
                 (true, true) => Some(Meta::from_iter([
@@ -1908,13 +1972,7 @@ impl PromptState {
 
             client
                 .send_tool_call_update(
-                    ToolCallUpdate::new(
-                        active_command.tool_call_id.clone(),
-                        ToolCallUpdateFields::new()
-                            .status(status)
-                            .raw_output(raw_output),
-                    )
-                    .meta(meta),
+                    ToolCallUpdate::new(active_command.tool_call_id.clone(), fields).meta(meta),
                 )
                 .await;
         }
@@ -2151,7 +2209,7 @@ impl PromptState {
                     PermissionOptionKind::AllowAlways,
                 ),
                 PermissionOption::new("approved", "Yes", PermissionOptionKind::AllowOnce),
-                PermissionOption::new("abort", "No", PermissionOptionKind::RejectOnce),
+                PermissionOption::new("denied", "No", PermissionOptionKind::RejectOnce),
             ],
         );
 
@@ -2253,7 +2311,7 @@ fn build_exec_permission_options(
     network_approval_context: Option<&NetworkApprovalContext>,
     additional_permissions: Option<&AdditionalPermissionProfile>,
 ) -> Vec<ExecPermissionOption> {
-    available_decisions
+    let mut options = available_decisions
         .iter()
         .filter_map(|decision| match decision {
             ReviewDecision::Approved => Some(ExecPermissionOption {
@@ -2344,16 +2402,25 @@ fn build_exec_permission_options(
             }),
             ReviewDecision::TimedOut => None,
             ReviewDecision::Abort => Some(ExecPermissionOption {
-                option_id: "abort",
+                option_id: "denied",
                 permission_option: PermissionOption::new(
-                    "abort",
-                    "No, and tell Codex what to do differently",
+                    "denied",
+                    "No, continue without running it",
                     PermissionOptionKind::RejectOnce,
                 ),
-                decision: ReviewDecision::Abort,
+                decision: ReviewDecision::Denied,
             }),
         })
-        .collect()
+        .collect::<Vec<_>>();
+    let mut seen_option_ids = Vec::new();
+    options.retain(|option| {
+        if seen_option_ids.contains(&option.option_id) {
+            return false;
+        }
+        seen_option_ids.push(option.option_id);
+        true
+    });
+    options
 }
 
 fn resolve_runtime_actor_cli_path() -> Option<PathBuf> {
@@ -3377,10 +3444,20 @@ impl<A: Auth> ThreadActor<A> {
         request: PromptRequest,
     ) -> Result<oneshot::Receiver<Result<StopReason, Error>>, Error> {
         let (response_tx, response_rx) = oneshot::channel();
+        let prompt_block_count = request.prompt.len();
 
         if let Some((submission_id, prepared)) =
             self.find_pending_user_input_answer(request.prompt.as_slice())?
         {
+            let submit_span = info_span!(
+                target: "codex_otel.trace_safe",
+                "acp_user_input_answer_submit",
+                otel.name = "acp.prompt.user_input_answer.submit",
+                otel.kind = "client",
+                submission_id = %submission_id,
+                prompt_block_count,
+            );
+
             self.thread
                 .submit(
                     submission_id.clone(),
@@ -3389,6 +3466,7 @@ impl<A: Auth> ThreadActor<A> {
                         response: prepared.response.clone(),
                     },
                 )
+                .instrument(submit_span)
                 .await
                 .map_err(|e| {
                     let err = Error::internal_error().data(e.to_string());
@@ -3413,7 +3491,7 @@ impl<A: Auth> ThreadActor<A> {
         if let Some((name, rest)) = extract_slash_command(&items) {
             match name {
                 "compact" => op = Op::Compact,
-                "undo" => op = Op::Undo,
+                "undo" => op = Op::ThreadRollback { num_turns: 1 },
                 "init" => {
                     op = Op::UserInput {
                         items: vec![UserInput::Text {
@@ -3487,12 +3565,27 @@ impl<A: Auth> ThreadActor<A> {
             }
         }
 
+        let submission_seed = Uuid::new_v4().to_string();
+        let submit_span = info_span!(
+            target: "codex_otel.trace_safe",
+            "acp_prompt_submit",
+            otel.name = "acp.prompt.submit",
+            otel.kind = "client",
+            submission_seed = %submission_seed,
+            prompt_block_count,
+        );
         let submission_id = self
             .thread
-            .submit(Uuid::new_v4().to_string(), op.clone())
+            .submit(submission_seed, op.clone())
+            .instrument(submit_span)
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
 
+        info!(
+            target: "codex_otel.trace_safe",
+            submission_id = %submission_id,
+            "acp prompt submitted to Codex"
+        );
         info!("Submitted prompt with submission_id: {submission_id}");
         info!("Starting to wait for conversation events for submission_id: {submission_id}");
 
@@ -3635,11 +3728,13 @@ impl<A: Auth> ThreadActor<A> {
     }
 
     async fn handle_cancel(&mut self) -> Result<(), Error> {
-        self.abort_pending_interactions();
-        self.thread
-            .submit("interrupt".to_string(), Op::Interrupt)
-            .await
-            .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+        self.cancel_active_submissions().await;
+        let thread = self.thread.clone();
+        tokio::task::spawn_local(async move {
+            if let Err(err) = thread.submit("interrupt".to_string(), Op::Interrupt).await {
+                warn!("failed to submit best-effort interrupt to Codex: {err}");
+            }
+        });
         Ok(())
     }
 
@@ -3655,6 +3750,12 @@ impl<A: Auth> ThreadActor<A> {
     fn abort_pending_interactions(&mut self) {
         for submission in self.submissions.values_mut() {
             submission.abort_pending_interactions();
+        }
+    }
+
+    async fn cancel_active_submissions(&mut self) {
+        for submission in self.submissions.values_mut() {
+            submission.cancel(&self.client).await;
         }
     }
 
@@ -4013,12 +4114,11 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::AgentMessageContentDelta(..)
             | EventMsg::ReasoningContentDelta(..)
             | EventMsg::ReasoningRawContentDelta(..)
-            | EventMsg::AgentReasoningDelta(..)
-            | EventMsg::AgentReasoningRawContentDelta(..)
             | EventMsg::AgentReasoningSectionBreak(..)
             | EventMsg::AgentMessage(..)
             | EventMsg::AgentReasoning(..)
             | EventMsg::AgentReasoningRawContent(..)
+            | EventMsg::ThreadGoalUpdated(..)
             | EventMsg::PlanUpdate(..)
             | EventMsg::ExecApprovalRequest(..)
             | EventMsg::DynamicToolCallRequest(..)
@@ -4039,8 +4139,6 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::ViewImageToolCall(..)
             | EventMsg::TurnStarted(..)
             | EventMsg::TurnComplete(..)
-            | EventMsg::UndoStarted(..)
-            | EventMsg::UndoCompleted(..)
             | EventMsg::StreamError(..)
             | EventMsg::Error(..)
             | EventMsg::TurnAborted(..)
@@ -4853,7 +4951,7 @@ mod tests {
         ));
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(ops.as_slice(), &[Op::Undo]);
+        assert_eq!(ops.as_slice(), &[Op::ThreadRollback { num_turns: 1 }]);
 
         Ok(())
     }
@@ -5784,6 +5882,7 @@ mod tests {
                             }],
                             source: Default::default(),
                             interaction_input: None,
+                            started_at_ms: 0,
                         }));
                         send(EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                             call_id: "call-b".into(),
@@ -5796,6 +5895,7 @@ mod tests {
                             }],
                             source: Default::default(),
                             interaction_input: None,
+                            started_at_ms: 0,
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-a".into(),
@@ -5813,6 +5913,7 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: "a\n".into(),
                             status: ExecCommandStatus::Completed,
+                            completed_at_ms: 0,
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-b".into(),
@@ -5830,6 +5931,7 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: "b\n".into(),
                             status: ExecCommandStatus::Completed,
+                            completed_at_ms: 0,
                         }));
                         send(EventMsg::TurnComplete(TurnCompleteEvent {
                             last_agent_message: None,
@@ -5838,6 +5940,25 @@ mod tests {
                             duration_ms: None,
                             time_to_first_token_ms: None,
                         }));
+                    } else if prompt == "hanging-exec" {
+                        self.op_tx
+                            .send(Event {
+                                id: submission_id.clone(),
+                                msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
+                                    call_id: "call-hanging".into(),
+                                    process_id: None,
+                                    turn_id: id.to_string(),
+                                    command: vec!["sleep".into(), "999".into()],
+                                    cwd: current_dir_abs().unwrap(),
+                                    parsed_cmd: vec![ParsedCommand::Unknown {
+                                        cmd: "sleep 999".into(),
+                                    }],
+                                    source: Default::default(),
+                                    interaction_input: None,
+                                    started_at_ms: 0,
+                                }),
+                            })
+                            .unwrap();
                     } else if prompt == "approval-block" {
                         self.op_tx
                             .send(Event {
@@ -5940,28 +6061,27 @@ mod tests {
                         })
                         .unwrap();
                 }
-                Op::Undo => {
+                Op::ThreadRollback { .. } => {
                     self.op_tx
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::UndoStarted(
-                                codex_protocol::protocol::UndoStartedEvent {
-                                    message: Some("Undo in progress...".to_string()),
-                                },
-                            ),
+                            msg: EventMsg::AgentMessage(AgentMessageEvent {
+                                message: "Undo in progress...".to_string(),
+                                phase: None,
+                                memory_citation: None,
+                            }),
                         })
                         .unwrap();
                     self.op_tx
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::UndoCompleted(
-                                codex_protocol::protocol::UndoCompletedEvent {
-                                    success: true,
-                                    message: Some("Undo completed.".to_string()),
-                                },
-                            ),
+                            msg: EventMsg::AgentMessage(AgentMessageEvent {
+                                message: "Undo completed.".to_string(),
+                                phase: None,
+                                memory_citation: None,
+                            }),
                         })
                         .unwrap();
                     self.op_tx
@@ -6318,6 +6438,328 @@ mod tests {
                         turn_id,
                         decision: ReviewDecision::Denied,
                     }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_exec_approval_maps_abort_option_to_denied() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::with_permission_responses(vec![
+                    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                        SelectedPermissionOutcome::new("denied"),
+                    )),
+                ]));
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state = PromptState::new(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                );
+
+                prompt_state
+                    .exec_approval(
+                        &session_client,
+                        ExecApprovalRequestEvent {
+                            call_id: "call-id".to_string(),
+                            approval_id: Some("approval-id".to_string()),
+                            turn_id: "turn-id".to_string(),
+                            command: vec!["echo".to_string(), "hi".to_string()],
+                            cwd: current_dir_abs()?,
+                            reason: None,
+                            network_approval_context: None,
+                            proposed_execpolicy_amendment: None,
+                            proposed_network_policy_amendments: None,
+                            additional_permissions: None,
+                            available_decisions: Some(vec![
+                                ReviewDecision::Approved,
+                                ReviewDecision::Abort,
+                            ]),
+                            parsed_cmd: vec![ParsedCommand::Unknown {
+                                cmd: "echo hi".to_string(),
+                            }],
+                        },
+                    )
+                    .await?;
+
+                let ThreadMessage::PermissionRequestResolved {
+                    submission_id,
+                    request_key,
+                    response,
+                } = message_rx.recv().await.unwrap()
+                else {
+                    panic!("expected permission resolution message");
+                };
+                assert_eq!(submission_id, "submission-id");
+                prompt_state
+                    .handle_permission_request_resolved(&session_client, request_key, response)
+                    .await?;
+
+                let requests = client.permission_requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                let option_ids = request
+                    .options
+                    .iter()
+                    .map(|option| option.option_id.0.to_string())
+                    .collect::<Vec<_>>();
+                assert_eq!(option_ids, vec!["approved", "denied"]);
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::ExecApproval {
+                        id,
+                        turn_id,
+                        decision: ReviewDecision::Denied,
+                    }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_patch_approval_submits_selected_decision() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::with_permission_responses(vec![
+                    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                        SelectedPermissionOutcome::new("approved"),
+                    )),
+                ]));
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state = PromptState::new(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                );
+                let mut changes = HashMap::new();
+                changes.insert(
+                    PathBuf::from("src/lib.rs"),
+                    FileChange::Update {
+                        unified_diff: "@@ -1 +1 @@\n-old\n+new\n".to_string(),
+                        move_path: None,
+                    },
+                );
+
+                prompt_state
+                    .patch_approval(
+                        &session_client,
+                        ApplyPatchApprovalRequestEvent {
+                            call_id: "patch-call".to_string(),
+                            changes,
+                            reason: Some("Need write approval".to_string()),
+                            grant_root: None,
+                            turn_id: "turn-id".to_string(),
+                        },
+                    )
+                    .await?;
+
+                let ThreadMessage::PermissionRequestResolved {
+                    submission_id,
+                    request_key,
+                    response,
+                } = message_rx.recv().await.unwrap()
+                else {
+                    panic!("expected permission resolution message");
+                };
+                assert_eq!(submission_id, "submission-id");
+                assert_eq!(request_key, patch_request_key("patch-call"));
+                prompt_state
+                    .handle_permission_request_resolved(&session_client, request_key, response)
+                    .await?;
+
+                let requests = client.permission_requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                assert_eq!(request.tool_call.tool_call_id.to_string(), "patch-call");
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::PatchApproval {
+                        id,
+                        decision: ReviewDecision::Approved,
+                    }) if id == "patch-call"
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_patch_approval_rejects_without_aborting_turn() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::with_permission_responses(vec![
+                    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                        SelectedPermissionOutcome::new("denied"),
+                    )),
+                ]));
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state = PromptState::new(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                );
+                let mut changes = HashMap::new();
+                changes.insert(
+                    PathBuf::from("src/lib.rs"),
+                    FileChange::Update {
+                        unified_diff: "@@ -1 +1 @@\n-old\n+new\n".to_string(),
+                        move_path: None,
+                    },
+                );
+
+                prompt_state
+                    .patch_approval(
+                        &session_client,
+                        ApplyPatchApprovalRequestEvent {
+                            call_id: "patch-call".to_string(),
+                            changes,
+                            reason: Some("Need write approval".to_string()),
+                            grant_root: None,
+                            turn_id: "turn-id".to_string(),
+                        },
+                    )
+                    .await?;
+
+                let ThreadMessage::PermissionRequestResolved {
+                    submission_id,
+                    request_key,
+                    response,
+                } = message_rx.recv().await.unwrap()
+                else {
+                    panic!("expected permission resolution message");
+                };
+                assert_eq!(submission_id, "submission-id");
+                assert_eq!(request_key, patch_request_key("patch-call"));
+                prompt_state
+                    .handle_permission_request_resolved(&session_client, request_key, response)
+                    .await?;
+
+                let requests = client.permission_requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                let option_ids = request
+                    .options
+                    .iter()
+                    .map(|option| option.option_id.0.to_string())
+                    .collect::<Vec<_>>();
+                assert_eq!(option_ids, vec!["approved", "denied"]);
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::PatchApproval {
+                        id,
+                        decision: ReviewDecision::Denied,
+                    }) if id == "patch-call"
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_request_permissions_reject_option_is_denied() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::with_permission_responses(vec![
+                    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                        SelectedPermissionOutcome::new("denied"),
+                    )),
+                ]));
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state = PromptState::new(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                );
+
+                prompt_state
+                    .request_permissions(
+                        &session_client,
+                        RequestPermissionsEvent {
+                            call_id: "permissions-call".to_string(),
+                            turn_id: "turn-id".to_string(),
+                            reason: Some("Need additional permissions".to_string()),
+                            permissions:
+                                codex_protocol::request_permissions::RequestPermissionProfile::default(),
+                            cwd: None,
+                        },
+                    )
+                    .await?;
+
+                let ThreadMessage::PermissionRequestResolved {
+                    submission_id,
+                    request_key,
+                    response,
+                } = message_rx.recv().await.unwrap()
+                else {
+                    panic!("expected permission resolution message");
+                };
+                assert_eq!(submission_id, "submission-id");
+                assert_eq!(request_key, permissions_request_key("permissions-call"));
+                prompt_state
+                    .handle_permission_request_resolved(&session_client, request_key, response)
+                    .await?;
+
+                let requests = client.permission_requests.lock().unwrap();
+                let request = requests.last().unwrap();
+                let option_ids = request
+                    .options
+                    .iter()
+                    .map(|option| option.option_id.0.to_string())
+                    .collect::<Vec<_>>();
+                assert_eq!(option_ids, vec!["approved-for-session", "approved", "denied"]);
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::RequestPermissionsResponse {
+                        id,
+                        response,
+                    }) if id == "permissions-call"
+                        && response.permissions.is_empty()
+                        && response.scope == PermissionGrantScope::Turn
                 ));
 
                 anyhow::Ok(())
@@ -6747,7 +7189,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_legacy_reasoning_events_emit_agent_thought_chunks() -> anyhow::Result<()> {
+    async fn test_reasoning_delta_events_emit_agent_thought_chunks() -> anyhow::Result<()> {
         LocalSet::new()
             .run_until(async {
                 let session_id = SessionId::new("test");
@@ -6763,8 +7205,12 @@ mod tests {
                 prompt_state
                     .handle_event(
                         &session_client,
-                        EventMsg::AgentReasoningDelta(AgentReasoningDeltaEvent {
+                        EventMsg::ReasoningContentDelta(ReasoningContentDeltaEvent {
+                            thread_id: "thread-1".to_string(),
+                            turn_id: "turn-1".to_string(),
+                            item_id: "item-1".to_string(),
                             delta: "thinking chunk".to_string(),
+                            summary_index: 0,
                         }),
                     )
                     .await;
@@ -7146,6 +7592,32 @@ mod tests {
                     )
                     .await;
 
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::ExecCommandEnd(ExecCommandEndEvent {
+                            call_id: "call-1".to_string(),
+                            process_id: None,
+                            turn_id: "turn-1".to_string(),
+                            command: vec!["cargo".to_string(), "test".to_string()],
+                            cwd: AbsolutePathBuf::from_absolute_path(
+                                std::env::current_dir()?.join("."),
+                            )?,
+                            parsed_cmd: vec![],
+                            source: Default::default(),
+                            interaction_input: None,
+                            stdout: "stdout\n".to_string(),
+                            stderr: String::new(),
+                            aggregated_output: "stdout\n".to_string(),
+                            exit_code: 0,
+                            duration: std::time::Duration::from_millis(10),
+                            formatted_output: "stdout\n".to_string(),
+                            status: ExecCommandStatus::Completed,
+                            completed_at_ms: 0,
+                        }),
+                    )
+                    .await;
+
                 let notifications = client.notifications.lock().unwrap();
                 let updates: Vec<_> = notifications
                     .iter()
@@ -7174,6 +7646,18 @@ mod tests {
                     Some("waited")
                 );
                 assert!(updates[2].fields.content.is_some());
+                assert_eq!(updates[2].fields.status, Some(ToolCallStatus::Completed));
+                assert!(matches!(
+                    updates[2]
+                        .fields
+                        .content
+                        .as_ref()
+                        .and_then(|content| content.first()),
+                    Some(ToolCallContent::Content(Content {
+                        content: ContentBlock::Text(TextContent { text, .. }),
+                        ..
+                    })) if text.contains("stdout")
+                ));
 
                 anyhow::Ok(())
             })
@@ -7235,6 +7719,7 @@ mod tests {
                             duration: std::time::Duration::from_millis(10),
                             formatted_output: String::new(),
                             status: ExecCommandStatus::Completed,
+                            completed_at_ms: 0,
                         }),
                     )
                     .await;
@@ -7545,6 +8030,68 @@ mod tests {
 
         let ops = thread.ops.lock().unwrap();
         assert!(matches!(ops.as_slice(), [Op::Interrupt]));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cancel_releases_hanging_prompt_and_marks_tool_failed() -> anyhow::Result<()> {
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
+
+        local_set
+            .run_until(async {
+                let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
+                let (cancel_response_tx, cancel_response_rx) = tokio::sync::oneshot::channel();
+
+                message_tx.send(ThreadMessage::Prompt {
+                    request: PromptRequest::new(session_id.clone(), vec!["hanging-exec".into()]),
+                    response_tx: prompt_response_tx,
+                })?;
+                let prompt_done_rx = prompt_response_rx.await??;
+
+                message_tx.send(ThreadMessage::Cancel {
+                    response_tx: cancel_response_tx,
+                })?;
+                cancel_response_rx.await??;
+
+                let stop_reason = prompt_done_rx.await??;
+                assert_eq!(stop_reason, StopReason::Cancelled);
+
+                tokio::time::timeout(Duration::from_millis(100), async {
+                    loop {
+                        if thread
+                            .submission_ids
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .any(|id| id == "interrupt")
+                        {
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await?;
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        let submission_ids = thread.submission_ids.lock().unwrap();
+        assert_eq!(submission_ids.len(), 2);
+        assert_ne!(submission_ids[0], "interrupt");
+        assert_eq!(submission_ids[1], "interrupt");
+        drop(submission_ids);
+
+        let notifications = client.notifications.lock().unwrap();
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::ToolCallUpdate(update)
+                    if update.tool_call_id == ToolCallId::new("call-hanging")
+                        && update.fields.status == Some(ToolCallStatus::Failed)
+            )
+        }));
 
         Ok(())
     }

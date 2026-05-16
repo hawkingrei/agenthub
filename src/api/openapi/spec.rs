@@ -163,6 +163,7 @@ pub(super) fn openapi_spec() -> Value {
                 "allOf": [{ "$ref": "#/components/schemas/TeamStepRecord" }],
                 "nullable": true
               },
+              "session_id": { "type": ["string", "null"] },
               "session_status": { "type": ["string", "null"] }
             }
           },

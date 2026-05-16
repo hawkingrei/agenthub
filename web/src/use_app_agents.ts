@@ -26,6 +26,10 @@ import {
 } from "./worktree_defaults";
 import { formatWorktreeError } from "./app_utils";
 import { validateAgentNodeDraft } from "./components/agent_node_validation";
+import {
+  DEFAULT_CODEX_ACP_MODE,
+  normalizeCodexAcpModeId,
+} from "./codex_acp_modes";
 import { useTeamMemberAgentBackfillEffect } from "./pages/team/use_team_member_agent_backfill_effect";
 import { 
   DEFAULT_AGENT_PRESET_ID, 
@@ -64,6 +68,7 @@ export function useAppAgents(
   const [agentWorkdir, setAgentWorkdir] = useState("");
   const [defaultWorktreeRoot, setDefaultWorktreeRoot] = useState(DEFAULT_WORKTREE_ROOT);
   const [agentPresetId, setAgentPresetId] = useState<AgentPresetId>(DEFAULT_AGENT_PRESET_ID);
+  const [codexAcpDefaultMode, setCodexAcpDefaultMode] = useState(DEFAULT_CODEX_ACP_MODE);
   const [worktreeMode, setWorktreeMode] = useState<"use_existing" | "create_worktree" | "reuse_worktree">("use_existing");
   const [worktreeRepo, setWorktreeRepo] = useState("");
   const [worktreeRef, setWorktreeRef] = useState("");
@@ -219,6 +224,7 @@ export function useAppAgents(
       setCreateAgentBusy(false);
       setAgentName("");
       setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+      setCodexAcpDefaultMode(DEFAULT_CODEX_ACP_MODE);
       setWorktreeMode("use_existing");
       setWorktreeRepo("");
       setWorktreeRef("");
@@ -507,6 +513,10 @@ export function useAppAgents(
       const preset = getAgentPreset(agentPresetId);
       const command = preset.command.trim();
       const args = preset.args.slice();
+      const defaultMode =
+        preset.provider === "codex"
+          ? normalizeCodexAcpModeId(codexAcpDefaultMode)
+          : null;
       if (!workdirPayload && worktreeMode !== "create_worktree") {
         setError("workdir is required");
         return;
@@ -525,11 +535,13 @@ export function useAppAgents(
         worktree_repo: worktreeRepo.trim() || null,
         worktree_ref: worktreeRef.trim() || null,
         code_mode: codeMode,
+        codex_acp_default_mode: defaultMode,
         target_node_id: normalizedTargetNodeId,
       });
       setAgents((prev) => [agent, ...prev]);
       setShowCreateAgent(false);
       setAgentName("");
+      setCodexAcpDefaultMode(DEFAULT_CODEX_ACP_MODE);
       setAgentWorkdir(
         resolveWorkdirForModeChange(
           "",
@@ -563,6 +575,7 @@ export function useAppAgents(
     worktreeRepo,
     worktreeRef,
     codeMode,
+    codexAcpDefaultMode,
   ]);
 
   const onStartAgent = useCallback(async (id: string) => {
@@ -630,6 +643,32 @@ export function useAppAgents(
     }
   }, [token]);
 
+  const onSetCodexAcpDefaultMode = useCallback(async (id: string, next: string) => {
+    if (!token) return;
+    const normalized = normalizeCodexAcpModeId(next);
+    setError(null);
+    try {
+      await api.setAgentCodexAcpDefaultMode(token, id, normalized);
+      setAgents((prev) =>
+        prev.map((agent) =>
+          agent.id === id ? { ...agent, codex_acp_default_mode: normalized } : agent
+        )
+      );
+      setTeamMemberAgentsById((prev) => {
+        const existing = prev[id];
+        if (!existing) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [id]: { ...existing, codex_acp_default_mode: normalized },
+        };
+      });
+    } catch (err: unknown) {
+      setError(stringifyApiError(err));
+    }
+  }, [token]);
+
   return {
     agents,
     setAgents,
@@ -653,6 +692,8 @@ export function useAppAgents(
     setAgentWorkdir,
     agentPresetId,
     setAgentPresetId,
+    codexAcpDefaultMode,
+    setCodexAcpDefaultMode,
     worktreeMode,
     setWorktreeMode: handleWorktreeModeChange,
     worktreeRepo,
@@ -682,6 +723,7 @@ export function useAppAgents(
     onStopAgent,
     onDeleteAgent,
     onSetCodeMode,
+    onSetCodexAcpDefaultMode,
     onCreateAgentNode,
     onUpdateAgentNode,
     onDeleteAgentNode,

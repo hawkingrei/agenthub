@@ -389,6 +389,8 @@ export function parseTeamAgentInputSessionMismatch(
 
 export function resolveSelectedAgentWorkspaceSessionId(
   latestStep: TeamStepRecord | null | undefined,
+  snapshotSessionId: string | null | undefined,
+  snapshotSessionStatus: string | null | undefined,
   runtimeSessionId: string | null | undefined,
   previousSessionId?: string | null,
   agentStatus?: string | null,
@@ -396,6 +398,7 @@ export function resolveSelectedAgentWorkspaceSessionId(
   runtimeAgentStatus?: string | null
 ): string | null {
   const normalizedAgentStatus = agentStatus?.trim().toLowerCase() ?? "";
+  const normalizedSnapshotSessionStatus = snapshotSessionStatus?.trim().toLowerCase() ?? "";
   const normalizedRuntimeSessionStatus = runtimeSessionStatus?.trim().toLowerCase() ?? "";
   const normalizedRuntimeAgentStatus = runtimeAgentStatus?.trim().toLowerCase() ?? "";
   const normalizedRuntimeSessionId = runtimeSessionId?.trim() ?? "";
@@ -415,6 +418,16 @@ export function resolveSelectedAgentWorkspaceSessionId(
     }
     return normalizedRuntimeSessionId;
   }
+  const normalizedSnapshotSessionId = snapshotSessionId?.trim() ?? "";
+  if (normalizedSnapshotSessionId) {
+    if (
+      normalizedSnapshotSessionStatus &&
+      !isAgentActiveStatus(normalizedSnapshotSessionStatus)
+    ) {
+      return null;
+    }
+    return normalizedSnapshotSessionId;
+  }
   if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
     return null;
   }
@@ -424,8 +437,8 @@ export function resolveSelectedAgentWorkspaceSessionId(
   if (normalizedPreviousSessionId) {
     return normalizedPreviousSessionId;
   }
-  const snapshotSessionId = getTeamStepRuntimeHandleId(latestStep);
-  return snapshotSessionId?.trim() || null;
+  const stepRuntimeSessionId = getTeamStepRuntimeHandleId(latestStep);
+  return stepRuntimeSessionId?.trim() || null;
 }
 
 export function resolveNextSelectedAgentWorkspaceStickySession(
@@ -906,6 +919,7 @@ export function TeamPage(props: TeamPageProps) {
   const forgeAgentName = teamCreateState.forgeAgentName;
   const forgeAgentWorkdir = teamCreateState.forgeAgentWorkdir;
   const forgeAgentPresetId = teamCreateState.forgeAgentPresetId;
+  const forgeAgentCodexAcpDefaultMode = teamCreateState.forgeAgentCodexAcpDefaultMode;
   const forgeAgentWorktreeMode = teamCreateState.forgeAgentWorktreeMode;
   const forgeAgentWorktreeRepo = teamCreateState.forgeAgentWorktreeRepo;
   const forgeAgentWorktreeRef = teamCreateState.forgeAgentWorktreeRef;
@@ -964,6 +978,10 @@ export function TeamPage(props: TeamPageProps) {
       patchTeamMemberDraft({ model: next });
     },
     [patchTeamCreate, patchTeamMemberDraft]
+  );
+  const setForgeAgentCodexAcpDefaultMode = useCallback(
+    (next: string) => patchTeamCreate({ forgeAgentCodexAcpDefaultMode: next }),
+    [patchTeamCreate]
   );
   const setForgeAgentWorktreeMode = useCallback(
     (next: "use_existing" | "create_worktree" | "reuse_worktree") =>
@@ -1552,6 +1570,8 @@ export function TeamPage(props: TeamPageProps) {
         : null;
     return resolveSelectedAgentWorkspaceSessionId(
       selectedAgentWorkspaceSnapshot?.latest_step,
+      selectedAgentWorkspaceSnapshot?.session_id ?? null,
+      selectedAgentWorkspaceSnapshot?.session_status ?? null,
       selectedAgentWorkspaceRuntimeMember?.session_id ?? null,
       previousSessionId,
       selectedAgentWorkspaceAgent?.status ?? null,
@@ -1733,6 +1753,7 @@ export function TeamPage(props: TeamPageProps) {
       forgeAgentName: initial.forgeAgentName,
       forgeAgentWorkdir: initial.forgeAgentWorkdir,
       forgeAgentPresetId: initial.forgeAgentPresetId,
+      forgeAgentCodexAcpDefaultMode: initial.forgeAgentCodexAcpDefaultMode,
       forgeAgentWorktreeMode: initial.forgeAgentWorktreeMode,
       forgeAgentWorktreeRepo: initial.forgeAgentWorktreeRepo,
       forgeAgentWorktreeRef: initial.forgeAgentWorktreeRef,
@@ -2901,6 +2922,7 @@ export function TeamPage(props: TeamPageProps) {
     forgeAgentName,
     forgeAgentWorkdir,
     forgeAgentPresetId,
+    forgeAgentCodexAcpDefaultMode,
     forgeAgentWorktreeMode,
     forgeAgentWorktreeRepo,
     forgeAgentWorktreeRef,
@@ -2933,6 +2955,7 @@ export function TeamPage(props: TeamPageProps) {
     setForgeAgentName,
     setForgeAgentWorkdir,
     setForgeAgentPresetId,
+    setForgeAgentCodexAcpDefaultMode,
     setForgeAgentWorktreeMode,
     setForgeAgentWorktreeRepo,
     setForgeAgentWorktreeRef,
@@ -3910,6 +3933,8 @@ export function TeamPage(props: TeamPageProps) {
       setAgentWorkdir: setForgeAgentWorkdir,
       agentPresetId: forgeAgentPresetId,
       setAgentPresetId: setForgeAgentPresetId,
+      codexAcpDefaultMode: forgeAgentCodexAcpDefaultMode,
+      setCodexAcpDefaultMode: setForgeAgentCodexAcpDefaultMode,
       worktreeMode: forgeAgentWorktreeMode,
       setWorktreeMode: handleForgeWorktreeModeChange,
       worktreeRepo: forgeAgentWorktreeRepo,
@@ -3930,6 +3955,7 @@ export function TeamPage(props: TeamPageProps) {
       forgeAgentCodeMode,
       forgeAgentName,
       forgeAgentPresetId,
+      forgeAgentCodexAcpDefaultMode,
       forgeAgentWorkdir,
       forgeAgentWorktreeError,
       forgeAgentWorktreeMode,
@@ -3941,6 +3967,7 @@ export function TeamPage(props: TeamPageProps) {
       setForgeAgentCodeMode,
       setForgeAgentName,
       setForgeAgentPresetId,
+      setForgeAgentCodexAcpDefaultMode,
       setForgeAgentWorkdir,
       setForgeAgentWorktreeRef,
       setForgeAgentWorktreeRepo,

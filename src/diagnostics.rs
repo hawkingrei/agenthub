@@ -195,6 +195,7 @@ pub(crate) mod agent_trace {
         TeamMemberNotFound,
         RuntimeNotRunning,
         WaitingPermission,
+        ProviderPromptStale,
         MailboxPending,
         NoPersistedEvents,
         EventStreamPresent,
@@ -279,6 +280,12 @@ pub(crate) mod agent_trace {
         report.runtime = overlay.runtime;
         report.provider_adapter = overlay.provider_adapter;
         report.sse = overlay.sse;
+        if report.provider_adapter.status == "prompt_stale" {
+            report.verdict = AgentTraceVerdict {
+                layer: AgentTraceStallLayer::ProviderPromptStale,
+                reason: "live provider adapter has an active prompt without recent provider events or pending permission".to_string(),
+            };
+        }
     }
 
     pub(crate) fn render_human(report: &AgentTraceReport) -> String {
@@ -1338,6 +1345,33 @@ pub(crate) mod agent_trace {
             let rendered = render_human(&report);
             assert!(rendered.contains("team.member_found: false"));
             assert!(rendered.contains("provider_adapter.status: prompt_active"));
+            apply_live_overlay(
+                &mut report,
+                AgentTraceLiveOverlay {
+                    runtime: AgentTraceRuntimeSummary {
+                        ownership: "local".to_string(),
+                        active_session_id: Some("session-1".to_string()),
+                        live_state_source: "live_backend".to_string(),
+                    },
+                    provider_adapter: AgentTraceAvailability {
+                        status: "prompt_stale".to_string(),
+                        note: "redacted provider snapshot".to_string(),
+                        details: serde_json::json!({
+                            "active_prompt_count": 1,
+                            "pending_permission_count": 0,
+                        }),
+                    },
+                    sse: AgentTraceAvailability {
+                        status: "subscribers_active".to_string(),
+                        note: "redacted sse snapshot".to_string(),
+                        details: serde_json::json!({"output_subscriber_count": 2}),
+                    },
+                },
+            );
+            assert_eq!(
+                report.verdict.layer,
+                AgentTraceStallLayer::ProviderPromptStale
+            );
             let _ = std::fs::remove_dir_all(event_dir);
         }
 

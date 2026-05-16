@@ -2,7 +2,12 @@ import { Box } from "@mantine/core";
 import React from "react";
 import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
-import { formatAgentModelLabel } from "../agent_presets";
+import { formatAgentModelLabel, resolveAcpProvider } from "../agent_presets";
+import {
+  CODEX_ACP_MODE_OPTIONS,
+  formatCodexAcpModeLabel,
+  normalizeCodexAcpModeId,
+} from "../codex_acp_modes";
 import { resolveAgentStatusTone } from "./status_badge";
 import { ActionButton, IconButton, cx } from "../ui/primitives";
 import {
@@ -60,6 +65,7 @@ export type AgentsPanelProps = {
   onCreateAgent: () => void;
   onSelectAgent: (id: string) => void;
   onToggleCodeMode: (id: string, next: boolean) => void;
+  onSetCodexAcpDefaultMode?: (id: string, next: string) => void;
   onStartAgent: (id: string) => void;
   onStopAgent: (id: string) => void;
   onDeleteAgent: (id: string) => void;
@@ -78,6 +84,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   onCreateAgent,
   onSelectAgent,
   onToggleCodeMode,
+  onSetCodexAcpDefaultMode,
   onStartAgent,
   onStopAgent,
   onDeleteAgent,
@@ -181,6 +188,10 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                   const modelLabel = formatAgentModelLabel(
                     agent.command,
                     agent.args
+                  );
+                  const isCodexAgent = resolveAcpProvider(agent.command) === "codex";
+                  const codexMode = normalizeCodexAcpModeId(
+                    agent.codex_acp_default_mode
                   );
                   const startButtonTitle = isStarting
                     ? "Starting..."
@@ -338,6 +349,29 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           >
                             code
                           </Box>
+                        ) : null}
+                        {isCodexAgent ? (
+                          <select
+                            className="h-5 max-w-[118px] shrink-0 rounded border border-notion-border bg-white px-1 text-[10px] font-medium text-notion-text-muted outline-none transition hover:border-notion-text-muted focus:border-notion-text"
+                            aria-label={`Codex permissions for ${agent.name}`}
+                            title={`Codex startup permissions: ${formatCodexAcpModeLabel(codexMode)}. Restart the agent for changes to apply.`}
+                            value={codexMode}
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                            onChange={(event) => {
+                              event.stopPropagation();
+                              onSetCodexAcpDefaultMode?.(
+                                agent.id,
+                                normalizeCodexAcpModeId(event.currentTarget.value)
+                              );
+                            }}
+                          >
+                            {CODEX_ACP_MODE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
                         ) : null}
                       </Box>
                     </Box>

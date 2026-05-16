@@ -338,6 +338,53 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("keeps background member ACP refreshes out of the visible loading state", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 8,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "8",
+        ts: 124,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "I refreshed the latest runtime output.",
+        }),
+      },
+    ]);
+    const setMemberEventsLoading = vi.fn();
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      setMemberEventsLoading,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace", undefined, { silent: true });
+      });
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        undefined
+      );
+      expect(setMemberEventsLoading).not.toHaveBeenCalled();
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
   it("loads member events from the latest step runtime handle when no session is selected", async () => {
     const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
       {

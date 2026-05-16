@@ -25,6 +25,7 @@ export type AcpConversationBubbleProps = {
   latestVisibleGlobalIndex: number;
   shouldAutoCollapse: boolean;
   collapseCutoff: number;
+  toolCallsDefaultCollapsed?: boolean;
   isFrozenView: boolean;
   runStatus?: string | null;
   ansi: (input: string) => string;
@@ -39,23 +40,26 @@ export function shouldAutoCollapseConversationItem(
     latestVisibleGlobalIndex,
     shouldAutoCollapse,
     collapseCutoff,
+    toolCallsDefaultCollapsed = false,
     isFrozenView,
   }: {
     globalIndex: number;
     latestVisibleGlobalIndex: number;
     shouldAutoCollapse: boolean;
     collapseCutoff: number;
+    toolCallsDefaultCollapsed?: boolean;
     isFrozenView: boolean;
   }
 ): boolean {
+  const isToolItem =
+    msg.kind === "tool_call" ||
+    msg.kind === "tool_call_group" ||
+    msg.kind === "explore_group";
+  if (toolCallsDefaultCollapsed && isToolItem) return true;
   if (isFrozenView) return false;
   const tailWindowAutoCollapse =
     shouldAutoCollapse && globalIndex < collapseCutoff;
-  if (
-    msg.kind === "tool_call" ||
-    msg.kind === "tool_call_group" ||
-    msg.kind === "explore_group"
-  ) {
+  if (isToolItem) {
     return globalIndex < latestVisibleGlobalIndex || tailWindowAutoCollapse;
   }
   if (msg.kind === "agent_plan") {
@@ -71,6 +75,7 @@ export const AcpConversationBubble = React.memo(
     latestVisibleGlobalIndex,
     shouldAutoCollapse,
     collapseCutoff,
+    toolCallsDefaultCollapsed,
     isFrozenView,
     runStatus,
     ansi,
@@ -82,6 +87,7 @@ export const AcpConversationBubble = React.memo(
       latestVisibleGlobalIndex,
       shouldAutoCollapse,
       collapseCutoff,
+      toolCallsDefaultCollapsed,
       isFrozenView,
     });
 
@@ -106,6 +112,7 @@ export const AcpConversationBubble = React.memo(
             ansi={ansi}
             runStatus={runStatus}
             autoCollapse={autoCollapse}
+            defaultCollapsed={toolCallsDefaultCollapsed}
             onSubmitRequestUserInput={onSubmitRequestUserInput}
           />
         </React.Suspense>
@@ -120,6 +127,7 @@ export const AcpConversationBubble = React.memo(
             ansi={ansi}
             runStatus={runStatus}
             autoCollapse={autoCollapse}
+            defaultCollapsed={toolCallsDefaultCollapsed}
             onSubmitRequestUserInput={onSubmitRequestUserInput}
           />
         </React.Suspense>
@@ -134,6 +142,7 @@ export const AcpConversationBubble = React.memo(
             ansi={ansi}
             runStatus={runStatus}
             autoCollapse={autoCollapse}
+            defaultCollapsed={toolCallsDefaultCollapsed}
             onSubmitRequestUserInput={onSubmitRequestUserInput}
           />
         </React.Suspense>
@@ -170,6 +179,7 @@ function areConversationBubblePropsEqual(
   if (prev.latestVisibleGlobalIndex !== next.latestVisibleGlobalIndex) return false;
   if (prev.shouldAutoCollapse !== next.shouldAutoCollapse) return false;
   if (prev.collapseCutoff !== next.collapseCutoff) return false;
+  if (prev.toolCallsDefaultCollapsed !== next.toolCallsDefaultCollapsed) return false;
   if (prev.isFrozenView !== next.isFrozenView) return false;
   if (prev.ansi !== next.ansi) return false;
   if (prev.markdownRenderVersion !== next.markdownRenderVersion) return false;

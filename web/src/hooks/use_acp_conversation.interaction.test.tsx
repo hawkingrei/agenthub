@@ -501,6 +501,131 @@ describe("useAcpConversation viewport width initialization", () => {
   });
 });
 
+describe("useAcpConversation underfilled viewport prefetch", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let snapshot: HookSnapshot | null = null;
+  let scrollTop = 0;
+  let scrollHeight = 300;
+  let originalClientWidth: PropertyDescriptor | undefined;
+  let originalClientHeight: PropertyDescriptor | undefined;
+  let originalScrollHeight: PropertyDescriptor | undefined;
+  let originalScrollTop: PropertyDescriptor | undefined;
+
+  const onSnapshot = (next: HookSnapshot) => {
+    snapshot = next;
+  };
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    snapshot = null;
+    scrollTop = 0;
+    scrollHeight = 300;
+    originalClientWidth = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientWidth"
+    );
+    originalClientHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientHeight"
+    );
+    originalScrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight"
+    );
+    originalScrollTop = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollTop"
+    );
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 640,
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get: () => 600,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    snapshot = null;
+    restoreDescriptor(HTMLElement.prototype, "clientWidth", originalClientWidth);
+    restoreDescriptor(HTMLElement.prototype, "clientHeight", originalClientHeight);
+    restoreDescriptor(HTMLElement.prototype, "scrollHeight", originalScrollHeight);
+    restoreDescriptor(HTMLElement.prototype, "scrollTop", originalScrollTop);
+  });
+
+  it("loads older history when renderable context does not fill the viewport", async () => {
+    const onLoadOlder = vi.fn();
+    await act(async () => {
+      root.render(
+        <HookHarness
+          onSnapshot={onSnapshot}
+          acpView={buildManyMessageView(2)}
+          onLoadOlder={onLoadOlder}
+          eventMeta={{
+            "agent-1:session-1": {
+              oldestId: 1,
+              hasMore: true,
+              loading: false,
+              loaded: true,
+            },
+          }}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(snapshot?.conversationViewportUnderfilled).toBe(true);
+    expect(snapshot?.conversationNeedsViewportFill).toBe(true);
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not load older history when the rendered content already overflows", async () => {
+    const onLoadOlder = vi.fn();
+    scrollHeight = 900;
+    await act(async () => {
+      root.render(
+        <HookHarness
+          onSnapshot={onSnapshot}
+          acpView={buildManyMessageView(8)}
+          onLoadOlder={onLoadOlder}
+          eventMeta={{
+            "agent-1:session-1": {
+              oldestId: 1,
+              hasMore: true,
+              loading: false,
+              loaded: true,
+            },
+          }}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(snapshot?.conversationViewportUnderfilled).toBe(false);
+    expect(snapshot?.conversationNeedsViewportFill).toBe(false);
+    expect(onLoadOlder).not.toHaveBeenCalled();
+  });
+});
+
 describe("useAcpConversation scroll rerender suppression", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -582,14 +707,18 @@ describe("useAcpConversation scroll rerender suppression", () => {
     restoreDescriptor(HTMLElement.prototype, "scrollTop", originalScrollTop);
   });
 
-  it("does not rerender on upward scroll when conversation virtualization is inactive", () => {
+  it("does not rerender on upward scroll when conversation virtualization is inactive", async () => {
     const acpView = buildManyMessageView(12);
-    act(() => {
+    await act(async () => {
       root.render(<HookHarness onSnapshot={onSnapshot} acpView={acpView} />);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
 
     const initialRenderCount = renderCount;
-    scrollTop = 320;
+    scrollTop = 1900;
     act(() => {
       snapshot?.handleConversationScroll();
     });
@@ -671,6 +800,7 @@ describe("useAcpConversation scroll rerender suppression", () => {
         />
       );
     });
+    scrollTop = 0;
 
     act(() => {
       snapshot?.handleConversationWheel({

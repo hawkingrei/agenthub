@@ -4435,6 +4435,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     );
     assert_eq!(coordinator.pending_inbox_count, 0);
     assert_eq!(coordinator.status, "working");
+    assert_eq!(coordinator.session_id.as_deref(), Some("session-coordinator-1"));
     assert_eq!(coordinator.session_status.as_deref(), Some("working"));
     assert_eq!(
         coordinator
@@ -4457,6 +4458,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     assert_eq!(worker.model.as_deref(), Some("gpt-4.1"));
     assert_eq!(worker.pending_inbox_count, 1);
     assert_eq!(worker.status, "idle");
+    assert_eq!(worker.session_id.as_deref(), Some("session-worker-1"));
     assert_eq!(worker.session_status.as_deref(), Some("running"));
     assert!(worker.latest_step.is_none());
 }

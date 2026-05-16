@@ -12,6 +12,8 @@ const {
   getAgentMock,
   getAgentNodeJoinBootstrapMock,
   getRuntimeDefaultsMock,
+  createAgentMock,
+  setAgentCodexAcpDefaultModeMock,
 } = vi.hoisted(() => ({
   listAgentsMock: vi.fn(),
   listAgentNodesMock: vi.fn(),
@@ -19,6 +21,8 @@ const {
   getAgentMock: vi.fn(),
   getAgentNodeJoinBootstrapMock: vi.fn(),
   getRuntimeDefaultsMock: vi.fn(),
+  createAgentMock: vi.fn(),
+  setAgentCodexAcpDefaultModeMock: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -29,6 +33,8 @@ vi.mock("./api", () => ({
     getAgent: getAgentMock,
     getAgentNodeJoinBootstrap: getAgentNodeJoinBootstrapMock,
     getRuntimeDefaults: getRuntimeDefaultsMock,
+    createAgent: createAgentMock,
+    setAgentCodexAcpDefaultMode: setAgentCodexAcpDefaultModeMock,
   },
   parseApiErrorMessage: vi.fn(() => null),
   stringifyApiError: vi.fn((error: unknown) => String(error)),
@@ -70,6 +76,8 @@ describe("useAppAgents", () => {
     getAgentMock.mockReset();
     getAgentNodeJoinBootstrapMock.mockReset();
     getRuntimeDefaultsMock.mockReset();
+    createAgentMock.mockReset();
+    setAgentCodexAcpDefaultModeMock.mockReset();
     listAgentsMock.mockResolvedValue([]);
     listAgentNodesMock.mockResolvedValue([]);
     listTeamsMock.mockResolvedValue([]);
@@ -85,6 +93,23 @@ describe("useAppAgents", () => {
     getRuntimeDefaultsMock.mockResolvedValue({
       default_worktree_root: "~/.agenthub/worktrees",
     });
+    createAgentMock.mockResolvedValue({
+      id: "agent-created",
+      name: "Created",
+      workdir: "/tmp/created",
+      command: "agenthub-codex-acp",
+      args: [],
+      target_node_id: null,
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: true,
+      codex_acp_default_mode: "full-access",
+      status: "created",
+      created_at: 1,
+      updated_at: 1,
+    });
+    setAgentCodexAcpDefaultModeMock.mockResolvedValue({ status: "ok" });
   });
 
   afterEach(() => {
@@ -126,6 +151,7 @@ describe("useAppAgents", () => {
       latest.setShowCreateAgent(true);
       latest.setAgentName("agent-east");
       latest.setCodeMode(false);
+      latest.setCodexAcpDefaultMode("auto");
       latest.setWorktreeRepo("git@example.com/repo.git");
       latest.setWorktreeRef("main");
       latest.setStartingAgentIds({ "agent-1": true });
@@ -142,6 +168,7 @@ describe("useAppAgents", () => {
     expect(latest.showCreateAgent).toBe(false);
     expect(latest.agentName).toBe("");
     expect(latest.codeMode).toBe(true);
+    expect(latest.codexAcpDefaultMode).toBe("full-access");
     expect(latest.worktreeRepo).toBe("");
     expect(latest.worktreeRef).toBe("");
     expect(latest.nodeIdInput).toBe("");
@@ -156,6 +183,104 @@ describe("useAppAgents", () => {
     expect(latest.agentNodeJoinBootstrap).toBeNull();
     expect(latest.agentNodeJoinBootstrapLoading).toBe(false);
     expect(latest.agentNodeJoinBootstrapError).toBeNull();
+  });
+
+  it("creates codex agents with the selected startup permission mode", async () => {
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    let latest = captures[captures.length - 1];
+    await act(async () => {
+      latest.setAgentName("codex-agent");
+      latest.setAgentWorkdir("/tmp/codex-agent");
+      latest.setCodexAcpDefaultMode("yolo");
+      await Promise.resolve();
+    });
+
+    latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.onCreateAgent();
+      await Promise.resolve();
+    });
+
+    expect(createAgentMock).toHaveBeenCalledWith(
+      "token-1",
+      expect.objectContaining({
+        name: "codex-agent",
+        command: "agenthub-codex-acp",
+        codex_acp_default_mode: "full-access",
+      })
+    );
+  });
+
+  it("updates a codex agent startup mode without touching the running session", async () => {
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    let latest = captures[captures.length - 1];
+    await act(async () => {
+      latest.setAgents([
+        {
+          id: "agent-codex",
+          name: "Codex",
+          workdir: "/tmp/codex",
+          command: "agenthub-codex-acp",
+          args: [],
+          target_node_id: null,
+          worktree_mode: "use_existing",
+          worktree_repo: null,
+          worktree_ref: null,
+          code_mode: true,
+          codex_acp_default_mode: "auto",
+          status: "created",
+          created_at: 1,
+          updated_at: 1,
+        },
+      ]);
+      await Promise.resolve();
+    });
+
+    latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.onSetCodexAcpDefaultMode("agent-codex", "yolo");
+      await Promise.resolve();
+    });
+
+    latest = captures[captures.length - 1];
+    expect(setAgentCodexAcpDefaultModeMock).toHaveBeenCalledWith(
+      "token-1",
+      "agent-codex",
+      "full-access"
+    );
+    expect(latest.agents[0]?.codex_acp_default_mode).toBe("full-access");
   });
 
   it("falls back to main when the selected target node no longer exists", async () => {

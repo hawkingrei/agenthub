@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use path_utils::expand_tilde;
 
 const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
-const DEFAULT_CODEX_ACP_MODE: &str = "auto";
+const DEFAULT_CODEX_ACP_MODE: &str = "full-access";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
 const MAIN_SERVER_NODE_ID: &str = "main";
@@ -493,6 +493,13 @@ pub fn normalize_codex_acp_mode_id(mode_id: &str) -> String {
     }
 }
 
+pub fn normalize_optional_codex_acp_mode_id(mode_id: Option<&str>) -> Option<String> {
+    mode_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_codex_acp_mode_id)
+}
+
 fn detect_env_overrides() -> Vec<String> {
     let keys = [
         "AGENTHUB_LISTEN",
@@ -705,9 +712,12 @@ mod tests {
     }
 
     #[test]
-    fn codex_acp_default_mode_falls_back_to_auto() {
+    fn codex_acp_default_mode_falls_back_to_full_access() {
         let config = AppConfig::default();
-        assert_eq!(config.codex_acp_default_mode().as_deref(), Some("auto"));
+        assert_eq!(
+            config.codex_acp_default_mode().as_deref(),
+            Some("full-access")
+        );
     }
 
     #[test]
@@ -746,6 +756,23 @@ mod tests {
     }
 
     #[test]
+    fn normalize_optional_codex_acp_mode_id_ignores_blank_and_accepts_aliases() {
+        assert_eq!(super::normalize_optional_codex_acp_mode_id(None), None);
+        assert_eq!(
+            super::normalize_optional_codex_acp_mode_id(Some("  ")),
+            None
+        );
+        assert_eq!(
+            super::normalize_optional_codex_acp_mode_id(Some(" yolo ")).as_deref(),
+            Some("full-access")
+        );
+        assert_eq!(
+            super::normalize_optional_codex_acp_mode_id(Some(" auto ")).as_deref(),
+            Some("auto")
+        );
+    }
+
+    #[test]
     fn codex_acp_default_mode_ignores_blank_override() {
         let config = AppConfig {
             codex_acp: Some(CodexAcpConfig {
@@ -755,7 +782,10 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert_eq!(config.codex_acp_default_mode().as_deref(), Some("auto"));
+        assert_eq!(
+            config.codex_acp_default_mode().as_deref(),
+            Some("full-access")
+        );
     }
 
     #[test]

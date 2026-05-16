@@ -39,7 +39,7 @@ use crate::team::{
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskExecutionPlan, TeamTaskRecord,
-    TeamTaskStepExecutionSpec, TeamThreadReplyRecord, build_actor_mailbox_immediate_hint_prompt,
+    TeamTaskStepExecutionSpec, TeamThreadReplyRecord, dispatch_actor_mailbox_immediate_hint,
     effective_team_member_skills, ensure_team_runtime_started, force_team_member_new_session,
     normalize_optional_idempotency_key_input, parse_task_execution_plan,
     plan_actor_mailbox_immediate_hint, stop_team_runtime,
@@ -384,6 +384,7 @@ pub struct TeamMemberSnapshot {
     pub pending_inbox_count: i64,
     pub status: String,
     pub latest_step: Option<TeamStepRecord>,
+    pub session_id: Option<String>,
     pub session_status: Option<String>,
 }
 
@@ -1339,12 +1340,14 @@ async fn get_team_run_snapshot(
         let latest_step = latest_step_by_member
             .get(member.member_id.as_str())
             .cloned();
-        let session_status = state
+        let live_session = state
             .teams
             .get_live_member_session(member.member_id.as_str())
             .await
-            .map_err(map_team_internal_error)?
-            .map(|(_session_id, status)| status);
+            .map_err(map_team_internal_error)?;
+        let (session_id, session_status) = live_session
+            .map(|(session_id, status)| (Some(session_id), Some(status)))
+            .unwrap_or((None, None));
         let status = latest_step
             .as_ref()
             .map(|step| step_status_to_str(&step.status).to_string())
@@ -1374,6 +1377,7 @@ async fn get_team_run_snapshot(
             pending_inbox_count: pending_counts.get(&member.member_id).copied().unwrap_or(0),
             status,
             latest_step,
+            session_id,
             session_status,
         });
     }
@@ -1720,44 +1724,24 @@ async fn maybe_notify_actor_new_mailbox_message_type(
     else {
         return Ok(());
     };
-    let prompt = build_actor_mailbox_immediate_hint_prompt(run_id, plan.reason);
     let reason_label = match plan.reason {
         crate::team::ActorMailboxImmediateHintReason::DirectAgentMessage => "direct_agent_message",
         crate::team::ActorMailboxImmediateHintReason::CoordinatorChannelMention => {
             "coordinator_channel_mention"
         }
     };
-    let mut sent_targets = Vec::new();
-    let mut failed_targets = Vec::new();
-    for target_actor_id in &plan.target_actor_ids {
-        match state
-            .agents
-            .send_input(target_actor_id, &prompt, None, None)
-            .await
-        {
-            Ok(()) => sent_targets.push(target_actor_id.clone()),
-            Err(err) => {
-                tracing::debug!(
-                    run_id = %run_id,
-                    actor_id = %target_actor_id,
-                    reason = ?plan.reason,
-                    "skip mailbox hint push because agent input is unavailable: {}",
-                    err
-                );
-                failed_targets.push(target_actor_id.clone());
-            }
-        }
-    }
+    let delivery =
+        dispatch_actor_mailbox_immediate_hint(state.agents.as_ref(), run_id, &plan).await;
     append_actor_mailbox_type_hint_event(
         state,
         run_id,
         serde_json::json!({
-            "status": if failed_targets.is_empty() { "sent" } else if sent_targets.is_empty() { "send_failed" } else { "partial" },
+            "status": if delivery.failed_actor_ids.is_empty() { "sent" } else if delivery.sent_actor_ids.is_empty() { "send_failed" } else { "partial" },
             "message_id": send_result.message_id,
             "reason": reason_label,
             "target_actor_ids": plan.target_actor_ids,
-            "sent_actor_ids": sent_targets,
-            "failed_actor_ids": failed_targets,
+            "sent_actor_ids": delivery.sent_actor_ids,
+            "failed_actor_ids": delivery.failed_actor_ids,
         }),
     )
     .await;

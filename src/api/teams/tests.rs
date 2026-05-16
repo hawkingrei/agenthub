@@ -1150,6 +1150,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
             worktree_repo: None,
             worktree_ref: None,
             code_mode: true,
+            codex_acp_default_mode: None,
             agent_loop_enabled: false,
             agent_loop_idle_seconds: None,
             agent_loop_prompt: None,

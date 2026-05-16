@@ -4,6 +4,7 @@ import {
   countRenderableAcpConversationItems,
   resolveAdaptiveAcpHistoryPageCap,
   resolveInitialAcpHistoryDecision,
+  shouldContinueInitialAcpHistoryPrefetch,
 } from "./acp_history_prefetch";
 
 function acpEvent(
@@ -41,7 +42,7 @@ describe("resolveInitialAcpHistoryDecision", () => {
         expectedRenderableCount: 0,
       },
       {
-        name: "renderable for a complete leading reply",
+        name: "renderable but underfilled for a complete leading reply",
         events: [
           acpEvent(1, {
             type: "agent_message",
@@ -50,7 +51,7 @@ describe("resolveInitialAcpHistoryDecision", () => {
         ],
         hasMore: true,
         expectedState: "renderable",
-        expectedPrefetch: false,
+        expectedPrefetch: true,
         expectedRenderableCount: 1,
       },
       {
@@ -90,8 +91,21 @@ describe("resolveInitialAcpHistoryDecision", () => {
         ],
         hasMore: true,
         expectedState: "partial_with_renderable_tail",
-        expectedPrefetch: false,
+        expectedPrefetch: true,
         expectedRenderableCount: 1,
+      },
+      {
+        name: "renderable enough context stops prefetching",
+        events: Array.from({ length: 8 }, (_, index) =>
+          acpEvent(index + 1, {
+            type: "agent_message",
+            text: `Complete reply ${index + 1}.`,
+          })
+        ),
+        hasMore: true,
+        expectedState: "renderable",
+        expectedPrefetch: false,
+        expectedRenderableCount: 8,
       },
       {
         name: "stops prefetching when there are no older events left",
@@ -139,6 +153,40 @@ describe("resolveInitialAcpHistoryDecision", () => {
     ];
 
     expect(countRenderableAcpConversationItems(events, "runtime-session-1")).toBe(0);
+  });
+
+  it("only continues context prefetch on full pages unless recovering partial-only chunks", () => {
+    const underfilledRenderable = resolveInitialAcpHistoryDecision(
+      [
+        acpEvent(1, {
+          type: "agent_message",
+          text: "One visible reply.",
+        }),
+      ],
+      "runtime-session-1",
+      true
+    );
+    expect(
+      shouldContinueInitialAcpHistoryPrefetch(underfilledRenderable, 1, 60)
+    ).toBe(false);
+    expect(
+      shouldContinueInitialAcpHistoryPrefetch(underfilledRenderable, 60, 60)
+    ).toBe(true);
+
+    const partialOnly = resolveInitialAcpHistoryDecision(
+      [
+        acpEvent(2, {
+          type: "agent_message",
+          text: "tail chunk",
+          chunk: true,
+          message_id: "msg-1",
+          chunk_index: 32,
+        }),
+      ],
+      "runtime-session-1",
+      true
+    );
+    expect(shouldContinueInitialAcpHistoryPrefetch(partialOnly, 1, 60)).toBe(true);
   });
 
   it("widens bounded recovery page cap for very high chunk indexes", () => {

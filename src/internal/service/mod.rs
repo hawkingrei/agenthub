@@ -26,7 +26,7 @@ pub(super) use crate::agent::{
 pub(super) use crate::team::{
     TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX, TeamContextLookupError, TeamManager, TeamStepRecord,
     TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskListQuery,
-    TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
+    TeamTaskStatus, dispatch_actor_mailbox_immediate_hint, plan_actor_mailbox_immediate_hint,
     resolve_team_permission_review_target,
 };
 

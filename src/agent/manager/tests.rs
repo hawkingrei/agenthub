@@ -3,14 +3,18 @@ use super::acp_provider::{
     acp_provider_for_agent_with_binary, acp_provider_spec_for_agent_with_binary,
 };
 use super::codec::{is_acp_message, status_from_str, stream_to_str};
+use super::session::effective_acp_default_mode;
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
     AGENT_LOOP_MESSAGE_ID_PREFIX, AgentOutput, AgentRecord, AgentStatus, OutputStream,
-    WorktreeMode, build_runtime_start_policy, ensure_team_runtime_workspace_layout,
-    is_agent_loop_activity_output, should_rearm_agent_loop_for_output, status_to_str,
-    stream_from_str,
+    WorktreeMode, acp_accepts_best_effort_hint, build_runtime_start_policy,
+    ensure_team_runtime_workspace_layout, is_agent_loop_activity_output,
+    should_rearm_agent_loop_for_output, status_to_str, stream_from_str,
 };
-use crate::acp::{AcpActorSkillContext, AcpPromptDeliveryPolicy, AcpRuntimeLocation};
+use crate::acp::{
+    AcpActorSkillContext, AcpCommandErrorDiagnostic, AcpHandleDiagnostics, AcpPromptDeliveryPolicy,
+    AcpRuntimeLocation, AcpStalePromptDiagnostic,
+};
 use crate::path_utils::expand_tilde;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -111,6 +115,111 @@ fn agent_loop_activity_counts_non_loop_acp_output_only() {
         !is_agent_loop_activity_output(&system_output),
         "non-ACP output should not reset ACP silence tracking"
     );
+}
+
+fn idle_acp_hint_diagnostics() -> AcpHandleDiagnostics {
+    AcpHandleDiagnostics {
+        session_id: "session-1".to_string(),
+        command_channel_closed: false,
+        command_channel_capacity: 8,
+        command_channel_max_capacity: 8,
+        active_prompt_count: 0,
+        pending_command_count: 0,
+        pending_permission_count: 0,
+        active_submission_ids: Vec::new(),
+        last_submission_id: None,
+        last_provider_event_type: None,
+        last_provider_event_at: None,
+        pending_tool_call_count: 0,
+        pending_tool_calls: Vec::new(),
+        stale_prompt: None,
+        last_command_error: None,
+        last_command_error_at: None,
+    }
+}
+
+#[test]
+fn best_effort_mailbox_hints_respect_provider_prompt_policy() {
+    assert!(acp_accepts_best_effort_hint(
+        &idle_acp_hint_diagnostics(),
+        AcpPromptDeliveryPolicy::StrictFifo
+    ));
+
+    let mut active_prompt = idle_acp_hint_diagnostics();
+    active_prompt.active_prompt_count = 1;
+    assert!(!acp_accepts_best_effort_hint(
+        &active_prompt,
+        AcpPromptDeliveryPolicy::StrictFifo
+    ));
+    assert!(acp_accepts_best_effort_hint(
+        &active_prompt,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
+
+    let mut queued_command = idle_acp_hint_diagnostics();
+    queued_command.pending_command_count = 1;
+    assert!(!acp_accepts_best_effort_hint(
+        &queued_command,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
+
+    let mut pending_permission = idle_acp_hint_diagnostics();
+    pending_permission.pending_permission_count = 1;
+    assert!(!acp_accepts_best_effort_hint(
+        &pending_permission,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
+
+    let mut pending_tool = idle_acp_hint_diagnostics();
+    pending_tool.pending_tool_call_count = 1;
+    assert!(!acp_accepts_best_effort_hint(
+        &pending_tool,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
+
+    let mut stale_prompt = idle_acp_hint_diagnostics();
+    stale_prompt.stale_prompt = Some(AcpStalePromptDiagnostic {
+        active_prompt_count: 1,
+        pending_permission_count: 0,
+        stale_for_seconds: 300,
+        last_activity_at: Some(100),
+        active_submission_ids: vec!["submission-1".to_string()],
+    });
+    assert!(!acp_accepts_best_effort_hint(
+        &stale_prompt,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
+
+    let mut closed_channel = idle_acp_hint_diagnostics();
+    closed_channel.command_channel_closed = true;
+    assert!(!acp_accepts_best_effort_hint(
+        &closed_channel,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
+
+    let mut full_channel = idle_acp_hint_diagnostics();
+    full_channel.command_channel_capacity = 0;
+    assert!(!acp_accepts_best_effort_hint(
+        &full_channel,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
+
+    let mut queued_channel_send = idle_acp_hint_diagnostics();
+    queued_channel_send.command_channel_capacity = 7;
+    assert!(acp_accepts_best_effort_hint(
+        &queued_channel_send,
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+    ));
+
+    let mut previous_error = idle_acp_hint_diagnostics();
+    previous_error.last_command_error = Some(AcpCommandErrorDiagnostic {
+        command_kind: "prompt".to_string(),
+        message: "previous transient error".to_string(),
+    });
+    assert!(acp_accepts_best_effort_hint(
+        &previous_error,
+        AcpPromptDeliveryPolicy::StrictFifo
+    ));
 }
 
 #[test]
@@ -227,11 +336,42 @@ fn acp_provider_for_agent_requires_expected_args() {
     assert_eq!(codex.id, ACP_PROVIDER_CODEX);
     assert_eq!(
         codex.prompt_delivery_policy,
-        AcpPromptDeliveryPolicy::StrictFifo
+        AcpPromptDeliveryPolicy::AllowConcurrentPrompts
     );
     assert_eq!(
         codex.default_mode_behavior,
         AcpDefaultModeBehavior::ApplyWhenConfigured
+    );
+}
+
+#[test]
+fn team_codex_acp_default_mode_uses_full_access() {
+    let codex_bin = "agenthub-codex-acp";
+    let codex = acp_provider_spec_for_agent_with_binary(codex_bin, codex_bin, &[])
+        .expect("resolve codex acp provider");
+    let gemini =
+        acp_provider_spec_for_agent_with_binary(codex_bin, "gemini", &["--acp".to_string()])
+            .expect("resolve gemini acp provider");
+
+    assert_eq!(
+        effective_acp_default_mode(codex, None, Some("auto"), true),
+        Some("full-access")
+    );
+    assert_eq!(
+        effective_acp_default_mode(codex, Some("read-only"), Some("auto"), true),
+        Some("read-only")
+    );
+    assert_eq!(
+        effective_acp_default_mode(codex, Some("read-only"), Some("auto"), false),
+        Some("read-only")
+    );
+    assert_eq!(
+        effective_acp_default_mode(codex, None, Some("auto"), false),
+        Some("auto")
+    );
+    assert_eq!(
+        effective_acp_default_mode(gemini, None, Some("auto"), true),
+        Some("auto")
     );
 }
 
@@ -337,6 +477,7 @@ fn build_agent_record_for_policy(
         worktree_repo: worktree_repo.map(str::to_string),
         worktree_ref: None,
         code_mode: true,
+        codex_acp_default_mode: None,
         agent_loop_enabled: false,
         agent_loop_idle_seconds: None,
         agent_loop_prompt: None,

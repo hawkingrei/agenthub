@@ -46,6 +46,7 @@ const baseAgentSpecDraft: TeamMemberProfileDraft = {
   agent_loop_enabled: false,
   agent_loop_idle_seconds: "",
   agent_loop_prompt: "",
+  codex_acp_default_mode: "full-access",
 };
 
 const baseRuntimeTone: TeamRuntimeControlTone = {

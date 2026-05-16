@@ -5781,6 +5781,45 @@ describe("team panels interactions", () => {
     nowSpy.mockRestore();
   });
 
+  it("TeamMemberAcpPanel warns when the ACP provider reports a stale prompt", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          status: "working",
+          latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+        })}
+        memberEvents={[
+          {
+            event_id: 24,
+            agent_id: "worker-agent",
+            session_id: "task-77",
+            seq: "24",
+            ts: 1_700_000_204,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "run_status",
+              status: "stale_prompt",
+              reason: "active prompt has no provider event and no pending permission",
+            }),
+          },
+        ]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("ACP provider appears stalled");
+    expect(container.textContent).toContain("ACP provider stalled");
+  });
+
   it("TeamMemberAcpPanel hides technical metadata when developer mode is off", () => {
     renderWithMantine(
       root,
@@ -5882,35 +5921,36 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Plan");
   });
 
-  it("TeamMemberAcpPanel shows startup progress when the member is active but has no ACP session yet", () => {
+  it("TeamMemberAcpPanel does not show startup progress for active members without an ACP session", () => {
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
-          developerMode={false}
-          selectedMemberId="worker-agent"
-          memberTitle="Worker agent"
-          selectedMemberSnapshot={buildMemberSnapshot({
-            member_id: "worker-agent",
-            role: "worker",
-            status: "running",
-          })}
-          selectedMemberRole="worker"
-          selectedAgentStatus="running"
-          memberEvents={[]}
-          memberEventsHasMore={false}
-          memberEventsLoading={false}
-          eventsLoading={false}
-          oldestMemberEventId={null}
-          onSendInput={vi.fn()}
-          onLoadOlder={vi.fn()}
-        />
+        developerMode={false}
+        selectedMemberId="worker-agent"
+        memberTitle="Worker agent"
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          status: "running",
+        })}
+        selectedMemberRole="worker"
+        selectedAgentStatus="running"
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
     );
 
-    expect(container.textContent).toContain("Starting ACP session...");
-    expect(container.textContent).toContain("Starting session");
+    expect(container.textContent).toContain("No active thread session yet");
+    expect(container.textContent).not.toContain("Starting ACP session...");
+    expect(container.textContent).not.toContain("Starting session");
     expect(
       container.querySelector('[role="progressbar"][aria-label="Starting ACP session"]')
-    ).not.toBeNull();
+    ).toBeNull();
     expect(container.querySelector("textarea")).toBeNull();
   });
 

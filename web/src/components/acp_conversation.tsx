@@ -31,6 +31,7 @@ type AcpConversationProps = {
   isFrozenView: boolean;
   shouldAutoCollapse: boolean;
   collapseCutoff: number;
+  toolCallsDefaultCollapsed?: boolean;
   runStatus?: string | null;
   virtualTopSpacer: number;
   virtualBottomSpacer: number;
@@ -65,6 +66,7 @@ export function AcpConversation({
   isFrozenView,
   shouldAutoCollapse,
   collapseCutoff,
+  toolCallsDefaultCollapsed = false,
   runStatus,
   virtualTopSpacer,
   virtualBottomSpacer,
@@ -129,6 +131,7 @@ export function AcpConversation({
               focusedToolCallId={focusedToolCallId}
               shouldAutoCollapse={shouldAutoCollapse}
               collapseCutoff={collapseCutoff}
+              toolCallsDefaultCollapsed={toolCallsDefaultCollapsed}
               isFrozenView={isFrozenView}
               runStatus={runStatus}
               ansi={ansi}

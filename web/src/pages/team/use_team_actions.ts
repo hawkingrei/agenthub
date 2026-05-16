@@ -29,6 +29,7 @@ import {
   resolveAdaptiveAcpHistoryPageCap,
   resolveAdaptiveAcpHistoryPageLimit,
   resolveInitialAcpHistoryDecision,
+  shouldContinueInitialAcpHistoryPrefetch,
 } from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
 import {
@@ -426,7 +427,8 @@ export function useTeamActions(options: UseTeamActionsOptions) {
   const loadMemberEvents = useCallback(
     async (
       mode: "replace" | "prepend" = "replace",
-      sessionIdOverride?: string | null
+      sessionIdOverride?: string | null,
+      options: { silent?: boolean } = {}
     ) => {
       const agentId = selectedMemberAgentId?.trim() ?? "";
       if (!agentId) {
@@ -472,7 +474,10 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       }
 
       const runLoad = async () => {
-        setMemberEventsLoading(true);
+        const showLoading = options.silent !== true;
+        if (showLoading) {
+          setMemberEventsLoading(true);
+        }
         try {
           let list = await teamApi.listAgentEvents(
             agentId,
@@ -480,10 +485,11 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             sessionId,
             beforeId
           );
+          let lastFetchLimit = MEMBER_EVENT_PAGE_LIMIT;
           let lastFetchedCount = list.length;
           if (mode === "replace") {
             const cachedSessionEvents = peekTeamMemberAcpRenderCache(agentId, sessionId);
-            const hasWarmVisibleCache =
+            const hasWarmRenderableContext =
               resolveInitialAcpHistoryDecision(
                 cachedSessionEvents,
                 sessionId,
@@ -501,13 +507,17 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             );
             let pageCount = 1;
             while (
-              !hasWarmVisibleCache &&
+              !hasWarmRenderableContext &&
               pageCount < maxInitialPrefetchPages &&
-              resolveInitialAcpHistoryDecision(
-                list,
-                sessionId,
-                hasPotentialOlderAgentEvents(lastFetchedCount)
-              ).shouldPrefetchInitialHistory
+              shouldContinueInitialAcpHistoryPrefetch(
+                resolveInitialAcpHistoryDecision(
+                  list,
+                  sessionId,
+                  hasPotentialOlderAgentEvents(lastFetchedCount)
+                ),
+                lastFetchedCount,
+                lastFetchLimit
+              )
             ) {
               const oldestLoadedId = list[0]?.event_id;
               if (!oldestLoadedId) {
@@ -524,6 +534,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
                 sessionId,
                 oldestLoadedId
               );
+              lastFetchLimit = nextPageLimit;
               lastFetchedCount = older.length;
               if (older.length === 0) {
                 break;
@@ -551,7 +562,9 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             setMemberEventsHasMore(hasPotentialOlderAgentEvents(lastFetchedCount));
           }
         } finally {
-          setMemberEventsLoading(false);
+          if (showLoading) {
+            setMemberEventsLoading(false);
+          }
         }
       };
 

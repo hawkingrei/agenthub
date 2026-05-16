@@ -110,6 +110,26 @@ describe("analyzeLiveOutputBatch", () => {
 
     expect(analyzed.nextStatuses).toEqual({ "agent-1": "running" });
   });
+
+  it("keeps agents active while a prompt is marked stale", () => {
+    const analyzed = analyzeLiveOutputBatch(
+      [
+        buildOutputLine({
+          agent_id: "agent-1",
+          session_id: "session-1",
+          stream: "acp",
+          message: JSON.stringify({
+            type: "run_status",
+            status: "stale_prompt",
+          }),
+        }),
+      ],
+      "agent-1",
+      "session-1"
+    );
+
+    expect(analyzed.nextStatuses).toEqual({ "agent-1": "running" });
+  });
 });
 
 describe("collectAcpPermissionSignalAgentIds", () => {

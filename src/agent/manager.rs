@@ -44,8 +44,8 @@ use super::{
     normalize_target_node_id, validate_agent_node_config_input, validate_agent_node_update_input,
 };
 use crate::acp::{
-    AcpActorSkillContext, AcpHandle, AcpPermissionReviewDispatcher, AcpPermissionService,
-    load_safe_paths,
+    AcpActorSkillContext, AcpHandle, AcpHandleDiagnostics, AcpPermissionReviewDispatcher,
+    AcpPermissionService, AcpPromptDeliveryPolicy, load_safe_paths,
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
@@ -55,7 +55,7 @@ use crate::internal::p2p::{
 };
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::push::PushService;
-use agenthub_config::normalize_codex_acp_mode_id;
+use agenthub_config::{normalize_codex_acp_mode_id, normalize_optional_codex_acp_mode_id};
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 #[derive(Clone)]
@@ -482,6 +482,25 @@ fn should_rearm_agent_loop_for_output(session_id: &str, output: &AgentOutput) ->
     output.session_id == session_id && is_agent_loop_activity_output(output)
 }
 
+fn acp_accepts_best_effort_hint(
+    diagnostics: &AcpHandleDiagnostics,
+    prompt_delivery_policy: AcpPromptDeliveryPolicy,
+) -> bool {
+    let accepts_active_prompt = diagnostics.active_prompt_count == 0
+        || matches!(
+            prompt_delivery_policy,
+            AcpPromptDeliveryPolicy::AllowConcurrentPrompts
+        );
+
+    !diagnostics.command_channel_closed
+        && diagnostics.command_channel_capacity > 0
+        && accepts_active_prompt
+        && diagnostics.pending_command_count == 0
+        && diagnostics.pending_permission_count == 0
+        && diagnostics.pending_tool_call_count == 0
+        && diagnostics.stale_prompt.is_none()
+}
+
 fn is_agent_user_message(message: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(message)
         .ok()
@@ -605,6 +624,7 @@ pub struct AgentHandle {
     input: AgentInput,
     session_id: String,
     actor_context: Option<AcpActorSkillContext>,
+    acp_prompt_delivery_policy: Option<AcpPromptDeliveryPolicy>,
     loop_controller: Option<AgentLoopController>,
 }
 
@@ -874,6 +894,7 @@ impl AgentManager {
             worktree_repo: agent.worktree_repo.clone(),
             worktree_ref: agent.worktree_ref.clone(),
             code_mode: agent.code_mode,
+            codex_acp_default_mode: agent.codex_acp_default_mode.clone(),
             agent_loop_enabled: agent.agent_loop_enabled,
             agent_loop_idle_seconds: agent.agent_loop_idle_seconds,
             agent_loop_prompt: agent.agent_loop_prompt.clone(),
@@ -1110,6 +1131,9 @@ impl AgentManager {
             worktree_repo,
             worktree_ref: config.worktree_ref,
             code_mode: config.code_mode,
+            codex_acp_default_mode: normalize_optional_codex_acp_mode_id(
+                config.codex_acp_default_mode.as_deref(),
+            ),
             agent_loop_enabled: config.agent_loop_enabled,
             agent_loop_idle_seconds: config.agent_loop_idle_seconds,
             agent_loop_prompt: config.agent_loop_prompt.and_then(|value| {
@@ -1727,6 +1751,8 @@ impl AgentManager {
                 let diagnostics = acp.diagnostics();
                 let status = if diagnostics.command_channel_closed {
                     "closed"
+                } else if diagnostics.stale_prompt.is_some() {
+                    "prompt_stale"
                 } else if diagnostics.active_prompt_count > 0 {
                     "prompt_active"
                 } else if diagnostics.pending_command_count > 0 {
@@ -1931,6 +1957,48 @@ impl AgentManager {
                 Err(err)
             }
         }
+    }
+
+    pub(crate) async fn send_mailbox_hint_input(
+        &self,
+        agent_id: &str,
+        input: &str,
+        expected_session_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let agent = self.get_agent(agent_id).await?;
+        if agent.target_node_id.is_some() {
+            return self
+                .send_input(agent_id, input, None, expected_session_id)
+                .await;
+        }
+
+        {
+            let guard = self.inner.read().await;
+            let handle = guard
+                .get(agent_id)
+                .ok_or_else(|| anyhow::anyhow!("agent not running"))?;
+            if let Some(expected_session_id) = expected_session_id
+                && expected_session_id != handle.session_id
+            {
+                return Err(AgentSendInputError::SessionMismatch {
+                    expected: expected_session_id.to_string(),
+                    running: handle.session_id.clone(),
+                }
+                .into());
+            }
+            if let AgentInput::Acp(acp) = &handle.input {
+                let diagnostics = acp.diagnostics();
+                let prompt_delivery_policy = handle
+                    .acp_prompt_delivery_policy
+                    .unwrap_or(AcpPromptDeliveryPolicy::StrictFifo);
+                if !acp_accepts_best_effort_hint(&diagnostics, prompt_delivery_policy) {
+                    anyhow::bail!("agent ACP input is busy; skip best-effort mailbox hint");
+                }
+            }
+        }
+
+        self.send_input(agent_id, input, None, expected_session_id)
+            .await
     }
 
     async fn persist_acp_prompt_submission_failure(

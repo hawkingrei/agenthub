@@ -21,9 +21,11 @@ pub use agenthub_team_domain::{
     TeamTaskRecord, TeamTaskStatus, TeamTaskStepExecutionMode, TeamTaskStepExecutionSpec,
     TeamThreadOpenRecord, TeamThreadReplyRecord,
 };
+#[cfg(test)]
+pub(crate) use mailbox_hint::build_actor_mailbox_immediate_hint_prompt;
 pub(crate) use mailbox_hint::{
     ActorMailboxImmediateHintReason, TeamMailboxUnreadHintWorker,
-    TeamMailboxUnreadHintWorkerSettings, build_actor_mailbox_immediate_hint_prompt,
+    TeamMailboxUnreadHintWorkerSettings, dispatch_actor_mailbox_immediate_hint,
     plan_actor_mailbox_immediate_hint,
 };
 pub(crate) use manager::TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX;

@@ -17,6 +17,8 @@ vi.mock("../../api", async () => {
       createTeam: vi.fn(),
       createAgent: vi.fn(),
       deleteAgent: vi.fn(),
+      setAgentCodexAcpDefaultMode: vi.fn(),
+      setAgentLoop: vi.fn(),
       updateTeamSpec: vi.fn(),
       getTeamRuntime: vi.fn(),
       startTeam: vi.fn(),
@@ -115,6 +117,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     forgeAgentName: "",
     forgeAgentWorkdir: "",
     forgeAgentPresetId: "codex",
+    forgeAgentCodexAcpDefaultMode: "full-access",
     forgeAgentWorktreeMode: "create_worktree",
     forgeAgentWorktreeRepo: "",
     forgeAgentWorktreeRef: "",
@@ -147,6 +150,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     setForgeAgentName: vi.fn(),
     setForgeAgentWorkdir: vi.fn(),
     setForgeAgentPresetId: vi.fn(),
+    setForgeAgentCodexAcpDefaultMode: vi.fn(),
     setForgeAgentWorktreeMode: vi.fn(),
     setForgeAgentWorktreeRepo: vi.fn(),
     setForgeAgentWorktreeRef: vi.fn(),
@@ -399,6 +403,7 @@ describe("useTeamManagementActions", () => {
         agent_loop_enabled: false,
         agent_loop_idle_seconds: "90",
         agent_loop_prompt: "",
+        codex_acp_default_mode: "full-access",
       } satisfies TeamMemberProfileDraft,
       forgeAgentName: "Forge Worker",
       forgeAgentWorkdir: "/tmp/worktrees/forge-worker",
@@ -412,8 +417,108 @@ describe("useTeamManagementActions", () => {
       await act(async () => {
         await mounted.getSnapshot()?.onCreateForgeAgent();
       });
+      expect(mockedApi.createAgent).toHaveBeenCalledWith(
+        "token-1",
+        expect.objectContaining({
+          command: "agenthub-codex-acp",
+          codex_acp_default_mode: "full-access",
+        })
+      );
       expect(mockedApi.deleteAgent).toHaveBeenCalledWith("token-1", "agent-forge-1");
       expect(params.setError).toHaveBeenCalledWith("team spec changed");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("persists edited team member codex startup mode for restart", async () => {
+    mockedApi.updateTeamSpec.mockResolvedValueOnce({
+      id: "team-1",
+      name: "Alpha Team",
+      description: "team",
+      spec: {
+        coordinator_member_id: "coordinator-1",
+        members: [{ member_id: "worker-1", role: "worker" }],
+        steps: [],
+      },
+      created_at: 1,
+      updated_at: 2,
+    } as never);
+    mockedApi.setAgentLoop.mockResolvedValueOnce({ status: "ok" } as never);
+    mockedApi.setAgentCodexAcpDefaultMode.mockResolvedValueOnce({ status: "ok" } as never);
+
+    const params = createParams({
+      selectedTeam: {
+        id: "team-1",
+        name: "Alpha Team",
+        description: "team",
+        spec: {
+          coordinator_member_id: "coordinator-1",
+          members: [
+            { member_id: "coordinator-1", role: "coordinator" },
+            { member_id: "worker-1", role: "worker", prompt: "work" },
+          ],
+          steps: [],
+        },
+        created_at: 1,
+        updated_at: 1,
+      } as HookParams["selectedTeam"],
+      selectedAgentWorkspaceAgent: {
+        id: "worker-1",
+        name: "Worker One",
+        workdir: "/repo/worker",
+        command: "agenthub-codex-acp",
+        args: [],
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+        codex_acp_default_mode: "auto",
+        status: "stopped",
+        created_at: 1,
+        updated_at: 1,
+      },
+      teamMemberEditDraft: {
+        member_id: "worker-1",
+        role: "worker",
+        description: "Worker",
+        model: "codex",
+        prompt: "work",
+        skills: [],
+        custom_skills: "",
+        agent_loop_enabled: false,
+        agent_loop_idle_seconds: "",
+        agent_loop_prompt: "",
+        codex_acp_default_mode: "yolo",
+      },
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onSaveTeamMemberProfile();
+      });
+
+      expect(mockedApi.setAgentCodexAcpDefaultMode).toHaveBeenCalledWith(
+        "token-1",
+        "worker-1",
+        "full-access"
+      );
+      expect(mockedApi.updateTeamSpec).toHaveBeenCalledWith(
+        "token-1",
+        "team-1",
+        expect.objectContaining({
+          spec: expect.objectContaining({
+            members: expect.arrayContaining([
+              expect.objectContaining({
+                member_id: "worker-1",
+                runtime: expect.objectContaining({
+                  codex_acp_default_mode: "full-access",
+                }),
+              }),
+            ]),
+          }),
+        })
+      );
     } finally {
       mounted.cleanup();
     }
@@ -476,6 +581,7 @@ describe("useTeamManagementActions", () => {
         worktree_repo: null,
         worktree_ref: null,
         code_mode: true,
+        codex_acp_default_mode: "full-access",
       });
       expect(params.setBusy).toHaveBeenNthCalledWith(1, "copy-team-agent");
       expect(params.setBusy).toHaveBeenLastCalledWith(null);
@@ -554,6 +660,7 @@ describe("useTeamManagementActions", () => {
         worktree_repo: null,
         worktree_ref: null,
         code_mode: true,
+        codex_acp_default_mode: "full-access",
       });
       expect(mockedApi.updateTeamSpec).toHaveBeenCalledWith(
         "token-1",

@@ -21,7 +21,8 @@ type UseTeamMemberAcpEffectsOptions = {
   eventsAutoRefresh: boolean;
   loadMemberEvents: (
     mode?: "replace" | "prepend",
-    sessionIdOverride?: string | null
+    sessionIdOverride?: string | null,
+    options?: { silent?: boolean }
   ) => Promise<void>;
   setMemberEvents: Dispatch<SetStateAction<AgentEvent[]>>;
   setMemberEventsHasMore: Dispatch<SetStateAction<boolean>>;
@@ -160,6 +161,7 @@ export function useTeamMemberAcpEffects({
       refreshQueuedReasonRef.current = reason;
       return;
     }
+    let currentReason = reason;
     refreshInFlightRef.current = true;
     try {
       for (;;) {
@@ -168,10 +170,15 @@ export function useTeamMemberAcpEffects({
         if (!current.agentId || !current.sessionId) {
           return;
         }
-        await loadMemberEventsRef.current("replace");
+        if (currentReason === "poll") {
+          await loadMemberEventsRef.current("replace", undefined, { silent: true });
+        } else {
+          await loadMemberEventsRef.current("replace");
+        }
         if (!refreshQueuedRef.current) {
           return;
         }
+        currentReason = refreshQueuedReasonRef.current;
       }
     } finally {
       refreshInFlightRef.current = false;

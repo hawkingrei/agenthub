@@ -9,6 +9,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
+use agenthub_config::normalize_optional_codex_acp_mode_id;
+
 use crate::acp::{
     AcpActorSkillContext, AcpPermissionRecord, AcpPermissionRespondResult, DEFAULT_ACTOR_CHANNEL,
 };
@@ -39,6 +41,7 @@ pub struct CreateAgentRequest {
     pub worktree_repo: Option<String>,
     pub worktree_ref: Option<String>,
     pub code_mode: Option<bool>,
+    pub codex_acp_default_mode: Option<String>,
     pub agent_loop_enabled: Option<bool>,
     pub agent_loop_idle_seconds: Option<i64>,
     pub agent_loop_prompt: Option<String>,
@@ -72,6 +75,7 @@ pub struct AgentDiscoveryIdentity {
 pub struct AgentDiscoveryRuntime {
     pub acp_provider: Option<String>,
     pub code_mode: bool,
+    pub codex_acp_default_mode: Option<String>,
     pub agent_loop_enabled: bool,
     pub agent_loop_idle_seconds: Option<i64>,
     pub target_node_id: Option<String>,
@@ -111,6 +115,11 @@ pub struct SetAgentLoopRequest {
     pub enabled: bool,
     pub idle_seconds: Option<i64>,
     pub prompt: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetCodexAcpDefaultModeRequest {
+    pub mode_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -186,6 +195,10 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}/events", get(list_events))
         .route("/{id}/events/{event_id}", get(get_event))
         .route("/{id}/code_mode", post(set_code_mode))
+        .route(
+            "/{id}/codex_acp_default_mode",
+            post(set_codex_acp_default_mode),
+        )
         .route("/{id}/agent_loop", post(set_agent_loop))
         .route("/{id}/acp/session/clear", post(clear_acp_session))
         .route("/{id}/acp/mode", post(set_acp_mode))
@@ -232,6 +245,7 @@ async fn create_agent(
         worktree_repo,
         worktree_ref,
         code_mode,
+        codex_acp_default_mode,
         agent_loop_enabled,
         agent_loop_idle_seconds,
         agent_loop_prompt,
@@ -241,6 +255,8 @@ async fn create_agent(
     let worktree_mode = parse_worktree_mode(worktree_mode.as_deref())?;
     let worktree_repo = normalize_optional_request_field("worktree_repo", worktree_repo)?;
     let worktree_ref = normalize_optional_request_field("worktree_ref", worktree_ref)?;
+    let codex_acp_default_mode =
+        normalize_codex_acp_default_mode_request(codex_acp_default_mode.as_deref())?;
     let agent_loop_enabled = agent_loop_enabled.unwrap_or(false);
     let agent_loop_prompt =
         normalize_optional_request_field("agent_loop.prompt", agent_loop_prompt)?;
@@ -278,6 +294,7 @@ async fn create_agent(
         worktree_repo,
         worktree_ref,
         code_mode: code_mode.unwrap_or(true),
+        codex_acp_default_mode,
         agent_loop_enabled,
         agent_loop_idle_seconds,
         agent_loop_prompt,
@@ -534,6 +551,21 @@ async fn set_code_mode(
     Ok(ok_response())
 }
 
+async fn set_codex_acp_default_mode(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SetCodexAcpDefaultModeRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let mode_id = normalize_codex_acp_default_mode_request(payload.mode_id.as_deref())?;
+    state
+        .agents
+        .set_codex_acp_default_mode(&agent_id, mode_id.as_deref())
+        .await?;
+    Ok(ok_response())
+}
+
 async fn set_agent_loop(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -762,6 +794,20 @@ fn normalize_optional_request_field(
     }
 }
 
+fn normalize_codex_acp_default_mode_request(
+    value: Option<&str>,
+) -> Result<Option<String>, ApiError> {
+    let normalized = normalize_optional_codex_acp_mode_id(value);
+    if let Some(mode_id) = normalized.as_deref()
+        && !matches!(mode_id, "read-only" | "auto" | "full-access")
+    {
+        return Err(ApiError::bad_request(
+            "codex_acp_default_mode must be one of read-only, auto, full-access, or yolo",
+        ));
+    }
+    Ok(normalized)
+}
+
 fn validate_create_agent_loop_config(
     enabled: bool,
     idle_seconds: Option<i64>,
@@ -944,6 +990,7 @@ fn build_agent_discovery_card(
         runtime: AgentDiscoveryRuntime {
             acp_provider: acp_provider.map(str::to_string),
             code_mode: agent.code_mode,
+            codex_acp_default_mode: agent.codex_acp_default_mode.clone(),
             agent_loop_enabled: agent.agent_loop_enabled,
             agent_loop_idle_seconds: agent.agent_loop_idle_seconds,
             target_node_id: agent.target_node_id.clone(),
@@ -1177,6 +1224,7 @@ mod tests {
             worktree_repo: Some("/tmp/repo".to_string()),
             worktree_ref: Some("main".to_string()),
             code_mode: true,
+            codex_acp_default_mode: None,
             agent_loop_enabled: false,
             agent_loop_idle_seconds: None,
             agent_loop_prompt: None,
@@ -1225,6 +1273,7 @@ mod tests {
             worktree_repo: None,
             worktree_ref: None,
             code_mode: false,
+            codex_acp_default_mode: None,
             agent_loop_enabled: false,
             agent_loop_idle_seconds: None,
             agent_loop_prompt: None,
@@ -1481,6 +1530,7 @@ mod tests {
                 worktree_repo TEXT,
                 worktree_ref TEXT,
                 code_mode INTEGER NOT NULL DEFAULT 0,
+                codex_acp_default_mode TEXT,
                 agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
                 agent_loop_idle_seconds INTEGER,
                 agent_loop_prompt TEXT,
@@ -2078,6 +2128,7 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: true,
+                codex_acp_default_mode: None,
                 agent_loop_enabled: false,
                 agent_loop_idle_seconds: None,
                 agent_loop_prompt: None,
@@ -2305,6 +2356,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_agent_route_normalizes_codex_acp_default_mode() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind("/tmp/codex-mode-agent")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "codex-mode-agent",
+                    "workdir": "/tmp/codex-mode-agent",
+                    "command": "agenthub-codex-acp",
+                    "args": [],
+                    "code_mode": true,
+                    "codex_acp_default_mode": "yolo"
+                })),
+            ))
+            .await
+            .expect("create codex mode agent");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        let agent_id = body["id"].as_str().expect("agent id");
+        assert_eq!(body["codex_acp_default_mode"], Value::from("full-access"));
+        let row = sqlx::query("SELECT codex_acp_default_mode FROM agents WHERE id = ?1")
+            .bind(agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load created agent row");
+        assert_eq!(
+            row.get::<Option<String>, _>("codex_acp_default_mode")
+                .as_deref(),
+            Some("full-access")
+        );
+    }
+
+    #[tokio::test]
     async fn create_team_forge_agent_route_rejects_remote_target_on_legacy_schema() {
         let db = create_test_db().await;
         init_test_schema(&db).await;
@@ -2435,6 +2532,7 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: true,
+                codex_acp_default_mode: None,
                 agent_loop_enabled: false,
                 agent_loop_idle_seconds: None,
                 agent_loop_prompt: None,
@@ -3496,6 +3594,7 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                codex_acp_default_mode: None,
                 agent_loop_enabled: false,
                 agent_loop_idle_seconds: None,
                 agent_loop_prompt: None,
@@ -3515,6 +3614,7 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                codex_acp_default_mode: None,
                 agent_loop_enabled: false,
                 agent_loop_idle_seconds: None,
                 agent_loop_prompt: None,
@@ -3676,6 +3776,7 @@ mod tests {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                codex_acp_default_mode: None,
                 agent_loop_enabled: false,
                 agent_loop_idle_seconds: None,
                 agent_loop_prompt: None,
@@ -3696,6 +3797,7 @@ mod tests {
                     worktree_repo: None,
                     worktree_ref: None,
                     code_mode: false,
+                    codex_acp_default_mode: None,
                     agent_loop_enabled: false,
                     agent_loop_idle_seconds: None,
                     agent_loop_prompt: None,
@@ -3906,6 +4008,81 @@ mod tests {
         assert_eq!(
             disabled_row.get::<String, _>("agent_loop_prompt"),
             "Resume by checking the current ACP thread and taking the next step."
+        );
+    }
+
+    #[tokio::test]
+    async fn set_codex_acp_default_mode_route_updates_agent_config_only() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'running', ?7, ?8)
+            "#,
+        )
+        .bind("codex-mode-agent")
+        .bind("codex-mode-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert codex mode agent");
+
+        let update_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/codex-mode-agent/codex_acp_default_mode",
+                Some(&token),
+                Some(json!({
+                    "mode_id": "yolo"
+                })),
+            ))
+            .await
+            .expect("update codex acp default mode");
+        assert_eq!(update_resp.status(), StatusCode::OK);
+        let update_body = decode_json_body(update_resp).await;
+        assert_eq!(update_body["status"], Value::from("ok"));
+
+        let row = sqlx::query("SELECT codex_acp_default_mode, status FROM agents WHERE id = ?1")
+            .bind("codex-mode-agent")
+            .fetch_one(&state.db)
+            .await
+            .expect("load codex mode agent row");
+        assert_eq!(
+            row.get::<Option<String>, _>("codex_acp_default_mode")
+                .as_deref(),
+            Some("full-access")
+        );
+        assert_eq!(row.get::<String, _>("status"), "running");
+
+        let invalid_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/codex-mode-agent/codex_acp_default_mode",
+                Some(&token),
+                Some(json!({
+                    "mode_id": "sandbox"
+                })),
+            ))
+            .await
+            .expect("reject invalid codex acp default mode");
+        assert_eq!(invalid_resp.status(), StatusCode::BAD_REQUEST);
+        let invalid_body = decode_json_body(invalid_resp).await;
+        assert_eq!(
+            invalid_body["error"],
+            Value::from(
+                "codex_acp_default_mode must be one of read-only, auto, full-access, or yolo"
+            )
         );
     }
 

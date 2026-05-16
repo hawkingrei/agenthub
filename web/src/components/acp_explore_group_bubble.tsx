@@ -26,6 +26,7 @@ export const ExploreGroupBubble = React.memo(
     ansi,
     runStatus,
     autoCollapse = false,
+    defaultCollapsed = false,
     onSubmitRequestUserInput,
   }: ExploreGroupBubbleProps) {
     const calls = React.useMemo(() => flattenExploreGroupToolCalls(msg.items), [msg.items]);
@@ -33,7 +34,9 @@ export const ExploreGroupBubble = React.memo(
       () => calls.some((call) => isToolCallEffectivelyLive(call.status, runStatus)),
       [calls, runStatus]
     );
-    const [open, setOpen] = React.useState(() => !autoCollapse && isLive);
+    const [open, setOpen] = React.useState(
+      () => !defaultCollapsed && !autoCollapse && isLive
+    );
     const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
     const handleAutoCollapse = React.useCallback(() => {
       setOpen((prev) => (prev ? false : prev));
@@ -47,9 +50,17 @@ export const ExploreGroupBubble = React.memo(
     );
 
     React.useEffect(() => {
+      if (defaultCollapsed) {
+        return;
+      }
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
       wasLiveRef.current = isLive;
-    }, [isLive]);
+    }, [defaultCollapsed, isLive]);
+    React.useEffect(() => {
+      if (defaultCollapsed) {
+        setOpen(false);
+      }
+    }, [defaultCollapsed]);
     React.useEffect(() => {
       if (autoCollapse && !wasAutoCollapseRef.current) {
         setOpen(false);
@@ -77,7 +88,7 @@ export const ExploreGroupBubble = React.memo(
           >
             <summary className={ACP_TOOL_SUMMARY_CLASS}>
               <span className={`${ACP_TOOL_TITLE_CLASS} acp-tool-group-title`}>
-                Explore ({calls.length} tools)
+                Explore ({calls.length} {calls.length === 1 ? "tool" : "tools"})
                 {titlePreview ? (
                   <span className="ml-2 font-normal text-notion-text-muted">· {titlePreview}</span>
                 ) : (
@@ -120,6 +131,7 @@ export const ExploreGroupBubble = React.memo(
                             ansi={ansi}
                             runStatus={runStatus}
                             autoCollapse={autoCollapse}
+                            defaultCollapsed={defaultCollapsed}
                             grouped={true}
                             indexLabel={`#${toolIndex}`}
                             onSubmitRequestUserInput={onSubmitRequestUserInput}
@@ -141,6 +153,7 @@ export const ExploreGroupBubble = React.memo(
     prev.ansi === next.ansi &&
     prev.runStatus === next.runStatus &&
     prev.autoCollapse === next.autoCollapse &&
+    prev.defaultCollapsed === next.defaultCollapsed &&
     prev.onSubmitRequestUserInput === next.onSubmitRequestUserInput
 );
 

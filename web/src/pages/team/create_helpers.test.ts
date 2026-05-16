@@ -71,6 +71,7 @@ function buildProfileDraft(
     agent_loop_enabled: false,
     agent_loop_idle_seconds: "",
     agent_loop_prompt: "",
+    codex_acp_default_mode: "full-access",
     ...overrides,
   };
 }
@@ -143,6 +144,7 @@ describe("team create helpers", () => {
       worktree_repo: null,
       worktree_ref: null,
       code_mode: false,
+      codex_acp_default_mode: "full-access",
       agent_loop_enabled: false,
       agent_loop_idle_seconds: null,
       agent_loop_prompt: null,
@@ -155,6 +157,7 @@ describe("team create helpers", () => {
       worktree_repo: "/tmp/repos/shiro",
       worktree_ref: "HEAD",
       code_mode: true,
+      codex_acp_default_mode: "full-access",
       agent_loop_enabled: false,
       agent_loop_idle_seconds: null,
       agent_loop_prompt: null,
@@ -209,6 +212,7 @@ describe("team create helpers", () => {
       worktree_repo: null,
       worktree_ref: null,
       code_mode: false,
+      codex_acp_default_mode: "full-access",
       agent_loop_enabled: false,
       agent_loop_idle_seconds: null,
       agent_loop_prompt: null,
@@ -372,6 +376,42 @@ describe("team create helpers", () => {
     );
   });
 
+  it("round-trips codex startup mode through team runtime hints", () => {
+    const spec = appendTeamMemberToSpec(
+      buildEmptyTeamSpec(),
+      buildProfileDraft({
+        member_id: "worker-1",
+        role: "coordinator",
+        model: "codex",
+        codex_acp_default_mode: "auto",
+      }),
+      buildForgeAgent({
+        id: "worker-1",
+        command: "agenthub-codex-acp",
+        codex_acp_default_mode: "auto",
+      })
+    ) as { members: Array<Record<string, unknown>> };
+
+    expect(spec.members[0]?.runtime).toEqual(
+      expect.objectContaining({
+        codex_acp_default_mode: "auto",
+      })
+    );
+
+    const draft = buildTeamMemberDraftFromSpec(spec, "worker-1");
+    expect(draft?.codex_acp_default_mode).toBe("auto");
+
+    const updated = updateTeamMemberProfileInSpec(spec, {
+      ...draft!,
+      codex_acp_default_mode: "yolo",
+    }) as { members: Array<Record<string, unknown>> };
+    expect(updated.members[0]?.runtime).toEqual(
+      expect.objectContaining({
+        codex_acp_default_mode: "full-access",
+      })
+    );
+  });
+
   it("drops out-of-range loop idle seconds when building a member draft from spec", () => {
     const spec = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
@@ -421,6 +461,7 @@ describe("team create helpers", () => {
       agent_loop_enabled: true,
       agent_loop_idle_seconds: "900",
       agent_loop_prompt: "Resume review synthesis after silence.",
+      codex_acp_default_mode: "full-access",
     }) as { members: Array<Record<string, unknown>> };
     expect(updated.members).toHaveLength(1);
     expect(updated.members[0]).toMatchObject({
@@ -439,6 +480,7 @@ describe("team create helpers", () => {
       worktree_repo: null,
       worktree_ref: null,
       code_mode: true,
+      codex_acp_default_mode: "full-access",
       agent_loop_enabled: true,
       agent_loop_idle_seconds: 900,
       agent_loop_prompt: "Resume review synthesis after silence.",
@@ -468,6 +510,7 @@ describe("team create helpers", () => {
       agent_loop_enabled: true,
       agent_loop_idle_seconds: "900abc",
       agent_loop_prompt: "Resume review synthesis after silence.",
+      codex_acp_default_mode: "full-access",
     }) as { members: Array<Record<string, unknown>> };
 
     expect(updated.members[0]?.runtime).toEqual({
@@ -478,6 +521,7 @@ describe("team create helpers", () => {
       worktree_repo: null,
       worktree_ref: null,
       code_mode: true,
+      codex_acp_default_mode: "full-access",
       agent_loop_enabled: true,
       agent_loop_idle_seconds: undefined,
       agent_loop_prompt: "Resume review synthesis after silence.",
@@ -507,6 +551,7 @@ describe("team create helpers", () => {
       agent_loop_enabled: true,
       agent_loop_idle_seconds: "9",
       agent_loop_prompt: "Resume review synthesis after silence.",
+      codex_acp_default_mode: "full-access",
     }) as { members: Array<Record<string, unknown>> };
 
     expect(updated.members[0]?.runtime).toEqual({
@@ -517,6 +562,7 @@ describe("team create helpers", () => {
       worktree_repo: null,
       worktree_ref: null,
       code_mode: true,
+      codex_acp_default_mode: "full-access",
       agent_loop_enabled: true,
       agent_loop_idle_seconds: undefined,
       agent_loop_prompt: "Resume review synthesis after silence.",

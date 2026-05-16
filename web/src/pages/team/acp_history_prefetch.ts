@@ -3,6 +3,7 @@ import type { AgentEvent } from "../../api";
 import { buildConversationMessages } from "../../conversation";
 
 export const ACP_INITIAL_VISIBLE_MESSAGE_TARGET = 1;
+export const ACP_INITIAL_RENDERABLE_CONTEXT_TARGET = 8;
 export const ACP_HISTORY_PAGE_LIMIT_MAX = 180;
 export type InitialAcpHistoryState =
   | "empty"
@@ -165,18 +166,18 @@ export function resolveInitialAcpHistoryDecision(
   events: AgentEvent[],
   sessionId: string | null | undefined,
   hasMore: boolean,
-  minVisibleItems: number = ACP_INITIAL_VISIBLE_MESSAGE_TARGET
+  minVisibleItems: number = ACP_INITIAL_RENDERABLE_CONTEXT_TARGET
 ): InitialAcpHistoryDecision {
   const visibleCount = countVisibleAcpConversationItems(events, sessionId);
   const renderableCount = countRenderableAcpConversationItems(events, sessionId);
   const hasIncompleteLeadingMessage = hasIncompleteLeadingAcpMessage(events, sessionId);
   const hasOnlyPartialLeadingMessage =
     hasIncompleteLeadingMessage &&
-    renderableCount < minVisibleItems &&
-    visibleCount >= minVisibleItems;
+    renderableCount === 0 &&
+    visibleCount >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
 
   let state: InitialAcpHistoryState;
-  if (renderableCount >= minVisibleItems) {
+  if (renderableCount > 0) {
     state = hasIncompleteLeadingMessage
       ? "partial_with_renderable_tail"
       : "renderable";
@@ -193,7 +194,7 @@ export function resolveInitialAcpHistoryDecision(
     hasIncompleteLeadingMessage,
     shouldPrefetchInitialHistory:
       hasMore &&
-      (state === "partial_only" || visibleCount < minVisibleItems),
+      (state === "partial_only" || renderableCount < minVisibleItems),
   };
 }
 
@@ -201,7 +202,7 @@ export function shouldPrefetchInitialAcpHistory(
   events: AgentEvent[],
   sessionId: string | null | undefined,
   hasMore: boolean,
-  minVisibleItems: number = ACP_INITIAL_VISIBLE_MESSAGE_TARGET
+  minVisibleItems: number = ACP_INITIAL_RENDERABLE_CONTEXT_TARGET
 ): boolean {
   return resolveInitialAcpHistoryDecision(
     events,
@@ -209,6 +210,20 @@ export function shouldPrefetchInitialAcpHistory(
     hasMore,
     minVisibleItems
   ).shouldPrefetchInitialHistory;
+}
+
+export function shouldContinueInitialAcpHistoryPrefetch(
+  decision: InitialAcpHistoryDecision,
+  fetchedCount: number,
+  requestedLimit: number
+): boolean {
+  if (!decision.shouldPrefetchInitialHistory) {
+    return false;
+  }
+  if (decision.state === "partial_only") {
+    return fetchedCount > 0;
+  }
+  return fetchedCount >= Math.max(1, requestedLimit);
 }
 
 function countLeadingMessageChunkEvents(

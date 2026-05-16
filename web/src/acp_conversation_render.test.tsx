@@ -122,6 +122,77 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("acp-conversation-inner flex w-full flex-col gap-1 min-h-full justify-end");
   });
 
+  it("keeps live tool calls collapsed when requested by the surface", async () => {
+    const html = await renderConversation(
+      [
+        {
+          kind: "tool_call",
+          id: "call-collapsed",
+          title: "Shell",
+          status: "in_progress",
+          raw_input: { cmd: "cargo test" },
+        },
+      ],
+      { toolCallsDefaultCollapsed: true }
+    );
+
+    expect(html).toContain("Tool Call: Shell");
+    expect(html).toContain("In Progress");
+    expect(html).toContain("acp-tool-fold");
+    expect(html).not.toContain("open");
+  });
+
+  it("keeps grouped live tool calls collapsed when requested by the surface", async () => {
+    const html = await renderConversation(
+      [
+        {
+          kind: "tool_call_group",
+          event_id: 12,
+          calls: [
+            {
+              kind: "tool_call",
+              id: "call-1",
+              title: "Shell",
+              status: "in_progress",
+              raw_input: { cmd: "cargo test" },
+            },
+            {
+              kind: "tool_call",
+              id: "call-2",
+              title: "Read",
+              status: "in_progress",
+              raw_input: { path: "README.md" },
+            },
+          ],
+        },
+        {
+          kind: "explore_group",
+          event_id: 13,
+          items: [
+            {
+              kind: "agent_thinking",
+              text: "inspect code",
+              event_id: 14,
+            },
+            {
+              kind: "tool_call",
+              id: "call-3",
+              title: "Search",
+              status: "in_progress",
+            },
+          ],
+        },
+      ],
+      { toolCallsDefaultCollapsed: true }
+    );
+
+    expect(html).toContain("Tool Calls (2)");
+    expect(html).toContain("Explore (1 tool)");
+    expect(html).toContain("acp-tool-group-fold");
+    expect(html).toContain("acp-explore-group-fold");
+    expect(html).not.toContain("open");
+  });
+
   it("renders grouped tool calls with a shared fold and nested tool entries", async () => {
     const html = await renderConversation([
       {
@@ -576,7 +647,7 @@ describe("AcpConversation rendering", () => {
       }
     );
 
-    expect(html).toContain("Explore (1 tools)");
+    expect(html).toContain("Explore (1 tool)");
     expect(html).not.toMatch(/acp-explore-group-fold" open/);
   });
 

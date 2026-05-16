@@ -22,6 +22,12 @@ import {
   type AgentPresetId,
 } from "../agent_presets";
 import {
+  CODEX_ACP_MODE_OPTIONS,
+  DEFAULT_CODEX_ACP_MODE,
+  formatCodexAcpModeLabel,
+  normalizeCodexAcpModeId,
+} from "../codex_acp_modes";
+import {
   NOTION_MODAL_CLASSNAMES,
   NOTION_MODAL_OVERLAY_PROPS,
   TEAM_MODAL_CLASSNAMES,
@@ -44,6 +50,8 @@ export type CreateAgentModalProps = {
   setAgentWorkdir: (value: string) => void;
   agentPresetId: AgentPresetId;
   setAgentPresetId: (value: AgentPresetId) => void;
+  codexAcpDefaultMode?: string;
+  setCodexAcpDefaultMode?: (value: string) => void;
   worktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
   setWorktreeMode: (
     value: "use_existing" | "create_worktree" | "reuse_worktree"
@@ -134,6 +142,8 @@ export function CreateAgentModal({
   setAgentWorkdir,
   agentPresetId,
   setAgentPresetId,
+  codexAcpDefaultMode = DEFAULT_CODEX_ACP_MODE,
+  setCodexAcpDefaultMode,
   worktreeMode,
   setWorktreeMode,
   worktreeRepo,
@@ -160,6 +170,9 @@ export function CreateAgentModal({
   const presets = listAgentPresets();
   const preset = getAgentPreset(agentPresetId);
   const commandSummary = formatAgentCommand(preset);
+  const isCodexPreset = preset.provider === "codex";
+  const normalizedCodexAcpDefaultMode =
+    normalizeCodexAcpModeId(codexAcpDefaultMode);
   const isCreateWorktreeMode = worktreeMode === "create_worktree";
   const normalizedDefaultRoot = workdirPlaceholder.trim().replace(/[\\/]+$/, "");
   const normalizedCurrentWorkdir = agentWorkdir.trim().replace(/[\\/]+$/, "");
@@ -227,6 +240,20 @@ export function CreateAgentModal({
               setAgentPresetId(resolveCreateAgentPresetId(event.currentTarget.value));
             }}
           />
+          {isCodexPreset ? (
+            <Select
+              label="Codex permissions"
+              description="Startup mode. Existing agents need a restart for changes to apply."
+              value={normalizedCodexAcpDefaultMode}
+              data={CODEX_ACP_MODE_OPTIONS}
+              allowDeselect={false}
+              onChange={(value) => {
+                setCodexAcpDefaultMode?.(
+                  normalizeCodexAcpModeId(value ?? DEFAULT_CODEX_ACP_MODE)
+                );
+              }}
+            />
+          ) : null}
           {showWorkdirInput ? (
             <TextInput
               label={isCreateWorktreeMode ? "Workdir (optional override)" : "Workspace path"}
@@ -336,8 +363,14 @@ export function CreateAgentModal({
             ) : null}
             <div className={`${TEAM_AGENT_MODAL_INFO_ITEM_CLASS} flex items-center justify-between gap-3`}>
               <div className="min-w-0">
-                <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>{runtimeModeSectionLabel}</p>
-                <p className={TEAM_AGENT_MODAL_INFO_VALUE_CLASS}>{runtimeModeValue}</p>
+                <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>
+                  {runtimeModeSectionLabel}
+                </p>
+                <p className={TEAM_AGENT_MODAL_INFO_VALUE_CLASS}>
+                  {isCodexPreset
+                    ? `${runtimeModeValue} · ${formatCodexAcpModeLabel(normalizedCodexAcpDefaultMode)}`
+                    : runtimeModeValue}
+                </p>
               </div>
               <Switch
                 aria-label="Toggle code mode"

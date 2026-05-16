@@ -40,6 +40,7 @@ export type ToolCallBubbleProps = {
   ansi: (input: string) => string;
   runStatus?: string | null;
   autoCollapse?: boolean;
+  defaultCollapsed?: boolean;
   grouped?: boolean;
   indexLabel?: string;
   onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
@@ -50,6 +51,7 @@ export type ToolCallGroupBubbleProps = {
   ansi: (input: string) => string;
   runStatus?: string | null;
   autoCollapse?: boolean;
+  defaultCollapsed?: boolean;
   onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
@@ -58,6 +60,7 @@ export type ExploreGroupBubbleProps = {
   ansi: (input: string) => string;
   runStatus?: string | null;
   autoCollapse?: boolean;
+  defaultCollapsed?: boolean;
   onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 

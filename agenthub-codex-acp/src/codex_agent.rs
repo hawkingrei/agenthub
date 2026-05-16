@@ -13,7 +13,7 @@ use agent_client_protocol::schema::{
 use codex_config::types::{McpServerConfig, McpServerTransportConfig};
 use codex_core::{
     RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey, config::Config,
-    find_thread_path_by_id_str, parse_cursor,
+    find_thread_path_by_id_str, parse_cursor, thread_store_from_config,
 };
 use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_env};
 use codex_login::{
@@ -82,6 +82,9 @@ impl CodexAgent {
             SessionSource::Unknown,
             build_environment_manager(&config).await?,
             None,
+            thread_store_from_config(&config, None),
+            None,
+            "agenthub-codex-acp".to_string(),
         );
         Ok(Self {
             auth_manager,
@@ -727,7 +730,7 @@ impl CodexAgent {
         } = request;
 
         let rollout_path =
-            find_thread_path_by_id_str(&self.config.codex_home, session_id.0.as_ref())
+            find_thread_path_by_id_str(&self.config.codex_home, session_id.0.as_ref(), None)
                 .await
                 .map_err(|e| Error::internal_error().data(e.to_string()))?
                 .ok_or_else(|| Error::resource_not_found(None))?;
@@ -792,6 +795,7 @@ impl CodexAgent {
         let cursor_obj = cursor.as_deref().and_then(parse_cursor);
 
         let page = RolloutRecorder::list_threads(
+            None,
             &self.config,
             SESSION_LIST_PAGE_SIZE,
             cursor_obj.as_ref(),

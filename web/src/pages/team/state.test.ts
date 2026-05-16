@@ -151,6 +151,7 @@ describe("team state defaults and constants", () => {
     expect(initial.createTeamStage).toBe(0);
     expect(initial.newTeamSpec).toBe("{}");
     expect(initial.forgeAgentPresetId).toBe("codex");
+    expect(initial.forgeAgentCodexAcpDefaultMode).toBe("full-access");
     expect(initial.forgeAgentWorktreeMode).toBe("use_existing");
     expect(initial.forgeAgentCodeMode).toBe(true);
     expect(initial.coordinatorPrompt).toBe("");

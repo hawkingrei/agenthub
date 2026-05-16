@@ -1429,6 +1429,7 @@ async fn remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls() {
                 worktree_repo: None,
                 worktree_ref: None,
                 code_mode: false,
+                codex_acp_default_mode: None,
                 agent_loop_enabled: false,
                 agent_loop_idle_seconds: None,
                 agent_loop_prompt: None,

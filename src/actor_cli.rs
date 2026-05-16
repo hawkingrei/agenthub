@@ -509,7 +509,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
-            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-x");
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-x");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
@@ -577,9 +577,11 @@ mod tests {
     #[test]
     fn parse_receive_uses_env_fallback() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-receive");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
         }
@@ -604,6 +606,7 @@ mod tests {
             }
             _ => panic!("expected receive command"),
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
@@ -634,6 +637,75 @@ mod tests {
                 assert_eq!(limit, 20);
             }
             _ => panic!("expected inbox command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_inbox_prefers_team_scope_over_implicit_current_run() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-shared");
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-task-current");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+        }
+        let args = vec!["inbox".to_string(), "--limit".to_string(), "20".to_string()];
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
+        match parsed {
+            ActorCommand::Inbox {
+                run_id,
+                actor_id,
+                limit,
+                ..
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "planner");
+                assert_eq!(limit, 20);
+            }
+            _ => panic!("expected inbox command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_receive_prefers_team_scope_over_implicit_current_run() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-shared");
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-task-current");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+        }
+        let args = vec![
+            "receive".to_string(),
+            "--limit".to_string(),
+            "7".to_string(),
+        ];
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse receive");
+        match parsed {
+            ActorCommand::Receive {
+                run_id,
+                actor_id,
+                limit,
+                after_id,
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker");
+                assert_eq!(limit, 7);
+                assert!(after_id.is_none());
+            }
+            _ => panic!("expected receive command"),
         }
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
@@ -958,10 +1030,12 @@ mod tests {
     #[test]
     fn parse_ack_rejects_agent_id_env_fallback() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-x");
             std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "planner-agent");
@@ -977,6 +1051,7 @@ mod tests {
             err.to_string().contains("actor_id is required"),
             "unexpected error: {err}"
         );
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
@@ -985,10 +1060,12 @@ mod tests {
     #[test]
     fn parse_ack_accepts_repeated_message_ids() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-batch");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
@@ -1014,6 +1091,7 @@ mod tests {
             }
             _ => panic!("expected ack command"),
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
@@ -1022,9 +1100,11 @@ mod tests {
     #[test]
     fn parse_ack_accepts_positional_message_ids() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-positional");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
         }
@@ -1043,6 +1123,7 @@ mod tests {
             }
             _ => panic!("expected ack command"),
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
@@ -1061,6 +1142,37 @@ mod tests {
         let args = vec!["ack".to_string(), "41".to_string()];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
             .expect("parse ack without current run");
+        match parsed {
+            ActorCommand::Ack {
+                run_id,
+                actor_id,
+                message_ids,
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker");
+                assert_eq!(message_ids, vec![41]);
+            }
+            _ => panic!("expected ack command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_ack_prefers_team_scope_over_implicit_current_run() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-ack-scope");
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-task-current");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+        }
+        let args = vec!["ack".to_string(), "41".to_string()];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse ack with team runtime scope");
         match parsed {
             ActorCommand::Ack {
                 run_id,
@@ -1117,10 +1229,12 @@ mod tests {
     #[test]
     fn parse_ack_requires_at_least_one_message_id() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-batch");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
@@ -1131,6 +1245,7 @@ mod tests {
             err.to_string()
                 .contains("at least one message_id is required")
         );
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);

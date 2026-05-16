@@ -11,6 +11,28 @@ use super::{
     spawn_agent_loop_controller, worktree_mode_to_str,
 };
 use crate::agent::{AgentRecord, WorktreeMode};
+use agenthub_config::normalize_optional_codex_acp_mode_id;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AgentSessionExitMarkSummary {
+    pub sessions_marked_exited: u64,
+    pub agents_marked_exited: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AgentSessionExitMarkReason {
+    Startup,
+    Shutdown,
+}
+
+impl AgentSessionExitMarkReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Startup => "startup",
+            Self::Shutdown => "shutdown",
+        }
+    }
+}
 
 impl AgentManager {
     #[tracing::instrument(
@@ -326,6 +348,29 @@ impl AgentManager {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), fields(agent_id = %agent_id, mode_id = ?mode_id), err)]
+    pub async fn set_codex_acp_default_mode(
+        &self,
+        agent_id: &str,
+        mode_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let normalized_mode_id = normalize_optional_codex_acp_mode_id(mode_id);
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE agents
+            SET codex_acp_default_mode = ?1, updated_at = ?2
+            WHERE id = ?3
+            "#,
+        )
+        .bind(normalized_mode_id.as_deref())
+        .bind(now)
+        .bind(agent_id)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
     #[tracing::instrument(
         skip(self, prompt),
         fields(agent_id = %agent_id, enabled = enabled, idle_seconds = ?idle_seconds),
@@ -440,9 +485,23 @@ impl AgentManager {
     }
 
     #[tracing::instrument(skip(self), err)]
-    pub async fn mark_exited_on_startup(&self) -> anyhow::Result<()> {
+    pub async fn mark_exited_on_startup(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
+        self.mark_running_agents_exited(AgentSessionExitMarkReason::Startup)
+            .await
+    }
+
+    #[tracing::instrument(skip(self), err)]
+    pub async fn mark_exited_on_shutdown(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
+        self.mark_running_agents_exited(AgentSessionExitMarkReason::Shutdown)
+            .await
+    }
+
+    async fn mark_running_agents_exited(
+        &self,
+        reason: AgentSessionExitMarkReason,
+    ) -> anyhow::Result<AgentSessionExitMarkSummary> {
         let now = Utc::now().timestamp();
-        sqlx::query(
+        let session_result = sqlx::query(
             r#"
             UPDATE agent_sessions
             SET status = 'exited', ended_at = ?1
@@ -459,8 +518,9 @@ impl AgentManager {
             );
             err
         })?;
+        let sessions_marked_exited = session_result.rows_affected();
 
-        sqlx::query(
+        let agent_result = sqlx::query(
             r#"
             UPDATE agents
             SET status = 'exited', updated_at = ?1
@@ -477,8 +537,29 @@ impl AgentManager {
             );
             err
         })?;
+        let agents_marked_exited = agent_result.rows_affected();
 
-        Ok(())
+        let summary = AgentSessionExitMarkSummary {
+            sessions_marked_exited,
+            agents_marked_exited,
+        };
+        if sessions_marked_exited > 0 || agents_marked_exited > 0 {
+            tracing::warn!(
+                reason = reason.as_str(),
+                sessions_marked_exited,
+                agents_marked_exited,
+                "marked running agent sessions exited"
+            );
+        } else {
+            tracing::debug!(
+                reason = reason.as_str(),
+                sessions_marked_exited,
+                agents_marked_exited,
+                "no running agent sessions needed exit marking"
+            );
+        }
+
+        Ok(summary)
     }
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
@@ -658,6 +739,7 @@ mod tests {
             ))),
             session_id: session_id.clone(),
             actor_context: None,
+            acp_prompt_delivery_policy: None,
             loop_controller: None,
         };
         state
@@ -1102,6 +1184,57 @@ mod tests {
             !err.to_string().is_empty(),
             "expected non-empty error after close"
         );
+    }
+
+    #[tokio::test]
+    async fn mark_exited_on_startup_records_bulk_runtime_cleanup() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (first_agent_id, first_session_id) =
+            insert_agent_and_session(&state.db, "startup-cleanup-first").await;
+        let (second_agent_id, second_session_id) =
+            insert_agent_and_session(&state.db, "startup-cleanup-second").await;
+
+        let summary = state
+            .agents
+            .mark_exited_on_startup()
+            .await
+            .expect("startup cleanup should mark active runtimes");
+
+        assert_eq!(summary.sessions_marked_exited, 2);
+        assert_eq!(summary.agents_marked_exited, 2);
+
+        let session_rows = sqlx::query(
+            r#"
+            SELECT id, status, ended_at
+            FROM agent_sessions
+            WHERE id IN (?1, ?2)
+            ORDER BY id
+            "#,
+        )
+        .bind(&first_session_id)
+        .bind(&second_session_id)
+        .fetch_all(&state.db)
+        .await
+        .expect("load cleaned sessions");
+        assert_eq!(session_rows.len(), 2);
+        for row in session_rows {
+            assert_eq!(row.get::<String, _>("status"), "exited");
+            assert!(row.get::<Option<i64>, _>("ended_at").is_some());
+        }
+
+        let running_agents: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM agents
+            WHERE id IN (?1, ?2) AND status = 'running'
+            "#,
+        )
+        .bind(&first_agent_id)
+        .bind(&second_agent_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("count running agents after cleanup");
+        assert_eq!(running_agents, 0);
     }
 
     #[tokio::test]

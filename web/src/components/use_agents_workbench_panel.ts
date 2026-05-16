@@ -143,6 +143,7 @@ export function useAgentsWorkbenchPanel({
       virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
       virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
       stickToBottom: acpConversation.conversationStickToBottom,
+      bottomAlignLatest: acpConversation.conversationShouldBottomAlignLatest,
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
       topHint: acpConversation.showConversationTopReachedHint
@@ -163,6 +164,7 @@ export function useAgentsWorkbenchPanel({
       acpConversation.conversationVirtualTopSpacer,
       acpConversation.conversationVirtualBottomSpacer,
       acpConversation.conversationStickToBottom,
+      acpConversation.conversationShouldBottomAlignLatest,
       acpConversation.conversationPendingCount,
       acpConversation.conversationAvgHeight,
       acpConversation.showConversationTopReachedHint,

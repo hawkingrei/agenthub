@@ -10,9 +10,11 @@ import {
 } from "./agent_ws";
 
 describe("agent status helpers", () => {
-  it("treats running and idle as active", () => {
+  it("treats live runtime states as active", () => {
     expect(isAgentActiveStatus("running")).toBe(true);
     expect(isAgentActiveStatus("idle")).toBe(true);
+    expect(isAgentActiveStatus("waiting_permission")).toBe(true);
+    expect(isAgentActiveStatus("stale_prompt")).toBe(true);
     expect(isAgentActiveStatus("stopped")).toBe(false);
     expect(isAgentActiveStatus(null)).toBe(false);
   });
@@ -20,6 +22,7 @@ describe("agent status helpers", () => {
   it("opens sockets only for active statuses", () => {
     expect(shouldOpenAgentSocket("running")).toBe(true);
     expect(shouldOpenAgentSocket("idle")).toBe(true);
+    expect(shouldOpenAgentSocket("waiting_permission")).toBe(true);
     expect(shouldOpenAgentSocket("failed")).toBe(false);
   });
 

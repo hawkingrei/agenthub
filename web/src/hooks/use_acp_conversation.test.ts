@@ -14,10 +14,12 @@ import {
   normalizeConversationAvgHeightEstimate,
   restoreConversationScrollTop,
   hasReachedConversationTop,
+  isUnderfilledConversationViewport,
   shouldShowConversationTopReachedHint,
   shouldBottomAlignConversationLatest,
   shouldDefaultConversationStickToBottom,
   shouldLoadOlderFromMeta,
+  shouldPrefetchUnderfilledConversationViewport,
   shouldUseConversationVirtualization,
 } from "./use_acp_conversation";
 
@@ -192,12 +194,9 @@ describe("buildConversationTailKey", () => {
 });
 
 describe("default ACP conversation pinning", () => {
-  it("only defaults to bottom pinning for sufficiently large conversations", () => {
-    expect(
-      shouldDefaultConversationStickToBottom(
-        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS - 1
-      )
-    ).toBe(false);
+  it("defaults non-empty conversations to bottom pinning", () => {
+    expect(shouldDefaultConversationStickToBottom(0)).toBe(false);
+    expect(shouldDefaultConversationStickToBottom(1)).toBe(true);
     expect(
       shouldDefaultConversationStickToBottom(
         DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
@@ -205,15 +204,15 @@ describe("default ACP conversation pinning", () => {
     ).toBe(true);
   });
 
-  it("only bottom-aligns when the rendered content is tall enough for the viewport", () => {
+  it("bottom-aligns non-empty pinned conversations once the viewport is known", () => {
     expect(
       shouldBottomAlignConversationLatest(
         true,
-        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
+        1,
         720,
         960
       )
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldBottomAlignConversationLatest(
         true,
@@ -240,6 +239,71 @@ describe("default ACP conversation pinning", () => {
         1200,
         0
       )
+    ).toBe(false);
+  });
+
+  it("detects underfilled sticky conversations from measured container height", () => {
+    expect(
+      isUnderfilledConversationViewport({
+        stickToBottom: true,
+        total: 8,
+        scrollHeight: 420,
+        viewportHeight: 600,
+        estimatedTotalHeight: 420,
+      })
+    ).toBe(true);
+    expect(
+      isUnderfilledConversationViewport({
+        stickToBottom: true,
+        total: 8,
+        scrollHeight: 900,
+        viewportHeight: 600,
+        estimatedTotalHeight: 420,
+      })
+    ).toBe(false);
+  });
+
+  it("prefetches older context only when an underfilled viewport can load more", () => {
+    const underfilled = {
+      stickToBottom: true,
+      total: 8,
+      scrollHeight: 0,
+      viewportHeight: 600,
+      estimatedTotalHeight: 360,
+    };
+    expect(
+      shouldPrefetchUnderfilledConversationViewport({
+        ...underfilled,
+        canLoadOlder: true,
+      })
+    ).toBe(true);
+    expect(
+      shouldPrefetchUnderfilledConversationViewport({
+        ...underfilled,
+        canLoadOlder: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldPrefetchUnderfilledConversationViewport({
+        ...underfilled,
+        stickToBottom: false,
+        canLoadOlder: true,
+      })
+    ).toBe(false);
+    expect(
+      shouldPrefetchUnderfilledConversationViewport({
+        ...underfilled,
+        total: 0,
+        canLoadOlder: true,
+      })
+    ).toBe(false);
+    expect(
+      shouldPrefetchUnderfilledConversationViewport({
+        ...underfilled,
+        canLoadOlder: true,
+        autoLoadCount: 3,
+        maxAutoLoads: 3,
+      })
     ).toBe(false);
   });
 });

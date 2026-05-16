@@ -328,6 +328,17 @@ fn take_required_with_env_keys(
     ))
 }
 
+fn resolve_implicit_inbox_run_id(run_id: Option<String>) -> Option<String> {
+    let explicit_run_id = take_optional(run_id);
+    if explicit_run_id.is_some() {
+        return explicit_run_id;
+    }
+    if normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV).is_some() {
+        return None;
+    }
+    normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
+}
+
 fn take_optional(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
@@ -1646,8 +1657,7 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::Inbox {
-                run_id: take_optional(run_id)
-                    .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)),
+                run_id: resolve_implicit_inbox_run_id(run_id),
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 limit: limit.max(1),
                 after_id,
@@ -1698,8 +1708,7 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::Receive {
-                run_id: take_optional(run_id)
-                    .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)),
+                run_id: resolve_implicit_inbox_run_id(run_id),
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 limit: limit.max(1),
                 after_id,
@@ -1744,8 +1753,7 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::Ack {
-                run_id: take_optional(run_id)
-                    .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)),
+                run_id: resolve_implicit_inbox_run_id(run_id),
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 message_ids: (!message_ids.is_empty())
                     .then_some(message_ids)

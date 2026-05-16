@@ -66,6 +66,8 @@ type UseAcpConversationResult = {
   conversationSourceItems: number;
   conversationRenderedItems: number;
   conversationVirtualized: boolean;
+  conversationViewportUnderfilled: boolean;
+  conversationNeedsViewportFill: boolean;
   focusedConversationToolCallId: string | null;
   showConversationJump: boolean;
   showConversationBadge: boolean;
@@ -92,6 +94,8 @@ const TOOL_CALL_JUMP_CONTEXT_LINES = 4;
 const TOOL_CALL_JUMP_MIN_ROW_HEIGHT = 24;
 const FOCUSED_TOOL_CALL_RESET_DELAY_MS = 2500;
 const LOAD_OLDER_TRIGGER_TOP_PX = 80;
+const UNDERFILLED_VIEWPORT_MARGIN_PX = 16;
+const UNDERFILLED_VIEWPORT_MAX_AUTO_LOADS = 3;
 
 export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
   if (conversationMessages.length === 0) return "empty";
@@ -211,7 +215,8 @@ export function shouldDefaultConversationStickToBottom(
   total: number,
   minItems: number = DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
 ): boolean {
-  return total >= Math.max(1, minItems);
+  void minItems;
+  return total > 0;
 }
 
 export function shouldBottomAlignConversationLatest(
@@ -221,19 +226,76 @@ export function shouldBottomAlignConversationLatest(
   viewportHeight: number,
   minItems: number = DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
 ): boolean {
+  void minItems;
   if (!stickToBottom) {
     return false;
   }
-  if (!shouldDefaultConversationStickToBottom(total, minItems)) {
+  if (total <= 0) {
     return false;
   }
   if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
     return false;
   }
+  return Number.isFinite(estimatedTotalHeight) && estimatedTotalHeight > 0;
+}
+
+type UnderfilledConversationViewportArgs = {
+  stickToBottom: boolean;
+  total: number;
+  scrollHeight: number;
+  viewportHeight: number;
+  estimatedTotalHeight: number;
+  marginPx?: number;
+};
+
+export function isUnderfilledConversationViewport({
+  stickToBottom,
+  total,
+  scrollHeight,
+  viewportHeight,
+  estimatedTotalHeight,
+  marginPx = UNDERFILLED_VIEWPORT_MARGIN_PX,
+}: UnderfilledConversationViewportArgs): boolean {
+  if (!stickToBottom || total <= 0) {
+    return false;
+  }
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
+    return false;
+  }
+  const safeMarginPx = Number.isFinite(marginPx) ? Math.max(0, marginPx) : 0;
+  if (Number.isFinite(scrollHeight) && scrollHeight > 0) {
+    return scrollHeight <= viewportHeight + safeMarginPx;
+  }
   if (!Number.isFinite(estimatedTotalHeight) || estimatedTotalHeight <= 0) {
     return false;
   }
-  return estimatedTotalHeight >= viewportHeight;
+  return estimatedTotalHeight < viewportHeight - safeMarginPx;
+}
+
+export function shouldPrefetchUnderfilledConversationViewport(
+  args: UnderfilledConversationViewportArgs & {
+    canLoadOlder: boolean;
+    autoLoadCount?: number;
+    maxAutoLoads?: number;
+  }
+): boolean {
+  const explicitMaxAutoLoads = args.maxAutoLoads;
+  const explicitAutoLoadCount = args.autoLoadCount;
+  const maxAutoLoads =
+    typeof explicitMaxAutoLoads === "number" &&
+    Number.isFinite(explicitMaxAutoLoads)
+      ? Math.max(0, explicitMaxAutoLoads)
+      : UNDERFILLED_VIEWPORT_MAX_AUTO_LOADS;
+  const autoLoadCount =
+    typeof explicitAutoLoadCount === "number" &&
+    Number.isFinite(explicitAutoLoadCount)
+      ? Math.max(0, explicitAutoLoadCount)
+      : 0;
+  return (
+    args.canLoadOlder &&
+    autoLoadCount < maxAutoLoads &&
+    isUnderfilledConversationViewport(args)
+  );
 }
 
 export { normalizeThreadAvgHeightEstimate as normalizeConversationAvgHeightEstimate };
@@ -383,6 +445,9 @@ export function useAcpConversation({
     setConversationViewport((prev) =>
       nextThreadViewport(prev, node.scrollTop, node.clientHeight)
     );
+    setConversationScrollHeight((prev) =>
+      prev === node.scrollHeight ? prev : node.scrollHeight
+    );
     setConversationViewportWidth((prev) => {
       const nextWidth = node.clientWidth;
       return prev === nextWidth ? prev : nextWidth;
@@ -407,7 +472,8 @@ export function useAcpConversation({
     prevTop: number;
   } | null>(null);
   const conversationLeftTopZoneSinceLoadRef = useRef(false);
-  const lastConversationLoadOlderAtRef = useRef<number>(0);
+  const lastConversationLoadOlderAtRef = useRef<number>(Number.NEGATIVE_INFINITY);
+  const viewportFillAutoLoadCountRef = useRef(0);
   const lastConversationScrollTopRef = useRef<number | null>(null);
   const focusedToolCallResetTimerRef = useRef<number | null>(null);
   const [conversationAvgHeight, setConversationAvgHeight] = useState(48);
@@ -415,6 +481,7 @@ export function useAcpConversation({
     top: 0,
     height: 0,
   });
+  const [conversationScrollHeight, setConversationScrollHeight] = useState(0);
   const [conversationViewportWidth, setConversationViewportWidth] = useState(0);
   const conversationMessages = useMemo<ConversationItem[]>(
     () =>
@@ -564,6 +631,9 @@ export function useAcpConversation({
       const nextHeight = el.clientHeight;
       return nextThreadViewport(prev, nextTop, nextHeight);
     });
+    setConversationScrollHeight((prev) =>
+      prev === el.scrollHeight ? prev : el.scrollHeight
+    );
     if (!includeWidth) {
       return;
     }
@@ -925,6 +995,7 @@ export function useAcpConversation({
     pendingScrollAdjustRef.current = null;
     lastConversationScrollTopRef.current = null;
     conversationLeftTopZoneSinceLoadRef.current = false;
+    viewportFillAutoLoadCountRef.current = 0;
     setConversationStickToBottom(defaultStickToBottom);
     setConversationFrozen(false);
     setConversationFreezeCursor(null);
@@ -1106,6 +1177,37 @@ export function useAcpConversation({
     estimatedConversationSourceHeight,
     conversationViewport.height
   );
+  const conversationCanLoadOlder = shouldLoadOlder();
+  const conversationViewportUnderfilled = isUnderfilledConversationViewport({
+    stickToBottom: conversationStickToBottom,
+    total: conversationSourceItems.length,
+    scrollHeight: conversationScrollHeight,
+    viewportHeight: conversationViewport.height,
+    estimatedTotalHeight: estimatedConversationSourceHeight,
+  });
+  const conversationNeedsViewportFill = shouldPrefetchUnderfilledConversationViewport({
+    stickToBottom: conversationStickToBottom,
+    total: conversationSourceItems.length,
+    scrollHeight: conversationScrollHeight,
+    viewportHeight: conversationViewport.height,
+    estimatedTotalHeight: estimatedConversationSourceHeight,
+    canLoadOlder: conversationCanLoadOlder,
+    autoLoadCount: viewportFillAutoLoadCountRef.current,
+  });
+
+  useEffect(() => {
+    if (acpTab !== "conversation") return;
+    if (!conversationNeedsViewportFill) return;
+    if (triggerLoadOlder()) {
+      viewportFillAutoLoadCountRef.current += 1;
+    }
+  }, [acpTab, conversationNeedsViewportFill, triggerLoadOlder]);
+
+  useEffect(() => {
+    if (!conversationViewportUnderfilled) {
+      viewportFillAutoLoadCountRef.current = 0;
+    }
+  }, [conversationViewportUnderfilled]);
 
   return {
     acpConversationRef,
@@ -1124,6 +1226,8 @@ export function useAcpConversation({
     conversationSourceItems: conversationSourceItems.length,
     conversationRenderedItems: conversationRenderItems.length,
     conversationVirtualized: shouldVirtualizeConversation,
+    conversationViewportUnderfilled,
+    conversationNeedsViewportFill,
     focusedConversationToolCallId,
     showConversationJump,
     showConversationBadge,

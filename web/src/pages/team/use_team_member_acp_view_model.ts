@@ -32,6 +32,8 @@ const ACTIVE_MEMBER_STATUSES = new Set([
   "working",
   "submitted",
   "input_required",
+  "waiting_permission",
+  "stale_prompt",
   "pending",
 ]);
 
@@ -124,6 +126,7 @@ export function useTeamMemberAcpViewModel({
 }: UseTeamMemberAcpViewModelArgs) {
   const selectedSessionId =
     selectedSessionIdProp?.trim() ||
+    selectedMemberSnapshot?.session_id?.trim() ||
     getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
   const scopedMemberEvents = React.useMemo(() => {
     if (!selectedSessionId) {
@@ -246,6 +249,10 @@ export function useTeamMemberAcpViewModel({
     acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
   const hasRenderableConversationContent =
     acpConversation.conversationSourceItems > 0;
+  const isFillingUnderfilledConversation =
+    memberEventsLoading &&
+    hasRenderableConversationContent &&
+    acpConversation.conversationViewportUnderfilled;
   const canSendInput = Boolean(
     selectedMemberId.trim() && selectedSessionId && onSendInput && agentAllowsInput
   );
@@ -304,16 +311,13 @@ export function useTeamMemberAcpViewModel({
       : snapshotStatus || acpRunStatus || normalizedAgentStatus)) ||
     normalizeTeamMemberStatusValue(memberRoleLabel) ||
     "unknown";
-  // Prefer authoritative snapshot/runtime status for startup gating so stale
-  // ACP stream state does not keep the UI in a misleading "starting" mode.
+  // Runtime state alone is not a reliable startup signal. A running agent can
+  // temporarily lose its selected session metadata during refresh/reconnect.
   const isStartingAcpSession = Boolean(
     selectedMemberId.trim() &&
       !hasAuthoritativeStoppedStatus &&
       !selectedSessionId &&
-      ((snapshotStatus && isActiveTeamMemberStatus(snapshotStatus)) ||
-        (!snapshotStatus &&
-          normalizedAgentStatus &&
-          isAgentActiveStatus(normalizedAgentStatus)))
+      normalizedAgentStatus === "starting"
   );
   const thinkingLabel =
     acpView.thinkingStartTs && isActiveTeamMemberStatus(snapshotStatus || acpRunStatus)
@@ -323,6 +327,7 @@ export function useTeamMemberAcpViewModel({
     ? `${memberStatus} · ${thinkingLabel}`
     : memberStatus;
   const memberStatusClassToken = memberStatus.replace(/[^a-z0-9_-]+/g, "-");
+  const hasStalePromptWarning = acpRunStatus === "stale_prompt";
   const developerTechnicalMetadata = React.useMemo(
     () => [{ label: "role", value: memberRoleLabel || "-" }],
     [memberRoleLabel]
@@ -334,6 +339,7 @@ export function useTeamMemberAcpViewModel({
       isFrozenView: acpConversation.isFrozenView,
       shouldAutoCollapse: acpConversation.shouldAutoCollapse,
       collapseCutoff: acpConversation.collapseCutoff,
+      toolCallsDefaultCollapsed: true,
       runStatus: effectiveRunStatus,
       virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
       virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
@@ -343,6 +349,8 @@ export function useTeamMemberAcpViewModel({
       avgHeight: acpConversation.conversationAvgHeight,
       topHint: memberEventsLoading && !hasRenderableConversationContent
         ? "Loading ACP events..."
+        : isFillingUnderfilledConversation
+          ? "Loading older ACP events..."
         : acpConversation.showConversationTopReachedHint
           ? "Already at top"
           : null,
@@ -375,6 +383,7 @@ export function useTeamMemberAcpViewModel({
       effectiveRunStatus,
       handleSubmitRequestUserInput,
       hasRenderableConversationContent,
+      isFillingUnderfilledConversation,
       memberEventsLoading,
     ]
   );
@@ -420,6 +429,13 @@ export function useTeamMemberAcpViewModel({
       return [];
     }
     const items: TeamMemberAcpActivityItem[] = [];
+    if (hasStalePromptWarning) {
+      items.push({
+        id: "stale-prompt",
+        label: "ACP provider stalled",
+        title: "The ACP provider has an active prompt without recent provider events or pending permission",
+      });
+    }
     // Use renderable ACP conversation items here instead of raw event count so the
     // summary matches what the operator can actually read in the panel.
     if (acpConversation.conversationSourceItems > 0) {
@@ -457,6 +473,7 @@ export function useTeamMemberAcpViewModel({
     acpConversation.conversationSourceItems,
     acpView.toolCalls.length,
     hasAuthoritativeStoppedStatus,
+    hasStalePromptWarning,
     isStartingAcpSession,
     memberEventsHasMore,
     memberEventsLoading,
@@ -474,10 +491,13 @@ export function useTeamMemberAcpViewModel({
       return "Starting ACP session...";
     }
     if (!selectedSessionId) {
-      return "No active thread session yet";
+      return memberEventsLoading ? "Loading activity..." : "No active thread session yet";
     }
     if (memberEventsLoading && !hasRenderableConversationContent) {
       return "Loading activity...";
+    }
+    if (hasStalePromptWarning) {
+      return "ACP provider appears stalled";
     }
     if (!acpView.hasAcp && visibleMemberEvents.length === 0) {
       return "Active thread has no events yet";
@@ -486,6 +506,7 @@ export function useTeamMemberAcpViewModel({
   }, [
     acpView.hasAcp,
     hasAuthoritativeStoppedStatus,
+    hasStalePromptWarning,
     hasRenderableConversationContent,
     memberEventsLoading,
     isStartingAcpSession,

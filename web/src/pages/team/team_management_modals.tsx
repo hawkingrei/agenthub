@@ -1,9 +1,13 @@
 import React from "react";
-import { Alert, Switch, TextInput, Textarea } from "@mantine/core";
+import { Alert, Select, Switch, TextInput, Textarea } from "@mantine/core";
 import { DEFAULT_TEAM_COORDINATOR_SKILLS, DEFAULT_TEAM_WORKER_SKILLS } from "./member_helpers";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type { TeamMemberRoleProfile } from "./forge_helpers";
 import type { AgentRecord } from "../../api";
+import {
+  CODEX_ACP_MODE_OPTIONS,
+  normalizeCodexAcpModeId,
+} from "../../codex_acp_modes";
 import {
   CreateAgentModal,
   type CreateAgentModalProps,
@@ -271,6 +275,20 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
               placeholder="Optional model override"
               value={draft.model}
               onChange={(event) => onPatchDraft({ model: event.currentTarget.value })}
+            />
+            <Select
+              className="mt-3"
+              radius="md"
+              label="Codex permissions"
+              description="Startup mode for Codex ACP. Restart the agent for changes to apply."
+              value={normalizeCodexAcpModeId(draft.codex_acp_default_mode)}
+              data={CODEX_ACP_MODE_OPTIONS}
+              allowDeselect={false}
+              onChange={(value) =>
+                onPatchDraft({
+                  codex_acp_default_mode: normalizeCodexAcpModeId(value),
+                })
+              }
             />
             <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-4 shadow-none">
               <div className="flex flex-col gap-3">
