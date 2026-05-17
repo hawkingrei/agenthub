@@ -394,8 +394,8 @@ describe("App route shell wiring", () => {
       <MantineProvider>{lastCall?.rootWorkbenchNode}</MantineProvider>
     );
     expect(rootWorkbenchHtml).toContain("Search workspace");
-    expect(rootWorkbenchHtml).toContain("Search messages, tasks, channels, or agents");
-    expect(rootWorkbenchHtml).toContain("type=\"search\"");
+    expect(rootWorkbenchHtml).toContain("Use the sidebar search command");
+    expect(rootWorkbenchHtml).not.toContain("type=\"search\"");
     expect(rootWorkbenchHtml).toContain("data-workspace-lens-placeholder=\"search\"");
   });
 
