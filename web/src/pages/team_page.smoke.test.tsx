@@ -262,6 +262,7 @@ describe("TeamPage smoke render", () => {
     getTeamRuntime.mockClear();
     listTeamChannels.mockClear();
     getTeamSharedThread.mockClear();
+    getTeamSharedThread.mockRejectedValue({ status: 404 });
     getTeamTask.mockClear();
     listTeamTasks.mockClear();
     replyTeamThread.mockClear();
@@ -474,9 +475,14 @@ describe("TeamPage smoke render", () => {
             />
           </MantineProvider>
         );
+        await vi.dynamicImportSettled();
+        await flushEffects();
       });
 
-      expect(container.textContent).toContain("No agents have joined this team yet.");
+      expect(container.textContent).toContain("# all");
+      expect(container.textContent).toContain(
+        "Shared coordination lane for requests, updates, and cross-cutting discussion."
+      );
       expect(container.textContent).not.toContain("This team is unavailable.");
       expect(container.textContent).not.toContain("Loading team workspace...");
     } finally {
