@@ -123,7 +123,10 @@ import { useTeamControlState } from "./team/use_team_control_state";
 import { useTeamCreateState } from "./team/use_team_create_state";
 import { useTeamMailboxState } from "./team/use_team_mailbox_state";
 import { TeamSidebarContainer } from "./team/TeamSidebarContainer";
-import { TeamWorkbenchContainer } from "./team/TeamWorkbenchContainer";
+import {
+  TeamWorkbenchContainer,
+  type TeamWorkbenchRuntimeContext,
+} from "./team/TeamWorkbenchContainer";
 import {
   TeamWorkspaceProvider,
   type TeamWorkspaceContextValue,
@@ -150,6 +153,29 @@ import {
   TEAM_WORKBENCH_PANEL_CLASS,
   TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS,
 } from "../ui/tailwind_classes";
+
+function shallowEqualObject<T extends object>(left: T, right: T): boolean {
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return (
+    leftKeys.length === rightKeys.length &&
+    rightKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(leftRecord, key) &&
+        Object.is(leftRecord[key], rightRecord[key])
+    )
+  );
+}
+
+function useShallowStableObject<T extends object>(value: T): T {
+  const stableRef = useRef(value);
+  if (!shallowEqualObject(stableRef.current, value)) {
+    stableRef.current = value;
+  }
+  return stableRef.current;
+}
 
 const loadTeamMemberAcpPanel = () => import("./team_member_acp_panel");
 const loadTeamPageModals = () => import("./team/team_page_modals");
@@ -3006,7 +3032,214 @@ export function TeamPage(props: TeamPageProps) {
     : teamsSidebarCollapsed
       ? "Show teams panel"
       : "Hide teams panel";
-  const teamWorkspaceContext: TeamWorkspaceContextValue = {
+  const toggleWorkspaceDetails = useCallback(() => {
+    setWorkspaceDetailsOpen((current) => !current);
+  }, [setWorkspaceDetailsOpen]);
+  const teamWorkbenchContext = useShallowStableObject<TeamWorkbenchRuntimeContext>({
+    showTeamBootstrapLoading,
+    showTeamUnavailable,
+    onBackToSelector: navigateToTeamSelector,
+    selectedTeam,
+    isAgentWorkspace,
+    teamSectionCardClassName: TEAM_PANEL_CARD_CLASS,
+    teamSectionTitleClassName: TEAM_PANEL_TITLE_CLASS,
+    teamSectionBodyTextClassName: TEAM_SECTION_BODY_TEXT_CLASS,
+    panelSecondaryButtonClassName: TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+    teamWorkbenchWorkspaceShellClassName,
+    selectedTeamHasConfiguredMembers,
+    selectedTeamDescription: selectedTeam?.description,
+    teamMemberForgeLabel,
+    teamMemberCopyExistingLabel,
+    onOpenTeamMemberForge: openTeamMemberForgeModal,
+    onOpenTeamMemberCopyExisting: openCopyExistingAgentModal,
+    tab,
+    selectedTeamRuntimeStatus,
+    selectedTeamRuntimeControlTone,
+    showRunContextLoading,
+    showNoActiveRunNotice,
+    activeWorkspaceLens,
+    developerMode: props.developerMode,
+    onGoToRuns,
+    workspaceEyebrow,
+    showDedicatedWorkspaceHeading,
+    workspaceTitle,
+    workspaceDescription,
+    selectedAgentLabel,
+    selectedAgentWorkspaceMemberId,
+    selectedAgentStatusView,
+    selectedAgentSpecDraft,
+    selectedAgentControlState,
+    showWorkspaceRuntimeBadge,
+    workspaceAdvancedTabItems,
+    isAdvancedWorkspace,
+    showRunActionsInAdvanced,
+    canResumeActiveRun,
+    canRestartActiveRun,
+    workspaceDetailsOpen,
+    workspaceDetailItems,
+    workspaceNoticeText,
+    workspaceNoticeDotClassName,
+    teamWorkbenchMutedButtonClassName,
+    teamWorkbenchHeaderActionButtonClassName,
+    workspaceToolbarClassName,
+    workspaceToolbarButtonActiveClassName,
+    workspaceToolbarButtonIdleClassName,
+    workspaceNoticeClassName,
+    workspaceNoticeTextClassName,
+    teamRunMetaItemClassName,
+    onTabChange: setTab,
+    onToggleWorkspaceDetails: toggleWorkspaceDetails,
+    onRefreshActiveRun,
+    onCancelRun,
+    onResumeRun,
+    onRestartRun,
+    onOpenTeamMemberEditModal: openTeamMemberEditModal,
+    onStartSelectedTeamAgent,
+    onStopSelectedTeamAgent,
+    onDeleteSelectedTeamAgent,
+    onDeleteTeam,
+    runStatusFilter,
+    TEAM_RUN_STATUS_FILTER_OPTIONS,
+    onRunStatusFilterChange,
+    onRefreshRuns,
+    runsLoading,
+    visibleRuns,
+    activeRunIdForSelectedTeam,
+    setActiveRunId,
+    isActiveRunHiddenByFilter,
+    activeRunForSelectedTeam,
+    totalLoadedRunsForTeam,
+    runsHasMore,
+    effectiveSelectedTeamId,
+    onLoadMoreRuns,
+    TEAM_EVENT_PREVIEW_LIMIT,
+    selectedMemberDiscoveryCard,
+    selectedMemberDiscoveryCardLoading,
+    onOpenMailboxForMember,
+    selectedMemberId,
+    setSelectedMemberId,
+    eventsAutoRefresh,
+    setEventsAutoRefresh,
+    onRefreshEventsPanel,
+    onLoadOlderEventsPanel,
+    eventsHasMore,
+    mailboxHasActiveRun: Boolean(activeRunForSelectedTeam),
+    mailboxEmptyTitle: isAgentWorkspace ? selectedAgentLabel : "Execution Mailbox",
+    mailboxEmptyBody: isAgentWorkspace
+      ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
+      : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations.",
+    snapshot,
+    mailboxDisplayNameByActorId,
+    busy,
+    selectedAgentWorkspaceSessionId,
+    memberEvents,
+    memberEventsLoading,
+    memberEventsHasMore,
+    onLoadOlderMemberConsole,
+    onRefreshMemberConsole,
+    teamDebugTag,
+    setTeamDebugTag,
+    runContextId,
+    setRunContextId,
+    runInput,
+    setRunInput,
+    runLookupId,
+    setRunLookupId,
+    canCreateRun,
+    runInputHasError,
+    runInputValidation,
+    teamExecutionBlockedReason,
+    onCreateRun,
+    onLoadRunById,
+    steps,
+    onRefreshActiveRunSteps,
+    stepKey,
+    setStepKey,
+    stepMemberId,
+    onStepMemberIdChange: setStepMemberId,
+    stepDependsOn,
+    onStepDependsOnChange: setStepDependsOn,
+    stepInput,
+    onStepInputChange: setStepInput,
+    onSubmitStep,
+    selectedStepId,
+    setSelectedStepId,
+    stepAction,
+    setStepAction,
+    stepRemoteTaskId,
+    onStepRemoteTaskIdChange: setStepRemoteTaskId,
+    stepOutput,
+    onStepOutputChange: setStepOutput,
+    stepFailText,
+    onStepFailTextChange: setStepFailText,
+    stepInputReason,
+    onStepInputReasonChange: setStepInputReason,
+    stepInputRequiredPayload,
+    onStepInputRequiredPayloadChange: setStepInputRequiredPayload,
+    stepResumePayload,
+    onStepResumePayloadChange: setStepResumePayload,
+    onApplyStepAction,
+    unreadByMemberId,
+    chatActors,
+    chatStickToBottom,
+    chatMessagesRef,
+    onConversationScroll,
+    onJumpConversationToBottom,
+    conversationMessages,
+    onAcceptMessage,
+    onAcceptVisibleMessages,
+    onSendChatMessage,
+    MAILBOX_TEMPLATE_OPTIONS,
+    onMailboxTemplateChange,
+    onApplyMessageTemplate,
+    onSendMessage,
+    onRefreshInbox,
+    selectedAgentWorkspaceSnapshot,
+    selectedMemberSnapshot,
+    selectedAgentWorkspaceRuntimeMember,
+    selectedAgentWorkspaceAgent,
+    oldestMemberEventId,
+    onSendAgentAcpInput,
+    onCancelTeamMemberAcp,
+    onSetTeamMemberAcpMode,
+    onSetTeamMemberAcpModel,
+    onSetTeamMemberAcpConfig,
+    onForceNewTeamMemberSession,
+    eventsLoading,
+    oldestEventId,
+    displayedRunEvents,
+    previewMode,
+    snapshotLoading,
+    onRefreshOverviewSnapshot,
+    memberTargetNodeById,
+    msgFromActorId,
+    onMsgFromActorIdChange: setMsgFromActorId,
+    msgToActorId,
+    onMsgToActorIdChange: setMsgToActorId,
+    msgChannel,
+    onMsgChannelChange: setMsgChannel,
+    msgTransport,
+    onMsgTransportChange: setMsgTransport,
+    msgRoute,
+    onMsgRouteChange: setMsgRoute,
+    msgTemplate,
+    msgPayload,
+    onMsgPayloadChange: setMsgPayload,
+    msgIdempotencyKey,
+    onMsgIdempotencyKeyChange: setMsgIdempotencyKey,
+    inboxActorId,
+    onInboxActorIdChange: setInboxActorId,
+    inboxLimit,
+    onInboxLimitChange: setInboxLimit,
+    inboxAfterId,
+    onInboxAfterIdChange: setInboxAfterId,
+    inboxIncludeDelivered,
+    onInboxIncludeDeliveredChange: setInboxIncludeDelivered,
+    chatDraft,
+    onChatDraftChange: setChatDraft,
+  });
+  const teamWorkspaceContext = useShallowStableObject<TeamWorkspaceContextValue>({
+    workbench: teamWorkbenchContext,
     selectedConversation,
     developerMode: props.developerMode,
     token: props.token,
@@ -3051,7 +3284,7 @@ export function TeamPage(props: TeamPageProps) {
     onSendThreadReply,
     threadReplyDraft,
     setThreadReplyDraft,
-  };
+  });
 
   return (
     <WorkspaceShell
@@ -3172,209 +3405,7 @@ export function TeamPage(props: TeamPageProps) {
           ) : null}
           {showWorkbenchPane ? (
             <TeamWorkspaceProvider value={teamWorkspaceContext}>
-            <TeamWorkbenchContainer
-              showTeamBootstrapLoading={showTeamBootstrapLoading}
-              showTeamUnavailable={showTeamUnavailable}
-              onBackToSelector={navigateToTeamSelector}
-              selectedTeam={selectedTeam}
-              isAgentWorkspace={isAgentWorkspace}
-              teamSectionCardClassName={TEAM_PANEL_CARD_CLASS}
-              teamSectionTitleClassName={TEAM_PANEL_TITLE_CLASS}
-              teamSectionBodyTextClassName={TEAM_SECTION_BODY_TEXT_CLASS}
-              panelSecondaryButtonClassName={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-              teamWorkbenchWorkspaceShellClassName={teamWorkbenchWorkspaceShellClassName}
-              selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
-              selectedTeamDescription={selectedTeam?.description}
-              teamMemberForgeLabel={teamMemberForgeLabel}
-              teamMemberCopyExistingLabel={teamMemberCopyExistingLabel}
-              onOpenTeamMemberForge={openTeamMemberForgeModal}
-              onOpenTeamMemberCopyExisting={openCopyExistingAgentModal}
-              tab={tab}
-              selectedTeamRuntimeStatus={selectedTeamRuntimeStatus}
-              selectedTeamRuntimeControlTone={selectedTeamRuntimeControlTone}
-              showRunContextLoading={showRunContextLoading}
-              showNoActiveRunNotice={showNoActiveRunNotice}
-              activeWorkspaceLens={activeWorkspaceLens}
-              developerMode={props.developerMode}
-              onGoToRuns={onGoToRuns}
-              workspaceEyebrow={workspaceEyebrow}
-              showDedicatedWorkspaceHeading={showDedicatedWorkspaceHeading}
-              workspaceTitle={workspaceTitle}
-              workspaceDescription={workspaceDescription}
-              selectedAgentLabel={selectedAgentLabel}
-              selectedAgentWorkspaceMemberId={selectedAgentWorkspaceMemberId}
-              selectedAgentStatusView={selectedAgentStatusView}
-              selectedAgentSpecDraft={selectedAgentSpecDraft}
-              selectedAgentControlState={selectedAgentControlState}
-              showWorkspaceRuntimeBadge={showWorkspaceRuntimeBadge}
-              workspaceAdvancedTabItems={workspaceAdvancedTabItems}
-              isAdvancedWorkspace={isAdvancedWorkspace}
-              showRunActionsInAdvanced={showRunActionsInAdvanced}
-              canResumeActiveRun={canResumeActiveRun}
-              canRestartActiveRun={canRestartActiveRun}
-              workspaceDetailsOpen={workspaceDetailsOpen}
-              workspaceDetailItems={workspaceDetailItems}
-              workspaceNoticeText={workspaceNoticeText}
-              workspaceNoticeDotClassName={workspaceNoticeDotClassName}
-              teamWorkbenchMutedButtonClassName={teamWorkbenchMutedButtonClassName}
-              teamWorkbenchHeaderActionButtonClassName={teamWorkbenchHeaderActionButtonClassName}
-              workspaceToolbarClassName={workspaceToolbarClassName}
-              workspaceToolbarButtonActiveClassName={workspaceToolbarButtonActiveClassName}
-              workspaceToolbarButtonIdleClassName={workspaceToolbarButtonIdleClassName}
-              workspaceNoticeClassName={workspaceNoticeClassName}
-              workspaceNoticeTextClassName={workspaceNoticeTextClassName}
-              teamRunMetaItemClassName={teamRunMetaItemClassName}
-              onTabChange={setTab}
-              onToggleWorkspaceDetails={() => setWorkspaceDetailsOpen((c) => !c)}
-              onRefreshActiveRun={onRefreshActiveRun}
-              onCancelRun={onCancelRun}
-              onResumeRun={onResumeRun}
-              onRestartRun={onRestartRun}
-              onOpenTeamMemberEditModal={openTeamMemberEditModal}
-              onStartSelectedTeamAgent={onStartSelectedTeamAgent}
-              onStopSelectedTeamAgent={onStopSelectedTeamAgent}
-              onDeleteSelectedTeamAgent={onDeleteSelectedTeamAgent}
-              onDeleteTeam={onDeleteTeam}
-              runStatusFilter={runStatusFilter}
-              TEAM_RUN_STATUS_FILTER_OPTIONS={TEAM_RUN_STATUS_FILTER_OPTIONS}
-              onRunStatusFilterChange={onRunStatusFilterChange}
-              onRefreshRuns={onRefreshRuns}
-              runsLoading={runsLoading}
-              visibleRuns={visibleRuns}
-              activeRunIdForSelectedTeam={activeRunIdForSelectedTeam}
-              setActiveRunId={setActiveRunId}
-              isActiveRunHiddenByFilter={isActiveRunHiddenByFilter}
-              activeRunForSelectedTeam={activeRunForSelectedTeam}
-              totalLoadedRunsForTeam={totalLoadedRunsForTeam}
-              runsHasMore={runsHasMore}
-              effectiveSelectedTeamId={effectiveSelectedTeamId}
-              onLoadMoreRuns={onLoadMoreRuns}
-              TEAM_EVENT_PREVIEW_LIMIT={TEAM_EVENT_PREVIEW_LIMIT}
-              selectedMemberDiscoveryCard={selectedMemberDiscoveryCard}
-              selectedMemberDiscoveryCardLoading={selectedMemberDiscoveryCardLoading}
-              onOpenMailboxForMember={onOpenMailboxForMember}
-              selectedMemberId={selectedMemberId}
-              setSelectedMemberId={setSelectedMemberId}
-              eventsAutoRefresh={eventsAutoRefresh}
-              setEventsAutoRefresh={setEventsAutoRefresh}
-              onRefreshEventsPanel={onRefreshEventsPanel}
-              onLoadOlderEventsPanel={onLoadOlderEventsPanel}
-              eventsHasMore={eventsHasMore}
-              mailboxHasActiveRun={Boolean(activeRunForSelectedTeam)}
-              mailboxEmptyTitle={isAgentWorkspace ? selectedAgentLabel : "Execution Mailbox"}
-              mailboxEmptyBody={isAgentWorkspace
-                ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
-                : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations."}
-              snapshot={snapshot}
-              mailboxDisplayNameByActorId={mailboxDisplayNameByActorId}
-              busy={busy}
-              selectedAgentWorkspaceSessionId={selectedAgentWorkspaceSessionId}
-              memberEvents={memberEvents}
-              memberEventsLoading={memberEventsLoading}
-              memberEventsHasMore={memberEventsHasMore}
-              onLoadOlderMemberConsole={onLoadOlderMemberConsole}
-              onRefreshMemberConsole={onRefreshMemberConsole}
-              teamDebugTag={teamDebugTag}
-              setTeamDebugTag={setTeamDebugTag}
-              runContextId={runContextId}
-              setRunContextId={setRunContextId}
-              runInput={runInput}
-              setRunInput={setRunInput}
-              runLookupId={runLookupId}
-              setRunLookupId={setRunLookupId}
-              canCreateRun={canCreateRun}
-              runInputHasError={runInputHasError}
-              runInputValidation={runInputValidation}
-              teamExecutionBlockedReason={teamExecutionBlockedReason}
-              onCreateRun={onCreateRun}
-              onLoadRunById={onLoadRunById}
-              steps={steps}
-              onRefreshActiveRunSteps={onRefreshActiveRunSteps}
-              stepKey={stepKey}
-              setStepKey={setStepKey}
-              stepMemberId={stepMemberId}
-              onStepMemberIdChange={setStepMemberId}
-              stepDependsOn={stepDependsOn}
-              onStepDependsOnChange={setStepDependsOn}
-              stepInput={stepInput}
-              onStepInputChange={setStepInput}
-              onSubmitStep={onSubmitStep}
-              selectedStepId={selectedStepId}
-              setSelectedStepId={setSelectedStepId}
-              stepAction={stepAction}
-              setStepAction={setStepAction}
-              stepRemoteTaskId={stepRemoteTaskId}
-              onStepRemoteTaskIdChange={setStepRemoteTaskId}
-              stepOutput={stepOutput}
-              onStepOutputChange={setStepOutput}
-              stepFailText={stepFailText}
-              onStepFailTextChange={setStepFailText}
-              stepInputReason={stepInputReason}
-              onStepInputReasonChange={setStepInputReason}
-              stepInputRequiredPayload={stepInputRequiredPayload}
-              onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
-              stepResumePayload={stepResumePayload}
-              onStepResumePayloadChange={setStepResumePayload}
-              onApplyStepAction={onApplyStepAction}
-              unreadByMemberId={unreadByMemberId}
-              chatActors={chatActors}
-              chatStickToBottom={chatStickToBottom}
-              chatMessagesRef={chatMessagesRef}
-              onConversationScroll={onConversationScroll}
-              onJumpConversationToBottom={onJumpConversationToBottom}
-              conversationMessages={conversationMessages}
-              onAcceptMessage={onAcceptMessage}
-              onAcceptVisibleMessages={onAcceptVisibleMessages}
-              onSendChatMessage={onSendChatMessage}
-              MAILBOX_TEMPLATE_OPTIONS={MAILBOX_TEMPLATE_OPTIONS}
-              onMailboxTemplateChange={onMailboxTemplateChange}
-              onApplyMessageTemplate={onApplyMessageTemplate}
-              onSendMessage={onSendMessage}
-              onRefreshInbox={onRefreshInbox}
-              selectedAgentWorkspaceSnapshot={selectedAgentWorkspaceSnapshot}
-              selectedMemberSnapshot={selectedMemberSnapshot}
-              selectedAgentWorkspaceRuntimeMember={selectedAgentWorkspaceRuntimeMember}
-              selectedAgentWorkspaceAgent={selectedAgentWorkspaceAgent}
-              oldestMemberEventId={oldestMemberEventId}
-              onSendAgentAcpInput={onSendAgentAcpInput}
-              onCancelTeamMemberAcp={onCancelTeamMemberAcp}
-              onSetTeamMemberAcpMode={onSetTeamMemberAcpMode}
-              onSetTeamMemberAcpModel={onSetTeamMemberAcpModel}
-              onSetTeamMemberAcpConfig={onSetTeamMemberAcpConfig}
-              onForceNewTeamMemberSession={onForceNewTeamMemberSession}
-              eventsLoading={eventsLoading}
-              oldestEventId={oldestEventId}
-              displayedRunEvents={displayedRunEvents}
-              previewMode={previewMode}
-              snapshotLoading={snapshotLoading}
-              onRefreshOverviewSnapshot={onRefreshOverviewSnapshot}
-              memberTargetNodeById={memberTargetNodeById}
-              msgFromActorId={msgFromActorId}
-              onMsgFromActorIdChange={setMsgFromActorId}
-              msgToActorId={msgToActorId}
-              onMsgToActorIdChange={setMsgToActorId}
-              msgChannel={msgChannel}
-              onMsgChannelChange={setMsgChannel}
-              msgTransport={msgTransport}
-              onMsgTransportChange={setMsgTransport}
-              msgRoute={msgRoute}
-              onMsgRouteChange={setMsgRoute}
-              msgTemplate={msgTemplate}
-              msgPayload={msgPayload}
-              onMsgPayloadChange={setMsgPayload}
-              msgIdempotencyKey={msgIdempotencyKey}
-              onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
-              inboxActorId={inboxActorId}
-              onInboxActorIdChange={setInboxActorId}
-              inboxLimit={inboxLimit}
-              onInboxLimitChange={setInboxLimit}
-              inboxAfterId={inboxAfterId}
-              onInboxAfterIdChange={setInboxAfterId}
-              inboxIncludeDelivered={inboxIncludeDelivered}
-              onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
-              chatDraft={chatDraft}
-              onChatDraftChange={setChatDraft}
-            />
+              <TeamWorkbenchContainer />
             </TeamWorkspaceProvider>
           ) : null}
         </div>
