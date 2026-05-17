@@ -568,6 +568,42 @@ describe("team panels interactions", () => {
     expect(onSelectAgentTab).toHaveBeenCalledWith("coordinator-agent", "agent_acp");
   });
 
+  it("TeamSidebar subject tabs fall back to the first available channel and focused agent", () => {
+    const onSelectChannel = vi.fn();
+    const onSelectAgentTab = vi.fn();
+
+    renderTeamSidebar(root, {
+      channelItems: [
+        {
+          id: "review",
+          label: "# review",
+          description: "Review lane",
+        },
+      ],
+      selectedChannelId: "missing",
+      memberLiveStates: [
+        buildMemberLiveState({
+          member_id: "coordinator-agent",
+          agent_name: "Coordinator Agent",
+        }),
+        buildMemberLiveState({
+          member_id: "worker-agent",
+          role: "worker",
+          agent_name: "Worker Agent",
+        }),
+      ],
+      focusedAgentMemberId: "worker-agent",
+      onSelectChannel,
+      onSelectAgentTab,
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Show channels"));
+    expect(onSelectChannel).toHaveBeenCalledWith("review");
+
+    clickElement(findButtonByAriaLabel(container, "Show agents"));
+    expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
+  });
+
   it("TeamSidebar renders subject rail and triggers navigation callbacks", async () => {
     const onRefreshTeams = vi.fn();
     const onOpenCreateTeam = vi.fn();
