@@ -815,6 +815,32 @@ describe("team panels interactions", () => {
     changeInputValue(agentSearchInput, "worker");
     await waitForCondition(() => document.body.textContent?.includes("Worker Agent") ?? false);
     clickElement(findButtonByText(document.body, "Worker Agent"));
+    clickElement(findButtonByAriaLabel(container, "Search workspace"));
+    await waitForCondition(() => document.body.textContent?.includes("Search workspace") ?? false);
+    const channelSearchInput = required(
+      document.body.querySelector("input[aria-label='Search workspace']"),
+      "sidebar search input missing"
+    ) as HTMLInputElement;
+    changeInputValue(channelSearchInput, "shared");
+    await waitForCondition(() => document.body.textContent?.includes("# all") ?? false);
+    const channelSearchResults = required(
+      document.body.querySelector('[data-team-search-dialog-results="true"]'),
+      "sidebar search results missing"
+    ) as HTMLElement;
+    clickElement(findButtonByText(channelSearchResults, "# all"));
+    clickElement(findButtonByAriaLabel(container, "Search workspace"));
+    await waitForCondition(() => document.body.textContent?.includes("Search workspace") ?? false);
+    const kanbanSearchInput = required(
+      document.body.querySelector("input[aria-label='Search workspace']"),
+      "sidebar search input missing"
+    ) as HTMLInputElement;
+    changeInputValue(kanbanSearchInput, "kanban");
+    await waitForCondition(() => document.body.textContent?.includes("Kanban") ?? false);
+    const kanbanSearchResults = required(
+      document.body.querySelector('[data-team-search-dialog-results="true"]'),
+      "sidebar search results missing"
+    ) as HTMLElement;
+    clickElement(findButtonByText(kanbanSearchResults, "Kanban"));
     clickElement(findButtonByAriaLabel(container, "Show channels"));
     clickElement(findButtonByText(container, "# all"));
 
@@ -822,8 +848,8 @@ describe("team panels interactions", () => {
     expect(onOpenCreateTeam).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectChannel).toHaveBeenCalledWith("all");
-    expect(onSelectKanban).toHaveBeenCalledTimes(2);
-    expect(onSelectSearch).toHaveBeenCalledTimes(2);
+    expect(onSelectKanban).toHaveBeenCalledTimes(3);
+    expect(onSelectSearch).toHaveBeenCalledTimes(4);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
     expect(container.textContent).toContain("Channels");
