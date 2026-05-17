@@ -8,6 +8,7 @@ import {
 import { buildTeamWorkspacePath } from "../team_page";
 import {
   useTeamConversationContext,
+  useTeamTasksContext,
   useTeamWorkspaceShell,
 } from "./team_workspace_context";
 
@@ -15,8 +16,6 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
   const {
     selectedConversation,
     token,
-    tasksLoading,
-    onRefreshTasks,
     taskMessageDraft,
     setTaskMessageDraft,
     onSendTaskMessage,
@@ -28,6 +27,7 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
     channelFocusMessageId,
     setChannelFocusMessageId,
   } = useTeamConversationContext();
+  const { tasksLoading, onRefreshTasks } = useTeamTasksContext();
   const {
     developerMode,
     snapshot,
