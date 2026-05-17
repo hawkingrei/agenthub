@@ -56,7 +56,11 @@ export const TeamThreadContainer = React.memo(function TeamThreadContainer(
   const activeThreadReplies = useMemo(
     () =>
       taskMessages
-        .filter((msg) => resolveThreadRootMessageIdFromPayload(msg.payload) === routeThreadRootMessageId)
+        .filter(
+          (msg) =>
+            msg.route === "team_thread_reply" &&
+            resolveThreadRootMessageIdFromPayload(msg.payload) === routeThreadRootMessageId
+        )
         .map((msg) => ({
           messageId: msg.message_id,
           authorLabel: msg.from_actor_id,

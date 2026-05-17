@@ -21,6 +21,16 @@ function channelRecord(
 }
 
 describe("buildTeamChannelItems", () => {
+  it("keeps a default channel when the API has not returned channels yet", () => {
+    const items = buildTeamChannelItems([]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: "all",
+      label: "# all",
+    });
+  });
+
   it("keeps the default channel singular when the API also returns all", () => {
     const items = buildTeamChannelItems([
       channelRecord("all", { description: "API default channel" }),

@@ -2917,6 +2917,8 @@ export function TeamPage(props: TeamPageProps) {
         codeMode: forgeAgentCodeMode,
         setCodeMode: setForgeAgentCodeMode,
         worktreeError: forgeAgentWorktreeError,
+        agentPresetLabel: "Runtime",
+        agentPresetSummaryLabel: "Model",
         showWorktreeAdvancedOptions: teamMemberDraft?.role !== "coordinator",
         createBusy: forgeAgentBusy,
         workdirPlaceholder: forgeDefaultWorktreeRoot,
@@ -2946,7 +2948,6 @@ export function TeamPage(props: TeamPageProps) {
       setForgeAgentWorkdir,
       setForgeAgentWorktreeRef,
       setForgeAgentWorktreeRepo,
-      selectedTeamHasCoordinator,
       teamMemberDraft?.role,
     ]
   );
