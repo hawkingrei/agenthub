@@ -36,8 +36,6 @@ export type TeamWorkspaceShellContextValue = {
 export type TeamConversationContextValue = {
   selectedConversation: TeamTaskRecord | null;
   token: string;
-  tasksLoading: boolean;
-  onRefreshTasks: () => void;
   taskMessageDraft: string;
   setTaskMessageDraft: (val: string) => void;
   onSendTaskMessage: (payload: { text: string; mentionActorIds: string[] }) => void | Promise<void>;
@@ -56,11 +54,6 @@ export type TeamConversationContextValue = {
 export type TeamTasksContextValue = {
   tasksLoading: boolean;
   onRefreshTasks: () => void;
-  selectedTeamMemberLiveStates: TeamMemberLiveState[];
-  isCompactWorkbench: boolean;
-  selectedChannelItem: TeamChannelItem | null | undefined;
-  developerMode: boolean;
-  busy: string | null;
   workspaceTasks: TeamTaskRecord[];
   selectedTaskId: string;
   setSelectedTaskId: (id: string) => void;
@@ -136,8 +129,6 @@ export function TeamWorkspaceProvider({
   const conversationValue = useShallowStableObject<TeamConversationContextValue>({
     selectedConversation: value.selectedConversation,
     token: value.token,
-    tasksLoading: value.tasksLoading,
-    onRefreshTasks: value.onRefreshTasks,
     taskMessageDraft: value.taskMessageDraft,
     setTaskMessageDraft: value.setTaskMessageDraft,
     onSendTaskMessage: value.onSendTaskMessage,
@@ -155,11 +146,6 @@ export function TeamWorkspaceProvider({
   const tasksValue = useShallowStableObject<TeamTasksContextValue>({
     tasksLoading: value.tasksLoading,
     onRefreshTasks: value.onRefreshTasks,
-    selectedTeamMemberLiveStates: value.selectedTeamMemberLiveStates,
-    isCompactWorkbench: value.isCompactWorkbench,
-    selectedChannelItem: value.selectedChannelItem,
-    developerMode: value.developerMode,
-    busy: value.busy,
     workspaceTasks: value.workspaceTasks,
     selectedTaskId: value.selectedTaskId,
     setSelectedTaskId: value.setSelectedTaskId,
