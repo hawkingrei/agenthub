@@ -1,20 +1,16 @@
 import React from "react";
 import { TeamTasksPanel } from "../team_tasks_panel";
 import { formatTs, toPrettyJson } from "./page_helpers";
-import { useTeamWorkspace } from "./team_workspace_context";
+import { useTeamTasksContext, useTeamWorkspaceShell } from "./team_workspace_context";
 
 export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
   const {
-    isCompactWorkbench,
-    selectedChannelItem,
-    developerMode,
     workspaceTasks,
     tasksLoading,
     selectedTaskId,
     setSelectedTaskId,
     onRefreshTasks,
     onSelectConversationSubject,
-    busy,
     runs,
     onOpenTaskRun,
     compilePreviewContextId,
@@ -24,8 +20,14 @@ export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
     compiledRunPreview,
     onUseCompiledRunPayload,
     onCreateRunFromCompiledPreview,
+  } = useTeamTasksContext();
+  const {
+    isCompactWorkbench,
+    selectedChannelItem,
+    developerMode,
+    busy,
     selectedTeamMemberLiveStates,
-  } = useTeamWorkspace();
+  } = useTeamWorkspaceShell();
 
   return (
     <TeamTasksPanel

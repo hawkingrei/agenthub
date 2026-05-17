@@ -6,37 +6,42 @@ import {
   toPrettyJson,
 } from "./page_helpers";
 import { buildTeamWorkspacePath } from "../team_page";
-import { useTeamWorkspace } from "./team_workspace_context";
+import {
+  useTeamConversationContext,
+  useTeamTasksContext,
+  useTeamWorkspaceShell,
+} from "./team_workspace_context";
 
 export const TeamConversationContainer = React.memo(function TeamConversationContainer() {
   const {
     selectedConversation,
-    developerMode,
     token,
-    tasksLoading,
-    onRefreshTasks,
     taskMessageDraft,
     setTaskMessageDraft,
     onSendTaskMessage,
     taskMessages,
     conversationMailboxMessages,
+    taskConversationMemberIds,
+    activeConversationTitle,
+    taskMessagesLoading,
+    channelFocusMessageId,
+    setChannelFocusMessageId,
+  } = useTeamConversationContext();
+  const { tasksLoading, onRefreshTasks } = useTeamTasksContext();
+  const {
+    developerMode,
     snapshot,
     mailboxDisplayNameByActorId,
     selectedTeamMemberLiveStates,
-    taskConversationMemberIds,
-    activeConversationTitle,
     selectedConversationMatchesChannelLane,
-    taskMessagesLoading,
     busy,
     routeThreadRootMessageId,
-    channelFocusMessageId,
-    setChannelFocusMessageId,
     effectiveSelectedTeamId,
     routeWorkspaceLens,
     routeChannelId,
     activeChannelConversationTaskId,
     navigateTeamRoute,
-  } = useTeamWorkspace();
+  } = useTeamWorkspaceShell();
 
   const onOpenThread = useCallback(
     (messageId: number) => {
