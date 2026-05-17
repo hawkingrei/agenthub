@@ -364,7 +364,7 @@ describe("App route shell wiring", () => {
     expect(rootWorkbenchHtml).toContain("do not have permission to manage machines");
   });
 
-  it("renders the shared workspace search placeholder in the root shell", async () => {
+  it("renders the shared workspace search input in the root shell", async () => {
     globalThis.localStorage.setItem(
       "agenthub_auth",
       JSON.stringify({
@@ -393,8 +393,9 @@ describe("App route shell wiring", () => {
     const rootWorkbenchHtml = renderToStaticMarkup(
       <MantineProvider>{lastCall?.rootWorkbenchNode}</MantineProvider>
     );
-    expect(rootWorkbenchHtml).toContain("Shared search is still being wired in");
-    expect(rootWorkbenchHtml).toContain("shell-level placeholder");
+    expect(rootWorkbenchHtml).toContain("Search workspace");
+    expect(rootWorkbenchHtml).toContain("Search messages, tasks, channels, or agents");
+    expect(rootWorkbenchHtml).toContain("type=\"search\"");
     expect(rootWorkbenchHtml).toContain("data-workspace-lens-placeholder=\"search\"");
   });
 
