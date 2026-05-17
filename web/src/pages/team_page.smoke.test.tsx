@@ -2191,7 +2191,7 @@ describe("TeamPage smoke render", () => {
     }
   });
 
-  it("collapses the compact sidebar after selecting # all", async () => {
+  it("collapses the compact sidebar after selecting the Channels subject default", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,
       name,
@@ -2271,22 +2271,7 @@ describe("TeamPage smoke render", () => {
       });
 
       await act(async () => {
-        (container.querySelector('[aria-label="Show tasks"]') as HTMLButtonElement | null)?.click();
-        await Promise.resolve();
-      });
-
-      const showWorkbenchButton = container.querySelector(
-        '[aria-label="Show workbench"]'
-      ) as HTMLButtonElement | null;
-      expect(showWorkbenchButton).not.toBeNull();
-
-      const allButtons = Array.from(container.querySelectorAll("button")).filter(
-        (button) => button.textContent?.includes("# all")
-      ) as HTMLButtonElement[];
-      expect(allButtons.length).toBeGreaterThan(0);
-
-      await act(async () => {
-        allButtons[0]?.click();
+        (container.querySelector('[aria-label="Show channels"]') as HTMLButtonElement | null)?.click();
         await Promise.resolve();
       });
 
@@ -2300,7 +2285,7 @@ describe("TeamPage smoke render", () => {
     }
   });
 
-  it("collapses the compact sidebar after selecting Kanban", async () => {
+  it("collapses the compact sidebar after selecting the Tasks subject default", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,
       name,
@@ -2381,16 +2366,6 @@ describe("TeamPage smoke render", () => {
 
       await act(async () => {
         (container.querySelector('[aria-label="Show tasks"]') as HTMLButtonElement | null)?.click();
-        await Promise.resolve();
-      });
-
-      const kanbanButtons = Array.from(container.querySelectorAll("button")).filter(
-        (button) => button.textContent?.includes("Kanban")
-      ) as HTMLButtonElement[];
-      expect(kanbanButtons.length).toBeGreaterThan(0);
-
-      await act(async () => {
-        kanbanButtons[0]?.click();
         await Promise.resolve();
       });
 

@@ -322,6 +322,20 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
       "# all",
     [channelItems, selectedChannelId]
   );
+  const selectedSidebarChannelId = React.useMemo(
+    () =>
+      channelItems.find((channel) => channel.id === selectedChannelId)?.id ??
+      channelItems[0]?.id ??
+      DEFAULT_TEAM_CHANNEL_ID,
+    [channelItems, selectedChannelId]
+  );
+  const defaultSidebarAgentMemberId = React.useMemo(
+    () =>
+      memberLiveStates.find((member) => member.member_id === focusedAgentMemberId)?.member_id ??
+      memberLiveStates[0]?.member_id ??
+      "",
+    [focusedAgentMemberId, memberLiveStates]
+  );
   const normalizedSidebarSearchQuery = sidebarSearchQuery.trim().toLowerCase();
   const sidebarSearchResults = React.useMemo(() => {
     const matches = (value: string) => {
@@ -430,6 +444,35 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     setNewChannelId("");
     setNewChannelDescription("");
   }, []);
+  const handleSelectSubjectPane = React.useCallback(
+    (value: TeamSidebarSubjectPane) => {
+      setActiveSubjectPane(value);
+      if (value === "channels") {
+        onSelectChannel(selectedSidebarChannelId);
+        return;
+      }
+      if (value === "tasks") {
+        onSelectKanban();
+        return;
+      }
+      if (value === "agents") {
+        if (defaultSidebarAgentMemberId) {
+          onSelectAgentTab(defaultSidebarAgentMemberId, "agent_acp");
+        }
+        return;
+      }
+      setSearchPopoverOpen(true);
+      onSelectSearch();
+    },
+    [
+      defaultSidebarAgentMemberId,
+      onSelectAgentTab,
+      onSelectChannel,
+      onSelectKanban,
+      onSelectSearch,
+      selectedSidebarChannelId,
+    ]
+  );
   const handleCreateChannelSubmit = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -815,13 +858,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                         ? TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS
                         : TEAM_SUBJECT_SWITCHER_IDLE_CLASS
                     }
-                    onClick={() => {
-                      setActiveSubjectPane(item.value);
-                      if (item.value === "search") {
-                        setSearchPopoverOpen(true);
-                        onSelectSearch();
-                      }
-                    }}
+                    onClick={() => handleSelectSubjectPane(item.value)}
                   >
                     <i className={`bi ${item.icon}`} aria-hidden="true" />
                   </button>
