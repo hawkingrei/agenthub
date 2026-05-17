@@ -80,7 +80,7 @@ describe("AgentsRouteContainer", () => {
   };
 
   it("renders shared workspace placeholders for cross-team lenses", () => {
-    expect(renderRoute("search", rootAuth)).toContain("Search messages, tasks, channels, or agents");
+    expect(renderRoute("search", rootAuth)).toContain("Use the sidebar search command");
     expect(renderRoute("channels", rootAuth)).toContain(
       "Workspace channels aggregate across teams"
     );
