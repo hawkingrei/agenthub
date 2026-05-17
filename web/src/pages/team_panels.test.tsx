@@ -28,6 +28,7 @@ import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
+import { TeamThreadContainer } from "./team/TeamThreadContainer";
 import {
   MAILBOX_ADVANCED_PANEL_TITLE_CLASS,
   MAILBOX_CHAT_HEADER_CLASS,
@@ -486,6 +487,41 @@ describe("team panels interactions", () => {
     container.remove();
   });
 
+  it("TeamSidebar renders subject tabs as Notion-style icon-only tools", () => {
+    renderTeamSidebar(root);
+
+    const tablist = required(
+      container.querySelector('[role="tablist"][aria-label="Team sidebar sections"]'),
+      "subject tablist missing"
+    );
+    const tabSection = required(tablist.parentElement, "subject tab section missing");
+    const channelsTab = findButtonByAriaLabel(container, "Show channels");
+    const tasksTab = findButtonByAriaLabel(container, "Show tasks");
+
+    expect(tabSection.className).toContain("flex-col");
+    expect(tabSection.className).toContain("pb-2");
+    expect(tabSection.className).toContain("pl-2");
+    expect(tabSection.className).toContain("pr-3");
+    expect(tabSection.className).toContain("pt-2");
+    expect(tabSection.className).toContain("relative");
+    expect(tabSection.className).toContain("z-[1]");
+    expect(tablist.className).toContain("items-center");
+    expect(tablist.className).not.toContain("bg-notion-text");
+    expect(tablist.className).not.toContain("border-notion-border");
+    expect(tablist.className).not.toContain("shadow-sm");
+    expect(channelsTab.className).toContain("h-8");
+    expect(channelsTab.className).toContain("w-8");
+    expect(channelsTab.className).toContain("justify-center");
+    expect(channelsTab.className).toContain("bg-notion-hover");
+    expect(channelsTab.className).not.toContain("bg-white");
+    expect(channelsTab.className).not.toContain("shadow-sm");
+    expect(tasksTab.className).toContain("hover:bg-notion-hover");
+    expect(tasksTab.className).toContain("justify-center");
+    expect(tasksTab.className).not.toContain("hover:bg-white");
+    expect(channelsTab.textContent?.trim()).toBe("");
+    expect(tasksTab.textContent?.trim()).toBe("");
+  });
+
   it("TeamSidebar renders subject rail and triggers navigation callbacks", async () => {
     const onRefreshTeams = vi.fn();
     const onOpenCreateTeam = vi.fn();
@@ -599,8 +635,14 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Worker Agent"));
     expect(container.querySelector('[data-team-member-id="worker-agent"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Show search"));
-    expect(container.textContent).toContain("Search workspace");
-    clickElement(findButtonByText(container, "Search workspace"));
+    await waitForCondition(() => document.body.textContent?.includes("Search workspace") ?? false);
+    const sidebarSearchInput = required(
+      document.body.querySelector("input[aria-label='Search workspace']"),
+      "sidebar search input missing"
+    ) as HTMLInputElement;
+    changeInputValue(sidebarSearchInput, "worker");
+    await waitForCondition(() => document.body.textContent?.includes("Worker Agent") ?? false);
+    clickElement(findButtonByText(document.body, "Worker Agent"));
     clickElement(findButtonByAriaLabel(container, "Show channels"));
     clickElement(findButtonByText(container, "# all"));
 
@@ -609,7 +651,7 @@ describe("team panels interactions", () => {
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectChannel).toHaveBeenCalledWith("all");
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
-    expect(onSelectSearch).toHaveBeenCalledTimes(2);
+    expect(onSelectSearch).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
     expect(container.textContent).toContain("Channels");
@@ -1329,7 +1371,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Shared team thread");
     expect(container.textContent).not.toContain("Task board");
     expect(container.textContent).toContain("Channels");
-    expect(container.textContent).toContain("Agents");
+    expect(findButtonByAriaLabel(container, "Show agents")).not.toBeNull();
   });
 
   it("TeamSidebar keeps visible keyboard focus treatments on section toggles and nav rows", () => {
@@ -2409,6 +2451,66 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain(
       "Threaded follow-up should stay in the thread pane only."
     );
+  });
+
+  it("TeamThreadContainer only renders routed thread replies for the active thread", () => {
+    renderWithMantine(
+      root,
+      <TeamThreadContainer
+        channelLabel="# all"
+        routeThreadRootMessageId={1}
+        taskMessages={[
+          buildTaskMessage(1, {
+            from_actor_id: "coordinator-agent",
+            route: "group_chat",
+            payload: { type: "chat_message", text: "Root message." },
+          }),
+          buildTaskMessage(2, {
+            from_actor_id: "worker-agent",
+            route: "team_thread_reply",
+            payload: {
+              type: "chat_message",
+              text: "Visible thread reply.",
+              thread_root_message_id: 1,
+            },
+          }),
+          buildTaskMessage(3, {
+            from_actor_id: "coordinator-agent",
+            route: "group_chat",
+            payload: {
+              type: "chat_message",
+              text: "Channel message with a thread id should stay out.",
+              thread_root_message_id: 1,
+            },
+          }),
+          buildTaskMessage(4, {
+            from_actor_id: "worker-agent",
+            route: "team_thread_reply",
+            payload: {
+              type: "chat_message",
+              text: "Different thread reply should stay out.",
+              thread_root_message_id: 99,
+            },
+          }),
+        ]}
+        threadReplyDraft=""
+        setThreadReplyDraft={vi.fn()}
+        onSendThreadReply={vi.fn()}
+        replyBusy={false}
+        threadMentionCandidates={[]}
+        effectiveSelectedTeamId="team-1"
+        routeWorkspaceLens="channels"
+        routeChannelId="all"
+        activeChannelConversationTaskId="task-1"
+        navigateTeamRoute={vi.fn()}
+        setChannelFocusMessageId={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("Root message.");
+    expect(container.textContent).toContain("Visible thread reply.");
+    expect(container.textContent).not.toContain("Channel message with a thread id should stay out.");
+    expect(container.textContent).not.toContain("Different thread reply should stay out.");
   });
 
   it("TeamTaskPanel keeps the channel body in a dedicated flex shell above the composer", () => {

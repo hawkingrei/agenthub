@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint . --ext .ts,.tsx,.js",
     "test": "vitest run",
-    "test:coverage:core": "NODE_OPTIONS=--max-old-space-size=6144 vitest run --pool=forks --maxWorkers=1 --exclude src/pages/team_page.smoke.test.tsx --coverage.enabled --coverage.provider=v8 --coverage.reporter=lcov",
+    "test:coverage:core": "NODE_OPTIONS='--max-old-space-size=6144' vitest run --pool=forks --maxWorkers=1 --exclude src/pages/team_page.smoke.test.tsx --coverage.enabled --coverage.provider=v8 --coverage.reporter=lcov",
     "test:smoke": "vitest run src/pages/team_page.smoke.test.tsx",
     "test:coverage": "npm run test:coverage:core && npm run test:smoke",
     "e2e": "playwright test",
