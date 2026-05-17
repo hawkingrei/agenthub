@@ -279,7 +279,11 @@ export type TeamWorkbenchRuntimeContext = {
 };
 
 export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer() {
-  const { workbench: props } = useTeamWorkspace();
+  const {
+    workbench: props,
+    routeThreadRootMessageId,
+    selectedConversationMatchesChannelLane,
+  } = useTeamWorkspace();
   if (!props) {
     throw new Error("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
   }
@@ -853,7 +857,10 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
 
   const tasksPanel = <TeamTasksContainer />;
 
-  const threadPane = <TeamThreadContainer />;
+  const threadPane =
+    selectedConversationMatchesChannelLane && routeThreadRootMessageId !== null ? (
+      <TeamThreadContainer />
+    ) : null;
 
   const agentAcpPanel = (
     <Suspense

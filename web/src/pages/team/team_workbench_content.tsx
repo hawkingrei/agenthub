@@ -255,10 +255,20 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
                       ? "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.92fr)]"
                       : "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden"
                   }
+                  data-team-surface="channel-thread-layout"
+                  data-thread-open={threadPane ? "true" : "false"}
                 >
-                  <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{conversationPanel}</div>
+                  <div
+                    className="min-h-0 min-w-0 flex-1 overflow-hidden"
+                    data-team-surface="channel-pane"
+                  >
+                    {conversationPanel}
+                  </div>
                   {threadPane && (
-                    <div className="flex max-h-[40vh] min-h-0 shrink-0 flex-col lg:max-h-none lg:min-w-0 lg:flex-shrink">
+                    <div
+                      className="flex max-h-[40vh] min-h-0 shrink-0 flex-col lg:max-h-none lg:min-w-0 lg:flex-shrink"
+                      data-team-surface="thread-dock"
+                    >
                       {threadPane}
                     </div>
                   )}
