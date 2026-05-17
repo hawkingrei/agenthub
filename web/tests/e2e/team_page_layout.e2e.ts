@@ -44,6 +44,12 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
     const headerShell = document.querySelector<HTMLElement>(
       '[data-team-workspace-header-shell="true"]'
     );
+    const sidebarSubjectTabs = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="tab"]')
+    ).filter((node) => /^Show (channels|tasks|agents|search)$/i.test(node.getAttribute("aria-label") ?? ""));
+    const sidebarSubjectTablist = document.querySelector<HTMLElement>(
+      '[role="tablist"][aria-label="Team sidebar sections"]'
+    );
     if (!layout || !sidebar || !workbench || !headerShell) {
       throw new Error("team workspace layout nodes missing");
     }
@@ -59,6 +65,13 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
       headerHeight: headerRect.height,
       workbenchHeight: workbenchRect.height,
       headerClassName: headerShell.className,
+      sidebarSubjectTablistClassName: sidebarSubjectTablist?.className ?? "",
+      sidebarSubjectTabs: sidebarSubjectTabs.map((node) => ({
+        label: node.getAttribute("aria-label") ?? "",
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+        className: node.className,
+      })),
     };
   });
 
@@ -72,6 +85,12 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
   expect(metrics.headerHeight).toBeLessThanOrEqual(74);
   expect(metrics.headerHeight / metrics.workbenchHeight).toBeLessThanOrEqual(0.12);
   expect(metrics.headerClassName).not.toContain("teams-panel-card");
+  expect(metrics.sidebarSubjectTablistClassName).toContain("flex-col");
+  expect(metrics.sidebarSubjectTabs).toHaveLength(4);
+  for (const tab of metrics.sidebarSubjectTabs) {
+    expect(tab.scrollWidth, tab.label).toBeLessThanOrEqual(tab.clientWidth);
+    expect(tab.className).toContain("justify-start");
+  }
 
   await page.getByRole("tab", { name: "Show search", exact: true }).click();
   const searchInput = page.getByRole("searchbox", { name: "Search workspace" });

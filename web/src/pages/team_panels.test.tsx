@@ -493,18 +493,28 @@ describe("team panels interactions", () => {
       container.querySelector('[role="tablist"][aria-label="Team sidebar sections"]'),
       "subject tablist missing"
     );
+    const tabSection = required(tablist.parentElement, "subject tab section missing");
     const channelsTab = findButtonByAriaLabel(container, "Show channels");
     const tasksTab = findButtonByAriaLabel(container, "Show tasks");
 
-    expect(tablist.className).toContain("grid-cols-4");
+    expect(tabSection.className).toContain("flex-col");
+    expect(tabSection.className).toContain("pb-2");
+    expect(tabSection.className).toContain("pl-2");
+    expect(tabSection.className).toContain("pr-3");
+    expect(tabSection.className).toContain("pt-2");
+    expect(tabSection.className).toContain("relative");
+    expect(tabSection.className).toContain("z-[1]");
+    expect(tablist.className).toContain("flex-col");
     expect(tablist.className).not.toContain("bg-notion-text");
     expect(tablist.className).not.toContain("border-notion-border");
     expect(tablist.className).not.toContain("shadow-sm");
     expect(channelsTab.className).toContain("h-7");
+    expect(channelsTab.className).toContain("justify-start");
     expect(channelsTab.className).toContain("bg-notion-hover");
     expect(channelsTab.className).not.toContain("bg-white");
     expect(channelsTab.className).not.toContain("shadow-sm");
     expect(tasksTab.className).toContain("hover:bg-notion-hover");
+    expect(tasksTab.className).toContain("justify-start");
     expect(tasksTab.className).not.toContain("hover:bg-white");
   });
 

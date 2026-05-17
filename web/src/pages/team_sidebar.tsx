@@ -182,12 +182,14 @@ const TEAM_SWITCH_BUTTON_CLASS =
   "inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-notion-border bg-white px-2.5 py-1.5 text-left shadow-sm transition hover:border-notion-accent/25 hover:bg-notion-hover";
 const TEAM_CONTROLS_BUTTON_CLASS =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-notion-border bg-notion-sidebar/40 text-[12px] text-notion-text-muted shadow-sm transition hover:border-notion-accent/25 hover:bg-notion-hover hover:text-notion-text";
+const TEAM_SUBJECT_SWITCHER_SECTION_CLASS =
+  "relative z-[1] flex flex-col pb-2 pl-2 pr-3 pt-2";
 const TEAM_SUBJECT_SWITCHER_CLASS =
-  "grid grid-cols-4 gap-1";
+  "flex flex-col gap-0.5";
 const TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS =
-  "inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md bg-notion-hover px-1.5 text-[11px] font-medium text-notion-text sm:px-2";
+  "inline-flex h-7 min-w-0 items-center justify-start gap-1.5 rounded-md bg-notion-hover px-2 text-[11px] font-medium text-notion-text";
 const TEAM_SUBJECT_SWITCHER_IDLE_CLASS =
-  "inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text sm:px-2";
+  "inline-flex h-7 min-w-0 items-center justify-start gap-1.5 rounded-md px-2 text-[11px] font-medium text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text";
 
 function resolveTeamSidebarSubjectPane(
   tab: TeamTab,
@@ -728,7 +730,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
 
       {selectedTeam && (
         <>
-          <div className="mt-4 px-2">
+          <div className={TEAM_SUBJECT_SWITCHER_SECTION_CLASS}>
             <div className={TEAM_SUBJECT_SWITCHER_CLASS} role="tablist" aria-label="Team sidebar sections">
               {subjectPaneItems.map((item) => {
                 const isSelected = activeSubjectPane === item.value;
