@@ -125,6 +125,10 @@ import { useTeamMailboxState } from "./team/use_team_mailbox_state";
 import { TeamSidebarContainer } from "./team/TeamSidebarContainer";
 import { TeamWorkbenchContainer } from "./team/TeamWorkbenchContainer";
 import {
+  TeamWorkspaceProvider,
+  type TeamWorkspaceContextValue,
+} from "./team/team_workspace_context";
+import {
   DEFAULT_TEAM_RUN_BROWSER_STATE,
   DEFAULT_WORKTREE_ROOT,
   MAILBOX_TEMPLATE_OPTIONS,
@@ -3002,6 +3006,52 @@ export function TeamPage(props: TeamPageProps) {
     : teamsSidebarCollapsed
       ? "Show teams panel"
       : "Hide teams panel";
+  const teamWorkspaceContext: TeamWorkspaceContextValue = {
+    selectedConversation,
+    developerMode: props.developerMode,
+    token: props.token,
+    tasksLoading,
+    onRefreshTasks,
+    taskMessageDraft,
+    setTaskMessageDraft,
+    onSendTaskMessage,
+    taskMessages,
+    conversationMailboxMessages,
+    snapshot,
+    mailboxDisplayNameByActorId,
+    selectedTeamMemberLiveStates,
+    taskConversationMemberIds,
+    activeConversationTitle,
+    selectedConversationMatchesChannelLane,
+    taskMessagesLoading,
+    busy,
+    routeThreadRootMessageId,
+    channelFocusMessageId,
+    setChannelFocusMessageId,
+    effectiveSelectedTeamId,
+    routeWorkspaceLens,
+    routeChannelId,
+    activeChannelConversationTaskId,
+    navigateTeamRoute,
+    isCompactWorkbench,
+    selectedChannelItem,
+    workspaceTasks,
+    selectedTaskId,
+    setSelectedTaskId,
+    onSelectConversationSubject,
+    runs,
+    onOpenTaskRun,
+    compilePreviewContextId,
+    setCompilePreviewContextId,
+    onCompileTaskRunPreview,
+    canCompileTask,
+    compiledRunPreview,
+    onUseCompiledRunPayload,
+    onCreateRunFromCompiledPreview,
+    onSendThreadReply,
+    threadReplyDraft,
+    setThreadReplyDraft,
+  };
 
   return (
     <WorkspaceShell
@@ -3121,6 +3171,7 @@ export function TeamPage(props: TeamPageProps) {
             />
           ) : null}
           {showWorkbenchPane ? (
+            <TeamWorkspaceProvider value={teamWorkspaceContext}>
             <TeamWorkbenchContainer
               showTeamBootstrapLoading={showTeamBootstrapLoading}
               showTeamUnavailable={showTeamUnavailable}
@@ -3144,6 +3195,7 @@ export function TeamPage(props: TeamPageProps) {
               showRunContextLoading={showRunContextLoading}
               showNoActiveRunNotice={showNoActiveRunNotice}
               activeWorkspaceLens={activeWorkspaceLens}
+              developerMode={props.developerMode}
               onGoToRuns={onGoToRuns}
               workspaceEyebrow={workspaceEyebrow}
               showDedicatedWorkspaceHeading={showDedicatedWorkspaceHeading}
@@ -3213,49 +3265,9 @@ export function TeamPage(props: TeamPageProps) {
               mailboxEmptyBody={isAgentWorkspace
                 ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
                 : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations."}
-              selectedConversation={selectedConversation}
-              developerMode={props.developerMode}
-              token={props.token}
-              tasksLoading={tasksLoading}
-              onRefreshTasks={onRefreshTasks}
-              taskMessageDraft={taskMessageDraft}
-              setTaskMessageDraft={setTaskMessageDraft}
-              onSendTaskMessage={onSendTaskMessage}
-              taskMessages={taskMessages}
-              conversationMailboxMessages={conversationMailboxMessages}
               snapshot={snapshot}
               mailboxDisplayNameByActorId={mailboxDisplayNameByActorId}
-              selectedTeamMemberLiveStates={selectedTeamMemberLiveStates}
-              taskConversationMemberIds={taskConversationMemberIds}
-              activeConversationTitle={activeConversationTitle}
-              selectedConversationMatchesChannelLane={selectedConversationMatchesChannelLane}
-              taskMessagesLoading={taskMessagesLoading}
               busy={busy}
-              routeThreadRootMessageId={routeThreadRootMessageId}
-              channelFocusMessageId={channelFocusMessageId}
-              setChannelFocusMessageId={setChannelFocusMessageId}
-              routeWorkspaceLens={routeWorkspaceLens}
-              routeChannelId={routeChannelId}
-              activeChannelConversationTaskId={activeChannelConversationTaskId}
-              navigateTeamRoute={navigateTeamRoute}
-              isCompactWorkbench={isCompactWorkbench}
-              selectedChannelItem={selectedChannelItem}
-              workspaceTasks={workspaceTasks}
-              selectedTaskId={selectedTaskId}
-              setSelectedTaskId={setSelectedTaskId}
-              onSelectConversationSubject={onSelectConversationSubject}
-              runs={runs}
-              onOpenTaskRun={onOpenTaskRun}
-              compilePreviewContextId={compilePreviewContextId}
-              setCompilePreviewContextId={setCompilePreviewContextId}
-              onCompileTaskRunPreview={onCompileTaskRunPreview}
-              canCompileTask={canCompileTask}
-              compiledRunPreview={compiledRunPreview}
-              onUseCompiledRunPayload={onUseCompiledRunPayload}
-              onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
-              onSendThreadReply={onSendThreadReply}
-              threadReplyDraft={threadReplyDraft}
-              setThreadReplyDraft={setThreadReplyDraft}
               selectedAgentWorkspaceSessionId={selectedAgentWorkspaceSessionId}
               memberEvents={memberEvents}
               memberEventsLoading={memberEventsLoading}
@@ -3363,6 +3375,7 @@ export function TeamPage(props: TeamPageProps) {
               chatDraft={chatDraft}
               onChatDraftChange={setChatDraft}
             />
+            </TeamWorkspaceProvider>
           ) : null}
         </div>
       )}

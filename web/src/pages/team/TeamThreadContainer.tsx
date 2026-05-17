@@ -6,46 +6,46 @@ import {
   resolveThreadRootMessageIdFromPayload,
 } from "./page_helpers";
 import { buildTeamWorkspacePath } from "../team_page";
-import type { TeamConversationMessageRecord } from "../../api";
 import type { MentionCandidate } from "./mailbox_helpers";
-import type { WorkspaceLens } from "../../app_route_selection";
+import { useTeamWorkspace } from "./team_workspace_context";
 
-type TeamThreadContainerProps = {
-  channelLabel: string;
-  routeThreadRootMessageId: number | null;
-  taskMessages: TeamConversationMessageRecord[];
-  threadReplyDraft: string;
-  setThreadReplyDraft: (val: string) => void;
-  onSendThreadReply: (payload: { text: string; mentionActorIds: string[] }) => void;
-  replyBusy: boolean;
-  threadMentionCandidates: MentionCandidate[];
-  effectiveSelectedTeamId: string | null;
-  routeWorkspaceLens: WorkspaceLens | null;
-  routeChannelId: string;
-  activeChannelConversationTaskId: string | null;
-  navigateTeamRoute: (path: string) => void;
-  setChannelFocusMessageId: (id: number | null) => void;
-};
-
-export const TeamThreadContainer = React.memo(function TeamThreadContainer(
-  props: TeamThreadContainerProps
-) {
+export const TeamThreadContainer = React.memo(function TeamThreadContainer() {
   const {
-    channelLabel,
+    selectedChannelItem,
     routeThreadRootMessageId,
     taskMessages,
     threadReplyDraft,
     setThreadReplyDraft,
     onSendThreadReply,
-    replyBusy,
-    threadMentionCandidates,
+    busy,
+    mailboxDisplayNameByActorId,
+    selectedTeamMemberLiveStates,
+    selectedConversationMatchesChannelLane,
     effectiveSelectedTeamId,
     routeWorkspaceLens,
     routeChannelId,
     activeChannelConversationTaskId,
     navigateTeamRoute,
     setChannelFocusMessageId,
-  } = props;
+  } = useTeamWorkspace();
+  const channelLabel = selectedChannelItem?.label ?? "";
+  const replyBusy = busy === "send-thread-reply";
+  const threadMentionCandidates = useMemo<MentionCandidate[]>(
+    () =>
+      selectedTeamMemberLiveStates.map((member) => {
+        const actorId = member.member_id.trim();
+        const label =
+          member.agent_name?.trim() ||
+          mailboxDisplayNameByActorId[actorId]?.trim() ||
+          actorId;
+        return {
+          actorId,
+          label,
+          aliases: [actorId],
+        };
+      }),
+    [mailboxDisplayNameByActorId, selectedTeamMemberLiveStates]
+  );
 
   const activeThreadRootMessage = useMemo(
     () =>
@@ -105,7 +105,7 @@ export const TeamThreadContainer = React.memo(function TeamThreadContainer(
     }
   }, [buildCurrentThreadlessPath, navigateTeamRoute]);
 
-  if (!routeThreadRootMessageId) {
+  if (!selectedConversationMatchesChannelLane || !routeThreadRootMessageId) {
     return null;
   }
 

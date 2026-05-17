@@ -3,7 +3,6 @@ import { TeamWorkbenchContent, TeamPanelLoadingFallback } from "./team_workbench
 import type {
   TeamDefinitionRecord,
   TeamActorMessageRecord,
-  TeamConversationMessageRecord,
   AgentEvent,
   TeamRunRecord,
   TeamRunSnapshotRecord,
@@ -12,15 +11,11 @@ import type {
   TeamMemberSnapshot,
   AgentRecord,
   AgentDiscoveryCardRecord,
-  TeamTaskRecord,
-  TeamTaskRunCompilePreviewRecord,
 } from "../../api";
 import type { WorkspaceLens } from "../../app_route_selection";
 import type { StepAction, TeamTab } from "./state";
 import type { TeamMemberProfileDraft } from "./create_helpers";
-import type { MailboxTemplateKey, MentionCandidate, TeamMailboxChatActors } from "./mailbox_helpers";
-import type { TeamChannelItem } from "./channel_metadata";
-import type { TeamMemberLiveState } from "./member_helpers";
+import type { MailboxTemplateKey, TeamMailboxChatActors } from "./mailbox_helpers";
 import type { TeamRunStatusFilter } from "./run_helpers";
 import { TeamConversationContainer } from "./TeamConversationContainer";
 import { TeamTasksContainer } from "./TeamTasksContainer";
@@ -80,7 +75,6 @@ type TeamWorkbenchContainerProps = {
   tab: TeamTab;
   activeWorkspaceLens: WorkspaceLens;
   developerMode: boolean;
-  token: string;
   busy: string | null;
 
   // Header Inputs
@@ -144,47 +138,10 @@ type TeamWorkbenchContainerProps = {
   onLoadMoreRuns: () => void;
 
   // Workbench Body Logic Props
-  tasksLoading: boolean;
-  onRefreshTasks: () => void;
-  taskMessageDraft: string;
-  setTaskMessageDraft: (val: string) => void;
-  onSendTaskMessage: (payload: { text: string; mentionActorIds: string[] }) => void | Promise<void>;
-  taskMessages: TeamConversationMessageRecord[];
-  conversationMailboxMessages: TeamActorMessageRecord[];
   snapshot: TeamRunSnapshotRecord | null;
   snapshotLoading: boolean;
   onRefreshOverviewSnapshot: () => void;
   mailboxDisplayNameByActorId: Record<string, string>;
-  selectedTeamMemberLiveStates: TeamMemberLiveState[];
-  taskConversationMemberIds: string[];
-  activeConversationTitle: string;
-  selectedConversationMatchesChannelLane: boolean;
-  taskMessagesLoading: boolean;
-  routeThreadRootMessageId: number | null;
-  channelFocusMessageId: number | null;
-  setChannelFocusMessageId: (id: number | null) => void;
-  routeWorkspaceLens: WorkspaceLens | null;
-  routeChannelId: string;
-  activeChannelConversationTaskId: string | null;
-  navigateTeamRoute: (path: string) => void;
-  isCompactWorkbench: boolean;
-  selectedChannelItem: TeamChannelItem;
-  workspaceTasks: TeamTaskRecord[];
-  selectedTaskId: string;
-  setSelectedTaskId: (id: string) => void;
-  onSelectConversationSubject: (taskId?: string | null, taskChannelId?: string | null) => void;
-  runs: TeamRunRecord[];
-  onOpenTaskRun: (runId: string) => void;
-  compilePreviewContextId: string;
-  setCompilePreviewContextId: (id: string) => void;
-  onCompileTaskRunPreview: () => void;
-  canCompileTask: boolean;
-  compiledRunPreview: TeamTaskRunCompilePreviewRecord | null;
-  onUseCompiledRunPayload: () => void;
-  onCreateRunFromCompiledPreview: () => void;
-  onSendThreadReply: (payload: { text: string; mentionActorIds: string[] }) => void;
-  threadReplyDraft: string;
-  setThreadReplyDraft: (val: string) => void;
   selectedAgentWorkspaceSessionId: string | null;
   memberEvents: AgentEvent[];
   memberEventsLoading: boolean;
@@ -318,7 +275,6 @@ type TeamWorkbenchContainerProps = {
   selectedMemberDiscoveryCard: AgentDiscoveryCardRecord | null;
   selectedMemberDiscoveryCardLoading: boolean;
   onOpenMailboxForMember: (id: string) => void;
-  selectedConversation: TeamTaskRecord | null;
 };
 
 export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer(
@@ -338,7 +294,6 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     tab,
     activeWorkspaceLens,
     developerMode,
-    token,
     busy,
     workspaceEyebrow,
     showDedicatedWorkspaceHeading,
@@ -394,47 +349,10 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     runsHasMore,
     effectiveSelectedTeamId,
     onLoadMoreRuns,
-    tasksLoading,
-    onRefreshTasks,
-    taskMessageDraft,
-    setTaskMessageDraft,
-    onSendTaskMessage,
-    taskMessages,
-    conversationMailboxMessages,
     snapshot,
     snapshotLoading,
     onRefreshOverviewSnapshot,
     mailboxDisplayNameByActorId,
-    selectedTeamMemberLiveStates,
-    taskConversationMemberIds,
-    activeConversationTitle,
-    selectedConversationMatchesChannelLane,
-    taskMessagesLoading,
-    routeThreadRootMessageId,
-    channelFocusMessageId,
-    setChannelFocusMessageId,
-    routeWorkspaceLens,
-    routeChannelId,
-    activeChannelConversationTaskId,
-    navigateTeamRoute,
-    isCompactWorkbench,
-    selectedChannelItem,
-    workspaceTasks,
-    selectedTaskId,
-    setSelectedTaskId,
-    onSelectConversationSubject,
-    runs,
-    onOpenTaskRun,
-    compilePreviewContextId,
-    setCompilePreviewContextId,
-    onCompileTaskRunPreview,
-    canCompileTask,
-    compiledRunPreview,
-    onUseCompiledRunPayload,
-    onCreateRunFromCompiledPreview,
-    onSendThreadReply,
-    threadReplyDraft,
-    setThreadReplyDraft,
     selectedAgentWorkspaceSessionId,
     memberEvents,
     memberEventsLoading,
@@ -562,7 +480,6 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     selectedMemberDiscoveryCard,
     selectedMemberDiscoveryCardLoading,
     onOpenMailboxForMember,
-    selectedConversation,
   } = props;
 
   const workspaceHeaderProps = useMemo(
@@ -861,25 +778,6 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
       }
     : null;
 
-  const threadMentionCandidates = useMemo<MentionCandidate[]>(
-    () =>
-      selectedTeamMemberLiveStates.map((member) => {
-        const actorId = member.member_id.trim();
-        const label =
-          member.agent_name?.trim() ||
-          mailboxDisplayNameByActorId[actorId]?.trim() ||
-          actorId;
-        return {
-          actorId,
-          label,
-          aliases: [actorId],
-        };
-      }),
-    [mailboxDisplayNameByActorId, selectedTeamMemberLiveStates]
-  );
-
-  const canOpenThreadForSelectedConversation = selectedConversationMatchesChannelLane;
-
   const teamDebugChrome = useMemo(
     () => ({
       panelCardClassName: teamSectionCardClassName,
@@ -948,81 +846,11 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     />
   );
 
-  const conversationPanel = (
-    <TeamConversationContainer
-      selectedConversation={selectedConversation}
-      developerMode={developerMode}
-      token={token}
-      tasksLoading={tasksLoading}
-      onRefreshTasks={onRefreshTasks}
-      taskMessageDraft={taskMessageDraft}
-      setTaskMessageDraft={setTaskMessageDraft}
-      onSendTaskMessage={onSendTaskMessage}
-      taskMessages={taskMessages}
-      conversationMailboxMessages={conversationMailboxMessages}
-      snapshot={snapshot}
-      mailboxDisplayNameByActorId={mailboxDisplayNameByActorId}
-      selectedTeamMemberLiveStates={selectedTeamMemberLiveStates}
-      taskConversationMemberIds={taskConversationMemberIds}
-      activeConversationTitle={activeConversationTitle}
-      selectedConversationMatchesChannelLane={selectedConversationMatchesChannelLane}
-      taskMessagesLoading={taskMessagesLoading}
-      busy={busy}
-      routeThreadRootMessageId={routeThreadRootMessageId}
-      channelFocusMessageId={channelFocusMessageId}
-      setChannelFocusMessageId={setChannelFocusMessageId}
-      effectiveSelectedTeamId={effectiveSelectedTeamId}
-      routeWorkspaceLens={routeWorkspaceLens}
-      routeChannelId={routeChannelId}
-      activeChannelConversationTaskId={activeChannelConversationTaskId}
-      navigateTeamRoute={navigateTeamRoute}
-    />
-  );
+  const conversationPanel = <TeamConversationContainer />;
 
-  const tasksPanel = (
-    <TeamTasksContainer
-      isCompactWorkbench={isCompactWorkbench}
-      selectedChannelItem={selectedChannelItem}
-      developerMode={developerMode}
-      workspaceTasks={workspaceTasks}
-      tasksLoading={tasksLoading}
-      selectedTaskId={selectedTaskId}
-      setSelectedTaskId={setSelectedTaskId}
-      onRefreshTasks={onRefreshTasks}
-      onSelectConversationSubject={onSelectConversationSubject}
-      busy={busy}
-      runs={runs}
-      onOpenTaskRun={onOpenTaskRun}
-      compilePreviewContextId={compilePreviewContextId}
-      setCompilePreviewContextId={setCompilePreviewContextId}
-      onCompileTaskRunPreview={onCompileTaskRunPreview}
-      canCompileTask={canCompileTask}
-      compiledRunPreview={compiledRunPreview}
-      onUseCompiledRunPayload={onUseCompiledRunPayload}
-      onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
-      selectedTeamMemberLiveStates={selectedTeamMemberLiveStates}
-    />
-  );
+  const tasksPanel = <TeamTasksContainer />;
 
-  const threadPane =
-    canOpenThreadForSelectedConversation && routeThreadRootMessageId ? (
-      <TeamThreadContainer
-        channelLabel={selectedChannelItem?.label ?? ""}
-        routeThreadRootMessageId={routeThreadRootMessageId}
-        taskMessages={taskMessages}
-        threadReplyDraft={threadReplyDraft}
-        setThreadReplyDraft={setThreadReplyDraft}
-        onSendThreadReply={onSendThreadReply}
-        replyBusy={busy === "send-thread-reply"}
-        threadMentionCandidates={threadMentionCandidates}
-        effectiveSelectedTeamId={effectiveSelectedTeamId}
-        routeWorkspaceLens={routeWorkspaceLens}
-        routeChannelId={routeChannelId}
-        activeChannelConversationTaskId={activeChannelConversationTaskId}
-        navigateTeamRoute={navigateTeamRoute}
-        setChannelFocusMessageId={setChannelFocusMessageId}
-      />
-    ) : null;
+  const threadPane = <TeamThreadContainer />;
 
   const agentAcpPanel = (
     <Suspense
