@@ -428,11 +428,11 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
       "",
     [focusedAgentMemberId, memberLiveStates]
   );
+  const closeSearchDialog = React.useCallback(() => {
+    setSearchDialogOpen(false);
+    setSidebarSearchQuery("");
+  }, []);
   const sidebarSearchResults = React.useMemo(() => {
-    const closeSearchDialog = () => {
-      setSearchDialogOpen(false);
-      setSidebarSearchQuery("");
-    };
     return buildTeamSidebarSearchResults({
       query: sidebarSearchQuery,
       channelItems,
@@ -466,6 +466,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     onSelectAgentTab,
     onSelectChannel,
     onSelectKanban,
+    closeSearchDialog,
     sidebarSearchQuery,
     selectedChannelLabel,
     workspaceTasks,
@@ -945,10 +946,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
           </div>
           <Modal
             opened={searchDialogOpen}
-            onClose={() => {
-              setSearchDialogOpen(false);
-              setSidebarSearchQuery("");
-            }}
+            onClose={closeSearchDialog}
             title="Search workspace"
             centered
             size="lg"

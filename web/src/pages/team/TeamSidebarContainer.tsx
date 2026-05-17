@@ -129,7 +129,7 @@ export const TeamSidebarContainer = React.memo(function TeamSidebarContainer(
       creatingChannel={creatingChannel}
       deletingChannelId={deletingChannelId}
       onSelectKanban={onSelectKanbanSubject}
-      onSelectTask={(taskId) => onSelectConversationSubject(taskId)}
+      onSelectTask={onSelectConversationSubject}
       onSelectSearch={() => {}}
       onSelectAgentTab={onSelectAgentWorkspace}
       onOpenTeamMemberForge={onOpenTeamMemberForge}
