@@ -486,7 +486,7 @@ describe("team panels interactions", () => {
     container.remove();
   });
 
-  it("TeamSidebar renders subject tabs as compact Notion-style sidebar rows", () => {
+  it("TeamSidebar renders subject tabs as Notion-style icon-only tools", () => {
     renderTeamSidebar(root);
 
     const tablist = required(
@@ -504,18 +504,21 @@ describe("team panels interactions", () => {
     expect(tabSection.className).toContain("pt-2");
     expect(tabSection.className).toContain("relative");
     expect(tabSection.className).toContain("z-[1]");
-    expect(tablist.className).toContain("flex-col");
+    expect(tablist.className).toContain("items-center");
     expect(tablist.className).not.toContain("bg-notion-text");
     expect(tablist.className).not.toContain("border-notion-border");
     expect(tablist.className).not.toContain("shadow-sm");
-    expect(channelsTab.className).toContain("h-7");
-    expect(channelsTab.className).toContain("justify-start");
+    expect(channelsTab.className).toContain("h-8");
+    expect(channelsTab.className).toContain("w-8");
+    expect(channelsTab.className).toContain("justify-center");
     expect(channelsTab.className).toContain("bg-notion-hover");
     expect(channelsTab.className).not.toContain("bg-white");
     expect(channelsTab.className).not.toContain("shadow-sm");
     expect(tasksTab.className).toContain("hover:bg-notion-hover");
-    expect(tasksTab.className).toContain("justify-start");
+    expect(tasksTab.className).toContain("justify-center");
     expect(tasksTab.className).not.toContain("hover:bg-white");
+    expect(channelsTab.textContent?.trim()).toBe("");
+    expect(tasksTab.textContent?.trim()).toBe("");
   });
 
   it("TeamSidebar renders subject rail and triggers navigation callbacks", async () => {
@@ -631,8 +634,14 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Worker Agent"));
     expect(container.querySelector('[data-team-member-id="worker-agent"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Show search"));
-    expect(container.textContent).toContain("Search workspace");
-    clickElement(findButtonByText(container, "Search workspace"));
+    await waitForCondition(() => document.body.textContent?.includes("Search workspace") ?? false);
+    const sidebarSearchInput = required(
+      document.body.querySelector("input[aria-label='Search workspace']"),
+      "sidebar search input missing"
+    ) as HTMLInputElement;
+    changeInputValue(sidebarSearchInput, "worker");
+    await waitForCondition(() => document.body.textContent?.includes("Worker Agent") ?? false);
+    clickElement(findButtonByText(document.body, "Worker Agent"));
     clickElement(findButtonByAriaLabel(container, "Show channels"));
     clickElement(findButtonByText(container, "# all"));
 
@@ -641,7 +650,7 @@ describe("team panels interactions", () => {
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectChannel).toHaveBeenCalledWith("all");
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
-    expect(onSelectSearch).toHaveBeenCalledTimes(2);
+    expect(onSelectSearch).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
     expect(container.textContent).toContain("Channels");
@@ -1361,7 +1370,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Shared team thread");
     expect(container.textContent).not.toContain("Task board");
     expect(container.textContent).toContain("Channels");
-    expect(container.textContent).toContain("Agents");
+    expect(findButtonByAriaLabel(container, "Show agents")).not.toBeNull();
   });
 
   it("TeamSidebar keeps visible keyboard focus treatments on section toggles and nav rows", () => {

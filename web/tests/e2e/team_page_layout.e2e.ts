@@ -85,18 +85,18 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
   expect(metrics.headerHeight).toBeLessThanOrEqual(74);
   expect(metrics.headerHeight / metrics.workbenchHeight).toBeLessThanOrEqual(0.12);
   expect(metrics.headerClassName).not.toContain("teams-panel-card");
-  expect(metrics.sidebarSubjectTablistClassName).toContain("flex-col");
+  expect(metrics.sidebarSubjectTablistClassName).toContain("items-center");
   expect(metrics.sidebarSubjectTabs).toHaveLength(4);
   for (const tab of metrics.sidebarSubjectTabs) {
     expect(tab.scrollWidth, tab.label).toBeLessThanOrEqual(tab.clientWidth);
-    expect(tab.className).toContain("justify-start");
+    expect(tab.className).toContain("justify-center");
   }
 
   await page.getByRole("tab", { name: "Show search", exact: true }).click();
-  const searchInput = page.getByRole("searchbox", { name: "Search workspace" });
+  const searchInput = page.getByPlaceholder("Search channels, tasks, or agents");
   await expect(searchInput).toBeVisible();
   await expect(searchInput).toHaveAttribute(
     "placeholder",
-    "Search messages, tasks, channels, or agents"
+    "Search channels, tasks, or agents"
   );
 });
