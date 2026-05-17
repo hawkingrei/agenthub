@@ -25,7 +25,7 @@ import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamTaskPanel, TeamTaskPanelLoadingSkeleton } from "./team_task_panel";
 import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamRunPanel } from "./team_run_panel";
-import { TeamSidebar } from "./team_sidebar";
+import { buildTeamSidebarSearchResults, TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
@@ -526,6 +526,63 @@ describe("team panels interactions", () => {
     expect(tasksTab.className).not.toContain("hover:bg-white");
     expect(channelsTab.textContent?.trim()).toBe("");
     expect(tasksTab.textContent?.trim()).toBe("");
+  });
+
+  it("builds sidebar command search results across channels, tasks, and agents", () => {
+    const onSelectChannel = vi.fn();
+    const onSelectKanban = vi.fn();
+    const onSelectTask = vi.fn();
+    const onSelectAgent = vi.fn();
+    const results = buildTeamSidebarSearchResults({
+      query: "release",
+      channelItems: [
+        {
+          id: "release",
+          label: "# release",
+          description: "Release lane",
+        },
+      ],
+      selectedChannelLabel: "# release",
+      workspaceTasks: [
+        {
+          id: "task-release",
+          team_id: "team-1",
+          title: "Prepare release",
+          status: "in_progress",
+          created_by_actor_id: "coordinator-agent",
+          assigned_member_id: "worker-agent",
+          context: {},
+          created_at: 1,
+          updated_at: 2,
+        },
+      ],
+      memberLiveStates: [
+        buildMemberLiveState({
+          member_id: "worker-agent",
+          agent_name: "Release Worker",
+          current_work: "release checklist",
+        }),
+      ],
+      onSelectChannel,
+      onSelectKanban,
+      onSelectTask,
+      onSelectAgent,
+    });
+
+    expect(results.map((result) => result.key)).toEqual([
+      "channel:release",
+      "tasks:kanban",
+      "task:task-release",
+      "agent:worker-agent",
+    ]);
+    results.find((result) => result.key === "channel:release")?.onSelect();
+    results.find((result) => result.key === "tasks:kanban")?.onSelect();
+    results.find((result) => result.key === "task:task-release")?.onSelect();
+    results.find((result) => result.key === "agent:worker-agent")?.onSelect();
+    expect(onSelectChannel).toHaveBeenCalledWith("release");
+    expect(onSelectKanban).toHaveBeenCalledTimes(1);
+    expect(onSelectTask).toHaveBeenCalledWith("task-release");
+    expect(onSelectAgent).toHaveBeenCalledWith("worker-agent");
   });
 
   it("TeamSidebar subject tabs select the default item for the right workspace pane", () => {
