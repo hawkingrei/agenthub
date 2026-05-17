@@ -858,7 +858,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
   const tasksPanel = <TeamTasksContainer />;
 
   const threadPane =
-    selectedConversationMatchesChannelLane && routeThreadRootMessageId ? (
+    selectedConversationMatchesChannelLane && routeThreadRootMessageId !== null ? (
       <TeamThreadContainer />
     ) : null;
 
