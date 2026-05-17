@@ -28,7 +28,7 @@ export const TeamThreadContainer = React.memo(function TeamThreadContainer() {
     navigateTeamRoute,
     setChannelFocusMessageId,
   } = useTeamWorkspace();
-  const channelLabel = selectedChannelItem.label;
+  const channelLabel = selectedChannelItem?.label ?? "";
   const replyBusy = busy === "send-thread-reply";
   const threadMentionCandidates = useMemo<MentionCandidate[]>(
     () =>

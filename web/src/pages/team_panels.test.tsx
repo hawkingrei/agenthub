@@ -2602,11 +2602,7 @@ describe("team panels interactions", () => {
       activeChannelConversationTaskId: "task-1",
       navigateTeamRoute: vi.fn(),
       isCompactWorkbench: false,
-      selectedChannelItem: {
-        id: "all",
-        label: "# all",
-        description: "Shared lane",
-      },
+      selectedChannelItem: undefined,
       workspaceTasks: [],
       selectedTaskId: "",
       setSelectedTaskId: vi.fn(),

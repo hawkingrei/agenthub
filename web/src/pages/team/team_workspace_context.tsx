@@ -1,15 +1,18 @@
 import React from "react";
+import type { ComponentProps } from "react";
 import type {
   TeamActorMessageRecord,
   TeamConversationMessageRecord,
   TeamRunRecord,
   TeamRunSnapshotRecord,
   TeamTaskRecord,
-  TeamTaskRunCompilePreviewRecord,
 } from "../../api";
 import type { WorkspaceLens } from "../../app_route_selection";
+import { TeamTasksPanel } from "../team_tasks_panel";
 import type { TeamChannelItem } from "./channel_metadata";
 import type { TeamMemberLiveState } from "./member_helpers";
+
+type TeamTasksPanelProps = ComponentProps<typeof TeamTasksPanel>;
 
 export type TeamWorkspaceContextValue = {
   selectedConversation: TeamTaskRecord | null;
@@ -39,7 +42,7 @@ export type TeamWorkspaceContextValue = {
   activeChannelConversationTaskId: string | null;
   navigateTeamRoute: (path: string) => void;
   isCompactWorkbench: boolean;
-  selectedChannelItem: TeamChannelItem;
+  selectedChannelItem: TeamChannelItem | null | undefined;
   workspaceTasks: TeamTaskRecord[];
   selectedTaskId: string;
   setSelectedTaskId: (id: string) => void;
@@ -50,7 +53,7 @@ export type TeamWorkspaceContextValue = {
   setCompilePreviewContextId: (id: string) => void;
   onCompileTaskRunPreview: () => void;
   canCompileTask: boolean;
-  compiledRunPreview: TeamTaskRunCompilePreviewRecord | null;
+  compiledRunPreview: TeamTasksPanelProps["compiledRunPreview"];
   onUseCompiledRunPayload: () => void;
   onCreateRunFromCompiledPreview: () => void;
   onSendThreadReply: (payload: { text: string; mentionActorIds: string[] }) => void;

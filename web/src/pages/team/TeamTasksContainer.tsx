@@ -3,8 +3,6 @@ import { TeamTasksPanel } from "../team_tasks_panel";
 import { formatTs, toPrettyJson } from "./page_helpers";
 import { useTeamWorkspace } from "./team_workspace_context";
 
-type TeamTasksPanelProps = React.ComponentProps<typeof TeamTasksPanel>;
-
 export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
   const {
     isCompactWorkbench,
@@ -32,7 +30,7 @@ export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
   return (
     <TeamTasksPanel
       compactMode={isCompactWorkbench}
-      channelLabel={selectedChannelItem.label}
+      channelLabel={selectedChannelItem?.label ?? "# all"}
       developerMode={developerMode}
       tasks={workspaceTasks}
       tasksLoading={tasksLoading}
@@ -47,7 +45,7 @@ export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
       onCompilePreviewContextIdChange={setCompilePreviewContextId}
       onCompileTaskRunPreview={onCompileTaskRunPreview}
       canCompileTask={canCompileTask}
-      compiledRunPreview={compiledRunPreview as TeamTasksPanelProps["compiledRunPreview"]}
+      compiledRunPreview={compiledRunPreview}
       onUseCompiledRunPayload={onUseCompiledRunPayload}
       onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
       formatTs={formatTs}
