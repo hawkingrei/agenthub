@@ -1,7 +1,7 @@
 import React from "react";
 import { TeamTasksPanel } from "../team_tasks_panel";
 import { formatTs, toPrettyJson } from "./page_helpers";
-import { useTeamWorkspace } from "./team_workspace_context";
+import { useTeamTasksContext } from "./team_workspace_context";
 
 export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
   const {
@@ -25,7 +25,7 @@ export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
     onUseCompiledRunPayload,
     onCreateRunFromCompiledPreview,
     selectedTeamMemberLiveStates,
-  } = useTeamWorkspace();
+  } = useTeamTasksContext();
 
   return (
     <TeamTasksPanel

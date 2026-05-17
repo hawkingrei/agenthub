@@ -7,16 +7,22 @@ import {
 } from "./page_helpers";
 import { buildTeamWorkspacePath } from "../team_page";
 import type { MentionCandidate } from "./mailbox_helpers";
-import { useTeamWorkspace } from "./team_workspace_context";
+import {
+  useTeamConversationContext,
+  useTeamWorkspaceShell,
+} from "./team_workspace_context";
 
 export const TeamThreadContainer = React.memo(function TeamThreadContainer() {
   const {
-    selectedChannelItem,
-    routeThreadRootMessageId,
     taskMessages,
     threadReplyDraft,
     setThreadReplyDraft,
     onSendThreadReply,
+    setChannelFocusMessageId,
+  } = useTeamConversationContext();
+  const {
+    selectedChannelItem,
+    routeThreadRootMessageId,
     busy,
     mailboxDisplayNameByActorId,
     selectedTeamMemberLiveStates,
@@ -26,8 +32,7 @@ export const TeamThreadContainer = React.memo(function TeamThreadContainer() {
     routeChannelId,
     activeChannelConversationTaskId,
     navigateTeamRoute,
-    setChannelFocusMessageId,
-  } = useTeamWorkspace();
+  } = useTeamWorkspaceShell();
   const channelLabel = selectedChannelItem?.label ?? "";
   const replyBusy = busy === "send-thread-reply";
   const threadMentionCandidates = useMemo<MentionCandidate[]>(
