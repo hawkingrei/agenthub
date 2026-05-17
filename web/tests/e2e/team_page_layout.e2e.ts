@@ -32,6 +32,31 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
     created_at: teamCreatedAt,
     updated_at: teamCreatedAt,
   });
+  fixture.putTask({
+    id: `task-${teamId}-release`,
+    team_id: teamId,
+    title: "Prepare layout release",
+    status: "in_progress",
+    created_by_actor_id: "planner",
+    context: { source: "layout-search" },
+    created_at: fixture.now + 92,
+    updated_at: fixture.now + 93,
+  });
+  fixture.seedTaskMessages(`task-${teamId}-release`, [
+    {
+      message_id: 201,
+      conversation_id: `conversation-task-${teamId}-release`,
+      task_id: `task-${teamId}-release`,
+      from_actor_id: "planner",
+      to_actor_id: null,
+      route: "group_chat",
+      payload: {
+        type: "chat_message",
+        text: "Release task opened from search.",
+      },
+      created_at: fixture.now + 94,
+    },
+  ]);
   fixture.seedTaskMessages(channelTaskId, [
     {
       message_id: 101,
@@ -89,7 +114,7 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
     );
     const sidebarSubjectTabs = Array.from(
       document.querySelectorAll<HTMLElement>('[role="tab"]')
-    ).filter((node) => /^Show (channels|tasks|agents|search)$/i.test(node.getAttribute("aria-label") ?? ""));
+    ).filter((node) => /^Show (channels|tasks|agents)$/i.test(node.getAttribute("aria-label") ?? ""));
     const sidebarSubjectTablist = document.querySelector<HTMLElement>(
       '[role="tablist"][aria-label="Team sidebar sections"]'
     );
@@ -134,19 +159,31 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
   expect(metrics.headerHeight / metrics.workbenchHeight).toBeLessThanOrEqual(0.12);
   expect(metrics.headerClassName).not.toContain("teams-panel-card");
   expect(metrics.sidebarSubjectTablistClassName).toContain("items-center");
-  expect(metrics.sidebarSubjectTabs).toHaveLength(4);
+  expect(metrics.sidebarSubjectTabs).toHaveLength(3);
   for (const tab of metrics.sidebarSubjectTabs) {
     expect(tab.scrollWidth, tab.label).toBeLessThanOrEqual(tab.clientWidth);
     expect(tab.className).toContain("justify-center");
   }
 
-  await page.getByRole("tab", { name: "Show search", exact: true }).click();
+  const beforeSearchUrl = new URL(page.url());
+  await page.getByRole("button", { name: "Search workspace", exact: true }).click();
+  await expect(page).toHaveURL(beforeSearchUrl.toString());
   const searchInput = page.getByPlaceholder("Search channels, tasks, or agents");
   await expect(searchInput).toBeVisible();
   await expect(searchInput).toHaveAttribute(
     "placeholder",
     "Search channels, tasks, or agents"
   );
+  await searchInput.fill("release");
+  await expect(page.getByRole("button", { name: /Prepare layout release/ })).toBeVisible();
+  await page.screenshot({ fullPage: false });
+  await page.getByRole("button", { name: /Prepare layout release/ }).click();
+  await expect(page).toHaveURL(/task=task-team-layout-release/);
+  await expect(page.getByText("Release task opened from search.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Search workspace", exact: true }).click();
+  await searchInput.fill("worker");
+  await expect(page.getByRole("button", { name: /worker-1/ }).first()).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(searchInput).toBeHidden();
 

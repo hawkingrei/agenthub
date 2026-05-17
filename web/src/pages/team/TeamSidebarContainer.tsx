@@ -1,6 +1,6 @@
 import React from "react";
 import { TeamSidebar } from "../team_sidebar";
-import type { TeamDefinitionRecord } from "../../api";
+import type { TeamDefinitionRecord, TeamTaskRecord } from "../../api";
 import type { TeamChannelItem } from "./channel_metadata";
 import type { TeamMemberLiveState } from "./member_helpers";
 import type { WorkspaceLens } from "../../app_route_selection";
@@ -25,6 +25,7 @@ type TeamSidebarContainerProps = {
   teamMemberSummaryByTeamId: TeamSidebarProps["teamMemberSummaryByTeamId"];
   selectedTeamMemberLiveStates: TeamMemberLiveState[];
   channelItems: ReadonlyArray<TeamChannelItem>;
+  workspaceTasks: ReadonlyArray<TeamTaskRecord>;
   routeChannelId: string;
   focusedAgentMemberId: string;
   routeWorkspaceLens: WorkspaceLens | null;
@@ -37,7 +38,7 @@ type TeamSidebarContainerProps = {
   creatingChannel: boolean;
   deletingChannelId: string | null;
   onSelectKanbanSubject: () => void;
-  onSelectWorkspaceLens: (value: string) => void;
+  onSelectConversationSubject: (taskId?: string | null, taskChannelId?: string | null) => void;
   onSelectAgentWorkspace: (memberId: string, tab?: TeamTab) => void;
   onOpenTeamMemberForge: () => void;
   onOpenTeamMemberCopyExisting: () => void;
@@ -70,6 +71,7 @@ export const TeamSidebarContainer = React.memo(function TeamSidebarContainer(
     teamMemberSummaryByTeamId,
     selectedTeamMemberLiveStates,
     channelItems,
+    workspaceTasks,
     routeChannelId,
     focusedAgentMemberId,
     routeWorkspaceLens,
@@ -82,7 +84,7 @@ export const TeamSidebarContainer = React.memo(function TeamSidebarContainer(
     creatingChannel,
     deletingChannelId,
     onSelectKanbanSubject,
-    onSelectWorkspaceLens,
+    onSelectConversationSubject,
     onSelectAgentWorkspace,
     onOpenTeamMemberForge,
     onOpenTeamMemberCopyExisting,
@@ -114,6 +116,7 @@ export const TeamSidebarContainer = React.memo(function TeamSidebarContainer(
       teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
       memberLiveStates={selectedTeamMemberLiveStates}
       channelItems={channelItems}
+      workspaceTasks={workspaceTasks}
       selectedChannelId={routeChannelId}
       focusedAgentMemberId={focusedAgentMemberId}
       activeWorkspaceLens={routeWorkspaceLens ?? undefined}
@@ -126,7 +129,8 @@ export const TeamSidebarContainer = React.memo(function TeamSidebarContainer(
       creatingChannel={creatingChannel}
       deletingChannelId={deletingChannelId}
       onSelectKanban={onSelectKanbanSubject}
-      onSelectSearch={() => onSelectWorkspaceLens("search")}
+      onSelectTask={(taskId) => onSelectConversationSubject(taskId)}
+      onSelectSearch={() => {}}
       onSelectAgentTab={onSelectAgentWorkspace}
       onOpenTeamMemberForge={onOpenTeamMemberForge}
       onOpenTeamMemberCopyExisting={onOpenTeamMemberCopyExisting}

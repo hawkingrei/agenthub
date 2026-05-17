@@ -194,6 +194,7 @@ export type TeamPageFixture = {
   teams: TeamDefinitionRecord[];
   getCreatePayload: () => CreateTeamPayload | null;
   getUpdateSpecPayloads: () => Array<{ teamId: string; payload: UpdateTeamSpecPayload }>;
+  putTask: (task: TeamTaskRecord) => TeamTaskRecord;
 };
 
 export function jsonResponse(data: unknown, status = 200): {
@@ -1278,6 +1279,7 @@ export async function mockTeamPageApis(
     teams,
     getCreatePayload: () => createTeamPayload,
     getUpdateSpecPayloads: () => updateSpecPayloads,
+    putTask,
     seedTaskMessages,
   };
 }

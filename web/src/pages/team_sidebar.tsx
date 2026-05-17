@@ -1,8 +1,12 @@
 import React from "react";
-import { CloseButton, Menu, Popover, TextInput, UnstyledButton } from "@mantine/core";
+import { CloseButton, Menu, Modal, TextInput, UnstyledButton } from "@mantine/core";
 import { DeterministicAvatar } from "../components/deterministic_avatar";
-import { TeamDefinitionRecord } from "../api";
-import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
+import { TeamDefinitionRecord, type TeamTaskRecord } from "../api";
+import {
+  NOTION_FLOATING_MENU_PROPS,
+  NOTION_MODAL_CLASSNAMES,
+  NOTION_MODAL_OVERLAY_PROPS,
+} from "../ui/floating_surfaces";
 import { AlphaBadge, IconButton } from "../ui/primitives";
 import {
   TEAM_MUTED_TEXT_CLASS,
@@ -62,6 +66,7 @@ type TeamSidebarProps = {
   memberLiveStates: TeamMemberLiveState[];
   memberTargetNodeById?: Record<string, string | null>;
   channelItems?: ReadonlyArray<TeamChannelItem>;
+  workspaceTasks?: ReadonlyArray<TeamTaskRecord>;
   selectedChannelId?: TeamChannelItem["id"];
   focusedAgentMemberId: string;
   activeWorkspaceLens?: WorkspaceLens;
@@ -77,6 +82,7 @@ type TeamSidebarProps = {
   creatingChannel?: boolean;
   deletingChannelId?: string | null;
   onSelectKanban: () => void;
+  onSelectTask?: (taskId: string) => void;
   onSelectSearch?: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
@@ -92,9 +98,17 @@ type TeamSidebarProps = {
 
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
-type TeamSidebarSubjectPane = "channels" | "tasks" | "agents" | "search";
+type TeamSidebarSubjectPane = "channels" | "tasks" | "agents";
 const NO_ACTIVE_RUN_CONTEXT = "No active run context.";
 const DEBUG_CURRENT_WORK_PATTERN = /^(?:run_status|step_status)\s*=/i;
+type TeamSidebarSearchResult = {
+  key: string;
+  label: string;
+  description: string;
+  icon: string;
+  section: "Channels" | "Tasks" | "Agents";
+  onSelect: () => void;
+};
 
 function humanizeToken(value: string): string {
   return value
@@ -195,9 +209,6 @@ function resolveTeamSidebarSubjectPane(
   tab: TeamTab,
   activeWorkspaceLens?: WorkspaceLens
 ): TeamSidebarSubjectPane {
-  if (activeWorkspaceLens === "search") {
-    return "search";
-  }
   if (activeWorkspaceLens === "tasks") {
     return "tasks";
   }
@@ -211,6 +222,85 @@ function resolveTeamSidebarSubjectPane(
     return "agents";
   }
   return "channels";
+}
+
+export function buildTeamSidebarSearchResults(options: {
+  query: string;
+  channelItems: ReadonlyArray<TeamChannelItem>;
+  selectedChannelLabel: string;
+  workspaceTasks: ReadonlyArray<TeamTaskRecord>;
+  memberLiveStates: ReadonlyArray<TeamMemberLiveState>;
+  onSelectChannel: (channelId: TeamChannelItem["id"]) => void;
+  onSelectKanban: () => void;
+  onSelectTask: (taskId: string) => void;
+  onSelectAgent: (memberId: string) => void;
+}): TeamSidebarSearchResult[] {
+  const {
+    query,
+    channelItems,
+    selectedChannelLabel,
+    workspaceTasks,
+    memberLiveStates,
+    onSelectChannel,
+    onSelectKanban,
+    onSelectTask,
+    onSelectAgent,
+  } = options;
+  const normalizedQuery = query.trim().toLowerCase();
+  const matches = (value: string) =>
+    normalizedQuery.length === 0 || value.toLowerCase().includes(normalizedQuery);
+  const channels = channelItems
+    .filter((channel) => matches(`${channel.label} ${channel.description ?? ""}`))
+    .map((channel) => ({
+      key: `channel:${channel.id}`,
+      label: channel.label,
+      description: channel.description || "Channel",
+      icon: "bi-chat-left-text",
+      section: "Channels" as const,
+      onSelect: () => onSelectChannel(channel.id),
+    }));
+  const kanban = matches(`Kanban ${describeTeamKanban(selectedChannelLabel)}`)
+    ? [
+        {
+          key: "tasks:kanban",
+          label: "Kanban",
+          description: describeTeamKanban(selectedChannelLabel),
+          icon: "bi-kanban",
+          section: "Tasks" as const,
+          onSelect: onSelectKanban,
+        },
+      ]
+    : [];
+  const tasks = workspaceTasks
+    .filter((task) =>
+      matches(`${task.title} ${task.id} ${task.status} ${task.assigned_member_id ?? ""}`)
+    )
+    .map((task) => ({
+      key: `task:${task.id}`,
+      label: task.title || task.id,
+      description: task.assigned_member_id
+        ? `${task.status} · ${task.assigned_member_id}`
+        : task.status,
+      icon: "bi-check2-square",
+      section: "Tasks" as const,
+      onSelect: () => onSelectTask(task.id),
+    }));
+  const agents = memberLiveStates
+    .filter((member) =>
+      matches(`${resolveMemberPrimaryLabel(member)} ${resolveCurrentWorkLabel(member) ?? ""}`)
+    )
+    .map((member) => ({
+      key: `agent:${member.member_id}`,
+      label: resolveMemberPrimaryLabel(member),
+      description: resolveCurrentWorkLabel(member) ?? formatMemberStateLabel(
+        normalizeTeamMemberLifecycle(member),
+        normalizeTeamMemberWorkStatus(member)
+      ),
+      icon: "bi-people",
+      section: "Agents" as const,
+      onSelect: () => onSelectAgent(member.member_id),
+    }));
+  return [...channels, ...kanban, ...tasks, ...agents].slice(0, 12);
 }
 
 export function resolveMemberIndicatorClassName(
@@ -250,6 +340,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     selectedTeamHasConfiguredMembers = false,
     memberLiveStates,
     channelItems = DEFAULT_TEAM_CHANNEL_ITEMS,
+    workspaceTasks = [],
     selectedChannelId = "all",
     focusedAgentMemberId,
     activeWorkspaceLens,
@@ -262,6 +353,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     creatingChannel = false,
     deletingChannelId = null,
     onSelectKanban,
+    onSelectTask = () => {},
     onSelectSearch = () => {},
     onSelectAgentTab,
     onOpenTeamMemberForge,
@@ -279,7 +371,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
   const [showCreateChannelForm, setShowCreateChannelForm] = React.useState(false);
   const [newChannelId, setNewChannelId] = React.useState("");
   const [newChannelDescription, setNewChannelDescription] = React.useState("");
-  const [searchPopoverOpen, setSearchPopoverOpen] = React.useState(false);
+  const [searchDialogOpen, setSearchDialogOpen] = React.useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = React.useState("");
   const [sectionOpen, setSectionOpen] = React.useState<Record<TeamSidebarSection, boolean>>({
     teams: true,
@@ -295,7 +387,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     setShowCreateChannelForm(false);
     setNewChannelId("");
     setNewChannelDescription("");
-    setSearchPopoverOpen(false);
+    setSearchDialogOpen(false);
     setSidebarSearchQuery("");
   }, [selectedTeamId]);
   const deferredTeamFilter = React.useDeferredValue(teamFilter);
@@ -336,69 +428,47 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
       "",
     [focusedAgentMemberId, memberLiveStates]
   );
-  const normalizedSidebarSearchQuery = sidebarSearchQuery.trim().toLowerCase();
   const sidebarSearchResults = React.useMemo(() => {
-    const matches = (value: string) => {
-      if (!normalizedSidebarSearchQuery) {
-        return true;
-      }
-      return value.toLowerCase().includes(normalizedSidebarSearchQuery);
+    const closeSearchDialog = () => {
+      setSearchDialogOpen(false);
+      setSidebarSearchQuery("");
     };
-    const channels = channelItems
-      .filter((channel) => matches(`${channel.label} ${channel.description ?? ""}`))
-      .map((channel) => ({
-        key: `channel:${channel.id}`,
-        label: channel.label,
-        description: channel.description || "Channel",
-        icon: "bi-chat-left-text",
-        onSelect: () => {
-          setActiveSubjectPane("channels");
-          setSearchPopoverOpen(false);
-          onSelectChannel(channel.id);
-        },
-      }));
-    const tasks = matches(`Kanban ${describeTeamKanban(selectedChannelLabel)}`)
-      ? [
-          {
-            key: "tasks:kanban",
-            label: "Kanban",
-            description: describeTeamKanban(selectedChannelLabel),
-            icon: "bi-kanban",
-            onSelect: () => {
-              setActiveSubjectPane("tasks");
-              setSearchPopoverOpen(false);
-              onSelectKanban();
-            },
-          },
-        ]
-      : [];
-    const agents = memberLiveStates
-      .filter((member) =>
-        matches(`${resolveMemberPrimaryLabel(member)} ${resolveCurrentWorkLabel(member) ?? ""}`)
-      )
-      .map((member) => ({
-        key: `agent:${member.member_id}`,
-        label: resolveMemberPrimaryLabel(member),
-        description: resolveCurrentWorkLabel(member) ?? formatMemberStateLabel(
-          normalizeTeamMemberLifecycle(member),
-          normalizeTeamMemberWorkStatus(member)
-        ),
-        icon: "bi-people",
-        onSelect: () => {
-          setActiveSubjectPane("agents");
-          setSearchPopoverOpen(false);
-          onSelectAgentTab(member.member_id, "agent_acp");
-        },
-      }));
-    return [...channels, ...tasks, ...agents].slice(0, 8);
+    return buildTeamSidebarSearchResults({
+      query: sidebarSearchQuery,
+      channelItems,
+      selectedChannelLabel,
+      workspaceTasks,
+      memberLiveStates,
+      onSelectChannel: (channelId) => {
+        setActiveSubjectPane("channels");
+        closeSearchDialog();
+        onSelectChannel(channelId);
+      },
+      onSelectKanban: () => {
+        setActiveSubjectPane("tasks");
+        closeSearchDialog();
+        onSelectKanban();
+      },
+      onSelectTask: (taskId) => {
+        closeSearchDialog();
+        onSelectTask(taskId);
+      },
+      onSelectAgent: (memberId) => {
+        setActiveSubjectPane("agents");
+        closeSearchDialog();
+        onSelectAgentTab(memberId, "agent_acp");
+      },
+    });
   }, [
     channelItems,
     memberLiveStates,
-    normalizedSidebarSearchQuery,
+    onSelectTask,
     onSelectAgentTab,
     onSelectChannel,
     onSelectKanban,
+    sidebarSearchQuery,
     selectedChannelLabel,
+    workspaceTasks,
   ]);
 
   const toggleSection = React.useCallback((section: TeamSidebarSection) => {
@@ -432,12 +502,6 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
       icon: "bi-people",
       ariaLabel: "Show agents",
     },
-    {
-      value: "search",
-      label: "Search",
-      icon: "bi-search",
-      ariaLabel: "Show search",
-    },
   ];
   const resetCreateChannelForm = React.useCallback(() => {
     setShowCreateChannelForm(false);
@@ -459,20 +523,20 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
         if (defaultSidebarAgentMemberId) {
           onSelectAgentTab(defaultSidebarAgentMemberId, "agent_acp");
         }
-        return;
       }
-      setSearchPopoverOpen(true);
-      onSelectSearch();
     },
     [
       defaultSidebarAgentMemberId,
       onSelectAgentTab,
       onSelectChannel,
       onSelectKanban,
-      onSelectSearch,
       selectedSidebarChannelId,
     ]
   );
+  const handleOpenSearch = React.useCallback(() => {
+    setSearchDialogOpen(true);
+    onSelectSearch();
+  }, [onSelectSearch]);
   const handleCreateChannelSubmit = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -845,7 +909,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
             <div className={TEAM_SUBJECT_SWITCHER_CLASS} role="tablist" aria-label="Team sidebar sections">
               {subjectPaneItems.map((item) => {
                 const isSelected = activeSubjectPane === item.value;
-                const button = (
+                return (
                   <button
                     key={item.value}
                     type="button"
@@ -863,75 +927,99 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                     <i className={`bi ${item.icon}`} aria-hidden="true" />
                   </button>
                 );
-                if (item.value !== "search") {
-                  return button;
-                }
-                return (
-                  <Popover
-                    key={item.value}
-                    opened={searchPopoverOpen}
-                    onChange={setSearchPopoverOpen}
-                    position="bottom-start"
-                    shadow="lg"
-                    radius="md"
-                    width={320}
-                    withinPortal
-                  >
-                    <Popover.Target>{button}</Popover.Target>
-                    <Popover.Dropdown className="border border-notion-border bg-white p-2 shadow-lg">
-                      <div className="flex flex-col gap-2">
-                        <label className="relative block">
-                          <span className="sr-only">Search workspace</span>
-                          <i
-                            className="bi bi-search pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-notion-text-muted"
-                            aria-hidden="true"
-                          />
-                          <input
-                            className="h-8 w-full rounded-md border border-notion-border bg-white pl-7 pr-2 text-[12px] text-notion-text outline-none transition placeholder:text-notion-text-muted focus:border-notion-border-subtle focus:bg-white"
-                            type="search"
-                            value={sidebarSearchQuery}
-                            onChange={(event) => setSidebarSearchQuery(event.currentTarget.value)}
-                            placeholder="Search channels, tasks, or agents"
-                            aria-label="Search workspace"
-                            autoFocus
-                          />
-                        </label>
-                        <div className="max-h-72 overflow-y-auto">
-                          {sidebarSearchResults.length > 0 ? (
-                            sidebarSearchResults.map((result) => (
-                              <button
-                                key={result.key}
-                                type="button"
-                                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-notion-hover"
-                                onClick={result.onSelect}
-                              >
-                                <i
-                                  className={`bi ${result.icon} shrink-0 text-[13px] text-notion-text-muted`}
-                                  aria-hidden="true"
-                                />
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-[12px] font-medium text-notion-text">
-                                    {result.label}
-                                  </span>
-                                  <span className="block truncate text-[10px] text-notion-text-muted">
-                                    {result.description}
-                                  </span>
-                                </span>
-                              </button>
-                            ))
-                          ) : (
-                            <div className="px-2 py-5 text-center text-[12px] text-notion-text-muted">
-                              No results
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </Popover.Dropdown>
-                  </Popover>
-                );
               })}
+              <button
+                type="button"
+                aria-label="Search workspace"
+                title="Search"
+                className={
+                  searchDialogOpen
+                    ? TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS
+                    : TEAM_SUBJECT_SWITCHER_IDLE_CLASS
+                }
+                onClick={handleOpenSearch}
+              >
+                <i className="bi bi-search" aria-hidden="true" />
+              </button>
             </div>
           </div>
+          <Modal
+            opened={searchDialogOpen}
+            onClose={() => {
+              setSearchDialogOpen(false);
+              setSidebarSearchQuery("");
+            }}
+            title="Search workspace"
+            centered
+            size="lg"
+            radius="xl"
+            overlayProps={NOTION_MODAL_OVERLAY_PROPS}
+            classNames={{
+              ...NOTION_MODAL_CLASSNAMES,
+              body: "px-3 pb-3 pt-2",
+            }}
+          >
+            <div className="flex flex-col gap-2">
+              <label className="relative block">
+                <span className="sr-only">Search workspace</span>
+                <i
+                  className="bi bi-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-notion-text-muted"
+                  aria-hidden="true"
+                />
+                <input
+                  className="h-10 w-full rounded-lg border border-notion-border bg-white pl-8 pr-3 text-[13px] text-notion-text outline-none transition placeholder:text-notion-text-muted focus:border-notion-border-subtle focus:bg-white"
+                  type="search"
+                  value={sidebarSearchQuery}
+                  onChange={(event) => setSidebarSearchQuery(event.currentTarget.value)}
+                  placeholder="Search channels, tasks, or agents"
+                  aria-label="Search workspace"
+                  autoFocus
+                />
+              </label>
+              <div
+                className="max-h-[52vh] overflow-y-auto rounded-lg border border-notion-border-subtle bg-white p-1"
+                data-team-search-dialog-results="true"
+              >
+                {sidebarSearchResults.length > 0 ? (
+                  sidebarSearchResults.map((result, index) => {
+                    const previous = sidebarSearchResults[index - 1];
+                    const showSection = !previous || previous.section !== result.section;
+                    return (
+                      <React.Fragment key={result.key}>
+                        {showSection ? (
+                          <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-notion-text-muted first:pt-1">
+                            {result.section}
+                          </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-notion-hover"
+                          onClick={result.onSelect}
+                        >
+                          <i
+                            className={`bi ${result.icon} shrink-0 text-[13px] text-notion-text-muted`}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-medium text-notion-text">
+                              {result.label}
+                            </span>
+                            <span className="block truncate text-[11px] text-notion-text-muted">
+                              {result.description}
+                            </span>
+                          </span>
+                        </button>
+                      </React.Fragment>
+                    );
+                  })
+                ) : (
+                  <div className="px-2 py-8 text-center text-[12px] text-notion-text-muted">
+                    No results
+                  </div>
+                )}
+              </div>
+            </div>
+          </Modal>
 
           {activeSubjectPane === "channels" && (
           <div className="mt-3 flex flex-col gap-0.5">

@@ -1,6 +1,5 @@
 import type { WorkspaceLens } from "../app_route_selection";
 import type { WorkspaceShellLensItem } from "./workspace_shell_header";
-import { SHARED_WORKSPACE_SEARCH_LENS_HINT } from "./workspace_lens_placeholder";
 
 type BuildStandardWorkspaceLensItemsOptions = {
   includeNodes?: boolean;
@@ -36,13 +35,6 @@ export function buildStandardWorkspaceLensItems(
       label: "Agents",
       active: activeLens === "members",
       onPrefetch: onPrefetch ? () => onPrefetch("members") : undefined,
-    },
-    {
-      value: "search",
-      label: "Search",
-      active: activeLens === "search",
-      title: SHARED_WORKSPACE_SEARCH_LENS_HINT,
-      onPrefetch: onPrefetch ? () => onPrefetch("search") : undefined,
     },
   ];
   if (includeNodes) {

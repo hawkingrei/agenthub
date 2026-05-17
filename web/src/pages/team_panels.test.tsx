@@ -14,6 +14,7 @@ import {
   TeamRunRecord,
   TeamRunSnapshotRecord,
   TeamStepRecord,
+  TeamTaskRecord,
 } from "../api";
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
@@ -616,9 +617,23 @@ describe("team panels interactions", () => {
     const onSelectChannel = vi.fn();
     const onSelectKanban = vi.fn();
     const onSelectSearch = vi.fn();
+    const onSelectTask = vi.fn();
     const onSelectAgentTab = vi.fn();
     const teamOne = buildTeam();
     const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
+    const workspaceTasks: TeamTaskRecord[] = [
+      {
+        id: "task-release",
+        team_id: "team-1",
+        title: "Prepare release notes",
+        status: "in_progress",
+        created_by_actor_id: "coordinator-agent",
+        assigned_member_id: "worker-agent",
+        context: {},
+        created_at: 1,
+        updated_at: 2,
+      },
+    ];
 
     act(() => {
       root.render(
@@ -668,11 +683,13 @@ describe("team panels interactions", () => {
               "coordinator-agent": "main",
               "worker-agent": "node-east",
             }}
+            workspaceTasks={workspaceTasks}
             focusedAgentMemberId="worker-agent"
             tab="member_console"
             onSelectTeam={onSelectTeam}
             onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
+            onSelectTask={onSelectTask}
             onSelectSearch={onSelectSearch}
             onSelectAgentTab={onSelectAgentTab}
           />
@@ -721,13 +738,24 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Worker Agent");
     clickElement(findButtonByText(container, "Worker Agent"));
     expect(container.querySelector('[data-team-member-id="worker-agent"]')).not.toBeNull();
-    clickElement(findButtonByAriaLabel(container, "Show search"));
+    clickElement(findButtonByAriaLabel(container, "Search workspace"));
     await waitForCondition(() => document.body.textContent?.includes("Search workspace") ?? false);
     const sidebarSearchInput = required(
       document.body.querySelector("input[aria-label='Search workspace']"),
       "sidebar search input missing"
     ) as HTMLInputElement;
-    changeInputValue(sidebarSearchInput, "worker");
+    expect(document.body.textContent).toContain("Prepare release notes");
+    changeInputValue(sidebarSearchInput, "release");
+    await waitForCondition(() => document.body.textContent?.includes("Prepare release notes") ?? false);
+    clickElement(findButtonByText(document.body, "Prepare release notes"));
+    expect(onSelectTask).toHaveBeenCalledWith("task-release");
+    clickElement(findButtonByAriaLabel(container, "Search workspace"));
+    await waitForCondition(() => document.body.textContent?.includes("Search workspace") ?? false);
+    const agentSearchInput = required(
+      document.body.querySelector("input[aria-label='Search workspace']"),
+      "sidebar search input missing"
+    ) as HTMLInputElement;
+    changeInputValue(agentSearchInput, "worker");
     await waitForCondition(() => document.body.textContent?.includes("Worker Agent") ?? false);
     clickElement(findButtonByText(document.body, "Worker Agent"));
     clickElement(findButtonByAriaLabel(container, "Show channels"));
@@ -738,7 +766,7 @@ describe("team panels interactions", () => {
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectChannel).toHaveBeenCalledWith("all");
     expect(onSelectKanban).toHaveBeenCalledTimes(2);
-    expect(onSelectSearch).toHaveBeenCalledTimes(1);
+    expect(onSelectSearch).toHaveBeenCalledTimes(2);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
     expect(container.textContent).toContain("Channels");
