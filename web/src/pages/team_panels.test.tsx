@@ -486,7 +486,7 @@ describe("team panels interactions", () => {
     container.remove();
   });
 
-  it("TeamSidebar renders subject tabs as a compact Notion-style segmented control", () => {
+  it("TeamSidebar renders subject tabs as compact Notion-style sidebar rows", () => {
     renderTeamSidebar(root);
 
     const tablist = required(
@@ -496,14 +496,15 @@ describe("team panels interactions", () => {
     const channelsTab = findButtonByAriaLabel(container, "Show channels");
     const tasksTab = findButtonByAriaLabel(container, "Show tasks");
 
-    expect(tablist.className).toContain("bg-notion-text/[0.035]");
+    expect(tablist.className).toContain("grid-cols-4");
+    expect(tablist.className).not.toContain("bg-notion-text");
     expect(tablist.className).not.toContain("border-notion-border");
     expect(tablist.className).not.toContain("shadow-sm");
     expect(channelsTab.className).toContain("h-7");
-    expect(channelsTab.className).toContain("bg-notion-text/[0.075]");
+    expect(channelsTab.className).toContain("bg-notion-hover");
     expect(channelsTab.className).not.toContain("bg-white");
     expect(channelsTab.className).not.toContain("shadow-sm");
-    expect(tasksTab.className).toContain("hover:bg-notion-text/[0.05]");
+    expect(tasksTab.className).toContain("hover:bg-notion-hover");
     expect(tasksTab.className).not.toContain("hover:bg-white");
   });
 

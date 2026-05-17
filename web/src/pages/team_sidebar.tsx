@@ -183,11 +183,11 @@ const TEAM_SWITCH_BUTTON_CLASS =
 const TEAM_CONTROLS_BUTTON_CLASS =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-notion-border bg-notion-sidebar/40 text-[12px] text-notion-text-muted shadow-sm transition hover:border-notion-accent/25 hover:bg-notion-hover hover:text-notion-text";
 const TEAM_SUBJECT_SWITCHER_CLASS =
-  "grid grid-cols-4 gap-0.5 rounded-lg bg-notion-text/[0.035] p-0.5";
+  "grid grid-cols-4 gap-1";
 const TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS =
-  "inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md bg-notion-text/[0.075] px-1.5 text-[11px] font-medium text-notion-text sm:px-2";
+  "inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md bg-notion-hover px-1.5 text-[11px] font-medium text-notion-text sm:px-2";
 const TEAM_SUBJECT_SWITCHER_IDLE_CLASS =
-  "inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-notion-text/[0.05] hover:text-notion-text sm:px-2";
+  "inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text sm:px-2";
 
 function resolveTeamSidebarSubjectPane(
   tab: TeamTab,
