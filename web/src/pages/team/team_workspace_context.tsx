@@ -11,10 +11,12 @@ import type { WorkspaceLens } from "../../app_route_selection";
 import { TeamTasksPanel } from "../team_tasks_panel";
 import type { TeamChannelItem } from "./channel_metadata";
 import type { TeamMemberLiveState } from "./member_helpers";
+import type { TeamWorkbenchRuntimeContext } from "./TeamWorkbenchContainer";
 
 type TeamTasksPanelProps = ComponentProps<typeof TeamTasksPanel>;
 
 export type TeamWorkspaceContextValue = {
+  workbench?: TeamWorkbenchRuntimeContext;
   selectedConversation: TeamTaskRecord | null;
   developerMode: boolean;
   token: string;

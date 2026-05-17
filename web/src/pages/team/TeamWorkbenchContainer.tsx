@@ -41,6 +41,7 @@ import {
   buildTeamWorkbenchBodyProps,
 } from "./team_page_route_props";
 import { isAgentActiveStatus } from "../../agent_ws";
+import { useTeamWorkspace } from "./team_workspace_context";
 
 type TeamWorkspaceHeaderProps = Parameters<typeof buildTeamWorkspaceHeaderProps>[0];
 type TeamRunsPanelProps = Parameters<typeof buildTeamRunsPanelProps>[0];
@@ -60,7 +61,7 @@ const LazyTeamMailboxPanel = React.lazy(async () => {
   return { default: module.TeamMailboxPanel };
 });
 
-type TeamWorkbenchContainerProps = {
+export type TeamWorkbenchRuntimeContext = {
   // Shell & Layout
   showTeamBootstrapLoading: boolean;
   showTeamUnavailable: boolean;
@@ -277,9 +278,11 @@ type TeamWorkbenchContainerProps = {
   onOpenMailboxForMember: (id: string) => void;
 };
 
-export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer(
-  props: TeamWorkbenchContainerProps
-) {
+export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer() {
+  const { workbench: props } = useTeamWorkspace();
+  if (!props) {
+    throw new Error("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
+  }
   const {
     showTeamBootstrapLoading,
     showTeamUnavailable,

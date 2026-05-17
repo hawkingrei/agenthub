@@ -28,6 +28,7 @@ import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
+import { TeamWorkbenchContainer } from "./team/TeamWorkbenchContainer";
 import { TeamThreadContainer } from "./team/TeamThreadContainer";
 import {
   TeamWorkspaceProvider,
@@ -2632,6 +2633,21 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Visible thread reply.");
     expect(container.textContent).not.toContain("Channel message with a thread id should stay out.");
     expect(container.textContent).not.toContain("Different thread reply should stay out.");
+  });
+
+  it("TeamWorkbenchContainer fails fast when the workbench context slice is missing", () => {
+    const suppressReactError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(() => {
+      renderWithMantine(
+        root,
+        <TeamWorkspaceProvider value={{} as TeamWorkspaceContextValue}>
+          <TeamWorkbenchContainer />
+        </TeamWorkspaceProvider>
+      );
+    }).toThrow("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
+
+    suppressReactError.mockRestore();
   });
 
   it("TeamTaskPanel keeps the channel body in a dedicated flex shell above the composer", () => {
