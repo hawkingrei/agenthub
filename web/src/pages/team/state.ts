@@ -2,7 +2,10 @@ import { DEFAULT_AGENT_PRESET_ID, type AgentPresetId } from "../../agent_presets
 import type { TeamActorMessageRecord } from "../../api";
 import { DEFAULT_CODEX_ACP_MODE } from "../../codex_acp_modes";
 import type { MailboxTemplateKey } from "./mailbox_helpers";
-import { createInitialTeamDraftState, type TeamCreateDraftState } from "./member_helpers";
+import {
+  DEFAULT_TEAM_COORDINATOR_SKILLS,
+  type TeamCreateDraftState,
+} from "./member_helpers";
 import type { TeamRunStatusFilter } from "./run_helpers";
 
 export type TeamTab =
@@ -291,25 +294,36 @@ export function resolveUpdater<T>(current: T, next: T | ((prev: T) => T)): T {
   return next;
 }
 
+export const DEFAULT_TEAM_CREATE_STATE: TeamCreateState = {
+  coordinatorMemberId: "",
+  coordinatorModel: "",
+  coordinatorPrompt: "",
+  coordinatorSkills: [...DEFAULT_TEAM_COORDINATOR_SKILLS],
+  coordinatorCustomSkills: "",
+  workers: [],
+  useSpecOverride: false,
+  newTeamSpec: "{}",
+  teamForgeAgentIds: [],
+  newTeamName: "",
+  newTeamDescription: "",
+  showCreateTeamModal: false,
+  createTeamStage: 0,
+  showForgeAgentForm: false,
+  showCopyExistingAgentModal: false,
+  forgeAgentName: "",
+  forgeAgentWorkdir: "",
+  forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
+  forgeAgentCodexAcpDefaultMode: DEFAULT_CODEX_ACP_MODE,
+  forgeAgentWorktreeMode: "use_existing",
+  forgeAgentWorktreeRepo: "",
+  forgeAgentWorktreeRef: "",
+  forgeAgentCodeMode: true,
+  forgeAgentWorktreeError: null,
+  forgeAgentBusy: false,
+};
+
 export function createInitialTeamCreateState(): TeamCreateState {
-  const draft = createInitialTeamDraftState();
   return {
-    ...draft,
-    newTeamName: "",
-    newTeamDescription: "",
-    showCreateTeamModal: false,
-    createTeamStage: 0,
-    showForgeAgentForm: false,
-    showCopyExistingAgentModal: false,
-    forgeAgentName: "",
-    forgeAgentWorkdir: "",
-    forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
-    forgeAgentCodexAcpDefaultMode: DEFAULT_CODEX_ACP_MODE,
-    forgeAgentWorktreeMode: "use_existing",
-    forgeAgentWorktreeRepo: "",
-    forgeAgentWorktreeRef: "",
-    forgeAgentCodeMode: true,
-    forgeAgentWorktreeError: null,
-    forgeAgentBusy: false,
+    ...DEFAULT_TEAM_CREATE_STATE,
   };
 }

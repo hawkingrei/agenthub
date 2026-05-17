@@ -2,6 +2,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
+import { MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TeamDefinitionRecord } from "../../api";
 import {
@@ -197,5 +198,37 @@ describe("team_workbench_content", () => {
     expect(html).toContain("Task board");
     expect(html).not.toContain("# all");
     expect(html).not.toContain('aria-label="More"');
+  });
+
+  it("renders search as a direct workspace input", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider env="test">
+        <TeamWorkbenchContent
+          {...createBaseWorkbenchContentProps()}
+          activeWorkspaceLens="search"
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain('type="search"');
+    expect(html).toContain('aria-label="Search workspace"');
+    expect(html).toContain("Search messages, tasks, channels, or agents");
+    expect(html).not.toContain("Shared search is still being wired in");
+  });
+
+  it("renders the workspace header with a single shell chrome class", () => {
+    const html = renderToStaticMarkup(
+      <TeamWorkbenchContent
+        {...createBaseWorkbenchContentProps()}
+        teamSectionCardClassName="teams-panel-card"
+        teamWorkbenchWorkspaceShellClassName="workspace-shell"
+      />
+    );
+
+    const headerShellMatch = html.match(
+      /<div class="([^"]*workspace-shell[^"]*)" data-team-workspace-header-shell="true">/
+    );
+    expect(headerShellMatch?.[1]).toContain("workspace-shell");
+    expect(headerShellMatch?.[1]).not.toContain("teams-panel-card");
   });
 });

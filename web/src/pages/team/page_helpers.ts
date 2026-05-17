@@ -19,6 +19,7 @@ import type {
   TeamMemberAgentStatusSummary,
   TeamMemberLiveState,
 } from "./member_helpers";
+import { parseStructuredTeamPayload } from "./mailbox_helpers";
 
 function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
   return [...runs].sort((a, b) => b.created_at - a.created_at);
@@ -30,6 +31,17 @@ export const TEAM_CHANNEL_TASK_BOOTSTRAP_KIND = "team_channel";
 export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 20;
 export const TEAM_RUN_EVENT_RETENTION_LIMIT = 100;
 export const TEAM_MEMBER_EVENT_RETENTION_LIMIT = 300;
+
+export function resolveThreadRootMessageIdFromPayload(payload: unknown): number | null {
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+  const raw = (payload as { thread_root_message_id?: unknown }).thread_root_message_id;
+  if (typeof raw !== "number") {
+    return null;
+  }
+  return Number.isInteger(raw) && raw > 0 ? raw : null;
+}
 
 function collectMemberIds(
   members?: Array<{ member_id?: string | null }> | null
@@ -803,6 +815,25 @@ export function resolveTaskConversationMemberIds(
     return runtimeIds;
   }
   return collectMemberIds(snapshotMembers);
+}
+
+export const HUMAN_MAILBOX_ACTOR_ID = "user";
+
+export function resolveChatMessageText(payload: unknown): string | null {
+  const parsed = parseStructuredTeamPayload(payload);
+  if (typeof parsed === "string") {
+    return parsed;
+  }
+  if (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "type" in parsed &&
+    (parsed as { type?: unknown }).type === "chat_message" &&
+    "text" in parsed
+  ) {
+    return String((parsed as { text?: unknown }).text ?? "");
+  }
+  return null;
 }
 
 export async function refreshTeamConversationMailboxAfterSend(args: {

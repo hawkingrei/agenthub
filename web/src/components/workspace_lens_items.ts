@@ -33,7 +33,7 @@ export function buildStandardWorkspaceLensItems(
     },
     {
       value: "members",
-      label: "Members",
+      label: "Agents",
       active: activeLens === "members",
       onPrefetch: onPrefetch ? () => onPrefetch("members") : undefined,
     },

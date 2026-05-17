@@ -183,9 +183,10 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
         >
           {showWorkspaceHeader && (
             <div
-              className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
+              className={`${teamWorkbenchWorkspaceShellClassName} ${
                 isAgentWorkspace ? "py-0.5" : ""
               }`}
+              data-team-workspace-header-shell="true"
             >
               <TeamWorkspaceHeader {...workspaceHeaderProps} />
             </div>
