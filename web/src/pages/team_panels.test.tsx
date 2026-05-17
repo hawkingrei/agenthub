@@ -30,6 +30,10 @@ import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
 import { TeamThreadContainer } from "./team/TeamThreadContainer";
 import {
+  TeamWorkspaceProvider,
+  type TeamWorkspaceContextValue,
+} from "./team/team_workspace_context";
+import {
   MAILBOX_ADVANCED_PANEL_TITLE_CLASS,
   MAILBOX_CHAT_HEADER_CLASS,
   MAILBOX_COMPOSER_TEXTAREA_CLASS,
@@ -2536,57 +2540,96 @@ describe("team panels interactions", () => {
   });
 
   it("TeamThreadContainer only renders routed thread replies for the active thread", () => {
+    const taskMessages = [
+      buildTaskMessage(1, {
+        from_actor_id: "coordinator-agent",
+        route: "group_chat",
+        payload: { type: "chat_message", text: "Root message." },
+      }),
+      buildTaskMessage(2, {
+        from_actor_id: "worker-agent",
+        route: "team_thread_reply",
+        payload: {
+          type: "chat_message",
+          text: "Visible thread reply.",
+          thread_root_message_id: 1,
+        },
+      }),
+      buildTaskMessage(3, {
+        from_actor_id: "coordinator-agent",
+        route: "group_chat",
+        payload: {
+          type: "chat_message",
+          text: "Channel message with a thread id should stay out.",
+          thread_root_message_id: 1,
+        },
+      }),
+      buildTaskMessage(4, {
+        from_actor_id: "worker-agent",
+        route: "team_thread_reply",
+        payload: {
+          type: "chat_message",
+          text: "Different thread reply should stay out.",
+          thread_root_message_id: 99,
+        },
+      }),
+    ];
+    const workspaceContext: TeamWorkspaceContextValue = {
+      selectedConversation: null,
+      developerMode: false,
+      token: "token",
+      tasksLoading: false,
+      onRefreshTasks: vi.fn(),
+      taskMessageDraft: "",
+      setTaskMessageDraft: vi.fn(),
+      onSendTaskMessage: vi.fn(),
+      taskMessages,
+      conversationMailboxMessages: [],
+      snapshot: null,
+      mailboxDisplayNameByActorId: {},
+      selectedTeamMemberLiveStates: [],
+      taskConversationMemberIds: [],
+      activeConversationTitle: "# all",
+      selectedConversationMatchesChannelLane: true,
+      taskMessagesLoading: false,
+      busy: null,
+      routeThreadRootMessageId: 1,
+      channelFocusMessageId: null,
+      setChannelFocusMessageId: vi.fn(),
+      effectiveSelectedTeamId: "team-1",
+      routeWorkspaceLens: "channels",
+      routeChannelId: "all",
+      activeChannelConversationTaskId: "task-1",
+      navigateTeamRoute: vi.fn(),
+      isCompactWorkbench: false,
+      selectedChannelItem: {
+        id: "all",
+        label: "# all",
+        description: "Shared lane",
+      },
+      workspaceTasks: [],
+      selectedTaskId: "",
+      setSelectedTaskId: vi.fn(),
+      onSelectConversationSubject: vi.fn(),
+      runs: [],
+      onOpenTaskRun: vi.fn(),
+      compilePreviewContextId: "",
+      setCompilePreviewContextId: vi.fn(),
+      onCompileTaskRunPreview: vi.fn(),
+      canCompileTask: false,
+      compiledRunPreview: null,
+      onUseCompiledRunPayload: vi.fn(),
+      onCreateRunFromCompiledPreview: vi.fn(),
+      onSendThreadReply: vi.fn(),
+      threadReplyDraft: "",
+      setThreadReplyDraft: vi.fn(),
+    };
+
     renderWithMantine(
       root,
-      <TeamThreadContainer
-        channelLabel="# all"
-        routeThreadRootMessageId={1}
-        taskMessages={[
-          buildTaskMessage(1, {
-            from_actor_id: "coordinator-agent",
-            route: "group_chat",
-            payload: { type: "chat_message", text: "Root message." },
-          }),
-          buildTaskMessage(2, {
-            from_actor_id: "worker-agent",
-            route: "team_thread_reply",
-            payload: {
-              type: "chat_message",
-              text: "Visible thread reply.",
-              thread_root_message_id: 1,
-            },
-          }),
-          buildTaskMessage(3, {
-            from_actor_id: "coordinator-agent",
-            route: "group_chat",
-            payload: {
-              type: "chat_message",
-              text: "Channel message with a thread id should stay out.",
-              thread_root_message_id: 1,
-            },
-          }),
-          buildTaskMessage(4, {
-            from_actor_id: "worker-agent",
-            route: "team_thread_reply",
-            payload: {
-              type: "chat_message",
-              text: "Different thread reply should stay out.",
-              thread_root_message_id: 99,
-            },
-          }),
-        ]}
-        threadReplyDraft=""
-        setThreadReplyDraft={vi.fn()}
-        onSendThreadReply={vi.fn()}
-        replyBusy={false}
-        threadMentionCandidates={[]}
-        effectiveSelectedTeamId="team-1"
-        routeWorkspaceLens="channels"
-        routeChannelId="all"
-        activeChannelConversationTaskId="task-1"
-        navigateTeamRoute={vi.fn()}
-        setChannelFocusMessageId={vi.fn()}
-      />
+      <TeamWorkspaceProvider value={workspaceContext}>
+        <TeamThreadContainer />
+      </TeamWorkspaceProvider>
     );
 
     expect(container.textContent).toContain("Root message.");

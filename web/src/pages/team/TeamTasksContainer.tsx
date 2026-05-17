@@ -1,36 +1,11 @@
 import React from "react";
 import { TeamTasksPanel } from "../team_tasks_panel";
 import { formatTs, toPrettyJson } from "./page_helpers";
-import type { TeamChannelItem } from "./channel_metadata";
+import { useTeamWorkspace } from "./team_workspace_context";
 
 type TeamTasksPanelProps = React.ComponentProps<typeof TeamTasksPanel>;
 
-type TeamTasksContainerProps = {
-  isCompactWorkbench: boolean;
-  selectedChannelItem: Pick<TeamChannelItem, "label">;
-  developerMode: boolean;
-  workspaceTasks: TeamTasksPanelProps["tasks"];
-  tasksLoading: boolean;
-  selectedTaskId: string;
-  setSelectedTaskId: (id: string) => void;
-  onRefreshTasks: () => void;
-  onSelectConversationSubject: (taskId?: string | null, taskChannelId?: string | null) => void;
-  busy: string | null;
-  runs: TeamTasksPanelProps["runs"];
-  onOpenTaskRun: (runId: string) => void;
-  compilePreviewContextId: string;
-  setCompilePreviewContextId: (id: string) => void;
-  onCompileTaskRunPreview: () => void;
-  canCompileTask: boolean;
-  compiledRunPreview: TeamTasksPanelProps["compiledRunPreview"];
-  onUseCompiledRunPayload: () => void;
-  onCreateRunFromCompiledPreview: () => void;
-  selectedTeamMemberLiveStates: TeamTasksPanelProps["memberLiveStates"];
-};
-
-export const TeamTasksContainer = React.memo(function TeamTasksContainer(
-  props: TeamTasksContainerProps
-) {
+export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
   const {
     isCompactWorkbench,
     selectedChannelItem,
@@ -52,7 +27,7 @@ export const TeamTasksContainer = React.memo(function TeamTasksContainer(
     onUseCompiledRunPayload,
     onCreateRunFromCompiledPreview,
     selectedTeamMemberLiveStates,
-  } = props;
+  } = useTeamWorkspace();
 
   return (
     <TeamTasksPanel
@@ -72,7 +47,7 @@ export const TeamTasksContainer = React.memo(function TeamTasksContainer(
       onCompilePreviewContextIdChange={setCompilePreviewContextId}
       onCompileTaskRunPreview={onCompileTaskRunPreview}
       canCompileTask={canCompileTask}
-      compiledRunPreview={compiledRunPreview}
+      compiledRunPreview={compiledRunPreview as TeamTasksPanelProps["compiledRunPreview"]}
       onUseCompiledRunPayload={onUseCompiledRunPayload}
       onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
       formatTs={formatTs}

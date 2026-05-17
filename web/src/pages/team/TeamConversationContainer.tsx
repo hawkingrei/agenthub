@@ -6,46 +6,9 @@ import {
   toPrettyJson,
 } from "./page_helpers";
 import { buildTeamWorkspacePath } from "../team_page";
-import type {
-  TeamActorMessageRecord,
-  TeamConversationMessageRecord,
-  TeamRunSnapshotRecord,
-} from "../../api";
-import type { TeamMemberLiveState } from "./member_helpers";
-import type { WorkspaceLens } from "../../app_route_selection";
+import { useTeamWorkspace } from "./team_workspace_context";
 
-type TeamConversationContainerProps = {
-  selectedConversation: { id?: string | null } | null;
-  developerMode: boolean;
-  token: string;
-  tasksLoading: boolean;
-  onRefreshTasks: () => void;
-  taskMessageDraft: string;
-  setTaskMessageDraft: (val: string) => void;
-  onSendTaskMessage: (payload: { text: string; mentionActorIds: string[] }) => void | Promise<void>;
-  taskMessages: TeamConversationMessageRecord[];
-  conversationMailboxMessages: TeamActorMessageRecord[];
-  snapshot: TeamRunSnapshotRecord | null;
-  mailboxDisplayNameByActorId: Record<string, string>;
-  selectedTeamMemberLiveStates: TeamMemberLiveState[];
-  taskConversationMemberIds: string[];
-  activeConversationTitle: string;
-  selectedConversationMatchesChannelLane: boolean;
-  taskMessagesLoading: boolean;
-  busy: string | null;
-  routeThreadRootMessageId: number | null;
-  channelFocusMessageId: number | null;
-  setChannelFocusMessageId: (id: number | null) => void;
-  effectiveSelectedTeamId: string | null;
-  routeWorkspaceLens: WorkspaceLens | null;
-  routeChannelId: string;
-  activeChannelConversationTaskId: string | null;
-  navigateTeamRoute: (path: string) => void;
-};
-
-export const TeamConversationContainer = React.memo(function TeamConversationContainer(
-  props: TeamConversationContainerProps
-) {
+export const TeamConversationContainer = React.memo(function TeamConversationContainer() {
   const {
     selectedConversation,
     developerMode,
@@ -73,7 +36,7 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
     routeChannelId,
     activeChannelConversationTaskId,
     navigateTeamRoute,
-  } = props;
+  } = useTeamWorkspace();
 
   const onOpenThread = useCallback(
     (messageId: number) => {
