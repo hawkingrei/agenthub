@@ -648,6 +648,18 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
       }
     : null;
 
+  const onOpenMemberProfileFromChat = React.useCallback(
+    (memberId: string) => {
+      const normalizedMemberId = memberId.trim();
+      if (!normalizedMemberId) {
+        return;
+      }
+      setSelectedMemberId(normalizedMemberId);
+      onTabChange("overview");
+    },
+    [onTabChange, setSelectedMemberId]
+  );
+
   const eventsPanelProps = activeRunForSelectedTeam
     ? {
         eventsAutoRefresh,
@@ -710,6 +722,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         selectedMemberId,
         unreadByMemberId,
         onSelectMember: setSelectedMemberId,
+        onOpenMemberProfile: onOpenMemberProfileFromChat,
         chatActors,
         chatStickToBottom,
         chatMessagesRef,
@@ -975,6 +988,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
             selectedMemberId={selectedMemberId}
             unreadByMemberId={unreadByMemberId}
             onSelectMember={setSelectedMemberId}
+            onOpenMemberProfile={onOpenMemberProfileFromChat}
             chatActors={chatActors}
             chatStickToBottom={chatStickToBottom}
             chatMessagesRef={chatMessagesRef}

@@ -6654,6 +6654,7 @@ describe("team panels interactions", () => {
 
   it("TeamMailboxPanel handles member chat, accept, and advanced mailbox controls", () => {
     const onSelectMember = vi.fn();
+    const onOpenMemberProfile = vi.fn();
     const onConversationScroll = vi.fn();
     const onJumpToBottom = vi.fn();
     const onAcceptMessage = vi.fn();
@@ -6681,7 +6682,7 @@ describe("team panels interactions", () => {
     const pendingForCoordinatorMessage = buildMailboxMessage(3, {
       from_actor_id: "worker-agent",
       to_actor_id: "coordinator-agent",
-      payload: { type: "chat_message", text: "pending-to-coordinator" },
+      payload: { type: "chat_message", text: "pending-to-coordinator @coordinator-agent" },
     });
     const deliveredMessage = buildMailboxMessage(2, {
       from_actor_id: "worker-agent",
@@ -6706,6 +6707,7 @@ describe("team panels interactions", () => {
             selectedMemberId="worker-agent"
             unreadByMemberId={{ "worker-agent": 2, user: 1 }}
             onSelectMember={onSelectMember}
+            onOpenMemberProfile={onOpenMemberProfile}
             chatActors={{
               fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
@@ -6776,6 +6778,14 @@ describe("team panels interactions", () => {
         "message accept button missing"
       )
     );
+    clickElement(
+      required(
+        container.querySelector('[data-team-agent-mention-id="coordinator-agent"]') as
+          | HTMLButtonElement
+          | null,
+        "mailbox mention chip missing"
+      )
+    );
     clickElement(findButtonByText(container, "Accept visible pending"));
     clickElement(findButtonByText(container, "Jump to bottom"));
 
@@ -6801,6 +6811,7 @@ describe("team panels interactions", () => {
 
     expect(onSelectMember).toHaveBeenCalledWith("coordinator-agent");
     expect(onSelectMember).toHaveBeenCalledWith("user");
+    expect(onOpenMemberProfile).toHaveBeenCalledWith("coordinator-agent");
     expect(onConversationScroll).toHaveBeenCalledTimes(1);
     expect(onJumpToBottom).toHaveBeenCalledTimes(1);
     expect(onAcceptMessage).toHaveBeenCalledWith(pendingMessage);

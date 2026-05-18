@@ -101,6 +101,7 @@ type TeamMailboxPanelProps = {
   selectedMemberId: string;
   unreadByMemberId: Record<string, number>;
   onSelectMember: (memberId: string) => void;
+  onOpenMemberProfile?: (memberId: string) => void;
   chatActors: ChatActors;
   chatStickToBottom: boolean;
   chatMessagesRef: React.RefObject<HTMLUListElement | null>;
@@ -181,6 +182,12 @@ function isMessageAcceptableForInbox(
   );
 }
 
+function resolveMentionActorIdFromEventTarget(target: EventTarget | null): string | null {
+  const mention = (target as HTMLElement | null)?.closest("[data-team-agent-mention-id]");
+  const actorId = mention?.getAttribute("data-team-agent-mention-id")?.trim();
+  return actorId || null;
+}
+
 function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
@@ -191,6 +198,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
     selectedMemberId,
     unreadByMemberId,
     onSelectMember,
+    onOpenMemberProfile,
     chatActors,
     chatStickToBottom,
     chatMessagesRef,
@@ -596,6 +604,12 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                       <div className={MAILBOX_MESSAGE_BODY_CLASS}>
                         {row.htmlPayload !== null ? (
                           <div
+                            onClick={(event) => {
+                              const actorId = resolveMentionActorIdFromEventTarget(event.target);
+                              if (actorId) {
+                                (onOpenMemberProfile ?? onSelectMember)(actorId);
+                              }
+                            }}
                             dangerouslySetInnerHTML={{
                               __html: row.htmlPayload,
                             }}
