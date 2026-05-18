@@ -4855,6 +4855,7 @@ describe("team panels interactions", () => {
   });
 
   it("TeamTaskPanel renders channel mentions with provided display names when live state is missing", async () => {
+    const onOpenMemberProfile = vi.fn();
     renderWithMantine(
       root,
       <TeamTaskPanel
@@ -4871,20 +4872,35 @@ describe("team panels interactions", () => {
               route: "group_chat",
               payload: {
                 type: "chat_message",
-                text: "hello <at>595d1ae8-fcbd-4111-b5c7-d446a12c044b</at>",
+                text: [
+                  "@595d1ae8-fcbd-4111-b5c7-d446a12c044b @2b71c038-ce49-4f82-9732-0b387a18bf31",
+                  "",
+                  "Runtime constraint update from human message 5960:",
+                  "",
+                  "- Do not create new PRs for now.",
+                  "- Focus on review comments and CI surfaces.",
+                  "",
+                  "Canonical mention stays supported: <at>2b71c038-ce49-4f82-9732-0b387a18bf31</at>",
+                ].join("\n"),
               },
             }),
           ]}
           humanActorId="user"
           displayNameByActorId={{
             "595d1ae8-fcbd-4111-b5c7-d446a12c044b": "tidb-fuzz-bugfix-team-worker-1",
+            "2b71c038-ce49-4f82-9732-0b387a18bf31": "review-worker-2",
           }}
           memberLiveStates={[]}
-          memberIds={["coordinator-agent", "595d1ae8-fcbd-4111-b5c7-d446a12c044b"]}
+          memberIds={[
+            "coordinator-agent",
+            "595d1ae8-fcbd-4111-b5c7-d446a12c044b",
+            "2b71c038-ce49-4f82-9732-0b387a18bf31",
+          ]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
           toPrettyJson={(value) => JSON.stringify(value)}
+          onOpenMemberProfile={onOpenMemberProfile}
         />
     );
 
@@ -4892,7 +4908,19 @@ describe("team panels interactions", () => {
       container.textContent?.includes("@tidb-fuzz-bugfix-team-worker-1") ?? false
     );
     expect(container.textContent).toContain("@tidb-fuzz-bugfix-team-worker-1");
+    expect(container.textContent).toContain("@review-worker-2");
+    expect(container.innerHTML).toContain('class="md-list md-list-unordered"');
+    expect(container.textContent).toContain("Do not create new PRs for now.");
     expect(container.textContent).not.toContain("@595d1ae8-fcbd-4111-b5c7-d446a12c044b");
+    expect(container.textContent).not.toContain("@2b71c038-ce49-4f82-9732-0b387a18bf31");
+    const mention = container.querySelector(
+      '[data-team-agent-mention-id="595d1ae8-fcbd-4111-b5c7-d446a12c044b"]'
+    ) as HTMLButtonElement | null;
+    expect(mention).not.toBeNull();
+    mention?.click();
+    expect(onOpenMemberProfile).toHaveBeenCalledWith(
+      "595d1ae8-fcbd-4111-b5c7-d446a12c044b"
+    );
   });
 
   it("TeamTaskPanel hides message details when developer mode is off", () => {

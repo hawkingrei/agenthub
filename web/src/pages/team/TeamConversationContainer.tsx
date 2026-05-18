@@ -69,6 +69,26 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
     ]
   );
 
+  const onOpenMemberProfile = useCallback(
+    (memberId: string) => {
+      const normalizedMemberId = memberId.trim();
+      if (!effectiveSelectedTeamId || !normalizedMemberId) {
+        return;
+      }
+      navigateTeamRoute(
+        buildTeamWorkspacePath(
+          effectiveSelectedTeamId,
+          "members",
+          null,
+          null,
+          normalizedMemberId,
+          "overview"
+        )
+      );
+    },
+    [effectiveSelectedTeamId, navigateTeamRoute]
+  );
+
   return (
     <TeamConversationPanel
       conversationKey={selectedConversation?.id ?? undefined}
@@ -93,6 +113,7 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
       formatTs={formatTs}
       toPrettyJson={toPrettyJson}
       activeThreadMessageId={selectedConversationMatchesChannelLane ? routeThreadRootMessageId : null}
+      onOpenMemberProfile={onOpenMemberProfile}
       jumpToMessageId={channelFocusMessageId}
       onJumpToMessageSettled={() => {
         setChannelFocusMessageId(null);

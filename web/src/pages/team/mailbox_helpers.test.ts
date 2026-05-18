@@ -224,13 +224,14 @@ describe("mailbox helpers", () => {
     ).toBe("hello from json");
   });
 
-  it("renders raw mentions as chips in plain text only", () => {
+  it("renders raw mentions as chips in plain text and markdown chat", () => {
     const plain = renderPlainTextWithMentions("hello @worker-1");
     expect(plain).toContain("team-mention");
     expect(plain).toContain("@worker-1");
 
     const markdown = renderMarkdownWithMentions("hello @worker-1");
-    expect(markdown).not.toContain("team-mention");
+    expect(markdown).toContain("team-mention");
+    expect(markdown).toContain('data-team-agent-mention-id="worker-1"');
     expect(markdown).toContain("@worker-1");
   });
 
