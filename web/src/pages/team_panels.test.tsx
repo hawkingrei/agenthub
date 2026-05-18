@@ -32,6 +32,8 @@ import * as mailboxHelpers from "./team/mailbox_helpers";
 import { TeamWorkbenchContainer } from "./team/TeamWorkbenchContainer";
 import { TeamThreadContainer } from "./team/TeamThreadContainer";
 import { TeamConversationContainer } from "./team/TeamConversationContainer";
+import { buildTeamMemberDraftFromSpec, type TeamMemberProfileDraft } from "./team/create_helpers";
+import { TeamEditMemberDialog, type TeamModalChrome } from "./team/team_management_modals";
 import {
   TeamWorkspaceProvider,
   type TeamWorkspaceContextValue,
@@ -276,6 +278,19 @@ function fillCreateChannelForm(
   changeInputValue(channelIdInput, channelId);
   changeInputValue(descriptionInput, description);
 }
+
+const modalChrome: TeamModalChrome = {
+  panelClassName: "panel",
+  accentButtonClassName: "accent",
+  mutedButtonClassName: "muted",
+  badgeClassName: "badge",
+  modalHeaderClassName: "modal-head",
+  setupChecklistClassName: "checklist",
+  infoStripGridClassName: "info-grid",
+  infoStripItemClassName: "info-item",
+  infoStripLabelClassName: "info-label",
+  infoStripValueClassName: "info-value",
+};
 
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
   return {
@@ -2199,6 +2214,7 @@ describe("team panels interactions", () => {
   it("TeamOverviewPanel refreshes snapshot and opens member mailbox", () => {
     const onRefreshSnapshot = vi.fn();
     const onOpenMailboxForMember = vi.fn();
+    const onEditAgentProfile = vi.fn();
 
     act(() => {
       root.render(
@@ -2209,6 +2225,7 @@ describe("team panels interactions", () => {
             onRefreshSnapshot={onRefreshSnapshot}
             selectedMemberId="coordinator-agent"
             onOpenMailboxForMember={onOpenMailboxForMember}
+            onEditAgentProfile={onEditAgentProfile}
             memberTargetNodeById={{
               "coordinator-agent": "main",
               "worker-agent": "node-east",
@@ -2219,14 +2236,22 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByAriaLabel(container, "Refresh snapshot"));
+    clickElement(findButtonByAriaLabel(container, "Edit agent profile"));
     clickElement(required(container.querySelectorAll(".team-member-row")[1], "member button missing"));
 
     expect(onRefreshSnapshot).toHaveBeenCalledTimes(1);
+    expect(onEditAgentProfile).toHaveBeenCalledTimes(1);
     expect(onOpenMailboxForMember).toHaveBeenCalledWith("worker-agent");
     expect(container.textContent).toContain("Cold Start Playbook");
     expect(container.textContent).toContain("Coordinator startup");
     expect(container.textContent).toContain("Worker startup");
+    expect(container.textContent).toContain("Agent Profile");
+    expect(container.textContent).toContain("coordinator-agent");
+    expect(container.textContent).toContain("gpt-5");
+    expect(container.textContent).toContain("plan");
+    expect(container.textContent).toContain("team-coordinator-orchestrator");
     expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
+    expect(container.querySelector(".teams-agent-profile")).not.toBeNull();
     expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
     expect(container.textContent).toContain("Machine main");
     expect(container.textContent).toContain("Machine node-east");
@@ -2839,6 +2864,184 @@ describe("team panels interactions", () => {
     expect(navigateTeamRoute).toHaveBeenCalledWith(
       "/workspace/teams/team-1?lens=members&member=worker-agent"
     );
+  });
+
+  it("renders an agent profile from a channel mention before opening the edit dialog", async () => {
+    function ChannelMentionProfileHarness() {
+      const [selectedMemberId, setSelectedMemberId] = React.useState("");
+      const [editDraft, setEditDraft] = React.useState<TeamMemberProfileDraft | null>(null);
+      const snapshot = React.useMemo(
+        () =>
+          buildSnapshot({
+            team: buildTeam({
+              spec: {
+                members: [
+                  {
+                    member_id: "coordinator-agent",
+                    role: "coordinator",
+                    model: "gpt-5",
+                    prompt: "Plan and coordinate.",
+                  },
+                  {
+                    member_id: "worker-agent",
+                    role: "worker",
+                    description: "Investigates runtime regressions.",
+                    model: "gpt-5.4",
+                    prompt: "Inspect the issue and report evidence.",
+                  },
+                ],
+              },
+            }),
+            members: [
+              buildMemberSnapshot(),
+              buildMemberSnapshot({
+                member_id: "worker-agent",
+                role: "worker",
+                description: "Investigates runtime regressions.",
+                model: "gpt-5.4",
+                prompt: "Inspect the issue and report evidence.",
+                skills: ["team-worker-executor"],
+                status: "working",
+                session_status: "active",
+              }),
+            ],
+          }),
+        []
+      );
+      const navigateTeamRoute = React.useCallback((path: string) => {
+        const url = new URL(path, "http://localhost");
+        setSelectedMemberId(url.searchParams.get("member") ?? "");
+      }, []);
+      const workspaceContext: TeamWorkspaceContextValue = {
+        selectedConversation: null,
+        developerMode: false,
+        token: "token",
+        tasksLoading: false,
+        onRefreshTasks: vi.fn(),
+        taskMessageDraft: "",
+        setTaskMessageDraft: vi.fn(),
+        onSendTaskMessage: vi.fn(),
+        taskMessages: [
+          buildTaskMessage(14, {
+            from_actor_id: "coordinator-agent",
+            to_actor_id: null,
+            route: "group_chat",
+            payload: {
+              type: "chat_message",
+              text: "@worker-agent please inspect this.",
+            },
+          }),
+        ],
+        conversationMailboxMessages: [],
+        snapshot,
+        mailboxDisplayNameByActorId: {
+          "worker-agent": "Worker Agent",
+        },
+        selectedTeamMemberLiveStates: [],
+        taskConversationMemberIds: ["coordinator-agent", "worker-agent"],
+        activeConversationTitle: "# all",
+        selectedConversationMatchesChannelLane: true,
+        taskMessagesLoading: false,
+        busy: null,
+        routeThreadRootMessageId: null,
+        channelFocusMessageId: null,
+        setChannelFocusMessageId: vi.fn(),
+        effectiveSelectedTeamId: "team-1",
+        routeWorkspaceLens: "channels",
+        routeChannelId: "all",
+        activeChannelConversationTaskId: "task-1",
+        navigateTeamRoute,
+        isCompactWorkbench: false,
+        selectedChannelItem: undefined,
+        workspaceTasks: [],
+        selectedTaskId: "",
+        setSelectedTaskId: vi.fn(),
+        onSelectConversationSubject: vi.fn(),
+        runs: [],
+        onOpenTaskRun: vi.fn(),
+        compilePreviewContextId: "",
+        setCompilePreviewContextId: vi.fn(),
+        onCompileTaskRunPreview: vi.fn(),
+        canCompileTask: false,
+        compiledRunPreview: null,
+        onUseCompiledRunPayload: vi.fn(),
+        onCreateRunFromCompiledPreview: vi.fn(),
+        onSendThreadReply: vi.fn(),
+        threadReplyDraft: "",
+        setThreadReplyDraft: vi.fn(),
+      };
+
+      return (
+        <>
+          <TeamWorkspaceProvider value={workspaceContext}>
+            <TeamConversationContainer />
+          </TeamWorkspaceProvider>
+          {selectedMemberId ? (
+            <TeamOverviewPanel
+              snapshot={snapshot}
+              snapshotLoading={false}
+              onRefreshSnapshot={vi.fn()}
+              selectedMemberId={selectedMemberId}
+              onOpenMailboxForMember={setSelectedMemberId}
+              onEditAgentProfile={() => {
+                setEditDraft(
+                  buildTeamMemberDraftFromSpec(snapshot.team.spec, selectedMemberId, null, {
+                    coordinator_prompt: "Plan and coordinate.",
+                    worker_prompt: "Inspect the issue and report evidence.",
+                  })
+                );
+              }}
+              displayNameByActorId={{
+                "worker-agent": "Worker Agent",
+              }}
+              memberTargetNodeById={{
+                "worker-agent": "node-east",
+              }}
+            />
+          ) : null}
+          <TeamEditMemberDialog
+            open={editDraft !== null}
+            busy={null}
+            selectedAgentLabel="Worker Agent"
+            draft={editDraft}
+            onPatchDraft={vi.fn()}
+            onClose={() => setEditDraft(null)}
+            onSave={vi.fn()}
+            chrome={modalChrome}
+          />
+        </>
+      );
+    }
+
+    renderWithMantine(root, <ChannelMentionProfileHarness />);
+
+    expect(container.querySelector(".teams-agent-profile")).toBeNull();
+    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+    clickElement(container.querySelector('[data-team-agent-mention-id="worker-agent"]'));
+
+    await waitForCondition(() => container.textContent?.includes("Agent Profile") ?? false);
+    const profile = required(
+      container.querySelector(".teams-agent-profile"),
+      "agent profile missing"
+    );
+    expect(profile.textContent).toContain("Worker Agent");
+    expect(profile.textContent).toContain("worker-agent");
+    expect(profile.textContent).toContain("gpt-5.4");
+    expect(profile.textContent).toContain("Investigates runtime regressions.");
+    expect(profile.textContent).toContain("Inspect the issue and report evidence.");
+    expect(profile.textContent).toContain("team-worker-executor");
+    expect(profile.querySelector("input, textarea")).toBeNull();
+
+    clickElement(findButtonByAriaLabel(container, "Edit agent profile"));
+
+    await waitForCondition(() => document.body.textContent?.includes("Edit Worker Agent") ?? false);
+    const dialog = required(
+      document.body.querySelector('[role="dialog"]'),
+      "agent profile edit dialog missing"
+    );
+    expect(dialog.textContent).toContain("Agent Profile");
+    expect(dialog.textContent).toContain("worker-agent");
+    expect(dialog.textContent).toContain("gpt-5.4");
   });
 
   it("TeamTaskPanel keeps the channel body in a dedicated flex shell above the composer", () => {

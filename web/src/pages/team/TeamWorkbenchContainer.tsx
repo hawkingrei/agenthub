@@ -643,6 +643,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         onRefreshSnapshot: onRefreshOverviewSnapshot,
         selectedMemberId,
         onOpenMailboxForMember,
+        onEditAgentProfile: onOpenTeamMemberEditModal,
         displayNameByActorId: mailboxDisplayNameByActorId,
         memberTargetNodeById,
       }

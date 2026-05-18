@@ -25,6 +25,7 @@ type TeamOverviewPanelProps = {
   onRefreshSnapshot: () => Promise<void> | void;
   selectedMemberId: string;
   onOpenMailboxForMember: (memberId: string) => void;
+  onEditAgentProfile?: () => void;
   displayNameByActorId?: Record<string, string>;
   memberTargetNodeById?: Record<string, string | null>;
 };
@@ -40,9 +41,18 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
     onRefreshSnapshot,
     selectedMemberId,
     onOpenMailboxForMember,
+    onEditAgentProfile,
     displayNameByActorId = {},
     memberTargetNodeById = {},
   } = props;
+  const selectedMember =
+    snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null;
+  const selectedMemberDisplayName = selectedMember
+    ? resolveDisplayName(selectedMember.member_id, displayNameByActorId, selectedMember.member_id)
+    : null;
+  const selectedMemberNodeId = selectedMember
+    ? memberTargetNodeById[selectedMember.member_id]?.trim() || null
+    : null;
 
   return (
     <SurfaceCard className="p-4">
@@ -111,6 +121,95 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
             <KeyValueItem label="Dead letter" value={snapshot.mailbox.dead_letter} />
             <KeyValueItem label="Recent events" value={snapshot.latest_events.length} />
           </KeyValueList>
+
+          {selectedMember && (
+            <InsetSurface className="teams-agent-profile mb-6 bg-white shadow-sm">
+              <PanelHeader
+                title="Agent Profile"
+                subtitle={selectedMemberDisplayName}
+                actions={
+                  onEditAgentProfile ? (
+                    <ActionButton
+                      tone="secondary"
+                      size="sm"
+                      onClick={onEditAgentProfile}
+                      aria-label="Edit agent profile"
+                      title="Edit agent profile"
+                    >
+                      <i className="bi bi-pencil-square" aria-hidden="true" />
+                      <span>Edit profile</span>
+                    </ActionButton>
+                  ) : null
+                }
+              />
+              <KeyValueList className="mt-4">
+                <KeyValueItem
+                  label="Member"
+                  value={
+                    <span className="break-words">
+                      {selectedMemberDisplayName}{" "}
+                      <span className="font-mono text-[11px] text-notion-text-muted">
+                        {selectedMember.member_id}
+                      </span>
+                    </span>
+                  }
+                />
+                <KeyValueItem label="Role" value={selectedMember.role} />
+                <KeyValueItem label="Model" value={selectedMember.model ?? "-"} />
+                <KeyValueItem
+                  label="Status"
+                  value={
+                    <StatusBadge
+                      label={selectedMember.status}
+                      tone={resolveTeamRunStatusTone(selectedMember.status)}
+                      className="team-status"
+                      title={`member status: ${selectedMember.status}`}
+                    />
+                  }
+                />
+                <KeyValueItem label="Session" value={selectedMember.session_status ?? "-"} />
+                <KeyValueItem label="Pending inbox" value={selectedMember.pending_inbox_count} />
+                <KeyValueItem label="Machine" value={selectedMemberNodeId ?? "Machine unavailable"} />
+              </KeyValueList>
+              {selectedMember.description ? (
+                <section className="mt-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
+                    Description
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-5 text-notion-text">
+                    {selectedMember.description}
+                  </p>
+                </section>
+              ) : null}
+              {selectedMember.prompt ? (
+                <section className="mt-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
+                    Prompt
+                  </p>
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-notion-border/60 bg-notion-sidebar/5 p-3 text-[12px] leading-5 text-notion-text">
+                    {selectedMember.prompt}
+                  </pre>
+                </section>
+              ) : null}
+              {selectedMember.skills.length > 0 ? (
+                <section className="mt-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
+                    Skills
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedMember.skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="rounded-md border border-notion-border/60 bg-white px-2 py-1 text-[11px] font-medium text-notion-text"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+            </InsetSurface>
+          )}
 
           <div className="teams-member-list flex flex-col gap-2">
             {snapshot.members.map((member) => {

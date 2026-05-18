@@ -60,6 +60,7 @@ type UseTeamManagementActionsOptions = {
   teamExecutionBlockedReason: string | null;
   selectedTeamWorkerCount: number;
   selectedTeamMemberStatuses: TeamMemberAgentStatus[];
+  selectedMemberId: string;
   selectedAgentWorkspaceMemberId: string;
   selectedAgentWorkspaceAgent: AgentRecord | null;
   selectedAgentLabel: string;
@@ -133,6 +134,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     teamExecutionBlockedReason,
     selectedTeamWorkerCount,
     selectedTeamMemberStatuses,
+    selectedMemberId,
     selectedAgentWorkspaceMemberId,
     selectedAgentWorkspaceAgent,
     selectedAgentLabel,
@@ -363,14 +365,17 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
   }, [forgeAgentBusy, setShowForgeAgentForm, setForgeAgentWorktreeError, setTeamMemberDraft]);
 
   const openTeamMemberEditModal = useCallback(() => {
-    if (!selectedTeam || !selectedAgentWorkspaceMemberId) {
+    const editMemberId = selectedAgentWorkspaceMemberId.trim() || selectedMemberId.trim();
+    if (!selectedTeam || !editMemberId) {
       setError("Select an agent first");
       return;
     }
+    const editAgent =
+      editMemberId === selectedAgentWorkspaceMemberId ? selectedAgentWorkspaceAgent : null;
     const draft = buildTeamMemberDraftFromSpec(
       selectedTeam.spec,
-      selectedAgentWorkspaceMemberId,
-      selectedAgentWorkspaceAgent,
+      editMemberId,
+      editAgent,
       teamPromptDefaults
     );
     if (!draft) {
@@ -382,6 +387,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setTeamMemberEditDraft(draft);
     setShowTeamMemberEditModal(true);
   }, [
+    selectedMemberId,
     selectedAgentWorkspaceMemberId,
     selectedAgentWorkspaceAgent,
     selectedTeam,
