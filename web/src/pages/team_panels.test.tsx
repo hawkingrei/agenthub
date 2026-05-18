@@ -2282,6 +2282,37 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("No snapshot yet.");
   });
 
+  it("TeamOverviewPanel renders a closable profile-only agent profile", () => {
+    const onCloseAgentProfile = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamOverviewPanel
+            snapshot={buildSnapshot()}
+            snapshotLoading={false}
+            onRefreshSnapshot={vi.fn()}
+            selectedMemberId="worker-agent"
+            onOpenMailboxForMember={vi.fn()}
+            onCloseAgentProfile={onCloseAgentProfile}
+            profileOnly={true}
+            displayNameByActorId={{ "worker-agent": "Worker Agent" }}
+            memberTargetNodeById={{ "worker-agent": "node-east" }}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Agent Profile");
+    expect(container.textContent).toContain("Worker Agent");
+    expect(container.textContent).toContain("node-east");
+    expect(container.textContent).not.toContain("Cold Start Playbook");
+    expect(container.querySelector(".teams-member-list")).toBeNull();
+
+    clickElement(findButtonByAriaLabel(container, "Close agent profile"));
+    expect(onCloseAgentProfile).toHaveBeenCalledTimes(1);
+  });
+
   it("TeamMemberConsolePanel switches preview and member-history views", () => {
     const onSelectedMemberIdChange = vi.fn();
     const onRefresh = vi.fn();
@@ -7674,6 +7705,88 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("No members available.");
     expect(container.textContent).toContain("No conversation records yet for this pair.");
+  });
+
+  it("TeamMailboxPanel falls back to member selection when opening a mention without profile routing", () => {
+    const onSelectMember = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={false}
+            snapshot={buildSnapshot()}
+            humanActorId="user"
+            displayNameByActorId={{ "coordinator-agent": "Coordinator Agent" }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{}}
+            onSelectMember={onSelectMember}
+            chatActors={{
+              fromActorId: "coordinator-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={vi.fn()}
+            onJumpToBottom={vi.fn()}
+            conversationMessages={[
+              buildMailboxMessage(9, {
+                from_actor_id: "worker-agent",
+                to_actor_id: "coordinator-agent",
+                payload: { type: "chat_message", text: "@coordinator-agent" },
+              }),
+            ]}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            busy={null}
+            onAcceptMessage={vi.fn()}
+            onAcceptVisibleMessages={vi.fn()}
+            chatDraft=""
+            onChatDraftChange={vi.fn()}
+            onSendChatMessage={vi.fn()}
+            msgFromActorId="coordinator-agent"
+            onMsgFromActorIdChange={vi.fn()}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={vi.fn()}
+            msgChannel="default"
+            onMsgChannelChange={vi.fn()}
+            msgTransport="local"
+            onMsgTransportChange={vi.fn()}
+            msgRoute="{}"
+            onMsgRouteChange={vi.fn()}
+            mailboxTemplateOptions={[]}
+            msgTemplate="raw"
+            onMsgTemplateChange={vi.fn()}
+            onApplyMessageTemplate={vi.fn()}
+            msgPayload="{}"
+            onMsgPayloadChange={vi.fn()}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={vi.fn()}
+            inboxLimit="20"
+            onInboxLimitChange={vi.fn()}
+            inboxAfterId=""
+            onInboxAfterIdChange={vi.fn()}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={vi.fn()}
+            onRefreshInbox={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(
+      required(
+        container.querySelector('[data-team-agent-mention-id="coordinator-agent"]') as
+          | HTMLButtonElement
+          | null,
+        "mailbox mention chip missing"
+      )
+    );
+    expect(onSelectMember).toHaveBeenCalledWith("coordinator-agent");
   });
 
   it("TeamMailboxPanel disables accept actions while a mailbox accept is already in progress", () => {
