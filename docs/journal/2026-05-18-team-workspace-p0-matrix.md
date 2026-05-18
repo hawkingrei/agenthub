@@ -30,6 +30,9 @@ The active P0 backlog had two related web gaps:
 - Replace two local empty-card assemblies with the shared `EmptyState`
   primitive and remove the associated class plumbing from
   `TeamWorkbenchContent`.
+- Follow-up cleanup moved the debug run-required panel onto `EmptyState` and
+  removed title/body text class plumbing from `TeamWorkbenchContainer` to the
+  debug panels.
 
 ## Key Decisions
 
@@ -39,9 +42,9 @@ The active P0 backlog had two related web gaps:
 - Thread is still a subordinate channel detail, not a top-level workspace lens.
   The adaptive behavior is layout-only: no open thread means the channel lane
   owns the full center surface; an open thread introduces the split.
-- This checkpoint does not close the broader Team composition P0. It lands one
-  bounded primitive/construction slice while leaving deeper panel, dock, toolbar,
-  and row migrations open.
+- This checkpoint closes the current Team Browser Matrix P0 and the tracked
+  Team composition/shared-primitive P0 slice. Remaining UI polish is narrower
+  P1 follow-up work rather than active P0 backlog.
 
 ## Validation
 
@@ -53,6 +56,23 @@ npm exec tsc -- --noEmit
 make build-web
 git diff --check
 ```
+
+PR #627 CI evidence:
+
+- Web: `https://github.com/hawkingrei/agenthub/actions/runs/26019516029/job/76477339048`
+- Web E2E: `https://github.com/hawkingrei/agenthub/actions/runs/26019516044/job/76477338963`
+- Web E2E Mobile: `https://github.com/hawkingrei/agenthub/actions/runs/26019516004/job/76477339131`
+- Bazel Build: `https://github.com/hawkingrei/agenthub/actions/runs/26019516048/job/76477339080`
+- Bazel Test (Crates): `https://github.com/hawkingrei/agenthub/actions/runs/26019516048/job/76477339065`
+- Bazel Test (Root): `https://github.com/hawkingrei/agenthub/actions/runs/26019516048/job/76477339091`
+- Bazel Coverage: `https://github.com/hawkingrei/agenthub/actions/runs/26019516048/job/76477339072`
+- Cargo Clippy: `https://github.com/hawkingrei/agenthub/actions/runs/26019516042/job/76477339110`
+- Rust Cargo: `https://github.com/hawkingrei/agenthub/actions/runs/26019516033/job/76477339068`
+- Rust Fmt: `https://github.com/hawkingrei/agenthub/actions/runs/26019516033/job/76477339168`
+- Rust Proto Check: `https://github.com/hawkingrei/agenthub/actions/runs/26019516033/job/76477339075`
+- Distributed P2P Pipeline: `https://github.com/hawkingrei/agenthub/actions/runs/26019516035/job/76477339105`
+- User Docs: `https://github.com/hawkingrei/agenthub/actions/runs/26019516056/job/76477339052`
+- Codecov patch and project checks passed on PR #627.
 
 The `npm run test -- src/app_route_selection.test.ts` pass still emits Node's
 localStorage availability warning on local Node versions that expose the
@@ -88,6 +108,5 @@ agent-browser --session-name agenthub-team-ui open https://agenthub.hawkingrei.c
 
 ## Follow-Ups
 
-- Record CI run IDs after this branch is pushed.
-- Continue moving remaining Team panels, docks, toolbars, and row/list
-  affordances onto shared primitives.
+- Continue the P1 conversation/composer and shell refinement items from
+  `docs/todo.md`.

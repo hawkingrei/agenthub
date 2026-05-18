@@ -144,8 +144,6 @@ import {
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
-  TEAM_PANEL_TITLE_CLASS,
-  TEAM_SECTION_BODY_TEXT_CLASS,
   TEAM_SOFT_CHROME_SHADOW_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS,
@@ -3042,8 +3040,6 @@ export function TeamPage(props: TeamPageProps) {
     selectedTeam,
     isAgentWorkspace,
     teamSectionCardClassName: TEAM_PANEL_CARD_CLASS,
-    teamSectionTitleClassName: TEAM_PANEL_TITLE_CLASS,
-    teamSectionBodyTextClassName: TEAM_SECTION_BODY_TEXT_CLASS,
     panelSecondaryButtonClassName: TEAM_PANEL_SECONDARY_BUTTON_CLASS,
     teamWorkbenchWorkspaceShellClassName,
     selectedTeamHasConfiguredMembers,

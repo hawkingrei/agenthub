@@ -2,6 +2,7 @@ import React from "react";
 import { TextInput, Textarea } from "@mantine/core";
 import {
   ActionButton,
+  EmptyState,
   SurfaceCard,
   ToolbarRow,
 } from "../../ui/primitives";
@@ -10,8 +11,6 @@ export type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
 type TeamDebugChrome = {
   panelCardClassName: string;
-  sectionHeadingClassName: string;
-  sectionBodyTextClassName: string;
   sectionHintTextClassName: string;
   debugTabsClassName: string;
   debugTabActiveClassName: string;
@@ -33,7 +32,7 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
   return (
     <SurfaceCard className={`${chrome.panelCardClassName} p-3`}>
       <ToolbarRow>
-        <h3 className={chrome.sectionHeadingClassName}>Debug Tools</h3>
+        <h3 className="text-sm font-semibold text-notion-text">Debug Tools</h3>
         <div className={chrome.debugTabsClassName}>
           <ActionButton
             type="button"
@@ -128,8 +127,8 @@ export const TeamRunOpsPanel = React.memo(function TeamRunOpsPanel({
   return (
     <div className="space-y-3">
       <SurfaceCard className={`${chrome.panelCardClassName} p-4`}>
-        <h4 className={chrome.sectionHeadingClassName}>Create Run</h4>
-        <p className={chrome.sectionBodyTextClassName}>
+        <h4 className="text-sm font-semibold text-notion-text">Create Run</h4>
+        <p className="mt-1 text-[13px] leading-relaxed text-notion-text-muted">
           Debug entry for manually starting a Team run.
         </p>
         <ToolbarRow className="mt-3 flex-col sm:flex-row sm:items-start">
@@ -220,8 +219,8 @@ export const TeamRunOpsPanel = React.memo(function TeamRunOpsPanel({
         </p>
       </SurfaceCard>
       <SurfaceCard className={`${chrome.panelCardClassName} p-4`}>
-        <h4 className={chrome.sectionHeadingClassName}>Load Existing Run</h4>
-        <p className={chrome.sectionBodyTextClassName}>
+        <h4 className="text-sm font-semibold text-notion-text">Load Existing Run</h4>
+        <p className="mt-1 text-[13px] leading-relaxed text-notion-text-muted">
           Load by <code>run_id</code> for the currently selected team only.
         </p>
         <ToolbarRow className="mt-3 flex-col sm:flex-row sm:items-start">
@@ -260,9 +259,7 @@ export const TeamRunRequiredPanel = React.memo(function TeamRunRequiredPanel({
   onGoToRuns,
 }: TeamRunRequiredPanelProps) {
   return (
-    <SurfaceCard className={chrome.panelCardClassName}>
-      <h4 className={chrome.sectionHeadingClassName}>{title}</h4>
-      <p className={chrome.sectionBodyTextClassName}>{body}</p>
+    <EmptyState className={chrome.panelCardClassName} title={title} body={body}>
       <div className="mt-3">
         <ActionButton
           tone="secondary"
@@ -273,6 +270,6 @@ export const TeamRunRequiredPanel = React.memo(function TeamRunRequiredPanel({
           Go to Execution Runs
         </ActionButton>
       </div>
-    </SurfaceCard>
+    </EmptyState>
   );
 });
