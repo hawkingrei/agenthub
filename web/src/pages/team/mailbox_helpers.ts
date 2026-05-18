@@ -495,7 +495,7 @@ function collectMarkdownMentionProtectedRanges(text: string): Array<[number, num
       }
     }
   }
-  return ranges.sort((left, right) => left[0] - right[0]);
+  return ranges.sort((left, right) => left[0] - right[0] || right[1] - left[1]);
 }
 
 function replaceRawMentionsOutsideMarkdownProtectedRanges(text: string): string {
@@ -506,14 +506,23 @@ function replaceRawMentionsOutsideMarkdownProtectedRanges(text: string): string 
   const chunks: string[] = [];
   let cursor = 0;
   for (const [start, end] of ranges) {
+    if (start < cursor) {
+      continue;
+    }
     if (cursor < start) {
-      chunks.push(replaceRawMentionsWithTokens(text.slice(cursor, start)));
+      const prefix = text.slice(cursor, start);
+      const contextPrefix = cursor > 0 ? text.charAt(cursor - 1) : "";
+      const tokenized = replaceRawMentionsWithTokens(`${contextPrefix}${prefix}`);
+      chunks.push(cursor > 0 ? tokenized.slice(contextPrefix.length) : tokenized);
     }
     chunks.push(text.slice(start, end));
     cursor = end;
   }
   if (cursor < text.length) {
-    chunks.push(replaceRawMentionsWithTokens(text.slice(cursor)));
+    const suffix = text.slice(cursor);
+    const contextPrefix = cursor > 0 ? text.charAt(cursor - 1) : "";
+    const tokenized = replaceRawMentionsWithTokens(`${contextPrefix}${suffix}`);
+    chunks.push(cursor > 0 ? tokenized.slice(contextPrefix.length) : tokenized);
   }
   return chunks.join("");
 }

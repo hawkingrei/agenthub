@@ -31,6 +31,7 @@ import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
 import { TeamWorkbenchContainer } from "./team/TeamWorkbenchContainer";
 import { TeamThreadContainer } from "./team/TeamThreadContainer";
+import { TeamConversationContainer } from "./team/TeamConversationContainer";
 import {
   TeamWorkspaceProvider,
   type TeamWorkspaceContextValue,
@@ -2759,6 +2760,85 @@ describe("team panels interactions", () => {
     }).toThrow("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
 
     suppressReactError.mockRestore();
+  });
+
+  it("TeamConversationContainer routes clicked channel mentions to member overview", async () => {
+    const navigateTeamRoute = vi.fn();
+    const workspaceContext: TeamWorkspaceContextValue = {
+      selectedConversation: null,
+      developerMode: false,
+      token: "token",
+      tasksLoading: false,
+      onRefreshTasks: vi.fn(),
+      taskMessageDraft: "",
+      setTaskMessageDraft: vi.fn(),
+      onSendTaskMessage: vi.fn(),
+      taskMessages: [
+        buildTaskMessage(14, {
+          from_actor_id: "coordinator-agent",
+          to_actor_id: null,
+          route: "group_chat",
+          payload: {
+            type: "chat_message",
+            text: "@worker-agent please inspect this.",
+          },
+        }),
+      ],
+      conversationMailboxMessages: [],
+      snapshot: null,
+      mailboxDisplayNameByActorId: {
+        "worker-agent": "Worker Agent",
+      },
+      selectedTeamMemberLiveStates: [],
+      taskConversationMemberIds: ["coordinator-agent", "worker-agent"],
+      activeConversationTitle: "# all",
+      selectedConversationMatchesChannelLane: true,
+      taskMessagesLoading: false,
+      busy: null,
+      routeThreadRootMessageId: null,
+      channelFocusMessageId: null,
+      setChannelFocusMessageId: vi.fn(),
+      effectiveSelectedTeamId: "team-1",
+      routeWorkspaceLens: "channels",
+      routeChannelId: "all",
+      activeChannelConversationTaskId: "task-1",
+      navigateTeamRoute,
+      isCompactWorkbench: false,
+      selectedChannelItem: undefined,
+      workspaceTasks: [],
+      selectedTaskId: "",
+      setSelectedTaskId: vi.fn(),
+      onSelectConversationSubject: vi.fn(),
+      runs: [],
+      onOpenTaskRun: vi.fn(),
+      compilePreviewContextId: "",
+      setCompilePreviewContextId: vi.fn(),
+      onCompileTaskRunPreview: vi.fn(),
+      canCompileTask: false,
+      compiledRunPreview: null,
+      onUseCompiledRunPayload: vi.fn(),
+      onCreateRunFromCompiledPreview: vi.fn(),
+      onSendThreadReply: vi.fn(),
+      threadReplyDraft: "",
+      setThreadReplyDraft: vi.fn(),
+    };
+
+    renderWithMantine(
+      root,
+      <TeamWorkspaceProvider value={workspaceContext}>
+        <TeamConversationContainer />
+      </TeamWorkspaceProvider>
+    );
+
+    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+    const mention = container.querySelector(
+      '[data-team-agent-mention-id="worker-agent"]'
+    ) as HTMLButtonElement | null;
+    expect(mention).not.toBeNull();
+    mention?.click();
+    expect(navigateTeamRoute).toHaveBeenCalledWith(
+      "/workspace/teams/team-1?lens=members&member=worker-agent"
+    );
   });
 
   it("TeamTaskPanel keeps the channel body in a dedicated flex shell above the composer", () => {
