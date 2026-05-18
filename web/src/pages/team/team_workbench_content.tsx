@@ -258,7 +258,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
                   </div>
                   {threadPane && (
                     <div
-                      className="flex max-h-[40vh] min-h-0 shrink-0 flex-col overflow-hidden lg:max-h-none lg:min-w-0 lg:flex-1 lg:flex-shrink"
+                      className="flex max-h-[40vh] min-h-0 shrink-0 flex-col overflow-hidden lg:max-h-none lg:min-w-0"
                       data-team-surface="thread-dock"
                     >
                       {threadPane}

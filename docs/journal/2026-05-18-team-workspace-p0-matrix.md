@@ -54,9 +54,11 @@ make build-web
 git diff --check
 ```
 
-The `npm run test -- src/app_route_selection.test.ts` pass also confirmed the
-localStorage warning is gone from the npm test entrypoint. Node still emits the
-separate `DEP0205 module.register()` deprecation warning.
+The `npm run test -- src/app_route_selection.test.ts` pass still emits Node's
+localStorage availability warning on local Node versions that expose the
+experimental API. The attempted `--localstorage-file` npm-script workaround was
+not kept because CI runs Node 20, where that flag is not allowed in
+`NODE_OPTIONS`.
 
 Browser deployment checks:
 
