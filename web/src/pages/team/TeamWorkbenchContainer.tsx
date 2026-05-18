@@ -1031,41 +1031,22 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     </>
   ) : null;
 
-  const bodyProps = useMemo(
-    () =>
-      buildTeamWorkbenchBodyProps({
-        conversationPanel,
-        threadPane,
-        tasksPanel,
-        agentAcpPanel,
-        overviewPanelProps,
-        eventsPanelProps,
-        stepsPanelProps,
-        mailboxHasActiveRun,
-        mailboxEmptyTitle,
-        mailboxEmptyBody,
-        onGoToRuns,
-        mailboxPanelProps,
-        memberConsolePanelProps,
-        debugPanel,
-      }),
-    [
-      conversationPanel,
-      threadPane,
-      tasksPanel,
-      agentAcpPanel,
-      overviewPanelProps,
-      eventsPanelProps,
-      stepsPanelProps,
-      mailboxHasActiveRun,
-      mailboxEmptyTitle,
-      mailboxEmptyBody,
-      onGoToRuns,
-      mailboxPanelProps,
-      memberConsolePanelProps,
-      debugPanel,
-    ]
-  );
+  const bodyProps = buildTeamWorkbenchBodyProps({
+    conversationPanel,
+    threadPane,
+    tasksPanel,
+    agentAcpPanel,
+    overviewPanelProps,
+    eventsPanelProps,
+    stepsPanelProps,
+    mailboxHasActiveRun,
+    mailboxEmptyTitle,
+    mailboxEmptyBody,
+    onGoToRuns,
+    mailboxPanelProps,
+    memberConsolePanelProps,
+    debugPanel,
+  });
 
   return (
     <TeamWorkbenchContent
@@ -1075,8 +1056,6 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
       selectedTeam={selectedTeam}
       isAgentWorkspace={isAgentWorkspace}
       teamSectionCardClassName={teamSectionCardClassName}
-      teamSectionTitleClassName={teamSectionTitleClassName}
-      teamSectionBodyTextClassName={teamSectionBodyTextClassName}
       panelSecondaryButtonClassName={panelSecondaryButtonClassName}
       teamWorkbenchWorkspaceShellClassName={teamWorkbenchWorkspaceShellClassName}
       workspaceHeaderProps={workspaceHeaderProps}

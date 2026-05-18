@@ -461,7 +461,7 @@ describe("useTeamWorkspaceViewModel", () => {
     const mounted = await mountHook(params);
     try {
       const snapshot = mounted.getSnapshot();
-      expect(snapshot?.activeWorkspaceLens).toBe("search");
+      expect(snapshot?.activeWorkspaceLens).toBe("channels");
       expect(snapshot?.selectedAgentLabel).toBe("Worker Two");
       expect(snapshot?.workspaceTitle).toBe("Team Workbench");
       expect(snapshot?.workspaceDescription).toBe(
