@@ -1522,7 +1522,7 @@ export function TeamPage(props: TeamPageProps) {
       forgeAgentBusy: initial.forgeAgentBusy,
     });
     setTeamMemberDraft(null);
-  }, [patchTeamCreate, teamPromptDefaults.coordinator_prompt]);
+  }, [patchTeamCreate, setTeamMemberDraft, teamPromptDefaults.coordinator_prompt]);
 
   useEffect(() => {
     if (!props.token) {
@@ -1557,6 +1557,7 @@ export function TeamPage(props: TeamPageProps) {
     props.token,
     routeDefaultWorktreeRoot,
     setError,
+    setForgeDefaultWorktreeRoot,
     showCreateTeamModal,
     showForgeAgentForm,
   ]);
@@ -1584,7 +1585,7 @@ export function TeamPage(props: TeamPageProps) {
     return () => {
       active = false;
     };
-  }, [props.token, setError, showCreateTeamModal, showForgeAgentForm]);
+  }, [props.token, setError, setTeamPromptDefaults, showCreateTeamModal, showForgeAgentForm]);
 
   useEffect(() => {
     if (!showCreateTeamModal || coordinatorPrompt.trim()) {

@@ -95,6 +95,8 @@ describe("app route selection", () => {
     expect(resolveWorkspaceLens("/workspace", "")).toBe("channels");
     expect(resolveWorkspaceLens("/workspace/nodes", "?lens=unknown")).toBe("nodes");
     expect(resolveWorkspaceLens("/workspace/teams/team-1", "")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace/teams/team-1", "?lens=search")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace/teams/team-1", "?lens=tasks")).toBe("tasks");
     expect(buildWorkspacePath("agent-1", "channels")).toBe(
       "/workspace/agents/agent-1"
     );
@@ -109,6 +111,9 @@ describe("app route selection", () => {
     ).toBe("/workspace/teams/team-1?lens=members&member=worker-2&tab=member_console");
     expect(buildTeamWorkspacePath("team-1", "channels", "review", 42)).toBe(
       "/workspace/teams/team-1?channel=review&thread=42"
+    );
+    expect(buildTeamWorkspacePath("team-1", "search", "review")).toBe(
+      "/workspace/teams/team-1?channel=review"
     );
     expect(buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "task-77")).toBe(
       "/workspace/teams/team-1?channel=review&task=task-77"

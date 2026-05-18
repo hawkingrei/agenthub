@@ -68,17 +68,23 @@ export function isTeamMemberRouteTab(value: string | null | undefined): value is
 export function resolveWorkspaceLens(pathname: string, search: string): WorkspaceLens {
   const params = new URLSearchParams(search);
   const lens = params.get("lens");
-  
+
+  if (isTeamsRoute(pathname)) {
+    const route = resolveTeamRoute(pathname);
+    if (route?.mode === "selector") {
+      return "teams";
+    }
+    if (lens === "tasks" || lens === "members") {
+      return lens;
+    }
+    return "channels";
+  }
+
   if (lens === "channels" || lens === "chat" || lens === "threads") return "channels";
   if (lens === "tasks" || lens === "members" || lens === "search" || lens === "nodes") return lens as WorkspaceLens;
   if (lens === "teams") return "teams";
 
   if (pathname.startsWith("/workspace/nodes")) return "nodes";
-  
-  if (isTeamsRoute(pathname)) {
-    const route = resolveTeamRoute(pathname);
-    return route?.mode === "selector" ? "teams" : "channels";
-  }
 
   return "channels";
 }
@@ -132,7 +138,7 @@ export function buildTeamWorkspacePath(
   const pathname = `/workspace/teams/${encodeURIComponent(normalizedTeamId)}`;
   const params = new URLSearchParams();
   // Omit default lens for team detail to keep URLs clean
-  if (lens && lens !== "teams" && lens !== "channels") {
+  if (lens && lens !== "teams" && lens !== "channels" && lens !== "search") {
     params.set("lens", lens);
   }
   if (channelId && channelId !== "all") {

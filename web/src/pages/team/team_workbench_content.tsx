@@ -1,9 +1,8 @@
 import React from "react";
 import type { WorkspaceLens } from "../../app_route_selection";
 import type { TeamDefinitionRecord } from "../../api";
-import { WorkspaceSearchLensPlaceholder } from "../../components/workspace_lens_placeholder";
 import { WorkspacePanelLoadingFallback } from "../../components/workspace_panel_loading_fallback";
-import { ActionButton } from "../../ui/primitives";
+import { ActionButton, EmptyState } from "../../ui/primitives";
 import {
   TeamLoadingPanel,
   TeamUnavailablePanel,
@@ -94,8 +93,6 @@ export type TeamWorkbenchContentProps = {
   selectedTeam: TeamDefinitionRecord | null;
   isAgentWorkspace: boolean;
   teamSectionCardClassName: string;
-  teamSectionTitleClassName: string;
-  teamSectionBodyTextClassName: string;
   panelSecondaryButtonClassName: string;
   teamWorkbenchWorkspaceShellClassName: string;
   workspaceHeaderProps: React.ComponentProps<typeof TeamWorkspaceHeader>;
@@ -133,8 +130,6 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   selectedTeam,
   isAgentWorkspace,
   teamSectionCardClassName,
-  teamSectionTitleClassName,
-  teamSectionBodyTextClassName,
   panelSecondaryButtonClassName,
   teamWorkbenchWorkspaceShellClassName,
   workspaceHeaderProps,
@@ -164,7 +159,9 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   memberConsolePanelProps,
   debugPanel,
 }: TeamWorkbenchContentProps) {
-  const showWorkspaceHeader = activeWorkspaceLens !== "tasks" && tab !== "tasks";
+  const effectiveWorkspaceLens =
+    activeWorkspaceLens === "search" ? "channels" : activeWorkspaceLens;
+  const showWorkspaceHeader = effectiveWorkspaceLens !== "tasks" && tab !== "tasks";
 
   return (
     <div
@@ -219,12 +216,11 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
           )}
 
           {showNoActiveRunNotice && (
-            <div className={teamSectionCardClassName}>
-              <h3 className={teamSectionTitleClassName}>No Active Execution Run</h3>
-              <p className={teamSectionBodyTextClassName}>
-                Select an existing execution run or start one in the Execution Runs tab before
-                opening this panel.
-              </p>
+            <EmptyState
+              className={teamSectionCardClassName}
+              title="No Active Execution Run"
+              body="Select an existing execution run or start one in the Execution Runs tab before opening this panel."
+            >
               <div className="mt-3">
                 <ActionButton
                   tone="secondary"
@@ -235,7 +231,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
                   Go to Execution Runs
                 </ActionButton>
               </div>
-            </div>
+            </EmptyState>
           )}
 
           {tab !== "runs" && !showRunContextLoading && !showNoActiveRunNotice && (
@@ -244,15 +240,11 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
                 isAgentWorkspace ? "gap-2" : "gap-3"
               }`}
             >
-              {activeWorkspaceLens === "search" && (
-                <WorkspaceSearchLensPlaceholder className={teamSectionCardClassName} />
-              )}
-
-              {activeWorkspaceLens !== "search" && tab === "conversation" && (
+              {tab === "conversation" && (
                 <div
                   className={
                     threadPane
-                      ? "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.92fr)]"
+                      ? "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]"
                       : "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden"
                   }
                   data-team-surface="channel-thread-layout"
@@ -266,7 +258,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
                   </div>
                   {threadPane && (
                     <div
-                      className="flex max-h-[40vh] min-h-0 shrink-0 flex-col lg:max-h-none lg:min-w-0 lg:flex-shrink"
+                      className="flex max-h-[40vh] min-h-0 shrink-0 flex-col overflow-hidden lg:max-h-none lg:min-w-0 lg:flex-1 lg:flex-shrink"
                       data-team-surface="thread-dock"
                     >
                       {threadPane}
@@ -275,7 +267,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
                 </div>
               )}
 
-              {activeWorkspaceLens !== "search" && tab === "tasks" && tasksPanel}
+              {tab === "tasks" && tasksPanel}
 
               {tab === "agent_acp" && agentAcpPanel}
 
@@ -298,9 +290,11 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               )}
 
               {tab === "mailbox" && !mailboxHasActiveRun && (
-                <div className={teamSectionCardClassName}>
-                  <h3 className={teamSectionTitleClassName}>{mailboxEmptyTitle}</h3>
-                  <p className={teamSectionBodyTextClassName}>{mailboxEmptyBody}</p>
+                <EmptyState
+                  className={teamSectionCardClassName}
+                  title={mailboxEmptyTitle}
+                  body={mailboxEmptyBody}
+                >
                   <div className="mt-3">
                     <ActionButton
                       tone="secondary"
@@ -311,7 +305,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
                       Go to Execution Runs
                     </ActionButton>
                   </div>
-                </div>
+                </EmptyState>
               )}
 
               {tab === "mailbox" && mailboxHasActiveRun && mailboxPanelProps && (

@@ -1040,6 +1040,20 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
     assert_eq!(conversation.task_id, task.id);
     assert_eq!(task.context["token"], json!("[redacted]"));
     assert_eq!(task.context["nested"]["api_key"], json!("[redacted]"));
+    assert!(
+        manager
+            .get_latest_run_for_task(&team.id, &task.id)
+            .await
+            .expect("load latest run for task")
+            .is_none()
+    );
+    assert!(
+        manager
+            .list_runs(&team.id, 10, None, None)
+            .await
+            .expect("list team runs")
+            .is_empty()
+    );
 
     let message = manager
         .append_task_conversation_message(

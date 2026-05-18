@@ -849,7 +849,7 @@ describe("team panels interactions", () => {
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
     expect(onSelectChannel).toHaveBeenCalledWith("all");
     expect(onSelectKanban).toHaveBeenCalledTimes(3);
-    expect(onSelectSearch).toHaveBeenCalledTimes(4);
+    expect(onSelectSearch).not.toHaveBeenCalled();
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
     expect(container.textContent).toContain("Channels");

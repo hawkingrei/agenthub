@@ -757,6 +757,11 @@ fn permission_review_failure_outcome(options: &[PermissionOption]) -> RequestPer
     options
         .iter()
         .find(|option| option.kind == PermissionOptionKind::RejectOnce)
+        .or_else(|| {
+            options
+                .iter()
+                .find(|option| option.kind == PermissionOptionKind::RejectAlways)
+        })
         .map(|option| {
             RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
                 option.option_id.to_string(),
@@ -3923,7 +3928,7 @@ Fallback to the user-level review contract.
     }
 
     #[test]
-    fn permission_review_failure_outcome_cancels_without_reject_once() {
+    fn permission_review_failure_outcome_selects_reject_always_when_needed() {
         let outcome = permission_review_failure_outcome(&[
             PermissionOption::new("allow", "Allow once", PermissionOptionKind::AllowOnce),
             PermissionOption::new(
@@ -3932,7 +3937,10 @@ Fallback to the user-level review contract.
                 PermissionOptionKind::RejectAlways,
             ),
         ]);
-        assert!(matches!(outcome, RequestPermissionOutcome::Cancelled));
+        assert!(matches!(
+            outcome,
+            RequestPermissionOutcome::Selected(selected) if selected.option_id.to_string() == "deny_always"
+        ));
     }
 
     #[test]

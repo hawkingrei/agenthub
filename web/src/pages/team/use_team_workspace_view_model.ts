@@ -125,7 +125,10 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   const isAgentWorkspace =
     hasSelectedAgentContext && (tab === "agent_acp" || tab === "mailbox" || tab === "member_console");
 
-  const activeWorkspaceLens = routeWorkspaceLens ?? resolveWorkspaceLensForTab(tab);
+  const activeWorkspaceLens =
+    routeWorkspaceLens === "search"
+      ? resolveWorkspaceLensForTab(tab)
+      : routeWorkspaceLens ?? resolveWorkspaceLensForTab(tab);
   const selectedAgentLabelMemberId = useMemo(() => {
     const resolvedMemberId = selectedAgentWorkspaceMemberId.trim();
     if (resolvedMemberId) {

@@ -354,7 +354,6 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     deletingChannelId = null,
     onSelectKanban,
     onSelectTask = () => {},
-    onSelectSearch = () => {},
     onSelectAgentTab,
     onOpenTeamMemberForge,
     onOpenTeamMemberCopyExisting,
@@ -536,8 +535,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
   );
   const handleOpenSearch = React.useCallback(() => {
     setSearchDialogOpen(true);
-    onSelectSearch();
-  }, [onSelectSearch]);
+  }, []);
   const handleCreateChannelSubmit = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();

@@ -26,8 +26,6 @@ function createBaseWorkbenchContentProps(): TeamWorkbenchContentProps {
     } as unknown as TeamDefinitionRecord,
     isAgentWorkspace: false,
     teamSectionCardClassName: "team-card",
-    teamSectionTitleClassName: "team-title",
-    teamSectionBodyTextClassName: "team-body",
     panelSecondaryButtonClassName: "team-button",
     teamWorkbenchWorkspaceShellClassName: "team-shell",
     workspaceHeaderProps: {
@@ -168,7 +166,7 @@ describe("team_workbench_content", () => {
     );
     expect(withoutThread).not.toContain("max-h-[40vh]");
     expect(withoutThread).not.toContain("lg:grid");
-    expect(withoutThread).not.toContain("lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.92fr)]");
+    expect(withoutThread).not.toContain("lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]");
 
     const withThread = renderToStaticMarkup(
       <TeamWorkbenchContent
@@ -178,7 +176,8 @@ describe("team_workbench_content", () => {
     );
     expect(withThread).toContain("data-testid=\"thread-pane\"");
     expect(withThread).toContain("max-h-[40vh]");
-    expect(withThread).toContain("lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.92fr)]");
+    expect(withThread).toContain("lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]");
+    expect(withThread).toContain("lg:flex-1");
     expect(withThread).toContain("flex-col");
     expect(withThread).not.toContain("overflow-y-auto");
   });
@@ -200,7 +199,7 @@ describe("team_workbench_content", () => {
     expect(html).not.toContain('aria-label="More"');
   });
 
-  it("keeps the search lens as a fallback workspace placeholder", () => {
+  it("treats the deprecated search lens as the channel surface", () => {
     const html = renderToStaticMarkup(
       <MantineProvider env="test">
         <TeamWorkbenchContent
@@ -210,9 +209,9 @@ describe("team_workbench_content", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain('data-workspace-lens-placeholder="search"');
-    expect(html).toContain("Search workspace");
-    expect(html).not.toContain("Search messages, tasks, channels, or agents");
+    expect(html).toContain('data-testid="conversation-panel"');
+    expect(html).not.toContain('data-workspace-lens-placeholder="search"');
+    expect(html).not.toContain("Search workspace");
   });
 
   it("renders the workspace header with a single shell chrome class", () => {
