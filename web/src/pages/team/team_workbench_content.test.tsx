@@ -200,7 +200,7 @@ describe("team_workbench_content", () => {
     expect(html).not.toContain('aria-label="More"');
   });
 
-  it("renders search as a direct workspace input", () => {
+  it("keeps the search lens as a fallback workspace placeholder", () => {
     const html = renderToStaticMarkup(
       <MantineProvider env="test">
         <TeamWorkbenchContent
@@ -210,10 +210,9 @@ describe("team_workbench_content", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain('type="search"');
-    expect(html).toContain('aria-label="Search workspace"');
-    expect(html).toContain("Search messages, tasks, channels, or agents");
-    expect(html).not.toContain("Shared search is still being wired in");
+    expect(html).toContain('data-workspace-lens-placeholder="search"');
+    expect(html).toContain("Search workspace");
+    expect(html).not.toContain("Search messages, tasks, channels, or agents");
   });
 
   it("renders the workspace header with a single shell chrome class", () => {

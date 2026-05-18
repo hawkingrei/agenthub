@@ -30,7 +30,7 @@ describe("WorkspaceLensPlaceholder", () => {
     expect(html).toContain("shell-card");
   });
 
-  it("renders the shared workspace search input variant", () => {
+  it("renders the shared workspace search fallback variant", () => {
     const html = renderToStaticMarkup(
       <MantineProvider>
         <WorkspaceSearchLensPlaceholder className="shared-search-card" />
@@ -39,9 +39,8 @@ describe("WorkspaceLensPlaceholder", () => {
 
     expect(html).toContain("Search");
     expect(html).toContain("Search workspace");
-    expect(html).toContain("Find Team messages, tasks, channels, and agent context.");
-    expect(html).toContain("Search messages, tasks, channels, or agents");
-    expect(html).toContain("type=\"search\"");
+    expect(html).toContain("Use the sidebar search command");
+    expect(html).not.toContain("type=\"search\"");
     expect(html).toContain("shared-search-card");
   });
 

@@ -162,7 +162,6 @@ describe("useTeamWorkspaceViewModel", () => {
         "Channels",
         "Tasks",
         "Agents",
-        "Search",
       ]);
       expect(snapshot?.workspaceTitle).toBe("# all");
       expect(snapshot?.workspaceDescription).toBe(

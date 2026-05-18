@@ -2240,7 +2240,6 @@ export function TeamPage(props: TeamPageProps) {
     onOpenMailboxForMember,
     onSelectConversationSubject,
     onSelectKanbanSubject,
-    onSelectWorkspaceLens,
     onSelectAgentWorkspace,
     onSelectSidebarTeam,
     showRunContextLoading,
@@ -3376,6 +3375,7 @@ export function TeamPage(props: TeamPageProps) {
               teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
               selectedTeamMemberLiveStates={selectedTeamMemberLiveStates}
               channelItems={channelItems}
+              workspaceTasks={workspaceTasks}
               routeChannelId={routeChannelId}
               focusedAgentMemberId={focusedAgentMemberId}
               routeWorkspaceLens={routeWorkspaceLens}
@@ -3388,7 +3388,7 @@ export function TeamPage(props: TeamPageProps) {
               creatingChannel={busy === "create-team-channel"}
               deletingChannelId={deletingChannelId}
               onSelectKanbanSubject={onSelectKanbanSubject}
-              onSelectWorkspaceLens={onSelectWorkspaceLens}
+              onSelectConversationSubject={onSelectConversationSubject}
               onSelectAgentWorkspace={onSelectAgentWorkspace}
               onOpenTeamMemberForge={openTeamMemberForgeModal}
               onOpenTeamMemberCopyExisting={openCopyExistingAgentModal}

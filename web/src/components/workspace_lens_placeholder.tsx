@@ -1,12 +1,6 @@
 import React from "react";
 import { EmptyState, SurfaceCard } from "../ui/primitives";
 
-export const SHARED_WORKSPACE_SEARCH_PLACEHOLDER_TITLE =
-  "Shared search is still being wired in";
-export const SHARED_WORKSPACE_SEARCH_PLACEHOLDER_BODY =
-  "Use Channels, Tasks, or Members while the unified workspace search view is still a shell-level placeholder.";
-export const SHARED_WORKSPACE_SEARCH_LENS_HINT =
-  "Shared search is still being wired in across the unified workspace shell.";
 export const WORKSPACE_MACHINES_UNAVAILABLE_TITLE = "Machines unavailable";
 export const WORKSPACE_MACHINES_UNAVAILABLE_BODY =
   "You do not have permission to manage machines. Select another workspace view to continue.";
@@ -55,32 +49,14 @@ export function WorkspaceSearchLensPlaceholder({
 }: WorkspaceSearchLensPlaceholderProps) {
   return (
     <SurfaceCard className={className} data-workspace-lens-placeholder="search">
-      <div className="flex flex-col gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
-            Search
-          </div>
-          <h3 className="mt-1 text-[16px] font-semibold tracking-tight text-notion-text">
-            Search workspace
-          </h3>
-          <p className="mt-1 text-[13px] leading-5 text-notion-text-muted">
-            Find Team messages, tasks, channels, and agent context.
-          </p>
-        </div>
-        <label className="relative block">
-          <span className="sr-only">Search workspace</span>
-          <i
-            className="bi bi-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-notion-text-muted"
-            aria-hidden="true"
-          />
-          <input
-            className="h-10 w-full rounded-lg border border-notion-border bg-white pl-8 pr-3 text-[13px] text-notion-text outline-none transition placeholder:text-notion-text-muted/70 focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/15"
-            type="search"
-            placeholder="Search messages, tasks, channels, or agents"
-            aria-label="Search workspace"
-          />
-        </label>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
+        Search
       </div>
+      <EmptyState
+        className="mt-2 border-0 bg-transparent px-0 py-0"
+        title="Search workspace"
+        body="Use the sidebar search command to jump across channels, tasks, and agents."
+      />
     </SurfaceCard>
   );
 }
