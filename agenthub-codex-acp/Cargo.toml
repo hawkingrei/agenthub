@@ -27,7 +27,7 @@ anyhow = "1"
 async-trait = "0.1"
 clap = "4"
 codex-apply-patch = { git = "https://github.com/openai/codex", tag = "rust-v0.130.0" }
-codex-config = { git = "https://github.com/openai/codex", tag = "rust-v0.130.0" }
+codex-config = { git = "https://github.com/openai/codex", tag = "rust-v0.131.0" }
 codex-arg0 = { git = "https://github.com/openai/codex", tag = "rust-v0.130.0" }
 codex-app-server-client = { git = "https://github.com/openai/codex", tag = "rust-v0.130.0" }
 codex-app-server-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.130.0" }
