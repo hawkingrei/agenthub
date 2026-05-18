@@ -2,9 +2,8 @@
 
 ## Summary
 
-This checkpoint tightens the highest-priority Team workspace regressions across
-route selection, channel/thread layout, ACP permission-deny fallback, and the
-task-first Team model.
+This checkpoint tightens the Team workspace route selection, channel/thread
+layout, search-command flow, and a small shared-primitive composition slice.
 
 The deployed browser pass against `agenthub.hawkingrei.com` is covered for the
 Team workspace layout and search-command matrix. Authentication required
@@ -13,14 +12,11 @@ initial browser profile did not carry an `agenthub.hawkingrei.com` login state.
 
 ## Background
 
-The active P0 backlog had four related gaps:
+The active P0 backlog had two related web gaps:
 
 - Team workspace browser behavior for channel/thread split and independent
   search command flow.
 - Continued Team workspace composition cleanup and primitive consolidation.
-- ACP long-session recovery when a Codex permission review cannot be delivered.
-- Task-first Team model verification that creating a task does not imply an
-  execution run.
 
 ## Scope
 
@@ -34,10 +30,6 @@ The active P0 backlog had four related gaps:
 - Replace two local empty-card assemblies with the shared `EmptyState`
   primitive and remove the associated class plumbing from
   `TeamWorkbenchContent`.
-- Prefer a concrete reject option for ACP permission-review failure fallback
-  before falling back to cancel.
-- Extend the Team manager regression to assert task creation does not create a
-  run and leaves run history empty.
 
 ## Key Decisions
 
@@ -47,10 +39,6 @@ The active P0 backlog had four related gaps:
 - Thread is still a subordinate channel detail, not a top-level workspace lens.
   The adaptive behavior is layout-only: no open thread means the channel lane
   owns the full center surface; an open thread introduces the split.
-- The ACP fallback uses provider-visible deny semantics when possible. If a
-  review request offers `RejectOnce`, that stays preferred; if it only offers
-  `RejectAlways`, failure now submits that option instead of abandoning the
-  prompt through cancellation.
 - This checkpoint does not close the broader Team composition P0. It lands one
   bounded primitive/construction slice while leaving deeper panel, dock, toolbar,
   and row migrations open.
@@ -63,9 +51,7 @@ npm run test -- src/app_route_selection.test.ts
 npm run lint
 npm exec tsc -- --noEmit
 make build-web
-cargo test -p agenthub-acp permission_review_failure_outcome -- --nocapture
-cargo test -p agenthub task_and_conversation_messages_are_persisted_with_redaction -- --nocapture
-cargo fmt --all --check
+git diff --check
 ```
 
 The `npm run test -- src/app_route_selection.test.ts` pass also confirmed the
@@ -103,8 +89,3 @@ agent-browser --session-name agenthub-team-ui open https://agenthub.hawkingrei.c
 - Record CI run IDs after this branch is pushed.
 - Continue moving remaining Team panels, docks, toolbars, and row/list
   affordances onto shared primitives.
-- Add an end-to-end browser/runtime pass for Codex full-access session
-  projection and permission-deny recovery once a live Codex Team member is
-  available.
-- Add an end-to-end Team task creation pass against the deployed site to
-  complement the manager-level task-first regression.
