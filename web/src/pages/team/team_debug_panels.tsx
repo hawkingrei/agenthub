@@ -3,6 +3,8 @@ import { TextInput, Textarea } from "@mantine/core";
 import {
   ActionButton,
   EmptyState,
+  SECTION_BODY_TEXT_CLASS,
+  SECTION_HEADING_CLASS,
   SurfaceCard,
   ToolbarRow,
 } from "../../ui/primitives";
@@ -32,7 +34,7 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
   return (
     <SurfaceCard className={`${chrome.panelCardClassName} p-3`}>
       <ToolbarRow>
-        <h3 className="text-sm font-semibold text-notion-text">Debug Tools</h3>
+        <h3 className={SECTION_HEADING_CLASS}>Debug Tools</h3>
         <div className={chrome.debugTabsClassName}>
           <ActionButton
             type="button"
@@ -127,8 +129,8 @@ export const TeamRunOpsPanel = React.memo(function TeamRunOpsPanel({
   return (
     <div className="space-y-3">
       <SurfaceCard className={`${chrome.panelCardClassName} p-4`}>
-        <h4 className="text-sm font-semibold text-notion-text">Create Run</h4>
-        <p className="mt-1 text-[13px] leading-relaxed text-notion-text-muted">
+        <h4 className={SECTION_HEADING_CLASS}>Create Run</h4>
+        <p className={SECTION_BODY_TEXT_CLASS}>
           Debug entry for manually starting a Team run.
         </p>
         <ToolbarRow className="mt-3 flex-col sm:flex-row sm:items-start">
@@ -219,8 +221,8 @@ export const TeamRunOpsPanel = React.memo(function TeamRunOpsPanel({
         </p>
       </SurfaceCard>
       <SurfaceCard className={`${chrome.panelCardClassName} p-4`}>
-        <h4 className="text-sm font-semibold text-notion-text">Load Existing Run</h4>
-        <p className="mt-1 text-[13px] leading-relaxed text-notion-text-muted">
+        <h4 className={SECTION_HEADING_CLASS}>Load Existing Run</h4>
+        <p className={SECTION_BODY_TEXT_CLASS}>
           Load by <code>run_id</code> for the currently selected team only.
         </p>
         <ToolbarRow className="mt-3 flex-col sm:flex-row sm:items-start">
@@ -259,7 +261,11 @@ export const TeamRunRequiredPanel = React.memo(function TeamRunRequiredPanel({
   onGoToRuns,
 }: TeamRunRequiredPanelProps) {
   return (
-    <EmptyState className={chrome.panelCardClassName} title={title} body={body}>
+    <EmptyState
+      className={chrome.panelCardClassName}
+      title={<h4 className={SECTION_HEADING_CLASS}>{title}</h4>}
+      body={body}
+    >
       <div className="mt-3">
         <ActionButton
           tone="secondary"

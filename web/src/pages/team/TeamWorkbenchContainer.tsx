@@ -35,6 +35,7 @@ import {
   TeamRunOpsPanel,
 } from "./team_debug_panels";
 import { WorkspacePanelLoadingFallback } from "../../components/workspace_panel_loading_fallback";
+import { SECTION_HINT_TEXT_CLASS } from "../../ui/primitives";
 import {
   buildTeamWorkspaceHeaderProps,
   buildTeamRunsPanelProps,
@@ -784,7 +785,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
   const teamDebugChrome = useMemo(
     () => ({
       panelCardClassName: teamSectionCardClassName,
-      sectionHintTextClassName: "mt-2 text-[12px] leading-relaxed text-notion-text-muted",
+      sectionHintTextClassName: SECTION_HINT_TEXT_CLASS,
       debugTabsClassName: "flex flex-wrap items-center gap-1 bg-notion-sidebar p-1 rounded-lg border border-notion-border",
       debugTabActiveClassName: "inline-flex items-center rounded-md bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-notion-text shadow-sm",
       debugTabIdleClassName: "inline-flex items-center rounded-md px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:text-notion-text hover:bg-notion-hover",
