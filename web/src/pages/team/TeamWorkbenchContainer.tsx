@@ -63,6 +63,11 @@ const LazyTeamMailboxPanel = React.lazy(async () => {
   return { default: module.TeamMailboxPanel };
 });
 
+const LazyTeamOverviewProfilePanel = React.lazy(async () => {
+  const module = await import("../team_overview_panel");
+  return { default: module.TeamOverviewPanel };
+});
+
 export type TeamWorkbenchRuntimeContext = {
   // Shell & Layout
   showTeamBootstrapLoading: boolean;
@@ -884,6 +889,38 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
       <TeamThreadContainer />
     ) : null;
 
+  const channelProfileMemberId =
+    !isAgentWorkspace &&
+    tab === "conversation" &&
+    activeWorkspaceLens === "channels" &&
+    selectedMemberId.trim().length > 0
+      ? selectedMemberId.trim()
+      : "";
+  const profilePane =
+    channelProfileMemberId && activeRunForSelectedTeam ? (
+      <Suspense fallback={<TeamPanelLoadingFallback />}>
+        <LazyTeamOverviewProfilePanel
+          snapshot={snapshot}
+          snapshotLoading={snapshotLoading}
+          onRefreshSnapshot={onRefreshOverviewSnapshot}
+          selectedMemberId={channelProfileMemberId}
+          onOpenMailboxForMember={onOpenMailboxForMember}
+          onEditAgentProfile={onOpenTeamMemberEditModal}
+          onCloseAgentProfile={() => {
+            setSelectedMemberId("");
+            if (effectiveSelectedTeamId) {
+              navigateTeamRoute(
+                buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId)
+              );
+            }
+          }}
+          profileOnly
+          displayNameByActorId={mailboxDisplayNameByActorId}
+          memberTargetNodeById={memberTargetNodeById}
+        />
+      </Suspense>
+    ) : null;
+
   const agentAcpPanel = (
     <Suspense
       fallback={
@@ -1056,7 +1093,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
 
   const bodyProps = buildTeamWorkbenchBodyProps({
     conversationPanel,
-    threadPane,
+    threadPane: profilePane ?? threadPane,
     tasksPanel,
     agentAcpPanel,
     overviewPanelProps,
