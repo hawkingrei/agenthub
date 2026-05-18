@@ -652,18 +652,6 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         selectedMemberId,
         onOpenMailboxForMember,
         onEditAgentProfile: onOpenTeamMemberEditModal,
-        onCloseAgentProfile: () => {
-          setSelectedMemberId("");
-          onTabChange("conversation");
-          if (effectiveSelectedTeamId) {
-            navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId));
-          }
-        },
-        profileOnly:
-          !isAgentWorkspace &&
-          tab === "overview" &&
-          selectedMemberId.trim().length > 0 &&
-          (activeWorkspaceLens === "channels" || activeWorkspaceLens === "members"),
         displayNameByActorId: mailboxDisplayNameByActorId,
         memberTargetNodeById,
       }
