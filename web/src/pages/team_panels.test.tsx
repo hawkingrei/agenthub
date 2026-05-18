@@ -3040,7 +3040,7 @@ describe("team panels interactions", () => {
     expect(profile.querySelector("input, textarea")).toBeNull();
     expect(container.textContent).not.toContain("Team Snapshot");
     expect(container.textContent).not.toContain("Cold Start Playbook");
-    clickElement(findButtonByAriaLabel(container, "Back to channel"));
+    clickElement(findButtonByAriaLabel(container, "Close agent profile"));
     expect(container.querySelector(".teams-agent-profile")).toBeNull();
 
     clickElement(container.querySelector('[data-team-agent-mention-id="worker-agent"]'));

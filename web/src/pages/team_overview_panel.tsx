@@ -140,11 +140,11 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                         tone="secondary"
                         size="sm"
                         onClick={onCloseAgentProfile}
-                        aria-label="Back to channel"
-                        title="Back to channel"
+                        aria-label="Close agent profile"
+                        title="Close agent profile"
                       >
-                        <i className="bi bi-arrow-left" aria-hidden="true" />
-                        <span>Back to channel</span>
+                        <i className="bi bi-x-lg" aria-hidden="true" />
+                        <span>Close</span>
                       </ActionButton>
                     ) : null}
                     {onEditAgentProfile ? (
