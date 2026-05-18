@@ -261,6 +261,14 @@ describe("mailbox helpers", () => {
     expect(rendered).not.toContain('data-team-agent-mention-id="worker-2"');
   });
 
+  it("skips nested protected markdown ranges when tokenizing raw mentions", () => {
+    const rendered = renderMarkdownWithMentions(
+      "`[profile](https://example.com/@worker-1)` @worker-2"
+    );
+    expect(rendered).not.toContain('data-team-agent-mention-id="worker-1"');
+    expect(rendered).toContain('data-team-agent-mention-id="worker-2"');
+  });
+
   it("treats short blank-line-separated chat fragments as plain text instead of markdown paragraphs", () => {
     const rendered = renderMarkdownWithMentions("跑\n\n一次\n\n同样的命令，但这次给");
     expect(rendered).not.toContain("<p>");

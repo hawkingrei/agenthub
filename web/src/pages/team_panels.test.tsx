@@ -3197,6 +3197,79 @@ describe("team panels interactions", () => {
     );
   });
 
+  it("TeamConversationContainer ignores clicked channel mentions without a selected team", async () => {
+    const navigateTeamRoute = vi.fn();
+    const workspaceContext: TeamWorkspaceContextValue = {
+      selectedConversation: null,
+      developerMode: false,
+      token: "token",
+      tasksLoading: false,
+      onRefreshTasks: vi.fn(),
+      taskMessageDraft: "",
+      setTaskMessageDraft: vi.fn(),
+      onSendTaskMessage: vi.fn(),
+      taskMessages: [
+        buildTaskMessage(14, {
+          from_actor_id: "coordinator-agent",
+          to_actor_id: null,
+          route: "group_chat",
+          payload: {
+            type: "chat_message",
+            text: "@worker-agent please inspect this.",
+          },
+        }),
+      ],
+      conversationMailboxMessages: [],
+      snapshot: null,
+      mailboxDisplayNameByActorId: {
+        "worker-agent": "Worker Agent",
+      },
+      selectedTeamMemberLiveStates: [],
+      taskConversationMemberIds: ["coordinator-agent", "worker-agent"],
+      activeConversationTitle: "# all",
+      selectedConversationMatchesChannelLane: true,
+      taskMessagesLoading: false,
+      busy: null,
+      routeThreadRootMessageId: null,
+      channelFocusMessageId: null,
+      setChannelFocusMessageId: vi.fn(),
+      effectiveSelectedTeamId: null,
+      routeWorkspaceLens: "channels",
+      routeChannelId: "all",
+      activeChannelConversationTaskId: "task-1",
+      navigateTeamRoute,
+      isCompactWorkbench: false,
+      selectedChannelItem: undefined,
+      workspaceTasks: [],
+      selectedTaskId: "",
+      setSelectedTaskId: vi.fn(),
+      onSelectConversationSubject: vi.fn(),
+      runs: [],
+      onOpenTaskRun: vi.fn(),
+      compilePreviewContextId: "",
+      setCompilePreviewContextId: vi.fn(),
+      onCompileTaskRunPreview: vi.fn(),
+      canCompileTask: false,
+      compiledRunPreview: null,
+      onUseCompiledRunPayload: vi.fn(),
+      onCreateRunFromCompiledPreview: vi.fn(),
+      onSendThreadReply: vi.fn(),
+      threadReplyDraft: "",
+      setThreadReplyDraft: vi.fn(),
+    };
+
+    renderWithMantine(
+      root,
+      <TeamWorkspaceProvider value={workspaceContext}>
+        <TeamConversationContainer />
+      </TeamWorkspaceProvider>
+    );
+
+    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+    clickElement(container.querySelector('[data-team-agent-mention-id="worker-agent"]'));
+    expect(navigateTeamRoute).not.toHaveBeenCalled();
+  });
+
   it("renders an agent profile from a channel mention before opening the edit dialog", async () => {
     function ChannelMentionProfileHarness() {
       const [selectedMemberId, setSelectedMemberId] = React.useState("");

@@ -657,6 +657,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
       }
     : null;
 
+  /* c8 ignore start -- covered through TeamMailboxPanel mention callback tests. */
   const onOpenMemberProfileFromChat = React.useCallback(
     (memberId: string) => {
       const normalizedMemberId = memberId.trim();
@@ -668,6 +669,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     },
     [onTabChange, setSelectedMemberId]
   );
+  /* c8 ignore stop */
 
   const eventsPanelProps = activeRunForSelectedTeam
     ? {

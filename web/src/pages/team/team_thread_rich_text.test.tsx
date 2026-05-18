@@ -81,4 +81,23 @@ describe("TeamThreadRichText", () => {
     container.querySelector("p")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onMentionClick).not.toHaveBeenCalled();
   });
+
+  it("ignores mention chip clicks when no profile handler is provided", () => {
+    act(() => {
+      renderWithMantine(
+        root,
+        <TeamThreadRichText
+          text="@worker-1"
+          renderSanitizedHtml={() =>
+            '<button type="button" data-team-agent-mention-id="worker-1">@Worker</button>'
+          }
+        />
+      );
+    });
+
+    container
+      .querySelector('[data-team-agent-mention-id="worker-1"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(container.textContent).toContain("@Worker");
+  });
 });
