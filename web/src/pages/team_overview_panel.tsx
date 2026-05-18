@@ -26,6 +26,7 @@ type TeamOverviewPanelProps = {
   selectedMemberId: string;
   onOpenMailboxForMember: (memberId: string) => void;
   onEditAgentProfile?: () => void;
+  onCloseAgentProfile?: () => void;
   profileOnly?: boolean;
   displayNameByActorId?: Record<string, string>;
   memberTargetNodeById?: Record<string, string | null>;
@@ -43,6 +44,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
     selectedMemberId,
     onOpenMailboxForMember,
     onEditAgentProfile,
+    onCloseAgentProfile,
     profileOnly = false,
     displayNameByActorId = {},
     memberTargetNodeById = {},
@@ -132,18 +134,32 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                 title="Agent Profile"
                 subtitle={selectedMemberDisplayName}
                 actions={
-                  onEditAgentProfile ? (
-                    <ActionButton
-                      tone="secondary"
-                      size="sm"
-                      onClick={onEditAgentProfile}
-                      aria-label="Edit agent profile"
-                      title="Edit agent profile"
-                    >
-                      <i className="bi bi-pencil-square" aria-hidden="true" />
-                      <span>Edit profile</span>
-                    </ActionButton>
-                  ) : null
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {profileOnly && onCloseAgentProfile ? (
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={onCloseAgentProfile}
+                        aria-label="Back to channel"
+                        title="Back to channel"
+                      >
+                        <i className="bi bi-arrow-left" aria-hidden="true" />
+                        <span>Back to channel</span>
+                      </ActionButton>
+                    ) : null}
+                    {onEditAgentProfile ? (
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={onEditAgentProfile}
+                        aria-label="Edit agent profile"
+                        title="Edit agent profile"
+                      >
+                        <i className="bi bi-pencil-square" aria-hidden="true" />
+                        <span>Edit profile</span>
+                      </ActionButton>
+                    ) : null}
+                  </div>
                 }
               />
               <KeyValueList className="mt-4">

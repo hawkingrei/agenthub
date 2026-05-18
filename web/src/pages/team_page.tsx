@@ -1099,7 +1099,10 @@ export function TeamPage(props: TeamPageProps) {
     }
     setSelectedMemberId(memberId);
     setFocusedAgentMemberId(memberId);
-  }, [routeSelectedMemberId, setSelectedMemberId]);
+    if (routeWorkspaceLens === "channels") {
+      setTab("overview");
+    }
+  }, [routeSelectedMemberId, routeWorkspaceLens, setSelectedMemberId, setTab]);
   const {
     teamSpecMemberIds,
     teamMemberSummaryByTeamId,

@@ -17,6 +17,7 @@ import type { StepAction, TeamTab } from "./state";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type { MailboxTemplateKey, TeamMailboxChatActors } from "./mailbox_helpers";
 import type { TeamRunStatusFilter } from "./run_helpers";
+import { buildTeamWorkspacePath } from "../team_page";
 import { TeamConversationContainer } from "./TeamConversationContainer";
 import { TeamTasksContainer } from "./TeamTasksContainer";
 import { TeamThreadContainer } from "./TeamThreadContainer";
@@ -282,6 +283,8 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     workbench: props,
     routeThreadRootMessageId,
     selectedConversationMatchesChannelLane,
+    routeChannelId,
+    navigateTeamRoute,
   } = useTeamWorkspace();
   if (!props) {
     throw new Error("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
@@ -644,7 +647,18 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         selectedMemberId,
         onOpenMailboxForMember,
         onEditAgentProfile: onOpenTeamMemberEditModal,
-        profileOnly: activeWorkspaceLens === "members" && selectedMemberId.trim().length > 0,
+        onCloseAgentProfile: () => {
+          setSelectedMemberId("");
+          onTabChange("conversation");
+          if (effectiveSelectedTeamId) {
+            navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId));
+          }
+        },
+        profileOnly:
+          !isAgentWorkspace &&
+          tab === "overview" &&
+          selectedMemberId.trim().length > 0 &&
+          (activeWorkspaceLens === "channels" || activeWorkspaceLens === "members"),
         displayNameByActorId: mailboxDisplayNameByActorId,
         memberTargetNodeById,
       }

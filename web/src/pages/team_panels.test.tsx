@@ -2867,7 +2867,7 @@ describe("team panels interactions", () => {
     expect(mention).not.toBeNull();
     mention?.click();
     expect(navigateTeamRoute).toHaveBeenCalledWith(
-      "/workspace/teams/team-1?lens=members&member=worker-agent"
+      "/workspace/teams/team-1?task=task-1&member=worker-agent"
     );
   });
 
@@ -2988,6 +2988,7 @@ describe("team panels interactions", () => {
               onRefreshSnapshot={vi.fn()}
               selectedMemberId={selectedMemberId}
               onOpenMailboxForMember={setSelectedMemberId}
+              onCloseAgentProfile={() => setSelectedMemberId("")}
               onEditAgentProfile={() => {
                 setEditDraft(
                   buildTeamMemberDraftFromSpec(snapshot.team.spec, selectedMemberId, null, {
@@ -3039,6 +3040,11 @@ describe("team panels interactions", () => {
     expect(profile.querySelector("input, textarea")).toBeNull();
     expect(container.textContent).not.toContain("Team Snapshot");
     expect(container.textContent).not.toContain("Cold Start Playbook");
+    clickElement(findButtonByAriaLabel(container, "Back to channel"));
+    expect(container.querySelector(".teams-agent-profile")).toBeNull();
+
+    clickElement(container.querySelector('[data-team-agent-mention-id="worker-agent"]'));
+    await waitForCondition(() => container.textContent?.includes("Agent Profile") ?? false);
 
     clickElement(findButtonByAriaLabel(container, "Edit agent profile"));
 

@@ -78,15 +78,16 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
       navigateTeamRoute(
         buildTeamWorkspacePath(
           effectiveSelectedTeamId,
-          "members",
-          null,
+          "channels",
+          routeChannelId,
           null,
           normalizedMemberId,
-          "overview"
+          null,
+          activeChannelConversationTaskId
         )
       );
     },
-    [effectiveSelectedTeamId, navigateTeamRoute]
+    [activeChannelConversationTaskId, effectiveSelectedTeamId, navigateTeamRoute, routeChannelId]
   );
 
   return (
