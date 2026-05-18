@@ -26,6 +26,7 @@ type TeamOverviewPanelProps = {
   selectedMemberId: string;
   onOpenMailboxForMember: (memberId: string) => void;
   onEditAgentProfile?: () => void;
+  profileOnly?: boolean;
   displayNameByActorId?: Record<string, string>;
   memberTargetNodeById?: Record<string, string | null>;
 };
@@ -42,6 +43,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
     selectedMemberId,
     onOpenMailboxForMember,
     onEditAgentProfile,
+    profileOnly = false,
     displayNameByActorId = {},
     memberTargetNodeById = {},
   } = props;
@@ -56,26 +58,28 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
 
   return (
     <SurfaceCard className="teams-overview-panel flex min-h-0 flex-1 flex-col overflow-auto p-4">
-      <PanelHeader
-        title="Team Snapshot"
-        actions={
-          <ActionButton
-            tone="secondary"
-            size="md"
-            onClick={() => {
-              void onRefreshSnapshot();
-            }}
-            disabled={snapshotLoading}
-            title="Refresh snapshot"
-            aria-label="Refresh snapshot"
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh</span>
-          </ActionButton>
-        }
-      />
+      {!profileOnly && (
+        <PanelHeader
+          title="Team Snapshot"
+          actions={
+            <ActionButton
+              tone="secondary"
+              size="md"
+              onClick={() => {
+                void onRefreshSnapshot();
+              }}
+              disabled={snapshotLoading}
+              title="Refresh snapshot"
+              aria-label="Refresh snapshot"
+            >
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              <span>Refresh</span>
+            </ActionButton>
+          }
+        />
+      )}
 
-      <InsetSurface className="mb-6 bg-white shadow-sm">
+      {!profileOnly && <InsetSurface className="mb-6 bg-white shadow-sm">
         <h4 className="text-[15px] font-bold text-notion-text uppercase tracking-tight">Cold Start Playbook</h4>
         <p className="mt-1 text-[13px] leading-relaxed text-notion-text-muted">
           On each process start, roles should check unfinished TODOs.
@@ -100,13 +104,13 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
             </ol>
           </section>
         </div>
-      </InsetSurface>
+      </InsetSurface>}
 
       {!snapshot && <EmptyState body="No snapshot yet." />}
 
       {snapshot && (
         <>
-          <KeyValueList className="teams-overview-meta mb-8">
+          {!profileOnly && <KeyValueList className="teams-overview-meta mb-8">
             <KeyValueItem
               label="Coordinator"
               value={
@@ -120,7 +124,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
             <KeyValueItem label="Delivered" value={snapshot.mailbox.delivered} />
             <KeyValueItem label="Dead letter" value={snapshot.mailbox.dead_letter} />
             <KeyValueItem label="Recent events" value={snapshot.latest_events.length} />
-          </KeyValueList>
+          </KeyValueList>}
 
           {selectedMember && (
             <InsetSurface className="teams-agent-profile mb-6 bg-white shadow-sm">
@@ -211,7 +215,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
             </InsetSurface>
           )}
 
-          <div className="teams-member-list flex flex-col gap-2">
+          {!profileOnly && <div className="teams-member-list flex flex-col gap-2">
             {snapshot.members.map((member) => {
               const attachedNodeId = memberTargetNodeById[member.member_id]?.trim() || null;
               const attachedNodeIsMain = attachedNodeId ? isMainNode(attachedNodeId) : false;
@@ -272,7 +276,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                 </SelectableListItem>
               );
             })}
-          </div>
+          </div>}
         </>
       )}
     </SurfaceCard>

@@ -2996,6 +2996,7 @@ describe("team panels interactions", () => {
                   })
                 );
               }}
+              profileOnly
               displayNameByActorId={{
                 "worker-agent": "Worker Agent",
               }}
@@ -3036,6 +3037,8 @@ describe("team panels interactions", () => {
     expect(profile.textContent).toContain("Inspect the issue and report evidence.");
     expect(profile.textContent).toContain("team-worker-executor");
     expect(profile.querySelector("input, textarea")).toBeNull();
+    expect(container.textContent).not.toContain("Team Snapshot");
+    expect(container.textContent).not.toContain("Cold Start Playbook");
 
     clickElement(findButtonByAriaLabel(container, "Edit agent profile"));
 

@@ -644,6 +644,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         selectedMemberId,
         onOpenMailboxForMember,
         onEditAgentProfile: onOpenTeamMemberEditModal,
+        profileOnly: activeWorkspaceLens === "members" && selectedMemberId.trim().length > 0,
         displayNameByActorId: mailboxDisplayNameByActorId,
         memberTargetNodeById,
       }
