@@ -911,6 +911,7 @@ impl AppServerCodexThread {
                         call_id: params.item_id,
                         approval_id: params.approval_id,
                         turn_id: params.turn_id,
+                        started_at_ms: params.started_at_ms,
                         command: command_vec.clone(),
                         cwd: params.cwd.unwrap_or_else(|| state.config.cwd.clone()),
                         reason: params.reason,
@@ -954,6 +955,7 @@ impl AppServerCodexThread {
                     msg: EventMsg::ApplyPatchApprovalRequest(ApplyPatchApprovalRequestEvent {
                         call_id: params.item_id,
                         turn_id: params.turn_id,
+                        started_at_ms: params.started_at_ms,
                         changes,
                         reason: params.reason,
                         grant_root: params.grant_root,
@@ -2767,6 +2769,7 @@ fn permissions_request_event_from_params(
     RequestPermissionsEvent {
         call_id: params.item_id,
         turn_id: params.turn_id,
+        started_at_ms: params.started_at_ms,
         reason: params.reason,
         permissions: RequestPermissionProfile {
             network: params.permissions.network.map(Into::into),
@@ -3222,6 +3225,7 @@ mod tests {
                 thread_id: "thread-1".to_string(),
                 turn_id: "turn-1".to_string(),
                 item_id: "call-1".to_string(),
+                started_at_ms: 0,
                 cwd: cwd.clone(),
                 reason: Some("need write access".to_string()),
                 permissions: codex_app_server_protocol::RequestPermissionProfile {
