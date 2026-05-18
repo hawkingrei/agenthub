@@ -2251,6 +2251,11 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("plan");
     expect(container.textContent).toContain("team-coordinator-orchestrator");
     expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
+    const overviewPanel = required(
+      container.querySelector(".teams-overview-panel"),
+      "overview panel missing"
+    );
+    expect(overviewPanel.className).toContain("overflow-auto");
     expect(container.querySelector(".teams-agent-profile")).not.toBeNull();
     expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
     expect(container.textContent).toContain("Machine main");

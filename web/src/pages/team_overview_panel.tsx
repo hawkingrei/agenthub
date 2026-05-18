@@ -55,7 +55,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
     : null;
 
   return (
-    <SurfaceCard className="p-4">
+    <SurfaceCard className="teams-overview-panel flex min-h-0 flex-1 flex-col overflow-auto p-4">
       <PanelHeader
         title="Team Snapshot"
         actions={
