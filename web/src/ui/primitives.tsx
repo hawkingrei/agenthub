@@ -78,10 +78,13 @@ const COMPACT_BUTTON_BASE_CLASS =
   "inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium tracking-[0.01em] text-notion-text-muted transition hover:bg-notion-text/[0.05] hover:text-notion-text active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
 const COMPACT_ICON_BUTTON_BASE_CLASS =
   "inline-flex h-5 min-w-5 items-center justify-center rounded-md p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-text/[0.05] hover:text-notion-text active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
+export const SECTION_HEADING_CLASS = "text-sm font-semibold text-notion-text";
+export const SECTION_BODY_TEXT_CLASS = "mt-1 text-[13px] leading-relaxed text-notion-text-muted";
+export const SECTION_HINT_TEXT_CLASS = "mt-2 text-[12px] leading-relaxed text-notion-text-muted";
 const EMPTY_STATE_BASE_CLASS =
   "rounded-xl border border-dashed border-notion-border bg-notion-sidebar/20 px-4 py-5 text-sm text-notion-text-muted";
-const EMPTY_STATE_TITLE_CLASS = "text-sm font-semibold text-notion-text";
-const EMPTY_STATE_BODY_CLASS = "mt-1 leading-relaxed text-notion-text-muted";
+const EMPTY_STATE_TITLE_CLASS = SECTION_HEADING_CLASS;
+const EMPTY_STATE_BODY_CLASS = SECTION_BODY_TEXT_CLASS;
 const INLINE_NOTICE_BASE_CLASS = "rounded-lg border px-3 py-2 text-sm leading-relaxed";
 const INLINE_NOTICE_TONE_CLASS = {
   info: "border-notion-border bg-notion-sidebar/20 text-notion-text-muted",
@@ -352,7 +355,7 @@ export const CompactIconButton = React.forwardRef<HTMLButtonElement, CompactIcon
 );
 CompactIconButton.displayName = "CompactIconButton";
 
-type EmptyStateProps = React.ComponentPropsWithoutRef<"div"> & {
+type EmptyStateProps = Omit<React.ComponentPropsWithoutRef<"div">, "title"> & {
   title?: React.ReactNode;
   body?: React.ReactNode;
 };

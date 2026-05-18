@@ -9,8 +9,6 @@ import {
 
 const chrome = {
   panelCardClassName: "panel",
-  sectionHeadingClassName: "heading",
-  sectionBodyTextClassName: "body",
   sectionHintTextClassName: "hint",
   debugTabsClassName: "debug-tabs",
   debugTabActiveClassName: "debug-tab-active",
