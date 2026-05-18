@@ -1384,6 +1384,7 @@ impl PromptState {
             // grant_root doesn't seem to be set anywhere on the codex side
             grant_root: _,
             turn_id: _,
+            started_at_ms: _,
         } = event;
         let (title, locations, content) = extract_tool_call_content_from_changes(changes);
         let request_key = patch_request_key(&call_id);
@@ -1639,6 +1640,7 @@ impl PromptState {
             call_id,
             command,
             turn_id,
+            started_at_ms: _,
             cwd,
             reason,
             parsed_cmd,
@@ -5967,6 +5969,7 @@ mod tests {
                                     call_id: "call-id".to_string(),
                                     approval_id: Some("approval-id".to_string()),
                                     turn_id: id.to_string(),
+                                    started_at_ms: 0,
                                     command: vec!["echo".to_string(), "hi".to_string()],
                                     cwd: current_dir_abs().unwrap(),
                                     reason: None,
@@ -6390,6 +6393,7 @@ mod tests {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
                             turn_id: "turn-id".to_string(),
+                            started_at_ms: 0,
                             command: vec!["echo".to_string(), "hi".to_string()],
                             cwd: current_dir_abs()?,
                             reason: None,
@@ -6476,6 +6480,7 @@ mod tests {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
                             turn_id: "turn-id".to_string(),
+                            started_at_ms: 0,
                             command: vec!["echo".to_string(), "hi".to_string()],
                             cwd: current_dir_abs()?,
                             reason: None,
@@ -6568,6 +6573,7 @@ mod tests {
                         &session_client,
                         ApplyPatchApprovalRequestEvent {
                             call_id: "patch-call".to_string(),
+                            started_at_ms: 0,
                             changes,
                             reason: Some("Need write approval".to_string()),
                             grant_root: None,
@@ -6645,6 +6651,7 @@ mod tests {
                         &session_client,
                         ApplyPatchApprovalRequestEvent {
                             call_id: "patch-call".to_string(),
+                            started_at_ms: 0,
                             changes,
                             reason: Some("Need write approval".to_string()),
                             grant_root: None,
@@ -6720,6 +6727,7 @@ mod tests {
                         RequestPermissionsEvent {
                             call_id: "permissions-call".to_string(),
                             turn_id: "turn-id".to_string(),
+                            started_at_ms: 0,
                             reason: Some("Need additional permissions".to_string()),
                             permissions:
                                 codex_protocol::request_permissions::RequestPermissionProfile::default(),
@@ -6798,6 +6806,7 @@ mod tests {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
                             turn_id: "turn-id".to_string(),
+                            started_at_ms: 0,
                             command: vec![
                                 actor_cli.clone(),
                                 "actor".to_string(),
@@ -6878,6 +6887,7 @@ mod tests {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
                             turn_id: "turn-id".to_string(),
+                            started_at_ms: 0,
                             command: vec![
                                 "/bin/zsh".to_string(),
                                 "-lc".to_string(),
@@ -7138,6 +7148,7 @@ mod tests {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
                             turn_id: "turn-id".to_string(),
+                            started_at_ms: 0,
                             command: vec!["echo".to_string(), "hi".to_string()],
                             cwd: current_dir_abs()?,
                             reason: None,
