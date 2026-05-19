@@ -2455,6 +2455,7 @@ export function TeamPage(props: TeamPageProps) {
     teamExecutionBlockedReason,
     selectedTeamWorkerCount,
     selectedTeamMemberStatuses,
+    selectedMemberId,
     selectedAgentWorkspaceMemberId,
     selectedAgentWorkspaceAgent,
     selectedAgentLabel,

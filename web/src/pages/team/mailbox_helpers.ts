@@ -445,7 +445,8 @@ export function buildMailboxChatPayload(
 
 function mentionChipHtml(actorId: string, displayNameByActorId?: Record<string, string>): string {
   const label = resolveDisplayName(actorId, displayNameByActorId, actorId);
-  return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 text-[11px] text-brand-primary">@${escapeTeamHtml(label)}</span>`;
+  const escapedActorId = escapeTeamHtml(actorId);
+  return `<button type="button" class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 text-[11px] text-brand-primary transition hover:bg-brand-primary/15" data-team-agent-mention-id="${escapedActorId}">@${escapeTeamHtml(label)}</button>`;
 }
 
 function isRawMentionBoundary(previous: string): boolean {
@@ -479,6 +480,49 @@ function replaceRawMentionsWithTokens(text: string): string {
     const actorId = text.slice(cursor + 1, end).trim();
     chunks.push(`%%AGH_AT_MENTION:${actorId}%%`);
     cursor = end;
+  }
+  return chunks.join("");
+}
+
+function collectMarkdownMentionProtectedRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const inlineCodePattern = /`[^`\n]+`/g;
+  const markdownLinkPattern = /!?\[[^\]]*]\([^)]+\)/g;
+  for (const pattern of [inlineCodePattern, markdownLinkPattern]) {
+    for (const match of text.matchAll(pattern)) {
+      if (typeof match.index === "number") {
+        ranges.push([match.index, match.index + match[0].length]);
+      }
+    }
+  }
+  return ranges.sort((left, right) => left[0] - right[0] || right[1] - left[1]);
+}
+
+function replaceRawMentionsOutsideMarkdownProtectedRanges(text: string): string {
+  const ranges = collectMarkdownMentionProtectedRanges(text);
+  if (ranges.length === 0) {
+    return replaceRawMentionsWithTokens(text);
+  }
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const [start, end] of ranges) {
+    if (start < cursor) {
+      continue;
+    }
+    if (cursor < start) {
+      const prefix = text.slice(cursor, start);
+      const contextPrefix = cursor > 0 ? text.charAt(cursor - 1) : "";
+      const tokenized = replaceRawMentionsWithTokens(`${contextPrefix}${prefix}`);
+      chunks.push(cursor > 0 ? tokenized.slice(contextPrefix.length) : tokenized);
+    }
+    chunks.push(text.slice(start, end));
+    cursor = end;
+  }
+  if (cursor < text.length) {
+    const suffix = text.slice(cursor);
+    const contextPrefix = cursor > 0 ? text.charAt(cursor - 1) : "";
+    const tokenized = replaceRawMentionsWithTokens(`${contextPrefix}${suffix}`);
+    chunks.push(cursor > 0 ? tokenized.slice(contextPrefix.length) : tokenized);
   }
   return chunks.join("");
 }
@@ -587,7 +631,9 @@ export function renderMarkdownWithMentions(
       displayNameByActorId
     );
   }
-  const tokenized = replaceCanonicalMentionsWithTokens(text);
+  const tokenized = replaceCanonicalMentionsWithTokens(
+    replaceRawMentionsOutsideMarkdownProtectedRanges(text)
+  );
   const rendered = renderTeamMarkdownCached(tokenized);
   return renderMentionTokensIntoHtml(rendered, displayNameByActorId);
 }

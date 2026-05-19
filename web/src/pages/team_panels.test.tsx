@@ -29,8 +29,14 @@ import { buildTeamSidebarSearchResults, TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
-import { TeamWorkbenchContainer } from "./team/TeamWorkbenchContainer";
+import {
+  TeamWorkbenchContainer,
+  type TeamWorkbenchRuntimeContext,
+} from "./team/TeamWorkbenchContainer";
 import { TeamThreadContainer } from "./team/TeamThreadContainer";
+import { TeamConversationContainer } from "./team/TeamConversationContainer";
+import { buildTeamMemberDraftFromSpec, type TeamMemberProfileDraft } from "./team/create_helpers";
+import { TeamEditMemberDialog, type TeamModalChrome } from "./team/team_management_modals";
 import {
   TeamWorkspaceProvider,
   type TeamWorkspaceContextValue,
@@ -275,6 +281,19 @@ function fillCreateChannelForm(
   changeInputValue(channelIdInput, channelId);
   changeInputValue(descriptionInput, description);
 }
+
+const modalChrome: TeamModalChrome = {
+  panelClassName: "panel",
+  accentButtonClassName: "accent",
+  mutedButtonClassName: "muted",
+  badgeClassName: "badge",
+  modalHeaderClassName: "modal-head",
+  setupChecklistClassName: "checklist",
+  infoStripGridClassName: "info-grid",
+  infoStripItemClassName: "info-item",
+  infoStripLabelClassName: "info-label",
+  infoStripValueClassName: "info-value",
+};
 
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
   return {
@@ -2198,6 +2217,7 @@ describe("team panels interactions", () => {
   it("TeamOverviewPanel refreshes snapshot and opens member mailbox", () => {
     const onRefreshSnapshot = vi.fn();
     const onOpenMailboxForMember = vi.fn();
+    const onEditAgentProfile = vi.fn();
 
     act(() => {
       root.render(
@@ -2208,6 +2228,7 @@ describe("team panels interactions", () => {
             onRefreshSnapshot={onRefreshSnapshot}
             selectedMemberId="coordinator-agent"
             onOpenMailboxForMember={onOpenMailboxForMember}
+            onEditAgentProfile={onEditAgentProfile}
             memberTargetNodeById={{
               "coordinator-agent": "main",
               "worker-agent": "node-east",
@@ -2218,14 +2239,27 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByAriaLabel(container, "Refresh snapshot"));
+    clickElement(findButtonByAriaLabel(container, "Edit agent profile"));
     clickElement(required(container.querySelectorAll(".team-member-row")[1], "member button missing"));
 
     expect(onRefreshSnapshot).toHaveBeenCalledTimes(1);
+    expect(onEditAgentProfile).toHaveBeenCalledTimes(1);
     expect(onOpenMailboxForMember).toHaveBeenCalledWith("worker-agent");
     expect(container.textContent).toContain("Cold Start Playbook");
     expect(container.textContent).toContain("Coordinator startup");
     expect(container.textContent).toContain("Worker startup");
+    expect(container.textContent).toContain("Agent Profile");
+    expect(container.textContent).toContain("coordinator-agent");
+    expect(container.textContent).toContain("gpt-5");
+    expect(container.textContent).toContain("plan");
+    expect(container.textContent).toContain("team-coordinator-orchestrator");
     expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
+    const overviewPanel = required(
+      container.querySelector(".teams-overview-panel"),
+      "overview panel missing"
+    );
+    expect(overviewPanel.className).toContain("overflow-auto");
+    expect(container.querySelector(".teams-agent-profile")).not.toBeNull();
     expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
     expect(container.textContent).toContain("Machine main");
     expect(container.textContent).toContain("Machine node-east");
@@ -2246,6 +2280,37 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("No snapshot yet.");
+  });
+
+  it("TeamOverviewPanel renders a closable profile-only agent profile", () => {
+    const onCloseAgentProfile = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamOverviewPanel
+            snapshot={buildSnapshot()}
+            snapshotLoading={false}
+            onRefreshSnapshot={vi.fn()}
+            selectedMemberId="worker-agent"
+            onOpenMailboxForMember={vi.fn()}
+            onCloseAgentProfile={onCloseAgentProfile}
+            profileOnly={true}
+            displayNameByActorId={{ "worker-agent": "Worker Agent" }}
+            memberTargetNodeById={{ "worker-agent": "node-east" }}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Agent Profile");
+    expect(container.textContent).toContain("Worker Agent");
+    expect(container.textContent).toContain("node-east");
+    expect(container.textContent).not.toContain("Cold Start Playbook");
+    expect(container.querySelector(".teams-member-list")).toBeNull();
+
+    clickElement(findButtonByAriaLabel(container, "Close agent profile"));
+    expect(onCloseAgentProfile).toHaveBeenCalledTimes(1);
   });
 
   it("TeamMemberConsolePanel switches preview and member-history views", () => {
@@ -2759,6 +2824,668 @@ describe("team panels interactions", () => {
     }).toThrow("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
 
     suppressReactError.mockRestore();
+  });
+
+  it("TeamWorkbenchContainer renders a channel profile dock and closes back to the channel", async () => {
+    const navigateTeamRoute = vi.fn();
+    const setSelectedMemberId = vi.fn();
+    const snapshot = buildSnapshot({
+      team: buildTeam({
+        spec: {
+          members: [
+            {
+              member_id: "coordinator-agent",
+              role: "coordinator",
+              model: "gpt-5",
+              prompt: "Plan and coordinate.",
+            },
+            {
+              member_id: "worker-agent",
+              role: "worker",
+              description: "Investigates runtime regressions.",
+              model: "gpt-5.4",
+              prompt: "Inspect the issue and report evidence.",
+            },
+          ],
+        },
+      }),
+      members: [
+        buildMemberSnapshot(),
+        buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          description: "Investigates runtime regressions.",
+          model: "gpt-5.4",
+          prompt: "Inspect the issue and report evidence.",
+          skills: ["team-worker-executor"],
+          status: "working",
+          session_status: "active",
+        }),
+      ],
+    });
+    const workbench = {
+      showTeamBootstrapLoading: false,
+      showTeamUnavailable: false,
+      onBackToSelector: vi.fn(),
+      selectedTeam: snapshot.team,
+      isAgentWorkspace: false,
+      teamSectionCardClassName: "panel",
+      panelSecondaryButtonClassName: "secondary",
+      teamWorkbenchWorkspaceShellClassName: "workspace-shell",
+      tab: "conversation",
+      activeWorkspaceLens: "channels",
+      developerMode: false,
+      busy: null,
+      workspaceEyebrow: null,
+      showDedicatedWorkspaceHeading: true,
+      workspaceTitle: "# all",
+      workspaceDescription: null,
+      selectedAgentLabel: "Worker Agent",
+      selectedAgentWorkspaceMemberId: "",
+      selectedAgentStatusView: {
+        role: "-",
+        lifecycle: "unknown",
+        work: "unknown",
+        inbox: "0",
+        loop: "disabled",
+        currentWork: "-",
+      },
+      selectedAgentSpecDraft: null,
+      selectedAgentControlState: { canStart: false, canStop: false, canDelete: false },
+      showWorkspaceRuntimeBadge: false,
+      selectedTeamRuntimeStatus: null,
+      selectedTeamRuntimeControlTone: { countColor: "gray" },
+      workspaceAdvancedTabItems: [],
+      isAdvancedWorkspace: false,
+      showRunActionsInAdvanced: false,
+      canResumeActiveRun: false,
+      canRestartActiveRun: false,
+      workspaceDetailsOpen: false,
+      workspaceDetailItems: [],
+      workspaceNoticeText: null,
+      workspaceNoticeDotClassName: "",
+      teamWorkbenchMutedButtonClassName: "",
+      teamWorkbenchHeaderActionButtonClassName: "",
+      workspaceToolbarClassName: "",
+      workspaceToolbarButtonActiveClassName: "",
+      workspaceToolbarButtonIdleClassName: "",
+      workspaceNoticeClassName: "",
+      workspaceNoticeTextClassName: "",
+      teamRunMetaItemClassName: "",
+      onTabChange: vi.fn(),
+      onToggleWorkspaceDetails: vi.fn(),
+      onRefreshActiveRun: vi.fn(),
+      onCancelRun: vi.fn(),
+      onResumeRun: vi.fn(),
+      onRestartRun: vi.fn(),
+      onOpenTeamMemberEditModal: vi.fn(),
+      onStartSelectedTeamAgent: vi.fn(),
+      onStopSelectedTeamAgent: vi.fn(),
+      onDeleteSelectedTeamAgent: vi.fn(),
+      onDeleteTeam: vi.fn(),
+      runStatusFilter: "all",
+      TEAM_RUN_STATUS_FILTER_OPTIONS: [],
+      onRunStatusFilterChange: vi.fn(),
+      onRefreshRuns: vi.fn(),
+      runsLoading: false,
+      visibleRuns: [],
+      activeRunIdForSelectedTeam: "run-1",
+      setActiveRunId: vi.fn(),
+      isActiveRunHiddenByFilter: false,
+      activeRunForSelectedTeam: snapshot.run,
+      totalLoadedRunsForTeam: 1,
+      runsHasMore: false,
+      effectiveSelectedTeamId: "team-1",
+      onLoadMoreRuns: vi.fn(),
+      snapshot,
+      snapshotLoading: false,
+      onRefreshOverviewSnapshot: vi.fn(),
+      mailboxDisplayNameByActorId: {
+        "worker-agent": "Worker Agent",
+      },
+      selectedAgentWorkspaceSessionId: null,
+      memberEvents: [],
+      memberEventsLoading: false,
+      memberEventsHasMore: false,
+      onLoadOlderMemberConsole: vi.fn(),
+      onRefreshMemberConsole: vi.fn(),
+      teamDebugTag: "run_ops",
+      setTeamDebugTag: vi.fn(),
+      runContextId: "ctx-1",
+      setRunContextId: vi.fn(),
+      runInput: "{}",
+      setRunInput: vi.fn(),
+      runLookupId: "",
+      setRunLookupId: vi.fn(),
+      canCreateRun: true,
+      runInputHasError: false,
+      runInputValidation: { parsed: {}, error: null },
+      teamExecutionBlockedReason: null,
+      onCreateRun: vi.fn(),
+      onLoadRunById: vi.fn(),
+      steps: [],
+      onRefreshActiveRunSteps: vi.fn(),
+      stepKey: "",
+      setStepKey: vi.fn(),
+      stepMemberId: "",
+      onStepMemberIdChange: vi.fn(),
+      stepDependsOn: "",
+      onStepDependsOnChange: vi.fn(),
+      stepInput: "{}",
+      onStepInputChange: vi.fn(),
+      onSubmitStep: vi.fn(),
+      selectedStepId: "",
+      setSelectedStepId: vi.fn(),
+      stepAction: "complete",
+      setStepAction: vi.fn(),
+      stepRemoteTaskId: "",
+      onStepRemoteTaskIdChange: vi.fn(),
+      stepOutput: "{}",
+      onStepOutputChange: vi.fn(),
+      stepFailText: "",
+      onStepFailTextChange: vi.fn(),
+      stepInputReason: "",
+      onStepInputReasonChange: vi.fn(),
+      stepInputRequiredPayload: "{}",
+      onStepInputRequiredPayloadChange: vi.fn(),
+      stepResumePayload: "{}",
+      onStepResumePayloadChange: vi.fn(),
+      onApplyStepAction: vi.fn(),
+      unreadByMemberId: {},
+      chatActors: {
+        fromActorId: "user",
+        toActorId: "coordinator-agent",
+      },
+      chatStickToBottom: true,
+      chatMessagesRef: React.createRef<HTMLUListElement>(),
+      onConversationScroll: vi.fn(),
+      onJumpConversationToBottom: vi.fn(),
+      conversationMessages: [],
+      onAcceptMessage: vi.fn(),
+      onAcceptVisibleMessages: vi.fn(),
+      onSendChatMessage: vi.fn(),
+      MAILBOX_TEMPLATE_OPTIONS: [],
+      onMailboxTemplateChange: vi.fn(),
+      onApplyMessageTemplate: vi.fn(),
+      onSendMessage: vi.fn(),
+      onRefreshInbox: vi.fn(),
+      selectedAgentWorkspaceSnapshot: null,
+      selectedMemberSnapshot: null,
+      selectedAgentWorkspaceRuntimeMember: null,
+      selectedAgentWorkspaceAgent: null,
+      oldestMemberEventId: null,
+      onSendAgentAcpInput: vi.fn(),
+      onCancelTeamMemberAcp: vi.fn(),
+      onSetTeamMemberAcpMode: vi.fn(),
+      onSetTeamMemberAcpModel: vi.fn(),
+      onSetTeamMemberAcpConfig: vi.fn(),
+      onForceNewTeamMemberSession: vi.fn(),
+      eventsLoading: false,
+      oldestEventId: null,
+      displayedRunEvents: [],
+      previewMode: false,
+      memberTargetNodeById: {
+        "worker-agent": "node-east",
+      },
+      msgFromActorId: "user",
+      onMsgFromActorIdChange: vi.fn(),
+      msgToActorId: "coordinator-agent",
+      onMsgToActorIdChange: vi.fn(),
+      msgChannel: "default",
+      onMsgChannelChange: vi.fn(),
+      msgTransport: "local",
+      onMsgTransportChange: vi.fn(),
+      msgRoute: "group_chat",
+      onMsgRouteChange: vi.fn(),
+      msgTemplate: "",
+      msgPayload: "{}",
+      onMsgPayloadChange: vi.fn(),
+      msgIdempotencyKey: "",
+      onMsgIdempotencyKeyChange: vi.fn(),
+      inboxActorId: "worker-agent",
+      onInboxActorIdChange: vi.fn(),
+      inboxLimit: "20",
+      onInboxLimitChange: vi.fn(),
+      inboxAfterId: "",
+      onInboxAfterIdChange: vi.fn(),
+      inboxIncludeDelivered: false,
+      onInboxIncludeDeliveredChange: vi.fn(),
+      chatDraft: "",
+      onChatDraftChange: vi.fn(),
+      selectedTeamHasConfiguredMembers: true,
+      selectedTeamDescription: null,
+      teamMemberForgeLabel: "Forge",
+      teamMemberCopyExistingLabel: "Copy",
+      onOpenTeamMemberForge: vi.fn(),
+      onOpenTeamMemberCopyExisting: vi.fn(),
+      showRunContextLoading: false,
+      showNoActiveRunNotice: false,
+      onGoToRuns: vi.fn(),
+      selectedMemberId: "worker-agent",
+      setSelectedMemberId,
+      mailboxHasActiveRun: true,
+      mailboxEmptyTitle: "",
+      mailboxEmptyBody: "",
+      eventsAutoRefresh: false,
+      setEventsAutoRefresh: vi.fn(),
+      onRefreshEventsPanel: vi.fn(),
+      onLoadOlderEventsPanel: vi.fn(),
+      eventsHasMore: false,
+      TEAM_EVENT_PREVIEW_LIMIT: 5,
+      selectedMemberDiscoveryCard: null,
+      selectedMemberDiscoveryCardLoading: false,
+      onOpenMailboxForMember: vi.fn(),
+    } as unknown as TeamWorkbenchRuntimeContext;
+    const workspaceContext: TeamWorkspaceContextValue = {
+      selectedConversation: null,
+      developerMode: false,
+      token: "token",
+      tasksLoading: false,
+      onRefreshTasks: vi.fn(),
+      taskMessageDraft: "",
+      setTaskMessageDraft: vi.fn(),
+      onSendTaskMessage: vi.fn(),
+      taskMessages: [],
+      conversationMailboxMessages: [],
+      snapshot,
+      mailboxDisplayNameByActorId: {
+        "worker-agent": "Worker Agent",
+      },
+      selectedTeamMemberLiveStates: [],
+      taskConversationMemberIds: ["coordinator-agent", "worker-agent"],
+      activeConversationTitle: "# all",
+      selectedConversationMatchesChannelLane: true,
+      taskMessagesLoading: false,
+      busy: null,
+      routeThreadRootMessageId: null,
+      channelFocusMessageId: null,
+      setChannelFocusMessageId: vi.fn(),
+      effectiveSelectedTeamId: "team-1",
+      routeWorkspaceLens: "channels",
+      routeChannelId: "all",
+      activeChannelConversationTaskId: "task-1",
+      navigateTeamRoute,
+      isCompactWorkbench: false,
+      selectedChannelItem: undefined,
+      workspaceTasks: [],
+      selectedTaskId: "",
+      setSelectedTaskId: vi.fn(),
+      onSelectConversationSubject: vi.fn(),
+      runs: [],
+      onOpenTaskRun: vi.fn(),
+      compilePreviewContextId: "",
+      setCompilePreviewContextId: vi.fn(),
+      onCompileTaskRunPreview: vi.fn(),
+      canCompileTask: false,
+      compiledRunPreview: null,
+      onUseCompiledRunPayload: vi.fn(),
+      onCreateRunFromCompiledPreview: vi.fn(),
+      onSendThreadReply: vi.fn(),
+      threadReplyDraft: "",
+      setThreadReplyDraft: vi.fn(),
+      workbench,
+    };
+
+    renderWithMantine(
+      root,
+      <TeamWorkspaceProvider value={workspaceContext}>
+        <TeamWorkbenchContainer />
+      </TeamWorkspaceProvider>
+    );
+
+    await waitForCondition(() => container.textContent?.includes("Agent Profile") ?? false);
+    const dock = required(
+      container.querySelector('[data-team-surface="thread-dock"]'),
+      "profile dock missing"
+    );
+    expect(dock.textContent).toContain("Worker Agent");
+    expect(dock.textContent).toContain("worker-agent");
+    expect(dock.textContent).toContain("Inspect the issue and report evidence.");
+    expect(dock.textContent).not.toContain("Team Snapshot");
+
+    clickElement(findButtonByAriaLabel(container, "Close agent profile"));
+
+    expect(setSelectedMemberId).toHaveBeenCalledWith("");
+    expect(navigateTeamRoute).toHaveBeenCalledWith("/workspace/teams/team-1");
+  });
+
+  it("TeamConversationContainer routes clicked channel mentions to member overview", async () => {
+    const navigateTeamRoute = vi.fn();
+    const workspaceContext: TeamWorkspaceContextValue = {
+      selectedConversation: null,
+      developerMode: false,
+      token: "token",
+      tasksLoading: false,
+      onRefreshTasks: vi.fn(),
+      taskMessageDraft: "",
+      setTaskMessageDraft: vi.fn(),
+      onSendTaskMessage: vi.fn(),
+      taskMessages: [
+        buildTaskMessage(14, {
+          from_actor_id: "coordinator-agent",
+          to_actor_id: null,
+          route: "group_chat",
+          payload: {
+            type: "chat_message",
+            text: "@worker-agent please inspect this.",
+          },
+        }),
+      ],
+      conversationMailboxMessages: [],
+      snapshot: null,
+      mailboxDisplayNameByActorId: {
+        "worker-agent": "Worker Agent",
+      },
+      selectedTeamMemberLiveStates: [],
+      taskConversationMemberIds: ["coordinator-agent", "worker-agent"],
+      activeConversationTitle: "# all",
+      selectedConversationMatchesChannelLane: true,
+      taskMessagesLoading: false,
+      busy: null,
+      routeThreadRootMessageId: null,
+      channelFocusMessageId: null,
+      setChannelFocusMessageId: vi.fn(),
+      effectiveSelectedTeamId: "team-1",
+      routeWorkspaceLens: "channels",
+      routeChannelId: "all",
+      activeChannelConversationTaskId: "task-1",
+      navigateTeamRoute,
+      isCompactWorkbench: false,
+      selectedChannelItem: undefined,
+      workspaceTasks: [],
+      selectedTaskId: "",
+      setSelectedTaskId: vi.fn(),
+      onSelectConversationSubject: vi.fn(),
+      runs: [],
+      onOpenTaskRun: vi.fn(),
+      compilePreviewContextId: "",
+      setCompilePreviewContextId: vi.fn(),
+      onCompileTaskRunPreview: vi.fn(),
+      canCompileTask: false,
+      compiledRunPreview: null,
+      onUseCompiledRunPayload: vi.fn(),
+      onCreateRunFromCompiledPreview: vi.fn(),
+      onSendThreadReply: vi.fn(),
+      threadReplyDraft: "",
+      setThreadReplyDraft: vi.fn(),
+    };
+
+    renderWithMantine(
+      root,
+      <TeamWorkspaceProvider value={workspaceContext}>
+        <TeamConversationContainer />
+      </TeamWorkspaceProvider>
+    );
+
+    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+    const mention = container.querySelector(
+      '[data-team-agent-mention-id="worker-agent"]'
+    ) as HTMLButtonElement | null;
+    expect(mention).not.toBeNull();
+    mention?.click();
+    expect(navigateTeamRoute).toHaveBeenCalledWith(
+      "/workspace/teams/team-1?task=task-1&member=worker-agent"
+    );
+  });
+
+  it("TeamConversationContainer ignores clicked channel mentions without a selected team", async () => {
+    const navigateTeamRoute = vi.fn();
+    const workspaceContext: TeamWorkspaceContextValue = {
+      selectedConversation: null,
+      developerMode: false,
+      token: "token",
+      tasksLoading: false,
+      onRefreshTasks: vi.fn(),
+      taskMessageDraft: "",
+      setTaskMessageDraft: vi.fn(),
+      onSendTaskMessage: vi.fn(),
+      taskMessages: [
+        buildTaskMessage(14, {
+          from_actor_id: "coordinator-agent",
+          to_actor_id: null,
+          route: "group_chat",
+          payload: {
+            type: "chat_message",
+            text: "@worker-agent please inspect this.",
+          },
+        }),
+      ],
+      conversationMailboxMessages: [],
+      snapshot: null,
+      mailboxDisplayNameByActorId: {
+        "worker-agent": "Worker Agent",
+      },
+      selectedTeamMemberLiveStates: [],
+      taskConversationMemberIds: ["coordinator-agent", "worker-agent"],
+      activeConversationTitle: "# all",
+      selectedConversationMatchesChannelLane: true,
+      taskMessagesLoading: false,
+      busy: null,
+      routeThreadRootMessageId: null,
+      channelFocusMessageId: null,
+      setChannelFocusMessageId: vi.fn(),
+      effectiveSelectedTeamId: null,
+      routeWorkspaceLens: "channels",
+      routeChannelId: "all",
+      activeChannelConversationTaskId: "task-1",
+      navigateTeamRoute,
+      isCompactWorkbench: false,
+      selectedChannelItem: undefined,
+      workspaceTasks: [],
+      selectedTaskId: "",
+      setSelectedTaskId: vi.fn(),
+      onSelectConversationSubject: vi.fn(),
+      runs: [],
+      onOpenTaskRun: vi.fn(),
+      compilePreviewContextId: "",
+      setCompilePreviewContextId: vi.fn(),
+      onCompileTaskRunPreview: vi.fn(),
+      canCompileTask: false,
+      compiledRunPreview: null,
+      onUseCompiledRunPayload: vi.fn(),
+      onCreateRunFromCompiledPreview: vi.fn(),
+      onSendThreadReply: vi.fn(),
+      threadReplyDraft: "",
+      setThreadReplyDraft: vi.fn(),
+    };
+
+    renderWithMantine(
+      root,
+      <TeamWorkspaceProvider value={workspaceContext}>
+        <TeamConversationContainer />
+      </TeamWorkspaceProvider>
+    );
+
+    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+    clickElement(container.querySelector('[data-team-agent-mention-id="worker-agent"]'));
+    expect(navigateTeamRoute).not.toHaveBeenCalled();
+  });
+
+  it("renders an agent profile from a channel mention before opening the edit dialog", async () => {
+    function ChannelMentionProfileHarness() {
+      const [selectedMemberId, setSelectedMemberId] = React.useState("");
+      const [editDraft, setEditDraft] = React.useState<TeamMemberProfileDraft | null>(null);
+      const snapshot = React.useMemo(
+        () =>
+          buildSnapshot({
+            team: buildTeam({
+              spec: {
+                members: [
+                  {
+                    member_id: "coordinator-agent",
+                    role: "coordinator",
+                    model: "gpt-5",
+                    prompt: "Plan and coordinate.",
+                  },
+                  {
+                    member_id: "worker-agent",
+                    role: "worker",
+                    description: "Investigates runtime regressions.",
+                    model: "gpt-5.4",
+                    prompt: "Inspect the issue and report evidence.",
+                  },
+                ],
+              },
+            }),
+            members: [
+              buildMemberSnapshot(),
+              buildMemberSnapshot({
+                member_id: "worker-agent",
+                role: "worker",
+                description: "Investigates runtime regressions.",
+                model: "gpt-5.4",
+                prompt: "Inspect the issue and report evidence.",
+                skills: ["team-worker-executor"],
+                status: "working",
+                session_status: "active",
+              }),
+            ],
+          }),
+        []
+      );
+      const navigateTeamRoute = React.useCallback((path: string) => {
+        const url = new URL(path, "http://localhost");
+        setSelectedMemberId(url.searchParams.get("member") ?? "");
+      }, []);
+      const workspaceContext: TeamWorkspaceContextValue = {
+        selectedConversation: null,
+        developerMode: false,
+        token: "token",
+        tasksLoading: false,
+        onRefreshTasks: vi.fn(),
+        taskMessageDraft: "",
+        setTaskMessageDraft: vi.fn(),
+        onSendTaskMessage: vi.fn(),
+        taskMessages: [
+          buildTaskMessage(14, {
+            from_actor_id: "coordinator-agent",
+            to_actor_id: null,
+            route: "group_chat",
+            payload: {
+              type: "chat_message",
+              text: "@worker-agent please inspect this.",
+            },
+          }),
+        ],
+        conversationMailboxMessages: [],
+        snapshot,
+        mailboxDisplayNameByActorId: {
+          "worker-agent": "Worker Agent",
+        },
+        selectedTeamMemberLiveStates: [],
+        taskConversationMemberIds: ["coordinator-agent", "worker-agent"],
+        activeConversationTitle: "# all",
+        selectedConversationMatchesChannelLane: true,
+        taskMessagesLoading: false,
+        busy: null,
+        routeThreadRootMessageId: null,
+        channelFocusMessageId: null,
+        setChannelFocusMessageId: vi.fn(),
+        effectiveSelectedTeamId: "team-1",
+        routeWorkspaceLens: "channels",
+        routeChannelId: "all",
+        activeChannelConversationTaskId: "task-1",
+        navigateTeamRoute,
+        isCompactWorkbench: false,
+        selectedChannelItem: undefined,
+        workspaceTasks: [],
+        selectedTaskId: "",
+        setSelectedTaskId: vi.fn(),
+        onSelectConversationSubject: vi.fn(),
+        runs: [],
+        onOpenTaskRun: vi.fn(),
+        compilePreviewContextId: "",
+        setCompilePreviewContextId: vi.fn(),
+        onCompileTaskRunPreview: vi.fn(),
+        canCompileTask: false,
+        compiledRunPreview: null,
+        onUseCompiledRunPayload: vi.fn(),
+        onCreateRunFromCompiledPreview: vi.fn(),
+        onSendThreadReply: vi.fn(),
+        threadReplyDraft: "",
+        setThreadReplyDraft: vi.fn(),
+      };
+
+      return (
+        <>
+          <TeamWorkspaceProvider value={workspaceContext}>
+            <TeamConversationContainer />
+          </TeamWorkspaceProvider>
+          {selectedMemberId ? (
+            <TeamOverviewPanel
+              snapshot={snapshot}
+              snapshotLoading={false}
+              onRefreshSnapshot={vi.fn()}
+              selectedMemberId={selectedMemberId}
+              onOpenMailboxForMember={setSelectedMemberId}
+              onCloseAgentProfile={() => setSelectedMemberId("")}
+              onEditAgentProfile={() => {
+                setEditDraft(
+                  buildTeamMemberDraftFromSpec(snapshot.team.spec, selectedMemberId, null, {
+                    coordinator_prompt: "Plan and coordinate.",
+                    worker_prompt: "Inspect the issue and report evidence.",
+                  })
+                );
+              }}
+              profileOnly
+              displayNameByActorId={{
+                "worker-agent": "Worker Agent",
+              }}
+              memberTargetNodeById={{
+                "worker-agent": "node-east",
+              }}
+            />
+          ) : null}
+          <TeamEditMemberDialog
+            open={editDraft !== null}
+            busy={null}
+            selectedAgentLabel="Worker Agent"
+            draft={editDraft}
+            onPatchDraft={vi.fn()}
+            onClose={() => setEditDraft(null)}
+            onSave={vi.fn()}
+            chrome={modalChrome}
+          />
+        </>
+      );
+    }
+
+    renderWithMantine(root, <ChannelMentionProfileHarness />);
+
+    expect(container.querySelector(".teams-agent-profile")).toBeNull();
+    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+    clickElement(container.querySelector('[data-team-agent-mention-id="worker-agent"]'));
+
+    await waitForCondition(() => container.textContent?.includes("Agent Profile") ?? false);
+    const profile = required(
+      container.querySelector(".teams-agent-profile"),
+      "agent profile missing"
+    );
+    expect(profile.textContent).toContain("Worker Agent");
+    expect(profile.textContent).toContain("worker-agent");
+    expect(profile.textContent).toContain("gpt-5.4");
+    expect(profile.textContent).toContain("Investigates runtime regressions.");
+    expect(profile.textContent).toContain("Inspect the issue and report evidence.");
+    expect(profile.textContent).toContain("team-worker-executor");
+    expect(profile.querySelector("input, textarea")).toBeNull();
+    expect(container.textContent).not.toContain("Team Snapshot");
+    expect(container.textContent).not.toContain("Cold Start Playbook");
+    clickElement(findButtonByAriaLabel(container, "Close agent profile"));
+    expect(container.querySelector(".teams-agent-profile")).toBeNull();
+
+    clickElement(container.querySelector('[data-team-agent-mention-id="worker-agent"]'));
+    await waitForCondition(() => container.textContent?.includes("Agent Profile") ?? false);
+
+    clickElement(findButtonByAriaLabel(container, "Edit agent profile"));
+
+    await waitForCondition(() => document.body.textContent?.includes("Edit Worker Agent") ?? false);
+    const dialog = required(
+      document.body.querySelector('[role="dialog"]'),
+      "agent profile edit dialog missing"
+    );
+    expect(dialog.textContent).toContain("Agent Profile");
+    expect(dialog.textContent).toContain("worker-agent");
+    expect(dialog.textContent).toContain("gpt-5.4");
   });
 
   it("TeamTaskPanel keeps the channel body in a dedicated flex shell above the composer", () => {
@@ -4855,6 +5582,7 @@ describe("team panels interactions", () => {
   });
 
   it("TeamTaskPanel renders channel mentions with provided display names when live state is missing", async () => {
+    const onOpenMemberProfile = vi.fn();
     renderWithMantine(
       root,
       <TeamTaskPanel
@@ -4871,20 +5599,35 @@ describe("team panels interactions", () => {
               route: "group_chat",
               payload: {
                 type: "chat_message",
-                text: "hello <at>595d1ae8-fcbd-4111-b5c7-d446a12c044b</at>",
+                text: [
+                  "@595d1ae8-fcbd-4111-b5c7-d446a12c044b @2b71c038-ce49-4f82-9732-0b387a18bf31",
+                  "",
+                  "Runtime constraint update from human message 5960:",
+                  "",
+                  "- Do not create new PRs for now.",
+                  "- Focus on review comments and CI surfaces.",
+                  "",
+                  "Canonical mention stays supported: <at>2b71c038-ce49-4f82-9732-0b387a18bf31</at>",
+                ].join("\n"),
               },
             }),
           ]}
           humanActorId="user"
           displayNameByActorId={{
             "595d1ae8-fcbd-4111-b5c7-d446a12c044b": "tidb-fuzz-bugfix-team-worker-1",
+            "2b71c038-ce49-4f82-9732-0b387a18bf31": "review-worker-2",
           }}
           memberLiveStates={[]}
-          memberIds={["coordinator-agent", "595d1ae8-fcbd-4111-b5c7-d446a12c044b"]}
+          memberIds={[
+            "coordinator-agent",
+            "595d1ae8-fcbd-4111-b5c7-d446a12c044b",
+            "2b71c038-ce49-4f82-9732-0b387a18bf31",
+          ]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
           toPrettyJson={(value) => JSON.stringify(value)}
+          onOpenMemberProfile={onOpenMemberProfile}
         />
     );
 
@@ -4892,7 +5635,19 @@ describe("team panels interactions", () => {
       container.textContent?.includes("@tidb-fuzz-bugfix-team-worker-1") ?? false
     );
     expect(container.textContent).toContain("@tidb-fuzz-bugfix-team-worker-1");
+    expect(container.textContent).toContain("@review-worker-2");
+    expect(container.innerHTML).toContain('class="md-list md-list-unordered"');
+    expect(container.textContent).toContain("Do not create new PRs for now.");
     expect(container.textContent).not.toContain("@595d1ae8-fcbd-4111-b5c7-d446a12c044b");
+    expect(container.textContent).not.toContain("@2b71c038-ce49-4f82-9732-0b387a18bf31");
+    const mention = container.querySelector(
+      '[data-team-agent-mention-id="595d1ae8-fcbd-4111-b5c7-d446a12c044b"]'
+    ) as HTMLButtonElement | null;
+    expect(mention).not.toBeNull();
+    mention?.click();
+    expect(onOpenMemberProfile).toHaveBeenCalledWith(
+      "595d1ae8-fcbd-4111-b5c7-d446a12c044b"
+    );
   });
 
   it("TeamTaskPanel hides message details when developer mode is off", () => {
@@ -6546,6 +7301,7 @@ describe("team panels interactions", () => {
 
   it("TeamMailboxPanel handles member chat, accept, and advanced mailbox controls", () => {
     const onSelectMember = vi.fn();
+    const onOpenMemberProfile = vi.fn();
     const onConversationScroll = vi.fn();
     const onJumpToBottom = vi.fn();
     const onAcceptMessage = vi.fn();
@@ -6573,7 +7329,7 @@ describe("team panels interactions", () => {
     const pendingForCoordinatorMessage = buildMailboxMessage(3, {
       from_actor_id: "worker-agent",
       to_actor_id: "coordinator-agent",
-      payload: { type: "chat_message", text: "pending-to-coordinator" },
+      payload: { type: "chat_message", text: "pending-to-coordinator @coordinator-agent" },
     });
     const deliveredMessage = buildMailboxMessage(2, {
       from_actor_id: "worker-agent",
@@ -6598,6 +7354,7 @@ describe("team panels interactions", () => {
             selectedMemberId="worker-agent"
             unreadByMemberId={{ "worker-agent": 2, user: 1 }}
             onSelectMember={onSelectMember}
+            onOpenMemberProfile={onOpenMemberProfile}
             chatActors={{
               fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
@@ -6668,6 +7425,14 @@ describe("team panels interactions", () => {
         "message accept button missing"
       )
     );
+    clickElement(
+      required(
+        container.querySelector('[data-team-agent-mention-id="coordinator-agent"]') as
+          | HTMLButtonElement
+          | null,
+        "mailbox mention chip missing"
+      )
+    );
     clickElement(findButtonByText(container, "Accept visible pending"));
     clickElement(findButtonByText(container, "Jump to bottom"));
 
@@ -6693,6 +7458,7 @@ describe("team panels interactions", () => {
 
     expect(onSelectMember).toHaveBeenCalledWith("coordinator-agent");
     expect(onSelectMember).toHaveBeenCalledWith("user");
+    expect(onOpenMemberProfile).toHaveBeenCalledWith("coordinator-agent");
     expect(onConversationScroll).toHaveBeenCalledTimes(1);
     expect(onJumpToBottom).toHaveBeenCalledTimes(1);
     expect(onAcceptMessage).toHaveBeenCalledWith(pendingMessage);
@@ -6939,6 +7705,88 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("No members available.");
     expect(container.textContent).toContain("No conversation records yet for this pair.");
+  });
+
+  it("TeamMailboxPanel falls back to member selection when opening a mention without profile routing", () => {
+    const onSelectMember = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={false}
+            snapshot={buildSnapshot()}
+            humanActorId="user"
+            displayNameByActorId={{ "coordinator-agent": "Coordinator Agent" }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{}}
+            onSelectMember={onSelectMember}
+            chatActors={{
+              fromActorId: "coordinator-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={vi.fn()}
+            onJumpToBottom={vi.fn()}
+            conversationMessages={[
+              buildMailboxMessage(9, {
+                from_actor_id: "worker-agent",
+                to_actor_id: "coordinator-agent",
+                payload: { type: "chat_message", text: "@coordinator-agent" },
+              }),
+            ]}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            busy={null}
+            onAcceptMessage={vi.fn()}
+            onAcceptVisibleMessages={vi.fn()}
+            chatDraft=""
+            onChatDraftChange={vi.fn()}
+            onSendChatMessage={vi.fn()}
+            msgFromActorId="coordinator-agent"
+            onMsgFromActorIdChange={vi.fn()}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={vi.fn()}
+            msgChannel="default"
+            onMsgChannelChange={vi.fn()}
+            msgTransport="local"
+            onMsgTransportChange={vi.fn()}
+            msgRoute="{}"
+            onMsgRouteChange={vi.fn()}
+            mailboxTemplateOptions={[]}
+            msgTemplate="raw"
+            onMsgTemplateChange={vi.fn()}
+            onApplyMessageTemplate={vi.fn()}
+            msgPayload="{}"
+            onMsgPayloadChange={vi.fn()}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={vi.fn()}
+            inboxLimit="20"
+            onInboxLimitChange={vi.fn()}
+            inboxAfterId=""
+            onInboxAfterIdChange={vi.fn()}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={vi.fn()}
+            onRefreshInbox={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(
+      required(
+        container.querySelector('[data-team-agent-mention-id="coordinator-agent"]') as
+          | HTMLButtonElement
+          | null,
+        "mailbox mention chip missing"
+      )
+    );
+    expect(onSelectMember).toHaveBeenCalledWith("coordinator-agent");
   });
 
   it("TeamMailboxPanel disables accept actions while a mailbox accept is already in progress", () => {

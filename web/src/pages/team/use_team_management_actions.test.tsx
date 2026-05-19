@@ -102,6 +102,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     teamExecutionBlockedReason: null,
     selectedTeamWorkerCount: 0,
     selectedTeamMemberStatuses: [],
+    selectedMemberId: "",
     selectedAgentWorkspaceMemberId: "",
     selectedAgentWorkspaceAgent: null,
     selectedAgentLabel: "Agent",
@@ -259,6 +260,67 @@ describe("useTeamManagementActions", () => {
       });
       expect(params.setError).toHaveBeenCalledWith("Add a coordinator first");
       expect(mockedApi.startTeam).not.toHaveBeenCalled();
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("opens the member edit modal from the selected overview member", async () => {
+    const params = createParams({
+      selectedMemberId: "coordinator-1",
+      selectedAgentWorkspaceMemberId: "",
+    });
+    const mounted = await mountHook(params);
+    try {
+      act(() => {
+        mounted.getSnapshot()?.openTeamMemberEditModal();
+      });
+      expect(params.setTeamMemberEditDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          member_id: "coordinator-1",
+          role: "coordinator",
+          prompt: "lead",
+        })
+      );
+      expect(params.setShowTeamMemberEditModal).toHaveBeenCalledWith(true);
+      expect(params.setError).toHaveBeenCalledWith(null);
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("opens the member edit modal from the active agent workspace member", async () => {
+    const params = createParams({
+      selectedMemberId: "missing-member",
+      selectedAgentWorkspaceMemberId: "coordinator-1",
+      selectedAgentWorkspaceAgent: {
+        id: "agent-source-1",
+        name: "Coordinator Runtime",
+        workdir: "/repo/source",
+        command: "agenthub-codex-acp",
+        args: [],
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+        status: "stopped",
+        created_at: 1,
+        updated_at: 2,
+      },
+    });
+    const mounted = await mountHook(params);
+    try {
+      act(() => {
+        mounted.getSnapshot()?.openTeamMemberEditModal();
+      });
+      expect(params.setTeamMemberEditDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          member_id: "coordinator-1",
+          role: "coordinator",
+          prompt: "lead",
+        })
+      );
+      expect(params.setShowTeamMemberEditModal).toHaveBeenCalledWith(true);
     } finally {
       mounted.cleanup();
     }

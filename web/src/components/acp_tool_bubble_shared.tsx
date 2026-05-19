@@ -67,10 +67,10 @@ export type ExploreGroupBubbleProps = {
 export function formatTerminalActivityLabel(activity: AcpTerminalActivity): string {
   const base =
     activity.kind === "waiting"
-      ? "Waiting for background terminal"
+      ? "Waiting for terminal to close"
       : activity.kind === "waited"
-        ? "Waited for background terminal"
-        : "Interacted with background terminal";
+        ? "Terminal closed"
+        : "Interacted with terminal";
   if (!activity.command?.trim()) {
     return base;
   }

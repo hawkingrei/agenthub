@@ -32,6 +32,7 @@ type TeamConversationPanelProps = {
   formatTs: (ts?: number | null) => string;
   toPrettyJson: (value: unknown) => string;
   onOpenThread?: (messageId: number) => void;
+  onOpenMemberProfile?: (memberId: string) => void;
   activeThreadMessageId?: number | null;
   jumpToMessageId?: number | null;
   onJumpToMessageSettled?: () => void;
@@ -78,6 +79,7 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         formatTs={props.formatTs}
         toPrettyJson={props.toPrettyJson}
         onOpenThread={props.onOpenThread}
+        onOpenMemberProfile={props.onOpenMemberProfile}
         activeThreadMessageId={props.activeThreadMessageId}
         jumpToMessageId={props.jumpToMessageId}
         onJumpToMessageSettled={props.onJumpToMessageSettled}

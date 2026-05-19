@@ -17,6 +17,7 @@ import type { StepAction, TeamTab } from "./state";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type { MailboxTemplateKey, TeamMailboxChatActors } from "./mailbox_helpers";
 import type { TeamRunStatusFilter } from "./run_helpers";
+import { buildTeamWorkspacePath } from "../team_page";
 import { TeamConversationContainer } from "./TeamConversationContainer";
 import { TeamTasksContainer } from "./TeamTasksContainer";
 import { TeamThreadContainer } from "./TeamThreadContainer";
@@ -60,6 +61,11 @@ const LazyTeamStepsPanel = React.lazy(async () => {
 const LazyTeamMailboxPanel = React.lazy(async () => {
   const module = await import("../team_mailbox_panel");
   return { default: module.TeamMailboxPanel };
+});
+
+const LazyTeamOverviewProfilePanel = React.lazy(async () => {
+  const module = await import("../team_overview_panel");
+  return { default: module.TeamOverviewPanel };
 });
 
 export type TeamWorkbenchRuntimeContext = {
@@ -282,6 +288,8 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     workbench: props,
     routeThreadRootMessageId,
     selectedConversationMatchesChannelLane,
+    routeChannelId,
+    navigateTeamRoute,
   } = useTeamWorkspace();
   if (!props) {
     throw new Error("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
@@ -643,10 +651,25 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         onRefreshSnapshot: onRefreshOverviewSnapshot,
         selectedMemberId,
         onOpenMailboxForMember,
+        onEditAgentProfile: onOpenTeamMemberEditModal,
         displayNameByActorId: mailboxDisplayNameByActorId,
         memberTargetNodeById,
       }
     : null;
+
+  /* c8 ignore start -- covered through TeamMailboxPanel mention callback tests. */
+  const onOpenMemberProfileFromChat = React.useCallback(
+    (memberId: string) => {
+      const normalizedMemberId = memberId.trim();
+      if (!normalizedMemberId) {
+        return;
+      }
+      setSelectedMemberId(normalizedMemberId);
+      onTabChange("overview");
+    },
+    [onTabChange, setSelectedMemberId]
+  );
+  /* c8 ignore stop */
 
   const eventsPanelProps = activeRunForSelectedTeam
     ? {
@@ -710,6 +733,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         selectedMemberId,
         unreadByMemberId,
         onSelectMember: setSelectedMemberId,
+        onOpenMemberProfile: onOpenMemberProfileFromChat,
         chatActors,
         chatStickToBottom,
         chatMessagesRef,
@@ -855,6 +879,38 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
       <TeamThreadContainer />
     ) : null;
 
+  const channelProfileMemberId =
+    !isAgentWorkspace &&
+    tab === "conversation" &&
+    activeWorkspaceLens === "channels" &&
+    selectedMemberId.trim().length > 0
+      ? selectedMemberId.trim()
+      : "";
+  const profilePane =
+    channelProfileMemberId && activeRunForSelectedTeam ? (
+      <Suspense fallback={<TeamPanelLoadingFallback />}>
+        <LazyTeamOverviewProfilePanel
+          snapshot={snapshot}
+          snapshotLoading={snapshotLoading}
+          onRefreshSnapshot={onRefreshOverviewSnapshot}
+          selectedMemberId={channelProfileMemberId}
+          onOpenMailboxForMember={onOpenMailboxForMember}
+          onEditAgentProfile={onOpenTeamMemberEditModal}
+          onCloseAgentProfile={() => {
+            setSelectedMemberId("");
+            if (effectiveSelectedTeamId) {
+              navigateTeamRoute(
+                buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId)
+              );
+            }
+          }}
+          profileOnly
+          displayNameByActorId={mailboxDisplayNameByActorId}
+          memberTargetNodeById={memberTargetNodeById}
+        />
+      </Suspense>
+    ) : null;
+
   const agentAcpPanel = (
     <Suspense
       fallback={
@@ -975,6 +1031,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
             selectedMemberId={selectedMemberId}
             unreadByMemberId={unreadByMemberId}
             onSelectMember={setSelectedMemberId}
+            onOpenMemberProfile={onOpenMemberProfileFromChat}
             chatActors={chatActors}
             chatStickToBottom={chatStickToBottom}
             chatMessagesRef={chatMessagesRef}
@@ -1026,7 +1083,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
 
   const bodyProps = buildTeamWorkbenchBodyProps({
     conversationPanel,
-    threadPane,
+    threadPane: profilePane ?? threadPane,
     tasksPanel,
     agentAcpPanel,
     overviewPanelProps,

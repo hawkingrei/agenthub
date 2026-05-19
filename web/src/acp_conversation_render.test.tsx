@@ -107,10 +107,8 @@ describe("AcpConversation rendering", () => {
     ]);
 
     expect(html).toContain("Activity");
-    expect(html).toContain("Waited for background terminal · Run cargo test -p codex-core");
-    expect(html).toContain(
-      "Interacted with background terminal · Run cargo test -p codex-core"
-    );
+    expect(html).toContain("Terminal closed · Run cargo test -p codex-core");
+    expect(html).toContain("Interacted with terminal · Run cargo test -p codex-core");
   });
 
   it("bottom-aligns the latest content when requested", async () => {

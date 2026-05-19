@@ -224,13 +224,14 @@ describe("mailbox helpers", () => {
     ).toBe("hello from json");
   });
 
-  it("renders raw mentions as chips in plain text only", () => {
+  it("renders raw mentions as chips in plain text and markdown chat", () => {
     const plain = renderPlainTextWithMentions("hello @worker-1");
     expect(plain).toContain("team-mention");
     expect(plain).toContain("@worker-1");
 
     const markdown = renderMarkdownWithMentions("hello @worker-1");
-    expect(markdown).not.toContain("team-mention");
+    expect(markdown).toContain("team-mention");
+    expect(markdown).toContain('data-team-agent-mention-id="worker-1"');
     expect(markdown).toContain("@worker-1");
   });
 
@@ -241,6 +242,31 @@ describe("mailbox helpers", () => {
     expect(rendered).not.toContain("team-mention");
     expect(rendered).toContain("@worker-1");
     expect(rendered).toContain("https://example.com/@worker-1");
+  });
+
+  it("keeps raw mention tokenization outside protected markdown ranges boundary-aware", () => {
+    const rendered = renderMarkdownWithMentions(
+      "[abc](https://example.com)@worker-1 and [profile](https://example.com/@worker-2) @worker-3"
+    );
+    expect(rendered).not.toContain('data-team-agent-mention-id="worker-1"');
+    expect(rendered).not.toContain('data-team-agent-mention-id="worker-2"');
+    expect(rendered).toContain('data-team-agent-mention-id="worker-3"');
+  });
+
+  it("keeps raw mention tokenization boundary-aware before protected markdown ranges", () => {
+    const rendered = renderMarkdownWithMentions(
+      "ping @worker-1 before [profile](https://example.com/@worker-2)"
+    );
+    expect(rendered).toContain('data-team-agent-mention-id="worker-1"');
+    expect(rendered).not.toContain('data-team-agent-mention-id="worker-2"');
+  });
+
+  it("skips nested protected markdown ranges when tokenizing raw mentions", () => {
+    const rendered = renderMarkdownWithMentions(
+      "`[profile](https://example.com/@worker-1)` @worker-2"
+    );
+    expect(rendered).not.toContain('data-team-agent-mention-id="worker-1"');
+    expect(rendered).toContain('data-team-agent-mention-id="worker-2"');
   });
 
   it("treats short blank-line-separated chat fragments as plain text instead of markdown paragraphs", () => {

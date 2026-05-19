@@ -26,6 +26,27 @@ export function installReactDomTestGlobals(): void {
       disconnect(): void {}
     } as typeof ResizeObserver;
   }
+
+  if (typeof document !== "undefined") {
+    const documentWithFonts = document as Document & {
+      fonts?: {
+        addEventListener?: (type: string, listener: EventListenerOrEventListenerObject) => void;
+        removeEventListener?: (type: string, listener: EventListenerOrEventListenerObject) => void;
+      };
+    };
+    if (!documentWithFonts.fonts) {
+      Object.defineProperty(documentWithFonts, "fonts", {
+        configurable: true,
+        value: {
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        },
+      });
+    } else {
+      documentWithFonts.fonts.addEventListener ??= () => {};
+      documentWithFonts.fonts.removeEventListener ??= () => {};
+    }
+  }
 }
 
 export function required<T>(value: T | null | undefined, message: string): T {

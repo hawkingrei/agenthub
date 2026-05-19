@@ -98,6 +98,7 @@ type TeamTaskPanelProps = {
   formatTs: (ts?: number | null) => string;
   toPrettyJson: (value: unknown) => string;
   onOpenThread?: (messageId: number) => void;
+  onOpenMemberProfile?: (memberId: string) => void;
   activeThreadMessageId?: number | null;
   jumpToMessageId?: number | null;
   onJumpToMessageSettled?: () => void;
@@ -363,9 +364,11 @@ function resolveActivityBubbleLayoutClassName(showSeenMeta: boolean): string {
 function TeamActivityBubbleBody({
   text,
   renderSanitizedHtml,
+  onMentionClick,
 }: {
   text: string;
   renderSanitizedHtml: (text: string) => string;
+  onMentionClick?: (actorId: string) => void;
 }) {
   if (isCompactCommandLikeText(text)) {
     return <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{text}</pre>;
@@ -375,6 +378,7 @@ function TeamActivityBubbleBody({
       className={TEAM_TASK_ACTIVITY_BODY_CLASS}
       text={text}
       renderSanitizedHtml={renderSanitizedHtml}
+      onMentionClick={onMentionClick}
     />
   );
 }
@@ -976,7 +980,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     messagesLoading,
     busy,
     formatTs,
-  onOpenThread,
+    onOpenThread,
+  onOpenMemberProfile,
   activeThreadMessageId = null,
   jumpToMessageId = null,
   onJumpToMessageSettled,
@@ -1735,6 +1740,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                               <TeamActivityBubbleBody
                                 text={item.text}
                                 renderSanitizedHtml={renderTeamMessageHtml}
+                                onMentionClick={onOpenMemberProfile}
                               />
                             </TeamActivityBubble>
                           )}
