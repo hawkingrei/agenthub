@@ -162,8 +162,8 @@ pub struct CreateTeamRunRequest {
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamTaskRequest {
     pub title: String,
-    pub priority: Option<String>,
-    pub assigned_member_id: Option<String>,
+    pub priority: String,
+    pub assigned_member_id: String,
     pub created_by_actor_id: Option<String>,
     pub context: Option<Value>,
     pub conversation_mode: Option<String>,
