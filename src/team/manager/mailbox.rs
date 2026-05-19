@@ -1806,7 +1806,7 @@ async fn resolve_or_create_shared_thread_for_run(
             created_at,
             updated_at
         )
-        VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', 'p2', ?4, ?5, ?6, ?7)
+        VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', 'medium', ?4, ?5, ?6, ?7)
         "#,
     )
     .bind(&task_id)

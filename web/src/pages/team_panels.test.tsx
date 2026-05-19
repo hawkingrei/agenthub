@@ -404,7 +404,7 @@ function buildPanelTask(
       | "in_review"
       | "completed"
       | "canceled";
-    priority: "p0" | "p1" | "p2" | "p3" | null;
+    priority: "critical" | "high" | "medium" | "low" | null;
     assigned_member_id: string | null;
     context: Record<string, unknown>;
     created_at: number;
@@ -416,7 +416,7 @@ function buildPanelTask(
     team_id: "team-1",
     title: overrides.title ?? id,
     status: overrides.status ?? "open",
-    priority: overrides.priority ?? "p2",
+    priority: overrides.priority ?? "medium",
     created_by_actor_id: "user",
     assigned_member_id: overrides.assigned_member_id ?? null,
     context: overrides.context ?? {},
@@ -5775,14 +5775,14 @@ describe("team panels interactions", () => {
               buildPanelTask("task-1", {
                 title: "Investigate bug",
                 status: "open",
-                priority: "p1",
+                priority: "high",
                 created_at: 100,
                 updated_at: 200,
               }),
               buildPanelTask("task-2", {
                 title: "Prepare rollout",
                 status: "in_progress",
-                priority: "p0",
+                priority: "critical",
                 assigned_member_id: "worker-1",
                 context: {
                   owner: "coordinator",
@@ -5795,14 +5795,14 @@ describe("team panels interactions", () => {
               buildPanelTask("task-3", {
                 title: "Wait for PR review",
                 status: "waiting",
-                priority: "p3",
+                priority: "low",
                 created_at: 85,
                 updated_at: 224,
               }),
               buildPanelTask("task-4", {
                 title: "Review release notes",
                 status: "in_review",
-                priority: "p2",
+                priority: "medium",
                 created_at: 80,
                 updated_at: 225,
               }),
@@ -5813,7 +5813,7 @@ describe("team panels interactions", () => {
               task: buildPanelTask("task-2", {
                 title: "Prepare rollout",
                 status: "in_progress",
-                priority: "p0",
+                priority: "critical",
                 assigned_member_id: "worker-1",
                 context: {
                   owner: "coordinator",
@@ -5968,7 +5968,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("1");
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).toContain("owner Worker One");
-    expect(container.textContent).toContain("P0");
+    expect(container.textContent).toContain("Critical");
     expect(container.textContent).toContain(
       "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
@@ -6038,27 +6038,27 @@ describe("team panels interactions", () => {
             compactMode={false}
             developerMode={false}
             tasks={[
-              buildPanelTask("task-p2", {
+              buildPanelTask("task-medium", {
                 title: "Lower priority",
                 status: "open",
-                priority: "p2",
+                priority: "medium",
                 updated_at: 210,
               }),
-              buildPanelTask("task-p0", {
+              buildPanelTask("task-critical", {
                 title: "Highest priority",
                 status: "open",
-                priority: "p0",
+                priority: "critical",
                 updated_at: 205,
               }),
-              buildPanelTask("task-p1", {
-                title: "Medium priority",
+              buildPanelTask("task-high", {
+                title: "High priority",
                 status: "open",
-                priority: "p1",
+                priority: "high",
                 updated_at: 220,
               }),
             ]}
             tasksLoading={false}
-            selectedTaskId="task-p2"
+            selectedTaskId="task-medium"
             selectedTaskDetail={null}
             onSelectedTaskIdChange={vi.fn()}
             onRefreshTasks={vi.fn()}
@@ -6085,16 +6085,16 @@ describe("team panels interactions", () => {
       container.querySelectorAll('[data-team-surface="kanban"] section button')
     );
     expect(cardsBeforeFilter[0]?.textContent).toContain("Highest priority");
-    expect(cardsBeforeFilter[1]?.textContent).toContain("Medium priority");
+    expect(cardsBeforeFilter[1]?.textContent).toContain("High priority");
     expect(cardsBeforeFilter[2]?.textContent).toContain("Lower priority");
 
-    clickElement(findInteractiveByText(container, "P0", "label"));
+    clickElement(findInteractiveByText(container, "Critical", "label"));
     await waitForCondition(
-      () => !(container.textContent?.includes("Medium priority") ?? false)
+      () => !(container.textContent?.includes("High priority") ?? false)
     );
 
     expect(container.textContent).toContain("Highest priority");
-    expect(container.textContent).not.toContain("Medium priority");
+    expect(container.textContent).not.toContain("High priority");
     expect(container.textContent).not.toContain("Lower priority");
   });
 

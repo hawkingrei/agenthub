@@ -27,7 +27,8 @@ use crate::auth::AuthService;
 use crate::push::PushService;
 use crate::state::AppState;
 use crate::team::{
-    TeamActorMessageTransport, TeamDefinitionConfig, TeamManager, force_team_member_new_session,
+    TeamActorMessageTransport, TeamDefinitionConfig, TeamManager, TeamTaskCreateInput,
+    TeamTaskPriority, force_team_member_new_session,
 };
 use agenthub_config::{AppConfig, PushConfig, WebConfig};
 use agenthub_message_archive::{
@@ -101,20 +102,42 @@ async fn create_team_task(
             "title is required",
         ));
     }
+    let priority = payload
+        .priority
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| crate::api::error::ApiError::bad_request("priority is required"))?
+        .parse::<TeamTaskPriority>()
+        .map_err(|_| {
+            crate::api::error::ApiError::bad_request(
+                "invalid task priority; expected one of: critical, high, medium, low",
+            )
+        })?;
+    let assigned_member_id = payload
+        .assigned_member_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            crate::api::error::ApiError::bad_request("assigned_member_id is required")
+        })?;
     let created_by_actor_id =
         normalize_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
     let conversation_mode = normalize_conversation_mode(payload.conversation_mode.as_deref())?;
     let raw_context = payload.context.unwrap_or_else(|| json!({}));
     let (task, conversation) = state
         .teams
-        .create_task(
+        .create_task_with_metadata(TeamTaskCreateInput {
             team_id,
-            &title,
-            &created_by_actor_id,
-            raw_context,
-            &conversation_mode,
-            payload.topic.as_deref(),
-        )
+            title: &title,
+            created_by_actor_id: &created_by_actor_id,
+            priority,
+            assigned_member_id: Some(assigned_member_id),
+            context: raw_context,
+            conversation_mode: &conversation_mode,
+            topic: payload.topic.as_deref(),
+        })
         .await
         .map_err(map_team_internal_error)?;
     Ok(TeamTaskDetailResponse {
@@ -594,7 +617,7 @@ async fn init_test_schema(db: &SqlitePool) {
             group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
-            priority TEXT NOT NULL DEFAULT 'p2',
+            priority TEXT NOT NULL DEFAULT 'medium',
             created_by_actor_id TEXT NOT NULL,
             assigned_member_id TEXT,
             context_json TEXT NOT NULL,

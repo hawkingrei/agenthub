@@ -51,6 +51,7 @@ restating the same rules.
   - `agenthub actor team-task-update` is the canonical coordinator path for Team task lifecycle changes
   - `agenthub actor team-tasks` is the canonical path for inspecting the current Team Kanban surface
   - coordinator owns canonical task creation and task lifecycle management for the team
+  - before delegating or starting any non-trivial execution lane, coordinator should create or confirm the canonical Team task first
   - channels are for communication/review; Kanban is the canonical task-tracking surface
 - Channel/thread context split:
   - channel root messages are summary-first entrypoints for one topic, request, review point, or decision

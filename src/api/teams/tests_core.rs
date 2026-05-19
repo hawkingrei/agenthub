@@ -387,20 +387,24 @@ async fn teams_api_rejects_execution_until_team_has_members() {
         Value::from("team has no members configured; add at least one agent first")
     );
 
-    let task_detail = create_team_task(
-        &state,
-        &headers,
-        &team.id,
-        CreateTeamTaskRequest {
-            title: "Investigate".to_string(),
-            created_by_actor_id: None,
-            context: None,
-            conversation_mode: None,
-            topic: None,
-        },
-    )
-    .await
-    .expect("create task without members");
+    let (task, conversation) = state
+        .teams
+        .create_task(
+            &team.id,
+            "Investigate",
+            "user",
+            json!({}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task without members");
+    let task_detail = TeamTaskDetailResponse {
+        task,
+        conversation,
+        latest_run: None,
+        notes: Vec::new(),
+    };
 
     let compile_err = compile_team_task_run_preview(
         State(state),
@@ -2966,6 +2970,8 @@ async fn start_team_run_step_requests_reconcile_prompt_for_reconcile_loop_steps(
         &team.id,
         CreateTeamTaskRequest {
             title: "Reconcile prompt task".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("planner".to_string()),
             context: Some(json!({
                 "execution_plan": {
@@ -4486,6 +4492,8 @@ async fn team_task_api_lists_gets_and_redacts_context() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Kickoff migration".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "source":"ui",
@@ -4501,7 +4509,7 @@ async fn team_task_api_lists_gets_and_redacts_context() {
     assert_eq!(created.task.team_id, team.id);
     assert_eq!(created.task.title, "Kickoff migration");
     assert!(created.task.created_by_actor_id.starts_with("user:"));
-    assert_eq!(created.task.assigned_member_id, None);
+    assert_eq!(created.task.assigned_member_id.as_deref(), Some("planner"));
     assert_eq!(created.task.context["token"], json!("[redacted]"));
     assert_eq!(
         created.task.context["nested"]["secret"],
@@ -4526,7 +4534,7 @@ async fn team_task_api_lists_gets_and_redacts_context() {
     .expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, created.task.id);
-    assert_eq!(listed[0].assigned_member_id, None);
+    assert_eq!(listed[0].assigned_member_id.as_deref(), Some("planner"));
 
     let Json(found) = get_team_task(
         State(state),
@@ -4537,7 +4545,7 @@ async fn team_task_api_lists_gets_and_redacts_context() {
     .expect("get task");
     assert_eq!(found.task.id, created.task.id);
     assert_eq!(found.conversation.id, created.conversation.id);
-    assert_eq!(found.task.assigned_member_id, None);
+    assert_eq!(found.task.assigned_member_id.as_deref(), Some("planner"));
     assert!(found.latest_run.is_none());
 }
 
@@ -4564,6 +4572,8 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
         &team.id,
         CreateTeamTaskRequest {
             title: "All".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "bootstrap_kind":"shared_thread",
@@ -4609,6 +4619,8 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
         &team.id,
         CreateTeamTaskRequest {
             title: "All".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "bootstrap_kind":"shared_thread",
@@ -4627,6 +4639,8 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Investigate regression".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "bootstrap_kind":"task_workspace"
@@ -4780,6 +4794,8 @@ async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message(
         &team.id,
         CreateTeamTaskRequest {
             title: "All".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "bootstrap_kind":"shared_thread",
@@ -4798,6 +4814,8 @@ async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message(
         &team.id,
         CreateTeamTaskRequest {
             title: "All".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "bootstrap_kind":"shared_thread",
@@ -5232,6 +5250,8 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
         &team.id,
         CreateTeamTaskRequest {
             title: "All".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "bootstrap_kind":"shared_thread",
@@ -5594,6 +5614,8 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Promote kanban card".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({"source":"ui"})),
             conversation_mode: Some("group_chat".to_string()),
@@ -5647,7 +5669,7 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
         .await
         .expect("reload task");
     assert_eq!(reloaded.status, crate::team::TeamTaskStatus::Open);
-    assert_eq!(reloaded.assigned_member_id, None);
+    assert_eq!(reloaded.assigned_member_id.as_deref(), Some("planner"));
 }
 
 #[tokio::test]
@@ -5677,6 +5699,8 @@ async fn team_task_api_enforces_team_owner_access_for_existing_tasks() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Owner only planning".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -5742,6 +5766,8 @@ async fn team_task_messages_api_supports_route_and_redaction() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Discuss rollout".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -5944,6 +5970,8 @@ async fn team_task_messages_api_supports_idempotency_key_and_dedupes_mailbox_for
         &team.id,
         CreateTeamTaskRequest {
             title: "Retry-safe chat".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -6097,6 +6125,8 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Mailbox forwarding".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -6286,6 +6316,8 @@ async fn team_task_messages_api_infers_direct_route_for_single_mention_and_norma
         &team.id,
         CreateTeamTaskRequest {
             title: "Direct by default".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -6397,6 +6429,8 @@ async fn team_task_messages_api_infers_to_coordinator_from_single_coordinator_me
         &team.id,
         CreateTeamTaskRequest {
             title: "Coordinator inference".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -6454,6 +6488,8 @@ async fn team_task_messages_api_normalizes_detail_ref_objects_and_caps_summary_l
         &team.id,
         CreateTeamTaskRequest {
             title: "Object detail_ref normalization".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -6531,6 +6567,8 @@ async fn team_task_messages_api_drops_invalid_detail_ref_objects_before_summary_
         &team.id,
         CreateTeamTaskRequest {
             title: "Invalid detail_ref object".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -6600,6 +6638,8 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Implement chat-first compile".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "task_list":["Bootstrap compile endpoint"],
@@ -6788,6 +6828,8 @@ async fn team_task_compile_preview_sanitizes_plan_updates() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Sanitize compile updates".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -6888,6 +6930,8 @@ async fn team_task_compile_preview_prefers_task_execution_plan_steps() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Use task execution plan".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "execution_plan": {
@@ -6994,6 +7038,8 @@ async fn team_task_compile_preview_rejects_invalid_execution_plan_payload() {
         &team.id,
         CreateTeamTaskRequest {
             title: "Use invalid task execution plan".to_string(),
+            priority: Some("high".to_string()),
+            assigned_member_id: Some("planner".to_string()),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "execution_plan": {

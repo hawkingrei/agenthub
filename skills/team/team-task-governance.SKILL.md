@@ -41,10 +41,10 @@ Shared routing, mailbox transport, and human-facing reply rules remain canonical
 
 ## Priority Contract
 
-- `p0`: urgent production or user blocker
-- `p1`: near-term high-value delivery
-- `p2`: default planned work
-- `p3`: low-urgency cleanup or backlog
+- `critical`: urgent production or user blocker
+- `high`: near-term high-value delivery
+- `medium`: default planned work
+- `low`: low-urgency cleanup or backlog
 
 Priority is not cosmetic:
 

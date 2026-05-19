@@ -200,7 +200,7 @@ describe("api request headers", () => {
 
     await api.listTeamTasks("token-1", "team-1", 25, {
       include_shared_thread: true,
-      priority: "p0",
+      priority: "critical",
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -208,7 +208,7 @@ describe("api request headers", () => {
     expect(url).toContain("/api/teams/team-1/tasks?");
     expect(url).toContain("limit=25");
     expect(url).toContain("include_shared_thread=true");
-    expect(url).toContain("priority=p0");
+    expect(url).toContain("priority=critical");
   });
 
   it("builds the team run-context SSE URL with encoded dynamic segments", () => {

@@ -162,6 +162,8 @@ pub struct CreateTeamRunRequest {
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamTaskRequest {
     pub title: String,
+    pub priority: Option<String>,
+    pub assigned_member_id: Option<String>,
     pub created_by_actor_id: Option<String>,
     pub context: Option<Value>,
     pub conversation_mode: Option<String>,
@@ -839,7 +841,9 @@ async fn list_team_tasks(
         .filter(|value| !value.is_empty() && *value != "all")
         .map(|raw| {
             raw.parse::<TeamTaskPriority>().map_err(|_| {
-                ApiError::bad_request("invalid task priority; expected one of: p0, p1, p2, p3")
+                ApiError::bad_request(
+                    "invalid task priority; expected one of: critical, high, medium, low",
+                )
             })
         })
         .transpose()?;

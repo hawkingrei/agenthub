@@ -1785,7 +1785,7 @@ impl TeamManager {
             INSERT INTO team_tasks (
                 id, team_id, group_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
             )
-            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', 'p2', ?4, NULL, ?5, ?6, ?7)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', 'medium', ?4, NULL, ?5, ?6, ?7)
             "#,
         )
         .bind(&task_id)
@@ -7923,7 +7923,7 @@ impl TeamManager {
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', 'p2', ?4, NULL, ?5, ?6, ?7)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', 'medium', ?4, NULL, ?5, ?6, ?7)
             "#,
         )
         .bind(&task_id)
