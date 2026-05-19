@@ -1,11 +1,11 @@
 ---
 name: project-github-titles
-description: "Use when preparing commit messages, pull request titles, or summary comments for this repository. Enforce `type(scope): subject` without `[codex]`, using one of `feat`, `fix`, `test`, `chore`, or `docs`."
+description: "Trigger when writing commit titles, PR titles, or summary first lines for this repository; enforce `type(scope): subject`."
 ---
 
 # Project GitHub Titles
 
-Use this skill when writing commit titles, pull request titles, or the first summary line in a PR/commentary block for this repository.
+Trigger when writing commit titles, pull request titles, or the first summary line in a PR/commentary block for this repository.
 
 ## Title Format
 

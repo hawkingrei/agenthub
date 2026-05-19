@@ -1,11 +1,11 @@
 ---
 name: agenthub-acp-rendering
-description: "Use when fixing or reviewing AgentHub ACP rendering, member ACP loading, chunked agent message recovery, cache handoff, or SSE-vs-polling refresh behavior in the web team surfaces. Especially relevant for partial leading ACP messages, blank ACP panes, duplicate member event fetches, and Chrome DevTools MCP regression checks."
+description: "Trigger when Team ACP UI looks blank, partial, duplicated, or stale, especially in `web/src/pages/team/` and ACP conversation surfaces."
 ---
 
 # AgentHub ACP Rendering
 
-Use this skill for AgentHub web ACP rendering work, especially under `web/src/pages/team/`, `web/src/components/acp_*`, and `web/src/hooks/use_acp_conversation.ts`.
+Trigger when you are fixing AgentHub web ACP rendering behavior, especially under `web/src/pages/team/`, `web/src/components/acp_*`, and `web/src/hooks/use_acp_conversation.ts`.
 
 ## Scope
 
@@ -156,4 +156,3 @@ After deployment, re-check the same page with Chrome DevTools MCP and confirm:
 - blank/busy/partial symptom is gone
 - duplicate ACP event fetches are gone or reduced as intended
 - no new console errors were introduced
-
