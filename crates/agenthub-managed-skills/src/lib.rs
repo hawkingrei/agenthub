@@ -19,6 +19,8 @@ const TEAM_DELIBERATION_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-deliberation-rules.SKILL.md");
 const TEAM_ACTOR_MAILBOX_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-actor-mailbox.SKILL.md");
+const TEAM_TASK_GOVERNANCE_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-task-governance.SKILL.md");
 const TEAM_TASK_LIFECYCLE_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-task-lifecycle.SKILL.md");
 
@@ -31,6 +33,7 @@ pub enum ManagedSkillKind {
     TeamWorkerAgentsIndex,
     TeamCoordinatorOrchestrator,
     TeamWorkerExecutor,
+    TeamTaskGovernance,
     TeamTaskLifecycle,
     TeamDeliberationRules,
     TeamActorMailbox,
@@ -38,12 +41,13 @@ pub enum ManagedSkillKind {
 }
 
 impl ManagedSkillKind {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::TeamAgentsIndex,
         Self::TeamCoordinatorAgentsIndex,
         Self::TeamWorkerAgentsIndex,
         Self::TeamCoordinatorOrchestrator,
         Self::TeamWorkerExecutor,
+        Self::TeamTaskGovernance,
         Self::TeamTaskLifecycle,
         Self::TeamDeliberationRules,
         Self::TeamActorMailbox,
@@ -57,6 +61,7 @@ impl ManagedSkillKind {
             Self::TeamWorkerAgentsIndex => "team/team-worker-agents-index",
             Self::TeamCoordinatorOrchestrator => "team/team-coordinator-orchestrator",
             Self::TeamWorkerExecutor => "team/team-worker-executor",
+            Self::TeamTaskGovernance => "team/team-task-governance",
             Self::TeamTaskLifecycle => "team/team-task-lifecycle",
             Self::TeamDeliberationRules => "team/team-deliberation-rules",
             Self::TeamActorMailbox => "team/team-actor-mailbox",
@@ -237,6 +242,7 @@ pub fn managed_skill_name(kind: ManagedSkillKind) -> &'static str {
         ManagedSkillKind::TeamWorkerAgentsIndex => "team-worker-agents-index",
         ManagedSkillKind::TeamCoordinatorOrchestrator => "team-coordinator-orchestrator",
         ManagedSkillKind::TeamWorkerExecutor => "team-worker-executor",
+        ManagedSkillKind::TeamTaskGovernance => "team-task-governance",
         ManagedSkillKind::TeamTaskLifecycle => "team-task-lifecycle",
         ManagedSkillKind::TeamDeliberationRules => "team-deliberation-rules",
         ManagedSkillKind::TeamActorMailbox => "team-actor-mailbox",
@@ -251,6 +257,7 @@ pub fn managed_skill_contents(kind: ManagedSkillKind) -> String {
         ManagedSkillKind::TeamWorkerAgentsIndex => team_role_agents_index_skill_doc(false),
         ManagedSkillKind::TeamCoordinatorOrchestrator => TEAM_COORDINATOR_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamWorkerExecutor => TEAM_WORKER_SKILL_TEXT.to_string(),
+        ManagedSkillKind::TeamTaskGovernance => TEAM_TASK_GOVERNANCE_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamTaskLifecycle => TEAM_TASK_LIFECYCLE_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamDeliberationRules => TEAM_DELIBERATION_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamActorMailbox => TEAM_ACTOR_MAILBOX_SKILL_TEXT.to_string(),
@@ -271,7 +278,8 @@ fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
                     "Maintain coordinator workspace `AGENTS.md` as the coordination index.",
                     "Keep current phase, transition condition, assignment map, and integration checklist concise.",
                     "Keep human-facing planning decisions in coordinator index records.",
-                    "Keep `team-task-lifecycle` active whenever coordinator is creating, reviewing, or closing canonical Team tasks.",
+                    "Keep `team-task-governance` active whenever coordinator is creating or updating canonical Team task fields, notes, or visibility.",
+                    "Keep `team-task-lifecycle` active whenever coordinator is advancing, reviewing, or closing canonical Team tasks.",
                 ],
             )
         } else {
@@ -285,6 +293,7 @@ fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
                     "Maintain worker workspace `AGENTS.md` as the execution index.",
                     "Keep assignment scope, acceptance criteria, evidence pointers, and blockers concise.",
                     "Keep coordinator as the default single-owner update route, but use shared channel directly when important issues need team-wide discussion or visibility.",
+                    "Keep `team-task-governance` active whenever worker execution evidence must be turned into canonical task-note or visibility guidance.",
                     "Keep `team-task-lifecycle` active whenever worker execution must advance a coordinator-owned Team task toward review.",
                 ],
             )
@@ -320,6 +329,7 @@ Primary references:
 3. Set `role={role_label}` and keep `Active Skills` minimal:
    - `{role_core_skill}` (role execution skill)
    - `team-actor-mailbox`
+   - add `team-task-governance` when canonical Team task fields, notes, or visibility rules matter
    - add `team-task-lifecycle` only when canonical Team task state must change
    - add `team-deliberation-rules` only when option comparison or consensus work is active
 4. Check `TODO.md` before mailbox rounds.
@@ -484,6 +494,7 @@ mod tests {
         .expect("build worker index doc");
         assert!(worker_index.contents.contains("shared channel directly"));
         assert!(worker_index.contents.contains("important issues"));
+        assert!(worker_index.contents.contains("team-task-governance"));
 
         let worker_executor =
             managed_skill_doc(ManagedSkillKind::TeamWorkerExecutor, Some(home.as_path()))
@@ -529,6 +540,7 @@ mod tests {
                 .contents
                 .contains("agenthub actor team-thread-reply")
         );
+        assert!(shared_index.contents.contains("team-task-governance"));
 
         let mailbox = managed_skill_doc(ManagedSkillKind::TeamActorMailbox, Some(home.as_path()))
             .expect("build mailbox doc");

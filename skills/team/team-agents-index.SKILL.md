@@ -1,6 +1,6 @@
 ---
 name: team-agents-index
-description: Shared Team startup index and routing contract.
+description: Use at Team session startup or when refreshing shared routing and skill pointers.
 ---
 
 # Team AGENTS Index
@@ -38,6 +38,7 @@ Primary references:
   - timed self-reminders via `agenthub actor time-trigger-set`,
     `agenthub actor time-trigger-list`, and
     `agenthub actor time-trigger-cancel`
+  - canonical Team task governance via `team-task-governance`
   - canonical Team task lifecycle via `team-task-lifecycle`
 
 ## Routing
@@ -46,6 +47,7 @@ Primary references:
 - Worker AGENTS index: `team-worker-agents-index`
 - Coordinator orchestration: `team-coordinator-orchestrator`
 - Worker execution: `team-worker-executor`
+- Team task governance: `team-task-governance`
 - Team task lifecycle: `team-task-lifecycle`
 - Deliberation quality gate: `team-deliberation-rules`
 - Actor mailbox protocol: `team-actor-mailbox`
@@ -63,7 +65,9 @@ Primary references:
 4. Load role-specific skill set based on current phase:
    - coordinator -> `team-coordinator-orchestrator` (+ optional `team-deliberation-rules`)
    - worker -> `team-worker-executor` (+ optional `team-deliberation-rules`)
-5. Load `team-task-lifecycle` whenever canonical Team task creation, review, or status transitions
-   are part of the current work.
-6. Check unfinished TODO items in `TODO.md` and, for concrete project workspaces,
+5. Load `team-task-governance` whenever canonical Team task fields, notes, or durable visibility
+   rules are part of the current work.
+6. Load `team-task-lifecycle` whenever canonical Team task review or status transitions are part of
+   the current work.
+7. Check unfinished TODO items in `TODO.md` and, for concrete project workspaces,
    `.agenthubmemory/TODO.md` before processing inbox.

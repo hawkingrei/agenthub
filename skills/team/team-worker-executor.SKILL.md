@@ -1,6 +1,6 @@
 ---
 name: team-worker-executor
-description: Worker execution and evidence-reporting workflow.
+description: Use when executing assigned Team work as a worker.
 ---
 
 # Team Worker Executor
@@ -19,6 +19,7 @@ Use this skill when executing assigned Team work, reporting evidence, and escala
 - Use `team-agents-index` to load shared Team terminology and startup checklist first.
 - Use `team-worker-agents-index` to load worker-specific AGENTS template/rules.
 - Use this skill for worker execution and evidence reporting.
+- Use `team-task-governance.SKILL.md` for canonical Team task note, ownership-gap handling, and visibility rules.
 - Use `team-task-lifecycle.SKILL.md` for canonical Team task progression and review handoff.
 - Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`receive`/`send`/`ack`).
@@ -308,10 +309,14 @@ Step execution contract:
 
 - Treat the coordinator-owned Team task as the canonical execution unit behind your assignment.
 - Use `agenthub actor team-tasks` when you need to verify canonical Team task state directly.
+- Use `team-task-governance` when the question is about task note content, ownership gaps, task
+  priority meaning, or which shared surface should carry an update.
 - Use `team-task-lifecycle` as the canonical Team task state contract.
 - Keep the task moving with timely progress/blocker updates so the coordinator can maintain correct
   Kanban state.
 - Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; raise the lifecycle change to coordinator.
+- Do not assume local output alone is visible to teammates; if the fact matters, route it through a
+  task note request, mailbox update, or channel/thread summary.
 - When implementation evidence is ready, push the task toward `in_review`; do not treat worker
   completion as canonical Team task `completed`.
 - For developer/code tasks, "ready for review" should normally mean merge-ready or very close to

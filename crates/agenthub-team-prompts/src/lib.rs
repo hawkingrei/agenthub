@@ -102,6 +102,8 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-agents-index"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-agents-index"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-task-governance"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-governance"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-task-lifecycle"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-lifecycle"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("canonical Team task creation"));
@@ -117,6 +119,11 @@ mod tests {
         assert!(!DEFAULT_TEAM_WORKER_PROMPT.contains("Acknowledge messages after reading"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("direct mailbox first"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("direct mailbox first"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("not a shared Team surface by itself"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT
+                .contains("not automatically visible to other agents or humans")
+        );
         assert!(
             DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Workers should have meaningful initiative")
         );
