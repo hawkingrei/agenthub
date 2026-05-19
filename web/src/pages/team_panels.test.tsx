@@ -5756,6 +5756,8 @@ describe("team panels interactions", () => {
   });
 
   it("TeamTasksPanel supports task filters, workflow guidance, linked runs, and debug compile actions", async () => {
+    const longLatestNote =
+      "Reviewed and ready for ship once docs are regenerated. Keep the remaining release checklist, rollback guardrails, and operator follow-up notes attached to the canonical task journal so every reviewer sees the same execution record.";
     const onSelectedTaskIdChange = vi.fn();
     const onOpenConversation = vi.fn();
     const onCompilePreviewContextIdChange = vi.fn();
@@ -5849,7 +5851,7 @@ describe("team panels interactions", () => {
                   task_id: "task-2",
                   from_actor_id: "reviewer",
                   kind: "result",
-                  text: "Reviewed and ready for ship once docs are regenerated.",
+                  text: longLatestNote,
                   created_at: 227,
                 },
               ],
@@ -5981,7 +5983,7 @@ describe("team panels interactions", () => {
     expect(document.body.textContent).toContain("Notes and journal");
     expect(document.body.textContent).toContain("Latest result");
     expect(document.body.textContent).toContain(
-      "Reviewed and ready for ship once docs are regenerated."
+      `${longLatestNote.replace(/\s+/g, " ").trim().slice(0, 157)}...`
     );
     expect(document.body.textContent).toContain("Latest execution run");
     expect(document.body.textContent).toContain("Shipped the rollout summary.");
@@ -6044,6 +6046,12 @@ describe("team panels interactions", () => {
                 priority: "medium",
                 updated_at: 210,
               }),
+              buildPanelTask("task-medium-alpha", {
+                title: "Alpha medium",
+                status: "open",
+                priority: "medium",
+                updated_at: 210,
+              }),
               buildPanelTask("task-critical", {
                 title: "Highest priority",
                 status: "open",
@@ -6055,6 +6063,18 @@ describe("team panels interactions", () => {
                 status: "open",
                 priority: "high",
                 updated_at: 220,
+              }),
+              buildPanelTask("task-low-newer", {
+                title: "Newer low priority",
+                status: "open",
+                priority: "low",
+                updated_at: 215,
+              }),
+              buildPanelTask("task-low-older", {
+                title: "Older low priority",
+                status: "open",
+                priority: "low",
+                updated_at: 205,
               }),
             ]}
             tasksLoading={false}
@@ -6086,7 +6106,10 @@ describe("team panels interactions", () => {
     );
     expect(cardsBeforeFilter[0]?.textContent).toContain("Highest priority");
     expect(cardsBeforeFilter[1]?.textContent).toContain("High priority");
-    expect(cardsBeforeFilter[2]?.textContent).toContain("Lower priority");
+    expect(cardsBeforeFilter[2]?.textContent).toContain("Alpha medium");
+    expect(cardsBeforeFilter[3]?.textContent).toContain("Lower priority");
+    expect(cardsBeforeFilter[4]?.textContent).toContain("Newer low priority");
+    expect(cardsBeforeFilter[5]?.textContent).toContain("Older low priority");
 
     clickElement(findInteractiveByText(container, "Critical", "label"));
     await waitForCondition(
@@ -6096,6 +6119,76 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Highest priority");
     expect(container.textContent).not.toContain("High priority");
     expect(container.textContent).not.toContain("Lower priority");
+  });
+
+  it("TeamTasksPanel renders short latest notes without truncation", async () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-short-note", {
+                title: "Document follow-up",
+                status: "open",
+                priority: "medium",
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-short-note"
+            selectedTaskDetail={{
+              task: buildPanelTask("task-short-note", {
+                title: "Document follow-up",
+                status: "open",
+                priority: "medium",
+              }),
+              conversation: {
+                id: "conv-short-note",
+                team_id: "team-1",
+                task_id: "task-short-note",
+                mode: "group_chat",
+                topic: null,
+                created_at: 100,
+                updated_at: 120,
+              },
+              latest_run: null,
+              notes: [
+                {
+                  message_id: 11,
+                  conversation_id: "conv-short-note",
+                  task_id: "task-short-note",
+                  from_actor_id: "planner",
+                  kind: "comment",
+                  text: "Keep docs aligned.",
+                  created_at: 130,
+                },
+              ],
+            }}
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[]}
+            onOpenRun={vi.fn()}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    await openTaskDetailModal(container, "Document follow-up");
+    expect(document.body.textContent).toContain("Latest comment");
+    expect(document.body.textContent).toContain("Keep docs aligned.");
   });
 
   it("TeamTasksPanel keeps the kanban surface vertically scrollable", () => {

@@ -389,17 +389,65 @@ async fn teams_api_rejects_execution_until_team_has_members() {
 
     // Seed an invalid pre-existing task directly instead of bypassing the
     // canonical creation contract through TeamManager helpers.
-    let task_detail = seed_team_task_detail(
-        &state,
-        &team.id,
-        "Investigate",
-        "user",
-        crate::team::TeamTaskPriority::Medium,
-        None,
-        json!({}),
-        None,
+    let task_id = Uuid::new_v4().to_string();
+    let conversation_id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp_millis();
+    sqlx::query(
+        r#"
+        INSERT INTO team_tasks (
+            id,
+            team_id,
+            title,
+            status,
+            priority,
+            created_by_actor_id,
+            assigned_member_id,
+            context_json,
+            created_at,
+            updated_at
+        ) VALUES (?1, ?2, ?3, 'open', 'medium', ?4, NULL, ?5, ?6, ?6)
+        "#,
     )
-    .await;
+    .bind(&task_id)
+    .bind(&team.id)
+    .bind("Investigate")
+    .bind("user")
+    .bind(json!({}).to_string())
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("seed task row");
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversations (
+            id,
+            team_id,
+            task_id,
+            mode,
+            topic,
+            created_at,
+            updated_at
+        ) VALUES (?1, ?2, ?3, 'group_chat', NULL, ?4, ?4)
+        "#,
+    )
+    .bind(&conversation_id)
+    .bind(&team.id)
+    .bind(&task_id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("seed conversation row");
+    let detail = state
+        .teams
+        .get_task_detail(&task_id, 100)
+        .await
+        .expect("load seeded task detail");
+    let task_detail = TeamTaskDetailResponse {
+        task: detail.task,
+        conversation: detail.conversation,
+        latest_run: detail.latest_run,
+        notes: detail.notes,
+    };
 
     let compile_err = compile_team_task_run_preview(
         State(state),
