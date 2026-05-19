@@ -51,7 +51,7 @@ regex-lite = "0.1"
 serde = { version = "1", features = ["derive"] }
 # Keep json key ordering aligned with codex CLI behavior.
 serde_json = { version = "1", features = ["preserve_order"] }
-shlex = "1"
+shlex = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 tracing = { version = "0.1", features = ["log"] }
