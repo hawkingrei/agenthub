@@ -24,6 +24,12 @@ Use this skill when executing assigned Team work, reporting evidence, and escala
 - Use `team-task-lifecycle.SKILL.md` for canonical Team task progression and review handoff.
 - Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`receive`/`send`/`ack`).
+- When a new inbox, channel, or thread message arrives, load the minimal message-implied skill set
+  before replying:
+  - `team-actor-mailbox` for receive/send/ack/thread mechanics
+  - `team-task-governance` for task-note, ownership-gap, priority, or task-context guidance
+  - `team-task-lifecycle` for review/state guidance that must be raised to coordinator
+  - `team-reporting-surfaces` for shared visibility routing
 
 ## Shared Contract Usage
 
@@ -314,6 +320,8 @@ Step execution contract:
 - Use `team-task-governance` when the question is about task note content, ownership gaps, task
   priority meaning, or task context.
 - Use `team-task-lifecycle` as the canonical Team task state contract.
+- When a message arrives and changes what must be reported or escalated, load `team-actor-mailbox`
+  plus the relevant task/reporting skill before answering.
 - Keep the task moving with timely progress/blocker updates so the coordinator can maintain correct
   Kanban state.
 - Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; raise the lifecycle change to coordinator.

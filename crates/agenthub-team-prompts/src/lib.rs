@@ -108,12 +108,31 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-governance"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-task-lifecycle"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-lifecycle"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-actor-mailbox"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-actor-mailbox"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("canonical Team task creation"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("advance assigned tasks"));
         verify_execution_vocabulary(DEFAULT_TEAM_COORDINATOR_PROMPT);
         verify_execution_vocabulary(DEFAULT_TEAM_WORKER_PROMPT);
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Inspect inbox regularly"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Receive inbox work"));
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT
+                .contains("When a new inbox, channel, or thread message arrives")
+        );
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT
+                .contains("When a new inbox, channel, or thread message arrives")
+        );
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT
+                .contains("routing, ack, open-thread, or reply mechanics")
+        );
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT.contains("routing, ack, open-thread, or reply mechanics")
+        );
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("before replying or mutating task state"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("before responding"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Think from first principles"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Re-derive the problem from first principles"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Treat inbox inspection as read-only"));

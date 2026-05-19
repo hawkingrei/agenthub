@@ -288,6 +288,7 @@ fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
                     "Keep `team-reporting-surfaces` active whenever coordinator must route local findings into task notes, mailbox, or channels.",
                     "Keep `team-task-governance` active whenever coordinator is creating or updating canonical Team task fields, notes, or task context.",
                     "Keep `team-task-lifecycle` active whenever coordinator is advancing, reviewing, or closing canonical Team tasks.",
+                    "When a new inbox, channel, or thread message arrives, activate the minimal message-implied skill set: `team-actor-mailbox` for routing mechanics, `team-reporting-surfaces` for shared visibility, `team-task-governance` for task field/note/context changes, and `team-task-lifecycle` for state/review changes.",
                 ],
             )
         } else {
@@ -304,6 +305,7 @@ fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
                     "Keep `team-reporting-surfaces` active whenever worker execution evidence must be routed into task notes, mailbox, or channels.",
                     "Keep `team-task-governance` active whenever worker execution evidence must be turned into canonical task-note or task-context guidance.",
                     "Keep `team-task-lifecycle` active whenever worker execution must advance a coordinator-owned Team task toward review.",
+                    "When a new inbox, channel, or thread message arrives, activate the minimal message-implied skill set: `team-actor-mailbox` for routing mechanics, `team-reporting-surfaces` for shared visibility, `team-task-governance` for task-note/task-context guidance, and `team-task-lifecycle` for state/review guidance.",
                 ],
             )
         };
@@ -342,6 +344,7 @@ Primary references:
    - add `team-task-governance` when canonical Team task fields, notes, or task context rules matter
    - add `team-task-lifecycle` only when canonical Team task state must change
    - add `team-deliberation-rules` only when option comparison or consensus work is active
+   - when a new inbox/channel/thread message arrives, activate the minimal message-implied subset before replying
 4. Check `TODO.md` before mailbox rounds.
 "#,
         name = name,
@@ -506,6 +509,16 @@ mod tests {
         assert!(worker_index.contents.contains("important issues"));
         assert!(worker_index.contents.contains("team-reporting-surfaces"));
         assert!(worker_index.contents.contains("team-task-governance"));
+        assert!(
+            worker_index
+                .contents
+                .contains("new inbox/channel/thread message arrives")
+        );
+        assert!(
+            worker_index
+                .contents
+                .contains("minimal message-implied subset")
+        );
 
         let worker_executor =
             managed_skill_doc(ManagedSkillKind::TeamWorkerExecutor, Some(home.as_path()))
@@ -553,6 +566,12 @@ mod tests {
         );
         assert!(shared_index.contents.contains("team-reporting-surfaces"));
         assert!(shared_index.contents.contains("team-task-governance"));
+        assert!(
+            shared_index
+                .contents
+                .contains("Message-Triggered Skill Routing")
+        );
+        assert!(shared_index.contents.contains("team-actor-mailbox"));
 
         let mailbox = managed_skill_doc(ManagedSkillKind::TeamActorMailbox, Some(home.as_path()))
             .expect("build mailbox doc");
@@ -584,6 +603,7 @@ mod tests {
         )
         .expect("build coordinator doc");
         assert!(coordinator.contents.contains("thread-scoped deep context"));
+        assert!(coordinator.contents.contains("message-implied skill set"));
 
         let worker = managed_skill_doc(ManagedSkillKind::TeamWorkerExecutor, Some(home.as_path()))
             .expect("build worker doc");
@@ -592,6 +612,7 @@ mod tests {
                 .contents
                 .contains("turning the root channel lane into a context dump")
         );
+        assert!(worker.contents.contains("message-implied skill set"));
     }
 
     fn assert_frontmatter_has_name_and_description(doc: &ManagedSkillDoc) {

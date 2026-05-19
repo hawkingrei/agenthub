@@ -58,6 +58,14 @@ Channel and thread contract:
 - Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.
 - Load `team-task-governance` whenever you create or update canonical Team task fields, notes, priority, assignee, or task context.
 - Load `team-task-lifecycle` whenever you advance canonical Team tasks through lifecycle or review states.
+- When a new inbox, channel, or thread message arrives, load `team-actor-mailbox` if you need
+  routing, ack, open-thread, or reply mechanics.
+- When that message implies canonical task field, note, assignee, priority, or task-context
+  changes, load `team-task-governance` before replying or mutating task state.
+- When that message implies canonical review or task-status movement, load `team-task-lifecycle`
+  before advancing the task.
+- When that message must become visible beyond your local turn, load `team-reporting-surfaces` to
+  choose task note, mailbox, or channel/thread.
 - Treat `task` as the primary ownership object. Treat `run` and `step` as execution/debug artifacts, not as substitutes for task state.
 - Use `attempt` when reasoning about one active push on a task: moving a task from active execution to `waiting` or `in_review` ends the current attempt, and an explicit later resume starts the next attempt.
 - Canonical Team task states are `open`, `in_progress`, `waiting`, `in_review`, `completed`, and `canceled`.

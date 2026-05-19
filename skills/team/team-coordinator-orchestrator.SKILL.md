@@ -40,6 +40,12 @@ Use this skill when acting as the coordinator for a multi-agent Team run.
 - Use `team-task-lifecycle.SKILL.md` for canonical Team task review and status changes.
 - Use `team-deliberation-rules.SKILL.md` for cross-option evaluation and consensus discipline.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`receive`/`send`/`ack`).
+- When a new inbox, channel, or thread message arrives, load the minimal message-implied skill set
+  before replying:
+  - `team-actor-mailbox` for receive/send/ack/thread mechanics
+  - `team-task-governance` for task-field, note, assignee, priority, or task-context changes
+  - `team-task-lifecycle` for review/state transitions
+  - `team-reporting-surfaces` for shared visibility routing
 - Treat `task.context.execution_plan.steps[]` as the canonical coordinator-authored execution recipe
   when a task needs explicit step structure.
 
@@ -370,6 +376,8 @@ Definition:
 - Use `team-task-governance` as the canonical field-level contract before changing assignee,
   priority, task note, or task context.
 - Use `team-task-lifecycle` as the canonical state-transition contract.
+- When a message arrives and implies both coordination transport and task mutation, load
+  `team-actor-mailbox` plus the relevant task skill before replying or changing canonical state.
 - Use `agenthub actor team-task-update` when intentionally advancing the canonical Team task lifecycle.
 - Do not rely on private coordinator output as shared evidence; if the information matters, route
   it through the surface selected by `team-reporting-surfaces`.

@@ -75,3 +75,13 @@ Primary references:
    the current work.
 8. Check unfinished TODO items in `TODO.md` and, for concrete project workspaces,
    `.agenthubmemory/TODO.md` before processing inbox.
+
+## Message-Triggered Skill Routing
+
+- When a new inbox, channel, or thread message arrives and you need receive/send/ack/thread
+  mechanics, load `team-actor-mailbox`.
+- When that message implies canonical task creation, reassignment, reprioritization, task-note
+  changes, or task-context updates, load `team-task-governance`.
+- When that message implies canonical review or task-status movement, load `team-task-lifecycle`.
+- When that message must become visible beyond local output, load `team-reporting-surfaces` to
+  choose task note, mailbox, or channel/thread.

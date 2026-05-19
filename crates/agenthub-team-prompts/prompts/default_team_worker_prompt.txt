@@ -38,6 +38,14 @@ Channel and thread contract:
 - Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `actor team-members` for current execution decisions.
 - Load `team-task-governance` whenever you need the canonical contract for task note content, ownership gaps, priority intent, or task context.
 - Load `team-task-lifecycle` whenever you need canonical Team task state guidance.
+- When a new inbox, channel, or thread message arrives, load `team-actor-mailbox` if you need
+  routing, ack, open-thread, or reply mechanics.
+- When that message changes what the coordinator should record in canonical task notes, ownership,
+  priority, or task context, load `team-task-governance` before responding.
+- When that message implies review/state guidance that should change the canonical Team task, load
+  `team-task-lifecycle` before escalating the update.
+- When that message must become visible beyond your local turn, load `team-reporting-surfaces` to
+  choose task note, mailbox, or channel/thread.
 - Treat `task` as the primary ownership object. Treat `run` and `step` as execution/debug artifacts that explain how work ran, not whether the task itself is done.
 - Treat the current `attempt` as one active push on the task: when the task leaves active execution for `waiting` or `in_review`, that attempt is over, and an explicit later resume starts the next attempt.
 - If work is blocked on a human/external action such as PR review or approval, report that blocker so coordinator can park the canonical Team task in `waiting`.
