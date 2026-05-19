@@ -368,7 +368,7 @@ async fn setup_test_db() -> SqlitePool {
             group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
-            priority TEXT NOT NULL DEFAULT 'p2',
+            priority TEXT NOT NULL DEFAULT 'medium',
             created_by_actor_id TEXT NOT NULL,
             assigned_member_id TEXT,
             context_json TEXT NOT NULL,
@@ -2337,7 +2337,7 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
     sqlx::query(
         r#"
         INSERT INTO team_tasks (id, team_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, 'p2', ?5, NULL, ?6, ?7, ?8)
+        VALUES (?1, ?2, ?3, ?4, 'medium', ?5, NULL, ?6, ?7, ?8)
         "#,
     )
     .bind("archive-task")
@@ -2447,7 +2447,7 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
     sqlx::query(
         r#"
         INSERT INTO team_tasks (id, team_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, 'p2', ?5, NULL, ?6, ?7, ?8)
+        VALUES (?1, ?2, ?3, ?4, 'medium', ?5, NULL, ?6, ?7, ?8)
         "#,
     )
     .bind("archive-task-2")
@@ -4029,7 +4029,7 @@ async fn list_team_channels_ignores_bootstrap_rows_with_blank_channel_id() {
             context_json,
             created_at,
             updated_at
-        ) VALUES (?1, ?2, ?3, 'open', 'p2', ?4, NULL, ?5, ?6, ?6)
+        ) VALUES (?1, ?2, ?3, 'open', 'medium', ?4, NULL, ?5, ?6, ?6)
         "#,
     )
     .bind(&task_id)

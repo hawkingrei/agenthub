@@ -367,6 +367,8 @@ Definition:
 
 - Coordinator owns canonical Team task creation and lifecycle management.
 - Do not require humans to express requests in a task-shaped format before planning can begin.
+- Before delegating or starting any non-trivial execution lane, create or confirm the canonical
+  Team task first.
 - Create a Team task when execution work needs explicit ownership, progress tracking, or Kanban
   visibility.
 - Use `agenthub actor team-task-create` to create that canonical Team task and `agenthub actor team-tasks` to confirm it is

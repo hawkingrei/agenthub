@@ -580,7 +580,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
-            priority TEXT NOT NULL DEFAULT 'p2',
+            priority TEXT NOT NULL DEFAULT 'medium',
             created_by_actor_id TEXT NOT NULL,
             assigned_member_id TEXT,
             context_json TEXT NOT NULL,
@@ -1858,7 +1858,7 @@ async fn migrate_legacy_team_task_schema(pool: &SqlitePool) -> anyhow::Result<()
                 id, team_id, title, status, priority, created_by_actor_id, context_json, created_at, updated_at
             )
             SELECT
-                id, team_id, title, status, 'p2', created_by_actor_id, context_json, created_at, updated_at
+                id, team_id, title, status, 'medium', created_by_actor_id, context_json, created_at, updated_at
             FROM team_main_tasks
             ORDER BY created_at ASC, id ASC
             "#,
@@ -2038,7 +2038,7 @@ async fn migrate_team_tasks_add_priority(pool: &SqlitePool) -> anyhow::Result<()
         return Ok(());
     }
 
-    sqlx::query("ALTER TABLE team_tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'p2'")
+    sqlx::query("ALTER TABLE team_tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'")
         .execute(pool)
         .await?;
     Ok(())

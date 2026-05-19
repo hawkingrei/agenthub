@@ -815,7 +815,7 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             actor_id: "planner",
             title: "Investigate kanban actor cli",
             status: "open",
-            priority: "p1",
+            priority: "high",
             assigned_member_id: "planner",
             topic: Some("kanban"),
             context: &json!({"source":"grpc-client"}),
@@ -833,7 +833,7 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             actor_id: "planner",
             title: "Legacy orphan task",
             status: "open",
-            priority: "p1",
+            priority: "high",
             assigned_member_id: "planner",
             topic: Some("legacy"),
             context: &json!({"source":"legacy"}),
@@ -878,7 +878,7 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             &task_id,
             InternalTeamTaskPatch {
                 status: Some("in_progress"),
-                priority: Some("p0"),
+                priority: Some("critical"),
                 assigned_member_id: Some("reviewer"),
                 clear_assigned_member_id: false,
                 context_json: None,
@@ -890,7 +890,7 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
         .await
         .expect("update grpc team task");
     assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
-    assert_eq!(updated.priority, crate::team::TeamTaskPriority::P0);
+    assert_eq!(updated.priority, crate::team::TeamTaskPriority::Critical);
     assert_eq!(updated.assigned_member_id.as_deref(), Some("reviewer"));
     assert_eq!(updated.context["issue"], json!(235));
 

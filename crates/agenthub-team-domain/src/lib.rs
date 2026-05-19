@@ -34,7 +34,7 @@ pub const TEAM_TASK_STATUS_VALUES: [&str; 6] = [
     "completed",
     "canceled",
 ];
-pub const TEAM_TASK_PRIORITY_VALUES: [&str; 4] = ["p0", "p1", "p2", "p3"];
+pub const TEAM_TASK_PRIORITY_VALUES: [&str; 4] = ["critical", "high", "medium", "low"];
 pub const TEAM_TASK_NOTE_KIND_VALUES: [&str; 3] = ["comment", "decision", "result"];
 pub const TEAM_RUN_CONTINUITY_MODE_VALUES: [&str; 2] = ["inherit_recent", "reset"];
 
@@ -147,20 +147,20 @@ impl std::str::FromStr for TeamTaskStatus {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TeamTaskPriority {
-    P0,
-    P1,
+    Critical,
+    High,
     #[default]
-    P2,
-    P3,
+    Medium,
+    Low,
 }
 
 impl TeamTaskPriority {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::P0 => "p0",
-            Self::P1 => "p1",
-            Self::P2 => "p2",
-            Self::P3 => "p3",
+            Self::Critical => "critical",
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
         }
     }
 }
@@ -170,10 +170,10 @@ impl std::str::FromStr for TeamTaskPriority {
 
     fn from_str(raw: &str) -> Result<Self, Self::Err> {
         match raw.trim() {
-            "p0" => Ok(Self::P0),
-            "p1" => Ok(Self::P1),
-            "p2" => Ok(Self::P2),
-            "p3" => Ok(Self::P3),
+            "critical" => Ok(Self::Critical),
+            "high" => Ok(Self::High),
+            "medium" => Ok(Self::Medium),
+            "low" => Ok(Self::Low),
             other => Err(other.to_string()),
         }
     }
@@ -570,10 +570,10 @@ mod tests {
     #[test]
     fn team_task_priority_string_roundtrip_is_stable() {
         for (priority, label) in [
-            (TeamTaskPriority::P0, "p0"),
-            (TeamTaskPriority::P1, "p1"),
-            (TeamTaskPriority::P2, "p2"),
-            (TeamTaskPriority::P3, "p3"),
+            (TeamTaskPriority::Critical, "critical"),
+            (TeamTaskPriority::High, "high"),
+            (TeamTaskPriority::Medium, "medium"),
+            (TeamTaskPriority::Low, "low"),
         ] {
             assert_eq!(priority.as_str(), label);
             assert_eq!(

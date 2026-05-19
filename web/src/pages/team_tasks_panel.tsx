@@ -112,10 +112,10 @@ const TASK_STATUS_FILTERS: ReadonlyArray<{ value: TaskStatusFilter; label: strin
 ];
 const TASK_PRIORITY_FILTERS: ReadonlyArray<{ value: TaskPriorityFilter; label: string }> = [
   { value: "all", label: "All priorities" },
-  { value: "p0", label: "P0" },
-  { value: "p1", label: "P1" },
-  { value: "p2", label: "P2" },
-  { value: "p3", label: "P3" },
+  { value: "critical", label: "Critical" },
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
 ];
 const TASK_BOARD_COLUMNS: ReadonlyArray<{
   status: TeamTaskStatus;
@@ -198,38 +198,48 @@ function resolveRunStatusTone(status: TeamRunRecord["status"]): StatusTone {
 
 function resolveTaskPriorityRank(priority: TeamTaskPriority): number {
   switch (priority) {
-    case "p0":
+    case "critical":
       return 0;
-    case "p1":
+    case "high":
       return 1;
-    case "p2":
+    case "medium":
       return 2;
-    case "p3":
+    case "low":
     default:
       return 3;
   }
 }
 
 function normalizeTaskPriority(priority?: TeamTaskPriority | null): TeamTaskPriority {
-  return priority ?? "p2";
+  return priority ?? "medium";
 }
 
 function resolveTaskPriorityBadgeClass(priority: TeamTaskPriority): string {
   switch (priority) {
-    case "p0":
+    case "critical":
       return "border-red-200 bg-red-50 text-red-700";
-    case "p1":
+    case "high":
       return "border-orange-200 bg-orange-50 text-orange-700";
-    case "p2":
+    case "medium":
       return "border-sky-200 bg-sky-50 text-sky-700";
-    case "p3":
+    case "low":
     default:
       return "border-slate-200 bg-slate-50 text-slate-700";
   }
 }
 
 function resolveTaskPriorityLabel(priority: TeamTaskPriority): string {
-  return priority.toUpperCase();
+  switch (priority) {
+    case "critical":
+      return "Critical";
+    case "high":
+      return "High";
+    case "medium":
+      return "Medium";
+    case "low":
+    default:
+      return "Low";
+  }
 }
 
 function summarizeTaskNote(text: string): string {

@@ -7,7 +7,7 @@ separate note journal, and enforce stronger coordinator-side governance.
 
 ## What Changed
 
-- Added `task.priority` with stable values `p0`, `p1`, `p2`, and `p3`.
+- Added `task.priority` with stable values `critical`, `high`, `medium`, and `low`.
 - Extended task list APIs and internal actor controls so tasks can be filtered by priority.
 - Promoted task notes into a first-class journal view backed by persisted `task_note` messages.
 - Required canonical task creation through internal actor controls to include an

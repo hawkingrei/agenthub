@@ -258,7 +258,7 @@ export type TeamTaskStatus =
   | "completed"
   | "canceled";
 
-export type TeamTaskPriority = "p0" | "p1" | "p2" | "p3";
+export type TeamTaskPriority = "critical" | "high" | "medium" | "low";
 
 export type TeamTaskNoteKind = "comment" | "decision" | "result";
 

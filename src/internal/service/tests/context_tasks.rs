@@ -62,7 +62,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
                 actor_id: "planner".to_string(),
                 title: "Investigate authority-only actor CLI".to_string(),
                 status: "in_progress".to_string(),
-                priority: "p1".to_string(),
+                priority: "high".to_string(),
                 assigned_member_id: "planner".to_string(),
                 topic: "actor-cli".to_string(),
                 context_json: json!({"goal":"remove sqlite fallback"}).to_string(),
@@ -84,7 +84,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         created_json["task"]["created_by_actor_id"],
         json!("planner")
     );
-    assert_eq!(created_json["task"]["priority"], json!("p1"));
+    assert_eq!(created_json["task"]["priority"], json!("high"));
     assert_eq!(created_json["task"]["assigned_member_id"], json!("planner"));
     assert_eq!(created_json["conversation"]["topic"], json!("actor-cli"));
 
@@ -96,7 +96,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
                 actor_id: "planner".to_string(),
                 limit: 20,
                 status: "in_progress".to_string(),
-                priority: "p1".to_string(),
+                priority: "high".to_string(),
                 include_shared_thread: false,
                 run_id: String::new(),
                 task_id: task_id.clone(),
@@ -116,7 +116,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         .find(|task| task.id == task_id)
         .expect("created task in filtered list");
     assert_eq!(created_task.status, crate::team::TeamTaskStatus::InProgress);
-    assert_eq!(created_task.priority, crate::team::TeamTaskPriority::P1);
+    assert_eq!(created_task.priority, crate::team::TeamTaskPriority::High);
     assert_eq!(created_task.assigned_member_id.as_deref(), Some("planner"));
 
     let updated = TeamInternalControl::update_team_task(
@@ -129,7 +129,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
                 status: Some("completed".to_string()),
                 assigned_member_id: Some("reviewer".to_string()),
                 clear_assigned_member_id: false,
-                priority: Some("p0".to_string()),
+                priority: Some("critical".to_string()),
                 context_json: None,
                 context_merge_json: Some(json!({"repo":"agenthub","issue":128}).to_string()),
                 note_kind: Some("decision".to_string()),
@@ -147,7 +147,10 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         serde_json::from_str(&updated.task_json).expect("decode updated task");
     assert_eq!(updated_task.id, task_id);
     assert_eq!(updated_task.status, crate::team::TeamTaskStatus::Completed);
-    assert_eq!(updated_task.priority, crate::team::TeamTaskPriority::P0);
+    assert_eq!(
+        updated_task.priority,
+        crate::team::TeamTaskPriority::Critical
+    );
     assert_eq!(updated_task.assigned_member_id.as_deref(), Some("reviewer"));
     assert_eq!(updated_task.context["repo"], json!("agenthub"));
     assert_eq!(updated_task.context["issue"], json!(128));
@@ -322,7 +325,7 @@ async fn internal_grpc_team_task_update_rolls_back_note_when_metadata_patch_fail
                 actor_id: "planner".to_string(),
                 title: "Rollback task note on invalid patch".to_string(),
                 status: "open".to_string(),
-                priority: "p1".to_string(),
+                priority: "high".to_string(),
                 assigned_member_id: "planner".to_string(),
                 topic: "rollback".to_string(),
                 context_json: json!({"goal":"keep note atomic"}).to_string(),

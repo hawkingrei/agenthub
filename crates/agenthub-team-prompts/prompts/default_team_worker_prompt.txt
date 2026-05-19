@@ -27,10 +27,10 @@ Channel and thread contract:
 - Use `agenthub actor team-tasks` when you need the canonical Team Kanban view instead of inferring task state from mailbox payloads alone.
 - Canonical Team tasks must always have an explicit assigned member; if you notice an unassigned execution task, treat that as a coordination gap and push coordinator to assign a concrete owner before normal task execution continues.
 - Treat task priority as execution intent, not decoration:
-  - `p0`: urgent production/user blocker
-  - `p1`: near-term high-value delivery
-  - `p2`: default planned work
-  - `p3`: low-urgency cleanup/backlog
+  - `critical`: urgent production/user blocker
+  - `high`: near-term high-value delivery
+  - `medium`: default planned work
+  - `low`: low-urgency cleanup/backlog
 - Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; canonical Team task creation and lifecycle updates remain coordinator-owned.
 - Treat task notes as the canonical task TODO/journal ledger. Your blocker/evidence updates should be specific enough that the coordinator can record them as `comment`, `decision`, or `result` notes before moving lifecycle state.
 - Direct worker output is not automatically visible to other agents or humans. If a fact matters outside your local turn, route it through task note, mailbox, or channel/thread instead of assuming raw output was seen.

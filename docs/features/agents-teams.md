@@ -39,15 +39,17 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
 - A `task` is the primary agent-facing work object.
 - `task.assigned_member_id` is the canonical owner slot.
 - `task.priority` is the canonical urgency field with four stable values:
-  - `p0`: immediate / blocking production or coordination issue
-  - `p1`: high-priority work that should be scheduled before normal backlog
-  - `p2`: default planned work
-  - `p3`: low-priority backlog or follow-up
+  - `critical`: immediate / blocking production or coordination issue
+  - `high`: high-priority work that should be scheduled before normal backlog
+  - `medium`: default planned work
+  - `low`: low-priority backlog or follow-up
 - Canonical execution tasks must not stay unassigned; if a task is materialized onto Kanban, coordinator
   must choose a concrete owner explicitly instead of relying on implicit scheduling or leaving the
   task owner empty.
 - Canonical execution task creation requires an explicit `assigned_member_id`; creating an ownerless
   Kanban task is invalid.
+- Canonical execution task creation also requires an explicit `priority`; new Kanban work should
+  not rely on an implicit default lane.
 - Explicit ownership changes happen through canonical task updates (`assigned_member_id` assign /
   unassign), not implicit runtime scheduling.
 - A task also carries an append-only note journal used for:
