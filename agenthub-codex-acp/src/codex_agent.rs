@@ -15,6 +15,7 @@ use codex_core::{
     RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey, config::Config,
     find_thread_path_by_id_str, parse_cursor, thread_store_from_config,
 };
+use codex_extension_api::empty_extension_registry;
 use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_env};
 use codex_login::{
     AuthManager, CLIENT_ID, CODEX_API_KEY_ENV_VAR, CodexAuth, OPENAI_API_KEY_ENV_VAR,
@@ -81,10 +82,12 @@ impl CodexAgent {
             auth_manager.clone(),
             SessionSource::Unknown,
             build_environment_manager(&config).await?,
+            empty_extension_registry(),
             None,
             thread_store_from_config(&config, None),
             None,
             "agenthub-codex-acp".to_string(),
+            None,
         );
         Ok(Self {
             auth_manager,
@@ -120,7 +123,6 @@ impl CodexAgent {
         mcp_servers: Vec<McpServer>,
     ) -> Result<Config, Error> {
         let mut config = self.config.clone();
-        config.include_apply_patch_tool = true;
         config.cwd = cwd
             .to_path_buf()
             .try_into()
@@ -210,6 +212,7 @@ fn codex_mcp_server_config(cwd: &Path, mcp_server: McpServer) -> Option<(String,
             enabled_tools: None,
             disabled_reason: None,
             scopes: None,
+            oauth: None,
             oauth_resource: None,
             tools: HashMap::new(),
         },
@@ -941,6 +944,7 @@ mod tests {
     };
     use codex_config::types::McpServerTransportConfig;
     use codex_core::RolloutRecorder;
+    use codex_core::config::ConfigBuilder;
     use codex_protocol::{
         ThreadId,
         models::{
@@ -953,6 +957,25 @@ mod tests {
         },
     };
     use std::{collections::HashMap, path::PathBuf};
+
+    #[tokio::test]
+    async fn codex_agent_new_initializes_thread_manager() {
+        let codex_home =
+            std::env::temp_dir().join(format!("agenthub-codex-home-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&codex_home).expect("create codex home");
+        let config = ConfigBuilder::default()
+            .codex_home(codex_home.clone())
+            .fallback_cwd(Some(codex_home))
+            .build()
+            .await
+            .expect("build config");
+
+        let agent = super::CodexAgent::new(config)
+            .await
+            .expect("create codex agent");
+
+        assert!(agent.sessions.borrow().is_empty());
+    }
 
     #[test]
     fn codex_mcp_http_servers_keep_parallel_tool_calls_disabled() {
@@ -968,6 +991,7 @@ mod tests {
 
         assert_eq!(name, "AgentHub_Tools");
         assert!(!config.supports_parallel_tool_calls);
+        assert_eq!(config.oauth, None);
         let McpServerTransportConfig::StreamableHttp {
             url, http_headers, ..
         } = config.transport
@@ -996,6 +1020,7 @@ mod tests {
 
         assert_eq!(name, "Mailbox_Bridge");
         assert!(!config.supports_parallel_tool_calls);
+        assert_eq!(config.oauth, None);
         let McpServerTransportConfig::Stdio {
             command,
             args,

@@ -63,6 +63,10 @@ use crate::build_environment_manager;
 use crate::thread::CodexThreadImpl;
 
 const ACP_CLIENT_NAME: &str = "agenthub-codex-acp";
+const DYNAMIC_TOOL_CALLBACK_UNSUPPORTED_MESSAGE: &str =
+    "dynamic tool callbacks are not supported by agenthub-codex-acp";
+const ATTESTATION_GENERATION_UNSUPPORTED_MESSAGE: &str =
+    "attestation generation is not supported by agenthub-codex-acp";
 // The in-process client exposes event reads and server-request replies through
 // the same client object. Do not hold its mutex forever while waiting for
 // provider events, otherwise permission replies and interrupts can be starved.
@@ -1037,11 +1041,13 @@ impl AppServerCodexThread {
                 }))
             }
             ServerRequest::DynamicToolCall { request_id, .. } => {
-                self.reject_server_request(
-                    request_id,
-                    "dynamic tool callbacks are not supported by agenthub-codex-acp",
-                )
-                .await?;
+                self.reject_server_request(request_id, DYNAMIC_TOOL_CALLBACK_UNSUPPORTED_MESSAGE)
+                    .await?;
+                Ok(None)
+            }
+            ServerRequest::AttestationGenerate { request_id, .. } => {
+                self.reject_server_request(request_id, ATTESTATION_GENERATION_UNSUPPORTED_MESSAGE)
+                    .await?;
                 Ok(None)
             }
             ServerRequest::ChatgptAuthTokensRefresh { .. }
@@ -2226,6 +2232,7 @@ fn prepare_submission_start(
                     thread_id: state.thread_id.clone(),
                     input: items.clone().into_iter().map(Into::into).collect(),
                     cwd: Some(state.config.cwd.to_path_buf()),
+                    runtime_workspace_roots: None,
                     approval_policy: Some(state.config.permissions.approval_policy.value().into()),
                     approvals_reviewer: Some(state.config.approvals_reviewer.into()),
                     sandbox_policy: Some(
@@ -2745,6 +2752,7 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         config: Arc::new(config.clone()),
         cli_overrides: Vec::new(),
         loader_overrides: LoaderOverrides::default(),
+        strict_config: false,
         cloud_requirements: CloudRequirementsLoader::default(),
         feedback: CodexFeedback::new(),
         log_db: None,
@@ -3303,6 +3311,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn unsupported_server_request_messages_stay_explicit() {
+        assert_eq!(
+            DYNAMIC_TOOL_CALLBACK_UNSUPPORTED_MESSAGE,
+            "dynamic tool callbacks are not supported by agenthub-codex-acp"
+        );
+        assert_eq!(
+            ATTESTATION_GENERATION_UNSUPPORTED_MESSAGE,
+            "attestation generation is not supported by agenthub-codex-acp"
+        );
+    }
+
+    #[tokio::test]
+    async fn attestation_generate_requests_are_rejected() {
+        let state = test_state_with_active_turn(None).await;
+        let config = state.config.clone();
+        let client = start_client(&config).await.expect("start client");
+        let request_handle = client.request_handle();
+        let thread = AppServerCodexThread::new(
+            client,
+            request_handle,
+            "thread-1".to_string(),
+            config,
+            1,
+            ThreadStatus::Idle,
+            Vec::new(),
+        );
+
+        let result = thread
+            .translate_server_request(ServerRequest::AttestationGenerate {
+                request_id: RequestId::Integer(7),
+                params: codex_app_server_protocol::AttestationGenerateParams {},
+            })
+            .await;
+
+        assert!(matches!(result, Ok(None)));
+    }
+
     #[tokio::test]
     async fn submission_id_for_turn_falls_back_to_turn_id_when_local_state_is_missing() {
         let state = test_state_with_active_turn(None).await;
@@ -3532,6 +3578,30 @@ mod tests {
             prepared,
             Some(PreparedSubmissionStart::TurnStart { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn prepare_submission_start_leaves_runtime_workspace_roots_unset() {
+        let mut state = test_state_with_active_turn(None).await;
+
+        let prepared = prepare_submission_start(
+            &mut state,
+            "submission-runtime-roots",
+            &Op::UserInput {
+                items: Vec::new(),
+                final_output_json_schema: None,
+                responsesapi_client_metadata: None,
+                environments: None,
+            },
+        )
+        .expect("prepare submission")
+        .expect("turn start");
+
+        let PreparedSubmissionStart::TurnStart { params, .. } = prepared else {
+            panic!("expected turn start");
+        };
+        assert_eq!(params.cwd, Some(state.config.cwd.to_path_buf()));
+        assert_eq!(params.runtime_workspace_roots, None);
     }
 
     #[test]
