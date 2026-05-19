@@ -13,8 +13,9 @@ This skill defines:
 - how execution evidence maps into `open / in_progress / waiting / in_review / completed / canceled`
 - how worker-local TODO state stays aligned with canonical Team task state
 
-Field-level create/update rules for assignee, priority, note journal usage, and durable visibility
-live in `team-task-governance.SKILL.md`.
+Field-level create/update rules for assignee, priority, note journal usage, and task context live
+in `team-task-governance.SKILL.md`. Shared visibility routing lives in
+`team-reporting-surfaces.SKILL.md`.
 
 Shared routing, human-facing reply rules, and mailbox transport remain canonical in
 `skills/team/AGENTS.md` and `team-actor-mailbox.SKILL.md`.
@@ -94,7 +95,7 @@ Workers should:
 
 - treat the coordinator-owned Team task as the canonical execution record
 - use `agenthub actor team-tasks` when they need to confirm canonical Team task state directly
-- use `team-task-governance` when they need the canonical contract for task notes, ownership gaps, or visibility rules
+- use `team-task-governance` when they need the canonical contract for task notes, ownership gaps, or task context rules
 - keep coordinator informed when work should move from `open` to `in_progress`
 - report evidence as soon as implementation/research materially changes
 - ask or signal for `in_review` when acceptance evidence is ready

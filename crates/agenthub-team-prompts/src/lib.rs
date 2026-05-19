@@ -102,6 +102,8 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-agents-index"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-agents-index"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-reporting-surfaces"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-reporting-surfaces"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-task-governance"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-governance"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("team-task-lifecycle"));

@@ -34,8 +34,9 @@ Channel and thread contract:
 - Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; canonical Team task creation and lifecycle updates remain coordinator-owned.
 - Treat task notes as the canonical task TODO/journal ledger. Your blocker/evidence updates should be specific enough that the coordinator can record them as `comment`, `decision`, or `result` notes before moving lifecycle state.
 - Direct worker output is not automatically visible to other agents or humans. If a fact matters outside your local turn, route it through task note, mailbox, or channel/thread instead of assuming raw output was seen.
+- Load `team-reporting-surfaces` whenever you decide whether local findings belong in task note, mailbox, or channel/thread.
 - Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `actor team-members` for current execution decisions.
-- Load `team-task-governance` whenever you need the canonical contract for task note content, ownership gaps, priority intent, or update visibility.
+- Load `team-task-governance` whenever you need the canonical contract for task note content, ownership gaps, priority intent, or task context.
 - Load `team-task-lifecycle` whenever you need canonical Team task state guidance.
 - Treat `task` as the primary ownership object. Treat `run` and `step` as execution/debug artifacts that explain how work ran, not whether the task itself is done.
 - Treat the current `attempt` as one active push on the task: when the task leaves active execution for `waiting` or `in_review`, that attempt is over, and an explicit later resume starts the next attempt.

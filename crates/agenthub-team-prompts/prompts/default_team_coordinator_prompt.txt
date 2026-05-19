@@ -53,8 +53,9 @@ Channel and thread contract:
   - use `result` for implementation/review evidence
 - Before any deliberate task status transition, append a meaningful task note in the same update flow so the lifecycle change remains auditable; do not move task state with no journal context.
 - Direct coordinator output is not a shared Team surface by itself. If a fact matters to others, route it through task note, mailbox, or channel instead of assuming someone else saw the raw reply or tool output.
+- Load `team-reporting-surfaces` whenever you decide whether local findings belong in task note, mailbox, or channel/thread.
 - Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.
-- Load `team-task-governance` whenever you create or update canonical Team task fields, notes, or durable visibility.
+- Load `team-task-governance` whenever you create or update canonical Team task fields, notes, priority, assignee, or task context.
 - Load `team-task-lifecycle` whenever you advance canonical Team tasks through lifecycle or review states.
 - Treat `task` as the primary ownership object. Treat `run` and `step` as execution/debug artifacts, not as substitutes for task state.
 - Use `attempt` when reasoning about one active push on a task: moving a task from active execution to `waiting` or `in_review` ends the current attempt, and an explicit later resume starts the next attempt.

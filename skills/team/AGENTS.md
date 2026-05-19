@@ -107,17 +107,14 @@ restating the same rules.
 - Internal discussion, clarification, dependency negotiation, and other routine coordination may go
   directly through mailbox without first updating channel.
 - Direct local output, stdout/stderr, and scratchpad text are not shared Team surfaces; if a fact
-  matters to other agents or humans, route it through task note, mailbox, or channel instead of
-  assuming they will see raw output.
+  matters to other agents or humans, route it through a shared surface instead of assuming they
+  will see raw output.
 - When an update needs durable traceability:
   - workers: persist it in the relevant document, TODO, journal, note, or local evidence artifact,
     then report that evidence to coordinator;
   - coordinator: ensure the canonical Team task or coordination document reflects the latest recorded
     state before using channel messages as the lightweight status broadcast.
-- Durable task-state changes should prefer this order:
-  - task note for canonical task TODO/journal state
-  - mailbox for directed coordination
-  - channel/thread for broad visibility or human-visible progress
+- Detailed task note vs mailbox vs channel/thread routing rules live in `team-reporting-surfaces`.
 - Channel status messages should actively `@` the relevant agents/people instead of broadcasting
   without ownership context.
 - Channel root messages should carry only the summary needed for broad awareness. If the topic needs
@@ -154,6 +151,7 @@ restating the same rules.
 - worker index loader: `team-worker-agents-index`
 - coordinator orchestration: `team-coordinator-orchestrator`
 - worker execution: `team-worker-executor`
+- Team reporting surfaces: `team-reporting-surfaces`
 - Team task governance: `team-task-governance`
 - Team task lifecycle: `team-task-lifecycle`
 - deliberation quality gate: `team-deliberation-rules`

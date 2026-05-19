@@ -1,21 +1,22 @@
 ---
 name: team-task-governance
-description: Use when canonical Team task fields, notes, or visibility rules must change.
+description: Use when canonical Team task fields or note journal rules must change.
 ---
 
 # Team Task Governance
 
-Use this skill when canonical Team task fields, task notes, ownership, priority, or durable task visibility rules must stay consistent.
+Use this skill when canonical Team task fields, task notes, ownership, priority, or structured task context must stay consistent.
 
 This skill defines:
 
 - how coordinator creates and updates canonical Team tasks
 - assignee and priority rules
 - how task notes act as the canonical TODO/journal ledger
-- how task note, mailbox, and channel divide durable state from shared visibility
+- how task context stays attached to the canonical task
 
 Shared routing, mailbox transport, and human-facing reply rules remain canonical in
-`skills/team/AGENTS.md` and `team-actor-mailbox.SKILL.md`.
+`skills/team/AGENTS.md` and `team-actor-mailbox.SKILL.md`. Shared visibility routing lives in
+`team-reporting-surfaces.SKILL.md`.
 
 ## Create Contract
 
@@ -64,21 +65,6 @@ Priority is not cosmetic:
   - artifact or log paths
 - Do not paste large logs into task notes when a shorter summary plus pointer is enough.
 
-## Visibility Contract
-
-- Direct local output, scratchpad text, and stdout/stderr are not shared Team surfaces.
-- Other agents and humans will not reliably see a fact unless it is routed through a shared surface.
-- When the information matters:
-  - write a task note if it changes canonical task state or durable task memory
-  - send mailbox if exactly one teammate or the coordinator needs the update
-  - send shared channel or thread updates when the information changes shared plans, risks, review
-    state, or human-visible progress
-- Best-effort routing order:
-  - task note for durable task state
-  - mailbox for directed coordination
-  - channel/thread for broad visibility
-- Do not assume a local command result or a direct agent reply is visible to other participants.
-
 ## Structured Context Contract
 
 - Use task context for structured execution plans, acceptance criteria, links, or machine-readable
@@ -92,4 +78,3 @@ Priority is not cosmetic:
 - Do not create duplicate active tasks for the same outcome unless the split is intentional.
 - Do not change lifecycle state with no note journal context.
 - Do not change ownership or priority silently; explain the reason in the task note journal.
-- Do not rely on private local output as the only copy of important execution evidence.
