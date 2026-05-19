@@ -9,7 +9,7 @@ use agent_client_protocol::schema::{
 use agent_client_protocol::{Agent, Client, ConnectionTo};
 use codex_core::config::ManagedFeatures;
 use codex_core::config::{Config, ConfigOverrides};
-use codex_exec_server::{EnvironmentManager, EnvironmentManagerArgs, ExecServerRuntimePaths};
+use codex_exec_server::{EnvironmentManager, ExecServerRuntimePaths};
 use codex_features::{Feature, Features};
 use codex_utils_cli::CliConfigOverrides;
 use std::fmt;
@@ -97,9 +97,14 @@ pub(crate) async fn build_environment_manager(
             "failed to resolve exec-server runtime paths: {err}"
         ))
     })?;
-    Ok(Arc::new(
-        EnvironmentManager::new(EnvironmentManagerArgs::new(runtime_paths)).await,
-    ))
+    EnvironmentManager::from_codex_home(&config.codex_home, runtime_paths)
+        .await
+        .map(Arc::new)
+        .map_err(|err| {
+            agent_client_protocol::Error::internal_error().data(format!(
+                "failed to initialize exec-server environment: {err}"
+            ))
+        })
 }
 
 #[cfg(test)]
@@ -605,8 +610,9 @@ mod tests {
         resolve_agenthub_multi_agent_enabled_override, responses_websocket_feature_opt_in_enabled,
         rewrite_misleading_timeout_message, should_disable_implicit_responses_websockets,
     };
+    use codex_core::config::ConfigBuilder;
     use codex_features::{Feature, Features};
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::{Arc, Mutex, MutexGuard};
     use tracing::Level;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -712,6 +718,25 @@ mod tests {
                 "THIRD_PARTY_NOTICES.md missing {expected}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn build_environment_manager_initializes_from_codex_home() {
+        let codex_home =
+            std::env::temp_dir().join(format!("agenthub-codex-home-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&codex_home).expect("create codex home");
+        let config = ConfigBuilder::default()
+            .codex_home(codex_home.clone())
+            .fallback_cwd(Some(codex_home))
+            .build()
+            .await
+            .expect("build config");
+
+        let manager = super::build_environment_manager(&config)
+            .await
+            .expect("environment manager");
+
+        assert_eq!(Arc::strong_count(&manager), 1);
     }
 
     #[test]

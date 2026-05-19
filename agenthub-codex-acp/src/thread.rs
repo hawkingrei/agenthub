@@ -1276,8 +1276,6 @@ impl PromptState {
             | EventMsg::HookCompleted(..)
             // we already have a way to diff the turn, so ignore
             | EventMsg::TurnDiff(..)
-            // Revisit when we can emit status updates
-            | EventMsg::SkillsUpdateAvailable
             | EventMsg::RawResponseItem(..)
             | EventMsg::SessionConfigured(..)
             // TODO: Subagent UI?
@@ -3091,8 +3089,7 @@ impl<A: Auth> ThreadActor<A> {
             .iter()
             .find(|preset| {
                 &preset.approval == self.config.permissions.approval_policy.get()
-                    && &preset.permission_profile
-                        == self.config.permissions.permission_profile.get()
+                    && &preset.permission_profile == self.config.permissions.permission_profile()
             })
             .or_else(|| {
                 // When the project is untrusted, the above code won't match
@@ -3659,10 +3656,8 @@ impl<A: Auth> ThreadActor<A> {
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
         self.config
             .permissions
-            .permission_profile
-            .set(preset.permission_profile.clone())
+            .set_permission_profile(preset.permission_profile.clone())
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
-        self.config.permissions.active_permission_profile = None;
 
         match legacy_sandbox_policy {
             SandboxPolicy::DangerFullAccess
