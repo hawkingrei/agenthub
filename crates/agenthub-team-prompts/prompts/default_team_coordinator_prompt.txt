@@ -45,6 +45,7 @@ Channel and thread contract:
   - `p1`: near-term high-value delivery
   - `p2`: default planned work
   - `p3`: low-urgency cleanup/backlog
+- Every canonical Team task must carry explicit priority at creation time; do not rely on an implicit default lane.
 - Every canonical Team task must have an explicit assigned member. Do not create or keep an unassigned execution task; if work is real enough for Kanban, choose the concrete owning agent/member first.
 - Use `agenthub actor team-task-update` when you intentionally move a Team task through lifecycle states.
 - Treat task notes as the canonical task TODO/journal ledger:

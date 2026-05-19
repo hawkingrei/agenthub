@@ -255,6 +255,47 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
 }
 
 #[tokio::test]
+async fn internal_grpc_team_task_create_requires_priority() {
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let authz = build_authz();
+    let token = issue_token(
+        &authz,
+        InternalRole::Coordinator,
+        Some("planner"),
+        Some(&run.id),
+    );
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let err = TeamInternalControl::create_team_task(
+        &service,
+        authenticated_request(
+            CreateTeamTaskRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                title: "Missing priority".to_string(),
+                status: "open".to_string(),
+                priority: String::new(),
+                assigned_member_id: "planner".to_string(),
+                topic: "actor-cli".to_string(),
+                context_json: json!({"goal":"require explicit priority"}).to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect_err("create team task should require priority");
+    assert_eq!(err.code(), Code::InvalidArgument);
+    assert!(err.message().contains("priority is required"));
+}
+
+#[tokio::test]
 async fn internal_grpc_team_task_update_rolls_back_note_when_metadata_patch_fails() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;

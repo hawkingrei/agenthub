@@ -2078,6 +2078,8 @@ mod tests {
             "team-task-create".to_string(),
             "--title".to_string(),
             "Use file context".to_string(),
+            "--priority".to_string(),
+            "p2".to_string(),
             "--assigned-member-id".to_string(),
             "worker-2".to_string(),
             "--context-json-file".to_string(),
@@ -2099,6 +2101,29 @@ mod tests {
             _ => panic!("expected team-task-create command"),
         }
         let _ = std::fs::remove_file(temp_path);
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_task_create_requires_priority() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-create-missing-priority");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
+        }
+        let args = vec![
+            "team-task-create".to_string(),
+            "--title".to_string(),
+            "Missing priority".to_string(),
+            "--assigned-member-id".to_string(),
+            "worker-2".to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("team-task-create should require priority");
+        assert!(err.to_string().contains("priority is required"));
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }

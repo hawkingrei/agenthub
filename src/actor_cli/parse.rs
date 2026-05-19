@@ -629,7 +629,7 @@ pub(super) fn parse_actor_command(
             let mut actor_id = None;
             let mut title = None;
             let mut status = TeamTaskStatus::Open;
-            let mut priority = TeamTaskPriority::P2;
+            let mut priority = None;
             let mut assigned_member_id = None;
             let mut topic = None;
             let mut context = None;
@@ -674,7 +674,7 @@ pub(super) fn parse_actor_command(
                         let raw = args
                             .get(idx)
                             .ok_or_else(|| anyhow::anyhow!("--priority requires a value"))?;
-                        priority = parse_team_task_priority_argument(raw)?;
+                        priority = Some(parse_team_task_priority_argument(raw)?);
                     }
                     "--assigned-member-id" => {
                         idx += 1;
@@ -724,7 +724,7 @@ pub(super) fn parse_actor_command(
                 actor_id: take_actor_id(actor_id)?,
                 title,
                 status,
-                priority,
+                priority: priority.ok_or_else(|| anyhow::anyhow!("priority is required"))?,
                 assigned_member_id: take_optional(assigned_member_id)
                     .ok_or_else(|| anyhow::anyhow!("assigned_member_id is required"))?,
                 topic: take_optional(topic),

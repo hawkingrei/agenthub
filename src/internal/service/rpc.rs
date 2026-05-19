@@ -398,10 +398,7 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let title = required_field(&payload.title, "title")?;
         let status = parse_team_task_status(required_field(&payload.status, "status")?)?;
-        let priority = optional_trimmed(&payload.priority)
-            .map(parse_team_task_priority)
-            .transpose()?
-            .unwrap_or_default();
+        let priority = parse_team_task_priority(required_field(&payload.priority, "priority")?)?;
         let assigned_member_id = required_field(&payload.assigned_member_id, "assigned_member_id")?;
         let topic = optional_trimmed(&payload.topic);
         let context = parse_json_required(&payload.context_json, "context_json")?;

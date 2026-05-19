@@ -22,8 +22,10 @@ Shared routing, mailbox transport, and human-facing reply rules remain canonical
 
 - Coordinator owns `agenthub actor team-task-create`.
 - Every execution task must be created with an explicit `assigned_member_id`.
+- Every execution task must be created with an explicit `priority`.
 - Do not create speculative execution tasks with no owner; choose the concrete member before the
   task enters Kanban.
+- Do not rely on an implicit default priority lane during canonical task creation.
 - Choose title/description around the user-visible outcome, not around one transient command or
   one raw shell session.
 - Set priority deliberately at creation time instead of leaving it as an afterthought.
