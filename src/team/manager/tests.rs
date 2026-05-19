@@ -368,6 +368,7 @@ async fn setup_test_db() -> SqlitePool {
             group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'p2',
             created_by_actor_id TEXT NOT NULL,
             assigned_member_id TEXT,
             context_json TEXT NOT NULL,
@@ -2335,8 +2336,8 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
     .expect("insert archive team");
     sqlx::query(
         r#"
-        INSERT INTO team_tasks (id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+        INSERT INTO team_tasks (id, team_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, 'p2', ?5, NULL, ?6, ?7, ?8)
         "#,
     )
     .bind("archive-task")
@@ -2445,8 +2446,8 @@ async fn migrate_team_messages_to_archive_replays_agent_events_with_acp_aggregat
     .expect("insert shared mailbox step");
     sqlx::query(
         r#"
-        INSERT INTO team_tasks (id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+        INSERT INTO team_tasks (id, team_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, 'p2', ?5, NULL, ?6, ?7, ?8)
         "#,
     )
     .bind("archive-task-2")
@@ -3506,6 +3507,7 @@ async fn list_tasks_with_query_filters_by_run_topic_and_owner() {
             run_id: Some(run.id),
             limit: 20,
             status: Some(TeamTaskStatus::InReview),
+            priority: None,
             task_id: Some(task_b.id.clone()),
             assigned_member_id: Some("worker-2".to_string()),
             topic: Some("runtime".to_string()),
@@ -4021,12 +4023,13 @@ async fn list_team_channels_ignores_bootstrap_rows_with_blank_channel_id() {
             team_id,
             title,
             status,
+            priority,
             created_by_actor_id,
             assigned_member_id,
             context_json,
             created_at,
             updated_at
-        ) VALUES (?1, ?2, ?3, 'open', ?4, NULL, ?5, ?6, ?6)
+        ) VALUES (?1, ?2, ?3, 'open', 'p2', ?4, NULL, ?5, ?6, ?6)
         "#,
     )
     .bind(&task_id)

@@ -895,6 +895,8 @@ export function TeamPage(props: TeamPageProps) {
     useState<TeamTaskDetailResponse | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [selectedTaskDetail, setSelectedTaskDetail] =
+    useState<TeamTaskDetailResponse | null>(null);
   const [taskMessages, setTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
   const [conversationMailboxMessages, setConversationMailboxMessages] = useState<
     TeamActorMessageRecord[]
@@ -1939,6 +1941,7 @@ export function TeamPage(props: TeamPageProps) {
     selectedChannelTaskId: selectedChannelRecord?.task_id,
     selectedConversationTaskId,
     selectedConversationDetail,
+    selectedTaskDetail,
     sharedConversation,
     sharedConversationLatestRun,
     taskList,
@@ -1950,6 +1953,7 @@ export function TeamPage(props: TeamPageProps) {
     setSharedConversation,
     setSharedConversationLatestRun,
     setSelectedConversationDetail,
+    setSelectedTaskDetail,
     setTasksLoading,
     setSelectedTaskId,
     setTaskMessages,
@@ -3266,6 +3270,7 @@ export function TeamPage(props: TeamPageProps) {
     selectedChannelItem,
     workspaceTasks,
     selectedTaskId,
+    selectedTaskDetail,
     setSelectedTaskId,
     onSelectConversationSubject,
     runs,

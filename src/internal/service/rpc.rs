@@ -361,6 +361,9 @@ impl TeamInternalControl for TeamInternalControlService {
             status: optional_trimmed(&payload.status)
                 .map(parse_team_task_status)
                 .transpose()?,
+            priority: optional_trimmed(&payload.priority)
+                .map(parse_team_task_priority)
+                .transpose()?,
             task_id: optional_trimmed(&payload.task_id).map(str::to_string),
             assigned_member_id: optional_trimmed(&payload.assigned_member_id).map(str::to_string),
             topic: optional_trimmed(&payload.topic).map(str::to_string),
@@ -395,13 +398,27 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let title = required_field(&payload.title, "title")?;
         let status = parse_team_task_status(required_field(&payload.status, "status")?)?;
+        let priority = optional_trimmed(&payload.priority)
+            .map(parse_team_task_priority)
+            .transpose()?
+            .unwrap_or_default();
+        let assigned_member_id = required_field(&payload.assigned_member_id, "assigned_member_id")?;
         let topic = optional_trimmed(&payload.topic);
         let context = parse_json_required(&payload.context_json, "context_json")?;
 
         let (task, conversation) = self
             .deps
             .teams
-            .create_task(team_id, title, actor_id, context, "group_chat", topic)
+            .create_task_with_metadata(
+                team_id,
+                title,
+                actor_id,
+                priority,
+                Some(assigned_member_id),
+                context,
+                "group_chat",
+                topic,
+            )
             .await
             .map_err(map_manager_error)?;
         let task = if status == TeamTaskStatus::Open {
@@ -462,6 +479,11 @@ impl TeamInternalControl for TeamInternalControlService {
             .as_deref()
             .map(parse_team_task_status)
             .transpose()?;
+        let priority = payload
+            .priority
+            .as_deref()
+            .map(parse_team_task_priority)
+            .transpose()?;
         let assignment = normalize_task_assignment_update(
             &team.spec,
             payload.assigned_member_id.as_deref(),
@@ -495,20 +517,75 @@ impl TeamInternalControl for TeamInternalControlService {
             (None, None) => None,
             (Some(_), Some(_)) => unreachable!("validated exclusive context patch"),
         };
-        if status.is_none()
-            && matches!(assignment, TeamTaskAssignmentUpdate::Unchanged)
-            && context_patch.is_none()
-        {
+        let note_kind = payload
+            .note_kind
+            .as_deref()
+            .map(parse_team_task_note_kind)
+            .transpose()?;
+        let note_text = payload
+            .note_text
+            .as_deref()
+            .and_then(optional_trimmed)
+            .map(str::to_string);
+        if note_kind.is_some() ^ note_text.is_some() {
             return Err(Status::invalid_argument(
-                "task update requires status, assigned_member_id, clear_assigned_member_id, context_json, or context_merge_json",
+                "note_kind and note_text must be provided together",
             ));
         }
-        let task = self
-            .deps
-            .teams
-            .update_task_with_context(task_id, status, assignment, context_patch)
-            .await
-            .map_err(map_manager_error)?;
+        let status_transition_requested = status
+            .as_ref()
+            .is_some_and(|candidate| *candidate != existing.status);
+        if status_transition_requested && note_kind.is_none() {
+            return Err(Status::invalid_argument(
+                "task status changes require note_kind and note_text",
+            ));
+        }
+        if status.is_none()
+            && priority.is_none()
+            && matches!(assignment, TeamTaskAssignmentUpdate::Unchanged)
+            && context_patch.is_none()
+            && note_kind.is_none()
+        {
+            return Err(Status::invalid_argument(
+                "task update requires status, priority, assigned_member_id, clear_assigned_member_id, context_json, context_merge_json, or a note",
+            ));
+        }
+        if let (Some(note_kind), Some(note_text)) = (note_kind.as_ref(), note_text.as_deref()) {
+            self.deps
+                .teams
+                .append_task_conversation_message(
+                    task_id,
+                    actor_id,
+                    None,
+                    "task_note",
+                    serde_json::json!({
+                        "type": "task_note",
+                        "kind": note_kind.as_str(),
+                        "text": note_text,
+                    }),
+                )
+                .await
+                .map_err(map_manager_error)?;
+        }
+        let task = if status.is_some()
+            || priority.is_some()
+            || !matches!(assignment, TeamTaskAssignmentUpdate::Unchanged)
+            || context_patch.is_some()
+        {
+            self.deps
+                .teams
+                .update_task_with_context_and_priority(
+                    task_id,
+                    status,
+                    assignment,
+                    priority,
+                    context_patch,
+                )
+                .await
+                .map_err(map_manager_error)?
+        } else {
+            existing
+        };
         Ok(Response::new(UpdateTeamTaskResponse {
             task_json: serde_json::to_string(&task).map_err(map_serde_status)?,
         }))
@@ -737,7 +814,7 @@ impl TeamInternalControl for TeamInternalControlService {
                 "task_note",
                 serde_json::json!({
                     "type": "task_note",
-                    "kind": kind,
+                    "kind": kind.as_str(),
                     "text": text,
                 }),
             )

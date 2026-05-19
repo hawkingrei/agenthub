@@ -258,6 +258,10 @@ export type TeamTaskStatus =
   | "completed"
   | "canceled";
 
+export type TeamTaskPriority = "p0" | "p1" | "p2" | "p3";
+
+export type TeamTaskNoteKind = "comment" | "decision" | "result";
+
 export type TeamStepStatus =
   | "submitted"
   | "working"
@@ -296,6 +300,7 @@ export type TeamTaskRecord = {
   team_id: string;
   title: string;
   status: TeamTaskStatus;
+  priority?: TeamTaskPriority | null;
   created_by_actor_id: string;
   assigned_member_id?: string | null;
   context: unknown;
@@ -324,10 +329,21 @@ export type TeamConversationMessageRecord = {
   created_at: number;
 };
 
+export type TeamTaskNoteRecord = {
+  message_id: number;
+  conversation_id: string;
+  task_id: string;
+  from_actor_id: string;
+  kind: TeamTaskNoteKind;
+  text: string;
+  created_at: number;
+};
+
 export type TeamTaskDetailResponse = {
   task: TeamTaskRecord;
   conversation: TeamConversationRecord;
   latest_run?: TeamRunRecord | null;
+  notes?: TeamTaskNoteRecord[];
 };
 
 export type TeamThreadOpenRecord = {
@@ -885,12 +901,16 @@ export const api = {
     limit?: number,
     payload?: {
       include_shared_thread?: boolean;
+      priority?: TeamTaskPriority | "all";
     }
   ) => {
     const params = new URLSearchParams();
     if (limit != null) params.set("limit", String(limit));
     if (payload?.include_shared_thread) {
       params.set("include_shared_thread", "true");
+    }
+    if (payload?.priority && payload.priority !== "all") {
+      params.set("priority", payload.priority);
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
     return apiFetch<TeamTaskRecord[]>(

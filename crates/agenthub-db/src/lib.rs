@@ -580,6 +580,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'p2',
             created_by_actor_id TEXT NOT NULL,
             assigned_member_id TEXT,
             context_json TEXT NOT NULL,
@@ -766,6 +767,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_team_tasks_add_assigned_member_id(&pool).await?;
+    migrate_team_tasks_add_priority(&pool).await?;
     migrate_team_channel_bootstrap_uniqueness(&pool).await?;
     migrate_safe_paths_to_absolute(&pool).await?;
     migrate_legacy_team_coordinator_terms(&pool).await?;
@@ -1853,10 +1855,10 @@ async fn migrate_legacy_team_task_schema(pool: &SqlitePool) -> anyhow::Result<()
         sqlx::query(
             r#"
             INSERT OR IGNORE INTO team_tasks (
-                id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at
+                id, team_id, title, status, priority, created_by_actor_id, context_json, created_at, updated_at
             )
             SELECT
-                id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at
+                id, team_id, title, status, 'p2', created_by_actor_id, context_json, created_at, updated_at
             FROM team_main_tasks
             ORDER BY created_at ASC, id ASC
             "#,
@@ -2016,6 +2018,27 @@ async fn migrate_team_tasks_add_assigned_member_id(pool: &SqlitePool) -> anyhow:
     }
 
     sqlx::query("ALTER TABLE team_tasks ADD COLUMN assigned_member_id TEXT")
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+async fn migrate_team_tasks_add_priority(pool: &SqlitePool) -> anyhow::Result<()> {
+    let has_column = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT name
+        FROM pragma_table_info('team_tasks')
+        WHERE name = 'priority'
+        "#,
+    )
+    .fetch_optional(pool)
+    .await?
+    .is_some();
+    if has_column {
+        return Ok(());
+    }
+
+    sqlx::query("ALTER TABLE team_tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'p2'")
         .execute(pool)
         .await?;
     Ok(())
@@ -3332,6 +3355,53 @@ mod tests {
         .await
         .expect("read assigned_member_id column");
         assert_eq!(assigned_member_id_column, "assigned_member_id");
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_priority_to_existing_team_tasks_table() {
+        let dir = unique_temp_dir("db-migrate-team-task-priority");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_tasks (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                context_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_tasks");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with team task priority migration");
+
+        let priority_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_tasks')
+            WHERE name = 'priority'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read priority column");
+        assert_eq!(priority_column, "priority");
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

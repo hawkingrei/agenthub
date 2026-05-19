@@ -309,15 +309,24 @@ pub(super) fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status
     })
 }
 
-pub(super) fn parse_team_task_note_kind(raw: &str) -> Result<&'static str, Status> {
-    match raw.trim() {
-        "comment" => Ok("comment"),
-        "decision" => Ok("decision"),
-        "result" => Ok("result"),
-        other => Err(Status::invalid_argument(format!(
-            "invalid task note kind '{other}', expected one of: comment, decision, result"
-        ))),
-    }
+pub(super) fn parse_team_task_priority(raw: &str) -> Result<TeamTaskPriority, Status> {
+    let trimmed = raw.trim();
+    trimmed.parse::<TeamTaskPriority>().map_err(|_| {
+        Status::invalid_argument(format!(
+            "invalid task priority '{trimmed}', expected one of: {}",
+            crate::team::TEAM_TASK_PRIORITY_VALUES.join(", ")
+        ))
+    })
+}
+
+pub(super) fn parse_team_task_note_kind(raw: &str) -> Result<TeamTaskNoteKind, Status> {
+    let trimmed = raw.trim();
+    trimmed.parse::<TeamTaskNoteKind>().map_err(|_| {
+        Status::invalid_argument(format!(
+            "invalid task note kind '{trimmed}', expected one of: {}",
+            crate::team::TEAM_TASK_NOTE_KIND_VALUES.join(", ")
+        ))
+    })
 }
 
 pub(super) fn normalize_task_assignment_update(

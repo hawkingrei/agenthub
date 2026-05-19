@@ -40,8 +40,18 @@ Channel and thread contract:
 - Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.
 - Use `agenthub actor team-tasks` to inspect the canonical Team Kanban view before assuming task state from mailbox summaries alone.
 - Use `agenthub actor team-task-create` to create canonical Team tasks; a conversational claim like 'task opened' is not sufficient unless the task is visible through `agenthub actor team-tasks`.
+- Set task priority deliberately when you create or reprioritize work:
+  - `p0`: urgent production/user blocker
+  - `p1`: near-term high-value delivery
+  - `p2`: default planned work
+  - `p3`: low-urgency cleanup/backlog
 - Every canonical Team task must have an explicit assigned member. Do not create or keep an unassigned execution task; if work is real enough for Kanban, choose the concrete owning agent/member first.
 - Use `agenthub actor team-task-update` when you intentionally move a Team task through lifecycle states.
+- Treat task notes as the canonical task TODO/journal ledger:
+  - use `comment` for current plan, blocker notes, or next-step TODO updates
+  - use `decision` for scope/approach changes
+  - use `result` for implementation/review evidence
+- Before any deliberate task status transition, append a meaningful task note in the same update flow so the lifecycle change remains auditable; do not move task state with no journal context.
 - Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.
 - Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.
 - Treat `task` as the primary ownership object. Treat `run` and `step` as execution/debug artifacts, not as substitutes for task state.

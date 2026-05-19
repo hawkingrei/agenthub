@@ -93,6 +93,7 @@ async fn list_shared_thread_tasks_for_team(
                 run_id: None,
                 limit: TEAM_SHARED_THREAD_LOOKUP_LIMIT,
                 status: None,
+                priority: None,
                 task_id: None,
                 assigned_member_id: None,
                 topic: None,
@@ -315,6 +316,8 @@ pub(super) async fn run_actor_command(
             actor_id,
             title,
             status,
+            priority,
+            assigned_member_id,
             topic,
             context,
         } => {
@@ -331,6 +334,8 @@ pub(super) async fn run_actor_command(
                     &actor_id,
                     &title,
                     status.as_str(),
+                    priority.as_str(),
+                    &assigned_member_id,
                     topic.as_deref(),
                     &context,
                 )
@@ -367,10 +372,13 @@ pub(super) async fn run_actor_command(
             actor_id,
             task_ids,
             status,
+            priority,
             assigned_member_id,
             clear_assigned_member_id,
             context,
             context_merge,
+            note_kind,
+            note_text,
         } => {
             let client = init_actor_control_client(
                 &actor_id,
@@ -380,13 +388,15 @@ pub(super) async fn run_actor_command(
             )
             .await?;
             if status.is_none()
+                && priority.is_none()
                 && assigned_member_id.is_none()
                 && !clear_assigned_member_id
                 && context.is_none()
                 && context_merge.is_none()
+                && note_kind.is_none()
             {
                 return Err(anyhow::anyhow!(
-                    "team-task-update requires --status, --assigned-member-id, --unassign, --context-json, or --context-merge-json"
+                    "team-task-update requires --status, --priority, --assigned-member-id, --unassign, --context-json, --context-merge-json, or --note"
                 ));
             }
             let mut tasks = Vec::with_capacity(task_ids.len());
@@ -398,10 +408,13 @@ pub(super) async fn run_actor_command(
                         &task_id,
                         InternalTeamTaskPatch {
                             status: status.as_ref().map(TeamTaskStatus::as_str),
+                            priority: priority.as_ref().map(|value| value.as_str()),
                             assigned_member_id: assigned_member_id.as_deref(),
                             clear_assigned_member_id,
                             context_json: context.as_ref(),
                             context_merge_json: context_merge.as_ref(),
+                            note_kind: note_kind.as_ref().map(|value| value.as_str()),
+                            note_text: note_text.as_deref(),
                         },
                     )
                     .await?;

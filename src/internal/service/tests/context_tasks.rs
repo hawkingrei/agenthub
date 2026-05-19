@@ -62,6 +62,8 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
                 actor_id: "planner".to_string(),
                 title: "Investigate authority-only actor CLI".to_string(),
                 status: "in_progress".to_string(),
+                priority: "p1".to_string(),
+                assigned_member_id: "planner".to_string(),
                 topic: "actor-cli".to_string(),
                 context_json: json!({"goal":"remove sqlite fallback"}).to_string(),
             },
@@ -82,10 +84,8 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         created_json["task"]["created_by_actor_id"],
         json!("planner")
     );
-    assert_eq!(
-        created_json["task"]["assigned_member_id"],
-        serde_json::Value::Null
-    );
+    assert_eq!(created_json["task"]["priority"], json!("p1"));
+    assert_eq!(created_json["task"]["assigned_member_id"], json!("planner"));
     assert_eq!(created_json["conversation"]["topic"], json!("actor-cli"));
 
     let listed = TeamInternalControl::list_team_tasks(
@@ -96,6 +96,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
                 actor_id: "planner".to_string(),
                 limit: 20,
                 status: "in_progress".to_string(),
+                priority: "p1".to_string(),
                 include_shared_thread: false,
                 run_id: String::new(),
                 task_id: task_id.clone(),
@@ -115,7 +116,8 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         .find(|task| task.id == task_id)
         .expect("created task in filtered list");
     assert_eq!(created_task.status, crate::team::TeamTaskStatus::InProgress);
-    assert!(created_task.assigned_member_id.is_none());
+    assert_eq!(created_task.priority, crate::team::TeamTaskPriority::P1);
+    assert_eq!(created_task.assigned_member_id.as_deref(), Some("planner"));
 
     let updated = TeamInternalControl::update_team_task(
         &service,
@@ -127,8 +129,13 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
                 status: Some("completed".to_string()),
                 assigned_member_id: Some("reviewer".to_string()),
                 clear_assigned_member_id: false,
+                priority: Some("p0".to_string()),
                 context_json: None,
                 context_merge_json: Some(json!({"repo":"agenthub","issue":128}).to_string()),
+                note_kind: Some("decision".to_string()),
+                note_text: Some(
+                    "Coordinator moved ownership to reviewer and marked work complete".to_string(),
+                ),
             },
             &token,
         ),
@@ -140,6 +147,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         serde_json::from_str(&updated.task_json).expect("decode updated task");
     assert_eq!(updated_task.id, task_id);
     assert_eq!(updated_task.status, crate::team::TeamTaskStatus::Completed);
+    assert_eq!(updated_task.priority, crate::team::TeamTaskPriority::P0);
     assert_eq!(updated_task.assigned_member_id.as_deref(), Some("reviewer"));
     assert_eq!(updated_task.context["repo"], json!("agenthub"));
     assert_eq!(updated_task.context["issue"], json!(128));
@@ -165,7 +173,18 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
     assert_eq!(detail.task.id, task_id);
     assert_eq!(detail.conversation.topic.as_deref(), Some("actor-cli"));
     assert_eq!(detail.latest_run.as_ref().map(|run| run.id.as_str()), None);
-    assert!(detail.recent_messages.is_empty());
+    assert_eq!(detail.recent_messages.len(), 1);
+    assert_eq!(detail.recent_messages[0].route, "task_note");
+    assert_eq!(detail.notes.len(), 1);
+    assert_eq!(
+        detail.notes[0].kind,
+        crate::team::TeamTaskNoteKind::Decision
+    );
+    assert!(
+        detail.notes[0]
+            .text
+            .contains("Coordinator moved ownership to reviewer")
+    );
 
     let note = TeamInternalControl::append_team_task_note(
         &service,
@@ -217,8 +236,11 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
                 status: None,
                 assigned_member_id: None,
                 clear_assigned_member_id: true,
+                priority: None,
                 context_json: Some(json!({"owner":"coordinator"}).to_string()),
                 context_merge_json: None,
+                note_kind: None,
+                note_text: None,
             },
             &token,
         ),
@@ -280,6 +302,7 @@ async fn internal_grpc_team_channel_controls_are_wire_compatible() {
                 actor_id: "planner".to_string(),
                 limit: 20,
                 status: String::new(),
+                priority: String::new(),
                 include_shared_thread: false,
                 run_id: String::new(),
                 task_id: String::new(),

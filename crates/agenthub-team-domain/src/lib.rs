@@ -34,6 +34,8 @@ pub const TEAM_TASK_STATUS_VALUES: [&str; 6] = [
     "completed",
     "canceled",
 ];
+pub const TEAM_TASK_PRIORITY_VALUES: [&str; 4] = ["p0", "p1", "p2", "p3"];
+pub const TEAM_TASK_NOTE_KIND_VALUES: [&str; 3] = ["comment", "decision", "result"];
 pub const TEAM_RUN_CONTINUITY_MODE_VALUES: [&str; 2] = ["inherit_recent", "reset"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +139,72 @@ impl std::str::FromStr for TeamTaskStatus {
             "in_review" => Ok(Self::InReview),
             "completed" => Ok(Self::Completed),
             "canceled" => Ok(Self::Canceled),
+            other => Err(other.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamTaskPriority {
+    P0,
+    P1,
+    #[default]
+    P2,
+    P3,
+}
+
+impl TeamTaskPriority {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::P0 => "p0",
+            Self::P1 => "p1",
+            Self::P2 => "p2",
+            Self::P3 => "p3",
+        }
+    }
+}
+
+impl std::str::FromStr for TeamTaskPriority {
+    type Err = String;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        match raw.trim() {
+            "p0" => Ok(Self::P0),
+            "p1" => Ok(Self::P1),
+            "p2" => Ok(Self::P2),
+            "p3" => Ok(Self::P3),
+            other => Err(other.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamTaskNoteKind {
+    Comment,
+    Decision,
+    Result,
+}
+
+impl TeamTaskNoteKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Comment => "comment",
+            Self::Decision => "decision",
+            Self::Result => "result",
+        }
+    }
+}
+
+impl std::str::FromStr for TeamTaskNoteKind {
+    type Err = String;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        match raw.trim() {
+            "comment" => Ok(Self::Comment),
+            "decision" => Ok(Self::Decision),
+            "result" => Ok(Self::Result),
             other => Err(other.to_string()),
         }
     }
@@ -263,6 +331,8 @@ pub struct TeamTaskRecord {
     pub team_id: String,
     pub title: String,
     pub status: TeamTaskStatus,
+    #[serde(default)]
+    pub priority: TeamTaskPriority,
     pub created_by_actor_id: String,
     pub assigned_member_id: Option<String>,
     pub context: Value,
@@ -330,10 +400,23 @@ pub struct TeamConversationMessageRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamTaskNoteRecord {
+    pub message_id: i64,
+    pub conversation_id: String,
+    pub task_id: String,
+    pub from_actor_id: String,
+    pub kind: TeamTaskNoteKind,
+    pub text: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamTaskDetailRecord {
     pub task: TeamTaskRecord,
     pub conversation: TeamConversationRecord,
     pub latest_run: Option<TeamRunRecord>,
+    #[serde(default)]
+    pub notes: Vec<TeamTaskNoteRecord>,
     pub recent_messages: Vec<TeamConversationMessageRecord>,
 }
 
@@ -434,8 +517,9 @@ mod tests {
     use super::{
         TEAM_CONTINUITY_NOTE_SCHEMA_FAMILY, TEAM_CONTINUITY_NOTE_SCHEMA_VERSION,
         TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_RUNTIME_STATE_SCHEMA_FAMILY,
-        TEAM_RUNTIME_STATE_SCHEMA_VERSION, TEAM_STEP_STATUS_VALUES, TEAM_TASK_STATUS_VALUES,
-        TeamRunResumeError, TeamStepRecord, TeamStepStatus, TeamTaskStatus,
+        TEAM_RUNTIME_STATE_SCHEMA_VERSION, TEAM_STEP_STATUS_VALUES, TEAM_TASK_NOTE_KIND_VALUES,
+        TEAM_TASK_PRIORITY_VALUES, TEAM_TASK_STATUS_VALUES, TeamRunResumeError, TeamStepRecord,
+        TeamStepStatus, TeamTaskNoteKind, TeamTaskPriority, TeamTaskStatus,
         continuity_note_relative_path, extract_context_artifact_path,
         parse_team_continuity_note_header, parse_team_runtime_state_index,
     };
@@ -446,6 +530,8 @@ mod tests {
         assert_eq!(TEAM_RUN_STATUS_VALUES.len(), 6);
         assert_eq!(TEAM_STEP_STATUS_VALUES.len(), 6);
         assert_eq!(TEAM_TASK_STATUS_VALUES.len(), 6);
+        assert_eq!(TEAM_TASK_PRIORITY_VALUES.len(), 4);
+        assert_eq!(TEAM_TASK_NOTE_KIND_VALUES.len(), 3);
         assert_eq!(TEAM_RUN_CONTINUITY_MODE_VALUES.len(), 2);
     }
 
@@ -477,6 +563,46 @@ mod tests {
             "invalid"
                 .parse::<TeamTaskStatus>()
                 .expect_err("invalid status"),
+            "invalid"
+        );
+    }
+
+    #[test]
+    fn team_task_priority_string_roundtrip_is_stable() {
+        for (priority, label) in [
+            (TeamTaskPriority::P0, "p0"),
+            (TeamTaskPriority::P1, "p1"),
+            (TeamTaskPriority::P2, "p2"),
+            (TeamTaskPriority::P3, "p3"),
+        ] {
+            assert_eq!(priority.as_str(), label);
+            assert_eq!(
+                label.parse::<TeamTaskPriority>().expect("parse priority"),
+                priority
+            );
+        }
+        assert_eq!(
+            "invalid"
+                .parse::<TeamTaskPriority>()
+                .expect_err("invalid priority"),
+            "invalid"
+        );
+    }
+
+    #[test]
+    fn team_task_note_kind_string_roundtrip_is_stable() {
+        for (kind, label) in [
+            (TeamTaskNoteKind::Comment, "comment"),
+            (TeamTaskNoteKind::Decision, "decision"),
+            (TeamTaskNoteKind::Result, "result"),
+        ] {
+            assert_eq!(kind.as_str(), label);
+            assert_eq!(label.parse::<TeamTaskNoteKind>().expect("parse kind"), kind);
+        }
+        assert_eq!(
+            "invalid"
+                .parse::<TeamTaskNoteKind>()
+                .expect_err("invalid kind"),
             "invalid"
         );
     }

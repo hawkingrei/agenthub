@@ -7,7 +7,8 @@ use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionRecord,
     TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
+    TeamStepRecord, TeamStepStatus, TeamTaskNoteRecord, TeamTaskPriority, TeamTaskRecord,
+    TeamTaskStatus,
 };
 
 pub(super) fn parse_team_definition_row(
@@ -52,6 +53,7 @@ pub(super) fn parse_team_task_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Resu
         team_id: row.get("team_id"),
         title: row.get("title"),
         status: team_task_status_from_str(&status_raw),
+        priority: team_task_priority_from_str(&row.get::<String, _>("priority")),
         created_by_actor_id: row.get("created_by_actor_id"),
         assigned_member_id: row.try_get("assigned_member_id")?,
         context,
@@ -88,6 +90,23 @@ pub(super) fn parse_team_conversation_message_row(
         to_actor_id: row.try_get("to_actor_id")?,
         route: row.get("route"),
         payload,
+        created_at: row.get("created_at"),
+    })
+}
+
+pub(super) fn parse_team_task_note_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> anyhow::Result<TeamTaskNoteRecord> {
+    Ok(TeamTaskNoteRecord {
+        message_id: row.get("id"),
+        conversation_id: row.get("conversation_id"),
+        task_id: row.get("task_id"),
+        from_actor_id: row.get("from_actor_id"),
+        kind: row
+            .get::<String, _>("kind")
+            .parse()
+            .map_err(anyhow::Error::msg)?,
+        text: row.get("text"),
         created_at: row.get("created_at"),
     })
 }
@@ -223,6 +242,14 @@ pub(super) fn team_task_status_from_str(raw: &str) -> TeamTaskStatus {
         "canceled" => TeamTaskStatus::Canceled,
         _ => TeamTaskStatus::Open,
     }
+}
+
+pub(super) fn team_task_priority_to_str(priority: &TeamTaskPriority) -> &'static str {
+    priority.as_str()
+}
+
+pub(super) fn team_task_priority_from_str(raw: &str) -> TeamTaskPriority {
+    raw.parse::<TeamTaskPriority>().unwrap_or_default()
 }
 
 pub(super) fn team_run_status_from_str(status: &str) -> TeamRunStatus {

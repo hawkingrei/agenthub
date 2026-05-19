@@ -27,6 +27,7 @@ type UseTeamTaskWorkspaceDataOptions = {
   selectedChannelTaskId?: string | null;
   selectedConversationTaskId: string;
   selectedConversationDetail: TeamTaskDetailResponse | null;
+  selectedTaskDetail: TeamTaskDetailResponse | null;
   sharedConversation: TeamTaskRecord | null;
   sharedConversationLatestRun: TeamRunRecord | null;
   taskList: TeamTaskRecord[];
@@ -38,6 +39,7 @@ type UseTeamTaskWorkspaceDataOptions = {
   setSharedConversation: Dispatch<SetStateAction<TeamTaskRecord | null>>;
   setSharedConversationLatestRun: Dispatch<SetStateAction<TeamRunRecord | null>>;
   setSelectedConversationDetail: Dispatch<SetStateAction<TeamTaskDetailResponse | null>>;
+  setSelectedTaskDetail: Dispatch<SetStateAction<TeamTaskDetailResponse | null>>;
   setTasksLoading: Dispatch<SetStateAction<boolean>>;
   setSelectedTaskId: Dispatch<SetStateAction<string>>;
   setTaskMessages: Dispatch<SetStateAction<TeamConversationMessageRecord[]>>;
@@ -56,6 +58,7 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     selectedChannelTaskId,
     selectedConversationTaskId,
     selectedConversationDetail,
+    selectedTaskDetail,
     sharedConversation,
     sharedConversationLatestRun,
     taskList,
@@ -67,6 +70,7 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     setSharedConversation,
     setSharedConversationLatestRun,
     setSelectedConversationDetail,
+    setSelectedTaskDetail,
     setTasksLoading,
     setSelectedTaskId,
     setTaskMessages,
@@ -256,6 +260,47 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
   ]);
 
   useEffect(() => {
+    if (!effectiveSelectedTeamId) {
+      setSelectedTaskDetail(null);
+      return;
+    }
+    const taskId = selectedTaskId.trim();
+    if (!taskId) {
+      setSelectedTaskDetail(null);
+      return;
+    }
+    if (selectedTaskDetail?.task.id === taskId) {
+      return;
+    }
+    let active = true;
+    void api
+      .getTeamTask(token, effectiveSelectedTeamId, taskId)
+      .then((detail) => {
+        if (!active) {
+          return;
+        }
+        setSelectedTaskDetail(detail);
+      })
+      .catch((err) => {
+        if (!active) {
+          return;
+        }
+        setSelectedTaskDetail(null);
+        setError(parseErrorMessage(err));
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    effectiveSelectedTeamId,
+    selectedTaskDetail?.task.id,
+    selectedTaskId,
+    setError,
+    setSelectedTaskDetail,
+    token,
+  ]);
+
+  useEffect(() => {
     const shouldClearSelection = shouldClearSelectedConversationTask({
       selectedConversationTaskId: resolvedSelectedConversationTaskId,
       sharedConversationTaskId: sharedConversation?.id ?? null,
@@ -281,7 +326,14 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
-  }, [effectiveSelectedTeamId, selectedTaskId, setCompiledRunPreview, setCompilePreviewContextId]);
+    setSelectedTaskDetail(null);
+  }, [
+    effectiveSelectedTeamId,
+    selectedTaskId,
+    setCompiledRunPreview,
+    setCompilePreviewContextId,
+    setSelectedTaskDetail,
+  ]);
 
   useEffect(() => {
     if (!effectiveSelectedTeamId) {

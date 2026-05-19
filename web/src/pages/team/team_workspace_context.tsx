@@ -5,6 +5,7 @@ import type {
   TeamConversationMessageRecord,
   TeamRunRecord,
   TeamRunSnapshotRecord,
+  TeamTaskDetailResponse,
   TeamTaskRecord,
 } from "../../api";
 import type { WorkspaceLens } from "../../app_route_selection";
@@ -56,6 +57,7 @@ export type TeamTasksContextValue = {
   onRefreshTasks: () => void;
   workspaceTasks: TeamTaskRecord[];
   selectedTaskId: string;
+  selectedTaskDetail?: TeamTaskDetailResponse | null;
   setSelectedTaskId: (id: string) => void;
   onSelectConversationSubject: (taskId?: string | null, taskChannelId?: string | null) => void;
   runs: TeamRunRecord[];
@@ -148,6 +150,7 @@ export function TeamWorkspaceProvider({
     onRefreshTasks: value.onRefreshTasks,
     workspaceTasks: value.workspaceTasks,
     selectedTaskId: value.selectedTaskId,
+    selectedTaskDetail: value.selectedTaskDetail,
     setSelectedTaskId: value.setSelectedTaskId,
     onSelectConversationSubject: value.onSelectConversationSubject,
     runs: value.runs,

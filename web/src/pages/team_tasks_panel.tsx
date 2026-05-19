@@ -1,6 +1,8 @@
 import React from "react";
 import { Modal, SegmentedControl, TextInput } from "@mantine/core";
 import type {
+  TeamTaskDetailResponse,
+  TeamTaskPriority,
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
   TeamRunRecord,
@@ -37,6 +39,7 @@ import {
 } from "../ui/tailwind_classes";
 
 type TaskStatusFilter = "all" | TeamTaskStatus;
+type TaskPriorityFilter = "all" | TeamTaskPriority;
 
 type TeamTasksPanelProps = {
   compactMode?: boolean;
@@ -45,6 +48,7 @@ type TeamTasksPanelProps = {
   tasks: TeamTaskRecord[];
   tasksLoading: boolean;
   selectedTaskId: string;
+  selectedTaskDetail?: TeamTaskDetailResponse | null;
   onSelectedTaskIdChange: (taskId: string) => void;
   onRefreshTasks: () => Promise<void> | void;
   onOpenConversation: (taskId?: string | null, taskChannelId?: string | null) => void;
@@ -105,6 +109,13 @@ const TASK_STATUS_FILTERS: ReadonlyArray<{ value: TaskStatusFilter; label: strin
   { value: "in_review", label: "In review" },
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
+];
+const TASK_PRIORITY_FILTERS: ReadonlyArray<{ value: TaskPriorityFilter; label: string }> = [
+  { value: "all", label: "All priorities" },
+  { value: "p0", label: "P0" },
+  { value: "p1", label: "P1" },
+  { value: "p2", label: "P2" },
+  { value: "p3", label: "P3" },
 ];
 const TASK_BOARD_COLUMNS: ReadonlyArray<{
   status: TeamTaskStatus;
@@ -185,6 +196,50 @@ function resolveRunStatusTone(status: TeamRunRecord["status"]): StatusTone {
   }
 }
 
+function resolveTaskPriorityRank(priority: TeamTaskPriority): number {
+  switch (priority) {
+    case "p0":
+      return 0;
+    case "p1":
+      return 1;
+    case "p2":
+      return 2;
+    case "p3":
+    default:
+      return 3;
+  }
+}
+
+function normalizeTaskPriority(priority?: TeamTaskPriority | null): TeamTaskPriority {
+  return priority ?? "p2";
+}
+
+function resolveTaskPriorityBadgeClass(priority: TeamTaskPriority): string {
+  switch (priority) {
+    case "p0":
+      return "border-red-200 bg-red-50 text-red-700";
+    case "p1":
+      return "border-orange-200 bg-orange-50 text-orange-700";
+    case "p2":
+      return "border-sky-200 bg-sky-50 text-sky-700";
+    case "p3":
+    default:
+      return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+}
+
+function resolveTaskPriorityLabel(priority: TeamTaskPriority): string {
+  return priority.toUpperCase();
+}
+
+function summarizeTaskNote(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= 160) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 157)}...`;
+}
+
 function resolveTaskAssigneeLabel(
   task: TeamTaskRecord,
   assigneeLabelById: Map<string, string>
@@ -204,6 +259,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
     tasks,
     tasksLoading,
     selectedTaskId,
+    selectedTaskDetail,
     onSelectedTaskIdChange,
     onOpenConversation,
     busy,
@@ -221,15 +277,19 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
     memberLiveStates,
   } = props;
   const [statusFilter, setStatusFilter] = React.useState<TaskStatusFilter>("all");
+  const [priorityFilter, setPriorityFilter] = React.useState<TaskPriorityFilter>("all");
   const [debugToolsOpen, setDebugToolsOpen] = React.useState(false);
   const [taskDetailOpen, setTaskDetailOpen] = React.useState(false);
 
   const visibleTasks = React.useMemo(() => {
-    if (statusFilter === "all") {
-      return tasks;
-    }
-    return tasks.filter((task) => task.status === statusFilter);
-  }, [statusFilter, tasks]);
+    return tasks
+      .filter((task) => statusFilter === "all" || task.status === statusFilter)
+      .filter(
+        (task) =>
+          priorityFilter === "all" ||
+          normalizeTaskPriority(task.priority) === priorityFilter
+      );
+  }, [priorityFilter, statusFilter, tasks]);
   const visibleColumns = React.useMemo(() => {
     if (statusFilter === "all") {
       return TASK_BOARD_COLUMNS;
@@ -242,6 +302,20 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
     );
     for (const task of visibleTasks) {
       grouped.get(task.status)?.push(task);
+    }
+    for (const laneTasks of grouped.values()) {
+      laneTasks.sort((left, right) => {
+        const priorityDelta =
+          resolveTaskPriorityRank(normalizeTaskPriority(left.priority)) -
+          resolveTaskPriorityRank(normalizeTaskPriority(right.priority));
+        if (priorityDelta !== 0) {
+          return priorityDelta;
+        }
+        if (left.updated_at !== right.updated_at) {
+          return right.updated_at - left.updated_at;
+        }
+        return left.title.localeCompare(right.title);
+      });
     }
     return grouped;
   }, [visibleTasks]);
@@ -273,6 +347,14 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
     return taskChannelId ? `# ${taskChannelId}` : channelLabel;
   }, [channelLabel, selectedTask]);
   const latestRun = relatedRuns[0] ?? null;
+  const selectedTaskNotes = React.useMemo(
+    () =>
+      selectedTask && selectedTaskDetail?.task.id === selectedTask.id
+        ? selectedTaskDetail.notes ?? []
+        : [],
+    [selectedTask, selectedTaskDetail]
+  );
+  const latestTaskNote = selectedTaskNotes[selectedTaskNotes.length - 1] ?? null;
   const showInitialLoadingState = tasksLoading && tasks.length === 0;
 
   React.useEffect(() => {
@@ -370,6 +452,13 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                           <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>{task.title}</span>
                           <span className={TASKS_BOARD_CARD_META_ROW_CLASS}>
                             <span>{`upd ${formatTs(task.updated_at)}`}</span>
+                            <Badge
+                              className={resolveTaskPriorityBadgeClass(
+                                normalizeTaskPriority(task.priority)
+                              )}
+                            >
+                              {resolveTaskPriorityLabel(normalizeTaskPriority(task.priority))}
+                            </Badge>
                             <span>{`cre ${formatTs(task.created_at)}`}</span>
                           </span>
                           <span className={TEAM_LIST_ITEM_META_CLASS}>
@@ -415,6 +504,13 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <Badge
+                className={resolveTaskPriorityBadgeClass(
+                  normalizeTaskPriority(selectedTask.priority)
+                )}
+              >
+                {resolveTaskPriorityLabel(normalizeTaskPriority(selectedTask.priority))}
+              </Badge>
               <StatusBadge
                 label={selectedTask.status}
                 tone={resolveTaskStatusTone(selectedTask.status)}
@@ -432,6 +528,12 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
             <div className={TASKS_DETAIL_META_ITEM_CLASS}>
               <strong className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Created</strong>
               <div className="mt-1 text-[12px] font-medium text-notion-text">{formatTs(selectedTask.created_at)}</div>
+            </div>
+            <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+              <strong className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Priority</strong>
+              <div className="mt-1 text-[12px] font-medium text-notion-text">
+                {resolveTaskPriorityLabel(normalizeTaskPriority(selectedTask.priority))}
+              </div>
             </div>
             <div className={TASKS_DETAIL_META_ITEM_CLASS}>
               <strong className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Assignee</strong>
@@ -455,6 +557,65 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
             >
               Open conversation
             </ActionButton>
+          </div>
+
+          <div className="mt-6 rounded-lg border border-notion-border bg-notion-sidebar/10 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-notion-text">Notes and journal</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-notion-text-muted">
+                  Task notes stay separate from the chat stream and act as the task TODO/journal ledger.
+                </p>
+              </div>
+              <Badge className="text-[10px]">{selectedTaskNotes.length}</Badge>
+            </div>
+            {latestTaskNote ? (
+              <div className="mt-4 rounded-md border border-notion-border/60 bg-white/80 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-notion-text-muted">
+                  <Badge
+                    className={resolveTaskPriorityBadgeClass(
+                      normalizeTaskPriority(selectedTask.priority)
+                    )}
+                  >
+                    Latest {latestTaskNote.kind}
+                  </Badge>
+                  <span>{latestTaskNote.from_actor_id}</span>
+                  <span>{formatTs(latestTaskNote.created_at)}</span>
+                </div>
+                <p className="mt-2 text-[13px] leading-relaxed text-notion-text">
+                  {summarizeTaskNote(latestTaskNote.text)}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-4 text-[13px] italic text-notion-text-muted">
+                No task notes yet.
+              </p>
+            )}
+            {selectedTaskNotes.length > 0 ? (
+              <div className="mt-4 space-y-3">
+                {selectedTaskNotes.map((note) => (
+                  <div
+                    key={note.message_id}
+                    className="rounded-md border border-notion-border/60 bg-white px-3 py-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-notion-text-muted">
+                      <Badge
+                        className={resolveTaskPriorityBadgeClass(
+                          normalizeTaskPriority(selectedTask.priority)
+                        )}
+                      >
+                        {note.kind}
+                      </Badge>
+                      <span>{note.from_actor_id}</span>
+                      <span>{formatTs(note.created_at)}</span>
+                    </div>
+                    <pre className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-notion-text">
+                      {note.text}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className={TASKS_RUN_LIST_CLASS}>
@@ -682,16 +843,28 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
       </div>
 
       <div className={`${TASKS_FILTER_BAR_CLASS} mt-4`}>
-        <SegmentedControl
-          fullWidth
-          size="xs"
-          radius="md"
-          value={statusFilter}
-          onChange={(value) => setStatusFilter(value as TaskStatusFilter)}
-          data={[...TASK_STATUS_FILTERS]}
-          aria-label="Task status filter"
-          classNames={SEGMENTED_CONTROL_CLASSNAMES}
-        />
+        <div className="space-y-3">
+          <SegmentedControl
+            fullWidth
+            size="xs"
+            radius="md"
+            value={statusFilter}
+            onChange={(value) => setStatusFilter(value as TaskStatusFilter)}
+            data={[...TASK_STATUS_FILTERS]}
+            aria-label="Task status filter"
+            classNames={SEGMENTED_CONTROL_CLASSNAMES}
+          />
+          <SegmentedControl
+            fullWidth
+            size="xs"
+            radius="md"
+            value={priorityFilter}
+            onChange={(value) => setPriorityFilter(value as TaskPriorityFilter)}
+            data={[...TASK_PRIORITY_FILTERS]}
+            aria-label="Task priority filter"
+            classNames={SEGMENTED_CONTROL_CLASSNAMES}
+          />
+        </div>
       </div>
 
       <div className={TASKS_WORKSPACE_STACK_CLASS}>

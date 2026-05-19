@@ -324,6 +324,12 @@ impl InternalGrpcMailboxClient {
                         .map(TeamTaskStatus::as_str)
                         .unwrap_or_default()
                         .to_string(),
+                    priority: query
+                        .priority
+                        .as_ref()
+                        .map(crate::team::TeamTaskPriority::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     include_shared_thread: query.include_shared_thread,
                     run_id: query
                         .run_id
@@ -364,6 +370,8 @@ impl InternalGrpcMailboxClient {
         actor_id: &str,
         title: &str,
         status: &str,
+        priority: &str,
+        assigned_member_id: &str,
         topic: Option<&str>,
         context: &serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
@@ -376,6 +384,8 @@ impl InternalGrpcMailboxClient {
                 status: status.trim().to_string(),
                 topic: topic.unwrap_or_default().trim().to_string(),
                 context_json: serde_json::to_string(context)?,
+                priority: priority.trim().to_string(),
+                assigned_member_id: assigned_member_id.trim().to_string(),
             },
         )?))
         .await
@@ -403,6 +413,11 @@ impl InternalGrpcMailboxClient {
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                         .map(str::to_string),
+                    priority: patch
+                        .priority
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
                     assigned_member_id: patch
                         .assigned_member_id
                         .map(str::trim)
@@ -414,6 +429,16 @@ impl InternalGrpcMailboxClient {
                         .context_merge_json
                         .map(serde_json::to_string)
                         .transpose()?,
+                    note_kind: patch
+                        .note_kind
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                    note_text: patch
+                        .note_text
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
                 })?,
             ),
         )

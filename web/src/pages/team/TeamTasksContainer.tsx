@@ -8,6 +8,7 @@ export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
     workspaceTasks,
     tasksLoading,
     selectedTaskId,
+    selectedTaskDetail,
     setSelectedTaskId,
     onRefreshTasks,
     onSelectConversationSubject,
@@ -37,6 +38,7 @@ export const TeamTasksContainer = React.memo(function TeamTasksContainer() {
       tasks={workspaceTasks}
       tasksLoading={tasksLoading}
       selectedTaskId={selectedTaskId}
+      selectedTaskDetail={selectedTaskDetail}
       onSelectedTaskIdChange={setSelectedTaskId}
       onRefreshTasks={onRefreshTasks}
       onOpenConversation={onSelectConversationSubject}

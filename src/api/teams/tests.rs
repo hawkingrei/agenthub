@@ -121,6 +121,7 @@ async fn create_team_task(
         task,
         conversation,
         latest_run: None,
+        notes: Vec::new(),
     })
 }
 
@@ -593,6 +594,7 @@ async fn init_test_schema(db: &SqlitePool) {
             group_id TEXT,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'p2',
             created_by_actor_id TEXT NOT NULL,
             assigned_member_id TEXT,
             context_json TEXT NOT NULL,

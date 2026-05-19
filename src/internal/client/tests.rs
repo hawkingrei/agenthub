@@ -815,6 +815,8 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             "planner",
             "Investigate kanban actor cli",
             "open",
+            "p1",
+            "planner",
             Some("kanban"),
             &json!({"source":"grpc-client"}),
         )
@@ -831,6 +833,8 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             "planner",
             "Legacy orphan task",
             "open",
+            "p1",
+            "planner",
             Some("legacy"),
             &json!({"source":"legacy"}),
         )
@@ -854,6 +858,7 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
                 run_id: Some(run_id.clone()),
                 limit: 20,
                 status: None,
+                priority: None,
                 task_id: None,
                 assigned_member_id: None,
                 topic: None,
@@ -873,15 +878,19 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             &task_id,
             InternalTeamTaskPatch {
                 status: Some("in_progress"),
+                priority: Some("p0"),
                 assigned_member_id: Some("reviewer"),
                 clear_assigned_member_id: false,
                 context_json: None,
                 context_merge_json: Some(&merge_context),
+                note_kind: Some("decision"),
+                note_text: Some("handoff to reviewer for active execution"),
             },
         )
         .await
         .expect("update grpc team task");
     assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
+    assert_eq!(updated.priority, crate::team::TeamTaskPriority::P0);
     assert_eq!(updated.assigned_member_id.as_deref(), Some("reviewer"));
     assert_eq!(updated.context["issue"], json!(235));
 
@@ -1011,6 +1020,7 @@ async fn grpc_team_channel_client_controls_are_wire_compatible() {
                 run_id: None,
                 limit: 20,
                 status: None,
+                priority: None,
                 task_id: None,
                 assigned_member_id: None,
                 topic: None,

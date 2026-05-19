@@ -61,18 +61,19 @@ impl TeamMessageArchiveMigrationReport {
 use self::codec::{
     parse_run_event_row, parse_team_actor_message_row, parse_team_conversation_message_row,
     parse_team_conversation_row, parse_team_definition_row, parse_team_member_continuity_state_row,
-    parse_team_run_row, parse_team_step_row, parse_team_task_row, team_run_status_to_str,
-    team_step_status_to_str, team_task_status_to_str,
+    parse_team_run_row, parse_team_step_row, parse_team_task_note_row, parse_team_task_row,
+    team_run_status_to_str, team_step_status_to_str, team_task_priority_to_str,
+    team_task_status_to_str,
 };
 use self::remote_relay::{GrpcRelayTlsDefaults, TeamRemoteRelayAdapter};
 use super::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TeamActorMessageRecord, TeamConversationMessageRecord,
     TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord,
     TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus, TeamTaskStepExecutionSpec,
-    build_team_member_actor_context_for_role, normalize_optional_idempotency_key_input,
-    parse_task_execution_plan, team_member_role_from_spec, validate_task_execution_plan,
-    validate_task_execution_steps,
+    TeamStepRecord, TeamStepStatus, TeamTaskNoteRecord, TeamTaskPriority, TeamTaskRecord,
+    TeamTaskStatus, TeamTaskStepExecutionSpec, build_team_member_actor_context_for_role,
+    collect_team_member_ids, normalize_optional_idempotency_key_input, parse_task_execution_plan,
+    team_member_role_from_spec, validate_task_execution_plan, validate_task_execution_steps,
 };
 use crate::agent::event_message_codec::decode_message_from_storage;
 use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
@@ -865,6 +866,7 @@ pub struct TeamTaskListQuery {
     pub run_id: Option<String>,
     pub limit: i64,
     pub status: Option<TeamTaskStatus>,
+    pub priority: Option<TeamTaskPriority>,
     pub task_id: Option<String>,
     pub assigned_member_id: Option<String>,
     pub topic: Option<String>,
@@ -1230,6 +1232,7 @@ impl TeamManager {
         Ok(team)
     }
 
+    #[allow(dead_code)]
     pub async fn create_task(
         &self,
         team_id: &str,
@@ -1239,8 +1242,45 @@ impl TeamManager {
         conversation_mode: &str,
         topic: Option<&str>,
     ) -> anyhow::Result<(TeamTaskRecord, TeamConversationRecord)> {
+        self.create_task_with_metadata(
+            team_id,
+            title,
+            created_by_actor_id,
+            TeamTaskPriority::default(),
+            None,
+            context,
+            conversation_mode,
+            topic,
+        )
+        .await
+    }
+
+    pub async fn create_task_with_metadata(
+        &self,
+        team_id: &str,
+        title: &str,
+        created_by_actor_id: &str,
+        priority: TeamTaskPriority,
+        assigned_member_id: Option<&str>,
+        context: Value,
+        conversation_mode: &str,
+        topic: Option<&str>,
+    ) -> anyhow::Result<(TeamTaskRecord, TeamConversationRecord)> {
         let team = self.get_team(team_id).await?;
         validate_task_execution_plan(&team.spec, &context)?;
+        let normalized_assigned_member_id = assigned_member_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if let Some(member_id) = normalized_assigned_member_id.as_deref() {
+            let valid_member_ids = collect_team_member_ids(&team.spec);
+            if !valid_member_ids
+                .iter()
+                .any(|candidate| candidate == member_id)
+            {
+                anyhow::bail!("assigned_member_id must reference spec.members[].member_id");
+            }
+        }
         let now = Utc::now().timestamp();
         let task_id = Uuid::new_v4().to_string();
         let conversation_id = Uuid::new_v4().to_string();
@@ -1252,16 +1292,18 @@ impl TeamManager {
         sqlx::query(
             r#"
             INSERT INTO team_tasks (
-                id, team_id, group_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
+                id, team_id, group_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
             )
-            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, ?4, ?5, NULL, ?6, ?7, ?8)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             "#,
         )
         .bind(&task_id)
         .bind(team_id)
         .bind(title)
         .bind(team_task_status_to_str(&status))
+        .bind(team_task_priority_to_str(&priority))
         .bind(created_by_actor_id)
+        .bind(normalized_assigned_member_id)
         .bind(context_json)
         .bind(now)
         .bind(now)
@@ -1306,6 +1348,7 @@ impl TeamManager {
                 t.team_id,
                 t.title,
                 t.status,
+                t.priority,
                 t.created_by_actor_id,
                 t.assigned_member_id,
                 t.context_json,
@@ -1319,6 +1362,10 @@ impl TeamManager {
         if let Some(status) = query.status {
             builder.push(" AND t.status = ");
             builder.push_bind(team_task_status_to_str(&status));
+        }
+        if let Some(priority) = query.priority {
+            builder.push(" AND t.priority = ");
+            builder.push_bind(team_task_priority_to_str(&priority));
         }
         if let Some(task_id) = query.task_id.as_deref() {
             builder.push(" AND t.id = ");
@@ -1361,6 +1408,7 @@ impl TeamManager {
                 team_id,
                 title,
                 status,
+                priority,
                 created_by_actor_id,
                 assigned_member_id,
                 context_json,
@@ -1388,6 +1436,7 @@ impl TeamManager {
                 team_id,
                 title,
                 status,
+                priority,
                 created_by_actor_id,
                 assigned_member_id,
                 context_json,
@@ -1415,6 +1464,12 @@ impl TeamManager {
         let task = self.get_task(task_id).await?;
         let conversation = self.get_task_conversation(task_id).await?;
         let latest_run = self.get_latest_run_for_task(&task.team_id, task_id).await?;
+        let notes = self
+            .list_task_notes(
+                task_id,
+                message_limit.clamp(1, TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX),
+            )
+            .await?;
         let recent_messages = self
             .list_task_conversation_messages(
                 task_id,
@@ -1426,8 +1481,43 @@ impl TeamManager {
             task,
             conversation,
             latest_run,
+            notes,
             recent_messages,
         })
+    }
+
+    pub async fn list_task_notes(
+        &self,
+        task_id: &str,
+        limit: i64,
+    ) -> anyhow::Result<Vec<TeamTaskNoteRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                id,
+                conversation_id,
+                task_id,
+                from_actor_id,
+                json_extract(payload_json, '$.kind') AS kind,
+                json_extract(payload_json, '$.text') AS text,
+                created_at
+            FROM team_conversation_messages
+            WHERE task_id = ?1
+              AND route = 'task_note'
+            ORDER BY id DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(task_id)
+        .bind(limit.max(1))
+        .fetch_all(&self.db)
+        .await?;
+        let mut notes = Vec::with_capacity(rows.len());
+        for row in rows {
+            notes.push(parse_team_task_note_row(&row)?);
+        }
+        notes.reverse();
+        Ok(notes)
     }
 
     pub async fn list_channels(
@@ -1650,9 +1740,9 @@ impl TeamManager {
         sqlx::query(
             r#"
             INSERT INTO team_tasks (
-                id, team_id, group_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
+                id, team_id, group_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
             )
-            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', ?4, NULL, ?5, ?6, ?7)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', 'p2', ?4, NULL, ?5, ?6, ?7)
             "#,
         )
         .bind(&task_id)
@@ -1807,20 +1897,28 @@ impl TeamManager {
         task_id: &str,
         status: TeamTaskStatus,
     ) -> anyhow::Result<TeamTaskRecord> {
-        self.update_task(task_id, Some(status), TeamTaskAssignmentUpdate::Unchanged)
-            .await
+        self.update_task_with_context_and_priority(
+            task_id,
+            Some(status),
+            TeamTaskAssignmentUpdate::Unchanged,
+            None,
+            None,
+        )
+        .await
     }
 
+    #[allow(dead_code)]
     pub async fn update_task(
         &self,
         task_id: &str,
         status: Option<TeamTaskStatus>,
         assignment: TeamTaskAssignmentUpdate,
     ) -> anyhow::Result<TeamTaskRecord> {
-        self.update_task_with_context(task_id, status, assignment, None)
+        self.update_task_with_context_and_priority(task_id, status, assignment, None, None)
             .await
     }
 
+    #[allow(dead_code)]
     pub async fn update_task_with_context(
         &self,
         task_id: &str,
@@ -1828,9 +1926,22 @@ impl TeamManager {
         assignment: TeamTaskAssignmentUpdate,
         context_patch: Option<TeamTaskContextPatch>,
     ) -> anyhow::Result<TeamTaskRecord> {
+        self.update_task_with_context_and_priority(task_id, status, assignment, None, context_patch)
+            .await
+    }
+
+    pub async fn update_task_with_context_and_priority(
+        &self,
+        task_id: &str,
+        status: Option<TeamTaskStatus>,
+        assignment: TeamTaskAssignmentUpdate,
+        priority: Option<TeamTaskPriority>,
+        context_patch: Option<TeamTaskContextPatch>,
+    ) -> anyhow::Result<TeamTaskRecord> {
         let current = self.get_task(task_id).await?;
         let team = self.get_team(&current.team_id).await?;
         let status_patch = status.filter(|candidate| *candidate != current.status);
+        let priority_patch = priority.filter(|candidate| *candidate != current.priority);
         let assignment_patch = match assignment {
             TeamTaskAssignmentUpdate::Unchanged => None,
             TeamTaskAssignmentUpdate::Unassigned => {
@@ -1855,7 +1966,11 @@ impl TeamManager {
                 Ok::<_, anyhow::Error>(next_context)
             })
             .transpose()?;
-        if status_patch.is_none() && assignment_patch.is_none() && context_patch.is_none() {
+        if status_patch.is_none()
+            && priority_patch.is_none()
+            && assignment_patch.is_none()
+            && context_patch.is_none()
+        {
             return Ok(current);
         }
 
@@ -1869,6 +1984,14 @@ impl TeamManager {
             first = false;
             builder.push("status = ");
             builder.push_bind(team_task_status_to_str(next_status));
+        }
+        if let Some(next_priority) = priority_patch.as_ref() {
+            if !first {
+                builder.push(", ");
+            }
+            first = false;
+            builder.push("priority = ");
+            builder.push_bind(team_task_priority_to_str(next_priority));
         }
         if let Some(next_assignment) = assignment_patch.as_ref() {
             if !first {
@@ -7517,13 +7640,14 @@ impl TeamManager {
                 group_id,
                 title,
                 status,
+                priority,
                 created_by_actor_id,
                 assigned_member_id,
                 context_json,
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', ?4, NULL, ?5, ?6, ?7)
+            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, 'open', 'p2', ?4, NULL, ?5, ?6, ?7)
             "#,
         )
         .bind(&task_id)
