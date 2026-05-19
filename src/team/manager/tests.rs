@@ -7383,6 +7383,85 @@ async fn actor_mailbox_service_cursor_can_hide_page_messages_without_resetting_p
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_include_delivered_keeps_pending_visible_on_first_page() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-pending-first-team".to_string(),
+            description: Some("team for delivered inbox pending-first behavior".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-pending-first"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let mut latest_pending_id = None;
+    for idx in 0..25 {
+        let sent = service
+            .actor_send(ActorSendRequest {
+                run_id: run.id.clone(),
+                from_actor_id: "planner".to_string(),
+                from_peer_id: None,
+                to_actor_id: Some("reviewer".to_string()),
+                channel_id: None,
+                to_peer_id: None,
+                channel: Some("coordination".to_string()),
+                transport: Some(TeamActorMessageTransport::Local),
+                route: None,
+                payload: json!({"text": format!("message-{idx}")}),
+                idempotency_key: Some(format!("msg-pending-first-{idx}")),
+            })
+            .await
+            .expect("actor send");
+        latest_pending_id = Some(sent.message_id);
+        if idx < 24 {
+            service
+                .actor_ack(ActorAckRequest {
+                    run_id: run.id.clone(),
+                    actor_id: "reviewer".to_string(),
+                    message_id: sent.message_id,
+                    ack_token: None,
+                    result: None,
+                })
+                .await
+                .expect("ack historical message");
+        }
+    }
+
+    let inbox = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id,
+            actor_id: "reviewer".to_string(),
+            cursor: None,
+            limit: Some(20),
+            states: Some(vec![
+                TeamActorMessageStatus::Pending,
+                TeamActorMessageStatus::Delivered,
+            ]),
+        })
+        .await
+        .expect("actor inbox with delivered keeps unread visible");
+
+    assert_eq!(inbox.pending_count, 1);
+    assert_eq!(inbox.messages.len(), 1);
+    assert_eq!(inbox.messages[0].status, TeamActorMessageStatus::Pending);
+    assert_eq!(inbox.messages[0].message_id, latest_pending_id.unwrap());
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_channel_send_broadcasts_and_preserves_mentions() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

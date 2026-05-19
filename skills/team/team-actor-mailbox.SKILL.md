@@ -87,6 +87,7 @@ Recommended fields:
    `agenthub actor inbox --limit 50`
    - `actor inbox` now includes `pending_count`; treat it as the live unread snapshot.
    - `actor inbox` is read-only by default and should be used for inspection/debugging.
+   - Add `--include-delivered` only for explicit historical replay/debugging after current unread work is already visible.
 2. Accept pending mailbox work for the current actor:
    `agenthub actor receive --limit 50`
 3. Parse accepted message payload and validate required fields before acting.

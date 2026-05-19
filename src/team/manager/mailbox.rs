@@ -1108,6 +1108,14 @@ fn parse_inbox_rows(rows: Vec<SqliteRow>) -> Result<Vec<TeamActorMessageRecord>,
     Ok(messages)
 }
 
+fn inbox_rows_include_pending(rows: &[SqliteRow]) -> bool {
+    rows.iter().any(|row| {
+        row.try_get::<String, _>("status")
+            .map(|status| status == "pending")
+            .unwrap_or(false)
+    })
+}
+
 impl SqlActorMailboxStore {
     async fn read_inbox_snapshot(
         &self,
@@ -1121,7 +1129,27 @@ impl SqlActorMailboxStore {
             &query.peer_id,
         )
         .await?;
-        let rows = list_inbox_rows_on_executor(&mut *tx, query).await?;
+        // Keep the first delivered-inclusive page unread-focused so historical
+        // replay does not bury fresh direct mailbox work behind old deliveries.
+        let rows = if query.include_delivered && query.after_id.is_none() {
+            let pending_only_query = ListActorInboxQuery {
+                include_delivered: false,
+                ..query.clone()
+            };
+            let pending_rows = list_inbox_rows_on_executor(&mut *tx, &pending_only_query).await?;
+            if pending_rows.is_empty() {
+                list_inbox_rows_on_executor(&mut *tx, query).await?
+            } else {
+                let requested_rows = list_inbox_rows_on_executor(&mut *tx, query).await?;
+                if inbox_rows_include_pending(&requested_rows) {
+                    requested_rows
+                } else {
+                    pending_rows
+                }
+            }
+        } else {
+            list_inbox_rows_on_executor(&mut *tx, query).await?
+        };
         let messages = parse_inbox_rows(rows)?;
         tx.commit().await?;
         Ok(ActorInboxSnapshot {
@@ -1216,7 +1244,25 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         &self,
         query: &ListActorInboxQuery,
     ) -> Result<Vec<TeamActorMessageRecord>, Self::Error> {
-        let rows = list_inbox_rows_on_executor(&self.db, query).await?;
+        let rows = if query.include_delivered && query.after_id.is_none() {
+            let pending_only_query = ListActorInboxQuery {
+                include_delivered: false,
+                ..query.clone()
+            };
+            let pending_rows = list_inbox_rows_on_executor(&self.db, &pending_only_query).await?;
+            if pending_rows.is_empty() {
+                list_inbox_rows_on_executor(&self.db, query).await?
+            } else {
+                let requested_rows = list_inbox_rows_on_executor(&self.db, query).await?;
+                if inbox_rows_include_pending(&requested_rows) {
+                    requested_rows
+                } else {
+                    pending_rows
+                }
+            }
+        } else {
+            list_inbox_rows_on_executor(&self.db, query).await?
+        };
         parse_inbox_rows(rows).map_err(Into::into)
     }
 
