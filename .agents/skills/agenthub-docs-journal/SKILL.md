@@ -1,11 +1,11 @@
 ---
 name: agenthub-docs-journal
-description: "Use when creating, updating, compacting, or reviewing AgentHub implementation journals under docs/journal/. Applies to dated rollout notes, implementation checkpoints, CI/run evidence, and deciding what belongs in a journal vs a feature spec or TODO."
+description: "Journal writing for rollout notes and validation evidence."
 ---
 
 # AgentHub Journal Writing
 
-Use this skill when writing or reviewing `docs/journal/YYYY-MM-DD-topic.md` files in this repository.
+Use this skill when writing or reviewing `docs/journal/YYYY-MM-DD-topic.md` files, especially for rollout notes, implementation checkpoints, or validation evidence.
 
 ## Goal
 
@@ -118,4 +118,3 @@ Check these:
 - validation commands are explicit
 - remaining work is really still remaining
 - any stable contract change also updated the relevant `docs/features/` file
-

@@ -38,11 +38,24 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   `task` records.
 - A `task` is the primary agent-facing work object.
 - `task.assigned_member_id` is the canonical owner slot.
+- `task.priority` is the canonical urgency field with four stable values:
+  - `p0`: immediate / blocking production or coordination issue
+  - `p1`: high-priority work that should be scheduled before normal backlog
+  - `p2`: default planned work
+  - `p3`: low-priority backlog or follow-up
 - Canonical execution tasks must not stay unassigned; if a task is materialized onto Kanban, coordinator
   must choose a concrete owner explicitly instead of relying on implicit scheduling or leaving the
   task owner empty.
+- Canonical execution task creation requires an explicit `assigned_member_id`; creating an ownerless
+  Kanban task is invalid.
 - Explicit ownership changes happen through canonical task updates (`assigned_member_id` assign /
   unassign), not implicit runtime scheduling.
+- A task also carries an append-only note journal used for:
+  - `comment`: progress or blocker notes
+  - `decision`: coordinator/owner decisions
+  - `result`: concrete outcome/evidence summaries
+- Deliberate task status transitions must include a same-update journal note so lifecycle changes
+  remain auditable.
 - Human-facing UI / HTTP APIs may display canonical task status and ownership, but they do not
   mutate those fields directly.
 - Canonical task creation and lifecycle management belong to coordinator planning, not direct human task
@@ -261,14 +274,19 @@ For the full execution vocabulary and boundary rules, see
   archive; operators should use ACP / Runs / other debug lanes for deeper
   history.
 - `Kanban` is task-first and should show task state plus linked run history/summary.
+- `Kanban` should also surface task priority clearly and allow filtering by priority without forcing
+  operators into run/debug tabs.
 - Coordinator owns canonical Team task creation and lifecycle management; workers advance assigned work
   and report progress/blockers promptly so task state remains current.
 - Human clients may read Team task state from `Kanban`, but canonical task `status` and
   `assigned_member_id` changes remain agent/runtime controls.
 - Public Team HTTP clients also do not create canonical tasks directly; they request work in
   `Conversation` and let coordinator/runtime materialize Kanban tasks.
-- `task.assigned_member_id` is the long-lived ownership field, but empty ownership is valid until
-  coordinator assigns a member explicitly.
+- `task.assigned_member_id` is the long-lived ownership field; canonical execution tasks must be born
+  with an owner, and later explicit unassign is an exceptional coordinator repair action rather than
+  the default steady state.
+- Task detail views should expose the task note journal separately from the human chat transcript so
+  operators can inspect TODO/progress/decision history without mixing it into the conversation lane.
 - Channels are free-form communication/review lanes; agents should use timed triggers only for
   deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
   `Kanban`.
@@ -350,3 +368,4 @@ For the full execution vocabulary and boundary rules, see
 - `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`
 - `docs/journal/2026-03-05-team-conversation-event-bus-contract.md`
 - `docs/journal/2026-03-20-team-acp-permission-review-routing.md`
+- `docs/journal/2026-05-19-team-task-priority-note-governance.md`

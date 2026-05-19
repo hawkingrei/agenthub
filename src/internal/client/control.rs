@@ -32,9 +32,9 @@ use super::super::proto::agenthub::internal::v1::{
     UpdateTeamTaskRequest as GrpcUpdateTeamTaskRequest,
 };
 use super::{
-    InternalActorRunScopeResolution, InternalGrpcMailboxClient, InternalPermissionReviewResponse,
-    InternalStepTransitionResponse, InternalTeamTaskPatch, map_grpc_status_anyhow,
-    parse_agent_events, parse_json_response, timeout_internal_grpc_call,
+    InternalActorRunScopeResolution, InternalCreateTeamTaskRequest, InternalGrpcMailboxClient,
+    InternalPermissionReviewResponse, InternalStepTransitionResponse, InternalTeamTaskPatch,
+    map_grpc_status_anyhow, parse_agent_events, parse_json_response, timeout_internal_grpc_call,
 };
 
 impl InternalGrpcMailboxClient {
@@ -324,6 +324,12 @@ impl InternalGrpcMailboxClient {
                         .map(TeamTaskStatus::as_str)
                         .unwrap_or_default()
                         .to_string(),
+                    priority: query
+                        .priority
+                        .as_ref()
+                        .map(crate::team::TeamTaskPriority::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     include_shared_thread: query.include_shared_thread,
                     run_id: query
                         .run_id
@@ -360,22 +366,19 @@ impl InternalGrpcMailboxClient {
 
     pub async fn create_team_task(
         &self,
-        team_id: &str,
-        actor_id: &str,
-        title: &str,
-        status: &str,
-        topic: Option<&str>,
-        context: &serde_json::Value,
+        request: InternalCreateTeamTaskRequest<'_>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut client = self.client();
         let response = timeout_internal_grpc_call(client.create_team_task(self.control_request(
             GrpcCreateTeamTaskRequest {
-                team_id: team_id.trim().to_string(),
-                actor_id: actor_id.trim().to_string(),
-                title: title.to_string(),
-                status: status.trim().to_string(),
-                topic: topic.unwrap_or_default().trim().to_string(),
-                context_json: serde_json::to_string(context)?,
+                team_id: request.team_id.trim().to_string(),
+                actor_id: request.actor_id.trim().to_string(),
+                title: request.title.to_string(),
+                status: request.status.trim().to_string(),
+                topic: request.topic.unwrap_or_default().trim().to_string(),
+                context_json: serde_json::to_string(request.context)?,
+                priority: request.priority.trim().to_string(),
+                assigned_member_id: request.assigned_member_id.trim().to_string(),
             },
         )?))
         .await
@@ -403,6 +406,11 @@ impl InternalGrpcMailboxClient {
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                         .map(str::to_string),
+                    priority: patch
+                        .priority
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
                     assigned_member_id: patch
                         .assigned_member_id
                         .map(str::trim)
@@ -414,6 +422,16 @@ impl InternalGrpcMailboxClient {
                         .context_merge_json
                         .map(serde_json::to_string)
                         .transpose()?,
+                    note_kind: patch
+                        .note_kind
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                    note_text: patch
+                        .note_text
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
                 })?,
             ),
         )

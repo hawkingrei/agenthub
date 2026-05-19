@@ -121,6 +121,8 @@ pub struct ListTeamTasksRequest {
     pub assigned_member_id: ::prost::alloc::string::String,
     #[prost(string, tag = "9")]
     pub topic: ::prost::alloc::string::String,
+    #[prost(string, tag = "10")]
+    pub priority: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListTeamTasksResponse {
@@ -141,6 +143,10 @@ pub struct CreateTeamTaskRequest {
     pub topic: ::prost::alloc::string::String,
     #[prost(string, tag = "6")]
     pub context_json: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub priority: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub assigned_member_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateTeamTaskResponse {
@@ -165,6 +171,12 @@ pub struct UpdateTeamTaskRequest {
     pub context_json: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "8")]
     pub context_merge_json: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "9")]
+    pub priority: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "10")]
+    pub note_kind: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "11")]
+    pub note_text: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UpdateTeamTaskResponse {

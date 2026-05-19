@@ -11,7 +11,8 @@ use crate::actor_runtime_env::{
     ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var,
 };
 use crate::team::{
-    TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamTaskListQuery, TeamTaskStatus,
+    TEAM_TASK_PRIORITY_VALUES, TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport,
+    TeamTaskListQuery, TeamTaskPriority, TeamTaskStatus,
 };
 use agenthub_team_actor::parse_actor_transport;
 use serde_json::Value;
@@ -377,6 +378,17 @@ fn parse_team_task_status_argument(raw: &str) -> anyhow::Result<TeamTaskStatus> 
     }
 }
 
+fn parse_team_task_priority_argument(raw: &str) -> anyhow::Result<TeamTaskPriority> {
+    let normalized = raw.trim();
+    normalized.parse::<TeamTaskPriority>().map_err(|other| {
+        anyhow::anyhow!(
+            "invalid task priority '{}', expected one of: {}",
+            other,
+            TEAM_TASK_PRIORITY_VALUES.join(", ")
+        )
+    })
+}
+
 fn parse_team_task_note_kind(raw: &str) -> anyhow::Result<TeamTaskNoteKind> {
     match raw.trim() {
         "comment" => Ok(TeamTaskNoteKind::Comment),
@@ -501,6 +513,7 @@ pub(super) fn parse_actor_command(
             let mut actor_id = None;
             let mut limit = 100_i64;
             let mut status = None;
+            let mut priority = None;
             let mut task_id = None;
             let mut assigned_member_id = None;
             let mut topic = None;
@@ -547,6 +560,14 @@ pub(super) fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--status requires a value"))?;
                         status = Some(raw.clone());
                     }
+                    "--priority" => {
+                        idx += 1;
+                        priority = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--priority requires a value"))?,
+                        );
+                    }
                     "--task-id" => {
                         idx += 1;
                         task_id = Some(
@@ -578,6 +599,10 @@ pub(super) fn parse_actor_command(
                 Some("all") | None => None,
                 Some(raw) => Some(parse_team_task_status_argument(raw)?),
             };
+            let priority = match priority.as_deref().map(str::trim) {
+                Some("all") | None => None,
+                Some(raw) => Some(parse_team_task_priority_argument(raw)?),
+            };
             let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
@@ -590,6 +615,7 @@ pub(super) fn parse_actor_command(
                     run_id,
                     limit: limit.clamp(1, 500),
                     status,
+                    priority,
                     task_id: take_optional(task_id),
                     assigned_member_id: take_optional(assigned_member_id),
                     topic: take_optional(topic),
@@ -603,6 +629,8 @@ pub(super) fn parse_actor_command(
             let mut actor_id = None;
             let mut title = None;
             let mut status = TeamTaskStatus::Open;
+            let mut priority = None;
+            let mut assigned_member_id = None;
             let mut topic = None;
             let mut context = None;
             let mut context_file = None;
@@ -640,6 +668,19 @@ pub(super) fn parse_actor_command(
                             .get(idx)
                             .ok_or_else(|| anyhow::anyhow!("--status requires a value"))?;
                         status = parse_team_task_status_argument(raw)?;
+                    }
+                    "--priority" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--priority requires a value"))?;
+                        priority = Some(parse_team_task_priority_argument(raw)?);
+                    }
+                    "--assigned-member-id" => {
+                        idx += 1;
+                        assigned_member_id = Some(args.get(idx).cloned().ok_or_else(|| {
+                            anyhow::anyhow!("--assigned-member-id requires a value")
+                        })?);
                     }
                     "--topic" => {
                         idx += 1;
@@ -683,6 +724,9 @@ pub(super) fn parse_actor_command(
                 actor_id: take_actor_id(actor_id)?,
                 title,
                 status,
+                priority: priority.ok_or_else(|| anyhow::anyhow!("priority is required"))?,
+                assigned_member_id: take_optional(assigned_member_id)
+                    .ok_or_else(|| anyhow::anyhow!("assigned_member_id is required"))?,
                 topic: take_optional(topic),
                 context: context
                     .or(context_file)
@@ -767,12 +811,15 @@ pub(super) fn parse_actor_command(
             let mut actor_id = None;
             let mut task_ids = Vec::new();
             let mut status = None;
+            let mut priority = None;
             let mut assigned_member_id = None;
             let mut clear_assigned_member_id = false;
             let mut context = None;
             let mut context_file = None;
             let mut context_merge = None;
             let mut context_merge_file = None;
+            let mut note_kind = None;
+            let mut note_text = None;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -807,6 +854,13 @@ pub(super) fn parse_actor_command(
                             .get(idx)
                             .ok_or_else(|| anyhow::anyhow!("--status requires a value"))?;
                         status = Some(parse_team_task_status_argument(raw)?);
+                    }
+                    "--priority" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--priority requires a value"))?;
+                        priority = Some(parse_team_task_priority_argument(raw)?);
                     }
                     "--assigned-member-id" => {
                         idx += 1;
@@ -883,6 +937,21 @@ pub(super) fn parse_actor_command(
                             "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together",
                         )?;
                     }
+                    "--note-kind" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--note-kind requires a value"))?;
+                        note_kind = Some(parse_team_task_note_kind(raw)?);
+                    }
+                    "--note" => {
+                        idx += 1;
+                        note_text = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--note requires a value"))?,
+                        );
+                    }
                     other => {
                         return Err(anyhow::anyhow!(
                             "unknown flag for team-task-update: {}",
@@ -899,6 +968,11 @@ pub(super) fn parse_actor_command(
             }
             if task_ids.is_empty() {
                 return Err(anyhow::anyhow!("task_id is required"));
+            }
+            if note_kind.is_some() ^ note_text.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--note-kind and --note must be provided together"
+                ));
             }
             if context.is_some() && context_file.is_some() {
                 return Err(anyhow::anyhow!(
@@ -929,10 +1003,13 @@ pub(super) fn parse_actor_command(
                 actor_id: take_actor_id(actor_id)?,
                 task_ids,
                 status,
+                priority,
                 assigned_member_id: take_optional(assigned_member_id),
                 clear_assigned_member_id,
                 context: context.or(context_file),
                 context_merge: context_merge.or(context_merge_file),
+                note_kind,
+                note_text: take_optional(note_text),
             })
         }
         "team-task-note" => {

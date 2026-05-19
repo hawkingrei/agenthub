@@ -1,11 +1,11 @@
 ---
 name: agenthub-docs-spec
-description: "Use when creating, revising, or reviewing AgentHub canonical feature specs under docs/features/. Applies to stable runtime/UI/API contracts, scope boundaries, validation matrices, and deciding what belongs in a spec vs a journal or TODO."
+description: "Canonical feature spec writing for stable contracts."
 ---
 
 # AgentHub Feature Spec Writing
 
-Use this skill when writing or reviewing `docs/features/*.md` files in this repository.
+Use this skill when writing or reviewing `docs/features/*.md` files for stable runtime, UI, or API contracts instead of rollout history.
 
 ## Goal
 
@@ -133,4 +133,3 @@ Check these:
 - validation matrix is concrete
 - source journals are linked
 - any remaining rollout tail lives in `docs/todo.md`, not only in prose
-

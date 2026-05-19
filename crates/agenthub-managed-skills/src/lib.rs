@@ -19,6 +19,10 @@ const TEAM_DELIBERATION_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-deliberation-rules.SKILL.md");
 const TEAM_ACTOR_MAILBOX_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-actor-mailbox.SKILL.md");
+const TEAM_REPORTING_SURFACES_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-reporting-surfaces.SKILL.md");
+const TEAM_TASK_GOVERNANCE_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-task-governance.SKILL.md");
 const TEAM_TASK_LIFECYCLE_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-task-lifecycle.SKILL.md");
 
@@ -31,6 +35,8 @@ pub enum ManagedSkillKind {
     TeamWorkerAgentsIndex,
     TeamCoordinatorOrchestrator,
     TeamWorkerExecutor,
+    TeamReportingSurfaces,
+    TeamTaskGovernance,
     TeamTaskLifecycle,
     TeamDeliberationRules,
     TeamActorMailbox,
@@ -38,12 +44,14 @@ pub enum ManagedSkillKind {
 }
 
 impl ManagedSkillKind {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 11] = [
         Self::TeamAgentsIndex,
         Self::TeamCoordinatorAgentsIndex,
         Self::TeamWorkerAgentsIndex,
         Self::TeamCoordinatorOrchestrator,
         Self::TeamWorkerExecutor,
+        Self::TeamReportingSurfaces,
+        Self::TeamTaskGovernance,
         Self::TeamTaskLifecycle,
         Self::TeamDeliberationRules,
         Self::TeamActorMailbox,
@@ -57,6 +65,8 @@ impl ManagedSkillKind {
             Self::TeamWorkerAgentsIndex => "team/team-worker-agents-index",
             Self::TeamCoordinatorOrchestrator => "team/team-coordinator-orchestrator",
             Self::TeamWorkerExecutor => "team/team-worker-executor",
+            Self::TeamReportingSurfaces => "team/team-reporting-surfaces",
+            Self::TeamTaskGovernance => "team/team-task-governance",
             Self::TeamTaskLifecycle => "team/team-task-lifecycle",
             Self::TeamDeliberationRules => "team/team-deliberation-rules",
             Self::TeamActorMailbox => "team/team-actor-mailbox",
@@ -237,6 +247,8 @@ pub fn managed_skill_name(kind: ManagedSkillKind) -> &'static str {
         ManagedSkillKind::TeamWorkerAgentsIndex => "team-worker-agents-index",
         ManagedSkillKind::TeamCoordinatorOrchestrator => "team-coordinator-orchestrator",
         ManagedSkillKind::TeamWorkerExecutor => "team-worker-executor",
+        ManagedSkillKind::TeamReportingSurfaces => "team-reporting-surfaces",
+        ManagedSkillKind::TeamTaskGovernance => "team-task-governance",
         ManagedSkillKind::TeamTaskLifecycle => "team-task-lifecycle",
         ManagedSkillKind::TeamDeliberationRules => "team-deliberation-rules",
         ManagedSkillKind::TeamActorMailbox => "team-actor-mailbox",
@@ -251,6 +263,8 @@ pub fn managed_skill_contents(kind: ManagedSkillKind) -> String {
         ManagedSkillKind::TeamWorkerAgentsIndex => team_role_agents_index_skill_doc(false),
         ManagedSkillKind::TeamCoordinatorOrchestrator => TEAM_COORDINATOR_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamWorkerExecutor => TEAM_WORKER_SKILL_TEXT.to_string(),
+        ManagedSkillKind::TeamReportingSurfaces => TEAM_REPORTING_SURFACES_SKILL_TEXT.to_string(),
+        ManagedSkillKind::TeamTaskGovernance => TEAM_TASK_GOVERNANCE_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamTaskLifecycle => TEAM_TASK_LIFECYCLE_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamDeliberationRules => TEAM_DELIBERATION_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamActorMailbox => TEAM_ACTOR_MAILBOX_SKILL_TEXT.to_string(),
@@ -271,7 +285,10 @@ fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
                     "Maintain coordinator workspace `AGENTS.md` as the coordination index.",
                     "Keep current phase, transition condition, assignment map, and integration checklist concise.",
                     "Keep human-facing planning decisions in coordinator index records.",
-                    "Keep `team-task-lifecycle` active whenever coordinator is creating, reviewing, or closing canonical Team tasks.",
+                    "Keep `team-reporting-surfaces` active whenever coordinator must route local findings into task notes, mailbox, or channels.",
+                    "Keep `team-task-governance` active whenever coordinator is creating or updating canonical Team task fields, notes, or task context.",
+                    "Keep `team-task-lifecycle` active whenever coordinator is advancing, reviewing, or closing canonical Team tasks.",
+                    "When a new inbox, channel, or thread message arrives, activate the minimal message-implied skill set: `team-actor-mailbox` for routing mechanics, `team-reporting-surfaces` for shared visibility, `team-task-governance` for task field/note/context changes, and `team-task-lifecycle` for state/review changes.",
                 ],
             )
         } else {
@@ -285,7 +302,10 @@ fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
                     "Maintain worker workspace `AGENTS.md` as the execution index.",
                     "Keep assignment scope, acceptance criteria, evidence pointers, and blockers concise.",
                     "Keep coordinator as the default single-owner update route, but use shared channel directly when important issues need team-wide discussion or visibility.",
+                    "Keep `team-reporting-surfaces` active whenever worker execution evidence must be routed into task notes, mailbox, or channels.",
+                    "Keep `team-task-governance` active whenever worker execution evidence must be turned into canonical task-note or task-context guidance.",
                     "Keep `team-task-lifecycle` active whenever worker execution must advance a coordinator-owned Team task toward review.",
+                    "When a new inbox, channel, or thread message arrives, activate the minimal message-implied skill set: `team-actor-mailbox` for routing mechanics, `team-reporting-surfaces` for shared visibility, `team-task-governance` for task-note/task-context guidance, and `team-task-lifecycle` for state/review guidance.",
                 ],
             )
         };
@@ -296,12 +316,12 @@ fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
     format!(
         r#"---
 name: {name}
-description: {role_label} runtime AGENTS index for AgentHub Team sessions.
+description: {role_label} runtime AGENTS index for Team sessions.
 ---
 
 # {title}
 
-Use this skill as the {role_label}-specific AGENTS index initializer.
+Use this skill when initializing or refreshing the {role_label}-specific workspace `AGENTS.md`.
 
 Primary references:
 
@@ -320,8 +340,11 @@ Primary references:
 3. Set `role={role_label}` and keep `Active Skills` minimal:
    - `{role_core_skill}` (role execution skill)
    - `team-actor-mailbox`
+   - add `team-reporting-surfaces` when local findings must become visible through task notes, mailbox, or channels
+   - add `team-task-governance` when canonical Team task fields, notes, or task context rules matter
    - add `team-task-lifecycle` only when canonical Team task state must change
    - add `team-deliberation-rules` only when option comparison or consensus work is active
+   - when a new inbox/channel/thread message arrives, activate the minimal message-implied subset before replying
 4. Check `TODO.md` before mailbox rounds.
 "#,
         name = name,
@@ -336,12 +359,12 @@ Primary references:
 fn actor_runtime_skill_doc() -> String {
     r#"---
 name: agenthub-actor-runtime
-description: Runtime coordination contract for AgentHub actor sessions.
+description: Runtime context and mailbox contract for AgentHub actor sessions.
 ---
 
 # AgentHub Actor Runtime Skill
 
-You are running inside an AgentHub actor session.
+Use this skill inside an AgentHub actor session when you need the runtime context, mailbox workflow, or actor CLI contract.
 
 Use this skill together with the runtime context block that AgentHub injects
 before each prompt. The context block carries the current `team_id`,
@@ -461,7 +484,10 @@ mod tests {
                 managed_skill_doc(kind, Some(home.as_path())).expect("build managed skill doc");
             assert_frontmatter_has_name_and_description(&doc);
             if kind == ManagedSkillKind::ActorRuntime {
-                assert!(doc.contents.contains("Runtime coordination contract"));
+                assert!(
+                    doc.contents
+                        .contains("Runtime context and mailbox contract")
+                );
                 assert!(!doc.contents.contains("`actor_cli_path`"));
                 assert!(doc.contents.contains("`agenthub actor receive"));
                 assert!(doc.contents.contains("compact continuity summary"));
@@ -481,6 +507,18 @@ mod tests {
         .expect("build worker index doc");
         assert!(worker_index.contents.contains("shared channel directly"));
         assert!(worker_index.contents.contains("important issues"));
+        assert!(worker_index.contents.contains("team-reporting-surfaces"));
+        assert!(worker_index.contents.contains("team-task-governance"));
+        assert!(
+            worker_index
+                .contents
+                .contains("new inbox/channel/thread message arrives")
+        );
+        assert!(
+            worker_index
+                .contents
+                .contains("minimal message-implied subset")
+        );
 
         let worker_executor =
             managed_skill_doc(ManagedSkillKind::TeamWorkerExecutor, Some(home.as_path()))
@@ -526,6 +564,14 @@ mod tests {
                 .contents
                 .contains("agenthub actor team-thread-reply")
         );
+        assert!(shared_index.contents.contains("team-reporting-surfaces"));
+        assert!(shared_index.contents.contains("team-task-governance"));
+        assert!(
+            shared_index
+                .contents
+                .contains("Message-Triggered Skill Routing")
+        );
+        assert!(shared_index.contents.contains("team-actor-mailbox"));
 
         let mailbox = managed_skill_doc(ManagedSkillKind::TeamActorMailbox, Some(home.as_path()))
             .expect("build mailbox doc");
@@ -557,6 +603,7 @@ mod tests {
         )
         .expect("build coordinator doc");
         assert!(coordinator.contents.contains("thread-scoped deep context"));
+        assert!(coordinator.contents.contains("message-implied skill set"));
 
         let worker = managed_skill_doc(ManagedSkillKind::TeamWorkerExecutor, Some(home.as_path()))
             .expect("build worker doc");
@@ -565,6 +612,7 @@ mod tests {
                 .contents
                 .contains("turning the root channel lane into a context dump")
         );
+        assert!(worker.contents.contains("message-implied skill set"));
     }
 
     fn assert_frontmatter_has_name_and_description(doc: &ManagedSkillDoc) {

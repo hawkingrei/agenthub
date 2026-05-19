@@ -1,11 +1,11 @@
 ---
 name: team-coordinator-orchestrator
-description: Planning, delegation, and synthesis workflow for AgentHub Team coordinator sessions.
+description: Use when acting as the coordinator for a Team run.
 ---
 
 # Team Coordinator Orchestrator
 
-You are the coordinator for a multi-agent team run.
+Use this skill when acting as the coordinator for a multi-agent Team run.
 
 ## Objectives
 
@@ -35,9 +35,17 @@ You are the coordinator for a multi-agent team run.
 - Use `team-agents-index` to load shared Team terminology and startup checklist first.
 - Use `team-coordinator-agents-index` to load coordinator-specific AGENTS template/rules.
 - Use this skill for coordinator planning, assignment, synthesis, and human-facing coordination.
-- Use `team-task-lifecycle.SKILL.md` for canonical Team task creation, review, and status changes.
+- Use `team-reporting-surfaces.SKILL.md` when choosing whether an update belongs in task note, mailbox, or channel/thread.
+- Use `team-task-governance.SKILL.md` for canonical Team task creation, ownership, priority, note journal, and task-context rules.
+- Use `team-task-lifecycle.SKILL.md` for canonical Team task review and status changes.
 - Use `team-deliberation-rules.SKILL.md` for cross-option evaluation and consensus discipline.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`receive`/`send`/`ack`).
+- When a new inbox, channel, or thread message arrives, load the minimal message-implied skill set
+  before replying:
+  - `team-actor-mailbox` for receive/send/ack/thread mechanics
+  - `team-task-governance` for task-field, note, assignee, priority, or task-context changes
+  - `team-task-lifecycle` for review/state transitions
+  - `team-reporting-surfaces` for shared visibility routing
 - Treat `task.context.execution_plan.steps[]` as the canonical coordinator-authored execution recipe
   when a task needs explicit step structure.
 
@@ -363,8 +371,16 @@ Definition:
   visibility.
 - Use `agenthub actor team-task-create` to create that canonical Team task and `agenthub actor team-tasks` to confirm it is
   visible in Kanban.
+- Use `team-reporting-surfaces` when deciding how execution evidence becomes durable or broadly
+  visible.
+- Use `team-task-governance` as the canonical field-level contract before changing assignee,
+  priority, task note, or task context.
 - Use `team-task-lifecycle` as the canonical state-transition contract.
+- When a message arrives and implies both coordination transport and task mutation, load
+  `team-actor-mailbox` plus the relevant task skill before replying or changing canonical state.
 - Use `agenthub actor team-task-update` when intentionally advancing the canonical Team task lifecycle.
+- Do not rely on private coordinator output as shared evidence; if the information matters, route
+  it through the surface selected by `team-reporting-surfaces`.
 - The expected Team task path is `open -> in_progress -> waiting|in_review -> completed|canceled`.
 - Successful worker execution should normally land in `in_review`, not directly `completed`.
 - Use `waiting` when the next action belongs to a human or external dependency such as PR review or approval.

@@ -189,6 +189,28 @@ describe("api request headers", () => {
     expect(headers.get("Content-Type")).toBe("application/json");
   });
 
+  it("includes priority when listing team tasks with a priority filter", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.listTeamTasks("token-1", "team-1", 25, {
+      include_shared_thread: true,
+      priority: "p0",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/api/teams/team-1/tasks?");
+    expect(url).toContain("limit=25");
+    expect(url).toContain("include_shared_thread=true");
+    expect(url).toContain("priority=p0");
+  });
+
   it("builds the team run-context SSE URL with encoded dynamic segments", () => {
     expect(
       buildTeamRunContextSseUrl(

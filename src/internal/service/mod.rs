@@ -25,9 +25,10 @@ pub(super) use crate::agent::{
 };
 pub(super) use crate::team::{
     TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX, TeamContextLookupError, TeamManager, TeamStepRecord,
-    TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskListQuery,
-    TeamTaskStatus, dispatch_actor_mailbox_immediate_hint, plan_actor_mailbox_immediate_hint,
-    resolve_team_permission_review_target,
+    TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskCreateInput,
+    TeamTaskListQuery, TeamTaskNoteCreateInput, TeamTaskNoteKind, TeamTaskPriority, TeamTaskStatus,
+    TeamTaskUpdateWithNoteInput, dispatch_actor_mailbox_immediate_hint,
+    plan_actor_mailbox_immediate_hint, resolve_team_permission_review_target,
 };
 
 pub(super) use super::auth::{InternalAction, InternalAuthz, InternalRole};

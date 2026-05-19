@@ -14,12 +14,13 @@ pub use agenthub_team_actor::{
 };
 pub use agenthub_team_domain::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
-    TEAM_TASK_STATUS_VALUES, TeamChannelRecord, TeamConversationMessageRecord,
-    TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord,
-    TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunResumeError,
-    TeamRunStatus, TeamStepRecord, TeamStepStatus, TeamTaskDetailRecord, TeamTaskExecutionPlan,
-    TeamTaskRecord, TeamTaskStatus, TeamTaskStepExecutionMode, TeamTaskStepExecutionSpec,
-    TeamThreadOpenRecord, TeamThreadReplyRecord,
+    TEAM_TASK_NOTE_KIND_VALUES, TEAM_TASK_PRIORITY_VALUES, TEAM_TASK_STATUS_VALUES,
+    TeamChannelRecord, TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
+    TeamDefinitionRecord, TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord,
+    TeamRunResumeError, TeamRunStatus, TeamStepRecord, TeamStepStatus, TeamTaskDetailRecord,
+    TeamTaskExecutionPlan, TeamTaskNoteKind, TeamTaskNoteRecord, TeamTaskPriority, TeamTaskRecord,
+    TeamTaskStatus, TeamTaskStepExecutionMode, TeamTaskStepExecutionSpec, TeamThreadOpenRecord,
+    TeamThreadReplyRecord,
 };
 #[cfg(test)]
 pub(crate) use mailbox_hint::build_actor_mailbox_immediate_hint_prompt;
@@ -35,7 +36,7 @@ pub use manager::{
     TeamManager, TeamMemoryFlushRequest, TeamMessageArchiveMigrationReport,
     TeamRemoteRelayWorkerSettings, TeamRunContextFingerprint, TeamRunContextStreamEvent,
     TeamRuntimeRecord, TeamRuntimeStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch,
-    TeamTaskListQuery,
+    TeamTaskCreateInput, TeamTaskListQuery, TeamTaskNoteCreateInput, TeamTaskUpdateWithNoteInput,
 };
 pub(crate) use permission_review::resolve_team_permission_review_target;
 pub use permission_review::{

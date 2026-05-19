@@ -1,6 +1,6 @@
 ---
 name: project-github-titles
-description: "Use when preparing commit messages, pull request titles, or summary comments for this repository. Enforce `type(scope): subject` without `[codex]`, using one of `feat`, `fix`, `test`, `chore`, or `docs`."
+description: "Repository title convention for commits and PRs."
 ---
 
 # Project GitHub Titles

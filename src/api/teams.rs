@@ -38,9 +38,10 @@ use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport, TeamChannelRecord,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskExecutionPlan, TeamTaskRecord,
-    TeamTaskStepExecutionSpec, TeamThreadReplyRecord, dispatch_actor_mailbox_immediate_hint,
-    effective_team_member_skills, ensure_team_runtime_started, force_team_member_new_session,
+    TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskExecutionPlan, TeamTaskNoteRecord,
+    TeamTaskPriority, TeamTaskRecord, TeamTaskStepExecutionSpec, TeamThreadReplyRecord,
+    dispatch_actor_mailbox_immediate_hint, effective_team_member_skills,
+    ensure_team_runtime_started, force_team_member_new_session,
     normalize_optional_idempotency_key_input, parse_task_execution_plan,
     plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
@@ -170,6 +171,7 @@ pub struct CreateTeamTaskRequest {
 #[derive(Debug, Deserialize)]
 pub struct ListTeamTasksQuery {
     pub limit: Option<i64>,
+    pub priority: Option<String>,
     #[serde(default)]
     pub include_shared_thread: bool,
 }
@@ -401,6 +403,7 @@ pub struct TeamTaskDetailResponse {
     pub task: TeamTaskRecord,
     pub conversation: TeamConversationRecord,
     pub latest_run: Option<TeamRunRecord>,
+    pub notes: Vec<TeamTaskNoteRecord>,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -783,10 +786,16 @@ async fn get_team_shared_thread(
     else {
         return Err(ApiError::not_found("shared thread not found"));
     };
+    let notes = state
+        .teams
+        .list_task_notes(&task.id, 100)
+        .await
+        .map_err(map_team_internal_error)?;
     Ok(Json(TeamTaskDetailResponse {
         task,
         conversation,
         latest_run,
+        notes,
     }))
 }
 
@@ -802,10 +811,16 @@ async fn ensure_team_shared_thread(
         .ensure_shared_thread_detail_for_team(&team_id, &canonical_user_actor_id(&user))
         .await
         .map_err(map_team_internal_error)?;
+    let notes = state
+        .teams
+        .list_task_notes(&task.id, 100)
+        .await
+        .map_err(map_team_internal_error)?;
     Ok(Json(TeamTaskDetailResponse {
         task,
         conversation,
         latest_run,
+        notes,
     }))
 }
 
@@ -817,11 +832,23 @@ async fn list_team_tasks(
 ) -> Result<Json<Vec<TeamTaskRecord>>, ApiError> {
     let user = require_user(&headers, &state).await?;
     load_team_for_user(&state, &team_id, &user).await?;
+    let priority = query
+        .priority
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "all")
+        .map(|raw| {
+            raw.parse::<TeamTaskPriority>().map_err(|_| {
+                ApiError::bad_request("invalid task priority; expected one of: p0, p1, p2, p3")
+            })
+        })
+        .transpose()?;
     let tasks = state
         .teams
         .list_tasks_with_query(crate::team::TeamTaskListQuery {
             team_id: Some(team_id),
             limit: query.limit.unwrap_or(100).clamp(1, 500),
+            priority,
             include_shared_thread: query.include_shared_thread,
             ..crate::team::TeamTaskListQuery::default()
         })
@@ -888,28 +915,19 @@ async fn get_team_task(
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
     load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
+    let detail = state
         .teams
-        .get_task(&task_id)
+        .get_task_detail(&task_id, 100)
         .await
         .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
+    if detail.task.team_id != team_id {
         return Err(ApiError::not_found("task not found"));
     }
-    let conversation = state
-        .teams
-        .get_task_conversation(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "conversation not found"))?;
-    let latest_run = state
-        .teams
-        .get_latest_run_for_task(&team_id, &task_id)
-        .await
-        .map_err(map_team_internal_error)?;
     Ok(Json(TeamTaskDetailResponse {
-        task,
-        conversation,
-        latest_run,
+        task: detail.task,
+        conversation: detail.conversation,
+        latest_run: detail.latest_run,
+        notes: detail.notes,
     }))
 }
 

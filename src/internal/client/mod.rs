@@ -82,10 +82,25 @@ pub struct InternalStepTransitionResponse {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct InternalTeamTaskPatch<'a> {
     pub status: Option<&'a str>,
+    pub priority: Option<&'a str>,
     pub assigned_member_id: Option<&'a str>,
     pub clear_assigned_member_id: bool,
     pub context_json: Option<&'a serde_json::Value>,
     pub context_merge_json: Option<&'a serde_json::Value>,
+    pub note_kind: Option<&'a str>,
+    pub note_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InternalCreateTeamTaskRequest<'a> {
+    pub team_id: &'a str,
+    pub actor_id: &'a str,
+    pub title: &'a str,
+    pub status: &'a str,
+    pub priority: &'a str,
+    pub assigned_member_id: &'a str,
+    pub topic: Option<&'a str>,
+    pub context: &'a serde_json::Value,
 }
 
 impl InternalGrpcMailboxClient {

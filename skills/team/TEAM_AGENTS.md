@@ -30,6 +30,8 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
   - coordinator: `team-coordinator-orchestrator`
   - worker: `team-worker-executor`
 - optional (load only when needed):
+  - `team-reporting-surfaces`
+  - `team-task-governance`
   - `team-task-lifecycle`
   - `team-deliberation-rules`
 
@@ -39,7 +41,9 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 - Coordinator-specific execution policy lives in `team-coordinator-orchestrator`.
 - Worker-specific execution policy lives in `team-worker-executor`.
 - Mailbox transport and payload details live in `team-actor-mailbox`.
-- Canonical Team task creation/state rules live in `team-task-lifecycle`.
+- Canonical Team reporting-surface rules live in `team-reporting-surfaces`.
+- Canonical Team task create/update/note/context rules live in `team-task-governance`.
+- Canonical Team task state-transition/review rules live in `team-task-lifecycle`.
 - Self-profile updates use `profile_patch_proposal`.
 - Timed self-reminders use `agenthub actor time-trigger-set`,
   `agenthub actor time-trigger-list`, and

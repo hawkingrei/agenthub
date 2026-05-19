@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use super::mailbox::{map_grpc_status, parse_message, parse_status, parse_transport};
 use super::{
-    InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, InternalTeamTaskPatch,
-    normalize_existing_path, parse_output_stream, tls_path_if_exists,
+    InternalCreateTeamTaskRequest, InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig,
+    InternalTeamTaskPatch, normalize_existing_path, parse_output_stream, tls_path_if_exists,
 };
 use crate::api::team_tests::build_test_state;
 use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
@@ -810,14 +810,16 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             .expect("connect grpc mailbox client");
 
     let created = client
-        .create_team_task(
-            &team_id,
-            "planner",
-            "Investigate kanban actor cli",
-            "open",
-            Some("kanban"),
-            &json!({"source":"grpc-client"}),
-        )
+        .create_team_task(InternalCreateTeamTaskRequest {
+            team_id: &team_id,
+            actor_id: "planner",
+            title: "Investigate kanban actor cli",
+            status: "open",
+            priority: "p1",
+            assigned_member_id: "planner",
+            topic: Some("kanban"),
+            context: &json!({"source":"grpc-client"}),
+        })
         .await
         .expect("create grpc team task");
     let task_id = created["task"]["id"]
@@ -826,14 +828,16 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
         .to_string();
 
     let orphan = client
-        .create_team_task(
-            &team_id,
-            "planner",
-            "Legacy orphan task",
-            "open",
-            Some("legacy"),
-            &json!({"source":"legacy"}),
-        )
+        .create_team_task(InternalCreateTeamTaskRequest {
+            team_id: &team_id,
+            actor_id: "planner",
+            title: "Legacy orphan task",
+            status: "open",
+            priority: "p1",
+            assigned_member_id: "planner",
+            topic: Some("legacy"),
+            context: &json!({"source":"legacy"}),
+        })
         .await
         .expect("create orphan candidate task");
     let orphan_task_id = orphan["task"]["id"]
@@ -854,6 +858,7 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
                 run_id: Some(run_id.clone()),
                 limit: 20,
                 status: None,
+                priority: None,
                 task_id: None,
                 assigned_member_id: None,
                 topic: None,
@@ -873,15 +878,19 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             &task_id,
             InternalTeamTaskPatch {
                 status: Some("in_progress"),
+                priority: Some("p0"),
                 assigned_member_id: Some("reviewer"),
                 clear_assigned_member_id: false,
                 context_json: None,
                 context_merge_json: Some(&merge_context),
+                note_kind: Some("decision"),
+                note_text: Some("handoff to reviewer for active execution"),
             },
         )
         .await
         .expect("update grpc team task");
     assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
+    assert_eq!(updated.priority, crate::team::TeamTaskPriority::P0);
     assert_eq!(updated.assigned_member_id.as_deref(), Some("reviewer"));
     assert_eq!(updated.context["issue"], json!(235));
 
@@ -1011,6 +1020,7 @@ async fn grpc_team_channel_client_controls_are_wire_compatible() {
                 run_id: None,
                 limit: 20,
                 status: None,
+                priority: None,
                 task_id: None,
                 assigned_member_id: None,
                 topic: None,

@@ -4518,6 +4518,7 @@ async fn team_task_api_lists_gets_and_redacts_context() {
         Path(team.id.clone()),
         Query(ListTeamTasksQuery {
             limit: Some(20),
+            priority: None,
             include_shared_thread: false,
         }),
     )
@@ -4643,6 +4644,7 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
         Path(team.id.clone()),
         Query(ListTeamTasksQuery {
             limit: Some(100),
+            priority: None,
             include_shared_thread: false,
         }),
     )
@@ -4657,6 +4659,7 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
         Path(team.id),
         Query(ListTeamTasksQuery {
             limit: Some(100),
+            priority: None,
             include_shared_thread: true,
         }),
     )

@@ -404,6 +404,7 @@ function buildPanelTask(
       | "in_review"
       | "completed"
       | "canceled";
+    priority: "p0" | "p1" | "p2" | "p3" | null;
     assigned_member_id: string | null;
     context: Record<string, unknown>;
     created_at: number;
@@ -415,6 +416,7 @@ function buildPanelTask(
     team_id: "team-1",
     title: overrides.title ?? id,
     status: overrides.status ?? "open",
+    priority: overrides.priority ?? "p2",
     created_by_actor_id: "user",
     assigned_member_id: overrides.assigned_member_id ?? null,
     context: overrides.context ?? {},
@@ -5773,12 +5775,14 @@ describe("team panels interactions", () => {
               buildPanelTask("task-1", {
                 title: "Investigate bug",
                 status: "open",
+                priority: "p1",
                 created_at: 100,
                 updated_at: 200,
               }),
               buildPanelTask("task-2", {
                 title: "Prepare rollout",
                 status: "in_progress",
+                priority: "p0",
                 assigned_member_id: "worker-1",
                 context: {
                   owner: "coordinator",
@@ -5791,18 +5795,65 @@ describe("team panels interactions", () => {
               buildPanelTask("task-3", {
                 title: "Wait for PR review",
                 status: "waiting",
+                priority: "p3",
                 created_at: 85,
                 updated_at: 224,
               }),
               buildPanelTask("task-4", {
                 title: "Review release notes",
                 status: "in_review",
+                priority: "p2",
                 created_at: 80,
                 updated_at: 225,
               }),
             ]}
             tasksLoading={false}
             selectedTaskId="task-2"
+            selectedTaskDetail={{
+              task: buildPanelTask("task-2", {
+                title: "Prepare rollout",
+                status: "in_progress",
+                priority: "p0",
+                assigned_member_id: "worker-1",
+                context: {
+                  owner: "coordinator",
+                  bootstrap_kind: "team_channel",
+                  channel_id: "review",
+                },
+                created_at: 90,
+                updated_at: 220,
+              }),
+              conversation: {
+                id: "conv-task-2",
+                team_id: "team-1",
+                task_id: "task-2",
+                mode: "group_chat",
+                topic: "review",
+                created_at: 90,
+                updated_at: 220,
+              },
+              latest_run: null,
+              notes: [
+                {
+                  message_id: 7,
+                  conversation_id: "conv-task-2",
+                  task_id: "task-2",
+                  from_actor_id: "planner",
+                  kind: "decision",
+                  text: "Keep the rollout checklist and handoff log on the task journal.",
+                  created_at: 226,
+                },
+                {
+                  message_id: 8,
+                  conversation_id: "conv-task-2",
+                  task_id: "task-2",
+                  from_actor_id: "reviewer",
+                  kind: "result",
+                  text: "Reviewed and ready for ship once docs are regenerated.",
+                  created_at: 227,
+                },
+              ],
+            }}
             onSelectedTaskIdChange={onSelectedTaskIdChange}
             onRefreshTasks={vi.fn()}
             onOpenConversation={onOpenConversation}
@@ -5917,6 +5968,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("1");
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).toContain("owner Worker One");
+    expect(container.textContent).toContain("P0");
     expect(container.textContent).toContain(
       "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
@@ -5926,6 +5978,11 @@ describe("team panels interactions", () => {
     );
     expect(document.body.textContent).toContain("Open conversation");
     expect(container.textContent).toContain("Open # review");
+    expect(document.body.textContent).toContain("Notes and journal");
+    expect(document.body.textContent).toContain("Latest result");
+    expect(document.body.textContent).toContain(
+      "Reviewed and ready for ship once docs are regenerated."
+    );
     expect(document.body.textContent).toContain("Latest execution run");
     expect(document.body.textContent).toContain("Shipped the rollout summary.");
     expect(document.body.textContent).toContain("Task context");
@@ -5971,6 +6028,74 @@ describe("team panels interactions", () => {
     clickElement(findInteractiveByText(container, "Open", "button, label"));
     expect(container.textContent).toContain("Investigate bug");
     expect(container.textContent).not.toContain("Prepare rolloutAgents pick this task up automatically");
+  });
+
+  it("TeamTasksPanel filters and sorts by priority", async () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-p2", {
+                title: "Lower priority",
+                status: "open",
+                priority: "p2",
+                updated_at: 210,
+              }),
+              buildPanelTask("task-p0", {
+                title: "Highest priority",
+                status: "open",
+                priority: "p0",
+                updated_at: 205,
+              }),
+              buildPanelTask("task-p1", {
+                title: "Medium priority",
+                status: "open",
+                priority: "p1",
+                updated_at: 220,
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-p2"
+            selectedTaskDetail={null}
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[]}
+            onOpenRun={vi.fn()}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const cardsBeforeFilter = Array.from(
+      container.querySelectorAll('[data-team-surface="kanban"] section button')
+    );
+    expect(cardsBeforeFilter[0]?.textContent).toContain("Highest priority");
+    expect(cardsBeforeFilter[1]?.textContent).toContain("Medium priority");
+    expect(cardsBeforeFilter[2]?.textContent).toContain("Lower priority");
+
+    clickElement(findInteractiveByText(container, "P0", "label"));
+    await waitForCondition(
+      () => !(container.textContent?.includes("Medium priority") ?? false)
+    );
+
+    expect(container.textContent).toContain("Highest priority");
+    expect(container.textContent).not.toContain("Medium priority");
+    expect(container.textContent).not.toContain("Lower priority");
   });
 
   it("TeamTasksPanel keeps the kanban surface vertically scrollable", () => {

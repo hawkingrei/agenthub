@@ -1,12 +1,12 @@
 ---
 name: team-actor-mailbox
-description: Mailbox transport contract for AgentHub Team actor inbox/receive/send/ack flows.
+description: Team mailbox transport contract for inbox, receive, send, and ack.
 ---
 
 # Team Actor Mailbox
 
-Use this skill for Team mailbox communication. It is the protocol reference for
-`actor inbox`, `actor receive`, `actor send`, and `actor ack`.
+Use this skill when you need Team mailbox routing, delivery, replay, or ack rules. It is the
+protocol reference for `actor inbox`, `actor receive`, `actor send`, and `actor ack`.
 
 For Team runtime/roster context, use the single `agenthub actor team-members`
 command. It exposes runtime summary, roster/card data, and per-member

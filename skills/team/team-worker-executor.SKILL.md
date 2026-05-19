@@ -1,12 +1,11 @@
 ---
 name: team-worker-executor
-description: Execution and evidence-reporting workflow for AgentHub Team worker sessions.
+description: Use when executing assigned Team work as a worker.
 ---
 
 # Team Worker Executor
 
-You execute tasks assigned by the team coordinator, report verifiable outputs, and surface reusable
-findings.
+Use this skill when executing assigned Team work, reporting evidence, and escalating blockers or ownership mismatches.
 
 ## AGENTS Index Contract
 
@@ -20,9 +19,17 @@ findings.
 - Use `team-agents-index` to load shared Team terminology and startup checklist first.
 - Use `team-worker-agents-index` to load worker-specific AGENTS template/rules.
 - Use this skill for worker execution and evidence reporting.
+- Use `team-reporting-surfaces.SKILL.md` when choosing whether an update belongs in task note, mailbox, or channel/thread.
+- Use `team-task-governance.SKILL.md` for canonical Team task note, ownership-gap handling, priority, and task-context rules.
 - Use `team-task-lifecycle.SKILL.md` for canonical Team task progression and review handoff.
 - Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.
 - Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`receive`/`send`/`ack`).
+- When a new inbox, channel, or thread message arrives, load the minimal message-implied skill set
+  before replying:
+  - `team-actor-mailbox` for receive/send/ack/thread mechanics
+  - `team-task-governance` for task-note, ownership-gap, priority, or task-context guidance
+  - `team-task-lifecycle` for review/state guidance that must be raised to coordinator
+  - `team-reporting-surfaces` for shared visibility routing
 
 ## Shared Contract Usage
 
@@ -309,10 +316,17 @@ Step execution contract:
 
 - Treat the coordinator-owned Team task as the canonical execution unit behind your assignment.
 - Use `agenthub actor team-tasks` when you need to verify canonical Team task state directly.
+- Use `team-reporting-surfaces` when the question is which shared surface should carry an update.
+- Use `team-task-governance` when the question is about task note content, ownership gaps, task
+  priority meaning, or task context.
 - Use `team-task-lifecycle` as the canonical Team task state contract.
+- When a message arrives and changes what must be reported or escalated, load `team-actor-mailbox`
+  plus the relevant task/reporting skill before answering.
 - Keep the task moving with timely progress/blocker updates so the coordinator can maintain correct
   Kanban state.
 - Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; raise the lifecycle change to coordinator.
+- Do not assume local output alone is visible to teammates; if the fact matters, route it through
+  the surface selected by `team-reporting-surfaces`.
 - When implementation evidence is ready, push the task toward `in_review`; do not treat worker
   completion as canonical Team task `completed`.
 - For developer/code tasks, "ready for review" should normally mean merge-ready or very close to

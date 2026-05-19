@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskStatus};
+use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskPriority, TeamTaskStatus};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, build_default_actor_channel_idempotency_key,
     build_default_actor_message_idempotency_key,
@@ -180,6 +180,8 @@ enum ActorCommand {
         actor_id: String,
         title: String,
         status: TeamTaskStatus,
+        priority: TeamTaskPriority,
+        assigned_member_id: String,
         topic: Option<String>,
         context: Value,
     },
@@ -195,10 +197,13 @@ enum ActorCommand {
         actor_id: String,
         task_ids: Vec<String>,
         status: Option<TeamTaskStatus>,
+        priority: Option<TeamTaskPriority>,
         assigned_member_id: Option<String>,
         clear_assigned_member_id: bool,
         context: Option<Value>,
         context_merge: Option<Value>,
+        note_kind: Option<TeamTaskNoteKind>,
+        note_text: Option<String>,
     },
     TeamTaskNote {
         team_id: Option<String>,
@@ -2018,6 +2023,10 @@ mod tests {
             "team-task-create".to_string(),
             "--title".to_string(),
             "Investigate relay drift".to_string(),
+            "--assigned-member-id".to_string(),
+            "worker-1".to_string(),
+            "--priority".to_string(),
+            "p1".to_string(),
             "--status".to_string(),
             "in_progress".to_string(),
             "--context-json".to_string(),
@@ -2031,6 +2040,8 @@ mod tests {
                 actor_id,
                 title,
                 status,
+                priority,
+                assigned_member_id,
                 context,
                 ..
             } => {
@@ -2038,6 +2049,8 @@ mod tests {
                 assert_eq!(actor_id, "coordinator");
                 assert_eq!(title, "Investigate relay drift");
                 assert_eq!(status, TeamTaskStatus::InProgress);
+                assert_eq!(priority, TeamTaskPriority::P1);
+                assert_eq!(assigned_member_id, "worker-1");
                 assert_eq!(context["area"], "relay");
             }
             _ => panic!("expected team-task-create command"),
@@ -2065,18 +2078,52 @@ mod tests {
             "team-task-create".to_string(),
             "--title".to_string(),
             "Use file context".to_string(),
+            "--priority".to_string(),
+            "p2".to_string(),
+            "--assigned-member-id".to_string(),
+            "worker-2".to_string(),
             "--context-json-file".to_string(),
             temp_path.display().to_string(),
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
             .expect("parse team-task-create");
         match parsed {
-            ActorCommand::TeamTaskCreate { context, .. } => {
+            ActorCommand::TeamTaskCreate {
+                priority,
+                assigned_member_id,
+                context,
+                ..
+            } => {
+                assert_eq!(priority, TeamTaskPriority::P2);
+                assert_eq!(assigned_member_id, "worker-2");
                 assert_eq!(context["area"], "file");
             }
             _ => panic!("expected team-task-create command"),
         }
         let _ = std::fs::remove_file(temp_path);
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_task_create_requires_priority() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-create-missing-priority");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
+        }
+        let args = vec![
+            "team-task-create".to_string(),
+            "--title".to_string(),
+            "Missing priority".to_string(),
+            "--assigned-member-id".to_string(),
+            "worker-2".to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("team-task-create should require priority");
+        assert!(err.to_string().contains("priority is required"));
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
@@ -2150,19 +2197,25 @@ mod tests {
                 actor_id,
                 task_ids,
                 status,
+                priority,
                 assigned_member_id,
                 clear_assigned_member_id,
                 context,
                 context_merge,
+                note_kind,
+                note_text,
             } => {
                 assert_eq!(team_id, "team-update");
                 assert_eq!(actor_id, "coordinator");
                 assert_eq!(task_ids, vec!["task-1".to_string()]);
                 assert!(status.is_none());
+                assert!(priority.is_none());
                 assert_eq!(assigned_member_id.as_deref(), Some("worker-1"));
                 assert!(!clear_assigned_member_id);
                 assert!(context.is_none());
                 assert!(context_merge.is_none());
+                assert!(note_kind.is_none());
+                assert!(note_text.is_none());
             }
             _ => panic!("expected team-task-update command"),
         }
@@ -2798,6 +2851,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "Investigate bug".to_string(),
                 status: TeamTaskStatus::Open,
+                priority: TeamTaskPriority::P2,
                 created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({}),
@@ -2809,6 +2863,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "all".to_string(),
                 status: TeamTaskStatus::Open,
+                priority: TeamTaskPriority::P2,
                 created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
@@ -2827,6 +2882,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "all".to_string(),
                 status: TeamTaskStatus::Open,
+                priority: TeamTaskPriority::P2,
                 created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({}),
@@ -2838,6 +2894,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "all".to_string(),
                 status: TeamTaskStatus::Open,
+                priority: TeamTaskPriority::P2,
                 created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
@@ -2849,6 +2906,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "random".to_string(),
                 status: TeamTaskStatus::Open,
+                priority: TeamTaskPriority::P2,
                 created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
@@ -2869,6 +2927,7 @@ mod tests {
             team_id: "team-1".to_string(),
             title: "Investigate bug".to_string(),
             status: TeamTaskStatus::Open,
+            priority: TeamTaskPriority::P2,
             created_by_actor_id: "coordinator".to_string(),
             assigned_member_id: None,
             context: serde_json::json!({}),
@@ -2893,6 +2952,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "all".to_string(),
                 status: TeamTaskStatus::Open,
+                priority: TeamTaskPriority::P2,
                 created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({}),
@@ -2904,6 +2964,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "random".to_string(),
                 status: TeamTaskStatus::Open,
+                priority: TeamTaskPriority::P2,
                 created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
@@ -3213,6 +3274,7 @@ mod tests {
                         run_id: None,
                         limit: 10,
                         status: Some(TeamTaskStatus::Open),
+                        priority: None,
                         task_id: None,
                         assigned_member_id: None,
                         topic: None,
@@ -3228,6 +3290,8 @@ mod tests {
                     actor_id: "coordinator".to_string(),
                     title: "Create task".to_string(),
                     status: TeamTaskStatus::Open,
+                    priority: TeamTaskPriority::P2,
+                    assigned_member_id: "worker-1".to_string(),
                     topic: None,
                     context: Value::Object(Default::default()),
                 },
@@ -3249,10 +3313,13 @@ mod tests {
                     actor_id: "coordinator".to_string(),
                     task_ids: vec!["task-1".to_string()],
                     status: Some(TeamTaskStatus::InProgress),
+                    priority: None,
                     assigned_member_id: None,
                     clear_assigned_member_id: false,
                     context: None,
                     context_merge: None,
+                    note_kind: None,
+                    note_text: None,
                 },
                 ActorOutputPreference::ToonPreferred,
             ),

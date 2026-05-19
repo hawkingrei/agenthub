@@ -1,18 +1,21 @@
 ---
 name: team-task-lifecycle
-description: Canonical Team task lifecycle and status ownership for AgentHub Team sessions.
+description: Use when canonical Team task lifecycle or review state must change.
 ---
 
 # Team Task Lifecycle
 
-Use this skill whenever Team work must be represented as canonical Kanban tasks.
+Use this skill when canonical Team task lifecycle state, review handoff, or state-to-evidence mapping must change.
 
 This skill defines:
 
-- when coordinator should create a Team task
 - which role may advance each task state
 - how execution evidence maps into `open / in_progress / waiting / in_review / completed / canceled`
 - how worker-local TODO state stays aligned with canonical Team task state
+
+Field-level create/update rules for assignee, priority, note journal usage, and task context live
+in `team-task-governance.SKILL.md`. Shared visibility routing lives in
+`team-reporting-surfaces.SKILL.md`.
 
 Shared routing, human-facing reply rules, and mailbox transport remain canonical in
 `skills/team/AGENTS.md` and `team-actor-mailbox.SKILL.md`.
@@ -65,9 +68,10 @@ Coordinator may:
 
 - use `agenthub actor team-task-create` to create canonical Team tasks
 - use `agenthub actor team-tasks` to verify the task is actually present in Kanban after creation
-- leave `assigned_member_id` empty until ownership is set explicitly; do not guess an owner
+- keep `team-task-governance` loaded when assignee, priority, task note, or task context changes
 - use `agenthub actor team-task-update --task-id <task_id> --assigned-member-id <member_id>` when the task needs an explicit owner
 - use `agenthub actor team-task-update --task-id <task_id> --unassign` when ownership should be cleared explicitly
+- append a meaningful task note in the same update flow before any deliberate lifecycle transition
 - use `agenthub actor team-task-update --task-id <task_id> --status in_progress` to move `open -> in_progress`
 - use `agenthub actor team-task-update --task-id <task_id> --status waiting` to park an active task when PR review, approval, or external feedback is the next required action
 - use `agenthub actor team-task-update --task-id <task_id> --status in_review` to move `in_progress -> in_review`
@@ -91,6 +95,7 @@ Workers should:
 
 - treat the coordinator-owned Team task as the canonical execution record
 - use `agenthub actor team-tasks` when they need to confirm canonical Team task state directly
+- use `team-task-governance` when they need the canonical contract for task notes, ownership gaps, or task context rules
 - keep coordinator informed when work should move from `open` to `in_progress`
 - report evidence as soon as implementation/research materially changes
 - ask or signal for `in_review` when acceptance evidence is ready

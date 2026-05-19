@@ -1,11 +1,11 @@
 ---
 name: agenthub-testing
-description: "Use when adding or updating tests for AgentHub, especially for bugfixes, focused web regressions, Rust backend changes, CI triage, or deciding the minimum validation set that matches the changed behavior. Applies to bugfix-first test selection, web typecheck/build verification, and narrow Bazel/cargo test choices."
+description: "Focused AgentHub test planning for behavior changes."
 ---
 
 # AgentHub Testing
 
-Use this skill when changing behavior in AgentHub and deciding what tests to add, update, or run.
+Use this skill when a behavior change, bugfix, or CI failure needs the smallest useful test plan.
 
 ## Non-Negotiable Rules
 
@@ -150,4 +150,3 @@ When a PR already exists, after pushing:
 - If review feedback identifies a real missing regression boundary, add the test in the same PR.
 - If patch coverage is just below threshold, prefer adding narrow tests around the changed files rather than broad unrelated suites.
 - If a fix introduced a reusable rule, consider whether it belongs in a pure helper plus table-driven tests.
-
