@@ -296,12 +296,12 @@ fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
     format!(
         r#"---
 name: {name}
-description: {role_label} runtime AGENTS index for AgentHub Team sessions.
+description: {role_label} runtime AGENTS index for Team sessions.
 ---
 
 # {title}
 
-Use this skill as the {role_label}-specific AGENTS index initializer.
+Use this skill when initializing or refreshing the {role_label}-specific workspace `AGENTS.md`.
 
 Primary references:
 
@@ -336,12 +336,12 @@ Primary references:
 fn actor_runtime_skill_doc() -> String {
     r#"---
 name: agenthub-actor-runtime
-description: Runtime coordination contract for AgentHub actor sessions.
+description: Runtime context and mailbox contract for AgentHub actor sessions.
 ---
 
 # AgentHub Actor Runtime Skill
 
-You are running inside an AgentHub actor session.
+Use this skill inside an AgentHub actor session when you need the runtime context, mailbox workflow, or actor CLI contract.
 
 Use this skill together with the runtime context block that AgentHub injects
 before each prompt. The context block carries the current `team_id`,
@@ -461,7 +461,10 @@ mod tests {
                 managed_skill_doc(kind, Some(home.as_path())).expect("build managed skill doc");
             assert_frontmatter_has_name_and_description(&doc);
             if kind == ManagedSkillKind::ActorRuntime {
-                assert!(doc.contents.contains("Runtime coordination contract"));
+                assert!(
+                    doc.contents
+                        .contains("Runtime context and mailbox contract")
+                );
                 assert!(!doc.contents.contains("`actor_cli_path`"));
                 assert!(doc.contents.contains("`agenthub actor receive"));
                 assert!(doc.contents.contains("compact continuity summary"));

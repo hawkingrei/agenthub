@@ -1,11 +1,11 @@
 ---
 name: team-deliberation-rules
-description: Shared decision and collaboration quality rules for AgentHub Team sessions.
+description: Shared decision and consensus rules for Team sessions.
 ---
 
 # Team Deliberation Rules
 
-Apply these rules whenever you collaborate in a Team run.
+Use this skill when the team needs option comparison, consensus, or evidence-quality decisions.
 
 ## Shared Workflow Phases
 

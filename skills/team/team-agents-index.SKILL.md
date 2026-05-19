@@ -1,11 +1,11 @@
 ---
 name: team-agents-index
-description: Shared Team startup index and routing contract for AgentHub Team sessions.
+description: Shared Team startup index and routing contract.
 ---
 
 # Team AGENTS Index
 
-Use this skill as the shared Team-level startup index for both coordinator and worker roles.
+Use this skill at Team session startup or when refreshing role/skill routing for coordinator and worker roles.
 
 Primary references:
 

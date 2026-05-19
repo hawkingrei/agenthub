@@ -1,11 +1,11 @@
 ---
 name: agenthub-acp-rendering
-description: "Trigger when Team ACP UI looks blank, partial, duplicated, or stale, especially in `web/src/pages/team/` and ACP conversation surfaces."
+description: "ACP rendering fixes for Team web surfaces."
 ---
 
 # AgentHub ACP Rendering
 
-Trigger when you are fixing AgentHub web ACP rendering behavior, especially under `web/src/pages/team/`, `web/src/components/acp_*`, and `web/src/hooks/use_acp_conversation.ts`.
+Use this skill when Team ACP UI looks blank, partial, duplicated, or stale, especially under `web/src/pages/team/`, `web/src/components/acp_*`, and `web/src/hooks/use_acp_conversation.ts`.
 
 ## Scope
 

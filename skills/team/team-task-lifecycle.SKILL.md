@@ -1,11 +1,11 @@
 ---
 name: team-task-lifecycle
-description: Canonical Team task lifecycle and status ownership for AgentHub Team sessions.
+description: Canonical Team task lifecycle, priority, and ownership rules.
 ---
 
 # Team Task Lifecycle
 
-Use this skill whenever Team work must be represented as canonical Kanban tasks.
+Use this skill when work should appear as canonical Kanban tasks or when task status, priority, ownership, or note journal state must change.
 
 This skill defines:
 

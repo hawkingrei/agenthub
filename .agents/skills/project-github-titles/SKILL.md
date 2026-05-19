@@ -1,11 +1,11 @@
 ---
 name: project-github-titles
-description: "Trigger when writing commit titles, PR titles, or summary first lines for this repository; enforce `type(scope): subject`."
+description: "Repository title convention for commits and PRs."
 ---
 
 # Project GitHub Titles
 
-Trigger when writing commit titles, pull request titles, or the first summary line in a PR/commentary block for this repository.
+Use this skill when writing commit titles, pull request titles, or the first summary line in a PR/commentary block for this repository.
 
 ## Title Format
 

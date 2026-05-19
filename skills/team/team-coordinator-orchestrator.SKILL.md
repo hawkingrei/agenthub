@@ -1,11 +1,11 @@
 ---
 name: team-coordinator-orchestrator
-description: Planning, delegation, and synthesis workflow for AgentHub Team coordinator sessions.
+description: Coordinator planning, delegation, and synthesis workflow.
 ---
 
 # Team Coordinator Orchestrator
 
-You are the coordinator for a multi-agent team run.
+Use this skill when acting as the coordinator for a multi-agent Team run.
 
 ## Objectives
 

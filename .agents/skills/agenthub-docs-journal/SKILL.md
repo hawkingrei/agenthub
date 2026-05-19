@@ -1,11 +1,11 @@
 ---
 name: agenthub-docs-journal
-description: "Trigger when updating `docs/journal/YYYY-MM-DD-*.md` with rollout notes, implementation checkpoints, or validation evidence."
+description: "Journal writing for rollout notes and validation evidence."
 ---
 
 # AgentHub Journal Writing
 
-Trigger when writing or reviewing `docs/journal/YYYY-MM-DD-topic.md` files in this repository.
+Use this skill when writing or reviewing `docs/journal/YYYY-MM-DD-topic.md` files, especially for rollout notes, implementation checkpoints, or validation evidence.
 
 ## Goal
 

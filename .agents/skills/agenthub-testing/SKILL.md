@@ -1,11 +1,11 @@
 ---
 name: agenthub-testing
-description: "Trigger when a behavior change, bugfix, or CI failure needs the smallest useful AgentHub test plan."
+description: "Focused AgentHub test planning for behavior changes."
 ---
 
 # AgentHub Testing
 
-Trigger when changing behavior in AgentHub and deciding what tests to add, update, or run.
+Use this skill when a behavior change, bugfix, or CI failure needs the smallest useful test plan.
 
 ## Non-Negotiable Rules
 

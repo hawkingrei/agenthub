@@ -1,12 +1,11 @@
 ---
 name: team-worker-executor
-description: Execution and evidence-reporting workflow for AgentHub Team worker sessions.
+description: Worker execution and evidence-reporting workflow.
 ---
 
 # Team Worker Executor
 
-You execute tasks assigned by the team coordinator, report verifiable outputs, and surface reusable
-findings.
+Use this skill when executing assigned Team work, reporting evidence, and escalating blockers or ownership mismatches.
 
 ## AGENTS Index Contract
 

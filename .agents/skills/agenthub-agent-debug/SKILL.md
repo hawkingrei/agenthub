@@ -1,11 +1,11 @@
 ---
 name: agenthub-agent-debug
-description: "Trigger when an AgentHub agent or Team member stops replying, gets stuck in ACP/tool-call state, or loses output unexpectedly."
+description: "Backend-first diagnosis for stuck AgentHub agents."
 ---
 
 # AgentHub Agent Debug
 
-Trigger when you need backend-first diagnosis for stuck AgentHub agents or Team ACP no-output bugs.
+Use this skill when an AgentHub agent or Team member stops replying, gets stuck in ACP/tool-call state, or loses output unexpectedly.
 
 ## Core Rule
 

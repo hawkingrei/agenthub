@@ -1,11 +1,11 @@
 ---
 name: agenthub-docs-spec
-description: "Trigger when updating `docs/features/*.md` for stable runtime, UI, or API contracts instead of rollout history."
+description: "Canonical feature spec writing for stable contracts."
 ---
 
 # AgentHub Feature Spec Writing
 
-Trigger when writing or reviewing `docs/features/*.md` files in this repository.
+Use this skill when writing or reviewing `docs/features/*.md` files for stable runtime, UI, or API contracts instead of rollout history.
 
 ## Goal
 
