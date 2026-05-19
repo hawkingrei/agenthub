@@ -379,17 +379,14 @@ fn parse_team_task_status_argument(raw: &str) -> anyhow::Result<TeamTaskStatus> 
 }
 
 fn parse_team_task_priority_argument(raw: &str) -> anyhow::Result<TeamTaskPriority> {
-    match raw.trim() {
-        "p0" => Ok(TeamTaskPriority::P0),
-        "p1" => Ok(TeamTaskPriority::P1),
-        "p2" => Ok(TeamTaskPriority::P2),
-        "p3" => Ok(TeamTaskPriority::P3),
-        other => Err(anyhow::anyhow!(
+    let normalized = raw.trim();
+    normalized.parse::<TeamTaskPriority>().map_err(|other| {
+        anyhow::anyhow!(
             "invalid task priority '{}', expected one of: {}",
             other,
             TEAM_TASK_PRIORITY_VALUES.join(", ")
-        )),
-    }
+        )
+    })
 }
 
 fn parse_team_task_note_kind(raw: &str) -> anyhow::Result<TeamTaskNoteKind> {

@@ -91,6 +91,18 @@ pub struct InternalTeamTaskPatch<'a> {
     pub note_text: Option<&'a str>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct InternalCreateTeamTaskRequest<'a> {
+    pub team_id: &'a str,
+    pub actor_id: &'a str,
+    pub title: &'a str,
+    pub status: &'a str,
+    pub priority: &'a str,
+    pub assigned_member_id: &'a str,
+    pub topic: Option<&'a str>,
+    pub context: &'a serde_json::Value,
+}
+
 impl InternalGrpcMailboxClient {
     pub async fn connect_peer(
         config: &InternalGrpcPeerClientConfig,

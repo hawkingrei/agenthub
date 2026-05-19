@@ -18,7 +18,9 @@ use chrono::Utc;
 
 use crate::actor_runtime_env::{ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var};
 use crate::internal::auth::InternalAction;
-use crate::internal::client::{InternalGrpcMailboxClient, InternalTeamTaskPatch};
+use crate::internal::client::{
+    InternalCreateTeamTaskRequest, InternalGrpcMailboxClient, InternalTeamTaskPatch,
+};
 use crate::team::{
     TeamActorMessageTransport, TeamTaskDetailRecord, TeamTaskListQuery, TeamTaskRecord,
     TeamTaskStatus,
@@ -329,16 +331,16 @@ pub(super) async fn run_actor_command(
             )
             .await?;
             let output = client
-                .create_team_task(
-                    &team_id,
-                    &actor_id,
-                    &title,
-                    status.as_str(),
-                    priority.as_str(),
-                    &assigned_member_id,
-                    topic.as_deref(),
-                    &context,
-                )
+                .create_team_task(InternalCreateTeamTaskRequest {
+                    team_id: &team_id,
+                    actor_id: &actor_id,
+                    title: &title,
+                    status: status.as_str(),
+                    priority: priority.as_str(),
+                    assigned_member_id: &assigned_member_id,
+                    topic: topic.as_deref(),
+                    context: &context,
+                })
                 .await?;
             write_actor_output(&output, output_mode, output_preference)?;
         }

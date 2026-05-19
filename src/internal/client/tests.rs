@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use super::mailbox::{map_grpc_status, parse_message, parse_status, parse_transport};
 use super::{
-    InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, InternalTeamTaskPatch,
-    normalize_existing_path, parse_output_stream, tls_path_if_exists,
+    InternalCreateTeamTaskRequest, InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig,
+    InternalTeamTaskPatch, normalize_existing_path, parse_output_stream, tls_path_if_exists,
 };
 use crate::api::team_tests::build_test_state;
 use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
@@ -810,16 +810,16 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
             .expect("connect grpc mailbox client");
 
     let created = client
-        .create_team_task(
-            &team_id,
-            "planner",
-            "Investigate kanban actor cli",
-            "open",
-            "p1",
-            "planner",
-            Some("kanban"),
-            &json!({"source":"grpc-client"}),
-        )
+        .create_team_task(InternalCreateTeamTaskRequest {
+            team_id: &team_id,
+            actor_id: "planner",
+            title: "Investigate kanban actor cli",
+            status: "open",
+            priority: "p1",
+            assigned_member_id: "planner",
+            topic: Some("kanban"),
+            context: &json!({"source":"grpc-client"}),
+        })
         .await
         .expect("create grpc team task");
     let task_id = created["task"]["id"]
@@ -828,16 +828,16 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
         .to_string();
 
     let orphan = client
-        .create_team_task(
-            &team_id,
-            "planner",
-            "Legacy orphan task",
-            "open",
-            "p1",
-            "planner",
-            Some("legacy"),
-            &json!({"source":"legacy"}),
-        )
+        .create_team_task(InternalCreateTeamTaskRequest {
+            team_id: &team_id,
+            actor_id: "planner",
+            title: "Legacy orphan task",
+            status: "open",
+            priority: "p1",
+            assigned_member_id: "planner",
+            topic: Some("legacy"),
+            context: &json!({"source":"legacy"}),
+        })
         .await
         .expect("create orphan candidate task");
     let orphan_task_id = orphan["task"]["id"]

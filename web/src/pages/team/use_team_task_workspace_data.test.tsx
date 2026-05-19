@@ -2,7 +2,7 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api } from "../../api";
+import { api, type TeamTaskDetailResponse } from "../../api";
 import { useTeamTaskWorkspaceData } from "./use_team_task_workspace_data";
 
 const { getApiErrorStatusMock } = vi.hoisted(() => ({
@@ -492,6 +492,107 @@ describe("useTeamTaskWorkspaceData", () => {
       });
       expect(mockedApi.getTeamTask).toHaveBeenCalledWith("token-1", "team-1", "task-2");
       expect(params.setSelectedConversationTaskId).not.toHaveBeenCalledWith("");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("loads selected task detail for the task lane and reuses an existing snapshot", async () => {
+    const detail: TeamTaskDetailResponse = {
+      task: {
+        id: "task-2",
+        team_id: "team-1",
+        title: "Prepare rollout",
+        status: "in_progress",
+        priority: "p0",
+        created_by_actor_id: "coordinator",
+        assigned_member_id: "worker-1",
+        context: { owner: "coordinator" },
+        created_at: 2,
+        updated_at: 3,
+      },
+      conversation: {
+        id: "conv-task-2",
+        team_id: "team-1",
+        task_id: "task-2",
+        mode: "group_chat",
+        topic: "review",
+        created_at: 2,
+        updated_at: 3,
+      },
+      latest_run: null,
+      notes: [],
+    };
+    mockedApi.getTeamTask.mockResolvedValueOnce(detail as never);
+
+    const params = createParams({
+      selectedTaskId: "task-2",
+      taskList: [detail.task],
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mockedApi.getTeamTask).toHaveBeenCalledWith("token-1", "team-1", "task-2");
+      expect(params.setSelectedTaskDetail).toHaveBeenCalledWith(detail);
+
+      mockedApi.getTeamTask.mockClear();
+      await mounted.rerender(
+        createParams({
+          selectedTaskId: "task-2",
+          taskList: [detail.task],
+          selectedTaskDetail: detail,
+          setSelectedTaskDetail: params.setSelectedTaskDetail,
+        })
+      );
+      expect(mockedApi.getTeamTask).not.toHaveBeenCalled();
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("clears the selected task detail when task selection resets", async () => {
+    const selectedTaskDetail: TeamTaskDetailResponse = {
+      task: {
+        id: "task-2",
+        team_id: "team-1",
+        title: "Prepare rollout",
+        status: "in_progress",
+        priority: "p2",
+        created_by_actor_id: "coordinator",
+        assigned_member_id: "worker-1",
+        context: {},
+        created_at: 2,
+        updated_at: 3,
+      },
+      conversation: {
+        id: "conv-task-2",
+        team_id: "team-1",
+        task_id: "task-2",
+        mode: "group_chat",
+        topic: "review",
+        created_at: 2,
+        updated_at: 3,
+      },
+      latest_run: null,
+      notes: [],
+    };
+    const params = createParams({
+      selectedTaskId: "task-2",
+      selectedTaskDetail,
+    });
+    const mounted = await mountHook(params);
+    try {
+      await mounted.rerender(
+        createParams({
+          selectedTaskId: "",
+          selectedTaskDetail,
+          setSelectedTaskDetail: params.setSelectedTaskDetail,
+        })
+      );
+      expect(params.setSelectedTaskDetail).toHaveBeenCalledWith(null);
     } finally {
       mounted.cleanup();
     }

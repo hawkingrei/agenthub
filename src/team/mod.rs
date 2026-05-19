@@ -36,7 +36,7 @@ pub use manager::{
     TeamManager, TeamMemoryFlushRequest, TeamMessageArchiveMigrationReport,
     TeamRemoteRelayWorkerSettings, TeamRunContextFingerprint, TeamRunContextStreamEvent,
     TeamRuntimeRecord, TeamRuntimeStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch,
-    TeamTaskListQuery,
+    TeamTaskCreateInput, TeamTaskListQuery, TeamTaskNoteCreateInput, TeamTaskUpdateWithNoteInput,
 };
 pub(crate) use permission_review::resolve_team_permission_review_target;
 pub use permission_review::{

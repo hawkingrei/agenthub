@@ -32,9 +32,9 @@ use super::super::proto::agenthub::internal::v1::{
     UpdateTeamTaskRequest as GrpcUpdateTeamTaskRequest,
 };
 use super::{
-    InternalActorRunScopeResolution, InternalGrpcMailboxClient, InternalPermissionReviewResponse,
-    InternalStepTransitionResponse, InternalTeamTaskPatch, map_grpc_status_anyhow,
-    parse_agent_events, parse_json_response, timeout_internal_grpc_call,
+    InternalActorRunScopeResolution, InternalCreateTeamTaskRequest, InternalGrpcMailboxClient,
+    InternalPermissionReviewResponse, InternalStepTransitionResponse, InternalTeamTaskPatch,
+    map_grpc_status_anyhow, parse_agent_events, parse_json_response, timeout_internal_grpc_call,
 };
 
 impl InternalGrpcMailboxClient {
@@ -366,26 +366,19 @@ impl InternalGrpcMailboxClient {
 
     pub async fn create_team_task(
         &self,
-        team_id: &str,
-        actor_id: &str,
-        title: &str,
-        status: &str,
-        priority: &str,
-        assigned_member_id: &str,
-        topic: Option<&str>,
-        context: &serde_json::Value,
+        request: InternalCreateTeamTaskRequest<'_>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut client = self.client();
         let response = timeout_internal_grpc_call(client.create_team_task(self.control_request(
             GrpcCreateTeamTaskRequest {
-                team_id: team_id.trim().to_string(),
-                actor_id: actor_id.trim().to_string(),
-                title: title.to_string(),
-                status: status.trim().to_string(),
-                topic: topic.unwrap_or_default().trim().to_string(),
-                context_json: serde_json::to_string(context)?,
-                priority: priority.trim().to_string(),
-                assigned_member_id: assigned_member_id.trim().to_string(),
+                team_id: request.team_id.trim().to_string(),
+                actor_id: request.actor_id.trim().to_string(),
+                title: request.title.to_string(),
+                status: request.status.trim().to_string(),
+                topic: request.topic.unwrap_or_default().trim().to_string(),
+                context_json: serde_json::to_string(request.context)?,
+                priority: request.priority.trim().to_string(),
+                assigned_member_id: request.assigned_member_id.trim().to_string(),
             },
         )?))
         .await

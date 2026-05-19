@@ -255,6 +255,113 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
 }
 
 #[tokio::test]
+async fn internal_grpc_team_task_update_rolls_back_note_when_metadata_patch_fails() {
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let authz = build_authz();
+    let token = issue_token(
+        &authz,
+        InternalRole::Coordinator,
+        Some("planner"),
+        Some(&run.id),
+    );
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let created = TeamInternalControl::create_team_task(
+        &service,
+        authenticated_request(
+            CreateTeamTaskRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                title: "Rollback task note on invalid patch".to_string(),
+                status: "open".to_string(),
+                priority: "p1".to_string(),
+                assigned_member_id: "planner".to_string(),
+                topic: "rollback".to_string(),
+                context_json: json!({"goal":"keep note atomic"}).to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("create team task")
+    .into_inner();
+    let created_json: serde_json::Value =
+        serde_json::from_str(&created.output_json).expect("decode created task");
+    let task_id = created_json["task"]["id"]
+        .as_str()
+        .expect("created task id")
+        .to_string();
+
+    let err = TeamInternalControl::update_team_task(
+        &service,
+        authenticated_request(
+            UpdateTeamTaskRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                task_id: task_id.clone(),
+                status: Some("in_progress".to_string()),
+                assigned_member_id: None,
+                clear_assigned_member_id: false,
+                priority: None,
+                context_json: None,
+                context_merge_json: Some(
+                    json!({
+                        "execution_plan": {
+                            "steps": [{
+                                "step_key":"implement",
+                                "member_id":"missing-worker",
+                                "execution":{"mode":"single_pass"}
+                            }]
+                        }
+                    })
+                    .to_string(),
+                ),
+                note_kind: Some("decision".to_string()),
+                note_text: Some("should not persist when patch fails".to_string()),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect_err("invalid metadata patch should fail");
+    assert_eq!(err.code(), Code::Internal);
+    assert!(
+        err.message()
+            .contains("task context execution_plan.steps[].member_id must reference"),
+        "unexpected error: {err}"
+    );
+
+    let detail = TeamInternalControl::get_team_task(
+        &service,
+        authenticated_request(
+            GetTeamTaskRequest {
+                team_id: run.team_id.clone(),
+                run_id: String::new(),
+                actor_id: "planner".to_string(),
+                task_id,
+                message_limit: 10,
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("reload task detail")
+    .into_inner();
+    let detail: TeamTaskDetailRecord =
+        serde_json::from_str(&detail.detail_json).expect("decode task detail");
+    assert_eq!(detail.task.status, crate::team::TeamTaskStatus::Open);
+    assert!(detail.notes.is_empty());
+    assert!(detail.recent_messages.is_empty());
+}
+
+#[tokio::test]
 async fn internal_grpc_team_channel_controls_are_wire_compatible() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;

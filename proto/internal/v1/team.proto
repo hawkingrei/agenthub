@@ -112,6 +112,7 @@ message ListTeamTasksRequest {
   string task_id = 7;
   string assigned_member_id = 8;
   string topic = 9;
+  string priority = 10;
 }
 
 message ListTeamTasksResponse {
@@ -125,6 +126,8 @@ message CreateTeamTaskRequest {
   string status = 4;
   string topic = 5;
   string context_json = 6;
+  string priority = 7;
+  string assigned_member_id = 8;
 }
 
 message CreateTeamTaskResponse {
@@ -140,6 +143,9 @@ message UpdateTeamTaskRequest {
   bool clear_assigned_member_id = 6;
   optional string context_json = 7;
   optional string context_merge_json = 8;
+  optional string priority = 9;
+  optional string note_kind = 10;
+  optional string note_text = 11;
 }
 
 message UpdateTeamTaskResponse {

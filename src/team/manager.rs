@@ -879,6 +879,55 @@ pub enum TeamTaskContextPatch {
     Merge(Value),
 }
 
+#[derive(Debug, Clone)]
+pub struct TeamTaskCreateInput<'a> {
+    pub team_id: &'a str,
+    pub title: &'a str,
+    pub created_by_actor_id: &'a str,
+    pub priority: TeamTaskPriority,
+    pub assigned_member_id: Option<&'a str>,
+    pub context: Value,
+    pub conversation_mode: &'a str,
+    pub topic: Option<&'a str>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TeamTaskNoteCreateInput<'a> {
+    pub from_actor_id: &'a str,
+    pub to_actor_id: Option<&'a str>,
+    pub route: &'a str,
+    pub payload: Value,
+    pub idempotency_key: Option<&'a str>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TeamTaskUpdateWithNoteInput<'a> {
+    pub task_id: &'a str,
+    pub status: Option<TeamTaskStatus>,
+    pub assignment: TeamTaskAssignmentUpdate,
+    pub priority: Option<TeamTaskPriority>,
+    pub context_patch: Option<TeamTaskContextPatch>,
+    pub note: Option<TeamTaskNoteCreateInput<'a>>,
+}
+
+#[derive(Debug, Clone)]
+struct PreparedTeamTaskUpdate {
+    current: TeamTaskRecord,
+    status_patch: Option<TeamTaskStatus>,
+    priority_patch: Option<TeamTaskPriority>,
+    assignment_patch: Option<Option<String>>,
+    context_patch: Option<Value>,
+}
+
+impl PreparedTeamTaskUpdate {
+    fn has_changes(&self) -> bool {
+        self.status_patch.is_some()
+            || self.priority_patch.is_some()
+            || self.assignment_patch.is_some()
+            || self.context_patch.is_some()
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TeamRuntimeSummaryRecord {
     pub status: TeamRuntimeStatus,
@@ -1242,33 +1291,27 @@ impl TeamManager {
         conversation_mode: &str,
         topic: Option<&str>,
     ) -> anyhow::Result<(TeamTaskRecord, TeamConversationRecord)> {
-        self.create_task_with_metadata(
+        self.create_task_with_metadata(TeamTaskCreateInput {
             team_id,
             title,
             created_by_actor_id,
-            TeamTaskPriority::default(),
-            None,
+            priority: TeamTaskPriority::default(),
+            assigned_member_id: None,
             context,
             conversation_mode,
             topic,
-        )
+        })
         .await
     }
 
     pub async fn create_task_with_metadata(
         &self,
-        team_id: &str,
-        title: &str,
-        created_by_actor_id: &str,
-        priority: TeamTaskPriority,
-        assigned_member_id: Option<&str>,
-        context: Value,
-        conversation_mode: &str,
-        topic: Option<&str>,
+        input: TeamTaskCreateInput<'_>,
     ) -> anyhow::Result<(TeamTaskRecord, TeamConversationRecord)> {
-        let team = self.get_team(team_id).await?;
-        validate_task_execution_plan(&team.spec, &context)?;
-        let normalized_assigned_member_id = assigned_member_id
+        let team = self.get_team(input.team_id).await?;
+        validate_task_execution_plan(&team.spec, &input.context)?;
+        let normalized_assigned_member_id = input
+            .assigned_member_id
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string);
@@ -1285,8 +1328,8 @@ impl TeamManager {
         let task_id = Uuid::new_v4().to_string();
         let conversation_id = Uuid::new_v4().to_string();
         let status = TeamTaskStatus::Open;
-        let context_json = redact_sensitive_json(&context).to_string();
-        let topic = topic.map(str::trim).filter(|value| !value.is_empty());
+        let context_json = redact_sensitive_json(&input.context).to_string();
+        let topic = input.topic.map(str::trim).filter(|value| !value.is_empty());
 
         let mut tx = self.db.begin().await?;
         sqlx::query(
@@ -1298,11 +1341,11 @@ impl TeamManager {
             "#,
         )
         .bind(&task_id)
-        .bind(team_id)
-        .bind(title)
+        .bind(input.team_id)
+        .bind(input.title)
         .bind(team_task_status_to_str(&status))
-        .bind(team_task_priority_to_str(&priority))
-        .bind(created_by_actor_id)
+        .bind(team_task_priority_to_str(&input.priority))
+        .bind(input.created_by_actor_id)
         .bind(normalized_assigned_member_id)
         .bind(context_json)
         .bind(now)
@@ -1319,9 +1362,9 @@ impl TeamManager {
             "#,
         )
         .bind(&conversation_id)
-        .bind(team_id)
+        .bind(input.team_id)
         .bind(&task_id)
-        .bind(conversation_mode)
+        .bind(input.conversation_mode)
         .bind(topic)
         .bind(now)
         .bind(now)
@@ -1938,6 +1981,76 @@ impl TeamManager {
         priority: Option<TeamTaskPriority>,
         context_patch: Option<TeamTaskContextPatch>,
     ) -> anyhow::Result<TeamTaskRecord> {
+        let prepared = self
+            .prepare_task_update(task_id, status, assignment, priority, context_patch)
+            .await?;
+        if !prepared.has_changes() {
+            return Ok(prepared.current);
+        }
+        self.execute_prepared_task_update(&self.db, task_id, &prepared)
+            .await?;
+        self.get_task(task_id).await
+    }
+
+    pub async fn update_task_with_note(
+        &self,
+        input: TeamTaskUpdateWithNoteInput<'_>,
+    ) -> anyhow::Result<TeamTaskRecord> {
+        let prepared = self
+            .prepare_task_update(
+                input.task_id,
+                input.status,
+                input.assignment,
+                input.priority,
+                input.context_patch,
+            )
+            .await?;
+        if !prepared.has_changes() && input.note.is_none() {
+            return Ok(prepared.current);
+        }
+
+        let mut tx = self.db.begin().await?;
+        let mut appended_note = None;
+        if let Some(note) = input.note.as_ref() {
+            appended_note = Some(
+                self.insert_task_conversation_message_in_tx(&mut tx, input.task_id, note)
+                    .await?,
+            );
+        }
+        if prepared.has_changes() {
+            self.execute_prepared_task_update(&mut *tx, input.task_id, &prepared)
+                .await?;
+        }
+        tx.commit().await?;
+
+        if let Some((conversation, message, created)) = appended_note.as_ref()
+            && *created
+        {
+            self.spawn_archive_task_conversation_message(conversation, message);
+            self.emit_conversation_event(TeamConversationStreamEvent {
+                team_id: conversation.team_id.clone(),
+                task_id: input.task_id.to_string(),
+                conversation_id: conversation.id.clone(),
+                message_id: Some(message.message_id),
+                source: "conversation_message".to_string(),
+            });
+        }
+
+        if prepared.has_changes() {
+            self.get_task(input.task_id).await
+        } else {
+            Ok(prepared.current)
+        }
+    }
+
+    async fn prepare_task_update(
+        &self,
+        task_id: &str,
+        status: Option<TeamTaskStatus>,
+        assignment: TeamTaskAssignmentUpdate,
+        priority: Option<TeamTaskPriority>,
+        context_patch: Option<TeamTaskContextPatch>,
+    ) -> anyhow::Result<PreparedTeamTaskUpdate> {
         let current = self.get_task(task_id).await?;
         let team = self.get_team(&current.team_id).await?;
         let status_patch = status.filter(|candidate| *candidate != current.status);
@@ -1966,18 +2079,28 @@ impl TeamManager {
                 Ok::<_, anyhow::Error>(next_context)
             })
             .transpose()?;
-        if status_patch.is_none()
-            && priority_patch.is_none()
-            && assignment_patch.is_none()
-            && context_patch.is_none()
-        {
-            return Ok(current);
-        }
+        Ok(PreparedTeamTaskUpdate {
+            current,
+            status_patch,
+            priority_patch,
+            assignment_patch,
+            context_patch,
+        })
+    }
 
+    async fn execute_prepared_task_update<'e, E>(
+        &self,
+        executor: E,
+        task_id: &str,
+        prepared: &PreparedTeamTaskUpdate,
+    ) -> anyhow::Result<()>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
         let now = Utc::now().timestamp();
         let mut builder = QueryBuilder::<Sqlite>::new("UPDATE team_tasks SET ");
         let mut first = true;
-        if let Some(next_status) = status_patch.as_ref() {
+        if let Some(next_status) = prepared.status_patch.as_ref() {
             if !first {
                 builder.push(", ");
             }
@@ -1985,7 +2108,7 @@ impl TeamManager {
             builder.push("status = ");
             builder.push_bind(team_task_status_to_str(next_status));
         }
-        if let Some(next_priority) = priority_patch.as_ref() {
+        if let Some(next_priority) = prepared.priority_patch.as_ref() {
             if !first {
                 builder.push(", ");
             }
@@ -1993,15 +2116,15 @@ impl TeamManager {
             builder.push("priority = ");
             builder.push_bind(team_task_priority_to_str(next_priority));
         }
-        if let Some(next_assignment) = assignment_patch.as_ref() {
+        if let Some(next_assignment) = prepared.assignment_patch.as_ref() {
             if !first {
                 builder.push(", ");
             }
             first = false;
             builder.push("assigned_member_id = ");
-            builder.push_bind(next_assignment);
+            builder.push_bind(next_assignment.as_deref());
         }
-        if let Some(next_context) = context_patch.as_ref() {
+        if let Some(next_context) = prepared.context_patch.as_ref() {
             if !first {
                 builder.push(", ");
             }
@@ -2016,9 +2139,8 @@ impl TeamManager {
         builder.push_bind(now);
         builder.push(" WHERE id = ");
         builder.push_bind(task_id);
-        builder.build().execute(&self.db).await?;
-
-        self.get_task(task_id).await
+        builder.build().execute(executor).await?;
+        Ok(())
     }
 
     pub async fn get_task_conversation(
@@ -2064,6 +2186,160 @@ impl TeamManager {
             )
             .await?;
         Ok(message)
+    }
+
+    async fn insert_task_conversation_message_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, Sqlite>,
+        task_id: &str,
+        input: &TeamTaskNoteCreateInput<'_>,
+    ) -> anyhow::Result<(TeamConversationRecord, TeamConversationMessageRecord, bool)> {
+        let now = Utc::now().timestamp();
+        let conversation_row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                team_id,
+                task_id,
+                mode,
+                topic,
+                created_at,
+                updated_at
+            FROM team_conversations
+            WHERE task_id = ?1
+            "#,
+        )
+        .bind(task_id)
+        .fetch_one(&mut **tx)
+        .await?;
+        let conversation = parse_team_conversation_row(&conversation_row)?;
+        let redacted_payload = redact_sensitive_json(&input.payload);
+        let payload_json = redacted_payload.to_string();
+        let correlation_id = task_conversation_payload_correlation_id(&redacted_payload);
+        let group_id = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT group_id FROM team_tasks WHERE id = ?1",
+        )
+        .bind(task_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .flatten();
+        let to_actor_id = input
+            .to_actor_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let idempotency_key = normalize_optional_idempotency_key_input(input.idempotency_key);
+
+        let (message, created) = if let Some(idempotency_key) = idempotency_key.as_deref() {
+            match sqlx::query(
+                r#"
+                INSERT INTO team_conversation_messages (
+                    conversation_id,
+                    task_id,
+                    from_actor_id,
+                    to_actor_id,
+                    route,
+                    correlation_id,
+                    group_id,
+                    payload_json,
+                    idempotency_key,
+                    created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                "#,
+            )
+            .bind(&conversation.id)
+            .bind(task_id)
+            .bind(input.from_actor_id)
+            .bind(to_actor_id.as_deref())
+            .bind(input.route)
+            .bind(&correlation_id)
+            .bind(group_id.as_deref())
+            .bind(&payload_json)
+            .bind(idempotency_key)
+            .bind(now)
+            .execute(&mut **tx)
+            .await
+            {
+                Ok(result) => (
+                    TeamConversationMessageRecord {
+                        message_id: result.last_insert_rowid(),
+                        conversation_id: conversation.id.clone(),
+                        task_id: task_id.to_string(),
+                        group_id: group_id.clone(),
+                        from_actor_id: input.from_actor_id.to_string(),
+                        to_actor_id: to_actor_id.clone(),
+                        route: input.route.to_string(),
+                        payload: redacted_payload.clone(),
+                        created_at: now,
+                    },
+                    true,
+                ),
+                Err(err) if is_task_conversation_message_idempotency_unique_violation(&err) => {
+                    let existing = fetch_task_conversation_message_by_idempotency(
+                        tx,
+                        &conversation.id,
+                        input.from_actor_id,
+                        idempotency_key,
+                    )
+                    .await?;
+                    ensure_task_conversation_message_idempotency_compatible(
+                        task_id,
+                        input.from_actor_id,
+                        to_actor_id.as_deref(),
+                        input.route,
+                        &redacted_payload,
+                        &existing,
+                    )?;
+                    (existing, false)
+                }
+                Err(err) => return Err(err.into()),
+            }
+        } else {
+            let result = sqlx::query(
+                r#"
+                INSERT INTO team_conversation_messages (
+                    conversation_id,
+                    task_id,
+                    from_actor_id,
+                    to_actor_id,
+                    route,
+                    correlation_id,
+                    group_id,
+                    payload_json,
+                    created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                "#,
+            )
+            .bind(&conversation.id)
+            .bind(task_id)
+            .bind(input.from_actor_id)
+            .bind(to_actor_id.as_deref())
+            .bind(input.route)
+            .bind(&correlation_id)
+            .bind(group_id.as_deref())
+            .bind(&payload_json)
+            .bind(now)
+            .execute(&mut **tx)
+            .await?;
+            (
+                TeamConversationMessageRecord {
+                    message_id: result.last_insert_rowid(),
+                    conversation_id: conversation.id.clone(),
+                    task_id: task_id.to_string(),
+                    group_id,
+                    from_actor_id: input.from_actor_id.to_string(),
+                    to_actor_id,
+                    route: input.route.to_string(),
+                    payload: redacted_payload,
+                    created_at: now,
+                },
+                true,
+            )
+        };
+
+        Ok((conversation, message, created))
     }
 
     pub async fn append_task_conversation_message_with_created(

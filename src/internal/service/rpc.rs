@@ -409,16 +409,16 @@ impl TeamInternalControl for TeamInternalControlService {
         let (task, conversation) = self
             .deps
             .teams
-            .create_task_with_metadata(
+            .create_task_with_metadata(TeamTaskCreateInput {
                 team_id,
                 title,
-                actor_id,
+                created_by_actor_id: actor_id,
                 priority,
-                Some(assigned_member_id),
+                assigned_member_id: Some(assigned_member_id),
                 context,
-                "group_chat",
+                conversation_mode: "group_chat",
                 topic,
-            )
+            })
             .await
             .map_err(map_manager_error)?;
         let task = if status == TeamTaskStatus::Open {
@@ -550,42 +550,32 @@ impl TeamInternalControl for TeamInternalControlService {
                 "task update requires status, priority, assigned_member_id, clear_assigned_member_id, context_json, context_merge_json, or a note",
             ));
         }
-        if let (Some(note_kind), Some(note_text)) = (note_kind.as_ref(), note_text.as_deref()) {
-            self.deps
-                .teams
-                .append_task_conversation_message(
-                    task_id,
-                    actor_id,
-                    None,
-                    "task_note",
-                    serde_json::json!({
-                        "type": "task_note",
-                        "kind": note_kind.as_str(),
-                        "text": note_text,
-                    }),
-                )
-                .await
-                .map_err(map_manager_error)?;
-        }
-        let task = if status.is_some()
-            || priority.is_some()
-            || !matches!(assignment, TeamTaskAssignmentUpdate::Unchanged)
-            || context_patch.is_some()
-        {
-            self.deps
-                .teams
-                .update_task_with_context_and_priority(
-                    task_id,
-                    status,
-                    assignment,
-                    priority,
-                    context_patch,
-                )
-                .await
-                .map_err(map_manager_error)?
-        } else {
-            existing
-        };
+        let note = note_kind
+            .zip(note_text)
+            .map(|(kind, text)| TeamTaskNoteCreateInput {
+                from_actor_id: actor_id,
+                to_actor_id: None,
+                route: "task_note",
+                payload: serde_json::json!({
+                    "type": "task_note",
+                    "kind": kind.as_str(),
+                    "text": text,
+                }),
+                idempotency_key: None,
+            });
+        let task = self
+            .deps
+            .teams
+            .update_task_with_note(TeamTaskUpdateWithNoteInput {
+                task_id,
+                status,
+                assignment,
+                priority,
+                context_patch,
+                note,
+            })
+            .await
+            .map_err(map_manager_error)?;
         Ok(Response::new(UpdateTeamTaskResponse {
             task_json: serde_json::to_string(&task).map_err(map_serde_status)?,
         }))
