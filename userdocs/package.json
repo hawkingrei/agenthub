@@ -15,6 +15,9 @@
     "react-dom": "^18.2.0"
   },
   "overrides": {
-    "serialize-javascript": "^7.0.5"
+    "serialize-javascript": "^7.0.5",
+    "webpack-dev-server": {
+      "ws": "^8.20.1"
+    }
   }
 }
