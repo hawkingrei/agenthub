@@ -36,7 +36,7 @@ codex-exec-server = { git = "https://github.com/openai/codex", tag = "rust-v0.13
 codex-extension-api = { git = "https://github.com/openai/codex", tag = "rust-v0.131.0" }
 codex-features = { git = "https://github.com/openai/codex", tag = "rust-v0.131.0" }
 codex-feedback = { git = "https://github.com/openai/codex", tag = "rust-v0.131.0" }
-codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.131.0" }
+codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.132.0" }
 codex-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.131.0" }
 codex-login = { git = "https://github.com/openai/codex", tag = "rust-v0.131.0" }
 codex-models-manager = { git = "https://github.com/openai/codex", tag = "rust-v0.131.0" }
