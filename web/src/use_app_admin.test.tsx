@@ -471,6 +471,32 @@ describe("useAppAdmin", () => {
     expect(listLinkersMock).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps admin state usable when initial linker settings fail to load", async () => {
+    const captures: UseAppAdminResult[] = [];
+    const auth = { token: "token-1", role: "root" } as HookProps[0];
+    getAdminSettingsMock.mockRejectedValue(new Error("settings failed"));
+    listLinkersMock.mockRejectedValue(new Error("linkers failed"));
+
+    await act(async () => {
+      root.render(
+        <HookHarness
+          auth={auth}
+          isAdminRoute={true}
+          onCapture={(value) => captures.push(value)}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latest = captures[captures.length - 1];
+    expect(getAdminSettingsMock).toHaveBeenCalledWith("token-1");
+    expect(listLinkersMock).toHaveBeenCalledWith("token-1");
+    expect(latest.slockLinker).toBeNull();
+    expect(latest.slockLinkAttempt).toBeNull();
+    expect(latest.slockApiOrigin).toBe("https://api.slock.ai");
+  });
+
   it("surfaces Slock action errors and exchanges callback URLs", async () => {
     const captures: UseAppAdminResult[] = [];
     const auth = { token: "token-1", role: "root" } as HookProps[0];
@@ -494,7 +520,9 @@ describe("useAppAdmin", () => {
     stringifyApiErrorMock.mockReturnValue("Slock action failed");
     upsertSlockLinkerMock.mockRejectedValue(new Error("save failed"));
     createSlockLinkAttemptMock.mockRejectedValue(new Error("attempt failed"));
-    exchangeSlockCodeMock.mockResolvedValue(connectedLinker);
+    exchangeSlockCodeMock
+      .mockRejectedValueOnce(new Error("exchange failed"))
+      .mockResolvedValueOnce(connectedLinker);
 
     await act(async () => {
       root.render(
@@ -531,6 +559,22 @@ describe("useAppAdmin", () => {
     await act(async () => {
       await latest.onCreateSlockLinkAttempt();
       await Promise.resolve();
+    });
+    latest = captures[captures.length - 1];
+    expect(latest.error).toBe("Slock action failed");
+
+    await act(async () => {
+      latest.setSlockCallbackInput("callback-code");
+      await Promise.resolve();
+    });
+    latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.onExchangeSlockCode();
+      await Promise.resolve();
+    });
+    expect(exchangeSlockCodeMock).toHaveBeenCalledWith("token-1", {
+      code: "callback-code",
+      state: null,
     });
     latest = captures[captures.length - 1];
     expect(latest.error).toBe("Slock action failed");

@@ -239,6 +239,11 @@ describe("admin_page_sections", () => {
   });
 
   it("renders Slock linker section and wires actions", () => {
+    const setSlockApiOrigin = vi.fn();
+    const setSlockClientId = vi.fn();
+    const setSlockClientSecret = vi.fn();
+    const setSlockReturnUrl = vi.fn();
+    const setSlockScopesInput = vi.fn();
     const setSlockCallbackInput = vi.fn();
     const onSaveSlockLinker = vi.fn();
     const onCreateSlockLinkAttempt = vi.fn();
@@ -276,15 +281,15 @@ describe("admin_page_sections", () => {
           },
           slockLinkAttempt: null,
           slockApiOrigin: "https://api.slock.ai",
-          setSlockApiOrigin: vi.fn(),
+          setSlockApiOrigin,
           slockClientId: "agenthub",
-          setSlockClientId: vi.fn(),
+          setSlockClientId,
           slockClientSecret: "",
-          setSlockClientSecret: vi.fn(),
+          setSlockClientSecret,
           slockReturnUrl: "https://agenthub.example.com/api/linkers/slock/callback",
-          setSlockReturnUrl: vi.fn(),
+          setSlockReturnUrl,
           slockScopesInput: "identity openid profile",
-          setSlockScopesInput: vi.fn(),
+          setSlockScopesInput,
           slockCallbackInput: "callback-code",
           setSlockCallbackInput,
           onSaveSlockLinker,
@@ -301,17 +306,45 @@ describe("admin_page_sections", () => {
     expect(container.textContent).toContain("slock-agent-1");
     expect(container.querySelector('img[src="/slock-icon.png"]')).not.toBeNull();
 
-    const codeInput = Array.from(container.querySelectorAll("input")).find(
-      (input) => input.value === "callback-code"
-    );
-    act(() => {
+    const setInputValue = (input: HTMLInputElement, value: string) => {
       const descriptor = Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
         "value"
       );
-      descriptor?.set?.call(codeInput, "next-code");
-      codeInput?.dispatchEvent(new Event("input", { bubbles: true }));
-      codeInput?.dispatchEvent(new Event("change", { bubbles: true }));
+      descriptor?.set?.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const findInputByValue = (value: string) =>
+      required(
+        Array.from(container.querySelectorAll("input")).find(
+          (input) => input.value === value
+        ) ?? null,
+        `input ${value} missing`
+      );
+    const secretInput = required(
+      container.querySelector(
+        'input[type="password"]'
+      ) as HTMLInputElement | null,
+      "client secret input missing"
+    );
+    const codeInput = findInputByValue("callback-code");
+    act(() => {
+      setInputValue(
+        findInputByValue("https://api.slock.ai"),
+        "https://slock.example"
+      );
+      setInputValue(findInputByValue("agenthub"), "agenthub-next");
+      setInputValue(secretInput, "secret-next");
+      setInputValue(
+        findInputByValue("identity openid profile"),
+        "identity profile"
+      );
+      setInputValue(
+        findInputByValue("https://agenthub.example.com/api/linkers/slock/callback"),
+        "https://agenthub.example.com/callback"
+      );
+      setInputValue(codeInput, "next-code");
     });
 
     const buttons = Array.from(container.querySelectorAll("button"));
@@ -321,6 +354,13 @@ describe("admin_page_sections", () => {
       buttons.find((button) => button.textContent === "Exchange Code")?.click();
     });
 
+    expect(setSlockApiOrigin).toHaveBeenCalledWith("https://slock.example");
+    expect(setSlockClientId).toHaveBeenCalledWith("agenthub-next");
+    expect(setSlockClientSecret).toHaveBeenCalledWith("secret-next");
+    expect(setSlockScopesInput).toHaveBeenCalledWith("identity profile");
+    expect(setSlockReturnUrl).toHaveBeenCalledWith(
+      "https://agenthub.example.com/callback"
+    );
     expect(setSlockCallbackInput).toHaveBeenCalledWith("next-code");
     expect(onSaveSlockLinker).toHaveBeenCalledTimes(1);
     expect(onCreateSlockLinkAttempt).toHaveBeenCalledTimes(1);
