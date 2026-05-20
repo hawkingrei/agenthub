@@ -12,6 +12,10 @@ const {
   getVapidInfoMock,
   getAdminSettingsMock,
   joinStartAdminMock,
+  listLinkersMock,
+  upsertSlockLinkerMock,
+  createSlockLinkAttemptMock,
+  exchangeSlockCodeMock,
   parseApiErrorMessageMock,
   stringifyApiErrorMock,
 } = vi.hoisted(() => ({
@@ -22,6 +26,10 @@ const {
   getVapidInfoMock: vi.fn(),
   getAdminSettingsMock: vi.fn(),
   joinStartAdminMock: vi.fn(),
+  listLinkersMock: vi.fn(),
+  upsertSlockLinkerMock: vi.fn(),
+  createSlockLinkAttemptMock: vi.fn(),
+  exchangeSlockCodeMock: vi.fn(),
   parseApiErrorMessageMock: vi.fn<(error: unknown) => string | null>(() => null),
   stringifyApiErrorMock: vi.fn<(error: unknown) => string>(() => "error"),
 }));
@@ -35,6 +43,10 @@ vi.mock("./api", () => ({
     getVapidInfo: getVapidInfoMock,
     getAdminSettings: getAdminSettingsMock,
     joinStartAdmin: joinStartAdminMock,
+    listLinkers: listLinkersMock,
+    upsertSlockLinker: upsertSlockLinkerMock,
+    createSlockLinkAttempt: createSlockLinkAttemptMock,
+    exchangeSlockCode: exchangeSlockCodeMock,
     setPasskeyEnabled: vi.fn(),
     addSafePath: vi.fn(),
     deleteSafePath: vi.fn(),
@@ -81,6 +93,10 @@ describe("useAppAdmin", () => {
     getVapidInfoMock.mockReset();
     getAdminSettingsMock.mockReset();
     joinStartAdminMock.mockReset();
+    listLinkersMock.mockReset();
+    upsertSlockLinkerMock.mockReset();
+    createSlockLinkAttemptMock.mockReset();
+    exchangeSlockCodeMock.mockReset();
     parseApiErrorMessageMock.mockReset();
     stringifyApiErrorMock.mockReset();
 
@@ -93,6 +109,7 @@ describe("useAppAdmin", () => {
     listAuditsMock.mockResolvedValue([]);
     getVapidInfoMock.mockResolvedValue(null);
     getAdminSettingsMock.mockResolvedValue({ passkey_enabled: false });
+    listLinkersMock.mockResolvedValue([]);
     parseApiErrorMessageMock.mockReturnValue(null);
     stringifyApiErrorMock.mockImplementation(
       (error) => parseApiErrorMessageMock(error) ?? String(error)
@@ -190,5 +207,114 @@ describe("useAppAdmin", () => {
     expect(updated.joinUrl).toBeNull();
     expect(updated.joinToken).toBeNull();
     expect(updated.joinPin).toBeNull();
+  });
+
+  it("loads and updates Slock linker state on the admin route", async () => {
+    const captures: UseAppAdminResult[] = [];
+    const auth = { token: "token-1", role: "root" } as HookProps[0];
+    const configuredLinker = {
+      linker_id: "slock-primary",
+      connector_id: "slock",
+      display_name: "Slock",
+      status: "configured",
+      api_origin: "https://api.slock.ai",
+      client_id: "agenthub",
+      return_url: "https://agenthub.example.com/api/linkers/slock/callback",
+      scopes: ["identity", "openid", "profile"],
+      client_secret_configured: true,
+      token_configured: false,
+      token_type: null,
+      granted_scopes: [],
+      expires_at: null,
+      principal: null,
+      updated_at: 1,
+    };
+    const connectedLinker = {
+      ...configuredLinker,
+      status: "connected",
+      token_configured: true,
+      token_type: "Bearer",
+      granted_scopes: ["identity", "openid", "profile"],
+      principal: {
+        subject: "slock-agent-1",
+        principal_type: "agent",
+        display_name: "Claude Assistant",
+        handle: "assistant",
+        avatar_url: null,
+        server_id: "server-1",
+        server_slug: "dev",
+        updated_at: 2,
+      },
+    };
+    listLinkersMock.mockResolvedValue([configuredLinker]);
+    upsertSlockLinkerMock.mockResolvedValue(configuredLinker);
+    createSlockLinkAttemptMock.mockResolvedValue({
+      linker_id: "slock-primary",
+      state: "state-1",
+      expires_at: 100,
+      return_url: "https://agenthub.example.com/api/linkers/slock/callback",
+    });
+    exchangeSlockCodeMock.mockResolvedValue(connectedLinker);
+
+    await act(async () => {
+      root.render(
+        <HookHarness
+          auth={auth}
+          isAdminRoute={true}
+          onCapture={(value) => captures.push(value)}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    let latest = captures[captures.length - 1];
+    expect(listLinkersMock).toHaveBeenCalledWith("token-1");
+    expect(latest.slockLinker?.linker_id).toBe("slock-primary");
+    expect(latest.slockClientId).toBe("agenthub");
+
+    await act(async () => {
+      latest.setSlockClientSecret("secret-1");
+      await Promise.resolve();
+    });
+    latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.onSaveSlockLinker();
+      await Promise.resolve();
+    });
+    expect(upsertSlockLinkerMock).toHaveBeenCalledWith("token-1", {
+      api_origin: "https://api.slock.ai",
+      client_id: "agenthub",
+      client_secret: "secret-1",
+      return_url: "https://agenthub.example.com/api/linkers/slock/callback",
+      scopes: ["identity", "openid", "profile"],
+    });
+
+    latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.onCreateSlockLinkAttempt();
+      await Promise.resolve();
+    });
+    latest = captures[captures.length - 1];
+    expect(latest.slockLinkAttempt?.state).toBe("state-1");
+
+    await act(async () => {
+      latest.setSlockCallbackInput("callback-code");
+      await Promise.resolve();
+    });
+    latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.onExchangeSlockCode();
+      await Promise.resolve();
+    });
+
+    expect(exchangeSlockCodeMock).toHaveBeenCalledWith("token-1", {
+      code: "callback-code",
+      state: "state-1",
+    });
+    latest = captures[captures.length - 1];
+    expect(latest.slockLinker?.principal?.display_name).toBe("Claude Assistant");
+    expect(latest.slockCallbackInput).toBe("");
+    expect(latest.slockLinkAttempt).toBeNull();
   });
 });

@@ -333,6 +333,20 @@ export function App() {
     devices,
     audits,
     vapidInfo,
+    slockLinker,
+    slockLinkAttempt,
+    slockApiOrigin,
+    setSlockApiOrigin,
+    slockClientId,
+    setSlockClientId,
+    slockClientSecret,
+    setSlockClientSecret,
+    slockReturnUrl,
+    setSlockReturnUrl,
+    slockScopesInput,
+    setSlockScopesInput,
+    slockCallbackInput,
+    setSlockCallbackInput,
     passkeyEnabled,
     rootInitialized,
     selectedSafePaths,
@@ -348,6 +362,9 @@ export function App() {
     onRevokeDevice,
     onRotateVapid,
     onCreateJoin,
+    onSaveSlockLinker,
+    onCreateSlockLinkAttempt,
+    onExchangeSlockCode,
     onToggleSafePath,
     onToggleAllSafePaths,
     onDeleteSelectedSafePaths,
@@ -1136,6 +1153,23 @@ export function App() {
           audits={audits}
           vapidInfo={vapidInfo}
           onRotateVapid={onRotateVapid}
+          slockLinker={slockLinker}
+          slockLinkAttempt={slockLinkAttempt}
+          slockApiOrigin={slockApiOrigin}
+          setSlockApiOrigin={setSlockApiOrigin}
+          slockClientId={slockClientId}
+          setSlockClientId={setSlockClientId}
+          slockClientSecret={slockClientSecret}
+          setSlockClientSecret={setSlockClientSecret}
+          slockReturnUrl={slockReturnUrl}
+          setSlockReturnUrl={setSlockReturnUrl}
+          slockScopesInput={slockScopesInput}
+          setSlockScopesInput={setSlockScopesInput}
+          slockCallbackInput={slockCallbackInput}
+          setSlockCallbackInput={setSlockCallbackInput}
+          onSaveSlockLinker={onSaveSlockLinker}
+          onCreateSlockLinkAttempt={onCreateSlockLinkAttempt}
+          onExchangeSlockCode={onExchangeSlockCode}
           onAddSafePath={onAddSafePath}
           onDeleteSafePath={onDeleteSafePath}
           onRevokeDevice={onRevokeDevice}

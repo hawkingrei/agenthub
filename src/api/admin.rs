@@ -3,7 +3,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use chrono::Utc;
 use rand::Rng;
@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::api::authz::require_root;
 use crate::api::error::ApiError;
 use crate::api::{extract_ip, extract_ua, ok_response};
+use crate::linkers::{self, AppLinkerRecord, AppLinkerService, SlockConfigInput};
 use crate::path_utils::expand_tilde;
 use crate::state::AppState;
 
@@ -70,6 +71,31 @@ pub struct JoinStartResponse {
     pub expires_at: i64,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct UpsertSlockLinkerRequest {
+    pub api_origin: String,
+    pub client_id: String,
+    pub client_secret: Option<String>,
+    pub return_url: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SlockLinkAttemptResponse {
+    pub linker_id: String,
+    pub state: String,
+    pub expires_at: i64,
+    pub return_url: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ExchangeSlockCodeRequest {
+    pub code: Option<String>,
+    pub callback_url: Option<String>,
+    pub state: Option<String>,
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/safe_paths", get(list_safe_paths).post(add_safe_path))
@@ -79,6 +105,19 @@ pub fn router(state: AppState) -> Router {
         .route("/audits", get(list_audits))
         .route("/settings", get(get_settings))
         .route("/settings/passkey", post(set_passkey_enabled))
+        .route("/linkers", get(list_linkers))
+        .route("/linkers/slock", put(upsert_slock_linker))
+        .route(
+            "/linkers/slock/link_attempts",
+            post(create_slock_link_attempt),
+        )
+        .route("/linkers/slock/exchange", post(exchange_slock_code))
+        .route("/linkers/slock/userinfo", get(get_slock_userinfo))
+        .route("/linkers/slock/channels", get(list_slock_channels))
+        .route(
+            "/linkers/slock/channels/{channel_id}/messages",
+            get(list_slock_channel_messages),
+        )
         .route(
             "/message_archive/team_messages/migrate",
             post(migrate_team_messages_archive),
@@ -332,6 +371,161 @@ async fn set_passkey_enabled(
     Ok(ok_response())
 }
 
+async fn list_linkers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<AppLinkerRecord>>, ApiError> {
+    let _user = require_root(&headers, &state).await?;
+    AppLinkerService::new(state.db.clone())
+        .list_linkers()
+        .await
+        .map(Json)
+        .map_err(map_linker_error)
+}
+
+async fn upsert_slock_linker(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<UpsertSlockLinkerRequest>,
+) -> Result<Json<AppLinkerRecord>, ApiError> {
+    let user = require_root(&headers, &state).await?;
+    let record = AppLinkerService::new(state.db.clone())
+        .upsert_slock_config(
+            &user.id,
+            SlockConfigInput {
+                api_origin: payload.api_origin,
+                client_id: payload.client_id,
+                client_secret: payload.client_secret,
+                return_url: payload.return_url,
+                scopes: payload.scopes,
+            },
+        )
+        .await
+        .map_err(map_linker_error)?;
+    let detail = format!("linker_id={}", record.linker_id);
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user.id),
+            None,
+            "slock_linker_config_updated",
+            Some(&detail),
+            extract_ip(&headers).as_deref(),
+            extract_ua(&headers).as_deref(),
+        )
+        .await;
+    Ok(Json(record))
+}
+
+async fn create_slock_link_attempt(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<SlockLinkAttemptResponse>, ApiError> {
+    let user = require_root(&headers, &state).await?;
+    let attempt = AppLinkerService::new(state.db.clone())
+        .create_slock_link_attempt(&user.id)
+        .await
+        .map_err(map_linker_error)?;
+    let detail = format!(
+        "linker_id={},expires_at={}",
+        attempt.linker_id, attempt.expires_at
+    );
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user.id),
+            None,
+            "slock_link_attempt_created",
+            Some(&detail),
+            extract_ip(&headers).as_deref(),
+            extract_ua(&headers).as_deref(),
+        )
+        .await;
+    Ok(Json(SlockLinkAttemptResponse {
+        linker_id: attempt.linker_id,
+        state: attempt.state,
+        expires_at: attempt.expires_at,
+        return_url: attempt.return_url,
+    }))
+}
+
+async fn exchange_slock_code(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<ExchangeSlockCodeRequest>,
+) -> Result<Json<AppLinkerRecord>, ApiError> {
+    let user = require_root(&headers, &state).await?;
+    let code = linkers::parse_slock_exchange_code(
+        payload.code.as_deref(),
+        payload.callback_url.as_deref(),
+        payload.state.as_deref(),
+    )
+    .map_err(map_linker_error)?;
+    let record = AppLinkerService::new(state.db.clone())
+        .exchange_slock_code(Some(&user.id), code)
+        .await
+        .map_err(map_linker_error)?;
+    let detail = format!(
+        "linker_id={},principal_type={}",
+        record.linker_id,
+        record
+            .principal
+            .as_ref()
+            .map(|principal| principal.principal_type.as_str())
+            .unwrap_or("<none>")
+    );
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user.id),
+            None,
+            "slock_linker_exchange_completed",
+            Some(&detail),
+            extract_ip(&headers).as_deref(),
+            extract_ua(&headers).as_deref(),
+        )
+        .await;
+    Ok(Json(record))
+}
+
+async fn get_slock_userinfo(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AppLinkerRecord>, ApiError> {
+    let _user = require_root(&headers, &state).await?;
+    let record = AppLinkerService::new(state.db.clone())
+        .get_slock_linker()
+        .await
+        .map_err(map_linker_error)?
+        .ok_or_else(|| ApiError::not_found("Slock linker is not configured"))?;
+    Ok(Json(record))
+}
+
+async fn list_slock_channels(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_root(&headers, &state).await?;
+    AppLinkerService::new(state.db.clone())
+        .list_slock_channels()
+        .await
+        .map(Json)
+        .map_err(map_linker_error)
+}
+
+async fn list_slock_channel_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(channel_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_root(&headers, &state).await?;
+    AppLinkerService::new(state.db.clone())
+        .list_slock_channel_messages(&channel_id)
+        .await
+        .map(Json)
+        .map_err(map_linker_error)
+}
+
 async fn migrate_team_messages_archive(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -445,6 +639,33 @@ fn hash_pin(pin: &str) -> anyhow::Result<String> {
     Ok(hash)
 }
 
+fn map_linker_error(err: anyhow::Error) -> ApiError {
+    let message = err.to_string();
+    if message.contains("token exchange failed") {
+        return ApiError::bad_request("Slock token exchange failed");
+    }
+    if message.contains("userinfo failed") {
+        return ApiError::bad_request("Slock userinfo failed");
+    }
+    if message.contains("resource API is not configured")
+        || message.contains("linker is not connected")
+        || message.contains("linker is not configured")
+        || message.contains("client_secret is not configured")
+    {
+        return ApiError::conflict(&message);
+    }
+    if message.contains("required")
+        || message.contains("invalid")
+        || message.contains("expired")
+        || message.contains("mismatch")
+        || message.contains("unsupported")
+        || message.contains("different user")
+    {
+        return ApiError::bad_request(&message);
+    }
+    err.into()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -456,9 +677,11 @@ mod tests {
     use axum::body::Body;
     use axum::body::to_bytes;
     use axum::http::{Method, Request, StatusCode, header};
+    use chrono::Utc;
     use serde_json::{Value, json};
     use sqlx::Row;
     use tower::util::ServiceExt;
+    use uuid::Uuid;
 
     use crate::api::teams::tests::{
         build_test_state, build_test_state_with_message_archive, create_auth_token,
@@ -495,7 +718,16 @@ mod tests {
     }
 
     fn build_json_request(path: &str, token: Option<&str>, payload: Value) -> Request<Body> {
-        let mut builder = Request::builder().method(Method::POST).uri(path);
+        build_method_json_request(Method::POST, path, token, payload)
+    }
+
+    fn build_method_json_request(
+        method: Method,
+        path: &str,
+        token: Option<&str>,
+        payload: Value,
+    ) -> Request<Body> {
+        let mut builder = Request::builder().method(method).uri(path);
         if let Some(token) = token {
             builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
         }
@@ -505,12 +737,57 @@ mod tests {
             .expect("build json request")
     }
 
-    fn build_empty_post_request(path: &str, token: Option<&str>) -> Request<Body> {
-        let mut builder = Request::builder().method(Method::POST).uri(path);
+    fn build_empty_request(method: Method, path: &str, token: Option<&str>) -> Request<Body> {
+        let mut builder = Request::builder().method(method).uri(path);
         if let Some(token) = token {
             builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
         }
         builder.body(Body::empty()).expect("build empty request")
+    }
+
+    fn build_empty_post_request(path: &str, token: Option<&str>) -> Request<Body> {
+        build_empty_request(Method::POST, path, token)
+    }
+
+    async fn decode_json_body(response: axum::response::Response) -> Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        serde_json::from_slice(&bytes).expect("decode response body")
+    }
+
+    async fn create_non_root_auth_token(state: &crate::state::AppState) -> String {
+        let user_id = Uuid::new_v4().to_string();
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+            VALUES (?1, ?2, ?3, 'user', NULL, ?4)
+            "#,
+        )
+        .bind(&user_id)
+        .bind(format!("user-{}", Uuid::new_v4()))
+        .bind("User")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert non-root user");
+
+        state
+            .auth
+            .create_session(&user_id)
+            .await
+            .expect("create non-root token")
+    }
+
+    fn slock_config_payload() -> Value {
+        json!({
+            "api_origin": "https://api.slock.test/",
+            "client_id": "agenthub-dev",
+            "client_secret": "slock-secret",
+            "return_url": "https://agenthub.example/api/linkers/slock/callback",
+            "scopes": ["identity", "openid", "profile"]
+        })
     }
 
     #[tokio::test]
@@ -645,6 +922,194 @@ mod tests {
         assert!(detail.as_deref().is_some_and(|value| {
             value.contains("agent_events=0") && value.contains("aggregated_acp_messages=0")
         }));
+    }
+
+    #[tokio::test]
+    async fn slock_linker_routes_require_root_and_do_not_expose_secrets() {
+        let state = build_test_state().await;
+        let root_token = create_auth_token(&state).await;
+        let non_root_token = create_non_root_auth_token(&state).await;
+        let app = super::router(state.clone());
+
+        let unauthorized = app
+            .clone()
+            .oneshot(build_empty_request(
+                Method::GET,
+                "/linkers",
+                Some(&non_root_token),
+            ))
+            .await
+            .expect("execute non-root list linkers request");
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+        let unauthorized_body = decode_json_body(unauthorized).await;
+        assert_eq!(unauthorized_body["error"], json!("root required"));
+
+        let response = app
+            .clone()
+            .oneshot(build_method_json_request(
+                Method::PUT,
+                "/linkers/slock",
+                Some(&root_token),
+                slock_config_payload(),
+            ))
+            .await
+            .expect("execute upsert slock linker request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["linker_id"], json!("slock-primary"));
+        assert_eq!(body["connector_id"], json!("slock"));
+        assert_eq!(body["status"], json!("configured"));
+        assert_eq!(body["api_origin"], json!("https://api.slock.test"));
+        assert_eq!(body["client_id"], json!("agenthub-dev"));
+        assert_eq!(body["client_secret_configured"], json!(true));
+        assert_eq!(body["token_configured"], json!(false));
+        assert!(body.get("client_secret").is_none());
+        assert!(body.get("access_token").is_none());
+
+        let response = app
+            .oneshot(build_empty_request(
+                Method::GET,
+                "/linkers",
+                Some(&root_token),
+            ))
+            .await
+            .expect("execute list linkers request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        let items = body.as_array().expect("linkers response array");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["linker_id"], json!("slock-primary"));
+        assert_eq!(items[0]["client_secret_configured"], json!(true));
+        assert!(items[0].get("client_secret").is_none());
+        assert!(items[0].get("access_token").is_none());
+    }
+
+    #[tokio::test]
+    async fn slock_link_attempt_requires_config_and_persists_state() {
+        let state = build_test_state().await;
+        let root_token = create_auth_token(&state).await;
+        let app = super::router(state.clone());
+
+        let missing_config = app
+            .clone()
+            .oneshot(build_empty_post_request(
+                "/linkers/slock/link_attempts",
+                Some(&root_token),
+            ))
+            .await
+            .expect("execute missing config link attempt request");
+        assert_eq!(missing_config.status(), StatusCode::CONFLICT);
+        let missing_config_body = decode_json_body(missing_config).await;
+        assert_eq!(
+            missing_config_body["error"],
+            json!("Slock linker is not configured")
+        );
+
+        let configured = app
+            .clone()
+            .oneshot(build_method_json_request(
+                Method::PUT,
+                "/linkers/slock",
+                Some(&root_token),
+                slock_config_payload(),
+            ))
+            .await
+            .expect("execute upsert slock linker request");
+        assert_eq!(configured.status(), StatusCode::OK);
+
+        let response = app
+            .oneshot(build_empty_post_request(
+                "/linkers/slock/link_attempts",
+                Some(&root_token),
+            ))
+            .await
+            .expect("execute link attempt request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        let state_value = body["state"].as_str().expect("state string");
+        assert_eq!(body["linker_id"], json!("slock-primary"));
+        assert_eq!(
+            body["return_url"],
+            json!("https://agenthub.example/api/linkers/slock/callback")
+        );
+        assert!(Uuid::parse_str(state_value).is_ok());
+
+        let row = sqlx::query(
+            r#"
+            SELECT linker_id, expires_at
+            FROM app_linker_attempts
+            WHERE state = ?1
+            "#,
+        )
+        .bind(state_value)
+        .fetch_one(&state.db)
+        .await
+        .expect("fetch link attempt");
+        let linker_id: String = row.get("linker_id");
+        let expires_at: i64 = row.get("expires_at");
+        assert_eq!(linker_id, "slock-primary");
+        assert!(expires_at >= Utc::now().timestamp());
+    }
+
+    #[tokio::test]
+    async fn slock_channel_routes_report_missing_resource_contract() {
+        let state = build_test_state().await;
+        let root_token = create_auth_token(&state).await;
+        let app = super::router(state.clone());
+
+        let configured = app
+            .clone()
+            .oneshot(build_method_json_request(
+                Method::PUT,
+                "/linkers/slock",
+                Some(&root_token),
+                slock_config_payload(),
+            ))
+            .await
+            .expect("execute upsert slock linker request");
+        assert_eq!(configured.status(), StatusCode::OK);
+
+        sqlx::query(
+            r#"
+            UPDATE app_linkers
+            SET status = 'connected'
+            WHERE id = 'slock-primary'
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("mark slock linker connected");
+        sqlx::query(
+            r#"
+            UPDATE app_linker_secrets
+            SET access_token = 'slock_at_test',
+                token_type = 'Bearer',
+                scope = 'identity openid profile',
+                expires_at = ?1
+            WHERE linker_id = 'slock-primary'
+            "#,
+        )
+        .bind(Utc::now().timestamp() + 3600)
+        .execute(&state.db)
+        .await
+        .expect("store test slock token");
+
+        let response = app
+            .oneshot(build_empty_request(
+                Method::GET,
+                "/linkers/slock/channels",
+                Some(&root_token),
+            ))
+            .await
+            .expect("execute slock channels request");
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = decode_json_body(response).await;
+        assert_eq!(
+            body["error"],
+            json!(
+                "Slock channel resource API is not configured yet; complete the Slock resource endpoint contract before enabling channel reads"
+            )
+        );
     }
 
     #[tokio::test]

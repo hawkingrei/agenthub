@@ -6,8 +6,27 @@ import {
   DeviceRecord, 
   AuditRecord, 
   VapidInfo, 
+  AppLinkerRecord,
+  SlockLinkAttemptResponse,
   stringifyApiError 
 } from "./api";
+
+const DEFAULT_SLOCK_API_ORIGIN = "https://api.slock.ai";
+const DEFAULT_SLOCK_SCOPES = "identity openid profile";
+
+function defaultSlockReturnUrl(): string {
+  if (typeof location === "undefined") {
+    return "/api/linkers/slock/callback";
+  }
+  return `${location.origin}/api/linkers/slock/callback`;
+}
+
+function parseScopesInput(value: string): string[] {
+  return value
+    .split(/\s+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+}
 
 export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
   const token = auth?.token ?? null;
@@ -15,6 +34,15 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [audits, setAudits] = useState<AuditRecord[]>([]);
   const [vapidInfo, setVapidInfo] = useState<VapidInfo | null>(null);
+  const [slockLinker, setSlockLinker] = useState<AppLinkerRecord | null>(null);
+  const [slockLinkAttempt, setSlockLinkAttempt] =
+    useState<SlockLinkAttemptResponse | null>(null);
+  const [slockApiOrigin, setSlockApiOrigin] = useState(DEFAULT_SLOCK_API_ORIGIN);
+  const [slockClientId, setSlockClientId] = useState("");
+  const [slockClientSecret, setSlockClientSecret] = useState("");
+  const [slockReturnUrl, setSlockReturnUrl] = useState(defaultSlockReturnUrl);
+  const [slockScopesInput, setSlockScopesInput] = useState(DEFAULT_SLOCK_SCOPES);
+  const [slockCallbackInput, setSlockCallbackInput] = useState("");
   const [passkeyEnabled, setPasskeyEnabled] = useState<boolean | null>(null);
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
   const [selectedSafePaths, setSelectedSafePaths] = useState<Set<string>>(() => new Set());
@@ -40,6 +68,8 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       setDevices([]);
       setAudits([]);
       setVapidInfo(null);
+      setSlockLinker(null);
+      setSlockLinkAttempt(null);
       setJoinUrl(null);
       setJoinPin(null);
       setJoinToken(null);
@@ -51,6 +81,16 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
     api.getVapidInfo(token).then(setVapidInfo).catch(() => {});
     api.getAdminSettings(token).then(res => {
       setPasskeyEnabled(res.passkey_enabled);
+    }).catch(() => {});
+    api.listLinkers(token).then((items) => {
+      const slock = items.find((item) => item.connector_id === "slock") ?? null;
+      setSlockLinker(slock);
+      if (slock) {
+        setSlockApiOrigin(slock.api_origin);
+        setSlockClientId(slock.client_id);
+        setSlockReturnUrl(slock.return_url);
+        setSlockScopesInput(slock.scopes.join(" "));
+      }
     }).catch(() => {});
   }, [token, auth?.role, isAdminRoute]);
 
@@ -128,6 +168,59 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
     }
   }, [token]);
 
+  const onSaveSlockLinker = useCallback(async () => {
+    if (!token || auth?.role !== "root") return;
+    try {
+      const record = await api.upsertSlockLinker(token, {
+        api_origin: slockApiOrigin,
+        client_id: slockClientId,
+        client_secret: slockClientSecret.trim() || null,
+        return_url: slockReturnUrl,
+        scopes: parseScopesInput(slockScopesInput),
+      });
+      setSlockLinker(record);
+      setSlockClientSecret("");
+      setSlockLinkAttempt(null);
+    } catch (err: unknown) {
+      setError(stringifyApiError(err));
+    }
+  }, [
+    token,
+    auth?.role,
+    slockApiOrigin,
+    slockClientId,
+    slockClientSecret,
+    slockReturnUrl,
+    slockScopesInput,
+  ]);
+
+  const onCreateSlockLinkAttempt = useCallback(async () => {
+    if (!token || auth?.role !== "root") return;
+    try {
+      const attempt = await api.createSlockLinkAttempt(token);
+      setSlockLinkAttempt(attempt);
+    } catch (err: unknown) {
+      setError(stringifyApiError(err));
+    }
+  }, [token, auth?.role]);
+
+  const onExchangeSlockCode = useCallback(async () => {
+    if (!token || auth?.role !== "root") return;
+    try {
+      const value = slockCallbackInput.trim();
+      if (!value) return;
+      const payload = value.includes("://")
+        ? { callback_url: value }
+        : { code: value, state: slockLinkAttempt?.state ?? null };
+      const record = await api.exchangeSlockCode(token, payload);
+      setSlockLinker(record);
+      setSlockCallbackInput("");
+      setSlockLinkAttempt(null);
+    } catch (err: unknown) {
+      setError(stringifyApiError(err));
+    }
+  }, [token, auth?.role, slockCallbackInput, slockLinkAttempt?.state]);
+
   const onToggleSafePath = useCallback((path: string) => {
     setSelectedSafePaths((prev) => {
       const next = new Set(prev);
@@ -166,6 +259,20 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
     devices,
     audits,
     vapidInfo,
+    slockLinker,
+    slockLinkAttempt,
+    slockApiOrigin,
+    setSlockApiOrigin,
+    slockClientId,
+    setSlockClientId,
+    slockClientSecret,
+    setSlockClientSecret,
+    slockReturnUrl,
+    setSlockReturnUrl,
+    slockScopesInput,
+    setSlockScopesInput,
+    slockCallbackInput,
+    setSlockCallbackInput,
     passkeyEnabled,
     rootInitialized,
     selectedSafePaths,
@@ -182,6 +289,9 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
     onRevokeDevice,
     onRotateVapid,
     onCreateJoin,
+    onSaveSlockLinker,
+    onCreateSlockLinkAttempt,
+    onExchangeSlockCode,
     onToggleSafePath,
     onToggleAllSafePaths,
     onDeleteSelectedSafePaths,

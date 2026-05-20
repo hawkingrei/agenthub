@@ -65,6 +65,7 @@ When multiple journal notes describe the same area:
 - `docs/features/logical-message-metadata-contract.md`
 - `docs/features/message-archive-lancedb.md`
 - `docs/features/message-storage-tiering.md`
+- `docs/features/slock-oauth-linkers.md`
 
 ## Historical References
 

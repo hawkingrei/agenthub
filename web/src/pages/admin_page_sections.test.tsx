@@ -6,6 +6,7 @@ import {
   AdminAuditsSection,
   AdminDevicesSection,
   AdminJoinSection,
+  AdminLinkersSection,
   AdminSafePathsSection,
   AdminSystemSection,
   AdminUiSection,
@@ -235,5 +236,94 @@ describe("admin_page_sections", () => {
 
     expect(onDeveloperModeChange).toHaveBeenCalledWith(true);
     expect(onPasskeyEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("renders Slock linker section and wires actions", () => {
+    const setSlockCallbackInput = vi.fn();
+    const onSaveSlockLinker = vi.fn();
+    const onCreateSlockLinkAttempt = vi.fn();
+    const onExchangeSlockCode = vi.fn();
+
+    renderWithMantine(
+      root,
+      <AdminLinkersSection
+        linkers={{
+          slockLinker: {
+            linker_id: "slock-primary",
+            connector_id: "slock",
+            display_name: "Slock",
+            status: "connected",
+            api_origin: "https://api.slock.ai",
+            client_id: "agenthub",
+            return_url: "https://agenthub.example.com/api/linkers/slock/callback",
+            scopes: ["identity", "openid", "profile"],
+            client_secret_configured: true,
+            token_configured: true,
+            token_type: "Bearer",
+            granted_scopes: ["identity", "openid", "profile"],
+            expires_at: 100,
+            updated_at: 1,
+            principal: {
+              subject: "slock-agent-1",
+              principal_type: "agent",
+              display_name: "Claude Assistant",
+              handle: "assistant",
+              avatar_url: null,
+              server_id: "server-1",
+              server_slug: "dev",
+              updated_at: 1,
+            },
+          },
+          slockLinkAttempt: null,
+          slockApiOrigin: "https://api.slock.ai",
+          setSlockApiOrigin: vi.fn(),
+          slockClientId: "agenthub",
+          setSlockClientId: vi.fn(),
+          slockClientSecret: "",
+          setSlockClientSecret: vi.fn(),
+          slockReturnUrl: "https://agenthub.example.com/api/linkers/slock/callback",
+          setSlockReturnUrl: vi.fn(),
+          slockScopesInput: "identity openid profile",
+          setSlockScopesInput: vi.fn(),
+          slockCallbackInput: "callback-code",
+          setSlockCallbackInput,
+          onSaveSlockLinker,
+          onCreateSlockLinkAttempt,
+          onExchangeSlockCode,
+        }}
+      />
+    );
+
+    expect(container.textContent).toContain("Slock Linker");
+    expect(container.textContent).toContain("connected");
+    expect(container.textContent).toContain("Claude Assistant");
+    expect(container.textContent).toContain("agent");
+    expect(container.textContent).toContain("slock-agent-1");
+    expect(container.querySelector('img[src="/slock-icon.png"]')).not.toBeNull();
+
+    const codeInput = Array.from(container.querySelectorAll("input")).find(
+      (input) => input.value === "callback-code"
+    );
+    act(() => {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value"
+      );
+      descriptor?.set?.call(codeInput, "next-code");
+      codeInput?.dispatchEvent(new Event("input", { bubbles: true }));
+      codeInput?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const buttons = Array.from(container.querySelectorAll("button"));
+    act(() => {
+      buttons.find((button) => button.textContent === "Save Slock")?.click();
+      buttons.find((button) => button.textContent === "Create Link Attempt")?.click();
+      buttons.find((button) => button.textContent === "Exchange Code")?.click();
+    });
+
+    expect(setSlockCallbackInput).toHaveBeenCalledWith("next-code");
+    expect(onSaveSlockLinker).toHaveBeenCalledTimes(1);
+    expect(onCreateSlockLinkAttempt).toHaveBeenCalledTimes(1);
+    expect(onExchangeSlockCode).toHaveBeenCalledTimes(1);
   });
 });

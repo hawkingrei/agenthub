@@ -1,6 +1,13 @@
 import { UnstyledButton } from "@mantine/core";
 import { useEffect, useState } from "react";
-import { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
+import {
+  AppLinkerRecord,
+  AuditRecord,
+  DeviceRecord,
+  SafePath,
+  SlockLinkAttemptResponse,
+  VapidInfo,
+} from "../api";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 import { ActionButton } from "../ui/primitives";
@@ -8,6 +15,7 @@ import {
   AdminAuditsSection,
   AdminDevicesSection,
   AdminJoinSection,
+  AdminLinkersSection,
   AdminSafePathsSection,
   AdminSystemSection,
   AdminUiSection,
@@ -60,6 +68,26 @@ export type AdminVapidSectionProps = {
   onRotateVapid: () => void;
 };
 
+export type AdminLinkersSectionProps = {
+  slockLinker: AppLinkerRecord | null;
+  slockLinkAttempt: SlockLinkAttemptResponse | null;
+  slockApiOrigin: string;
+  setSlockApiOrigin: (value: string) => void;
+  slockClientId: string;
+  setSlockClientId: (value: string) => void;
+  slockClientSecret: string;
+  setSlockClientSecret: (value: string) => void;
+  slockReturnUrl: string;
+  setSlockReturnUrl: (value: string) => void;
+  slockScopesInput: string;
+  setSlockScopesInput: (value: string) => void;
+  slockCallbackInput: string;
+  setSlockCallbackInput: (value: string) => void;
+  onSaveSlockLinker: () => void;
+  onCreateSlockLinkAttempt: () => void;
+  onExchangeSlockCode: () => void;
+};
+
 export type AdminUiSectionProps = {
   developerMode: boolean;
   onDeveloperModeChange: (value: boolean) => void;
@@ -79,13 +107,21 @@ export type AdminPageProps = {
   audits: AdminAuditsSectionProps;
   join: AdminJoinSectionProps;
   vapid: AdminVapidSectionProps;
+  linkers: AdminLinkersSectionProps;
   ui: AdminUiSectionProps;
   system: AdminSystemSectionProps;
 };
 
 export function AdminPage(props: AdminPageProps) {
   const [tab, setTab] = useState<
-    "safe" | "devices" | "audits" | "join" | "vapid" | "ui" | "system"
+    | "safe"
+    | "devices"
+    | "audits"
+    | "join"
+    | "vapid"
+    | "linkers"
+    | "ui"
+    | "system"
   >("safe");
   const [joinLinkCopyState, setJoinLinkCopyState] = useState<"idle" | "copied" | "failed">(
     "idle"
@@ -165,6 +201,12 @@ export function AdminPage(props: AdminPageProps) {
             VAPID Keys
           </UnstyledButton>
           <UnstyledButton
+            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "linkers" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
+            onClick={() => setTab("linkers")}
+          >
+            Linkers
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "ui" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("ui")}
           >
@@ -195,6 +237,7 @@ export function AdminPage(props: AdminPageProps) {
             />
           ) : null}
           {tab === "vapid" ? <AdminVapidSection vapid={props.vapid} /> : null}
+          {tab === "linkers" ? <AdminLinkersSection linkers={props.linkers} /> : null}
           {tab === "ui" ? <AdminUiSection ui={props.ui} /> : null}
           {tab === "system" ? <AdminSystemSection system={props.system} /> : null}
         </div>

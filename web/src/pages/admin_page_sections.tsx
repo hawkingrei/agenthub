@@ -20,6 +20,7 @@ import type {
   AdminAuditsSectionProps,
   AdminDevicesSectionProps,
   AdminJoinSectionProps,
+  AdminLinkersSectionProps,
   AdminSafePathsSectionProps,
   AdminSystemSectionProps,
   AdminUiSectionProps,
@@ -180,6 +181,172 @@ export function AdminVapidSection({
           Rotate Keys
         </ActionButton>
       </div>
+    </div>
+  );
+}
+
+export function AdminLinkersSection({
+  linkers: section,
+}: {
+  linkers: AdminLinkersSectionProps;
+}) {
+  const principal = section.slockLinker?.principal ?? null;
+  return (
+    <div className={ADMIN_CARD_CLASS}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <img
+            src="/slock-icon.png"
+            alt=""
+            aria-hidden="true"
+            className="h-9 w-9 shrink-0 rounded-lg border border-notion-border bg-white p-1 shadow-sm"
+            decoding="async"
+          />
+          <div className="min-w-0">
+            <h3 className={ADMIN_CARD_TITLE_CLASS}>Slock Linker</h3>
+            <p className={ADMIN_MUTED_TEXT_CLASS}>
+              Server-side Slock OAuth connection for AgentHub-controlled tools.
+            </p>
+          </div>
+        </div>
+        <span className="rounded-md border border-notion-border bg-notion-sidebar/50 px-2 py-1 text-xs font-semibold uppercase text-notion-muted">
+          {section.slockLinker?.status ?? "Not configured"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1">
+          <span className={ADMIN_LABEL_CLASS}>API Origin</span>
+          <input
+            className={ADMIN_INPUT_CLASS}
+            value={section.slockApiOrigin}
+            onChange={(event) => section.setSlockApiOrigin(event.currentTarget.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={ADMIN_LABEL_CLASS}>Client ID</span>
+          <input
+            className={ADMIN_INPUT_CLASS}
+            value={section.slockClientId}
+            onChange={(event) => section.setSlockClientId(event.currentTarget.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={ADMIN_LABEL_CLASS}>Client Secret</span>
+          <input
+            className={ADMIN_INPUT_CLASS}
+            type="password"
+            placeholder={
+              section.slockLinker?.client_secret_configured
+                ? "Configured"
+                : "Required"
+            }
+            value={section.slockClientSecret}
+            onChange={(event) => section.setSlockClientSecret(event.currentTarget.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={ADMIN_LABEL_CLASS}>Scopes</span>
+          <input
+            className={ADMIN_INPUT_CLASS}
+            value={section.slockScopesInput}
+            onChange={(event) => section.setSlockScopesInput(event.currentTarget.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1 md:col-span-2">
+          <span className={ADMIN_LABEL_CLASS}>Return URL</span>
+          <input
+            className={ADMIN_INPUT_CLASS}
+            value={section.slockReturnUrl}
+            onChange={(event) => section.setSlockReturnUrl(event.currentTarget.value)}
+          />
+        </label>
+      </div>
+
+      <div className={ADMIN_FORM_ROW_CLASS}>
+        <ActionButton
+          className={ADMIN_PRIMARY_BUTTON_CLASS}
+          tone="primary"
+          size="md"
+          onClick={section.onSaveSlockLinker}
+        >
+          Save Slock
+        </ActionButton>
+        <ActionButton
+          className={ADMIN_SECONDARY_BUTTON_CLASS}
+          tone="secondary"
+          size="md"
+          onClick={section.onCreateSlockLinkAttempt}
+        >
+          Create Link Attempt
+        </ActionButton>
+      </div>
+
+      {section.slockLinkAttempt ? (
+        <div className={`${ADMIN_KV_LIST_CLASS} mt-3`}>
+          <div className={ADMIN_KV_ROW_CLASS}>
+            <span className={ADMIN_LABEL_CLASS}>State</span>
+            <span className={`${ADMIN_VALUE_CLASS} mono`}>
+              {section.slockLinkAttempt.state}
+            </span>
+          </div>
+          <div className={ADMIN_KV_ROW_CLASS}>
+            <span className={ADMIN_LABEL_CLASS}>Expires</span>
+            <span className={ADMIN_VALUE_CLASS}>
+              {new Date(section.slockLinkAttempt.expires_at * 1000).toLocaleString()}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-col gap-2">
+        <label className="flex flex-col gap-1">
+          <span className={ADMIN_LABEL_CLASS}>Callback URL Or Code</span>
+          <input
+            className={ADMIN_INPUT_CLASS}
+            value={section.slockCallbackInput}
+            onChange={(event) => section.setSlockCallbackInput(event.currentTarget.value)}
+          />
+        </label>
+        <div className={ADMIN_FORM_ROW_CLASS}>
+          <ActionButton
+            className={ADMIN_SECONDARY_BUTTON_CLASS}
+            tone="secondary"
+            size="md"
+            onClick={section.onExchangeSlockCode}
+          >
+            Exchange Code
+          </ActionButton>
+        </div>
+      </div>
+
+      {principal ? (
+        <div className={`${ADMIN_KV_LIST_CLASS} mt-3`}>
+          <div className={ADMIN_KV_ROW_CLASS}>
+            <span className={ADMIN_LABEL_CLASS}>Principal</span>
+            <span className={ADMIN_VALUE_CLASS}>{principal.display_name}</span>
+          </div>
+          <div className={ADMIN_KV_ROW_CLASS}>
+            <span className={ADMIN_LABEL_CLASS}>Type</span>
+            <span className={ADMIN_VALUE_CLASS}>{principal.principal_type}</span>
+          </div>
+          <div className={ADMIN_KV_ROW_CLASS}>
+            <span className={ADMIN_LABEL_CLASS}>Subject</span>
+            <span className={`${ADMIN_VALUE_CLASS} mono`}>{principal.subject}</span>
+          </div>
+          <div className={ADMIN_KV_ROW_CLASS}>
+            <span className={ADMIN_LABEL_CLASS}>Server</span>
+            <span className={ADMIN_VALUE_CLASS}>
+              {[principal.server_slug, principal.server_id].filter(Boolean).join(" / ") ||
+                "-"}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <p className={`${ADMIN_EMPTY_TEXT_CLASS} mt-3`}>
+          Slock identity has not been linked.
+        </p>
+      )}
     </div>
   );
 }
