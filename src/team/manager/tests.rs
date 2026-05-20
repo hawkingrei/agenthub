@@ -7755,6 +7755,243 @@ async fn actor_mailbox_service_claims_topics_and_prevents_parallel_takeover() {
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_requires_active_owner_for_release_and_complete() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-release-team".to_string(),
+            description: Some("team for mailbox ownership guardrails".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"},
+                    {"member_id":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-release-guard"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let reviewer_message = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "text":"reviewer owns this topic",
+                "correlation_id":"release-guard-1"
+            }),
+            idempotency_key: Some("msg-release-guard-reviewer".to_string()),
+            message_kind: None,
+        })
+        .await
+        .expect("send reviewer message");
+    let worker_message = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("worker".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "text":"worker sees the same topic",
+                "correlation_id":"release-guard-1"
+            }),
+            idempotency_key: Some("msg-release-guard-worker".to_string()),
+            message_kind: None,
+        })
+        .await
+        .expect("send worker message");
+
+    service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: reviewer_message.message_id,
+            disposition: ActorMessageHandlingDisposition::Claimed,
+        })
+        .await
+        .expect("reviewer claim");
+
+    let release_err = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "worker".to_string(),
+            message_id: worker_message.message_id,
+            disposition: ActorMessageHandlingDisposition::Released,
+        })
+        .await
+        .expect_err("non-owner release should conflict");
+    assert_eq!(release_err.code, ActorServiceErrorCode::Conflict);
+    assert!(release_err.message.contains("reviewer"));
+
+    let complete_err = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "worker".to_string(),
+            message_id: worker_message.message_id,
+            disposition: ActorMessageHandlingDisposition::Completed,
+        })
+        .await
+        .expect_err("non-owner complete should conflict");
+    assert_eq!(complete_err.code, ActorServiceErrorCode::Conflict);
+    assert!(complete_err.message.contains("reviewer"));
+
+    let worker_history = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id,
+            actor_id: "worker".to_string(),
+            cursor: None,
+            limit: Some(20),
+            states: Some(vec![TeamActorMessageStatus::Pending]),
+        })
+        .await
+        .expect("worker history inbox");
+    assert_eq!(worker_history.messages.len(), 1);
+    assert_eq!(
+        worker_history.messages[0].handling_disposition,
+        ActorMessageHandlingDisposition::Untriaged
+    );
+    assert_eq!(
+        worker_history.messages[0].thread_owner_actor_id.as_deref(),
+        Some("reviewer")
+    );
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_completed_claim_remains_visible_in_history() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-completed-team".to_string(),
+            description: Some("team for completed topic visibility".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-completed-visible"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let sent = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "text":"finish this mailbox topic",
+                "correlation_id":"completed-visible-1"
+            }),
+            idempotency_key: Some("msg-completed-visible-reviewer".to_string()),
+            message_kind: None,
+        })
+        .await
+        .expect("send mailbox message");
+
+    service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            disposition: ActorMessageHandlingDisposition::Claimed,
+        })
+        .await
+        .expect("claim mailbox topic");
+    let completed = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            disposition: ActorMessageHandlingDisposition::Completed,
+        })
+        .await
+        .expect("complete mailbox topic");
+    assert_eq!(
+        completed.message.handling_disposition,
+        ActorMessageHandlingDisposition::Completed
+    );
+
+    let unread = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            cursor: None,
+            limit: Some(20),
+            states: None,
+        })
+        .await
+        .expect("unread inbox after completed triage");
+    assert_eq!(unread.pending_count, 0);
+    assert!(unread.messages.is_empty());
+
+    let history = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id,
+            actor_id: "reviewer".to_string(),
+            cursor: None,
+            limit: Some(20),
+            states: Some(vec![
+                TeamActorMessageStatus::Pending,
+                TeamActorMessageStatus::Delivered,
+            ]),
+        })
+        .await
+        .expect("history inbox after completed triage");
+    assert_eq!(history.messages.len(), 1);
+    assert_eq!(
+        history.messages[0].thread_claim_status,
+        Some(agenthub_team_actor::ActorThreadClaimStatus::Completed)
+    );
+    assert_eq!(
+        history.messages[0].thread_owner_actor_id.as_deref(),
+        Some("reviewer")
+    );
+    assert_eq!(
+        history.messages[0].handling_disposition,
+        ActorMessageHandlingDisposition::Completed
+    );
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_task_link_surfaces_durable_task_association() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

@@ -1101,6 +1101,8 @@ enum SqlActorMailboxStoreError {
     IdempotencyConflict,
     #[error("mailbox thread/topic is already claimed by actor `{owner_actor_id}`")]
     ThreadClaimConflict { owner_actor_id: String },
+    #[error("mailbox thread/topic must be actively claimed by the acting actor")]
+    ThreadClaimOwnershipRequired,
 }
 
 #[derive(Debug)]
@@ -1417,10 +1419,10 @@ async fn load_active_thread_claims(
         }
     }
     builder.push(
-        ") AND claim_status = 'claimed' AND (lease_expires_at IS NULL OR lease_expires_at > ",
+        ") AND ((claim_status = 'claimed' AND (lease_expires_at IS NULL OR lease_expires_at > ",
     );
     builder.push_bind(now);
-    builder.push(")");
+    builder.push(")) OR claim_status = 'completed')");
     let rows = builder.build().fetch_all(pool).await?;
     let mut out = HashMap::with_capacity(rows.len());
     for row in rows {
@@ -1680,26 +1682,40 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         cmd: &AckActorMessageCommand,
     ) -> Result<AckActorMessageResult, Self::Error> {
         let mut tx = self.db.begin().await?;
-        let update = sqlx::query(
-            r#"
-            UPDATE team_actor_messages
-            SET status = 'delivered', delivered_at = COALESCE(delivered_at, ?1)
-            WHERE id = ?2 AND run_id = ?3 AND to_actor_id = ?4 AND to_peer_id = ?5 AND status = 'pending'
-            "#,
+        let current = fetch_message_for_actor(
+            &mut tx,
+            &cmd.run_id,
+            &cmd.actor_id,
+            &cmd.peer_id,
+            cmd.message_id,
         )
-        .bind(cmd.delivered_at)
-        .bind(cmd.message_id)
-        .bind(&cmd.run_id)
-        .bind(&cmd.actor_id)
-        .bind(&cmd.peer_id)
-        .execute(&mut *tx)
         .await?;
+        let status_changed = if current.status == TeamActorMessageStatus::Pending {
+            sqlx::query(
+                r#"
+                UPDATE team_actor_messages
+                SET status = 'delivered', delivered_at = COALESCE(delivered_at, ?1)
+                WHERE id = ?2 AND run_id = ?3 AND to_actor_id = ?4 AND to_peer_id = ?5 AND status = 'pending'
+                "#,
+            )
+            .bind(cmd.delivered_at)
+            .bind(cmd.message_id)
+            .bind(&cmd.run_id)
+            .bind(&cmd.actor_id)
+            .bind(&cmd.peer_id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected()
+                > 0
+        } else {
+            false
+        };
 
         tx.commit().await?;
         let message = fetch_enriched_message_by_id(&self.db, cmd.message_id).await?;
         Ok(AckActorMessageResult {
             message,
-            status_changed: update.rows_affected() > 0,
+            status_changed,
         })
     }
 
@@ -2645,12 +2661,41 @@ async fn apply_thread_claim_transition(
             .await?;
         }
         ActorMessageHandlingDisposition::Released | ActorMessageHandlingDisposition::Completed => {
+            let existing = sqlx::query(
+                r#"
+                SELECT owner_actor_id, claim_status, lease_expires_at
+                FROM team_actor_thread_claims
+                WHERE run_id = ?1 AND topic_key = ?2
+                LIMIT 1
+                "#,
+            )
+            .bind(&cmd.run_id)
+            .bind(&topic.topic_key)
+            .fetch_optional(&mut **tx)
+            .await?;
+            let Some(existing) = existing else {
+                return Err(SqlActorMailboxStoreError::ThreadClaimOwnershipRequired);
+            };
+            let owner_actor_id: String = existing.get("owner_actor_id");
+            let claim_status_raw: String = existing.get("claim_status");
+            let lease_expires_at = existing
+                .try_get::<Option<i64>, _>("lease_expires_at")
+                .unwrap_or(None);
+            let is_active = parse_actor_thread_claim_status(&claim_status_raw)
+                == Some(ActorThreadClaimStatus::Claimed)
+                && lease_expires_at.is_none_or(|value| value > cmd.handled_at);
+            if owner_actor_id != cmd.actor_id && is_active {
+                return Err(SqlActorMailboxStoreError::ThreadClaimConflict { owner_actor_id });
+            }
+            if owner_actor_id != cmd.actor_id || !is_active {
+                return Err(SqlActorMailboxStoreError::ThreadClaimOwnershipRequired);
+            }
             let claim_status = match cmd.disposition {
                 ActorMessageHandlingDisposition::Released => "released",
                 ActorMessageHandlingDisposition::Completed => "completed",
                 _ => unreachable!(),
             };
-            sqlx::query(
+            let updated = sqlx::query(
                 r#"
                 UPDATE team_actor_thread_claims
                 SET
@@ -2670,6 +2715,9 @@ async fn apply_thread_claim_transition(
             .bind(&cmd.actor_id)
             .execute(&mut **tx)
             .await?;
+            if updated.rows_affected() == 0 {
+                return Err(SqlActorMailboxStoreError::ThreadClaimOwnershipRequired);
+            }
         }
         _ => {}
     }
@@ -2822,6 +2870,20 @@ fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
             ),
         );
     }
+    if err
+        .downcast_ref::<SqlActorMailboxStoreError>()
+        .is_some_and(|cause| {
+            matches!(
+                cause,
+                SqlActorMailboxStoreError::ThreadClaimOwnershipRequired
+            )
+        })
+    {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::Conflict,
+            "mailbox topic must be actively claimed by the acting actor before release or complete",
+        );
+    }
     if is_row_not_found(&err) {
         return ActorServiceError::new(ActorServiceErrorCode::NotFound, "message not found");
     }
@@ -2850,6 +2912,9 @@ fn map_actor_mailbox_store_error(
                 anyhow::Error::new(SqlActorMailboxStoreError::ThreadClaimConflict {
                     owner_actor_id,
                 })
+            }
+            SqlActorMailboxStoreError::ThreadClaimOwnershipRequired => {
+                anyhow::Error::new(SqlActorMailboxStoreError::ThreadClaimOwnershipRequired)
             }
         },
     }
