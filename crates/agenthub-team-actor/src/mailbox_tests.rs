@@ -133,6 +133,7 @@ impl ActorMailboxStore for TestStore {
             transport: cmd.transport.clone(),
             route: cmd.route.clone(),
             payload: cmd.payload.clone(),
+            idempotency_key: cmd.idempotency_key.clone(),
             message_kind: cmd.message_kind.clone(),
             status: ActorMessageStatus::Pending,
             handling_disposition: super::ActorMessageHandlingDisposition::Untriaged,

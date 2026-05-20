@@ -149,6 +149,7 @@ fn parse_message_defaults_blank_peer_ids_to_main() {
     assert_eq!(message.to_peer_id, ACTOR_MAIN_PEER_ID);
     assert_eq!(message.transport, ActorMessageTransport::Remote);
     assert_eq!(message.status, ActorMessageStatus::Delivered);
+    assert_eq!(message.idempotency_key.as_deref(), Some("idem-1"));
     assert_eq!(message.route, Some(json!({"kind":"grpc"})));
     assert_eq!(message.payload["text"], "hello");
 }

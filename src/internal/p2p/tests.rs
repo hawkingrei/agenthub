@@ -32,6 +32,7 @@ fn build_message_metadata_prefers_route_fields() {
         transport: TeamActorMessageTransport::Remote,
         route: Some(route),
         payload: json!({"text":"hello","correlation_id":"ignored-corr"}),
+        idempotency_key: Some("idempotent-1".to_string()),
         message_kind: agenthub_team_actor::ActorMessageKind::CoordinationRequest,
         status: TeamActorMessageStatus::Pending,
         handling_disposition: agenthub_team_actor::ActorMessageHandlingDisposition::Untriaged,

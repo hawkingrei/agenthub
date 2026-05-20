@@ -975,6 +975,7 @@ mod tests {
             transport: TeamActorMessageTransport::Remote,
             route: Some(json!(route)),
             payload: json!({"type":"chat_message","text":"hello"}),
+            idempotency_key: Some("relay-test".to_string()),
             message_kind: agenthub_team_actor::ActorMessageKind::CoordinationRequest,
             status: TeamActorMessageStatus::Pending,
             handling_disposition: agenthub_team_actor::ActorMessageHandlingDisposition::Untriaged,

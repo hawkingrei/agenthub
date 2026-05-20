@@ -311,6 +311,8 @@ pub struct ActorMessageRecord {
     pub route: Option<Value>,
     pub payload: Value,
     #[serde(default)]
+    pub idempotency_key: Option<String>,
+    #[serde(default)]
     pub message_kind: ActorMessageKind,
     pub status: ActorMessageStatus,
     #[serde(default)]

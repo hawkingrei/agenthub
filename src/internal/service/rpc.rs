@@ -22,7 +22,7 @@ fn actor_message_to_proto(message: agenthub_team_actor::ActorMessageRecord) -> A
         status: message.status.as_str().to_string(),
         created_at: message.created_at,
         delivered_at: message.delivered_at.unwrap_or_default(),
-        idempotency_key: String::new(),
+        idempotency_key: message.idempotency_key.unwrap_or_default(),
         from_peer_id: message.from_peer_id,
         to_peer_id: message.to_peer_id,
         message_kind: message.message_kind.as_str().to_string(),

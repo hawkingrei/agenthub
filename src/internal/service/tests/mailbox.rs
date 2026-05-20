@@ -153,6 +153,10 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
     assert_eq!(sent_message.message_id, send.message_id);
     assert_eq!(sent_message.to_actor_id, "reviewer");
     assert_eq!(sent_message.status, ActorMessageStatus::Pending);
+    assert_eq!(
+        sent_message.idempotency_key.as_deref(),
+        Some("internal-grpc-msg-1")
+    );
 
     let pending_inbox = TeamInternalControl::list_actor_inbox(
         &service,
@@ -181,6 +185,7 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
     assert_eq!(pending.route_json, r#"{"topic":"review"}"#);
     assert_eq!(pending.payload_json, r#"{"text":"please review"}"#);
     assert_eq!(pending.status, "pending");
+    assert_eq!(pending.idempotency_key, "internal-grpc-msg-1");
     assert_eq!(pending.from_peer_id, "node-a");
     assert_eq!(pending.to_peer_id, "main");
 
@@ -202,6 +207,7 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
     let acked_message = acked.message.expect("acked message");
     assert_eq!(acked_message.message_id, send.message_id);
     assert_eq!(acked_message.status, "delivered");
+    assert_eq!(acked_message.idempotency_key, "internal-grpc-msg-1");
     assert!(acked_message.delivered_at >= acked_message.created_at);
     assert_eq!(acked_message.from_peer_id, "node-a");
     assert_eq!(acked_message.to_peer_id, "main");
@@ -242,6 +248,10 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
     .into_inner();
     assert_eq!(inbox_with_delivered.messages.len(), 1);
     assert_eq!(inbox_with_delivered.messages[0].status, "delivered");
+    assert_eq!(
+        inbox_with_delivered.messages[0].idempotency_key,
+        "internal-grpc-msg-1"
+    );
 }
 
 #[tokio::test]
@@ -302,6 +312,10 @@ async fn internal_grpc_mailbox_triage_and_task_link_are_wire_compatible() {
     assert!(triaged.handling_changed);
     let triaged_message = triaged.message.expect("triaged message");
     assert_eq!(triaged_message.message_id, send.message_id);
+    assert_eq!(
+        triaged_message.idempotency_key,
+        "internal-grpc-triage-link-1"
+    );
     assert_eq!(triaged_message.handling_disposition, "claimed");
     assert_eq!(triaged_message.thread_claim_status, "claimed");
     assert_eq!(triaged_message.thread_owner_actor_id, "reviewer");

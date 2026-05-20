@@ -81,6 +81,8 @@ pub(super) fn parse_message(
         transport: parse_transport(&message.transport),
         route,
         payload,
+        idempotency_key: (!message.idempotency_key.trim().is_empty())
+            .then_some(message.idempotency_key),
         message_kind: parse_actor_message_kind(&message.message_kind),
         status: parse_status(&message.status),
         handling_disposition: parse_actor_message_handling_disposition(
@@ -133,6 +135,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
         let request_transport = request.transport.clone();
         let request_channel_id = request.channel_id.clone();
         let request_message_kind = request.message_kind.clone();
+        let request_idempotency_key = request.idempotency_key.clone();
         let grpc_channel = request_channel
             .clone()
             .unwrap_or_else(|| "default".to_string());
@@ -170,7 +173,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                     transport: grpc_transport,
                     route_json,
                     payload_json,
-                    idempotency_key: request.idempotency_key.unwrap_or_default(),
+                    idempotency_key: request_idempotency_key.clone().unwrap_or_default(),
                     from_peer_id: request.from_peer_id.clone().unwrap_or_default(),
                     to_peer_id: request.to_peer_id.clone().unwrap_or_default(),
                     channel_id: request_channel_id.unwrap_or_default(),
@@ -207,6 +210,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 transport: request_transport.unwrap_or(ActorMessageTransport::Local),
                 route: request.route,
                 payload: request.payload,
+                idempotency_key: request_idempotency_key,
                 message_kind: fallback_message_kind,
                 status: parse_status(&response.status),
                 handling_disposition: ActorMessageHandlingDisposition::Untriaged,

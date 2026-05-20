@@ -13,6 +13,38 @@ use crate::internal::client::InternalGrpcMailboxClient;
 
 const RECEIVE_ACK_CONCURRENCY: usize = 8;
 
+async fn triage_received_message<S: ActorMailboxService + ?Sized>(
+    service: &S,
+    acked: agenthub_team_actor::ActorAckResponse,
+) -> Result<agenthub_team_actor::ActorMessageRecord, ActorServiceError> {
+    let claimed_request = ActorTriageRequest {
+        run_id: acked.message.run_id.clone(),
+        actor_id: acked.message.to_actor_id.clone(),
+        message_id: acked.message.message_id,
+        disposition: ActorMessageHandlingDisposition::Claimed,
+    };
+    match service.actor_triage(claimed_request.clone()).await {
+        Ok(triaged) => Ok(triaged.message),
+        Err(err) if err.code == ActorServiceErrorCode::NotFound => Ok(acked.message),
+        Err(err) if err.code == ActorServiceErrorCode::Conflict => {
+            match service
+                .actor_triage(ActorTriageRequest {
+                    disposition: ActorMessageHandlingDisposition::Watching,
+                    ..claimed_request
+                })
+                .await
+            {
+                Ok(triaged) => Ok(triaged.message),
+                Err(watch_err) if watch_err.code == ActorServiceErrorCode::NotFound => {
+                    Ok(acked.message)
+                }
+                Err(watch_err) => Err(watch_err),
+            }
+        }
+        Err(err) => Err(err),
+    }
+}
+
 pub(super) async fn init_actor_control_client(
     actor_id: &str,
     run_id: Option<&str>,
@@ -109,23 +141,9 @@ pub(super) async fn receive_actor_inbox<S: ActorMailboxService + ?Sized>(
                     })
                     .await;
                 match acked {
-                    Ok(acked) => {
-                        let triaged = service
-                            .actor_triage(ActorTriageRequest {
-                                run_id: acked.message.run_id.clone(),
-                                actor_id: acked.message.to_actor_id.clone(),
-                                message_id: acked.message.message_id,
-                                disposition: ActorMessageHandlingDisposition::Claimed,
-                            })
-                            .await;
-                        match triaged {
-                            Ok(triaged) => Ok((idx, triaged.message, true)),
-                            Err(err) if err.code == ActorServiceErrorCode::NotFound => {
-                                Ok((idx, acked.message, true))
-                            }
-                            Err(err) => Err(err),
-                        }
-                    }
+                    Ok(acked) => triage_received_message(service, acked)
+                        .await
+                        .map(|message| (idx, message, true)),
                     Err(err) if err.code == ActorServiceErrorCode::NotFound => {
                         Ok((idx, message, false))
                     }

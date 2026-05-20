@@ -163,6 +163,7 @@ pub(super) fn parse_team_actor_message_row(
         transport: team_actor_message_transport_from_str(&transport_raw),
         route,
         payload,
+        idempotency_key: row.try_get("idempotency_key").unwrap_or(None),
         message_kind: parse_actor_message_kind(&message_kind_raw),
         status: team_actor_message_status_from_str(&status_raw),
         handling_disposition: parse_actor_message_handling_disposition(&handling_disposition_raw),

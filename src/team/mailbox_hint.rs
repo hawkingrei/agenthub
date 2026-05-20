@@ -565,6 +565,7 @@ mod tests {
                 transport: ActorMessageTransport::Local,
                 route: None,
                 payload,
+                idempotency_key: None,
                 message_kind: agenthub_team_actor::ActorMessageKind::CoordinationRequest,
                 status: ActorMessageStatus::Pending,
                 handling_disposition:

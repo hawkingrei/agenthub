@@ -402,6 +402,9 @@ mod tests {
         inbox: Vec<agenthub_team_actor::ActorMessageRecord>,
         acked_ids: Arc<StdMutex<Vec<i64>>>,
         ack_delays_ms: Arc<HashMap<i64, u64>>,
+        claim_conflict_ids: Arc<std::collections::HashSet<i64>>,
+        triage_attempts:
+            Arc<StdMutex<Vec<(i64, agenthub_team_actor::ActorMessageHandlingDisposition)>>>,
     }
 
     #[derive(Clone)]
@@ -467,6 +470,18 @@ mod tests {
             &self,
             request: ActorTriageRequest,
         ) -> Result<ActorTriageResponse, ActorServiceError> {
+            self.triage_attempts
+                .lock()
+                .expect("acquire triage attempts")
+                .push((request.message_id, request.disposition.clone()));
+            if request.disposition == ActorMessageHandlingDisposition::Claimed
+                && self.claim_conflict_ids.contains(&request.message_id)
+            {
+                return Err(ActorServiceError::new(
+                    ActorServiceErrorCode::Conflict,
+                    "thread already claimed",
+                ));
+            }
             let message = self
                 .inbox
                 .iter()
@@ -595,6 +610,7 @@ mod tests {
             transport: agenthub_team_actor::ActorMessageTransport::Local,
             route: None,
             payload: serde_json::json!({"type":"chat_message","text":"hello"}),
+            idempotency_key: None,
             message_kind: agenthub_team_actor::ActorMessageKind::CoordinationRequest,
             status,
             handling_disposition: ActorMessageHandlingDisposition::Untriaged,
@@ -1881,6 +1897,8 @@ mod tests {
             inbox: vec![mock_inbox_message(1, ActorMessageStatus::Pending)],
             acked_ids: Arc::new(StdMutex::new(Vec::new())),
             ack_delays_ms: Arc::new(HashMap::new()),
+            claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
+            triage_attempts: Arc::new(StdMutex::new(Vec::new())),
         };
         let response = load_actor_inbox(
             &service,
@@ -1912,6 +1930,8 @@ mod tests {
             inbox: vec![mock_inbox_message(7, ActorMessageStatus::Pending)],
             acked_ids: Arc::new(StdMutex::new(Vec::new())),
             ack_delays_ms: Arc::new(HashMap::new()),
+            claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
+            triage_attempts: Arc::new(StdMutex::new(Vec::new())),
         };
         let response = receive_actor_inbox(
             &service,
@@ -1947,6 +1967,8 @@ mod tests {
             ],
             acked_ids: Arc::new(StdMutex::new(Vec::new())),
             ack_delays_ms: Arc::new(HashMap::from([(7, 50_u64), (8, 0_u64)])),
+            claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
+            triage_attempts: Arc::new(StdMutex::new(Vec::new())),
         };
         let response = receive_actor_inbox(
             &service,
@@ -1979,6 +2001,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn receive_actor_inbox_falls_back_to_watching_when_claim_conflicts() {
+        let service = MockMailboxService {
+            inbox: vec![mock_inbox_message(7, ActorMessageStatus::Pending)],
+            acked_ids: Arc::new(StdMutex::new(Vec::new())),
+            ack_delays_ms: Arc::new(HashMap::new()),
+            claim_conflict_ids: Arc::new(std::collections::HashSet::from([7])),
+            triage_attempts: Arc::new(StdMutex::new(Vec::new())),
+        };
+        let response = receive_actor_inbox(
+            &service,
+            ActorInboxRequest {
+                run_id: "run-1".to_string(),
+                actor_id: "worker".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: Some(vec![ActorMessageStatus::Pending]),
+            },
+        )
+        .await
+        .expect("receive inbox with claim conflict");
+        assert_eq!(response.pending_count, 0);
+        assert_eq!(response.messages.len(), 1);
+        assert_eq!(response.messages[0].status, ActorMessageStatus::Delivered);
+        assert_eq!(
+            response.messages[0].handling_disposition,
+            ActorMessageHandlingDisposition::Watching
+        );
+        assert_eq!(
+            *service.acked_ids.lock().expect("acquire acked ids"),
+            vec![7]
+        );
+        assert_eq!(
+            *service
+                .triage_attempts
+                .lock()
+                .expect("acquire triage attempts"),
+            vec![
+                (7, ActorMessageHandlingDisposition::Claimed),
+                (7, ActorMessageHandlingDisposition::Watching),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn ack_actor_messages_batches_requests_in_order() {
         let service = MockMailboxService {
             inbox: vec![
@@ -1987,6 +2053,8 @@ mod tests {
             ],
             acked_ids: Arc::new(StdMutex::new(Vec::new())),
             ack_delays_ms: Arc::new(HashMap::new()),
+            claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
+            triage_attempts: Arc::new(StdMutex::new(Vec::new())),
         };
         let responses = ack_actor_messages(&service, "run-1", "worker", &[11, 12])
             .await
