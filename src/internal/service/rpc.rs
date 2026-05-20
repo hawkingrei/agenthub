@@ -1,5 +1,49 @@
 use super::*;
 
+fn actor_message_to_proto(message: agenthub_team_actor::ActorMessageRecord) -> ActorMessage {
+    let route_json = message
+        .route
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let payload_json = serde_json::to_string(&message.payload).unwrap_or_default();
+    ActorMessage {
+        message_id: message.message_id,
+        run_id: message.run_id,
+        from_actor_id: message.from_actor_id,
+        to_actor_id: message.to_actor_id,
+        channel: message.channel,
+        transport: message.transport.as_str().to_string(),
+        route_json,
+        payload_json,
+        status: message.status.as_str().to_string(),
+        created_at: message.created_at,
+        delivered_at: message.delivered_at.unwrap_or_default(),
+        idempotency_key: String::new(),
+        from_peer_id: message.from_peer_id,
+        to_peer_id: message.to_peer_id,
+        message_kind: message.message_kind.as_str().to_string(),
+        handling_disposition: message.handling_disposition.as_str().to_string(),
+        handled_by_actor_id: message.handled_by_actor_id.unwrap_or_default(),
+        handled_at: message.handled_at.unwrap_or_default(),
+        thread_topic_key: message.thread_topic_key.unwrap_or_default(),
+        thread_claim_status: message
+            .thread_claim_status
+            .map(|status| status.as_str().to_string())
+            .unwrap_or_default(),
+        thread_owner_actor_id: message.thread_owner_actor_id.unwrap_or_default(),
+        thread_lease_expires_at: message.thread_lease_expires_at.unwrap_or_default(),
+        linked_task_id: message.linked_task_id.unwrap_or_default(),
+        linked_task_relation: message
+            .linked_task_relation
+            .map(|relation| relation.as_str().to_string())
+            .unwrap_or_default(),
+    }
+}
+
 #[tonic::async_trait]
 impl TeamInternalControl for TeamInternalControlService {
     async fn send_actor_message(
@@ -34,6 +78,8 @@ impl TeamInternalControl for TeamInternalControlService {
         let idempotency_key = optional_trimmed(&payload.idempotency_key);
         let from_peer_id = optional_trimmed(&payload.from_peer_id);
         let to_peer_id = optional_trimmed(&payload.to_peer_id);
+        let message_kind = optional_trimmed(&payload.message_kind)
+            .map(agenthub_team_actor::parse_actor_message_kind);
 
         if let Some(replica) = channel_replica.as_ref() {
             self.validate_channel_replica_request(run_id, from_actor_id, replica)
@@ -56,6 +102,7 @@ impl TeamInternalControl for TeamInternalControlService {
                 route,
                 payload: payload_json.clone(),
                 idempotency_key: idempotency_key.map(str::to_string),
+                message_kind,
             })
             .await
             .map_err(map_actor_service_status)?;
@@ -163,29 +210,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let messages = response
             .messages
             .into_iter()
-            .map(|message| ActorMessage {
-                message_id: message.message_id,
-                run_id: message.run_id,
-                from_actor_id: message.from_actor_id,
-                to_actor_id: message.to_actor_id,
-                channel: message.channel,
-                transport: message.transport.as_str().to_string(),
-                route_json: message
-                    .route
-                    .as_ref()
-                    .map(serde_json::to_string)
-                    .transpose()
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-                payload_json: serde_json::to_string(&message.payload).unwrap_or_default(),
-                status: message.status.as_str().to_string(),
-                created_at: message.created_at,
-                delivered_at: message.delivered_at.unwrap_or_default(),
-                idempotency_key: String::new(),
-                from_peer_id: message.from_peer_id,
-                to_peer_id: message.to_peer_id,
-            })
+            .map(actor_message_to_proto)
             .collect::<Vec<_>>();
 
         Ok(Response::new(ListActorInboxResponse {
@@ -226,46 +251,103 @@ impl TeamInternalControl for TeamInternalControlService {
             })
             .await
             .map_err(map_actor_service_status)?;
-        let acked_message = message.message;
-        let route_json = acked_message
-            .route
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-        let payload_json = serde_json::to_string(&acked_message.payload).unwrap_or_default();
-        let status = acked_message.status.as_str().to_string();
-        let delivered_at = acked_message.delivered_at.unwrap_or(message.acked_at);
-        let created_at = acked_message.created_at;
-        let message_id = acked_message.message_id;
-        let run_id = acked_message.run_id;
-        let from_actor_id = acked_message.from_actor_id;
-        let to_actor_id = acked_message.to_actor_id;
-        let from_peer_id = acked_message.from_peer_id;
-        let to_peer_id = acked_message.to_peer_id;
-        let channel = acked_message.channel;
-        let transport = acked_message.transport.as_str().to_string();
-
         Ok(Response::new(AckActorMessageResponse {
-            message: Some(ActorMessage {
-                message_id,
-                run_id,
-                from_actor_id,
-                to_actor_id,
-                channel,
-                transport,
-                route_json,
-                payload_json,
-                status,
-                created_at,
-                delivered_at,
-                idempotency_key: String::new(),
-                from_peer_id,
-                to_peer_id,
-            }),
+            message: Some(actor_message_to_proto(message.message)),
             status_changed: message.status_changed,
+        }))
+    }
+
+    async fn triage_actor_message(
+        &self,
+        request: Request<TriageActorMessageRequest>,
+    ) -> Result<Response<TriageActorMessageResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::MessageAck)?;
+        let payload = request.into_inner();
+
+        let run_id = required_field(&payload.run_id, "run_id")?;
+        self.authz.ensure_run_scope(&principal, run_id)?;
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+
+        if payload.message_id <= 0 {
+            return Err(Status::invalid_argument("message_id must be positive"));
+        }
+        let disposition = agenthub_team_actor::parse_actor_message_handling_disposition(
+            required_field(&payload.disposition, "disposition")?,
+        );
+        let triaged = self
+            .deps
+            .teams
+            .actor_mailbox_service()
+            .actor_triage(ActorTriageRequest {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                message_id: payload.message_id,
+                disposition,
+            })
+            .await
+            .map_err(map_actor_service_status)?;
+        Ok(Response::new(TriageActorMessageResponse {
+            message: Some(actor_message_to_proto(triaged.message)),
+            handling_changed: triaged.handling_changed,
+            triaged_at: triaged.triaged_at,
+        }))
+    }
+
+    async fn link_actor_message_task(
+        &self,
+        request: Request<LinkActorMessageTaskRequest>,
+    ) -> Result<Response<LinkActorMessageTaskResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamTaskWrite)?;
+        let payload = request.into_inner();
+
+        let run_id = required_field(&payload.run_id, "run_id")?;
+        self.authz.ensure_run_scope(&principal, run_id)?;
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+
+        if payload.message_id <= 0 {
+            return Err(Status::invalid_argument("message_id must be positive"));
+        }
+        let task_id = required_field(&payload.task_id, "task_id")?;
+        let relation = agenthub_team_actor::parse_actor_message_task_relation(required_field(
+            &payload.relation,
+            "relation",
+        )?)
+        .ok_or_else(|| {
+            Status::invalid_argument(
+                "relation must be one of spawned_task, related_task, evidence_for_task",
+            )
+        })?;
+
+        let linked = self
+            .deps
+            .teams
+            .actor_mailbox_service()
+            .actor_task_link(ActorTaskLinkRequest {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                message_id: payload.message_id,
+                task_id: task_id.to_string(),
+                relation,
+            })
+            .await
+            .map_err(map_actor_service_status)?;
+
+        Ok(Response::new(LinkActorMessageTaskResponse {
+            message: Some(actor_message_to_proto(linked.message)),
+            task_id: linked.task_id,
+            relation: linked.relation.as_str().to_string(),
+            linked_at: linked.linked_at,
+            created: linked.created,
         }))
     }
 

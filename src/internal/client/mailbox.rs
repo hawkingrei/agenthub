@@ -2,8 +2,12 @@ use std::path::Path;
 
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse,
-    ActorMailboxService, ActorMessageRecord, ActorMessageStatus, ActorMessageTransport,
-    ActorSendRequest, ActorSendResponse, ActorServiceError, ActorServiceErrorCode,
+    ActorMailboxService, ActorMessageHandlingDisposition, ActorMessageRecord, ActorMessageStatus,
+    ActorMessageTaskRelation, ActorMessageTransport, ActorSendRequest, ActorSendResponse,
+    ActorServiceError, ActorServiceErrorCode, ActorTaskLinkRequest, ActorTaskLinkResponse,
+    ActorTriageRequest, ActorTriageResponse, infer_actor_message_kind,
+    parse_actor_message_handling_disposition, parse_actor_message_kind,
+    parse_actor_message_task_relation, parse_actor_thread_claim_status,
 };
 use async_trait::async_trait;
 use tonic::Code;
@@ -11,8 +15,10 @@ use tonic::Code;
 use super::super::p2p::P2PTransport;
 use super::super::proto::agenthub::internal::v1::{
     AckActorMessageRequest as GrpcAckActorMessageRequest, ActorMessage as GrpcActorMessage,
+    LinkActorMessageTaskRequest as GrpcLinkActorMessageTaskRequest,
     ListActorInboxRequest as GrpcListActorInboxRequest,
     SendActorMessageRequest as GrpcSendActorMessageRequest,
+    TriageActorMessageRequest as GrpcTriageActorMessageRequest,
 };
 use super::{
     InternalGrpcMailboxClient, format_internal_grpc_status_message, timeout_internal_grpc_call,
@@ -75,7 +81,24 @@ pub(super) fn parse_message(
         transport: parse_transport(&message.transport),
         route,
         payload,
+        message_kind: parse_actor_message_kind(&message.message_kind),
         status: parse_status(&message.status),
+        handling_disposition: parse_actor_message_handling_disposition(
+            &message.handling_disposition,
+        ),
+        handled_by_actor_id: (!message.handled_by_actor_id.trim().is_empty())
+            .then_some(message.handled_by_actor_id),
+        thread_topic_key: (!message.thread_topic_key.trim().is_empty())
+            .then_some(message.thread_topic_key),
+        thread_claim_status: parse_actor_thread_claim_status(&message.thread_claim_status),
+        thread_owner_actor_id: (!message.thread_owner_actor_id.trim().is_empty())
+            .then_some(message.thread_owner_actor_id),
+        thread_lease_expires_at: (message.thread_lease_expires_at > 0)
+            .then_some(message.thread_lease_expires_at),
+        linked_task_id: (!message.linked_task_id.trim().is_empty())
+            .then_some(message.linked_task_id),
+        linked_task_relation: parse_actor_message_task_relation(&message.linked_task_relation),
+        handled_at: (message.handled_at > 0).then_some(message.handled_at),
         created_at: message.created_at,
         delivered_at: (message.delivered_at > 0).then_some(message.delivered_at),
     })
@@ -109,6 +132,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
         let request_channel = request.channel.clone();
         let request_transport = request.transport.clone();
         let request_channel_id = request.channel_id.clone();
+        let request_message_kind = request.message_kind.clone();
         let grpc_channel = request_channel
             .clone()
             .unwrap_or_else(|| "default".to_string());
@@ -136,24 +160,35 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
             })?
             .unwrap_or_default();
         let mut client = self.client();
-        let response = timeout_internal_grpc_call(client.send_actor_message(self.request(
-            GrpcSendActorMessageRequest {
-                run_id: request.run_id.clone(),
-                from_actor_id: request.from_actor_id.clone(),
-                to_actor_id: to_actor_id.clone(),
-                channel: grpc_channel,
-                transport: grpc_transport,
-                route_json,
-                payload_json,
-                idempotency_key: request.idempotency_key.unwrap_or_default(),
-                from_peer_id: request.from_peer_id.clone().unwrap_or_default(),
-                to_peer_id: request.to_peer_id.clone().unwrap_or_default(),
-                channel_id: request_channel_id.unwrap_or_default(),
-            },
-        )?))
+        let response = timeout_internal_grpc_call(
+            client.send_actor_message(
+                self.request(GrpcSendActorMessageRequest {
+                    run_id: request.run_id.clone(),
+                    from_actor_id: request.from_actor_id.clone(),
+                    to_actor_id: to_actor_id.clone(),
+                    channel: grpc_channel,
+                    transport: grpc_transport,
+                    route_json,
+                    payload_json,
+                    idempotency_key: request.idempotency_key.unwrap_or_default(),
+                    from_peer_id: request.from_peer_id.clone().unwrap_or_default(),
+                    to_peer_id: request.to_peer_id.clone().unwrap_or_default(),
+                    channel_id: request_channel_id.unwrap_or_default(),
+                    message_kind: request_message_kind
+                        .as_ref()
+                        .map(|kind| kind.as_str().to_string())
+                        .unwrap_or_default(),
+                })?,
+            ),
+        )
         .await
         .map_err(map_grpc_status)?
         .into_inner();
+        let fallback_message_kind = infer_actor_message_kind(
+            &request.from_actor_id,
+            &request.payload,
+            request_message_kind,
+        );
         let message = if response.message_json.trim().is_empty() {
             ActorMessageRecord {
                 message_id: response.message_id,
@@ -172,7 +207,17 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 transport: request_transport.unwrap_or(ActorMessageTransport::Local),
                 route: request.route,
                 payload: request.payload,
+                message_kind: fallback_message_kind,
                 status: parse_status(&response.status),
+                handling_disposition: ActorMessageHandlingDisposition::Untriaged,
+                handled_by_actor_id: None,
+                thread_topic_key: None,
+                thread_claim_status: None,
+                thread_owner_actor_id: None,
+                thread_lease_expires_at: None,
+                linked_task_id: None,
+                linked_task_relation: None,
+                handled_at: None,
                 created_at: 0,
                 delivered_at: None,
             }
@@ -252,6 +297,67 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
             state: message.status.clone(),
             acked_at: message.delivered_at.unwrap_or(message.created_at),
             status_changed: response.status_changed,
+            message,
+        })
+    }
+
+    async fn actor_triage(
+        &self,
+        request: ActorTriageRequest,
+    ) -> Result<ActorTriageResponse, ActorServiceError> {
+        let mut client = self.client();
+        let response = timeout_internal_grpc_call(client.triage_actor_message(self.request(
+            GrpcTriageActorMessageRequest {
+                run_id: request.run_id,
+                actor_id: request.actor_id,
+                message_id: request.message_id,
+                disposition: request.disposition.as_str().to_string(),
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status)?
+        .into_inner();
+        let message = response.message.ok_or_else(|| {
+            ActorServiceError::new(ActorServiceErrorCode::Internal, "missing triage message")
+        })?;
+        let message = parse_message(message)?;
+        Ok(ActorTriageResponse {
+            message_id: message.message_id,
+            disposition: message.handling_disposition.clone(),
+            triaged_at: response.triaged_at,
+            handling_changed: response.handling_changed,
+            message,
+        })
+    }
+
+    async fn actor_task_link(
+        &self,
+        request: ActorTaskLinkRequest,
+    ) -> Result<ActorTaskLinkResponse, ActorServiceError> {
+        let mut client = self.client();
+        let response = timeout_internal_grpc_call(client.link_actor_message_task(self.request(
+            GrpcLinkActorMessageTaskRequest {
+                run_id: request.run_id,
+                actor_id: request.actor_id,
+                message_id: request.message_id,
+                task_id: request.task_id,
+                relation: request.relation.as_str().to_string(),
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status)?
+        .into_inner();
+        let message = response.message.ok_or_else(|| {
+            ActorServiceError::new(ActorServiceErrorCode::Internal, "missing task link message")
+        })?;
+        let message = parse_message(message)?;
+        Ok(ActorTaskLinkResponse {
+            message_id: message.message_id,
+            task_id: response.task_id,
+            relation: parse_actor_message_task_relation(&response.relation)
+                .unwrap_or(ActorMessageTaskRelation::RelatedTask),
+            linked_at: response.linked_at,
+            created: response.created,
             message,
         })
     }

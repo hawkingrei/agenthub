@@ -2,7 +2,8 @@ use serde_json::Value;
 
 use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskPriority, TeamTaskStatus};
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, build_default_actor_channel_idempotency_key,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorMessageHandlingDisposition,
+    ActorMessageTaskRelation, build_default_actor_channel_idempotency_key,
     build_default_actor_message_idempotency_key,
 };
 
@@ -14,7 +15,7 @@ use crate::actor_runtime_env::{
 #[cfg(test)]
 use agenthub_team_actor::{
     ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorServiceError,
-    ActorServiceErrorCode,
+    ActorServiceErrorCode, ActorTriageRequest, ActorTriageResponse,
 };
 
 const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
@@ -22,6 +23,8 @@ const TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS: i64 = 1;
 const ACTOR_HELP_TOPIC_INBOX: &str = "inbox";
 const ACTOR_HELP_TOPIC_RECEIVE: &str = "receive";
 const ACTOR_HELP_TOPIC_ACK: &str = "ack";
+const ACTOR_HELP_TOPIC_TRIAGE: &str = "triage";
+const ACTOR_HELP_TOPIC_TASK_LINK: &str = "task-link";
 const ACTOR_HELP_TOPIC_SEND: &str = "send";
 const ACTOR_HELP_TOPIC_PERMISSION_REVIEW_RESPOND: &str = "permission-review-respond";
 const ACTOR_HELP_TOPIC_TEAM_TASK_SHOW: &str = "team-task-show";
@@ -44,6 +47,8 @@ const ACTOR_HELP_TOPICS: &[&str] = &[
     ACTOR_HELP_TOPIC_INBOX,
     ACTOR_HELP_TOPIC_RECEIVE,
     ACTOR_HELP_TOPIC_ACK,
+    ACTOR_HELP_TOPIC_TRIAGE,
+    ACTOR_HELP_TOPIC_TASK_LINK,
     ACTOR_HELP_TOPIC_SEND,
     "time-trigger-set",
     "time-trigger-list",
@@ -170,6 +175,19 @@ enum ActorCommand {
         run_id: Option<String>,
         actor_id: String,
         message_ids: Vec<i64>,
+    },
+    Triage {
+        run_id: Option<String>,
+        actor_id: String,
+        message_ids: Vec<i64>,
+        disposition: ActorMessageHandlingDisposition,
+    },
+    TaskLink {
+        run_id: Option<String>,
+        actor_id: String,
+        message_ids: Vec<i64>,
+        task_id: String,
+        relation: ActorMessageTaskRelation,
     },
     TeamTasks {
         query: TeamTaskListQuery,
@@ -444,6 +462,56 @@ mod tests {
                 },
             })
         }
+
+        async fn actor_triage(
+            &self,
+            request: ActorTriageRequest,
+        ) -> Result<ActorTriageResponse, ActorServiceError> {
+            let message = self
+                .inbox
+                .iter()
+                .find(|item| item.message_id == request.message_id)
+                .expect("find triaged message")
+                .clone();
+            Ok(ActorTriageResponse {
+                message_id: message.message_id,
+                disposition: request.disposition.clone(),
+                triaged_at: 100,
+                handling_changed: true,
+                message: agenthub_team_actor::ActorMessageRecord {
+                    status: ActorMessageStatus::Delivered,
+                    delivered_at: Some(100),
+                    handling_disposition: request.disposition,
+                    handled_by_actor_id: Some(message.to_actor_id.clone()),
+                    handled_at: Some(100),
+                    ..message
+                },
+            })
+        }
+
+        async fn actor_task_link(
+            &self,
+            request: agenthub_team_actor::ActorTaskLinkRequest,
+        ) -> Result<agenthub_team_actor::ActorTaskLinkResponse, ActorServiceError> {
+            let message = self
+                .inbox
+                .iter()
+                .find(|item| item.message_id == request.message_id)
+                .expect("find linked message")
+                .clone();
+            Ok(agenthub_team_actor::ActorTaskLinkResponse {
+                message_id: message.message_id,
+                task_id: request.task_id.clone(),
+                relation: request.relation.clone(),
+                linked_at: 100,
+                created: true,
+                message: agenthub_team_actor::ActorMessageRecord {
+                    linked_task_id: Some(request.task_id),
+                    linked_task_relation: Some(request.relation),
+                    ..message
+                },
+            })
+        }
     }
 
     #[async_trait::async_trait]
@@ -481,6 +549,33 @@ mod tests {
                 })
             }
         }
+
+        async fn actor_triage(
+            &self,
+            request: ActorTriageRequest,
+        ) -> Result<ActorTriageResponse, ActorServiceError> {
+            Ok(ActorTriageResponse {
+                message_id: request.message_id,
+                disposition: request.disposition,
+                triaged_at: 100,
+                handling_changed: true,
+                message: mock_inbox_message(request.message_id, ActorMessageStatus::Delivered),
+            })
+        }
+
+        async fn actor_task_link(
+            &self,
+            request: agenthub_team_actor::ActorTaskLinkRequest,
+        ) -> Result<agenthub_team_actor::ActorTaskLinkResponse, ActorServiceError> {
+            Ok(agenthub_team_actor::ActorTaskLinkResponse {
+                message_id: request.message_id,
+                task_id: request.task_id,
+                relation: request.relation,
+                linked_at: 100,
+                created: true,
+                message: mock_inbox_message(request.message_id, ActorMessageStatus::Delivered),
+            })
+        }
     }
 
     fn mock_inbox_message(
@@ -500,7 +595,17 @@ mod tests {
             transport: agenthub_team_actor::ActorMessageTransport::Local,
             route: None,
             payload: serde_json::json!({"type":"chat_message","text":"hello"}),
+            message_kind: agenthub_team_actor::ActorMessageKind::CoordinationRequest,
             status,
+            handling_disposition: ActorMessageHandlingDisposition::Untriaged,
+            handled_by_actor_id: None,
+            thread_topic_key: None,
+            thread_claim_status: None,
+            thread_owner_actor_id: None,
+            thread_lease_expires_at: None,
+            linked_task_id: None,
+            linked_task_relation: None,
+            handled_at: None,
             created_at: 1,
             delivered_at: None,
         }
@@ -1134,6 +1239,90 @@ mod tests {
     }
 
     #[test]
+    fn parse_triage_accepts_disposition_and_message_ids() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-triage");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+        }
+        let args = vec![
+            "triage".to_string(),
+            "--disposition".to_string(),
+            "watch".to_string(),
+            "--message-id".to_string(),
+            "41".to_string(),
+            "42".to_string(),
+        ];
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse triage");
+        match parsed {
+            ActorCommand::Triage {
+                run_id,
+                actor_id,
+                message_ids,
+                disposition,
+            } => {
+                assert_eq!(run_id.as_deref(), Some("run-triage"));
+                assert_eq!(actor_id, "worker");
+                assert_eq!(message_ids, vec![41, 42]);
+                assert_eq!(disposition, ActorMessageHandlingDisposition::Watching);
+            }
+            _ => panic!("expected triage command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_task_link_accepts_relation_and_message_ids() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-task-link");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+        }
+        let args = vec![
+            "task-link".to_string(),
+            "--task-id".to_string(),
+            "task-1".to_string(),
+            "--relation".to_string(),
+            "spawned".to_string(),
+            "--message-id".to_string(),
+            "41".to_string(),
+            "42".to_string(),
+        ];
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse task-link");
+        match parsed {
+            ActorCommand::TaskLink {
+                run_id,
+                actor_id,
+                message_ids,
+                task_id,
+                relation,
+            } => {
+                assert_eq!(run_id.as_deref(), Some("run-task-link"));
+                assert_eq!(actor_id, "worker");
+                assert_eq!(message_ids, vec![41, 42]);
+                assert_eq!(task_id, "task-1");
+                assert_eq!(relation, ActorMessageTaskRelation::SpawnedTask);
+            }
+            _ => panic!("expected task-link command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
     fn parse_ack_allows_team_scope_without_current_run_id() {
         let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
@@ -1740,6 +1929,10 @@ mod tests {
         assert_eq!(response.messages.len(), 1);
         assert_eq!(response.messages[0].status, ActorMessageStatus::Delivered);
         assert_eq!(
+            response.messages[0].handling_disposition,
+            ActorMessageHandlingDisposition::Claimed
+        );
+        assert_eq!(
             *service.acked_ids.lock().expect("acquire acked ids"),
             vec![7]
         );
@@ -1777,6 +1970,9 @@ mod tests {
                 .iter()
                 .all(|message| message.status == ActorMessageStatus::Delivered)
         );
+        assert!(response.messages.iter().all(
+            |message| message.handling_disposition == ActorMessageHandlingDisposition::Claimed
+        ));
         let mut acked_ids = service.acked_ids.lock().expect("acquire acked ids").clone();
         acked_ids.sort_unstable();
         assert_eq!(acked_ids, vec![7, 8]);

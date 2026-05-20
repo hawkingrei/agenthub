@@ -1,7 +1,10 @@
 use serde_json::Value;
 use sqlx::Row;
 
-use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, infer_actor_identity_kind};
+use agenthub_team_actor::{
+    ACTOR_MAIN_PEER_ID, infer_actor_identity_kind, parse_actor_message_handling_disposition,
+    parse_actor_message_kind,
+};
 
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
@@ -136,6 +139,8 @@ pub(super) fn parse_team_actor_message_row(
     let payload_json: String = row.get("payload_json");
     let payload: Value = serde_json::from_str(&payload_json)?;
     let transport_raw: String = row.get("transport");
+    let message_kind_raw: String = row.try_get("message_kind").unwrap_or_default();
+    let handling_disposition_raw: String = row.try_get("handling_disposition").unwrap_or_default();
     let status_raw: String = row.get("status");
     let from_actor_id: String = row.get("from_actor_id");
     let from_peer_id: String = row
@@ -158,7 +163,17 @@ pub(super) fn parse_team_actor_message_row(
         transport: team_actor_message_transport_from_str(&transport_raw),
         route,
         payload,
+        message_kind: parse_actor_message_kind(&message_kind_raw),
         status: team_actor_message_status_from_str(&status_raw),
+        handling_disposition: parse_actor_message_handling_disposition(&handling_disposition_raw),
+        handled_by_actor_id: row.try_get("handled_by_actor_id").unwrap_or(None),
+        thread_topic_key: None,
+        thread_claim_status: None,
+        thread_owner_actor_id: None,
+        thread_lease_expires_at: None,
+        linked_task_id: None,
+        linked_task_relation: None,
+        handled_at: row.try_get("handled_at").unwrap_or(None),
         created_at: row.get("created_at"),
         delivered_at: row.try_get("delivered_at")?,
     })

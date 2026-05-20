@@ -300,6 +300,7 @@ impl TeamRemoteRelayAdapter {
                     "remote-relay:{}:{}",
                     message.run_id, message.message_id
                 )),
+                message_kind: Some(message.message_kind.clone()),
             })
             .await
             .map_err(map_grpc_actor_error)?;
@@ -974,7 +975,17 @@ mod tests {
             transport: TeamActorMessageTransport::Remote,
             route: Some(json!(route)),
             payload: json!({"type":"chat_message","text":"hello"}),
+            message_kind: agenthub_team_actor::ActorMessageKind::CoordinationRequest,
             status: TeamActorMessageStatus::Pending,
+            handling_disposition: agenthub_team_actor::ActorMessageHandlingDisposition::Untriaged,
+            handled_by_actor_id: None,
+            thread_topic_key: None,
+            thread_claim_status: None,
+            thread_owner_actor_id: None,
+            thread_lease_expires_at: None,
+            linked_task_id: None,
+            linked_task_relation: None,
+            handled_at: None,
             created_at: Utc::now().timestamp(),
             delivered_at: None,
         }

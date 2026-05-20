@@ -137,6 +137,7 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
                 from_peer_id: "node-a".to_string(),
                 to_peer_id: "main".to_string(),
                 channel_id: String::new(),
+                message_kind: String::new(),
             },
             &token,
         ),
@@ -244,6 +245,124 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
 }
 
 #[tokio::test]
+async fn internal_grpc_mailbox_triage_and_task_link_are_wire_compatible() {
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let authz = build_authz();
+    let token = issue_token(&authz, InternalRole::Coordinator, None, Some(&run.id));
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let send = TeamInternalControl::send_actor_message(
+        &service,
+        authenticated_request(
+            SendActorMessageRequest {
+                run_id: run.id.clone(),
+                from_actor_id: "planner".to_string(),
+                to_actor_id: "reviewer".to_string(),
+                channel: "coordination".to_string(),
+                transport: "local".to_string(),
+                route_json: String::new(),
+                payload_json:
+                    r#"{"text":"investigate mailbox item","correlation_id":"wire-link-1"}"#
+                        .to_string(),
+                idempotency_key: "internal-grpc-triage-link-1".to_string(),
+                from_peer_id: "main".to_string(),
+                to_peer_id: "main".to_string(),
+                channel_id: String::new(),
+                message_kind: "coordination_request".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("send actor message")
+    .into_inner();
+
+    let triaged = TeamInternalControl::triage_actor_message(
+        &service,
+        authenticated_request(
+            TriageActorMessageRequest {
+                run_id: run.id.clone(),
+                actor_id: "reviewer".to_string(),
+                message_id: send.message_id,
+                disposition: "claimed".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("triage actor message")
+    .into_inner();
+    assert!(triaged.handling_changed);
+    let triaged_message = triaged.message.expect("triaged message");
+    assert_eq!(triaged_message.message_id, send.message_id);
+    assert_eq!(triaged_message.handling_disposition, "claimed");
+    assert_eq!(triaged_message.thread_claim_status, "claimed");
+    assert_eq!(triaged_message.thread_owner_actor_id, "reviewer");
+    assert_eq!(triaged_message.thread_topic_key, "correlation:wire-link-1");
+    assert!(triaged_message.thread_lease_expires_at >= triaged_message.created_at);
+
+    let created = TeamInternalControl::create_team_task(
+        &service,
+        authenticated_request(
+            CreateTeamTaskRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                title: "Investigate linked mailbox message".to_string(),
+                status: "open".to_string(),
+                topic: "mailbox".to_string(),
+                context_json: "{}".to_string(),
+                priority: "medium".to_string(),
+                assigned_member_id: "reviewer".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("create team task")
+    .into_inner();
+    let created_json: serde_json::Value =
+        serde_json::from_str(&created.output_json).expect("decode created task output");
+    let task_id = created_json["task"]["id"]
+        .as_str()
+        .expect("created task id")
+        .to_string();
+
+    let linked = TeamInternalControl::link_actor_message_task(
+        &service,
+        authenticated_request(
+            LinkActorMessageTaskRequest {
+                run_id: run.id.clone(),
+                actor_id: "reviewer".to_string(),
+                message_id: send.message_id,
+                task_id: task_id.clone(),
+                relation: "related_task".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("link actor message task")
+    .into_inner();
+    assert!(linked.created);
+    assert_eq!(linked.task_id, task_id);
+    assert_eq!(linked.relation, "related_task");
+    let linked_message = linked.message.expect("linked message");
+    assert_eq!(linked_message.message_id, send.message_id);
+    assert_eq!(linked_message.linked_task_id, task_id);
+    assert_eq!(linked_message.linked_task_relation, "related_task");
+    assert_eq!(linked_message.thread_claim_status, "claimed");
+    assert_eq!(linked_message.thread_owner_actor_id, "reviewer");
+    assert_eq!(linked_message.thread_topic_key, "correlation:wire-link-1");
+}
+
+#[tokio::test]
 async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
@@ -321,6 +440,7 @@ async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
                 from_peer_id: "main".to_string(),
                 to_peer_id: "main".to_string(),
                 channel_id: String::new(),
+                message_kind: String::new(),
             },
             &token,
         ),
@@ -414,6 +534,7 @@ async fn internal_grpc_mailbox_send_rejects_channel_replica_payload_with_unknown
                 from_peer_id: "main".to_string(),
                 to_peer_id: "main".to_string(),
                 channel_id: String::new(),
+                message_kind: String::new(),
             },
             &token,
         ),
@@ -507,6 +628,7 @@ async fn internal_grpc_mailbox_send_rejects_channel_replica_payload_with_mismatc
                 from_peer_id: "main".to_string(),
                 to_peer_id: "main".to_string(),
                 channel_id: String::new(),
+                message_kind: String::new(),
             },
             &token,
         ),
@@ -599,6 +721,7 @@ async fn internal_grpc_mailbox_send_rejects_channel_replica_payload_with_mismatc
                 from_peer_id: "main".to_string(),
                 to_peer_id: "main".to_string(),
                 channel_id: String::new(),
+                message_kind: String::new(),
             },
             &token,
         ),
@@ -653,6 +776,7 @@ async fn internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context()
                 from_peer_id: "main".to_string(),
                 to_peer_id: "main".to_string(),
                 channel_id: String::new(),
+                message_kind: String::new(),
             },
             &token,
         ),
@@ -711,6 +835,7 @@ async fn internal_grpc_mailbox_send_rejects_channel_replica_payload_without_corr
                 from_peer_id: "main".to_string(),
                 to_peer_id: "main".to_string(),
                 channel_id: String::new(),
+                message_kind: String::new(),
             },
             &token,
         ),

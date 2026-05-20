@@ -1,12 +1,13 @@
 ---
 name: team-actor-mailbox
-description: Team mailbox transport contract for inbox, receive, send, and ack.
+description: Team mailbox transport, triage, claim, and task-link contract.
 ---
 
 # Team Actor Mailbox
 
-Use this skill when you need Team mailbox routing, delivery, replay, or ack rules. It is the
-protocol reference for `actor inbox`, `actor receive`, `actor send`, and `actor ack`.
+Use this skill when you need Team mailbox routing, delivery, replay, triage, or task-link rules.
+It is the protocol reference for `actor inbox`, `actor receive`, `actor triage`, `actor task-link`,
+`actor send`, and `actor ack`.
 
 For Team runtime/roster context, use the single `agenthub actor team-members`
 command. It exposes runtime summary, roster/card data, and per-member
@@ -90,20 +91,24 @@ Recommended fields:
    - Add `--include-delivered` only for explicit historical replay/debugging after current unread work is already visible.
 2. Accept pending mailbox work for the current actor:
    `agenthub actor receive --limit 50`
-3. Parse accepted message payload and validate required fields before acting.
-4. For human-readable coordination, prefer markdown text and keep the source in a file:
+3. Triage read-only mailbox items without mutating transport delivery semantics when they are not immediate accept-and-consume work:
+   `agenthub actor triage --disposition watch --message-id "$MESSAGE_ID"`
+4. Attach durable task ownership when the mailbox item becomes a canonical execution lane:
+   `agenthub actor task-link --message-id "$MESSAGE_ID" --task-id "$TASK_ID" --relation related`
+5. Parse accepted message payload and validate required fields before acting.
+6. For human-readable coordination, prefer markdown text and keep the source in a file:
    `agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --text-file .agenthubmemory/mailbox/outbox/status-update.md`
-5. Use structured payload files only when the receiver truly needs machine-readable fields:
+7. Use structured payload files only when the receiver truly needs machine-readable fields:
    `agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-file .agenthubmemory/mailbox/outbox/status-update.json`
-6. Broadcast into the shared Team channel while preserving mentions as metadata:
+8. Broadcast into the shared Team channel while preserving mentions as metadata:
    `agenthub actor send --channel-id all --text-file .agenthubmemory/mailbox/outbox/channel-update.md`
-7. Open a thread for topic-specific deep context rooted in an existing channel message:
+9. Open a thread for topic-specific deep context rooted in an existing channel message:
    `agenthub actor team-thread-open --channel-id all --root-message-id "$ROOT_MESSAGE_ID"`
-8. Reply inside that thread when long evidence, logs, or detailed follow-up are needed:
+10. Reply inside that thread when long evidence, logs, or detailed follow-up are needed:
    `agenthub actor team-thread-reply --channel-id all --root-message-id "$ROOT_MESSAGE_ID" --text-file .agenthubmemory/mailbox/outbox/thread-reply.md`
-9. Escalate to human notifications when urgent coordination cannot wait:
+11. Escalate to human notifications when urgent coordination cannot wait:
    `agenthub actor send --to-actor-id user --text-file .agenthubmemory/mailbox/outbox/human-notification.md`
-10. Direct a single peer when the update does not need channel visibility:
+12. Direct a single peer when the update does not need channel visibility:
    `agenthub actor send --to-actor-id "$PEER_ACTOR_ID" --text-file .agenthubmemory/mailbox/outbox/peer-update.md`
 
 ## Reply Modes
@@ -136,6 +141,12 @@ Recommended fields:
   - other unread mailbox traffic should rely on `actor inbox` / `pending_count` first, then on the
     delayed unread-summary reminder path after ACP output has been idle for a while.
 - Treat `actor receive` as the normal accept-and-consume path.
+- Use `actor triage` when the message is relevant for later observation/ownership state but should not be represented as a raw delivery ack.
+- `actor triage --disposition claim` acquires topic ownership when the message carries a canonical
+  mailbox topic key. If another actor already owns that topic, the command should fail with a
+  concrete conflict and the losing actor should switch to `watch` or wait for release/lease expiry.
+- Use `actor task-link` when mailbox evidence needs a durable task association that should remain
+  queryable without parsing free-form note text.
 - Keep `actor ack` only for repair, recovery, or manual compensation flows.
 - Keep messages idempotent-friendly; include stable identifiers in payloads.
 - If the same assignment is retried, return deterministic status updates.

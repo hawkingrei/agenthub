@@ -14,7 +14,9 @@ use crate::team::{
     TEAM_TASK_PRIORITY_VALUES, TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport,
     TeamTaskListQuery, TeamTaskPriority, TeamTaskStatus,
 };
-use agenthub_team_actor::parse_actor_transport;
+use agenthub_team_actor::{
+    ActorMessageHandlingDisposition, ActorMessageTaskRelation, parse_actor_transport,
+};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -38,6 +40,30 @@ fn parse_json_file(path: &str, field: &str) -> anyhow::Result<Value> {
     let raw = fs::read_to_string(path)
         .map_err(|err| anyhow::anyhow!("failed to read {} file {}: {}", field, path, err))?;
     parse_json(&raw, field)
+}
+
+fn parse_actor_message_disposition(value: &str) -> anyhow::Result<ActorMessageHandlingDisposition> {
+    match value.trim() {
+        "ignore" => Ok(ActorMessageHandlingDisposition::Ignored),
+        "watch" => Ok(ActorMessageHandlingDisposition::Watching),
+        "claim" => Ok(ActorMessageHandlingDisposition::Claimed),
+        "complete" => Ok(ActorMessageHandlingDisposition::Completed),
+        "release" => Ok(ActorMessageHandlingDisposition::Released),
+        other => Err(anyhow::anyhow!(
+            "invalid disposition: {other} (expected one of: ignore, watch, claim, complete, release)"
+        )),
+    }
+}
+
+fn parse_actor_message_task_relation(value: &str) -> anyhow::Result<ActorMessageTaskRelation> {
+    match value.trim() {
+        "spawned" | "spawned_task" => Ok(ActorMessageTaskRelation::SpawnedTask),
+        "related" | "related_task" => Ok(ActorMessageTaskRelation::RelatedTask),
+        "evidence" | "evidence_for_task" => Ok(ActorMessageTaskRelation::EvidenceForTask),
+        other => Err(anyhow::anyhow!(
+            "invalid relation: {other} (expected one of: spawned, related, evidence)"
+        )),
+    }
 }
 
 fn set_unique_json_value(
@@ -1835,6 +1861,128 @@ pub(super) fn parse_actor_command(
                 message_ids: (!message_ids.is_empty())
                     .then_some(message_ids)
                     .ok_or_else(|| anyhow::anyhow!("at least one message_id is required"))?,
+            })
+        }
+        "triage" => {
+            let mut run_id = None;
+            let mut actor_id = None;
+            let mut message_ids = Vec::new();
+            let mut disposition = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--run-id" => {
+                        idx += 1;
+                        run_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+                        );
+                    }
+                    flag @ ("--actor-id" | "--agent-id") => {
+                        idx += 1;
+                        actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
+                    "--message-id" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--message-id requires a value"))?;
+                        message_ids.push(parse_i64(raw, "message_id")?);
+                    }
+                    "--disposition" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--disposition requires a value"))?;
+                        disposition = Some(parse_actor_message_disposition(raw)?);
+                    }
+                    raw if !raw.starts_with('-') => {
+                        message_ids.push(parse_i64(raw, "message_id")?);
+                    }
+                    other => return Err(anyhow::anyhow!("unknown flag for triage: {}", other)),
+                }
+                idx += 1;
+            }
+            Ok(ActorCommand::Triage {
+                run_id: resolve_implicit_inbox_run_id(run_id),
+                actor_id: take_mailbox_actor_id(actor_id)?,
+                message_ids: (!message_ids.is_empty())
+                    .then_some(message_ids)
+                    .ok_or_else(|| anyhow::anyhow!("at least one message_id is required"))?,
+                disposition: disposition
+                    .ok_or_else(|| anyhow::anyhow!("--disposition is required for actor triage"))?,
+            })
+        }
+        "task-link" => {
+            let mut run_id = None;
+            let mut actor_id = None;
+            let mut message_ids = Vec::new();
+            let mut task_id = None;
+            let mut relation = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--run-id" => {
+                        idx += 1;
+                        run_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+                        );
+                    }
+                    flag @ ("--actor-id" | "--agent-id") => {
+                        idx += 1;
+                        actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
+                    "--message-id" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--message-id requires a value"))?;
+                        message_ids.push(parse_i64(raw, "message_id")?);
+                    }
+                    "--task-id" => {
+                        idx += 1;
+                        task_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--task-id requires a value"))?,
+                        );
+                    }
+                    "--relation" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--relation requires a value"))?;
+                        relation = Some(parse_actor_message_task_relation(raw)?);
+                    }
+                    raw if !raw.starts_with('-') => {
+                        message_ids.push(parse_i64(raw, "message_id")?);
+                    }
+                    other => return Err(anyhow::anyhow!("unknown flag for task-link: {}", other)),
+                }
+                idx += 1;
+            }
+            Ok(ActorCommand::TaskLink {
+                run_id: resolve_implicit_inbox_run_id(run_id),
+                actor_id: take_mailbox_actor_id(actor_id)?,
+                message_ids: (!message_ids.is_empty())
+                    .then_some(message_ids)
+                    .ok_or_else(|| anyhow::anyhow!("at least one message_id is required"))?,
+                task_id: task_id.ok_or_else(|| anyhow::anyhow!("--task-id is required"))?,
+                relation: relation
+                    .ok_or_else(|| anyhow::anyhow!("--relation is required for task-link"))?,
             })
         }
         "send" => {

@@ -22,7 +22,8 @@ use agenthub_message_archive::{
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorIdentityKind, ActorInboxRequest,
-    ActorMailboxService, ActorSendRequest, ActorServiceErrorCode,
+    ActorMailboxService, ActorMessageHandlingDisposition, ActorMessageTaskRelation,
+    ActorSendRequest, ActorServiceErrorCode, ActorTaskLinkRequest, ActorTriageRequest,
 };
 use async_trait::async_trait;
 use axum::body::Bytes;
@@ -462,9 +463,13 @@ async fn setup_test_db() -> SqlitePool {
             transport TEXT NOT NULL,
             route_json TEXT,
             payload_json TEXT NOT NULL,
+            message_kind TEXT NOT NULL DEFAULT 'coordination_request',
             group_id TEXT,
             idempotency_key TEXT,
             status TEXT NOT NULL,
+            handling_disposition TEXT NOT NULL DEFAULT 'untriaged',
+            handled_by_actor_id TEXT,
+            handled_at INTEGER,
             created_at INTEGER NOT NULL,
             delivered_at INTEGER,
             relay_attempt INTEGER NOT NULL DEFAULT 0,
@@ -478,6 +483,46 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .expect("create team_actor_messages");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_actor_thread_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            topic_key TEXT NOT NULL,
+            task_id TEXT,
+            root_message_id INTEGER,
+            owner_actor_id TEXT NOT NULL,
+            claim_status TEXT NOT NULL,
+            claimed_message_id INTEGER,
+            claimed_at INTEGER NOT NULL,
+            lease_expires_at INTEGER,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(run_id, topic_key)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_actor_thread_claims");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_actor_message_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            message_id INTEGER NOT NULL,
+            task_id TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            created_by_actor_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE(run_id, message_id, task_id, relation)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_actor_message_links");
 
     sqlx::query(
         r#"
@@ -990,6 +1035,7 @@ async fn send_actor_message_persists_authority_group_id() {
                 "text": "actor message with group"
             }),
             idempotency_key: Some("actor-message-authority-group-1"),
+            message_kind: None,
         })
         .await
         .expect("send actor message");
@@ -1466,6 +1512,7 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
                 "correlation_id": "corr-live-actor"
             }),
             idempotency_key: Some("actor-archive-msg-1"),
+            message_kind: None,
         })
         .await
         .expect("send first actor message");
@@ -1486,6 +1533,7 @@ async fn send_actor_message_dual_writes_created_rows_to_archive() {
                 "correlation_id": "corr-live-actor"
             }),
             idempotency_key: Some("actor-archive-msg-1"),
+            message_kind: None,
         })
         .await
         .expect("send retry actor message");
@@ -1590,6 +1638,7 @@ async fn run_context_read_models_reflect_actor_and_session_state() {
             route: None,
             payload: json!({"type":"chat_message","text":"please take this"}),
             idempotency_key: Some("read-model-pending"),
+            message_kind: None,
         })
         .await
         .expect("send pending actor message");
@@ -1605,6 +1654,7 @@ async fn run_context_read_models_reflect_actor_and_session_state() {
             route: None,
             payload: json!({"type":"chat_message","text":"please review this"}),
             idempotency_key: Some("read-model-delivered"),
+            message_kind: None,
         })
         .await
         .expect("send delivered actor message");
@@ -1860,6 +1910,7 @@ async fn actor_mailbox_run_event_skips_shared_thread_mailbox_runs_in_archive() {
                 "text": "hidden shared thread mailbox event",
             }),
             idempotency_key: Some("shared-thread-mailbox-archive-msg-1"),
+            message_kind: None,
         })
         .await
         .expect("send shared thread mailbox actor message");
@@ -2082,6 +2133,7 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
                 "correlation_id": "corr-migration-actor"
             }),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send actor message");
@@ -2166,6 +2218,7 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
                 "authority_message_id": conversation_message.message_id,
             }),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send hidden actor message");
@@ -6979,6 +7032,7 @@ async fn actor_messages_support_inbox_and_ack_flow() {
             route: None,
             payload: json!({"text":"please review"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send message");
@@ -7000,6 +7054,7 @@ async fn actor_messages_support_inbox_and_ack_flow() {
             route: None,
             payload: json!({"text":"human request"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send human message");
@@ -7106,6 +7161,7 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
             route: None,
             payload: json!({"type":"chat_message","text":"first"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send first message");
@@ -7121,6 +7177,7 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
             route: None,
             payload: json!({"type":"chat_message","text":"second"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send second message");
@@ -7136,6 +7193,7 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
             route: None,
             payload: json!({"type":"  worker_status  ","status":"done"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send other type message");
@@ -7216,6 +7274,7 @@ async fn actor_ack_reports_noop_when_message_is_already_delivered() {
             route: None,
             payload: json!({"type":"chat_message","text":"please review"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send message");
@@ -7274,6 +7333,7 @@ async fn actor_mailbox_service_returns_contract_responses() {
             route: None,
             payload: json!({"text":"please review"}),
             idempotency_key: Some("msg-service-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("actor send");
@@ -7293,6 +7353,7 @@ async fn actor_mailbox_service_returns_contract_responses() {
             route: None,
             payload: json!({"text":"please review"}),
             idempotency_key: Some("msg-service-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("actor send deduped");
@@ -7363,6 +7424,7 @@ async fn actor_mailbox_service_cursor_can_hide_page_messages_without_resetting_p
             route: None,
             payload: json!({"text":"please review"}),
             idempotency_key: Some("msg-cursor-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("actor send");
@@ -7423,6 +7485,7 @@ async fn actor_mailbox_service_include_delivered_keeps_pending_visible_on_first_
                 route: None,
                 payload: json!({"text": format!("message-{idx}")}),
                 idempotency_key: Some(format!("msg-pending-first-{idx}")),
+                message_kind: None,
             })
             .await
             .expect("actor send");
@@ -7459,6 +7522,328 @@ async fn actor_mailbox_service_include_delivered_keeps_pending_visible_on_first_
     assert_eq!(inbox.messages.len(), 1);
     assert_eq!(inbox.messages[0].status, TeamActorMessageStatus::Pending);
     assert_eq!(inbox.messages[0].message_id, latest_pending_id.unwrap());
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_triage_hides_watching_messages_from_unread_snapshot() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-triage-team".to_string(),
+            description: Some("team for mailbox triage unread semantics".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-msg-triage"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+
+    let sent = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({"text":"observe this request"}),
+            idempotency_key: Some("msg-triage-watch-1".to_string()),
+            message_kind: None,
+        })
+        .await
+        .expect("actor send");
+
+    let triaged = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            disposition: ActorMessageHandlingDisposition::Watching,
+        })
+        .await
+        .expect("triage watching");
+    assert_eq!(
+        triaged.disposition,
+        ActorMessageHandlingDisposition::Watching
+    );
+    assert!(triaged.handling_changed);
+    assert_eq!(
+        triaged.message.handled_by_actor_id.as_deref(),
+        Some("reviewer")
+    );
+
+    let unread = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            cursor: None,
+            limit: Some(20),
+            states: None,
+        })
+        .await
+        .expect("unread inbox after watch triage");
+    assert_eq!(unread.pending_count, 0);
+    assert!(unread.messages.is_empty());
+
+    let with_history = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id,
+            actor_id: "reviewer".to_string(),
+            cursor: None,
+            limit: Some(20),
+            states: Some(vec![
+                TeamActorMessageStatus::Pending,
+                TeamActorMessageStatus::Delivered,
+            ]),
+        })
+        .await
+        .expect("history inbox after watch triage");
+    assert_eq!(with_history.messages.len(), 1);
+    assert_eq!(
+        with_history.messages[0].handling_disposition,
+        ActorMessageHandlingDisposition::Watching
+    );
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_claims_topics_and_prevents_parallel_takeover() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-claim-team".to_string(),
+            description: Some("team for mailbox thread claim semantics".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"},
+                    {"member_id":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-msg-claim"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+    let task_title = "Review design".to_string();
+    let (task, _) = manager
+        .create_task_with_metadata(crate::team::TeamTaskCreateInput {
+            team_id: &team.id,
+            title: &task_title,
+            created_by_actor_id: "planner",
+            priority: crate::team::TeamTaskPriority::High,
+            assigned_member_id: Some("reviewer"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: Some("mailbox claim"),
+        })
+        .await
+        .expect("create task");
+
+    let reviewer_message = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "text":"please take point on this topic",
+                "task_id": task.id.clone(),
+                "task_message_id": 77
+            }),
+            idempotency_key: Some("msg-claim-reviewer".to_string()),
+            message_kind: None,
+        })
+        .await
+        .expect("send reviewer message");
+    let worker_message = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("worker".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "text":"same topic for another observer",
+                "task_id": task.id.clone(),
+                "task_message_id": 77
+            }),
+            idempotency_key: Some("msg-claim-worker".to_string()),
+            message_kind: None,
+        })
+        .await
+        .expect("send worker message");
+
+    let reviewer_claim = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: reviewer_message.message_id,
+            disposition: ActorMessageHandlingDisposition::Claimed,
+        })
+        .await
+        .expect("reviewer claim");
+    assert_eq!(
+        reviewer_claim.message.thread_owner_actor_id.as_deref(),
+        Some("reviewer")
+    );
+    assert_eq!(
+        reviewer_claim.message.thread_claim_status,
+        Some(agenthub_team_actor::ActorThreadClaimStatus::Claimed)
+    );
+
+    let err = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "worker".to_string(),
+            message_id: worker_message.message_id,
+            disposition: ActorMessageHandlingDisposition::Claimed,
+        })
+        .await
+        .expect_err("parallel takeover should conflict");
+    assert_eq!(err.code, ActorServiceErrorCode::Conflict);
+    assert!(err.message.contains("reviewer"));
+
+    service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: reviewer_message.message_id,
+            disposition: ActorMessageHandlingDisposition::Released,
+        })
+        .await
+        .expect("release claim");
+
+    let worker_claim = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id,
+            actor_id: "worker".to_string(),
+            message_id: worker_message.message_id,
+            disposition: ActorMessageHandlingDisposition::Claimed,
+        })
+        .await
+        .expect("worker claim after release");
+    assert_eq!(
+        worker_claim.message.thread_owner_actor_id.as_deref(),
+        Some("worker")
+    );
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_task_link_surfaces_durable_task_association() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-task-link-team".to_string(),
+            description: Some("team for mailbox task link semantics".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-task-link"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+    let task_title = "Investigate mailbox".to_string();
+    let (task, _) = manager
+        .create_task_with_metadata(crate::team::TeamTaskCreateInput {
+            team_id: &team.id,
+            title: &task_title,
+            created_by_actor_id: "planner",
+            priority: crate::team::TeamTaskPriority::Medium,
+            assigned_member_id: Some("reviewer"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: Some("task link"),
+        })
+        .await
+        .expect("create task");
+
+    let sent = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({"text":"convert this into a tracked lane"}),
+            idempotency_key: Some("msg-task-link-reviewer".to_string()),
+            message_kind: None,
+        })
+        .await
+        .expect("send mailbox message");
+
+    let linked = service
+        .actor_task_link(ActorTaskLinkRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            task_id: task.id.clone(),
+            relation: ActorMessageTaskRelation::SpawnedTask,
+        })
+        .await
+        .expect("link mailbox message to task");
+    assert!(linked.created);
+    assert_eq!(linked.task_id, task.id);
+    assert_eq!(linked.relation, ActorMessageTaskRelation::SpawnedTask);
+    assert_eq!(
+        linked.message.linked_task_id.as_deref(),
+        Some(task.id.as_str())
+    );
+    assert_eq!(
+        linked.message.linked_task_relation,
+        Some(ActorMessageTaskRelation::SpawnedTask)
+    );
+
+    let link_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM team_actor_message_links WHERE run_id = ?1 AND message_id = ?2 AND task_id = ?3",
+    )
+    .bind(&run.id)
+    .bind(sent.message_id)
+    .bind(&task.id)
+    .fetch_one(&db)
+    .await
+    .expect("count mailbox task links");
+    assert_eq!(link_count, 1);
 }
 
 #[tokio::test]
@@ -7507,6 +7892,7 @@ async fn actor_mailbox_service_channel_send_broadcasts_and_preserves_mentions() 
                 "text":"@reviewer please validate api contract"
             }),
             idempotency_key: Some("msg-channel-mailbox-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send channel mailbox message");
@@ -7626,6 +8012,7 @@ async fn actor_mailbox_service_channel_send_honors_explicit_mentions_without_raw
                 "mentioned_actor_ids":["reviewer"]
             }),
             idempotency_key: Some("msg-channel-explicit-mention-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send explicit mention channel message");
@@ -7699,6 +8086,7 @@ async fn actor_mailbox_service_channel_send_reuses_canonical_message_on_idempote
                     "text":"@reviewer please validate retry behavior"
                 }),
                 idempotency_key: Some("msg-channel-mailbox-idempotent-1".to_string()),
+                message_kind: None,
             })
             .await
             .expect("send channel mailbox message");
@@ -7778,6 +8166,7 @@ async fn actor_mailbox_service_direct_remote_send_requires_relay_route_and_remot
             route: None,
             payload: json!({"text":"please review remotely"}),
             idempotency_key: Some("msg-direct-remote-missing-route".to_string()),
+            message_kind: None,
         })
         .await
         .expect_err("remote direct send without route should fail");
@@ -7800,6 +8189,7 @@ async fn actor_mailbox_service_direct_remote_send_requires_relay_route_and_remot
             route: Some(Value::Null),
             payload: json!({"text":"please review remotely"}),
             idempotency_key: Some("msg-direct-remote-null-route".to_string()),
+            message_kind: None,
         })
         .await
         .expect_err("remote direct send with null route should fail");
@@ -7822,6 +8212,7 @@ async fn actor_mailbox_service_direct_remote_send_requires_relay_route_and_remot
             route: Some(json!({})),
             payload: json!({"text":"please review remotely"}),
             idempotency_key: Some("msg-direct-remote-empty-route".to_string()),
+            message_kind: None,
         })
         .await
         .expect_err("remote direct send with empty route should fail");
@@ -7844,6 +8235,7 @@ async fn actor_mailbox_service_direct_remote_send_requires_relay_route_and_remot
             route: Some(json!({"endpoint":"https://remote.example/mailbox"})),
             payload: json!({"text":"please review remotely"}),
             idempotency_key: Some("msg-direct-remote-main-peer".to_string()),
+            message_kind: None,
         })
         .await
         .expect_err("remote direct send to main peer should fail");
@@ -7866,6 +8258,7 @@ async fn actor_mailbox_service_direct_remote_send_requires_relay_route_and_remot
             route: Some(json!({"endpoint":"https://remote.example/mailbox"})),
             payload: json!({"text":"please review remotely"}),
             idempotency_key: Some("msg-direct-remote-valid".to_string()),
+            message_kind: None,
         })
         .await
         .expect("valid remote direct send");
@@ -8020,6 +8413,7 @@ async fn actor_mailbox_service_channel_send_auto_routes_remote_recipients_over_p
                 "text":"@worker please validate remote relay"
             }),
             idempotency_key: Some("msg-channel-mailbox-p2p-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send p2p channel mailbox message");
@@ -8181,6 +8575,7 @@ async fn actor_mailbox_service_persists_agent_reply_into_shared_thread() {
                 "correlation_id":"corr-1"
             }),
             idempotency_key: Some("msg-shared-thread-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send shared thread reply");
@@ -8287,6 +8682,7 @@ async fn actor_mailbox_service_deduped_shared_thread_reply_does_not_duplicate_co
             route: None,
             payload: json!({"type":"chat_message","text":"hello human"}),
             idempotency_key: Some("msg-shared-thread-dedup".to_string()),
+            message_kind: None,
         })
         .await
         .expect("first shared thread send");
@@ -8303,6 +8699,7 @@ async fn actor_mailbox_service_deduped_shared_thread_reply_does_not_duplicate_co
             route: None,
             payload: json!({"type":"chat_message","text":"hello human"}),
             idempotency_key: Some("msg-shared-thread-dedup".to_string()),
+            message_kind: None,
         })
         .await
         .expect("deduped shared thread send");
@@ -8369,6 +8766,7 @@ async fn actor_mailbox_service_does_not_persist_agent_to_agent_chat_into_shared_
                 "text":"internal review request"
             }),
             idempotency_key: Some("msg-private-chat-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send internal mailbox reply");
@@ -8436,6 +8834,7 @@ async fn actor_mailbox_service_canonicalizes_stringified_json_reply_into_shared_
             route: None,
             payload: json!("{\"type\":\"chat_message\",\"text\":\"hello from string\",\"current_phase\":\"planning\",\"correlation_id\":\"corr-string\"}"),
             idempotency_key: Some("msg-stringified-chat-1".to_string()),
+        message_kind: None,
         })
         .await
         .expect("send stringified shared reply");
@@ -8523,6 +8922,7 @@ async fn actor_mailbox_service_reuses_existing_shared_thread_for_canonical_reply
                 "text":"reuse existing thread"
             }),
             idempotency_key: Some("msg-existing-shared-thread-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send shared thread reply into existing thread");
@@ -8660,6 +9060,7 @@ async fn actor_mailbox_service_prefers_shared_thread_with_latest_message_when_du
                 "text":"persist into canonical duplicate thread"
             }),
             idempotency_key: Some("msg-canonical-shared-thread-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send shared thread reply into canonical duplicate thread");
@@ -8704,6 +9105,7 @@ async fn actor_mailbox_service_validates_required_fields() {
             route: None,
             payload: json!({"text":"invalid"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect_err("blank run_id should fail");
@@ -8747,6 +9149,7 @@ async fn actor_message_send_is_idempotent_by_key() {
             route: None,
             payload: json!({"text":"please review"}),
             idempotency_key: Some("msg-1"),
+            message_kind: None,
         })
         .await
         .expect("first send");
@@ -8762,6 +9165,7 @@ async fn actor_message_send_is_idempotent_by_key() {
             route: None,
             payload: json!({"text":"please review"}),
             idempotency_key: Some("msg-1"),
+            message_kind: None,
         })
         .await
         .expect("retry send");
@@ -8830,6 +9234,7 @@ async fn actor_message_send_rejects_mismatched_payload_for_same_idempotency_key(
             route: None,
             payload: json!({"text":"please review"}),
             idempotency_key: Some("msg-1"),
+            message_kind: None,
         })
         .await
         .expect("first send");
@@ -8845,6 +9250,7 @@ async fn actor_message_send_rejects_mismatched_payload_for_same_idempotency_key(
             route: None,
             payload: json!({"text":"changed payload"}),
             idempotency_key: Some("msg-1"),
+            message_kind: None,
         })
         .await
         .expect_err("mismatched payload should conflict");
@@ -8918,6 +9324,7 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
             })),
             payload: json!({"text":"review this"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send remote message");
@@ -9045,6 +9452,7 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
             })),
             payload: json!({"text":"retry this"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send retry remote message");
@@ -9063,6 +9471,7 @@ async fn remote_actor_messages_relay_supports_retry_and_dead_letter() {
             })),
             payload: json!({"text":"dead-letter this"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send dead remote message");
@@ -9201,6 +9610,7 @@ async fn remote_actor_messages_relay_rejects_invalid_header_values() {
             })),
             payload: json!({"text":"review this"}),
             idempotency_key: None,
+            message_kind: None,
         })
         .await
         .expect("send remote message");
@@ -10367,6 +10777,7 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
             route: None,
             payload: json!("## Review request\n\nPlease inspect the patch."),
             idempotency_key: Some("ctx-unread-worker"),
+            message_kind: None,
         })
         .await
         .expect("send unread worker message");

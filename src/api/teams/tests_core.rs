@@ -5438,6 +5438,7 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
                 "correlation_id":"corr-shared-thread-forward"
             }),
             idempotency_key: Some("shared-thread-forward-reply".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send shared thread reply");

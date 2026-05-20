@@ -86,6 +86,16 @@ fn grpc_message(
         route_json: route_json.to_string(),
         payload_json: payload_json.to_string(),
         status: status.to_string(),
+        message_kind: "coordination_request".to_string(),
+        handling_disposition: "untriaged".to_string(),
+        handled_by_actor_id: String::new(),
+        handled_at: 0,
+        thread_topic_key: String::new(),
+        thread_claim_status: String::new(),
+        thread_owner_actor_id: String::new(),
+        thread_lease_expires_at: 0,
+        linked_task_id: String::new(),
+        linked_task_relation: String::new(),
         created_at: 111,
         delivered_at: 222,
         idempotency_key: "idem-1".to_string(),
@@ -525,6 +535,7 @@ async fn remote_actor_grpc_pipeline_delivers_and_acks_over_tls() {
             route: Some(route),
             payload: json!({"type":"chat_message","text":"review this patch"}),
             idempotency_key: Some("grpc-relay-pipeline"),
+            message_kind: None,
         })
         .await
         .expect("send remote actor message");
@@ -640,6 +651,7 @@ async fn grpc_actor_send_returns_server_message_for_channel_targets() {
                 "text":"@reviewer please inspect"
             }),
             idempotency_key: Some("grpc-channel-send-1".to_string()),
+            message_kind: None,
         })
         .await
         .expect("send channel message over grpc");
@@ -714,6 +726,7 @@ async fn grpc_actor_send_rejects_role_alias_target_on_server() {
                 "text":"please review"
             }),
             idempotency_key: Some("grpc-direct-send-role-alias".to_string()),
+            message_kind: None,
         })
         .await
         .expect_err("role alias target should be rejected by server");
@@ -765,6 +778,7 @@ async fn grpc_actor_send_allows_remote_target_outside_team_spec() {
                 "text":"federated request"
             }),
             idempotency_key: Some("grpc-remote-send-external-target".to_string()),
+            message_kind: None,
         })
         .await
         .expect("remote transport should allow external actor target");
@@ -1193,6 +1207,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
                 "correlation_id":"corr-a-1"
             }),
             idempotency_key: Some("p2p-a-1"),
+            message_kind: None,
         })
         .await
         .expect("send first seeded node-a message");
@@ -1214,6 +1229,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
                 "correlation_id":"corr-a-2"
             }),
             idempotency_key: Some("p2p-a-2"),
+            message_kind: None,
         })
         .await
         .expect("send second seeded node-a message");
@@ -1235,6 +1251,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
                 "correlation_id":"corr-b-1"
             }),
             idempotency_key: Some("p2p-b-1"),
+            message_kind: None,
         })
         .await
         .expect("send seeded node-b reply");

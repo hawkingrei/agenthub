@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
-    ActorMessageStatus, ActorServiceError, ActorServiceErrorCode,
+    ActorMessageHandlingDisposition, ActorMessageStatus, ActorServiceError, ActorServiceErrorCode,
+    ActorTriageRequest,
 };
 use futures::{StreamExt, TryStreamExt, stream};
 
@@ -40,6 +41,24 @@ pub(super) async fn init_actor_mailbox_service(
             InternalAction::MessageAck,
         ],
         "actor mailbox control",
+    )
+    .await?;
+    Ok(Arc::new(client))
+}
+
+pub(super) async fn init_actor_task_link_service(
+    actor_id: &str,
+    run_id: &str,
+) -> anyhow::Result<Arc<dyn ActorMailboxService>> {
+    let client = init_actor_control_client(
+        actor_id,
+        Some(run_id),
+        &[
+            InternalAction::InboxList,
+            InternalAction::MessageAck,
+            InternalAction::TeamTaskWrite,
+        ],
+        "actor mailbox task-link control",
     )
     .await?;
     Ok(Arc::new(client))
@@ -90,7 +109,23 @@ pub(super) async fn receive_actor_inbox<S: ActorMailboxService + ?Sized>(
                     })
                     .await;
                 match acked {
-                    Ok(acked) => Ok((idx, acked.message, true)),
+                    Ok(acked) => {
+                        let triaged = service
+                            .actor_triage(ActorTriageRequest {
+                                run_id: acked.message.run_id.clone(),
+                                actor_id: acked.message.to_actor_id.clone(),
+                                message_id: acked.message.message_id,
+                                disposition: ActorMessageHandlingDisposition::Claimed,
+                            })
+                            .await;
+                        match triaged {
+                            Ok(triaged) => Ok((idx, triaged.message, true)),
+                            Err(err) if err.code == ActorServiceErrorCode::NotFound => {
+                                Ok((idx, acked.message, true))
+                            }
+                            Err(err) => Err(err),
+                        }
+                    }
                     Err(err) if err.code == ActorServiceErrorCode::NotFound => {
                         Ok((idx, message, false))
                     }

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -7,10 +7,15 @@ use agenthub_message_archive::MessageArchiveStoreRef;
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, AckActorMessageCommand, AckActorMessageResult,
     ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailbox,
-    ActorMailboxError, ActorMailboxService, ActorMailboxStore, ActorSendRequest, ActorSendResponse,
-    ActorServiceError, ActorServiceErrorCode, CreatePendingMessageResult, ListActorInboxQuery,
+    ActorMailboxError, ActorMailboxService, ActorMailboxStore, ActorMessageHandlingDisposition,
+    ActorMessageKind, ActorMessageTaskRelation, ActorSendRequest, ActorSendResponse,
+    ActorServiceError, ActorServiceErrorCode, ActorTaskLinkRequest, ActorTaskLinkResponse,
+    ActorThreadClaimStatus, ActorTriageRequest, ActorTriageResponse, CreatePendingMessageResult,
+    LinkActorMessageTaskCommand, LinkActorMessageTaskResult, ListActorInboxQuery,
     PendingRemoteRelayRecord, RelayRemotePendingCommand, RelayRemotePendingResult,
-    SendActorMessageCommand, actor_message_fingerprint,
+    SendActorMessageCommand, TriageActorMessageCommand, actor_message_fingerprint,
+    derive_actor_message_topic_metadata, infer_actor_message_kind,
+    parse_actor_message_task_relation, parse_actor_thread_claim_status,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -41,6 +46,7 @@ const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
 const SQLITE_READONLY_BASE_CODE: i32 = 8;
 const MAILBOX_RUN_EVENT_ARCHIVE_MAX_CONCURRENCY: usize = 4;
+const ACTOR_THREAD_CLAIM_DEFAULT_LEASE_SECS: i64 = 30 * 60;
 
 static MAILBOX_RUN_EVENT_ARCHIVE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
@@ -103,6 +109,17 @@ impl TeamManager {
             .is_some_and(|cause| matches!(cause, SqlActorMailboxStoreError::IdempotencyConflict))
     }
 
+    pub fn actor_thread_claim_conflict_owner(err: &anyhow::Error) -> Option<&str> {
+        err.downcast_ref::<SqlActorMailboxStoreError>()
+            .and_then(|cause| {
+                if let SqlActorMailboxStoreError::ThreadClaimConflict { owner_actor_id } = cause {
+                    Some(owner_actor_id.as_str())
+                } else {
+                    None
+                }
+            })
+    }
+
     pub fn actor_mailbox_service(&self) -> TeamActorMailboxService {
         TeamActorMailboxService::new(self.clone())
     }
@@ -155,6 +172,15 @@ impl TeamManager {
         &self,
         request: SendActorMessageInput<'_>,
     ) -> anyhow::Result<(TeamActorMessageRecord, bool)> {
+        self.send_actor_message_with_created_kind(request, None)
+            .await
+    }
+
+    async fn send_actor_message_with_created_kind(
+        &self,
+        request: SendActorMessageInput<'_>,
+        explicit_message_kind: Option<ActorMessageKind>,
+    ) -> anyhow::Result<(TeamActorMessageRecord, bool)> {
         let SendActorMessageInput {
             run_id,
             from_actor_id,
@@ -165,8 +191,14 @@ impl TeamManager {
             transport,
             route,
             payload,
+            message_kind,
             idempotency_key,
         } = request;
+        let message_kind = infer_actor_message_kind(
+            from_actor_id,
+            &payload,
+            explicit_message_kind.or(message_kind),
+        );
         let should_emit_human_visible_reply = should_persist_human_visible_chat_reply_for_payload(
             &transport,
             to_actor_id,
@@ -185,6 +217,7 @@ impl TeamManager {
                 to_peer_id: to_peer_id.to_string(),
                 channel: channel.to_string(),
                 transport,
+                message_kind,
                 route,
                 payload,
                 idempotency_key: idempotency_key.map(str::to_string),
@@ -250,6 +283,54 @@ impl TeamManager {
                 peer_id: ACTOR_MAIN_PEER_ID.to_string(),
                 message_id,
                 delivered_at: now,
+            })
+            .await
+            .map_err(map_actor_mailbox_store_error)?;
+        Ok(result)
+    }
+
+    pub async fn triage_actor_message(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+        message_id: i64,
+        disposition: ActorMessageHandlingDisposition,
+    ) -> anyhow::Result<agenthub_team_actor::TriageActorMessageResult> {
+        let now = Utc::now().timestamp();
+        let mailbox = self.actor_mailbox();
+        let result = mailbox
+            .triage(TriageActorMessageCommand {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+                message_id,
+                disposition,
+                handled_at: now,
+            })
+            .await
+            .map_err(map_actor_mailbox_store_error)?;
+        Ok(result)
+    }
+
+    pub async fn link_actor_message_task(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+        message_id: i64,
+        task_id: &str,
+        relation: ActorMessageTaskRelation,
+    ) -> anyhow::Result<LinkActorMessageTaskResult> {
+        let now = Utc::now().timestamp();
+        let mailbox = self.actor_mailbox();
+        let result = mailbox
+            .link_task(LinkActorMessageTaskCommand {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+                message_id,
+                task_id: task_id.to_string(),
+                relation,
+                linked_at: now,
             })
             .await
             .map_err(map_actor_mailbox_store_error)?;
@@ -554,6 +635,7 @@ pub struct SendActorMessageInput<'a> {
     pub transport: TeamActorMessageTransport,
     pub route: Option<Value>,
     pub payload: Value,
+    pub message_kind: Option<ActorMessageKind>,
     pub idempotency_key: Option<&'a str>,
 }
 
@@ -631,6 +713,7 @@ impl TeamActorMailboxService {
         from_peer_id: &str,
         channel_id: &str,
         channel: &str,
+        message_kind: Option<ActorMessageKind>,
         payload: Value,
         idempotency_key: Option<&str>,
     ) -> anyhow::Result<ActorSendResponse> {
@@ -710,18 +793,22 @@ impl TeamActorMailboxService {
                 );
             let result = self
                 .manager
-                .send_actor_message_with_created(SendActorMessageInput {
-                    run_id,
-                    from_actor_id,
-                    from_peer_id,
-                    to_actor_id: delivery.actor_id.as_str(),
-                    to_peer_id: delivery.to_peer_id.as_str(),
-                    channel,
-                    transport: delivery.transport.clone(),
-                    route: delivery.route.clone(),
-                    payload: forwarded_payload,
-                    idempotency_key: Some(fanout_idempotency_key.as_str()),
-                })
+                .send_actor_message_with_created_kind(
+                    SendActorMessageInput {
+                        run_id,
+                        from_actor_id,
+                        from_peer_id,
+                        to_actor_id: delivery.actor_id.as_str(),
+                        to_peer_id: delivery.to_peer_id.as_str(),
+                        channel,
+                        transport: delivery.transport.clone(),
+                        route: delivery.route.clone(),
+                        payload: forwarded_payload,
+                        message_kind: None,
+                        idempotency_key: Some(fanout_idempotency_key.as_str()),
+                    },
+                    message_kind.clone(),
+                )
                 .await?;
             any_created |= result.1;
             if first_result.is_none() {
@@ -795,6 +882,7 @@ impl ActorMailboxService for TeamActorMailboxService {
                     from_peer_id,
                     channel_id,
                     channel,
+                    request.message_kind,
                     request.payload,
                     idempotency_key,
                 )
@@ -820,18 +908,22 @@ impl ActorMailboxService for TeamActorMailboxService {
 
         let (message, created) = self
             .manager
-            .send_actor_message_with_created(SendActorMessageInput {
-                run_id,
-                from_actor_id,
-                from_peer_id,
-                to_actor_id,
-                to_peer_id,
-                channel,
-                transport,
-                route: request.route,
-                payload: request.payload,
-                idempotency_key,
-            })
+            .send_actor_message_with_created_kind(
+                SendActorMessageInput {
+                    run_id,
+                    from_actor_id,
+                    from_peer_id,
+                    to_actor_id,
+                    to_peer_id,
+                    channel,
+                    transport,
+                    route: request.route,
+                    payload: request.payload,
+                    message_kind: None,
+                    idempotency_key,
+                },
+                request.message_kind,
+            )
             .await
             .map_err(map_actor_service_error)?;
         let message_id = message.message_id;
@@ -919,6 +1011,80 @@ impl ActorMailboxService for TeamActorMailboxService {
             message,
         })
     }
+
+    async fn actor_triage(
+        &self,
+        request: ActorTriageRequest,
+    ) -> Result<ActorTriageResponse, ActorServiceError> {
+        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
+        let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
+        if request.message_id <= 0 {
+            return Err(ActorServiceError::new(
+                ActorServiceErrorCode::BadRequest,
+                "message_id must be positive",
+            ));
+        }
+
+        let result = self
+            .manager
+            .triage_actor_message(run_id, actor_id, request.message_id, request.disposition)
+            .await
+            .map_err(map_actor_service_error)?;
+        let triaged_at = result.message.handled_at.unwrap_or(
+            result
+                .message
+                .delivered_at
+                .unwrap_or(result.message.created_at),
+        );
+
+        Ok(ActorTriageResponse {
+            message_id: result.message.message_id,
+            disposition: result.message.handling_disposition.clone(),
+            triaged_at,
+            handling_changed: result.handling_changed,
+            message: result.message,
+        })
+    }
+
+    async fn actor_task_link(
+        &self,
+        request: ActorTaskLinkRequest,
+    ) -> Result<ActorTaskLinkResponse, ActorServiceError> {
+        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
+        let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
+        let task_id = required_trimmed_field(&request.task_id, "task_id")?;
+        if request.message_id <= 0 {
+            return Err(ActorServiceError::new(
+                ActorServiceErrorCode::BadRequest,
+                "message_id must be positive",
+            ));
+        }
+
+        let result = self
+            .manager
+            .link_actor_message_task(
+                run_id,
+                actor_id,
+                request.message_id,
+                task_id,
+                request.relation,
+            )
+            .await
+            .map_err(map_actor_service_error)?;
+        let linked_at = result
+            .message
+            .handled_at
+            .unwrap_or(result.message.created_at);
+
+        Ok(ActorTaskLinkResponse {
+            message_id: result.message.message_id,
+            task_id: result.task_id,
+            relation: result.relation,
+            linked_at,
+            created: result.created,
+            message: result.message,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -933,12 +1099,31 @@ enum SqlActorMailboxStoreError {
     Sql(#[from] sqlx::Error),
     #[error("actor message idempotency conflict")]
     IdempotencyConflict,
+    #[error("mailbox thread/topic is already claimed by actor `{owner_actor_id}`")]
+    ThreadClaimConflict { owner_actor_id: String },
 }
 
 #[derive(Debug)]
 struct ActorInboxSnapshot {
     messages: Vec<TeamActorMessageRecord>,
     pending_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActorThreadClaimRecord {
+    topic_key: String,
+    task_id: Option<String>,
+    root_message_id: Option<i64>,
+    owner_actor_id: String,
+    claim_status: ActorThreadClaimStatus,
+    claimed_at: i64,
+    lease_expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActorMessageTaskLinkRecord {
+    task_id: String,
+    relation: ActorMessageTaskRelation,
 }
 
 async fn count_pending_inbox_on_executor<'e, E>(
@@ -957,6 +1142,7 @@ where
         WHERE run_id = ?1
           AND to_actor_id = ?2
           AND status = 'pending'
+          AND handling_disposition = 'untriaged'
           AND to_peer_id = ?3
         "#,
     )
@@ -989,6 +1175,10 @@ where
                     transport,
                     route_json,
                     payload_json,
+                    message_kind,
+                    handling_disposition,
+                    handled_by_actor_id,
+                    handled_at,
                     status,
                     created_at,
                     delivered_at
@@ -1019,6 +1209,10 @@ where
                     transport,
                     route_json,
                     payload_json,
+                    message_kind,
+                    handling_disposition,
+                    handled_by_actor_id,
+                    handled_at,
                     status,
                     created_at,
                     delivered_at
@@ -1049,11 +1243,20 @@ where
                 transport,
                 route_json,
                 payload_json,
+                message_kind,
+                handling_disposition,
+                handled_by_actor_id,
+                handled_at,
                 status,
                 created_at,
                 delivered_at
             FROM team_actor_messages
-            WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND status = 'pending' AND id > ?4
+            WHERE run_id = ?1
+              AND to_actor_id = ?2
+              AND to_peer_id = ?3
+              AND status = 'pending'
+              AND handling_disposition = 'untriaged'
+              AND id > ?4
             ORDER BY id ASC
             LIMIT ?5
             "#,
@@ -1079,11 +1282,19 @@ where
                 transport,
                 route_json,
                 payload_json,
+                message_kind,
+                handling_disposition,
+                handled_by_actor_id,
+                handled_at,
                 status,
                 created_at,
                 delivered_at
             FROM team_actor_messages
-            WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND status = 'pending'
+            WHERE run_id = ?1
+              AND to_actor_id = ?2
+              AND to_peer_id = ?3
+              AND status = 'pending'
+              AND handling_disposition = 'untriaged'
             ORDER BY id ASC
             LIMIT ?4
             "#,
@@ -1108,11 +1319,204 @@ fn parse_inbox_rows(rows: Vec<SqliteRow>) -> Result<Vec<TeamActorMessageRecord>,
     Ok(messages)
 }
 
+fn apply_payload_task_fallback(message: &mut TeamActorMessageRecord) {
+    if message.linked_task_id.is_some() {
+        return;
+    }
+    let Some(metadata) =
+        derive_actor_message_topic_metadata(message.message_id, &message.payload, None)
+    else {
+        return;
+    };
+    if let Some(task_id) = metadata.task_id {
+        message.linked_task_id = Some(task_id);
+        if message.linked_task_relation.is_none() {
+            message.linked_task_relation = Some(ActorMessageTaskRelation::RelatedTask);
+        }
+    }
+}
+
+async fn load_latest_message_task_links(
+    pool: &SqlitePool,
+    run_id: &str,
+    message_ids: &[i64],
+) -> Result<HashMap<i64, ActorMessageTaskLinkRecord>, sqlx::Error> {
+    if message_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut builder = QueryBuilder::<Sqlite>::new(
+        r#"
+        SELECT links.message_id, links.task_id, links.relation
+        FROM team_actor_message_links AS links
+        JOIN (
+            SELECT message_id, MAX(id) AS max_id
+            FROM team_actor_message_links
+            WHERE run_id = "#,
+    );
+    builder.push_bind(run_id);
+    builder.push(" AND message_id IN (");
+    {
+        let mut separated = builder.separated(", ");
+        for message_id in message_ids {
+            separated.push_bind(message_id);
+        }
+    }
+    builder.push(
+        r#")
+            GROUP BY message_id
+        ) AS latest
+          ON latest.max_id = links.id
+        "#,
+    );
+    let rows = builder.build().fetch_all(pool).await?;
+    let mut out = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let relation_raw: String = row.get("relation");
+        let Some(relation) = parse_actor_message_task_relation(&relation_raw) else {
+            continue;
+        };
+        out.insert(
+            row.get("message_id"),
+            ActorMessageTaskLinkRecord {
+                task_id: row.get("task_id"),
+                relation,
+            },
+        );
+    }
+    Ok(out)
+}
+
+async fn load_active_thread_claims(
+    pool: &SqlitePool,
+    run_id: &str,
+    topic_keys: &[String],
+) -> Result<HashMap<String, ActorThreadClaimRecord>, sqlx::Error> {
+    if topic_keys.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let now = Utc::now().timestamp();
+    let mut builder = QueryBuilder::<Sqlite>::new(
+        r#"
+        SELECT
+            topic_key,
+            task_id,
+            root_message_id,
+            owner_actor_id,
+            claim_status,
+            claimed_at,
+            lease_expires_at
+        FROM team_actor_thread_claims
+        WHERE run_id = "#,
+    );
+    builder.push_bind(run_id);
+    builder.push(" AND topic_key IN (");
+    {
+        let mut separated = builder.separated(", ");
+        for topic_key in topic_keys {
+            separated.push_bind(topic_key);
+        }
+    }
+    builder.push(
+        ") AND claim_status = 'claimed' AND (lease_expires_at IS NULL OR lease_expires_at > ",
+    );
+    builder.push_bind(now);
+    builder.push(")");
+    let rows = builder.build().fetch_all(pool).await?;
+    let mut out = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let claim_status_raw: String = row.get("claim_status");
+        let Some(claim_status) = parse_actor_thread_claim_status(&claim_status_raw) else {
+            continue;
+        };
+        let topic_key: String = row.get("topic_key");
+        out.insert(
+            topic_key.clone(),
+            ActorThreadClaimRecord {
+                topic_key,
+                task_id: row.try_get("task_id").ok(),
+                root_message_id: row.try_get("root_message_id").ok(),
+                owner_actor_id: row.get("owner_actor_id"),
+                claim_status,
+                claimed_at: row.get("claimed_at"),
+                lease_expires_at: row.try_get("lease_expires_at").ok(),
+            },
+        );
+    }
+    Ok(out)
+}
+
+async fn enrich_actor_messages(
+    pool: &SqlitePool,
+    messages: &mut [TeamActorMessageRecord],
+) -> Result<(), sqlx::Error> {
+    if messages.is_empty() {
+        return Ok(());
+    }
+    for message in messages.iter_mut() {
+        apply_payload_task_fallback(message);
+        message.thread_topic_key = derive_actor_message_topic_metadata(
+            message.message_id,
+            &message.payload,
+            message.linked_task_id.as_deref(),
+        )
+        .map(|metadata| metadata.topic_key);
+        message.thread_claim_status = None;
+        message.thread_owner_actor_id = None;
+        message.thread_lease_expires_at = None;
+    }
+
+    let mut run_groups = HashMap::<String, Vec<usize>>::new();
+    for (idx, message) in messages.iter().enumerate() {
+        run_groups
+            .entry(message.run_id.clone())
+            .or_default()
+            .push(idx);
+    }
+    for (run_id, indexes) in run_groups {
+        let message_ids = indexes
+            .iter()
+            .map(|index| messages[*index].message_id)
+            .collect::<Vec<_>>();
+        let latest_links = load_latest_message_task_links(pool, &run_id, &message_ids).await?;
+        for index in &indexes {
+            if let Some(link) = latest_links.get(&messages[*index].message_id) {
+                messages[*index].linked_task_id = Some(link.task_id.clone());
+                messages[*index].linked_task_relation = Some(link.relation.clone());
+            }
+            messages[*index].thread_topic_key = derive_actor_message_topic_metadata(
+                messages[*index].message_id,
+                &messages[*index].payload,
+                messages[*index].linked_task_id.as_deref(),
+            )
+            .map(|metadata| metadata.topic_key);
+        }
+        let topic_keys = indexes
+            .iter()
+            .filter_map(|index| messages[*index].thread_topic_key.clone())
+            .collect::<Vec<_>>();
+        let claims = load_active_thread_claims(pool, &run_id, &topic_keys).await?;
+        for index in indexes {
+            let Some(topic_key) = messages[index].thread_topic_key.clone() else {
+                continue;
+            };
+            let Some(claim) = claims.get(&topic_key) else {
+                continue;
+            };
+            messages[index].thread_claim_status = Some(claim.claim_status.clone());
+            messages[index].thread_owner_actor_id = Some(claim.owner_actor_id.clone());
+            messages[index].thread_lease_expires_at = claim.lease_expires_at;
+        }
+    }
+    Ok(())
+}
+
 fn inbox_rows_include_pending(rows: &[SqliteRow]) -> bool {
     rows.iter().any(|row| {
-        row.try_get::<String, _>("status")
-            .map(|status| status == "pending")
-            .unwrap_or(false)
+        let status = row.try_get::<String, _>("status").ok();
+        let disposition = row
+            .try_get::<String, _>("handling_disposition")
+            .unwrap_or_else(|_| "untriaged".to_string());
+        status.as_deref() == Some("pending") && disposition == "untriaged"
     })
 }
 
@@ -1150,8 +1554,9 @@ impl SqlActorMailboxStore {
         } else {
             list_inbox_rows_on_executor(&mut *tx, query).await?
         };
-        let messages = parse_inbox_rows(rows)?;
+        let mut messages = parse_inbox_rows(rows)?;
         tx.commit().await?;
+        enrich_actor_messages(&self.db, &mut messages).await?;
         Ok(ActorInboxSnapshot {
             messages,
             pending_count,
@@ -1191,12 +1596,13 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 transport,
                 route_json,
                 payload_json,
+                message_kind,
                 group_id,
                 status,
                 created_at,
                 idempotency_key
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, (SELECT group_id FROM team_runs WHERE id = ?1), ?10, ?11, ?12)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, (SELECT group_id FROM team_runs WHERE id = ?1), ?11, ?12, ?13)
             "#,
         )
         .bind(&cmd.run_id)
@@ -1208,17 +1614,17 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         .bind(transport_raw)
         .bind(route_json)
         .bind(payload_json)
+        .bind(cmd.message_kind.as_str())
         .bind(status_raw)
         .bind(cmd.created_at)
         .bind(&cmd.idempotency_key)
         .execute(&mut *tx)
         .await?;
 
-        let (message, created) = if inserted.rows_affected() == 1 {
+        let (message_id, created) = if inserted.rows_affected() == 1 {
             let message_id = inserted.last_insert_rowid();
             maybe_persist_human_visible_chat_reply(&mut tx, cmd).await?;
-            let message = fetch_message_by_id(&mut tx, message_id).await?;
-            (message, true)
+            (message_id, true)
         } else if let Some(idempotency_key) = cmd.idempotency_key.as_deref() {
             let message = fetch_message_by_idempotency(
                 &mut tx,
@@ -1229,7 +1635,7 @@ impl ActorMailboxStore for SqlActorMailboxStore {
             )
             .await?;
             ensure_idempotency_compatible(cmd, &message)?;
-            (message, false)
+            (message.message_id, false)
         } else {
             return Err(sqlx::Error::Protocol(
                 "insert was ignored without idempotency_key".to_string(),
@@ -1237,6 +1643,7 @@ impl ActorMailboxStore for SqlActorMailboxStore {
             .into());
         };
         tx.commit().await?;
+        let message = fetch_enriched_message_by_id(&self.db, message_id).await?;
         Ok(CreatePendingMessageResult { message, created })
     }
 
@@ -1263,7 +1670,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         } else {
             list_inbox_rows_on_executor(&self.db, query).await?
         };
-        parse_inbox_rows(rows).map_err(Into::into)
+        let mut messages = parse_inbox_rows(rows)?;
+        enrich_actor_messages(&self.db, &mut messages).await?;
+        Ok(messages)
     }
 
     async fn ack_message(
@@ -1286,38 +1695,116 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         .execute(&mut *tx)
         .await?;
 
-        let message_row = sqlx::query(
+        tx.commit().await?;
+        let message = fetch_enriched_message_by_id(&self.db, cmd.message_id).await?;
+        Ok(AckActorMessageResult {
+            message,
+            status_changed: update.rows_affected() > 0,
+        })
+    }
+
+    async fn triage_message(
+        &self,
+        cmd: &TriageActorMessageCommand,
+    ) -> Result<agenthub_team_actor::TriageActorMessageResult, Self::Error> {
+        let mut tx = self.db.begin().await?;
+        let message = fetch_message_for_actor(
+            &mut tx,
+            &cmd.run_id,
+            &cmd.actor_id,
+            &cmd.peer_id,
+            cmd.message_id,
+        )
+        .await?;
+        apply_thread_claim_transition(&mut tx, &message, cmd).await?;
+        let update = sqlx::query(
             r#"
-            SELECT
-                id,
-                run_id,
-                from_actor_id,
-                from_peer_id,
-                to_actor_id,
-                to_peer_id,
-                channel,
-                transport,
-                route_json,
-                payload_json,
-                status,
-                created_at,
-                delivered_at
-            FROM team_actor_messages
-            WHERE id = ?1 AND run_id = ?2 AND to_actor_id = ?3 AND to_peer_id = ?4
+            UPDATE team_actor_messages
+            SET
+                handling_disposition = ?1,
+                handled_by_actor_id = ?2,
+                handled_at = ?3
+            WHERE id = ?4
+              AND run_id = ?5
+              AND to_actor_id = ?6
+              AND to_peer_id = ?7
+              AND handling_disposition <> ?1
             "#,
         )
+        .bind(cmd.disposition.as_str())
+        .bind(&cmd.actor_id)
+        .bind(cmd.handled_at)
         .bind(cmd.message_id)
         .bind(&cmd.run_id)
         .bind(&cmd.actor_id)
         .bind(&cmd.peer_id)
-        .fetch_one(&mut *tx)
+        .execute(&mut *tx)
         .await?;
-        let message = parse_team_actor_message_row(&message_row)
-            .map_err(|err| sqlx::Error::Protocol(err.to_string()))?;
         tx.commit().await?;
-        Ok(AckActorMessageResult {
+        let message = fetch_enriched_message_by_id(&self.db, cmd.message_id).await?;
+        Ok(agenthub_team_actor::TriageActorMessageResult {
             message,
-            status_changed: update.rows_affected() > 0,
+            handling_changed: update.rows_affected() > 0,
+        })
+    }
+
+    async fn link_message_task(
+        &self,
+        cmd: &LinkActorMessageTaskCommand,
+    ) -> Result<LinkActorMessageTaskResult, Self::Error> {
+        let mut tx = self.db.begin().await?;
+        fetch_message_for_actor(
+            &mut tx,
+            &cmd.run_id,
+            &cmd.actor_id,
+            &cmd.peer_id,
+            cmd.message_id,
+        )
+        .await?;
+        let team_id = resolve_team_id_for_run(&mut tx, &cmd.run_id).await?;
+        let task_exists = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT 1
+            FROM team_tasks
+            WHERE id = ?1 AND team_id = ?2
+            LIMIT 1
+            "#,
+        )
+        .bind(&cmd.task_id)
+        .bind(&team_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if task_exists.is_none() {
+            return Err(SqlxError::RowNotFound.into());
+        }
+        let inserted = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO team_actor_message_links (
+                run_id,
+                message_id,
+                task_id,
+                relation,
+                created_by_actor_id,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(&cmd.run_id)
+        .bind(cmd.message_id)
+        .bind(&cmd.task_id)
+        .bind(cmd.relation.as_str())
+        .bind(&cmd.actor_id)
+        .bind(cmd.linked_at)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        let message = fetch_enriched_message_by_id(&self.db, cmd.message_id).await?;
+        Ok(LinkActorMessageTaskResult {
+            message,
+            task_id: cmd.task_id.clone(),
+            relation: cmd.relation.clone(),
+            created: inserted.rows_affected() > 0,
         })
     }
 
@@ -1339,6 +1826,10 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 transport,
                 route_json,
                 payload_json,
+                message_kind,
+                handling_disposition,
+                handled_by_actor_id,
+                handled_at,
                 status,
                 created_at,
                 delivered_at,
@@ -1934,6 +2425,10 @@ async fn fetch_message_by_id(
             transport,
             route_json,
             payload_json,
+            message_kind,
+            handling_disposition,
+            handled_by_actor_id,
+            handled_at,
             status,
             created_at,
             delivered_at
@@ -1942,6 +2437,57 @@ async fn fetch_message_by_id(
         "#,
     )
     .bind(message_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    parse_team_actor_message_row(&row).map_err(|err| sqlx::Error::Protocol(err.to_string()))
+}
+
+async fn fetch_enriched_message_by_id(
+    pool: &SqlitePool,
+    message_id: i64,
+) -> Result<TeamActorMessageRecord, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut message = fetch_message_by_id(&mut tx, message_id).await?;
+    tx.commit().await?;
+    enrich_actor_messages(pool, std::slice::from_mut(&mut message)).await?;
+    Ok(message)
+}
+
+async fn fetch_message_for_actor(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+    actor_id: &str,
+    peer_id: &str,
+    message_id: i64,
+) -> Result<TeamActorMessageRecord, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            id,
+            run_id,
+            from_actor_id,
+            from_peer_id,
+            to_actor_id,
+            to_peer_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            message_kind,
+            handling_disposition,
+            handled_by_actor_id,
+            handled_at,
+            status,
+            created_at,
+            delivered_at
+        FROM team_actor_messages
+        WHERE id = ?1 AND run_id = ?2 AND to_actor_id = ?3 AND to_peer_id = ?4
+        "#,
+    )
+    .bind(message_id)
+    .bind(run_id)
+    .bind(actor_id)
+    .bind(peer_id)
     .fetch_one(&mut **tx)
     .await?;
     parse_team_actor_message_row(&row).map_err(|err| sqlx::Error::Protocol(err.to_string()))
@@ -1967,6 +2513,10 @@ async fn fetch_message_by_idempotency(
             transport,
             route_json,
             payload_json,
+            message_kind,
+            handling_disposition,
+            handled_by_actor_id,
+            handled_at,
             status,
             created_at,
             delivered_at
@@ -1982,6 +2532,148 @@ async fn fetch_message_by_idempotency(
     .fetch_one(&mut **tx)
     .await?;
     parse_team_actor_message_row(&row).map_err(|err| sqlx::Error::Protocol(err.to_string()))
+}
+
+async fn fetch_latest_task_link_for_message(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+    message_id: i64,
+) -> Result<Option<ActorMessageTaskLinkRecord>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT task_id, relation
+        FROM team_actor_message_links
+        WHERE run_id = ?1 AND message_id = ?2
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(run_id)
+    .bind(message_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let relation_raw: String = row.get("relation");
+    let Some(relation) = parse_actor_message_task_relation(&relation_raw) else {
+        return Ok(None);
+    };
+    Ok(Some(ActorMessageTaskLinkRecord {
+        task_id: row.get("task_id"),
+        relation,
+    }))
+}
+
+async fn apply_thread_claim_transition(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    message: &TeamActorMessageRecord,
+    cmd: &TriageActorMessageCommand,
+) -> Result<(), SqlActorMailboxStoreError> {
+    let explicit_task_id = fetch_latest_task_link_for_message(tx, &cmd.run_id, cmd.message_id)
+        .await?
+        .map(|link| link.task_id);
+    let Some(topic) = derive_actor_message_topic_metadata(
+        message.message_id,
+        &message.payload,
+        explicit_task_id.as_deref(),
+    ) else {
+        return Ok(());
+    };
+    match cmd.disposition {
+        ActorMessageHandlingDisposition::Claimed => {
+            let existing = sqlx::query(
+                r#"
+                SELECT owner_actor_id, claim_status, lease_expires_at
+                FROM team_actor_thread_claims
+                WHERE run_id = ?1 AND topic_key = ?2
+                LIMIT 1
+                "#,
+            )
+            .bind(&cmd.run_id)
+            .bind(&topic.topic_key)
+            .fetch_optional(&mut **tx)
+            .await?;
+            if let Some(existing) = existing {
+                let owner_actor_id: String = existing.get("owner_actor_id");
+                let claim_status_raw: String = existing.get("claim_status");
+                let lease_expires_at = existing
+                    .try_get::<Option<i64>, _>("lease_expires_at")
+                    .unwrap_or(None);
+                let is_active = parse_actor_thread_claim_status(&claim_status_raw)
+                    == Some(ActorThreadClaimStatus::Claimed)
+                    && lease_expires_at.is_none_or(|value| value > cmd.handled_at);
+                if is_active && owner_actor_id != cmd.actor_id {
+                    return Err(SqlActorMailboxStoreError::ThreadClaimConflict { owner_actor_id });
+                }
+            }
+            sqlx::query(
+                r#"
+                INSERT INTO team_actor_thread_claims (
+                    run_id,
+                    topic_key,
+                    task_id,
+                    root_message_id,
+                    owner_actor_id,
+                    claim_status,
+                    claimed_message_id,
+                    claimed_at,
+                    lease_expires_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, 'claimed', ?6, ?7, ?8, ?7)
+                ON CONFLICT(run_id, topic_key) DO UPDATE SET
+                    task_id = excluded.task_id,
+                    root_message_id = excluded.root_message_id,
+                    owner_actor_id = excluded.owner_actor_id,
+                    claim_status = excluded.claim_status,
+                    claimed_message_id = excluded.claimed_message_id,
+                    claimed_at = excluded.claimed_at,
+                    lease_expires_at = excluded.lease_expires_at,
+                    updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(&cmd.run_id)
+            .bind(&topic.topic_key)
+            .bind(&topic.task_id)
+            .bind(topic.root_message_id)
+            .bind(&cmd.actor_id)
+            .bind(cmd.message_id)
+            .bind(cmd.handled_at)
+            .bind(cmd.handled_at + ACTOR_THREAD_CLAIM_DEFAULT_LEASE_SECS)
+            .execute(&mut **tx)
+            .await?;
+        }
+        ActorMessageHandlingDisposition::Released | ActorMessageHandlingDisposition::Completed => {
+            let claim_status = match cmd.disposition {
+                ActorMessageHandlingDisposition::Released => "released",
+                ActorMessageHandlingDisposition::Completed => "completed",
+                _ => unreachable!(),
+            };
+            sqlx::query(
+                r#"
+                UPDATE team_actor_thread_claims
+                SET
+                    claim_status = ?1,
+                    lease_expires_at = ?2,
+                    updated_at = ?2
+                WHERE run_id = ?3
+                  AND topic_key = ?4
+                  AND owner_actor_id = ?5
+                  AND claim_status = 'claimed'
+                "#,
+            )
+            .bind(claim_status)
+            .bind(cmd.handled_at)
+            .bind(&cmd.run_id)
+            .bind(&topic.topic_key)
+            .bind(&cmd.actor_id)
+            .execute(&mut **tx)
+            .await?;
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn ensure_idempotency_compatible(
@@ -2122,6 +2814,14 @@ fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
             "idempotency_key conflicts with an existing message payload",
         );
     }
+    if let Some(owner_actor_id) = TeamManager::actor_thread_claim_conflict_owner(&err) {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::Conflict,
+            format!(
+                "mailbox topic is already claimed by actor `{owner_actor_id}`; switch to watch/release flow or wait for lease expiry"
+            ),
+        );
+    }
     if is_row_not_found(&err) {
         return ActorServiceError::new(ActorServiceErrorCode::NotFound, "message not found");
     }
@@ -2145,6 +2845,11 @@ fn map_actor_mailbox_store_error(
             SqlActorMailboxStoreError::Sql(sql_err) => anyhow::Error::new(sql_err),
             SqlActorMailboxStoreError::IdempotencyConflict => {
                 anyhow::Error::new(SqlActorMailboxStoreError::IdempotencyConflict)
+            }
+            SqlActorMailboxStoreError::ThreadClaimConflict { owner_actor_id } => {
+                anyhow::Error::new(SqlActorMailboxStoreError::ThreadClaimConflict {
+                    owner_actor_id,
+                })
             }
         },
     }
