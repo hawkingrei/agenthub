@@ -330,7 +330,11 @@ pub struct ActorMessageRecord {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActorIdentityKind, derive_actor_message_topic_metadata, infer_actor_identity_kind,
+        ActorIdentityKind, ActorMessageHandlingDisposition, ActorMessageKind,
+        ActorMessageTaskRelation, ActorThreadClaimStatus, derive_actor_message_topic_metadata,
+        infer_actor_identity_kind, infer_actor_message_kind,
+        parse_actor_message_handling_disposition, parse_actor_message_kind,
+        parse_actor_message_task_relation, parse_actor_thread_claim_status,
     };
     use serde_json::json;
 
@@ -378,5 +382,171 @@ mod tests {
         assert_eq!(metadata.topic_key, "task:task-9:mailbox:9");
         assert_eq!(metadata.task_id.as_deref(), Some("task-9"));
         assert_eq!(metadata.root_message_id, None);
+    }
+
+    #[test]
+    fn derive_actor_message_topic_metadata_uses_task_message_before_correlation() {
+        let metadata = derive_actor_message_topic_metadata(
+            11,
+            &json!({
+                "task_id": "task-11",
+                "task_message_id": 88,
+                "correlation_id": "corr-11"
+            }),
+            None,
+        )
+        .expect("derive metadata");
+        assert_eq!(metadata.topic_key, "task:task-11:message:88");
+        assert_eq!(metadata.task_id.as_deref(), Some("task-11"));
+        assert_eq!(metadata.root_message_id, None);
+    }
+
+    #[test]
+    fn derive_actor_message_topic_metadata_falls_back_to_correlation_scope() {
+        let metadata = derive_actor_message_topic_metadata(
+            12,
+            &json!({
+                "correlation_id": "corr-12",
+                "task_id": "task-12"
+            }),
+            None,
+        )
+        .expect("derive metadata");
+        assert_eq!(metadata.topic_key, "correlation:corr-12");
+        assert_eq!(metadata.task_id.as_deref(), Some("task-12"));
+        assert_eq!(metadata.root_message_id, None);
+    }
+
+    #[test]
+    fn derive_actor_message_topic_metadata_returns_none_without_scope() {
+        assert_eq!(
+            derive_actor_message_topic_metadata(13, &json!({"task_id":"   "}), Some("   ")),
+            None
+        );
+        assert_eq!(
+            derive_actor_message_topic_metadata(
+                14,
+                &json!({"thread_root_message_id": 0, "task_message_id": -1}),
+                None
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn parse_actor_message_helpers_cover_all_known_values() {
+        assert_eq!(
+            parse_actor_message_kind("human_request"),
+            ActorMessageKind::HumanRequest
+        );
+        assert_eq!(
+            parse_actor_message_kind("trigger_event"),
+            ActorMessageKind::TriggerEvent
+        );
+        assert_eq!(
+            parse_actor_message_kind("task_signal"),
+            ActorMessageKind::TaskSignal
+        );
+        assert_eq!(
+            parse_actor_message_kind("thread_reply"),
+            ActorMessageKind::ThreadReply
+        );
+        assert_eq!(
+            parse_actor_message_kind("system_notice"),
+            ActorMessageKind::SystemNotice
+        );
+        assert_eq!(
+            parse_actor_message_kind("unknown"),
+            ActorMessageKind::CoordinationRequest
+        );
+
+        assert_eq!(
+            parse_actor_message_handling_disposition("ignored"),
+            ActorMessageHandlingDisposition::Ignored
+        );
+        assert_eq!(
+            parse_actor_message_handling_disposition("watching"),
+            ActorMessageHandlingDisposition::Watching
+        );
+        assert_eq!(
+            parse_actor_message_handling_disposition("claimed"),
+            ActorMessageHandlingDisposition::Claimed
+        );
+        assert_eq!(
+            parse_actor_message_handling_disposition("completed"),
+            ActorMessageHandlingDisposition::Completed
+        );
+        assert_eq!(
+            parse_actor_message_handling_disposition("released"),
+            ActorMessageHandlingDisposition::Released
+        );
+        assert_eq!(
+            parse_actor_message_handling_disposition("unknown"),
+            ActorMessageHandlingDisposition::Untriaged
+        );
+
+        assert_eq!(
+            parse_actor_thread_claim_status("claimed"),
+            Some(ActorThreadClaimStatus::Claimed)
+        );
+        assert_eq!(
+            parse_actor_thread_claim_status("released"),
+            Some(ActorThreadClaimStatus::Released)
+        );
+        assert_eq!(
+            parse_actor_thread_claim_status("completed"),
+            Some(ActorThreadClaimStatus::Completed)
+        );
+        assert_eq!(parse_actor_thread_claim_status("unknown"), None);
+
+        assert_eq!(
+            parse_actor_message_task_relation("spawned_task"),
+            Some(ActorMessageTaskRelation::SpawnedTask)
+        );
+        assert_eq!(
+            parse_actor_message_task_relation("related_task"),
+            Some(ActorMessageTaskRelation::RelatedTask)
+        );
+        assert_eq!(
+            parse_actor_message_task_relation("evidence_for_task"),
+            Some(ActorMessageTaskRelation::EvidenceForTask)
+        );
+        assert_eq!(parse_actor_message_task_relation("unknown"), None);
+    }
+
+    #[test]
+    fn infer_actor_message_kind_prefers_explicit_then_payload_then_actor_identity() {
+        assert_eq!(
+            infer_actor_message_kind(
+                "agent-worker-1",
+                &json!({"type":"task_signal"}),
+                Some(ActorMessageKind::SystemNotice),
+            ),
+            ActorMessageKind::SystemNotice
+        );
+        assert_eq!(
+            infer_actor_message_kind(
+                "agent-worker-1",
+                &json!({"thread_root_message_id": 21, "type":"trigger_event"}),
+                None,
+            ),
+            ActorMessageKind::ThreadReply
+        );
+        assert_eq!(
+            infer_actor_message_kind(
+                "agent-worker-1",
+                &json!({"type":"permission_review_request"}),
+                None,
+            ),
+            ActorMessageKind::SystemNotice
+        );
+        assert_eq!(
+            infer_actor_message_kind("user:alice", &json!({"type":"unknown"}), None),
+            ActorMessageKind::HumanRequest
+        );
+        assert_eq!(
+            infer_actor_message_kind("agent-worker-1", &json!({"type":"unknown"}), None),
+            ActorMessageKind::CoordinationRequest
+        );
     }
 }
