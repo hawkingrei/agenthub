@@ -99,11 +99,16 @@ Use this checklist for every non-trivial change:
 
 - `docs/features/` holds stable domain docs only; do not turn it into a
   chronological changelog.
+- Historical reference pages under `docs/features/` must be clearly marked and
+  point to the active canonical replacements.
 - `docs/journal/` holds dated implementation records (`YYYY-MM-DD-topic.md`).
 - When a feature evolves, update the canonical feature doc and add or append a
   journal note.
 - When documentation-only journals stop carrying distinct decisions, merge them
   into a background journal and remove the stale micro-journals.
+- When a historical journal remains useful only for chronology, keep it short
+  and point readers back to the active feature spec instead of letting old
+  rollout wording define current behavior.
 - Prefer the repo-local feature spec skill when extracting stable conclusions:
   - `.agents/skills/agenthub-docs-spec/SKILL.md`
 
