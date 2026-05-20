@@ -267,7 +267,41 @@ For the full execution vocabulary and boundary rules, see
 - The canonical file/directory contract for `.cache/context/` and `.agenthubmemory/` lives in
   [team-workspace-memory-contract.md](./team-workspace-memory-contract.md).
 
-### 5) Team Surface Contract
+### 5) Wakeup And Communication Discipline
+
+- Team wakeups should follow this stable order:
+  1. consume runtime-control or review-control input first;
+  2. decide whether the new inbound item needs an immediate visible acknowledgment, blocker
+     signal, or ownership signal;
+  3. load only the memory/history required for the next concrete action;
+  4. execute deeper work after the visible routing decision is clear.
+- Direct local model output, shell stdout, local scratch notes, or internal reasoning do not
+  satisfy Team-visible communication obligations.
+- Canonical shared-visible Team update surfaces are:
+  - `Conversation` / channel reply
+  - direct mailbox reply
+  - thread reply
+  - canonical task note journal
+- When an inbound message already carries a concrete reply target or thread target, the default
+  reply should stay on that same surface instead of opening a new lane.
+- If the current request can be answered immediately without tool execution, code changes, or
+  durable multi-step follow-up, the actor may answer directly without creating a new canonical
+  task.
+- If the request requires deeper execution work, durable follow-up, or ownership beyond one quick
+  reply, the actor should claim the mailbox topic and/or create or attach a canonical Team task
+  before continuing extended work.
+- When an actor references prior discussion or claims continuity with earlier work, it should read
+  the original thread/history first instead of relying on vague recollection.
+- Deferred follow-up should use canonical triggers or other durable follow-up surfaces, not long
+  sleeps or implicit "remember later" behavior.
+- Active multi-party discussion should not be interrupted unless the actor is explicitly addressed,
+  is the current owner of the next action, or carries a concrete blocker/safety update.
+- The actor who owns the current work item should normally send the completion summary; other
+  actors may contribute evidence, but should avoid duplicate "done" reports that create ambiguity.
+- Before an actor stops work while still owing a blocker reply or handoff, it should emit the
+  minimal visible blocker/handoff update on the correct Team surface.
+
+### 6) Team Surface Contract
 
 - `Conversation` does not require an active run.
 - `Conversation` is not a task list; task creation is an internal Team planning/runtime decision.
@@ -353,6 +387,8 @@ For the full execution vocabulary and boundary rules, see
 - Keep task handling task-first: task state should remain meaningful even when no run exists yet.
 - Keep run browsing and start/select operations in the `Runs` tab.
 - Keep a shared active-run context header for run-scoped tabs to avoid duplicated controls.
+- Keep wakeup behavior target-first: the runtime should decide the visible reply/ownership surface
+  before it spends context budget on deeper execution detail.
 - Team startup may require explicit operator action to bring runtimes online, but once the team is
   ready, new tasks should execute automatically.
 - Maintain deterministic run isolation and replay boundaries via `run_id`.
@@ -371,3 +407,4 @@ For the full execution vocabulary and boundary rules, see
 - `docs/journal/2026-03-05-team-conversation-event-bus-contract.md`
 - `docs/journal/2026-03-20-team-acp-permission-review-routing.md`
 - `docs/journal/2026-05-19-team-task-priority-note-governance.md`
+- `docs/journal/2026-05-21-team-spec-refresh-from-daemon-review.md`

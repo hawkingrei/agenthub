@@ -1,5 +1,18 @@
 # 2026-03-05 Team MCP Enforcement Lessons From Slock
 
+> Historical Note
+>
+> This journal records the original MCP-first enforcement pass.
+> The active Team runtime is now CLI-first, and the durable lessons from this
+> review are now captured in:
+>
+> - `docs/features/actor-foundation.md`
+> - `docs/features/agents-teams.md`
+> - `docs/features/team-mailbox-intake-and-ownership.md`
+> - `docs/features/team-workspace-memory-contract.md`
+> - `docs/features/team-mcp-enforcement.md` (historical reference only)
+> - `docs/journal/2026-05-21-team-spec-refresh-from-daemon-review.md`
+
 ## Context
 
 Team collaboration already has role/phase/mailbox contracts, but runtime enforcement was still weaker
@@ -47,6 +60,12 @@ Team docs now include an explicit MCP-first enforcement model with:
 - inbox-first turn loop contract;
 - allowed-action policy guidance;
 - rollout/validation matrix for staged hardening.
+
+## Current Status
+
+The MCP-first contract recorded here is no longer the active Team runtime path. Its durable lessons
+were compacted into the active Team specs, while the large MCP-era spec was reduced to a short
+historical reference page.
 
 ## External References
 

@@ -251,6 +251,36 @@ Rules:
 - watch/claim state should be visible alongside delivery state so an actor can decide whether the
   item still needs attention.
 
+### 10) Reply Target Fidelity Contract
+
+- `reply_target` is the canonical reply surface for the current inbound item when one exists.
+- If `thread_root_message_id` is present, reply should stay on that same thread by default rather
+  than opening a new conversation lane.
+- Widening the audience from a direct reply to `Conversation` / group chat is an explicit
+  escalation choice, not the default reply path.
+- Local stdout, tool logs, or internal reasoning do not satisfy a mailbox reply obligation for
+  reply-required messages.
+
+### 11) Actionability And Ownership Decision Contract
+
+- A mailbox item that can be answered immediately without durable execution work may be replied to
+  directly without spawning a new task.
+- A mailbox item that requires tool execution, code changes, external side effects, or durable
+  multi-step follow-up should be claimed before the actor begins extended work.
+- When claimed work must remain visible on Kanban or survive the current turn, the actor or
+  coordinator should create or attach a canonical Team task instead of leaving the work only in
+  mailbox state.
+- If an active thread owner already exists, a second actor should prefer `watching` or explicit
+  handoff/escalation rather than racing a second ownership claim.
+
+### 12) Deferred Follow-Up Contract
+
+- Future follow-up that does not happen immediately should use a durable trigger/reminder path
+  linked to the same mailbox topic, thread, or task.
+- Deferred follow-up must not rely on long sleeps, idle loops, or unstated memory-only recall.
+- Trigger-driven follow-up should preserve enough correlation metadata to reconnect the later wakeup
+  with the original task/thread ownership chain.
+
 ## Validation Matrix
 
 - Rust domain tests for inbound-envelope normalization, handling-disposition transitions, and
@@ -270,6 +300,8 @@ Rules:
 
 - Trigger-driven follow-up should reuse the same inbound-envelope contract as human or agent
   mailbox messages.
+- Read/claim prompts should make the distinction between "quick reply" and "durable execution work"
+  explicit so agents do not over-create tasks for answer-only messages.
 - Mailbox metrics should distinguish transport state from handling state:
   - unread
   - watching
@@ -298,3 +330,4 @@ Rules:
 - `docs/journal/2026-02-18-acp-actor-mailbox-native-tools.md`
 - `docs/journal/2026-02-22-team-task-routing-user-actor-semantics.md`
 - `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`
+- `docs/journal/2026-05-21-team-spec-refresh-from-daemon-review.md`
