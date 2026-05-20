@@ -922,12 +922,17 @@ impl PromptState {
             }
             EventMsg::UserMessage(UserMessageEvent {
                 message,
-                images: _,
+                images,
+                image_details,
                 text_elements: _,
-                local_images: _,
-                ..
+                local_images,
+                local_image_details,
             }) => {
-                info!("User message: {message:?}");
+                info!(
+                    "User message: {message:?}, image_count: {}, image_details: {image_details:?}, local_image_count: {}, local_image_details: {local_image_details:?}",
+                    images.as_ref().map_or(0, Vec::len),
+                    local_images.len(),
+                );
             }
             EventMsg::AgentMessageContentDelta(AgentMessageContentDeltaEvent {
                 thread_id,
