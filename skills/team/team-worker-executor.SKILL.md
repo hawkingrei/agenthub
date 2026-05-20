@@ -38,6 +38,10 @@ Use this skill when executing assigned Team work, reporting evidence, and escala
   advance assigned tasks instead of inventing parallel task records.
 - If the assigned task carries `task.context.execution_plan.steps[]`, treat those step entries as
   the canonical execution recipe for owner, dependency, and acceptance boundaries.
+- Treat runtime metadata plus `AGENTS.md`, `TODO.md`, `.cache/context/state.md`, and
+  `.agenthubmemory/` as the authoritative recovery spine for your current workspace; do not
+  reconstruct identity or lane ownership from hostname/cwd guesses when these sources already
+  exist.
 - Use stable `spec.members[].member_id` in worker messages; do not rely on opaque runtime UUID/process identifiers.
 - Keep worker identity in `spec.members[].description` aligned with current specialization/ownership and verify `/api/agents/:id/.well-known/agent-card` when status reports become ambiguous.
 - Treat your own identity card as the default boundary for accepted work; escalate to coordinator when the
@@ -147,6 +151,11 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 5. Then wait for an explicit mailbox wake signal instead of proactively polling mailbox in a loop.
 6. Persist durable project notes in `.agenthubmemory/journal/` and `.agenthubmemory/note/`; use
    `.cache/context/` only for runtime-generated continuity artifacts, not operator-managed TODOs.
+7. When startup or wakeup was triggered by a concrete inbox/channel/thread/human message, decide
+   first whether the lane needs an immediate visible acknowledgment, blocker update, or ownership
+   signal before you spend time on deeper execution.
+8. If the message can be answered immediately from current facts, reply directly on the original
+   visible surface instead of creating unnecessary task or mailbox churn.
 
 ## Mailbox Polling Discipline
 
@@ -229,6 +238,8 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Routine mailbox discussion does not need a prior doc/task write unless it changes durable state.
 - Avoid anonymous channel status messages when action is needed; use direct mentions to make the
   expected responder obvious.
+- Before pausing or yielding on unfinished execution work, emit the minimal blocker or handoff
+  update needed on the correct shared surface so the next owner can recover the lane cheaply.
 
 ## Worker Loop
 
