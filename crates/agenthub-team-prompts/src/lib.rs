@@ -161,9 +161,42 @@ mod tests {
                 .contains("visible reply lands back in the original human conversation")
         );
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("turn that into a direct channel reply"));
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT
+                .contains("runtime-injected Team identity and recovery pointers as authoritative")
+        );
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains(".cache/context/state.md"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("concrete reply target or thread target"));
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT
+                .contains("Do not create a new canonical Team task for every quick answer")
+        );
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT
+                .contains("immediate visible acknowledgment, blocker signal, or ownership signal")
+        );
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT.contains("timed triggers for real deferred follow-up")
+        );
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("owed blocker or handoff update"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".agenthubmemory/"));
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("does not need `.agenthubmemory/`"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".agenthubmemory/TODO.md"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT
+                .contains("runtime-injected Team identity and recovery pointers as authoritative")
+        );
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".cache/context/state.md"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("concrete reply target or thread target"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT
+                .contains("immediate visible acknowledgment, blocker signal, or ownership signal")
+        );
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT.contains("answer directly on the original visible surface")
+        );
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("timed triggers for real deferred follow-up"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("owed blocker or handoff update"));
         assert!(
             DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Treat `# all` as the default Team channel")
         );
