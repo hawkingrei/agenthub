@@ -3,7 +3,7 @@ use super::output::{actor_output_preference_for_command, write_actor_output};
 use super::parse::compute_time_trigger_fire_at;
 use super::runtime::{
     init_actor_control_client, init_actor_mailbox_service, init_actor_permission_review_client,
-    load_actor_inbox, map_actor_service_error, receive_actor_inbox,
+    init_actor_task_link_service, load_actor_inbox, map_actor_service_error, receive_actor_inbox,
 };
 use super::{
     ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
@@ -11,7 +11,8 @@ use super::{
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorAckResponse, ActorInboxRequest,
-    ActorMailboxService, ActorMessageStatus,
+    ActorMailboxService, ActorMessageStatus, ActorTaskLinkRequest, ActorTaskLinkResponse,
+    ActorTriageRequest, ActorTriageResponse,
 };
 use anyhow::Context;
 use chrono::Utc;
@@ -267,6 +268,58 @@ pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
             .await
             .map_err(|err| map_actor_service_error("actor ack", err))
             .with_context(|| format!("failed to ack message_id={message_id}"))?;
+        responses.push(response);
+    }
+    Ok(responses)
+}
+
+pub(super) async fn triage_actor_messages<S: ActorMailboxService + ?Sized>(
+    service: &S,
+    run_id: &str,
+    actor_id: &str,
+    message_ids: &[i64],
+    disposition: agenthub_team_actor::ActorMessageHandlingDisposition,
+) -> anyhow::Result<Vec<ActorTriageResponse>> {
+    let mut responses = Vec::with_capacity(message_ids.len());
+    for &message_id in message_ids {
+        let response = service
+            .actor_triage(ActorTriageRequest {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                message_id,
+                disposition: disposition.clone(),
+            })
+            .await
+            .map_err(|err| map_actor_service_error("actor triage", err))
+            .with_context(|| format!("failed to triage message_id={message_id}"))?;
+        responses.push(response);
+    }
+    Ok(responses)
+}
+
+pub(super) async fn link_actor_messages_to_task<S: ActorMailboxService + ?Sized>(
+    service: &S,
+    run_id: &str,
+    actor_id: &str,
+    message_ids: &[i64],
+    task_id: &str,
+    relation: agenthub_team_actor::ActorMessageTaskRelation,
+) -> anyhow::Result<Vec<ActorTaskLinkResponse>> {
+    let mut responses = Vec::with_capacity(message_ids.len());
+    for &message_id in message_ids {
+        let response = service
+            .actor_task_link(ActorTaskLinkRequest {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                message_id,
+                task_id: task_id.to_string(),
+                relation: relation.clone(),
+            })
+            .await
+            .map_err(|err| map_actor_service_error("actor task-link", err))
+            .with_context(|| {
+                format!("failed to link message_id={message_id} to task_id={task_id}")
+            })?;
         responses.push(response);
     }
     Ok(responses)
@@ -708,6 +761,61 @@ pub(super) async fn run_actor_command(
                 write_actor_output(&messages, output_mode, output_preference)?;
             }
         }
+        ActorCommand::Triage {
+            run_id,
+            actor_id,
+            message_ids,
+            disposition,
+        } => {
+            let run_id = resolve_direct_mailbox_run_id(&actor_id, run_id, "actor triage").await?;
+            let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
+            let messages = triage_actor_messages(
+                service.as_ref(),
+                &run_id,
+                &actor_id,
+                &message_ids,
+                disposition,
+            )
+            .await?;
+            if messages.len() == 1 {
+                let message = messages
+                    .into_iter()
+                    .next()
+                    .expect("single triage response should be present");
+                write_actor_output(&message, output_mode, output_preference)?;
+            } else {
+                write_actor_output(&messages, output_mode, output_preference)?;
+            }
+        }
+        ActorCommand::TaskLink {
+            run_id,
+            actor_id,
+            message_ids,
+            task_id,
+            relation,
+        } => {
+            let run_id =
+                resolve_direct_mailbox_run_id(&actor_id, run_id, "actor task-link").await?;
+            let service = init_actor_task_link_service(&actor_id, &run_id).await?;
+            let links = link_actor_messages_to_task(
+                service.as_ref(),
+                &run_id,
+                &actor_id,
+                &message_ids,
+                &task_id,
+                relation,
+            )
+            .await?;
+            if links.len() == 1 {
+                let link = links
+                    .into_iter()
+                    .next()
+                    .expect("single task-link response should be present");
+                write_actor_output(&link, output_mode, output_preference)?;
+            } else {
+                write_actor_output(&links, output_mode, output_preference)?;
+            }
+        }
         ActorCommand::Send {
             run_id,
             from_actor_id,
@@ -756,6 +864,7 @@ pub(super) async fn run_actor_command(
                     route,
                     payload: *payload,
                     idempotency_key,
+                    message_kind: None,
                 })
                 .await
                 .map_err(|err| map_actor_service_error("actor send", err))?;

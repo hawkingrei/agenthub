@@ -708,9 +708,13 @@ async fn init_test_schema(db: &SqlitePool) {
             transport TEXT NOT NULL,
             route_json TEXT,
             payload_json TEXT NOT NULL,
+            message_kind TEXT NOT NULL DEFAULT 'coordination_request',
             group_id TEXT,
             idempotency_key TEXT,
             status TEXT NOT NULL,
+            handling_disposition TEXT NOT NULL DEFAULT 'untriaged',
+            handled_by_actor_id TEXT,
+            handled_at INTEGER,
             created_at INTEGER NOT NULL,
             delivered_at INTEGER,
             relay_attempt INTEGER NOT NULL DEFAULT 0,
@@ -724,6 +728,46 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_actor_messages");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_actor_thread_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            topic_key TEXT NOT NULL,
+            task_id TEXT,
+            root_message_id INTEGER,
+            owner_actor_id TEXT NOT NULL,
+            claim_status TEXT NOT NULL,
+            claimed_message_id INTEGER,
+            claimed_at INTEGER NOT NULL,
+            lease_expires_at INTEGER,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(run_id, topic_key)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_actor_thread_claims");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE team_actor_message_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            message_id INTEGER NOT NULL,
+            task_id TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            created_by_actor_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE(run_id, message_id, task_id, relation)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_actor_message_links");
 
     sqlx::query(
         r#"

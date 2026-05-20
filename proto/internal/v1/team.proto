@@ -10,6 +10,8 @@ service TeamInternalControl {
   rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
   rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
   rpc AckActorMessage(AckActorMessageRequest) returns (AckActorMessageResponse);
+  rpc TriageActorMessage(TriageActorMessageRequest) returns (TriageActorMessageResponse);
+  rpc LinkActorMessageTask(LinkActorMessageTaskRequest) returns (LinkActorMessageTaskResponse);
   rpc DescribeTeamContext(DescribeTeamContextRequest) returns (DescribeTeamContextResponse);
   rpc ResolveActorRunScope(ResolveActorRunScopeRequest) returns (ResolveActorRunScopeResponse);
   rpc ListTeamTasks(ListTeamTasksRequest) returns (ListTeamTasksResponse);
@@ -48,6 +50,7 @@ message SendActorMessageRequest {
   string from_peer_id = 9;
   string to_peer_id = 10;
   string channel_id = 11;
+  string message_kind = 12;
 }
 
 message SendActorMessageResponse {
@@ -79,6 +82,35 @@ message AckActorMessageRequest {
 message AckActorMessageResponse {
   ActorMessage message = 1;
   bool status_changed = 2;
+}
+
+message TriageActorMessageRequest {
+  string run_id = 1;
+  string actor_id = 2;
+  int64 message_id = 3;
+  string disposition = 4;
+}
+
+message TriageActorMessageResponse {
+  ActorMessage message = 1;
+  bool handling_changed = 2;
+  int64 triaged_at = 3;
+}
+
+message LinkActorMessageTaskRequest {
+  string run_id = 1;
+  string actor_id = 2;
+  int64 message_id = 3;
+  string task_id = 4;
+  string relation = 5;
+}
+
+message LinkActorMessageTaskResponse {
+  ActorMessage message = 1;
+  string task_id = 2;
+  string relation = 3;
+  int64 linked_at = 4;
+  bool created = 5;
 }
 
 message DescribeTeamContextRequest {
@@ -281,6 +313,16 @@ message ActorMessage {
   string idempotency_key = 12;
   string from_peer_id = 13;
   string to_peer_id = 14;
+  string message_kind = 15;
+  string handling_disposition = 16;
+  string handled_by_actor_id = 17;
+  int64 handled_at = 18;
+  string thread_topic_key = 19;
+  string thread_claim_status = 20;
+  string thread_owner_actor_id = 21;
+  int64 thread_lease_expires_at = 22;
+  string linked_task_id = 23;
+  string linked_task_relation = 24;
 }
 
 message TransitionStepRequest {

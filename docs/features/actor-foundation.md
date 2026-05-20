@@ -192,6 +192,9 @@ Required visibility:
 
 - Keep actor semantics stable even when topology evolves (`main`-only -> `main` + `node`).
 - Keep operator-facing docs explicit: `run_id` partitions mailbox, `actor_id` identifies sender/receiver.
+- Keep advanced Team mailbox intake, triage, and topic-ownership policy aligned with
+  `docs/features/team-mailbox-intake-and-ownership.md` instead of overloading base delivery-state
+  semantics here.
 - In Team runtime, direct mailbox commands may infer `run_id` from current actor runtime scope or a
   unique active Team run, but ambiguous Team scope must still fail loudly and require an explicit
   `--run-id`.

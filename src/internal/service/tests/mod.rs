@@ -9,10 +9,10 @@ use super::super::proto::agenthub::internal::v1::{
     AckActorMessageRequest, AppendTeamTaskNoteRequest, CancelTimeTriggerRequest,
     CreateTeamChannelRequest, CreateTeamTaskRequest, CreateTimeTriggerRequest,
     DeleteTeamChannelRequest, DescribeTeamContextRequest, GetTeamTaskRequest,
-    IssueNodeCredentialRequest, ListActorInboxRequest, ListTeamTasksRequest,
-    ListTimeTriggersRequest, OpenTeamThreadRequest, ReplyTeamThreadRequest,
+    IssueNodeCredentialRequest, LinkActorMessageTaskRequest, ListActorInboxRequest,
+    ListTeamTasksRequest, ListTimeTriggersRequest, OpenTeamThreadRequest, ReplyTeamThreadRequest,
     ResolveActorRunScopeRequest, RespondPermissionReviewRequest, SendActorMessageRequest,
-    TransitionStepRequest, UpdateTeamTaskRequest,
+    TransitionStepRequest, TriageActorMessageRequest, UpdateTeamTaskRequest,
 };
 pub(super) use super::super::tls::InternalGrpcSecurityMode;
 pub(super) use super::resolve_team_coordinator_member_id;

@@ -10,7 +10,8 @@ use std::time::Duration;
 
 pub(super) use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
-    ActorServiceError, ActorServiceErrorCode, parse_actor_transport,
+    ActorServiceError, ActorServiceErrorCode, ActorTaskLinkRequest, ActorTriageRequest,
+    parse_actor_transport,
 };
 use helpers::*;
 pub(super) use serde_json::Value;
@@ -43,15 +44,17 @@ pub(super) use super::proto::agenthub::internal::v1::{
     DeleteTeamChannelRequest, DeleteTeamChannelResponse, DescribeTeamContextRequest,
     DescribeTeamContextResponse, EnsureAgentRecordRequest, EnsureAgentRecordResponse,
     GetAgentRecordRequest, GetAgentRecordResponse, GetTeamTaskRequest, GetTeamTaskResponse,
-    IssueNodeCredentialRequest, IssueNodeCredentialResponse, ListActorInboxRequest,
-    ListActorInboxResponse, ListAgentEventsRequest, ListAgentEventsResponse, ListTeamTasksRequest,
-    ListTeamTasksResponse, ListTimeTriggersRequest, ListTimeTriggersResponse,
-    OpenTeamThreadRequest, OpenTeamThreadResponse, ReplyTeamThreadRequest, ReplyTeamThreadResponse,
+    IssueNodeCredentialRequest, IssueNodeCredentialResponse, LinkActorMessageTaskRequest,
+    LinkActorMessageTaskResponse, ListActorInboxRequest, ListActorInboxResponse,
+    ListAgentEventsRequest, ListAgentEventsResponse, ListTeamTasksRequest, ListTeamTasksResponse,
+    ListTimeTriggersRequest, ListTimeTriggersResponse, OpenTeamThreadRequest,
+    OpenTeamThreadResponse, ReplyTeamThreadRequest, ReplyTeamThreadResponse,
     ResolveActorRunScopeRequest, ResolveActorRunScopeResponse, RespondPermissionReviewRequest,
     RespondPermissionReviewResponse, SendActorMessageRequest, SendActorMessageResponse,
     SendAgentInputRequest, SendAgentInputResponse, StartManagedAgentRequest,
     StartManagedAgentResponse, StopManagedAgentRequest, StopManagedAgentResponse,
-    TransitionStepRequest, TransitionStepResponse, UpdateTeamTaskRequest, UpdateTeamTaskResponse,
+    TransitionStepRequest, TransitionStepResponse, TriageActorMessageRequest,
+    TriageActorMessageResponse, UpdateTeamTaskRequest, UpdateTeamTaskResponse,
 };
 pub(super) use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 

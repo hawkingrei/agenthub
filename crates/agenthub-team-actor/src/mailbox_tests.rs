@@ -133,7 +133,18 @@ impl ActorMailboxStore for TestStore {
             transport: cmd.transport.clone(),
             route: cmd.route.clone(),
             payload: cmd.payload.clone(),
+            idempotency_key: cmd.idempotency_key.clone(),
+            message_kind: cmd.message_kind.clone(),
             status: ActorMessageStatus::Pending,
+            handling_disposition: super::ActorMessageHandlingDisposition::Untriaged,
+            handled_by_actor_id: None,
+            thread_topic_key: None,
+            thread_claim_status: None,
+            thread_owner_actor_id: None,
+            thread_lease_expires_at: None,
+            linked_task_id: None,
+            linked_task_relation: None,
+            handled_at: None,
             created_at: cmd.created_at,
             delivered_at: None,
         };
@@ -215,6 +226,58 @@ impl ActorMailboxStore for TestStore {
         Ok(AckActorMessageResult {
             message: stored.record.clone(),
             status_changed,
+        })
+    }
+
+    async fn triage_message(
+        &self,
+        cmd: &TriageActorMessageCommand,
+    ) -> Result<TriageActorMessageResult, Self::Error> {
+        let mut state = self.state.lock().await;
+        let stored = state
+            .messages
+            .iter_mut()
+            .find(|entry| {
+                entry.record.run_id == cmd.run_id
+                    && entry.record.message_id == cmd.message_id
+                    && entry.record.to_actor_id == cmd.actor_id
+                    && entry.record.to_peer_id == cmd.peer_id
+            })
+            .ok_or_else(|| TestStoreError("message not found".to_string()))?;
+        let handling_changed = stored.record.handling_disposition != cmd.disposition;
+        stored.record.handling_disposition = cmd.disposition.clone();
+        stored.record.handled_by_actor_id = Some(cmd.actor_id.clone());
+        stored.record.handled_at = Some(cmd.handled_at);
+        Ok(TriageActorMessageResult {
+            message: stored.record.clone(),
+            handling_changed,
+        })
+    }
+
+    async fn link_message_task(
+        &self,
+        cmd: &LinkActorMessageTaskCommand,
+    ) -> Result<LinkActorMessageTaskResult, Self::Error> {
+        let mut state = self.state.lock().await;
+        let stored = state
+            .messages
+            .iter_mut()
+            .find(|entry| {
+                entry.record.run_id == cmd.run_id
+                    && entry.record.message_id == cmd.message_id
+                    && entry.record.to_actor_id == cmd.actor_id
+                    && entry.record.to_peer_id == cmd.peer_id
+            })
+            .ok_or_else(|| TestStoreError("message not found".to_string()))?;
+        let created = stored.record.linked_task_id.as_deref() != Some(cmd.task_id.as_str())
+            || stored.record.linked_task_relation.as_ref() != Some(&cmd.relation);
+        stored.record.linked_task_id = Some(cmd.task_id.clone());
+        stored.record.linked_task_relation = Some(cmd.relation.clone());
+        Ok(LinkActorMessageTaskResult {
+            message: stored.record.clone(),
+            task_id: cmd.task_id.clone(),
+            relation: cmd.relation.clone(),
+            created,
         })
     }
 
@@ -350,6 +413,7 @@ fn remote_message_command(
         transport: ActorMessageTransport::Remote,
         route: Some(json!({"endpoint":"mock://relay"})),
         payload: json!({"text":"hello"}),
+        message_kind: ActorMessageKind::CoordinationRequest,
         idempotency_key: None,
         created_at,
     }
@@ -371,6 +435,7 @@ async fn send_and_ack_emit_expected_events() {
             transport: ActorMessageTransport::Local,
             route: None,
             payload: json!({"text":"review this"}),
+            message_kind: ActorMessageKind::CoordinationRequest,
             idempotency_key: None,
             created_at: 10,
         })
@@ -465,6 +530,7 @@ async fn send_with_same_idempotency_key_reuses_message_and_event() {
             transport: ActorMessageTransport::Local,
             route: None,
             payload: json!({"text":"review this"}),
+            message_kind: ActorMessageKind::CoordinationRequest,
             idempotency_key: Some("msg-1".to_string()),
             created_at: 10,
         })
@@ -481,6 +547,7 @@ async fn send_with_same_idempotency_key_reuses_message_and_event() {
             transport: ActorMessageTransport::Local,
             route: None,
             payload: json!({"text":"review this retry"}),
+            message_kind: ActorMessageKind::CoordinationRequest,
             idempotency_key: Some("msg-1".to_string()),
             created_at: 20,
         })

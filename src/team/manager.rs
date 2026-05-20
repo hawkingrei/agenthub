@@ -3054,6 +3054,10 @@ impl TeamManager {
                     m.transport,
                     m.route_json,
                     m.payload_json,
+                    m.message_kind,
+                    m.handling_disposition,
+                    m.handled_by_actor_id,
+                    m.handled_at,
                     m.group_id,
                     m.status,
                     m.created_at,
@@ -5634,6 +5638,10 @@ impl TeamManager {
                 transport,
                 route_json,
                 payload_json,
+                message_kind,
+                handling_disposition,
+                handled_by_actor_id,
+                handled_at,
                 status,
                 created_at,
                 delivered_at
@@ -5921,6 +5929,7 @@ impl TeamManager {
             FROM team_actor_messages
             WHERE run_id = ?1
               AND status = 'pending'
+              AND handling_disposition = 'untriaged'
               AND to_peer_id = ?2
             GROUP BY to_actor_id
             "#,
@@ -5947,6 +5956,7 @@ impl TeamManager {
             SELECT run_id, to_actor_id, COUNT(*) AS cnt
             FROM team_actor_messages
             WHERE status = 'pending'
+              AND handling_disposition = 'untriaged'
               AND to_peer_id = ?1
             GROUP BY run_id, to_actor_id
             ORDER BY run_id ASC, to_actor_id ASC

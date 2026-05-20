@@ -380,21 +380,25 @@ Team mailbox commands:
    `agenthub actor receive --run-id "<run-id>" --limit 20`
 2. Inspect mailbox without mutating delivery state:
    `agenthub actor inbox --run-id "<run-id>" --limit 20`
-3. Send a local direct message:
+3. Triage a mailbox item without treating it as a raw delivery ack:
+   `agenthub actor triage --run-id "<run-id>" --disposition watch --message-id "<message-id>"`
+4. Link mailbox evidence to a canonical task:
+   `agenthub actor task-link --run-id "<run-id>" --message-id "<message-id>" --task-id "<task-id>" --relation related`
+5. Send a local direct message:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
-4. Send a channel message:
+6. Send a channel message:
    `agenthub actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
-5. Open a thread for detailed context rooted in an existing channel message:
+7. Open a thread for detailed context rooted in an existing channel message:
    `agenthub actor team-thread-open --run-id "<run-id>" --shared --root-message-id "<message-id>"`
-6. Reply inside that thread when the topic needs logs, evidence, or detailed follow-up:
+8. Reply inside that thread when the topic needs logs, evidence, or detailed follow-up:
    `agenthub actor team-thread-reply --run-id "<run-id>" --shared --root-message-id "<message-id>" --text-file .agenthubmemory/mailbox/outbox/thread-reply.md`
-7. Send a remote direct message:
+9. Send a remote direct message:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{"endpoint":"https://..."}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
-8. Send an urgent human notification:
+10. Send an urgent human notification:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
-9. Force duplicate delivery when business logic requires repeated send:
+11. Force duplicate delivery when business logic requires repeated send:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
-10. Use explicit idempotency key when coordinating retries across workers:
+12. Use explicit idempotency key when coordinating retries across workers:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 
 Team context commands:
@@ -410,6 +414,11 @@ Protocol rules:
 - In each turn, the first mailbox action should be `actor receive` before planning/coding.
 - Treat `actor receive` as the normal accept-and-consume path for pending mailbox work.
 - Treat `actor inbox` output as a read-only unread snapshot: it includes `pending_count` alongside the fetched messages.
+- Use `actor triage` when a mailbox item should become `ignored`, `watching`, `claimed`, `completed`, or `released` without relying on raw delivery ack semantics.
+- A `claim` triage may fail when another actor already owns the mailbox topic; prefer `watch` or
+  wait for release/lease expiry instead of silently taking over.
+- Use `actor task-link` when mailbox evidence needs durable task association or when a newly created
+  task should be linked back to the triggering mailbox message.
 - Add `--include-delivered` only for explicit historical replay/debugging after current unread work is already visible.
 - Mailbox nudges are token-efficient by default: only direct `agent -> agent` sends and coordinator-authored channel `@member_id` mentions trigger immediate ACP hints.
 - Other unread mailbox traffic may surface later as one compact unread summary after roughly 3 minutes of ACP output silence; if unread count is `0`, no reminder is sent.
