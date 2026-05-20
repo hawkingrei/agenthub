@@ -1,10 +1,9 @@
-# Slock OAuth Linkers Specification
+# Slock OAuth Linker Specification
 
 ## Problem
 
-AgentHub needs a stable way to connect external applications such as Slock so
-agents can inspect external context without receiving raw third-party tokens or
-learning app-specific login rituals.
+AgentHub needs a Slock-specific provider adapter under the generic App Linker
+model defined in `docs/features/app-linkers.md`.
 
 The Slock integration should follow one login model:
 
@@ -18,8 +17,9 @@ not split into separate human-login and agent-login protocols.
 
 ## Scope
 
-- Add a canonical `Linkers` admin surface for external app connections.
-- Define Slock as the first OAuth-like linker provider.
+- Implement Slock as one provider adapter in the generic App Linker system.
+- Define Slock-specific OAuth-like config, callback, token exchange, and
+  `userinfo` mapping behavior.
 - Store Slock OAuth client configuration server-side:
   - API origin
   - client id
@@ -28,7 +28,8 @@ not split into separate human-login and agent-login protocols.
   - requested scopes
 - Support one Slock callback-code exchange path for human and agent principals.
 - Store a server-side linked account identity snapshot from Slock `userinfo`.
-- Provide read-only Slock resource access through AgentHub-controlled tools.
+- Provide read-only Slock resource methods through AgentHub-controlled tools
+  once the Slock resource endpoint contract is stable.
 - Keep Slock access tokens and client secrets out of browser JavaScript, agent
   prompts, logs, screenshots, and tool output.
 
@@ -46,36 +47,23 @@ not split into separate human-login and agent-login protocols.
 
 ## Architecture
 
-### 1) Naming Model
+### 1) Provider Placement
 
-`AppConnectorId` identifies a provider adapter and its stable capability
-surface. It is not a specific user login.
+Slock uses the generic App Linker naming model:
 
-Examples:
+- `AppConnectorId`: `slock`
+- default `AppLinkerId`: `slock-primary`
+- `LinkedPrincipal`: Slock `userinfo.sub` plus `userinfo.type`
 
-```text
-slock
-github
-linear
-```
-
-`AppLinkerId` identifies one configured connection instance inside AgentHub.
-It is the handle admins and tools use to address a concrete external app
-connection.
-
-Examples:
-
-```text
-slock-primary
-slock-dev
-```
-
-`LinkedPrincipal` identifies the external subject returned by the provider.
-For Slock, this is `userinfo.sub` plus `userinfo.type`.
+The connector id remains provider-level. It must not include the Slock server,
+workspace, human user, or agent id.
 
 ### 2) Data Model
 
-AgentHub stores connector configuration and linked account state separately:
+Slock uses the generic App Linker storage tables. The Slock provider adapter
+stores OAuth config in `app_linkers.config_json`, credentials and tokens in
+`app_linker_secrets`, and Slock `userinfo` snapshots in
+`app_linker_principals`.
 
 ```text
 app_linkers
@@ -111,8 +99,28 @@ app_linker_principals
 - updated_at
 ```
 
-Secrets remain server-side only. Browser APIs return redacted state such as
-`configured`, `connected`, `expires_at`, and the identity snapshot.
+Slock-specific config fields are:
+
+```text
+api_origin
+client_id
+return_url
+scopes
+```
+
+Slock-specific secret fields are:
+
+```text
+client_secret
+access_token
+token_type
+scope
+expires_at
+```
+
+Secrets remain server-side only. Browser APIs return generic redacted linker
+state such as `configured`, `connected`, `expires_at`, and the Slock identity
+snapshot.
 
 ### 3) Admin Flow
 
@@ -149,7 +157,7 @@ The same callback handler is used for human and agent Slock principals.
 
 ### 4) Runtime Resource Access
 
-Agents query Slock through AgentHub, not directly.
+Agents query Slock through the generic App Linker tool path, not directly.
 
 The canonical path is:
 
@@ -160,13 +168,14 @@ agent -> AgentHub tool/CLI -> internal authorization -> linker service -> Slock 
 Initial Slock read tools:
 
 ```text
-agenthub actor linker-list
+agenthub actor app-linker-list
 agenthub actor slock-channels --linker-id <id>
 agenthub actor slock-channel-messages --linker-id <id> --channel-id <id> --limit <n>
 ```
 
-The CLI tools may later be wrapped as MCP tools or plugin tools, but the backend
-linker service remains the root of trust.
+These are provider-friendly aliases over generic App Linker read tools. The CLI
+tools may later be wrapped as MCP tools or plugin tools, but the backend linker
+service remains the root of trust.
 
 ### 5) Slock Resource Boundary
 
@@ -304,11 +313,12 @@ Redacted admin responses use this shape:
 
 ### 5) Agent Tool Authorization
 
-Agent-side linker reads require an internal permission distinct from Team
-mailbox permissions:
+Agent-side Slock reads require App Linker permissions distinct from Team mailbox
+permissions:
 
 ```text
 app_linker:read
+app_linker:invoke_read_tool
 ```
 
 Tool calls are read-only in the first version. They may list Slock channels and
@@ -379,4 +389,5 @@ cd web && npm exec tsc -- --noEmit
 
 ## Source Journals
 
-- None yet. This is the initial canonical specification for Slock OAuth linkers.
+- None yet. This is the initial provider-specific specification for the Slock
+  App Linker.
