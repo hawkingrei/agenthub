@@ -7462,6 +7462,168 @@ async fn actor_mailbox_service_include_delivered_keeps_pending_visible_on_first_
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_include_delivered_returns_history_when_unread_is_empty() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-history-only-team".to_string(),
+            description: Some("team for delivered-only inbox history".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-history-only"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let mut first_delivered_id = None;
+    for idx in 0..3 {
+        let sent = service
+            .actor_send(ActorSendRequest {
+                run_id: run.id.clone(),
+                from_actor_id: "planner".to_string(),
+                from_peer_id: None,
+                to_actor_id: Some("reviewer".to_string()),
+                channel_id: None,
+                to_peer_id: None,
+                channel: Some("coordination".to_string()),
+                transport: Some(TeamActorMessageTransport::Local),
+                route: None,
+                payload: json!({"text": format!("history-{idx}")}),
+                idempotency_key: Some(format!("msg-history-only-{idx}")),
+            })
+            .await
+            .expect("actor send");
+        if first_delivered_id.is_none() {
+            first_delivered_id = Some(sent.message_id);
+        }
+        service
+            .actor_ack(ActorAckRequest {
+                run_id: run.id.clone(),
+                actor_id: "reviewer".to_string(),
+                message_id: sent.message_id,
+                ack_token: None,
+                result: None,
+            })
+            .await
+            .expect("ack historical message");
+    }
+
+    let inbox = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id,
+            actor_id: "reviewer".to_string(),
+            cursor: None,
+            limit: Some(20),
+            states: Some(vec![
+                TeamActorMessageStatus::Pending,
+                TeamActorMessageStatus::Delivered,
+            ]),
+        })
+        .await
+        .expect("actor inbox with delivered history only");
+
+    assert_eq!(inbox.pending_count, 0);
+    assert_eq!(inbox.messages.len(), 3);
+    assert!(
+        inbox
+            .messages
+            .iter()
+            .all(|message| message.status == TeamActorMessageStatus::Delivered)
+    );
+    assert_eq!(inbox.messages[0].message_id, first_delivered_id.unwrap());
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_include_delivered_preserves_requested_mix_when_page_has_pending() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-mixed-first-page-team".to_string(),
+            description: Some("team for delivered inbox mixed first page".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-mixed-first-page"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    for idx in 0..3 {
+        let sent = service
+            .actor_send(ActorSendRequest {
+                run_id: run.id.clone(),
+                from_actor_id: "planner".to_string(),
+                from_peer_id: None,
+                to_actor_id: Some("reviewer".to_string()),
+                channel_id: None,
+                to_peer_id: None,
+                channel: Some("coordination".to_string()),
+                transport: Some(TeamActorMessageTransport::Local),
+                route: None,
+                payload: json!({"text": format!("mixed-{idx}")}),
+                idempotency_key: Some(format!("msg-mixed-first-page-{idx}")),
+            })
+            .await
+            .expect("actor send");
+        if idx < 2 {
+            service
+                .actor_ack(ActorAckRequest {
+                    run_id: run.id.clone(),
+                    actor_id: "reviewer".to_string(),
+                    message_id: sent.message_id,
+                    ack_token: None,
+                    result: None,
+                })
+                .await
+                .expect("ack historical message");
+        }
+    }
+
+    let inbox = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id,
+            actor_id: "reviewer".to_string(),
+            cursor: None,
+            limit: Some(20),
+            states: Some(vec![
+                TeamActorMessageStatus::Pending,
+                TeamActorMessageStatus::Delivered,
+            ]),
+        })
+        .await
+        .expect("actor inbox with delivered mixed page");
+
+    assert_eq!(inbox.pending_count, 1);
+    assert_eq!(inbox.messages.len(), 3);
+    assert_eq!(inbox.messages[0].status, TeamActorMessageStatus::Delivered);
+    assert_eq!(inbox.messages[1].status, TeamActorMessageStatus::Delivered);
+    assert_eq!(inbox.messages[2].status, TeamActorMessageStatus::Pending);
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_channel_send_broadcasts_and_preserves_mentions() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
