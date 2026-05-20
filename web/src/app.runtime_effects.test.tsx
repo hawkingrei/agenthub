@@ -13,6 +13,7 @@ const {
   listSafePathsMock,
   listDevicesMock,
   listAuditsMock,
+  listLinkersMock,
   getVapidInfoMock,
   getRuntimeDefaultsMock,
   getAdminSettingsMock,
@@ -25,6 +26,7 @@ const {
   listSafePathsMock: vi.fn(),
   listDevicesMock: vi.fn(),
   listAuditsMock: vi.fn(),
+  listLinkersMock: vi.fn(),
   getVapidInfoMock: vi.fn(),
   getRuntimeDefaultsMock: vi.fn(),
   getAdminSettingsMock: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock("./api", () => ({
     listSafePaths: listSafePathsMock,
     listDevices: listDevicesMock,
     listAudits: listAuditsMock,
+    listLinkers: listLinkersMock,
     getVapidInfo: getVapidInfoMock,
     getRuntimeDefaults: getRuntimeDefaultsMock,
     getAdminSettings: getAdminSettingsMock,
@@ -118,6 +121,8 @@ describe("App runtime viewport effects", () => {
     listDevicesMock.mockResolvedValue([]);
     listAuditsMock.mockReset();
     listAuditsMock.mockResolvedValue([]);
+    listLinkersMock.mockReset();
+    listLinkersMock.mockResolvedValue([]);
     getVapidInfoMock.mockReset();
     getVapidInfoMock.mockResolvedValue(null);
     getRuntimeDefaultsMock.mockReset();
@@ -586,6 +591,7 @@ describe("App runtime viewport effects", () => {
     expect(listSafePathsMock).not.toHaveBeenCalled();
     expect(listDevicesMock).not.toHaveBeenCalled();
     expect(listAuditsMock).not.toHaveBeenCalled();
+    expect(listLinkersMock).not.toHaveBeenCalled();
     expect(getVapidInfoMock).not.toHaveBeenCalled();
     expect(getAdminSettingsMock).not.toHaveBeenCalled();
   });
@@ -611,6 +617,7 @@ describe("App runtime viewport effects", () => {
     expect(listSafePathsMock).toHaveBeenCalledWith("token-root");
     expect(listDevicesMock).toHaveBeenCalledWith("token-root");
     expect(listAuditsMock).toHaveBeenCalledWith("token-root");
+    expect(listLinkersMock).toHaveBeenCalledWith("token-root");
     expect(getVapidInfoMock).toHaveBeenCalledWith("token-root");
     expect(getAdminSettingsMock).toHaveBeenCalledWith("token-root");
   });

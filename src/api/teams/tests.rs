@@ -282,6 +282,7 @@ async fn build_test_state_with_db_source_and_archive(
     ));
     let state = AppState {
         db,
+        linker_http: crate::linkers::AppLinkerService::default_http_client(),
         agents,
         teams,
         push,

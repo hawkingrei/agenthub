@@ -12,6 +12,7 @@ mod authz;
 mod diagnostics;
 mod error;
 mod join;
+mod linkers;
 mod openapi;
 mod push;
 mod settings;
@@ -45,6 +46,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/admin", admin::router(state.clone()))
         .nest("/auth", auth::router(state.clone()))
         .nest("/join", join::router(state.clone()))
+        .nest("/linkers", linkers::router(state.clone()))
         .nest("/settings", settings::router(state.clone()))
         .merge(openapi::router(state.clone()))
         .nest("/push", push::router(state.clone()));

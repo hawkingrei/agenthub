@@ -812,6 +812,8 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    ensure_app_linker_schema(&pool).await?;
+
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_team_tasks_add_assigned_member_id(&pool).await?;
     migrate_team_tasks_add_priority(&pool).await?;
@@ -1549,6 +1551,98 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     }
 
     Ok(pool)
+}
+
+pub async fn ensure_app_linker_schema(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_linkers (
+            id TEXT PRIMARY KEY,
+            connector_id TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            status TEXT NOT NULL,
+            config_json TEXT NOT NULL,
+            created_by_user_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_linker_secrets (
+            linker_id TEXT PRIMARY KEY,
+            client_secret TEXT,
+            access_token TEXT,
+            token_type TEXT,
+            scope TEXT,
+            expires_at INTEGER,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(linker_id) REFERENCES app_linkers(id)
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_linker_principals (
+            linker_id TEXT PRIMARY KEY,
+            subject TEXT NOT NULL,
+            principal_type TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            handle TEXT,
+            avatar_url TEXT,
+            server_id TEXT,
+            server_slug TEXT,
+            raw_userinfo_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(linker_id) REFERENCES app_linkers(id)
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_linker_attempts (
+            state TEXT PRIMARY KEY,
+            linker_id TEXT NOT NULL,
+            created_by_user_id TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(linker_id) REFERENCES app_linkers(id)
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_app_linkers_connector
+        ON app_linkers(connector_id, updated_at DESC);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_app_linker_attempts_expires
+        ON app_linker_attempts(expires_at);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 pub async fn cleanup_agent_event_history(

@@ -1,5 +1,12 @@
 import React, { Suspense } from "react";
-import type { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
+import type {
+  AppLinkerRecord,
+  AuditRecord,
+  DeviceRecord,
+  SafePath,
+  SlockLinkAttemptResponse,
+  VapidInfo,
+} from "../api";
 import { AuthState } from "../types";
 import { RouteFallback } from "./route_fallback";
 import type { AdminPageProps } from "../pages/admin_page";
@@ -24,6 +31,23 @@ type AdminRouteContainerProps = {
   audits: AuditRecord[];
   vapidInfo: VapidInfo | null;
   onRotateVapid: () => void;
+  slockLinker: AppLinkerRecord | null;
+  slockLinkAttempt: SlockLinkAttemptResponse | null;
+  slockApiOrigin: string;
+  setSlockApiOrigin: (value: string) => void;
+  slockClientId: string;
+  setSlockClientId: (value: string) => void;
+  slockClientSecret: string;
+  setSlockClientSecret: (value: string) => void;
+  slockReturnUrl: string;
+  setSlockReturnUrl: (value: string) => void;
+  slockScopesInput: string;
+  setSlockScopesInput: (value: string) => void;
+  slockCallbackInput: string;
+  setSlockCallbackInput: (value: string) => void;
+  onSaveSlockLinker: () => void;
+  onCreateSlockLinkAttempt: () => void;
+  onExchangeSlockCode: () => void;
   onAddSafePath: () => void;
   onDeleteSafePath: (path: string) => void;
   onRevokeDevice: (id: string) => void;
@@ -53,6 +77,23 @@ export function AdminRouteContainer({
   audits,
   vapidInfo,
   onRotateVapid,
+  slockLinker,
+  slockLinkAttempt,
+  slockApiOrigin,
+  setSlockApiOrigin,
+  slockClientId,
+  setSlockClientId,
+  slockClientSecret,
+  setSlockClientSecret,
+  slockReturnUrl,
+  setSlockReturnUrl,
+  slockScopesInput,
+  setSlockScopesInput,
+  slockCallbackInput,
+  setSlockCallbackInput,
+  onSaveSlockLinker,
+  onCreateSlockLinkAttempt,
+  onExchangeSlockCode,
   onAddSafePath,
   onDeleteSafePath,
   onRevokeDevice,
@@ -98,6 +139,25 @@ export function AdminRouteContainer({
     vapid: {
       vapidInfo,
       onRotateVapid,
+    },
+    linkers: {
+      slockLinker,
+      slockLinkAttempt,
+      slockApiOrigin,
+      setSlockApiOrigin,
+      slockClientId,
+      setSlockClientId,
+      slockClientSecret,
+      setSlockClientSecret,
+      slockReturnUrl,
+      setSlockReturnUrl,
+      slockScopesInput,
+      setSlockScopesInput,
+      slockCallbackInput,
+      setSlockCallbackInput,
+      onSaveSlockLinker,
+      onCreateSlockLinkAttempt,
+      onExchangeSlockCode,
     },
     ui: {
       developerMode,

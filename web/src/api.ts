@@ -185,6 +185,50 @@ export type AdminSettingsResponse = {
   passkey_enabled: boolean;
 };
 
+export type AppLinkerPrincipal = {
+  subject: string;
+  principal_type: "human" | "agent";
+  display_name: string;
+  handle: string | null;
+  avatar_url: string | null;
+  server_id: string | null;
+  server_slug: string | null;
+  updated_at: number;
+};
+
+export type AppLinkerRecord = {
+  linker_id: string;
+  connector_id: string;
+  display_name: string;
+  status: "configured" | "connected" | string;
+  api_origin: string;
+  client_id: string;
+  return_url: string;
+  scopes: string[];
+  client_secret_configured: boolean;
+  token_configured: boolean;
+  token_type: string | null;
+  granted_scopes: string[];
+  expires_at: number | null;
+  principal: AppLinkerPrincipal | null;
+  updated_at: number;
+};
+
+export type UpsertSlockLinkerRequest = {
+  api_origin: string;
+  client_id: string;
+  client_secret?: string | null;
+  return_url: string;
+  scopes: string[];
+};
+
+export type SlockLinkAttemptResponse = {
+  linker_id: string;
+  state: string;
+  expires_at: number;
+  return_url: string;
+};
+
 export type JoinStartResponse = {
   challenge_id?: string | null;
   options?: unknown;
@@ -810,6 +854,27 @@ export const api = {
     apiFetch<{ status: string }>("/api/admin/settings/passkey", token, {
       method: "POST",
       body: JSON.stringify({ enabled }),
+    }),
+  listLinkers: (token: string) =>
+    apiFetch<AppLinkerRecord[]>("/api/admin/linkers", token),
+  upsertSlockLinker: (token: string, payload: UpsertSlockLinkerRequest) =>
+    apiFetch<AppLinkerRecord>("/api/admin/linkers/slock", token, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  createSlockLinkAttempt: (token: string) =>
+    apiFetch<SlockLinkAttemptResponse>(
+      "/api/admin/linkers/slock/link_attempts",
+      token,
+      { method: "POST" }
+    ),
+  exchangeSlockCode: (
+    token: string,
+    payload: { code?: string | null; callback_url?: string | null; state?: string | null }
+  ) =>
+    apiFetch<AppLinkerRecord>("/api/admin/linkers/slock/exchange", token, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
   createTeam: (
     token: string,
