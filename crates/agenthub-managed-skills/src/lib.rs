@@ -379,7 +379,7 @@ Team mailbox commands:
 1. Accept pending inbox work:
    `agenthub actor receive --run-id "<run-id>" --limit 20`
 2. Inspect mailbox without mutating delivery state:
-   `agenthub actor inbox --run-id "<run-id>" --limit 20 --include-delivered`
+   `agenthub actor inbox --run-id "<run-id>" --limit 20`
 3. Send a local direct message:
    `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 4. Send a channel message:
@@ -410,6 +410,7 @@ Protocol rules:
 - In each turn, the first mailbox action should be `actor receive` before planning/coding.
 - Treat `actor receive` as the normal accept-and-consume path for pending mailbox work.
 - Treat `actor inbox` output as a read-only unread snapshot: it includes `pending_count` alongside the fetched messages.
+- Add `--include-delivered` only for explicit historical replay/debugging after current unread work is already visible.
 - Mailbox nudges are token-efficient by default: only direct `agent -> agent` sends and coordinator-authored channel `@member_id` mentions trigger immediate ACP hints.
 - Other unread mailbox traffic may surface later as one compact unread summary after roughly 3 minutes of ACP output silence; if unread count is `0`, no reminder is sent.
 - Before routing work based on teammate assumptions, inspect `actor team-members`.
