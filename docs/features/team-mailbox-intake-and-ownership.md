@@ -329,5 +329,5 @@ Rules:
 
 - `docs/journal/2026-02-18-acp-actor-mailbox-native-tools.md`
 - `docs/journal/2026-02-22-team-task-routing-user-actor-semantics.md`
-- `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`
-- `docs/journal/2026-05-21-team-spec-refresh-from-daemon-review.md`
+- `docs/journal/2026-03-05-team-mcp-enforcement-external-review.md`
+- `docs/journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md`

@@ -316,4 +316,4 @@ Practical consequences:
 - [2026-04-10-team-workspace-memory-contract.md](../journal/2026-04-10-team-workspace-memory-contract.md)
 - [2026-04-18-team-memory-index-rolling-upgrade.md](../journal/2026-04-18-team-memory-index-rolling-upgrade.md)
 - [2026-04-18-team-memory-index-schema-metadata.md](../journal/2026-04-18-team-memory-index-schema-metadata.md)
-- [2026-05-21-team-spec-refresh-from-daemon-review.md](../journal/2026-05-21-team-spec-refresh-from-daemon-review.md)
+- [2026-05-21-team-spec-refresh-from-external-daemon-review.md](../journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md)

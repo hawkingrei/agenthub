@@ -1,17 +1,17 @@
-# 2026-05-21 Team Spec Refresh From Daemon Review
+# 2026-05-21 Team Spec Refresh From External Daemon Review
 
 ## Summary
 
-We reviewed the latest public `@slock-ai/daemon` package and folded the stable operating concepts
-that still fit AgentHub into the active Team specs. The result is a tighter contract around wakeup
+We reviewed a recent external daemon package and folded the stable operating concepts that still fit
+AgentHub into the active Team specs. The result is a tighter contract around wakeup
 ordering, reply-target fidelity, claim-before-deep-work routing, durable deferred follow-up, and
 filesystem-backed recovery entry points. This pass also compacted the older MCP-era Team reference
 docs so the active rules and the historical background no longer compete.
 
 ## Background
 
-Earlier Team documentation already incorporated older Slock lessons around MCP-first collaboration
-enforcement. The latest daemon review showed that the more durable value is not one provider prompt
+Earlier Team documentation already incorporated older external-daemon lessons around MCP-first
+collaboration enforcement. The latest review showed that the more durable value is not one provider prompt
 string, but a stronger operating contract:
 
 - decide the visible reply/ownership surface early;
@@ -37,7 +37,7 @@ Documentation-boundary cleanup:
 - `docs/features/team-mcp-enforcement.md`
 - `docs/features/README.md`
 - `docs/README.md`
-- `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`
+- `docs/journal/2026-03-05-team-mcp-enforcement-external-review.md`
 
 ## Key Decisions
 
@@ -74,20 +74,17 @@ Documentation-boundary cleanup:
 
 ## Validation
 
-Reviewed the daemon package metadata and prompt bundle, then reconciled the findings against the
-current canonical Team specs:
+Reviewed the external daemon package metadata and prompt bundle, then reconciled the findings
+against the current canonical Team specs:
 
 ```bash
-npm view @slock-ai/daemon version dist.tarball
-sed -n '780,1265p' .tmp/slock-daemon-0522/package/dist/chunk-HSBOURQE.js
-sed -n '2360,3510p' .tmp/slock-daemon-0522/package/dist/chunk-HSBOURQE.js
 sed -n '1,420p' docs/features/agents-teams.md
 sed -n '1,320p' docs/features/team-mailbox-intake-and-ownership.md
 sed -n '1,340p' docs/features/team-workspace-memory-contract.md
 sed -n '1,240p' docs/features/team-mcp-enforcement.md
 sed -n '1,220p' docs/features/README.md
 sed -n '1,220p' docs/README.md
-sed -n '1,220p' docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md
+sed -n '1,220p' docs/journal/2026-03-05-team-mcp-enforcement-external-review.md
 ```
 
 This was a docs-only change; no runtime tests were added in this PR.

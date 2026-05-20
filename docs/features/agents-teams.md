@@ -403,8 +403,8 @@ For the full execution vocabulary and boundary rules, see
 - `docs/journal/2026-02-24-team-operating-model-spec.md`
 - `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`
 - `docs/journal/2026-03-05-main-node-terminology-and-doc-pruning.md`
-- `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`
+- `docs/journal/2026-03-05-team-mcp-enforcement-external-review.md`
 - `docs/journal/2026-03-05-team-conversation-event-bus-contract.md`
 - `docs/journal/2026-03-20-team-acp-permission-review-routing.md`
 - `docs/journal/2026-05-19-team-task-priority-note-governance.md`
-- `docs/journal/2026-05-21-team-spec-refresh-from-daemon-review.md`
+- `docs/journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md`
