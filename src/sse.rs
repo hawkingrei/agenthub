@@ -1280,6 +1280,7 @@ mod tests {
         let teams = Arc::new(TeamManager::new_with_event_dbs(db.clone(), event_dbs));
         AppState {
             db,
+            linker_http: crate::linkers::AppLinkerService::default_http_client(),
             agents,
             teams,
             push,

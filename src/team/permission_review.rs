@@ -127,6 +127,7 @@ impl TeamPermissionReviewDispatcher {
                     "permission-review:{}:{}",
                     request.request_id, review_target_actor_id
                 )),
+                message_kind: None,
             })
             .await
             .map_err(|err| {

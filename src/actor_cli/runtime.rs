@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
-    ActorMessageStatus, ActorServiceError, ActorServiceErrorCode,
+    ActorMessageHandlingDisposition, ActorMessageStatus, ActorServiceError, ActorServiceErrorCode,
+    ActorTriageRequest,
 };
 use futures::{StreamExt, TryStreamExt, stream};
 
@@ -11,6 +12,38 @@ use crate::internal::auth::InternalAction;
 use crate::internal::client::InternalGrpcMailboxClient;
 
 const RECEIVE_ACK_CONCURRENCY: usize = 8;
+
+async fn triage_received_message<S: ActorMailboxService + ?Sized>(
+    service: &S,
+    acked: agenthub_team_actor::ActorAckResponse,
+) -> Result<agenthub_team_actor::ActorMessageRecord, ActorServiceError> {
+    let claimed_request = ActorTriageRequest {
+        run_id: acked.message.run_id.clone(),
+        actor_id: acked.message.to_actor_id.clone(),
+        message_id: acked.message.message_id,
+        disposition: ActorMessageHandlingDisposition::Claimed,
+    };
+    match service.actor_triage(claimed_request.clone()).await {
+        Ok(triaged) => Ok(triaged.message),
+        Err(err) if err.code == ActorServiceErrorCode::NotFound => Ok(acked.message),
+        Err(err) if err.code == ActorServiceErrorCode::Conflict => {
+            match service
+                .actor_triage(ActorTriageRequest {
+                    disposition: ActorMessageHandlingDisposition::Watching,
+                    ..claimed_request
+                })
+                .await
+            {
+                Ok(triaged) => Ok(triaged.message),
+                Err(watch_err) if watch_err.code == ActorServiceErrorCode::NotFound => {
+                    Ok(acked.message)
+                }
+                Err(watch_err) => Err(watch_err),
+            }
+        }
+        Err(err) => Err(err),
+    }
+}
 
 pub(super) async fn init_actor_control_client(
     actor_id: &str,
@@ -40,6 +73,24 @@ pub(super) async fn init_actor_mailbox_service(
             InternalAction::MessageAck,
         ],
         "actor mailbox control",
+    )
+    .await?;
+    Ok(Arc::new(client))
+}
+
+pub(super) async fn init_actor_task_link_service(
+    actor_id: &str,
+    run_id: &str,
+) -> anyhow::Result<Arc<dyn ActorMailboxService>> {
+    let client = init_actor_control_client(
+        actor_id,
+        Some(run_id),
+        &[
+            InternalAction::InboxList,
+            InternalAction::MessageAck,
+            InternalAction::TeamTaskWrite,
+        ],
+        "actor mailbox task-link control",
     )
     .await?;
     Ok(Arc::new(client))
@@ -90,7 +141,9 @@ pub(super) async fn receive_actor_inbox<S: ActorMailboxService + ?Sized>(
                     })
                     .await;
                 match acked {
-                    Ok(acked) => Ok((idx, acked.message, true)),
+                    Ok(acked) => triage_received_message(service, acked)
+                        .await
+                        .map(|message| (idx, message, true)),
                     Err(err) if err.code == ActorServiceErrorCode::NotFound => {
                         Ok((idx, message, false))
                     }

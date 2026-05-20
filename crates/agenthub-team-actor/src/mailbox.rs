@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::message::{ActorMessageRecord, ActorMessageStatus, ActorMessageTransport};
+use crate::message::{
+    ActorMessageHandlingDisposition, ActorMessageKind, ActorMessageRecord, ActorMessageStatus,
+    ActorMessageTaskRelation, ActorMessageTransport,
+};
 use crate::relay::{ActorMessageRelay, ActorRelayError};
 
 #[derive(Debug, Clone)]
@@ -16,6 +19,7 @@ pub struct SendActorMessageCommand {
     pub transport: ActorMessageTransport,
     pub route: Option<Value>,
     pub payload: Value,
+    pub message_kind: ActorMessageKind,
     pub idempotency_key: Option<String>,
     pub created_at: i64,
 }
@@ -49,6 +53,41 @@ pub struct AckActorMessageCommand {
 pub struct AckActorMessageResult {
     pub message: ActorMessageRecord,
     pub status_changed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TriageActorMessageCommand {
+    pub run_id: String,
+    pub actor_id: String,
+    pub peer_id: String,
+    pub message_id: i64,
+    pub disposition: ActorMessageHandlingDisposition,
+    pub handled_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TriageActorMessageResult {
+    pub message: ActorMessageRecord,
+    pub handling_changed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct LinkActorMessageTaskCommand {
+    pub run_id: String,
+    pub actor_id: String,
+    pub peer_id: String,
+    pub message_id: i64,
+    pub task_id: String,
+    pub relation: ActorMessageTaskRelation,
+    pub linked_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct LinkActorMessageTaskResult {
+    pub message: ActorMessageRecord,
+    pub task_id: String,
+    pub relation: ActorMessageTaskRelation,
+    pub created: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +136,16 @@ pub trait ActorMailboxStore {
         &self,
         cmd: &AckActorMessageCommand,
     ) -> Result<AckActorMessageResult, Self::Error>;
+
+    async fn triage_message(
+        &self,
+        cmd: &TriageActorMessageCommand,
+    ) -> Result<TriageActorMessageResult, Self::Error>;
+
+    async fn link_message_task(
+        &self,
+        cmd: &LinkActorMessageTaskCommand,
+    ) -> Result<LinkActorMessageTaskResult, Self::Error>;
 
     async fn list_remote_pending_messages(
         &self,
@@ -211,6 +260,61 @@ where
                     &result.message.run_id,
                     "actor_message_delivered",
                     cmd.delivered_at,
+                    event_payload,
+                )
+                .await?;
+        }
+        Ok(result)
+    }
+
+    pub async fn triage(
+        &self,
+        cmd: TriageActorMessageCommand,
+    ) -> Result<TriageActorMessageResult, ActorMailboxError<S::Error>> {
+        let result = self.store.triage_message(&cmd).await?;
+        if result.handling_changed {
+            let event_payload = serde_json::json!({
+                "message_id": result.message.message_id,
+                "from_actor_id": result.message.from_actor_id,
+                "from_peer_id": result.message.from_peer_id,
+                "to_actor_id": result.message.to_actor_id,
+                "to_peer_id": result.message.to_peer_id,
+                "channel": result.message.channel,
+                "transport": result.message.transport.as_str(),
+                "status": result.message.status.as_str(),
+                "message_kind": result.message.message_kind.as_str(),
+                "handling_disposition": result.message.handling_disposition.as_str(),
+                "handled_by_actor_id": result.message.handled_by_actor_id,
+            });
+            self.store
+                .append_run_event(
+                    &result.message.run_id,
+                    "actor_message_triaged",
+                    cmd.handled_at,
+                    event_payload,
+                )
+                .await?;
+        }
+        Ok(result)
+    }
+
+    pub async fn link_task(
+        &self,
+        cmd: LinkActorMessageTaskCommand,
+    ) -> Result<LinkActorMessageTaskResult, ActorMailboxError<S::Error>> {
+        let result = self.store.link_message_task(&cmd).await?;
+        if result.created {
+            let event_payload = serde_json::json!({
+                "message_id": result.message.message_id,
+                "task_id": result.task_id,
+                "relation": result.relation.as_str(),
+                "linked_by_actor_id": cmd.actor_id,
+            });
+            self.store
+                .append_run_event(
+                    &result.message.run_id,
+                    "actor_message_task_linked",
+                    cmd.linked_at,
                     event_payload,
                 )
                 .await?;

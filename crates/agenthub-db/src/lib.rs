@@ -669,9 +669,13 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             transport TEXT NOT NULL,
             route_json TEXT,
             payload_json TEXT NOT NULL,
+            message_kind TEXT NOT NULL DEFAULT 'coordination_request',
             group_id TEXT,
             idempotency_key TEXT,
             status TEXT NOT NULL,
+            handling_disposition TEXT NOT NULL DEFAULT 'untriaged',
+            handled_by_actor_id TEXT,
+            handled_at INTEGER,
             created_at INTEGER NOT NULL,
             delivered_at INTEGER,
             relay_attempt INTEGER NOT NULL DEFAULT 0,
@@ -679,6 +683,49 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             relay_last_error TEXT,
             dead_letter_at INTEGER,
             FOREIGN KEY(run_id) REFERENCES team_runs(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_actor_thread_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            topic_key TEXT NOT NULL,
+            task_id TEXT,
+            root_message_id INTEGER,
+            owner_actor_id TEXT NOT NULL,
+            claim_status TEXT NOT NULL,
+            claimed_message_id INTEGER,
+            claimed_at INTEGER NOT NULL,
+            lease_expires_at INTEGER,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(run_id, topic_key),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id),
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS team_actor_message_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            message_id INTEGER NOT NULL,
+            task_id TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            created_by_actor_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE(run_id, message_id, task_id, relation),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id),
+            FOREIGN KEY(message_id) REFERENCES team_actor_messages(id),
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id)
         );
         "#,
     )
@@ -764,6 +811,8 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     )
     .execute(&pool)
     .await?;
+
+    ensure_app_linker_schema(&pool).await?;
 
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_team_tasks_add_assigned_member_id(&pool).await?;
@@ -993,6 +1042,48 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_actor_messages_remote_pending: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_actor_thread_claims_run_owner
+        ON team_actor_thread_claims(run_id, owner_actor_id, claim_status, updated_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_actor_thread_claims_run_owner: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_actor_message_links_run_message
+        ON team_actor_message_links(run_id, message_id, id DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_actor_message_links_run_message: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_actor_message_links_task
+        ON team_actor_message_links(task_id, created_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_actor_message_links_task: {}",
             err
         );
     }
@@ -1410,6 +1501,30 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_actor_messages.idempotency_key",
     )
     .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN message_kind TEXT NOT NULL DEFAULT 'coordination_request'",
+        "team_actor_messages.message_kind",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN handling_disposition TEXT NOT NULL DEFAULT 'untriaged'",
+        "team_actor_messages.handling_disposition",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN handled_by_actor_id TEXT",
+        "team_actor_messages.handled_by_actor_id",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_actor_messages ADD COLUMN handled_at INTEGER",
+        "team_actor_messages.handled_at",
+    )
+    .await;
     if let Err(err) = sqlx::query("DROP INDEX IF EXISTS idx_team_actor_messages_idempotency")
         .execute(&pool)
         .await
@@ -1436,6 +1551,98 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     }
 
     Ok(pool)
+}
+
+pub async fn ensure_app_linker_schema(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_linkers (
+            id TEXT PRIMARY KEY,
+            connector_id TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            status TEXT NOT NULL,
+            config_json TEXT NOT NULL,
+            created_by_user_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_linker_secrets (
+            linker_id TEXT PRIMARY KEY,
+            client_secret TEXT,
+            access_token TEXT,
+            token_type TEXT,
+            scope TEXT,
+            expires_at INTEGER,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(linker_id) REFERENCES app_linkers(id)
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_linker_principals (
+            linker_id TEXT PRIMARY KEY,
+            subject TEXT NOT NULL,
+            principal_type TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            handle TEXT,
+            avatar_url TEXT,
+            server_id TEXT,
+            server_slug TEXT,
+            raw_userinfo_json TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(linker_id) REFERENCES app_linkers(id)
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS app_linker_attempts (
+            state TEXT PRIMARY KEY,
+            linker_id TEXT NOT NULL,
+            created_by_user_id TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(linker_id) REFERENCES app_linkers(id)
+        );
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_app_linkers_connector
+        ON app_linkers(connector_id, updated_at DESC);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_app_linker_attempts_expires
+        ON app_linker_attempts(expires_at);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 pub async fn cleanup_agent_event_history(
@@ -3810,8 +4017,12 @@ mod tests {
                 transport TEXT NOT NULL,
                 route_json TEXT,
                 payload_json TEXT NOT NULL,
+                message_kind TEXT NOT NULL DEFAULT 'coordination_request',
                 idempotency_key TEXT,
                 status TEXT NOT NULL,
+                handling_disposition TEXT NOT NULL DEFAULT 'untriaged',
+                handled_by_actor_id TEXT,
+                handled_at INTEGER,
                 created_at INTEGER NOT NULL,
                 delivered_at INTEGER,
                 relay_attempt INTEGER NOT NULL DEFAULT 0,

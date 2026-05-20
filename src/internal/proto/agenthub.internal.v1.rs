@@ -23,6 +23,8 @@ pub struct SendActorMessageRequest {
     pub to_peer_id: ::prost::alloc::string::String,
     #[prost(string, tag = "11")]
     pub channel_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "12")]
+    pub message_kind: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SendActorMessageResponse {
@@ -70,6 +72,52 @@ pub struct AckActorMessageResponse {
     pub message: ::core::option::Option<ActorMessage>,
     #[prost(bool, tag = "2")]
     pub status_changed: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TriageActorMessageRequest {
+    #[prost(string, tag = "1")]
+    pub run_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub message_id: i64,
+    #[prost(string, tag = "4")]
+    pub disposition: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TriageActorMessageResponse {
+    #[prost(message, optional, tag = "1")]
+    pub message: ::core::option::Option<ActorMessage>,
+    #[prost(bool, tag = "2")]
+    pub handling_changed: bool,
+    #[prost(int64, tag = "3")]
+    pub triaged_at: i64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LinkActorMessageTaskRequest {
+    #[prost(string, tag = "1")]
+    pub run_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub message_id: i64,
+    #[prost(string, tag = "4")]
+    pub task_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub relation: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LinkActorMessageTaskResponse {
+    #[prost(message, optional, tag = "1")]
+    pub message: ::core::option::Option<ActorMessage>,
+    #[prost(string, tag = "2")]
+    pub task_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub relation: ::prost::alloc::string::String,
+    #[prost(int64, tag = "4")]
+    pub linked_at: i64,
+    #[prost(bool, tag = "5")]
+    pub created: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DescribeTeamContextRequest {
@@ -381,6 +429,26 @@ pub struct ActorMessage {
     pub from_peer_id: ::prost::alloc::string::String,
     #[prost(string, tag = "14")]
     pub to_peer_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "15")]
+    pub message_kind: ::prost::alloc::string::String,
+    #[prost(string, tag = "16")]
+    pub handling_disposition: ::prost::alloc::string::String,
+    #[prost(string, tag = "17")]
+    pub handled_by_actor_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "18")]
+    pub handled_at: i64,
+    #[prost(string, tag = "19")]
+    pub thread_topic_key: ::prost::alloc::string::String,
+    #[prost(string, tag = "20")]
+    pub thread_claim_status: ::prost::alloc::string::String,
+    #[prost(string, tag = "21")]
+    pub thread_owner_actor_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "22")]
+    pub thread_lease_expires_at: i64,
+    #[prost(string, tag = "23")]
+    pub linked_task_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "24")]
+    pub linked_task_relation: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TransitionStepRequest {
@@ -734,6 +802,64 @@ pub mod team_internal_control_client {
                     GrpcMethod::new(
                         "agenthub.internal.v1.TeamInternalControl",
                         "AckActorMessage",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn triage_actor_message(
+            &mut self,
+            request: impl tonic::IntoRequest<super::TriageActorMessageRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::TriageActorMessageResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/TriageActorMessage",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "TriageActorMessage",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn link_actor_message_task(
+            &mut self,
+            request: impl tonic::IntoRequest<super::LinkActorMessageTaskRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::LinkActorMessageTaskResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/LinkActorMessageTask",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "LinkActorMessageTask",
                     ),
                 );
             self.inner.unary(req, path, codec).await
@@ -1470,6 +1596,20 @@ pub mod team_internal_control_server {
             tonic::Response<super::AckActorMessageResponse>,
             tonic::Status,
         >;
+        async fn triage_actor_message(
+            &self,
+            request: tonic::Request<super::TriageActorMessageRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::TriageActorMessageResponse>,
+            tonic::Status,
+        >;
+        async fn link_actor_message_task(
+            &self,
+            request: tonic::Request<super::LinkActorMessageTaskRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::LinkActorMessageTaskResponse>,
+            tonic::Status,
+        >;
         async fn describe_team_context(
             &self,
             request: tonic::Request<super::DescribeTeamContextRequest>,
@@ -1847,6 +1987,104 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = AckActorMessageSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/TriageActorMessage" => {
+                    #[allow(non_camel_case_types)]
+                    struct TriageActorMessageSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::TriageActorMessageRequest>
+                    for TriageActorMessageSvc<T> {
+                        type Response = super::TriageActorMessageResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::TriageActorMessageRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::triage_actor_message(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = TriageActorMessageSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/LinkActorMessageTask" => {
+                    #[allow(non_camel_case_types)]
+                    struct LinkActorMessageTaskSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::LinkActorMessageTaskRequest>
+                    for LinkActorMessageTaskSvc<T> {
+                        type Response = super::LinkActorMessageTaskResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::LinkActorMessageTaskRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::link_actor_message_task(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = LinkActorMessageTaskSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

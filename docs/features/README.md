@@ -57,6 +57,7 @@ When multiple journal notes describe the same area:
 - `docs/features/team-agent-adoption.md`
 - `docs/features/teams-collaboration-playbook.md`
 - `docs/features/actor-foundation.md`
+- `docs/features/team-mailbox-intake-and-ownership.md`
 - `docs/features/team-conversation-event-bus.md`
 - `docs/features/backend-runtime-logic.md`
 - `docs/features/distributed-node-architecture.md`
@@ -64,6 +65,8 @@ When multiple journal notes describe the same area:
 - `docs/features/logical-message-metadata-contract.md`
 - `docs/features/message-archive-lancedb.md`
 - `docs/features/message-storage-tiering.md`
+- `docs/features/app-linkers.md`
+- `docs/features/slock-oauth-linkers.md`
 
 ## Historical References
 

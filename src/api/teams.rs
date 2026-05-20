@@ -1709,6 +1709,7 @@ async fn send_team_run_message(
             route,
             payload,
             idempotency_key: idempotency_key.clone(),
+            message_kind: None,
         })
         .await
         .map_err(map_actor_service_api_error)?;
@@ -3042,6 +3043,7 @@ async fn forward_mailbox_payload_to_actor_ids(
                     route: None,
                     payload,
                     idempotency_key: Some(idempotency_key),
+                    message_kind: None,
                 })
                 .await
                 .map_err(map_actor_service_api_error)?;
