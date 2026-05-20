@@ -113,12 +113,15 @@ struct SlockUserinfoResponse {
 }
 
 impl AppLinkerService {
-    pub(crate) fn new(db: SqlitePool) -> Self {
-        let http = reqwest::Client::builder()
+    pub(crate) fn new(db: SqlitePool, http: reqwest::Client) -> Self {
+        Self { db, http }
+    }
+
+    pub(crate) fn default_http_client() -> reqwest::Client {
+        reqwest::Client::builder()
             .timeout(Duration::from_secs(HTTP_TIMEOUT_SECONDS))
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
-        Self { db, http }
+            .unwrap_or_else(|_| reqwest::Client::new())
     }
 
     pub(crate) async fn list_linkers(&self) -> anyhow::Result<Vec<AppLinkerRecord>> {

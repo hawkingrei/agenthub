@@ -89,8 +89,38 @@ pub fn ok_response() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
+pub fn map_linker_error(err: anyhow::Error) -> ApiError {
+    let message = err.to_string();
+    if message.contains("token exchange failed") {
+        return ApiError::bad_request("Slock token exchange failed");
+    }
+    if message.contains("userinfo failed") {
+        return ApiError::bad_request("Slock userinfo failed");
+    }
+    if message.contains("resource API is not configured")
+        || message.contains("linker is not connected")
+        || message.contains("linker is not configured")
+        || message.contains("client_secret is not configured")
+    {
+        return ApiError::conflict(&message);
+    }
+    if message.contains("required")
+        || message.contains("invalid")
+        || message.contains("expired")
+        || message.contains("mismatch")
+        || message.contains("unsupported")
+        || message.contains("different user")
+    {
+        return ApiError::bad_request(&message);
+    }
+    err.into()
+}
+
 #[cfg(test)]
 mod tests {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
     #[test]
     fn format_error_chain_keeps_root_causes() {
         let err = anyhow::anyhow!("sqlite busy")
@@ -100,5 +130,19 @@ mod tests {
         assert!(chain.contains("start_agent failed"));
         assert!(chain.contains("insert agent session failed"));
         assert!(chain.contains("sqlite busy"));
+    }
+
+    #[test]
+    fn map_linker_error_keeps_linker_contract_statuses() {
+        let missing = super::map_linker_error(anyhow::anyhow!("Slock linker is not configured"));
+        assert_eq!(missing.into_response().status(), StatusCode::CONFLICT);
+
+        let invalid = super::map_linker_error(anyhow::anyhow!("invalid or expired state"));
+        assert_eq!(invalid.into_response().status(), StatusCode::BAD_REQUEST);
+
+        let token = super::map_linker_error(anyhow::anyhow!(
+            "Slock token exchange failed (401): invalid client"
+        ));
+        assert_eq!(token.into_response().status(), StatusCode::BAD_REQUEST);
     }
 }

@@ -11,7 +11,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use crate::api::authz::require_root;
-use crate::api::error::ApiError;
+use crate::api::error::{ApiError, map_linker_error};
 use crate::api::{extract_ip, extract_ua, ok_response};
 use crate::linkers::{self, AppLinkerRecord, AppLinkerService, SlockConfigInput};
 use crate::path_utils::expand_tilde;
@@ -376,7 +376,7 @@ async fn list_linkers(
     headers: HeaderMap,
 ) -> Result<Json<Vec<AppLinkerRecord>>, ApiError> {
     let _user = require_root(&headers, &state).await?;
-    AppLinkerService::new(state.db.clone())
+    AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .list_linkers()
         .await
         .map(Json)
@@ -389,7 +389,7 @@ async fn upsert_slock_linker(
     Json(payload): Json<UpsertSlockLinkerRequest>,
 ) -> Result<Json<AppLinkerRecord>, ApiError> {
     let user = require_root(&headers, &state).await?;
-    let record = AppLinkerService::new(state.db.clone())
+    let record = AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .upsert_slock_config(
             &user.id,
             SlockConfigInput {
@@ -422,7 +422,7 @@ async fn create_slock_link_attempt(
     headers: HeaderMap,
 ) -> Result<Json<SlockLinkAttemptResponse>, ApiError> {
     let user = require_root(&headers, &state).await?;
-    let attempt = AppLinkerService::new(state.db.clone())
+    let attempt = AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .create_slock_link_attempt(&user.id)
         .await
         .map_err(map_linker_error)?;
@@ -461,7 +461,7 @@ async fn exchange_slock_code(
         payload.state.as_deref(),
     )
     .map_err(map_linker_error)?;
-    let record = AppLinkerService::new(state.db.clone())
+    let record = AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .exchange_slock_code(Some(&user.id), code)
         .await
         .map_err(map_linker_error)?;
@@ -493,7 +493,7 @@ async fn get_slock_userinfo(
     headers: HeaderMap,
 ) -> Result<Json<AppLinkerRecord>, ApiError> {
     let _user = require_root(&headers, &state).await?;
-    let record = AppLinkerService::new(state.db.clone())
+    let record = AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .get_slock_linker()
         .await
         .map_err(map_linker_error)?
@@ -506,7 +506,7 @@ async fn list_slock_channels(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_root(&headers, &state).await?;
-    AppLinkerService::new(state.db.clone())
+    AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .list_slock_channels()
         .await
         .map(Json)
@@ -519,7 +519,7 @@ async fn list_slock_channel_messages(
     Path(channel_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_root(&headers, &state).await?;
-    AppLinkerService::new(state.db.clone())
+    AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .list_slock_channel_messages(&channel_id)
         .await
         .map(Json)
@@ -637,33 +637,6 @@ fn hash_pin(pin: &str) -> anyhow::Result<String> {
         .map_err(|e| anyhow::anyhow!(e.to_string()))?
         .to_string();
     Ok(hash)
-}
-
-fn map_linker_error(err: anyhow::Error) -> ApiError {
-    let message = err.to_string();
-    if message.contains("token exchange failed") {
-        return ApiError::bad_request("Slock token exchange failed");
-    }
-    if message.contains("userinfo failed") {
-        return ApiError::bad_request("Slock userinfo failed");
-    }
-    if message.contains("resource API is not configured")
-        || message.contains("linker is not connected")
-        || message.contains("linker is not configured")
-        || message.contains("client_secret is not configured")
-    {
-        return ApiError::conflict(&message);
-    }
-    if message.contains("required")
-        || message.contains("invalid")
-        || message.contains("expired")
-        || message.contains("mismatch")
-        || message.contains("unsupported")
-        || message.contains("different user")
-    {
-        return ApiError::bad_request(&message);
-    }
-    err.into()
 }
 
 #[cfg(test)]

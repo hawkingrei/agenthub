@@ -19,6 +19,7 @@ use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::{
     InternalGrpcSecurityMode, ensure_bootstrap_token, ensure_shared_secret, ensure_tls_material,
 };
+use crate::linkers::AppLinkerService;
 use crate::push::PushService;
 use crate::team::{
     TeamMailboxUnreadHintWorker, TeamMailboxUnreadHintWorkerSettings, TeamManager,
@@ -29,6 +30,7 @@ use crate::team::{
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
+    pub linker_http: reqwest::Client,
     pub agents: Arc<AgentManager>,
     pub teams: Arc<TeamManager>,
     pub push: Arc<PushService>,
@@ -52,6 +54,7 @@ impl AppState {
             );
         }
         let db = Self::setup_database(&config).await?;
+        let linker_http = AppLinkerService::default_http_client();
         let event_dbs = agenthub_db::AgentEventDbRouter::with_default_base_dir();
 
         let (agents, teams, push, auth, acp_permissions) =
@@ -76,6 +79,7 @@ impl AppState {
         let default_worktree_root = config.default_worktree_root();
         Ok(Self {
             db,
+            linker_http,
             agents,
             teams,
             push,
