@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TeamThreadPane } from "./team_thread_pane";
 import {
   TEAM_THREAD_CHANNEL_BADGE_CLASS,
+  TEAM_THREAD_BODY_CLASS,
   TEAM_THREAD_MESSAGE_AVATAR_CLASS,
   TEAM_THREAD_MESSAGE_BUBBLE_CLASS,
   TEAM_THREAD_PANE_CLASS,
@@ -113,10 +114,57 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("@name to reply · Enter to reply");
     expect(html).toContain("Reply");
     expectStaticClassTokens(html, TEAM_THREAD_PANE_CLASS);
+    expectStaticClassTokens(html, TEAM_THREAD_BODY_CLASS);
+    expect(html).toContain('data-team-surface="thread-scroll"');
+    expect(html).not.toContain("max-w-[360px]");
     expectStaticClassTokens(html, TEAM_THREAD_CHANNEL_BADGE_CLASS);
     expectStaticClassTokens(html, TEAM_THREAD_SOURCE_CARD_CLASS);
     expectStaticClassTokens(html, TEAM_THREAD_MESSAGE_AVATAR_CLASS);
     expectStaticClassTokens(html, TEAM_THREAD_MESSAGE_BUBBLE_CLASS);
+  });
+
+  it("keeps long reply threads in a constrained scroll region", () => {
+    const replies = Array.from({ length: 24 }, (_, index) => ({
+      messageId: index + 100,
+      authorLabel: `worker-${index + 1}`,
+      createdAt: 1713480060000 + index,
+      text: `Long thread reply ${index + 1}.`,
+    }));
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# all"
+            rootMessageId={42}
+            rootAuthorLabel="coordinator"
+            rootCreatedAt={1713480000000}
+            rootText="Investigate the regression in a focused thread."
+            replies={replies}
+            replyDraft=""
+            onReplyDraftChange={vi.fn()}
+            onSendReply={vi.fn()}
+            replyBusy={false}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const pane = container.querySelector('[data-team-surface="thread-pane"]');
+    expect(pane?.className).toContain("w-full");
+    expect(pane?.className).toContain("flex-1");
+    expect(pane?.className).not.toContain("max-w-[360px]");
+
+    const scrollRegion = container.querySelector('[data-team-surface="thread-scroll"]');
+    expect(scrollRegion?.className).toContain("min-h-0");
+    expect(scrollRegion?.className).toContain("flex-1");
+    expect(scrollRegion?.className).toContain("overflow-y-auto");
+    expect(scrollRegion?.className).toContain("overscroll-contain");
+    expect(container.textContent).toContain("24 replies");
+    expect(container.textContent).toContain("Long thread reply 24.");
   });
 
   it("keeps the reply composer available when the root has no chat text body", () => {

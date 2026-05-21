@@ -2723,14 +2723,26 @@ describe("team panels interactions", () => {
       buildTaskMessage(1, {
         from_actor_id: "coordinator-agent",
         route: "group_chat",
-        payload: { type: "chat_message", text: "Root message." },
+        payload: {
+          type: "chat_message",
+          text: "Root message for @worker-agent and @user:u-1.",
+        },
       }),
       buildTaskMessage(2, {
         from_actor_id: "worker-agent",
         route: "team_thread_reply",
         payload: {
           type: "chat_message",
-          text: "Visible thread reply.",
+          text: "Visible thread reply for @coordinator-agent.",
+          thread_root_message_id: 1,
+        },
+      }),
+      buildTaskMessage(5, {
+        from_actor_id: "user:u-1",
+        route: "team_thread_reply",
+        payload: {
+          type: "chat_message",
+          text: "Human follow-up for @worker-agent.",
           thread_root_message_id: 1,
         },
       }),
@@ -2765,8 +2777,16 @@ describe("team panels interactions", () => {
       taskMessages,
       conversationMailboxMessages: [],
       snapshot: null,
-      mailboxDisplayNameByActorId: {},
-      selectedTeamMemberLiveStates: [],
+      mailboxDisplayNameByActorId: {
+        user: "You",
+        "worker-agent": "Worker Agent",
+      },
+      selectedTeamMemberLiveStates: [
+        buildMemberLiveState({
+          member_id: "coordinator-agent",
+          agent_name: "Coordinator Agent",
+        }),
+      ],
       taskConversationMemberIds: [],
       activeConversationTitle: "# all",
       selectedConversationMatchesChannelLane: true,
@@ -2807,8 +2827,18 @@ describe("team panels interactions", () => {
       </TeamWorkspaceProvider>
     );
 
-    expect(container.textContent).toContain("Root message.");
-    expect(container.textContent).toContain("Visible thread reply.");
+    expect(container.textContent).toContain("Root message for");
+    expect(container.textContent).toContain("Visible thread reply for");
+    expect(container.textContent).toContain("Human follow-up for");
+    expect(container.textContent).toContain("Coordinator Agent");
+    expect(container.textContent).toContain("Worker Agent");
+    expect(container.textContent).toContain("You");
+    expect(container.textContent).toContain("@Coordinator Agent");
+    expect(container.textContent).toContain("@Worker Agent");
+    expect(container.textContent).toContain("@You");
+    expect(container.textContent).not.toContain("coordinator-agent");
+    expect(container.textContent).not.toContain("worker-agent");
+    expect(container.textContent).not.toContain("user:u-1");
     expect(container.textContent).not.toContain("Channel message with a thread id should stay out.");
     expect(container.textContent).not.toContain("Different thread reply should stay out.");
   });

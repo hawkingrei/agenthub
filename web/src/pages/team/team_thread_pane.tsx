@@ -14,6 +14,9 @@ import {
   applyMentionAtTag,
   canonicalizeMentionDraft,
   type MentionCandidate,
+  normalizeRawMentionActorId,
+  renderMarkdownWithMentions,
+  resolveDisplayName,
   resolveMentionDraftQuery,
 } from "./mailbox_helpers";
 import {
@@ -83,6 +86,7 @@ type TeamThreadPaneProps = {
   onViewInChannel: () => void;
   onClose: () => void;
   mentionCandidates?: MentionCandidate[];
+  displayNameByActorId?: Record<string, string>;
 };
 
 function formatThreadReplyCount(count: number): string {
@@ -99,15 +103,43 @@ function formatThreadSourceSummary(
   return `From ${authorLabel} · #${rootMessageId}`;
 }
 
-function formatThreadSourcePreview(rootText: string | null): string | null {
+function formatThreadPreviewMentionText(
+  text: string,
+  displayNameByActorId?: Record<string, string>
+): string {
+  return text
+    .replace(/<at>\s*([A-Za-z0-9._:-]+)\s*<\/at>/gi, (_match, actorId: string) => {
+      const label = resolveDisplayName(actorId, displayNameByActorId, actorId);
+      return `@${label}`;
+    })
+    .replace(
+      /(^|[\s([{'"])@([A-Za-z0-9._:-]+)/g,
+      (_match, prefix: string, actorId: string) => {
+        const normalizedActorId = normalizeRawMentionActorId(actorId);
+        const suffix = actorId.slice(normalizedActorId.length);
+        const label = resolveDisplayName(
+          normalizedActorId,
+          displayNameByActorId,
+          normalizedActorId || actorId
+        );
+        return `${prefix}@${label}${suffix}`;
+      }
+    );
+}
+
+function formatThreadSourcePreview(
+  rootText: string | null,
+  displayNameByActorId?: Record<string, string>
+): string | null {
   const normalized = rootText?.replace(/\s+/g, " ").trim();
   if (!normalized) {
     return null;
   }
-  if (normalized.length <= 120) {
-    return normalized;
+  const displayText = formatThreadPreviewMentionText(normalized, displayNameByActorId);
+  if (displayText.length <= 120) {
+    return displayText;
   }
-  return `${normalized.slice(0, 117).trimEnd()}...`;
+  return `${displayText.slice(0, 117).trimEnd()}...`;
 }
 
 export const TeamThreadPane = React.memo(function TeamThreadPane({
@@ -125,6 +157,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
   onViewInChannel,
   onClose,
   mentionCandidates = [],
+  displayNameByActorId,
 }: TeamThreadPaneProps) {
   const hasSelectedRoot = rootMessageId != null;
   const replyTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -135,7 +168,11 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
   );
   const replyCountLabel = formatThreadReplyCount(replies.length);
   const sourceSummary = formatThreadSourceSummary(rootAuthorLabel, rootMessageId);
-  const sourcePreview = formatThreadSourcePreview(rootText);
+  const sourcePreview = formatThreadSourcePreview(rootText, displayNameByActorId);
+  const renderThreadMessageHtml = React.useCallback(
+    (text: string) => renderMarkdownWithMentions(text, displayNameByActorId),
+    [displayNameByActorId]
+  );
   // Keep transcript display data stable while the reply draft changes so
   // typing in the composer does not rebuild every visible thread row.
   const rootRenderMessage = React.useMemo<TeamThreadRenderMessage | null>(() => {
@@ -313,7 +350,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
         </div>
       </ToolbarRow>
 
-      <div className={TEAM_THREAD_BODY_CLASS}>
+      <div className={TEAM_THREAD_BODY_CLASS} data-team-surface="thread-scroll">
         {!hasSelectedRoot ? (
           <EmptyState
             title="Select a channel message"
@@ -349,6 +386,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                     <TeamThreadRichText
                       className={TEAM_THREAD_RICH_TEXT_CLASS}
                       text={rootRenderMessage.text}
+                      renderSanitizedHtml={renderThreadMessageHtml}
                     />
                   ) : (
                     <div className={TEAM_THREAD_MISSING_TEXT_CLASS}>
@@ -387,6 +425,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                         <TeamThreadRichText
                           className={TEAM_THREAD_RICH_TEXT_CLASS}
                           text={reply.text}
+                          renderSanitizedHtml={renderThreadMessageHtml}
                         />
                       </ConversationBubble>
                     </div>

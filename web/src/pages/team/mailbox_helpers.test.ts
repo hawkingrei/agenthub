@@ -235,6 +235,23 @@ describe("mailbox helpers", () => {
     expect(markdown).toContain("@worker-1");
   });
 
+  it("keeps sentence punctuation outside raw mention actor ids", () => {
+    const rendered = renderMarkdownWithMentions(
+      "ping @worker-agent. then @coordinator-agent.",
+      {
+        "worker-agent": "Worker Agent",
+        "coordinator-agent": "Coordinator Agent",
+      }
+    );
+
+    expect(rendered).toContain('data-team-agent-mention-id="worker-agent"');
+    expect(rendered).toContain("@Worker Agent</button>.");
+    expect(rendered).toContain('data-team-agent-mention-id="coordinator-agent"');
+    expect(rendered).toContain("@Coordinator Agent</button>.");
+    expect(rendered).not.toContain('data-team-agent-mention-id="worker-agent."');
+    expect(rendered).not.toContain("@worker-agent.");
+  });
+
   it("does not convert raw mentions inside markdown code spans or links into chips", () => {
     const rendered = renderMarkdownWithMentions(
       "`@worker-1` and [profile](https://example.com/@worker-1)"
