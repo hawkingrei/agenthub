@@ -2,615 +2,370 @@
 
 ## Problem
 
-The Team workspace exposes `# all` plus API-backed non-default Team channels, channel-rooted
-threads, and the task/run/member surfaces. The current contract keeps the compact
-`channel + thread` model as the canonical Team communication shape.
+AgentHub Team already has canonical task, mailbox, and conversation contracts, but the boundary for
+`channel` and `thread` can still drift:
 
-The model exists to avoid these regressions:
+- `thread` can be mistaken for a top-level workflow object instead of a focused reply lane;
+- long background and execution detail can spill back into the parent channel timeline;
+- mailbox ownership and task ownership can be conflated with thread participation;
+- operators and agents can create parallel task or discussion lanes when one rooted thread already
+  exists.
 
-- Team communication collapsing back into one flat conversation instead of discoverable
-  communication lanes;
-- replies duplicating into the parent channel timeline instead of staying in a focused thread pane;
-- channel roots turning into full context dumps instead of summary entrypoints;
-- threads becoming a top-level workspace lens or replacing canonical Team task/run ownership.
-
-We want to learn from the Slock channel/thread layout without collapsing AgentHub Team semantics or
-losing the current Notion-style content-first shell.
+We need one stable contract for how Team communication lanes are organized so that `channel`,
+`thread`, `task`, and `mailbox` keep distinct responsibilities.
 
 ## Scope
 
 - Team communication-lane information architecture.
-- Canonical `channel` and `thread` shell behavior inside Team workspaces.
-- Team actor capability direction for opening and replying in threads.
-- URL/deep-link behavior for channel and thread selection.
-- Right-side thread pane behavior.
-- Composer-level task affordance direction.
+- Canonical `channel` and `thread` behavior inside Team workspaces.
+- Thread identity, reply-target, and participation rules.
+- Boundary between `thread`, `task`, and `mailbox`.
+- URL/deep-link behavior for Team channel and thread selection.
+- Conversation-level task-intent direction at the composer surface.
 
 ## Non-Goals
 
-- Replacing Team canonical task ownership or Team run/step semantics.
+- Replacing canonical Team task ownership, Kanban, or mailbox execution semantics.
 - Defining the full backend storage schema for every future channel feature.
-- Implementing reactions, rich moderation, or arbitrary Slack-style channel administration.
-- Turning human chat input directly into canonical Team task records.
+- Full ACL policy for multi-user moderation, retention, or channel administration.
+- Arbitrary nested threads or detached empty thread objects.
+- Provider-specific external chat adapters.
 
 ## Architecture
 
-### 1) Core Principle
+### 1) Layered Team Communication Model
 
-Team should support a `channel timeline + thread pane` structure.
-
-The shell should follow this shape:
-
-- left rail: Team directory plus Team channels;
-- center pane: selected channel timeline;
-- right pane: optional selected thread;
-- composer: always attached to the currently selected conversation context.
-
-This should feel structurally closer to Slock while still preserving AgentHub-specific Team depth.
-
-### 2) Canonical Entity Model
-
-Inside a Team workspace, communication should distinguish:
+Team communication should distinguish four different things:
 
 - `channel`
-  - a human-facing communication lane inside one Team
-  - examples:
-    - `# all`
-    - future review / topic / onboarding channels
+  - durable human-facing communication lane
+  - broad visibility and summary-first discovery
 - `thread`
-  - a focused reply context rooted in one channel message
-  - always belongs to one parent `channel`
+  - focused reply lane rooted in one existing channel message
+  - carries deeper context for one concrete topic
 - `task`
-  - the canonical Team work object
-  - remains distinct from both `channel` and `thread`
+  - canonical Team work object
+  - owns assignee, priority, lifecycle, and durable note journal
+- `mailbox`
+  - canonical delivery and triage transport
+  - carries handling disposition, thread claim, task link, and reply obligation state
 
-Important constraint:
+The important boundary is:
 
-- channels and threads are communication/review surfaces
-- they are not the canonical Team task surface
+- `channel` and `thread` are communication surfaces;
+- `task` is the canonical work surface;
+- `mailbox` is the canonical execution transport.
 
-### 3) Channel Contract
+### 2) Summary-First Communication
 
-The Team shell should treat channels as first-class Team communication lanes.
+The parent channel timeline should remain scannable and summary-oriented.
 
-Required baseline:
+Required split:
 
-- `# all` remains the default channel
-- `# all` is the broad coordination/default lane, not the only lane
-- left rail groups channels under `Channels`
-- selecting a channel replaces the center timeline without leaving the Team workspace shell
-- channel header stays light and directory-like:
-  - channel name
-  - optional short description
-  - optional compact member/visibility metadata
+- channel root message
+  - summary entrypoint for one topic, issue, review point, or work request
+- thread
+  - full context for that topic:
+    - background
+    - progress updates
+    - blocker discussion
+    - logs
+    - references
+    - review follow-up
 
-Multi-channel contract:
+This lets Team communication stay discoverable without forcing every participant to ingest the full
+deep context by default.
 
-- a Team may expose multiple channels in addition to `# all`
-- every non-default channel should have a short, explicit work-scoping description
-- channels should narrow context, not duplicate Kanban/task ownership
-- non-default channels may be created explicitly by the Team coordinator or a human operator
-- non-default channels may also be archived or deleted explicitly when the work lane is no longer
-  needed
+### 3) Thread Identity Model
 
-Recommended examples:
+A thread is derived from an existing channel message.
 
-- `# all`
-  - default coordination lane
-  - human requests, planning, announcements, cross-cutting updates
-- `# review`
-  - focused review / approval / PR / decision follow-up
-- `# research`
-  - investigation notes, paper or issue exploration, structured findings
-- `# rollout`
-  - launch, migration, deployment, operational checklists
+Canonical properties:
 
-Constraints:
-
-- do not create channels as arbitrary folders for every task
-- channels should describe a durable work mode or work stream, not replace canonical Team tasks
-- each channel description should make it obvious why a message belongs there instead of `# all`
-- `# all` is the system default channel and must not be deletable
-- deleting a non-default channel must not delete canonical Team tasks or execution history
-- deleting a non-default channel should remove only the communication lane and its thread context,
-  or archive it first if hard deletion is too destructive for the current rollout phase
-
-Constraints:
-
-- do not add thick dashboard chrome or channel-level runtime metrics that Slock does not need
-- keep channel rows compact: `title + one compact meta line` at most
-
-### 4) Thread Contract
-
-Threads should become first-class secondary conversation contexts.
-
-Canonical meaning:
-
-- `channel`
-  - the durable Team communication lane
-- `thread`
-  - a focused collaboration context rooted in one event inside a channel
-  - initially, that root event is a channel message
-  - later, the same concept may also index review/execution follow-up events without changing the
-    channel-first shell
-
-Product consequence:
-
-- thread is not the primary Team entrypoint
-- thread is the reusable “recent active context” unit that can be reopened from either:
-  - the current channel timeline
-  - a future recent-threads index
-- this matches the useful part of the Slock model without collapsing AgentHub into a chat-only
-  product
-
-Required behavior:
-
-- selecting a reply target opens a right-side `ThreadPane`
-- the center channel timeline remains visible
-- thread replies should render only in the right-side thread pane; they should not duplicate as
-  inline rows in the parent channel timeline
-- the right pane header should show:
-  - `Thread`
-  - parent channel reference (for example `#papers`)
-  - `View in channel`
-  - `Close thread`
-- thread messages render as a focused sub-conversation instead of expanding inline into a large
-  nested tree
-
-Important constraint:
-
-- a thread is a communication context, not a separate Team object type
-- a thread is not a top-level Workspace lens and must stay subordinate to its parent channel
-- closing the thread should return the layout to channel-only mode without losing the selected
-  channel
-- the first version should derive `thread` from an existing channel root message instead of
-  inventing a detached empty thread object
-- a later `Threads` or `Recent threads` view, if introduced, should be an index of active thread
-  contexts rather than a new creation surface
-
-#### 4.1) Summary Versus Full Context
-
-Channel and thread should deliberately split summary from full context.
-
-Required product meaning:
-
-- the parent `channel` message is the summary entrypoint for one issue, request, review point, or
-  task-oriented discussion
-- the `thread` rooted at that message is the full context container for that specific topic
+- one parent `channel`
+- one `root_message_id`
+- one stable thread reply target
 
 This means:
 
-- the channel timeline should stay scannable and low-noise
-- the thread should carry the deeper context:
-  - detailed background
-  - longer explanations
-  - progress updates
-  - logs, references, and follow-up discussion
+- the first rollout should not create detached empty threads;
+- the first-class model should not support nested thread trees;
+- reopening a thread should resolve from the same rooted message identity rather than inventing a
+  second logical topic.
 
-Product goal:
+### 4) Participation, Attention, And Ownership
 
-- avoid turning the main channel into one long high-volume context dump
-- let humans and agents discover that a topic exists from the channel summary first
-- let only the interested or relevant participants open the thread and read the full context
+Thread participation is not the same as task ownership or mailbox ownership.
 
-#### 4.2) Agent Relevance And Context Budget
+The communication model should distinguish:
 
-Threads should help AgentHub avoid unnecessary shared-channel context explosions.
+- thread participant
+  - someone who is reading or replying in the discussion lane
+- watcher
+  - someone who wants visibility without current ownership
+- thread owner / mailbox claimant
+  - actor currently responsible for execution follow-up on that topic
+- task owner
+  - actor assigned to the canonical Team task
 
-Required behavioral direction:
+These concepts may overlap, but they must not be silently merged.
 
-- agents should not need to ingest the entire recent channel history by default in order to handle
-  one focused issue
-- a channel root message should be sufficient to advertise that a more detailed context exists
-- agents that are explicitly mentioned, own the work, or otherwise judge the topic as relevant may
-  then open the thread and read the full discussion
+### 5) Shared Default Lane And Non-Default Channels
 
-This preserves two useful properties at the same time:
+`# all` remains the default coordination lane.
 
-- broad shared visibility in the parent channel
-- bounded deep context in the thread
+Non-default channels are allowed when they represent durable work streams such as review, research,
+or rollout. They must not become one channel per task or a substitute for Kanban ownership.
 
-Current concurrency boundary:
+Channel taxonomy should stay sparse:
 
-- seeing a root channel message does not automatically make an agent or user a thread participant
-- if another participant later opens the thread and replies, automatic thread forwarding targets:
-  - existing thread participants
-  - members mentioned on the root message
-  - members mentioned on earlier thread replies
-  - newly mentioned members in the current reply
-- a passive root reader therefore must explicitly open the thread later, or be mentioned, before it
-  can rely on receiving the deeper follow-up automatically
-- this is acceptable for the current rollout because the root message is intentionally summary-first,
-  but prompt/runtime guidance must make that boundary explicit
+- `# all`
+  - default coordination and broad visibility
+- optional work-stream channels
+  - explicit, durable scope
+  - not arbitrary folders for every task
 
-Important product consequence:
+## Contracts
 
-- thread is not just a UI nesting affordance
-- thread is part of the Team context-management model
-- it should reduce unnecessary context fan-in for both humans and agents
+### 1) Channel Contract
 
-#### 4.3) Prompt And Agent Behavior Contract
+Required baseline:
 
-The channel/thread split should be reflected explicitly in Team prompt and behavior guidance.
+- `# all` is the default Team channel and must remain undeletable;
+- a Team may expose additional channels with short explicit descriptions;
+- selecting a channel changes the center communication lane without leaving the Team workspace shell;
+- deleting or archiving a non-default channel must not delete canonical Team tasks or execution
+  history.
 
-Required direction:
+Channel purpose:
 
-- coordinator and worker prompts should describe the channel root message as the summary entrypoint
-- prompts should describe the thread as the place for the full context
-- agents should learn that long background, logs, evidence, and detailed follow-up belong in the
-  thread instead of being pasted into the main channel by default
-- the thread pane itself should reinforce the same split with summary-first helper copy instead of
-  presenting reply nesting as a purely mechanical UI affordance
-- the main channel composer should reinforce the same split with summary-first helper copy so a new
-  root post does not feel like the place to dump the entire working context
+- broad visibility
+- summary-first discussion
+- cross-cutting coordination
+- durable work-stream grouping
 
-Expected agent behavior:
+Channel anti-goals:
 
-- when posting a new topic in a channel, keep the root message summary-first
-- when deeper context is needed, continue inside the thread
-- when an agent is mentioned or otherwise judges the topic relevant, it should open the thread
-  before assuming the root message contains the complete working context
-- thread replies should be preferred for topic-specific back-and-forth so the main channel remains
-  scannable
-- prompt/runtime guidance should treat `agenthub actor team-thread-open` and
-  `agenthub actor team-thread-reply` as the canonical agent-side way to proactively move a topic
-  from summary root into thread-scoped deep context
+- one channel per task
+- channel as canonical task board
+- channel as replacement for mailbox ownership
 
-This is not only a UX rule.
+### 2) Thread Contract
 
-It is part of the Team context-budget contract:
+Canonical meaning:
 
-- channel = broad visibility
-- thread = bounded deep context
+- a `thread` is a focused reply lane rooted in one existing channel message;
+- a `thread` is subordinate to its parent channel;
+- a `thread` is not a top-level Team lens or primary work object.
 
-### 5) Actor Capability Contract
+Required behavior:
 
-`Open thread` should not remain only a front-end affordance.
+- opening a reply target should open a dedicated thread context rather than inline-nesting a deep
+  tree in the parent timeline;
+- thread replies should render in the thread context, not duplicate as full inline rows in the
+  parent channel timeline;
+- closing the thread should return to the selected parent channel without losing channel context;
+- the thread root should stay visible as the summary entrypoint into the deeper discussion.
 
-It should become a Team actor capability with shell projection.
+### 3) Reply-Target Fidelity Contract
 
-Recommended capability surface:
+If an inbound message already has a concrete reply target, the default visible reply should stay on
+that same target.
 
-- `team_channel_create`
-  - input:
-    - `team_id`
-    - `channel_id`
-    - `title`
-    - optional `description`
-  - behavior:
-    - creates a non-default Team communication lane
-    - reserved for Team coordinator and human operator flows by default
-- `team_channel_update`
-  - input:
-    - `team_id`
-    - `channel_id`
-    - optional `title`
-    - optional `description`
-    - optional ordering / visibility metadata
-- `team_channel_archive`
-  - input:
-    - `team_id`
-    - `channel_id`
-  - behavior:
-    - hides a non-default channel from the active rail without destroying canonical Team work
-- `team_channel_delete`
-  - input:
-    - `team_id`
-    - `channel_id`
-  - behavior:
-    - permanently removes a non-default communication lane when explicit deletion is desired
-    - must reject deletion of `# all`
+Rules:
 
-- `team_thread_open`
-  - input:
-    - `team_id`
-    - `channel_id`
-    - `root_message_id`
-    - optional `reason`
-  - behavior:
-    - if a thread already exists for the root message, return it
-    - otherwise lazily materialize/open a thread bound to that root message
-- `team_thread_reply`
-  - input:
-    - `team_id`
-    - `channel_id`
-    - `root_message_id`
-    - reply `text`
-  - behavior:
-    - appends a reply scoped to the thread rooted at the existing channel message
-    - first rollout may persist replies inside the parent channel conversation as long as payloads
-      carry canonical `thread_root_message_id` metadata for filtering
-    - shell and public HTTP clients should use a stable Team API path instead of depending on
-      internal gRPC directly:
-      - `POST /api/teams/:team_id/channels/:channel_id/threads/:root_message_id/replies`
-- `team_thread_view_in_channel`
-  - shell/navigation projection back to the parent channel timeline
+- if a message arrives on a thread target, reply on that same thread by default;
+- if a message arrives on a channel root, follow-up may continue in the channel unless the topic is
+  explicitly moved into a thread;
+- escalation, transfer, or cross-actor takeover may change the reply surface, but that change must
+  be explicit and operator-visible.
 
-Important constraints:
+This is a runtime correctness rule, not only a UI preference.
 
-- `team_channel_create` / `team_channel_delete` should default to coordinator + human operator authority
-- worker actors should not create or delete Team channels unless a later policy explicitly grants it
-- thread open must be anchored to an existing channel message
-- agent actor must not create detached empty threads without a `root_message_id`
-- thread capability does not change canonical Team task ownership or task materialization rules
-- the shell `Open thread` button should become a projection of this actor capability rather than an
-  isolated UI-only construct
+### 4) Thread Participation Contract
 
-### 6) URL And Deep-Link Contract
+Seeing a root channel message does not automatically make an actor a full thread participant.
 
-The Team workspace should support stable deep links for channels and threads.
+Participants should grow through:
+
+- authoring the root message
+- opening or following the thread
+- being mentioned on the root or a later thread reply
+- replying in the thread directly
+
+Actor-local watching is allowed without ownership. Ownership remains governed by mailbox and task
+contracts, not by passive thread visibility.
+
+### 5) Thread-To-Task Boundary Contract
+
+`task` remains the canonical Team work object.
+
+Rules:
+
+- thread is the preferred deep-context lane for a topic-specific execution discussion;
+- task is the preferred durable surface for assignee, priority, state, and note journal;
+- creating a new thread does not create a canonical task automatically;
+- thread messages should normally attach to an existing task or remain discussion-only, rather than
+  spawn parallel canonical tasks by default;
+- top-level conversation or channel messages are the normal place to introduce new work intent;
+- if a topic already has a canonical task and a rooted thread, follow-up should deepen that same
+  lane instead of opening parallel tasks or parallel threads.
+
+This keeps Team task-first while still allowing communication to stay contextual.
+
+### 6) Thread-To-Mailbox Boundary Contract
+
+Mailbox is the execution transport and triage surface for actor work; thread is the visible
+discussion lane.
+
+Required boundary:
+
+- mailbox may carry `thread_root_message_id`, thread claim, task link, and reply obligation
+  metadata;
+- thread claim and mailbox handling disposition govern execution responsibility;
+- thread participation alone does not claim execution ownership;
+- `watching` is a visibility state, not a promise to act;
+- unresolved human reply obligations should stay visible through mailbox-derived state even when
+  the visible discussion happens in a thread.
+
+See [team-mailbox-intake-and-ownership.md](./team-mailbox-intake-and-ownership.md) for the durable
+triage and ownership contract.
+
+### 7) Shared Default Thread Contract
+
+The Team default communication lane may use a canonical shared-thread target under `# all`.
+
+Required behavior:
+
+- shared Team conversation remains one stable default discussion target;
+- public Team clients should resolve that shared target through stable Team APIs instead of
+  reconstructing it ad hoc;
+- shared-thread canonicalization must prefer one durable rooted target rather than letting multiple
+  equivalent “default thread” records drift.
+
+This keeps the default lane predictable for both humans and agents.
+
+### 8) URL And Deep-Link Contract
+
+The Team workspace should support stable deep links for channel and thread selection.
 
 Target direction:
 
 - `/workspace/teams/:team_id?channel=:channel_id`
-- `/workspace/teams/:team_id?channel=:channel_id&thread=:thread_id`
-
-Guidance:
-
-- `channel` controls the center timeline
-- `thread` controls the optional right-side pane
-- a missing `thread` means the thread pane is closed
-- a missing `channel` defaults to the Team default lane (`# all`)
-- `thread` should initially resolve from the root channel message identity
-  (`root_message_id`-backed deep link)
-
-### 7) Composer Task Affordance
-
-We should learn from Slock's composer-adjacent `As Task` affordance, but keep AgentHub semantics.
-
-Required constraint:
-
-- human chat input must not directly create canonical Team task records
-
-Core product goal:
-
-- let a human mark one outgoing conversation message as "task-oriented intent"
-- keep that intent close to the composer instead of hiding it in Kanban-only workflows
-- preserve the existing Team rule that coordinator planning/runtime decide whether and how a canonical
-  Team `task` should be materialized
-
-Recommended direction:
-
-- composer may expose a lightweight task affordance such as:
-  - `Create task draft`
-  - `Promote to task request`
-- this affordance should live next to the message composer, not as a thick page-level toolbar
-- resulting behavior should still flow through Team planning/runtime materialization before becoming
-  a canonical Team `task`
-- non-default channels may shape the draft/request context, but must not bypass coordinator/runtime
-  canonicalization
-
-Product interpretation:
-
-- this is a `conversation -> task-intent` affordance
-- it is not a direct `create canonical task now` action
-- the first rollout should optimize clarity of intent, not attempt to expose full task
-  configuration in the composer
-
-#### 7.1 Placement And Surface Rules
-
-The affordance should stay attached to the active Team conversation composer.
-
-Recommended first-rollout placement:
-
-- show the affordance as a compact secondary control adjacent to the send action
-- keep it in the same visual language as other lightweight Team controls
-- do not add a thick horizontal toolbar or a multi-row composer chrome layer
-
-Allowed surfaces:
-
-- channel composer
-- thread reply composer
-
-Disallowed surfaces for the first rollout:
-
-- ACP/agent runtime input docks
-- Kanban canonical task editor
-- global workspace shell header
-
-#### 7.2 Interaction Model
-
-The affordance should behave like a lightweight mode toggle, not a separate form page.
-
-Default state:
-
-- composer behaves like ordinary Team conversation input
-- the task affordance is visible but not active
-
-Armed state:
-
-- after the user activates the affordance, the composer enters a lightweight `task request` mode
-- show a thin context strip above or inside the composer, for example:
-  - `Task request`
-  - `Send as a task-oriented request for coordinator planning`
-- keep the main text area unchanged
-- allow the user to cancel the mode before sending
-
-Send behavior in armed state:
-
-- sending still creates one conversation message in the current channel/thread context
-- that message carries task-request intent metadata
-- sending does not immediately create a canonical Team task row in Kanban
-
-Exit behavior:
-
-- after successful send, the composer returns to ordinary conversation mode
-- if the user cancels before send, the mode clears without mutating the typed text
-
-#### 7.3 Visual Direction
-
-We should learn from Slock's lightweight "As Task" pattern, but preserve AgentHub's current shell.
-
-Required visual direction:
-
-- compact secondary control
-- minimal additional height
-- one thin context strip when active
-- no modal, no drawer, no expanded inline task form in the first rollout
-
-Explicit anti-goals:
-
-- do not add Slack-like rich composer toolbars
-- do not open a task-configuration side panel from the composer
-- do not ask for assignee, run policy, channel selection, or execution metadata before send
-- do not make the affordance visually heavier than the primary send action
-
-#### 7.4 Semantic Contract
-
-The first rollout should treat the affordance as an intent marker on a conversation message.
-
-Required semantic properties:
-
-- the message remains part of the selected channel/thread conversation history
-- the message is clearly distinguishable to Team planning/runtime as a task-oriented request
-- Team coordinator/runtime may later:
-  - materialize a canonical Team task
-  - ignore the request
-  - ask for clarification
-  - merge it into an existing task or lane
-
-Important constraint:
-
-- the affordance should not promise that every marked message becomes a task
-- the affordance should only promise that the message is delivered as task-oriented intent
-
-#### 7.5 Relationship To Channel And Thread Context
-
-The affordance should inherit the active communication context rather than invent a separate one.
+- `/workspace/teams/:team_id?channel=:channel_id&thread=:root_message_id`
 
 Rules:
 
-- in a channel composer, the task-request message belongs to that selected channel
-- in a thread composer, the task-request message belongs to that thread context while still
-  remaining subordinate to the parent channel
-- a non-default channel may shape the meaning of the request
-  - for example `# review` implies review-oriented task requests
-  - for example `# research` implies investigation-oriented task requests
-- but channel choice alone must not create or classify canonical Team tasks automatically
+- `channel` controls the center timeline;
+- `thread` controls the optional focused reply pane;
+- missing `thread` means thread pane closed;
+- missing `channel` falls back to `# all`;
+- deep-link resolution should use rooted message identity instead of a second detached thread id
+  namespace unless product evolution proves a separate namespace is necessary.
 
-#### 7.6 Relationship To Kanban
+### 9) Actor Capability Contract
 
-Kanban remains the canonical task surface.
+Thread handling must not remain a UI-only affordance.
 
-Still true after this affordance ships:
+Canonical actor capability direction:
 
-- Kanban is where canonical tasks live
-- coordinator planning/runtime own materialization into Kanban
-- composer-level task intent is an upstream signal, not a replacement for Kanban
+- `team_thread_open`
+  - open or resolve the thread rooted at an existing channel message
+- `team_thread_reply`
+  - append one reply in that rooted thread context
+- `team_thread_view_in_channel`
+  - jump back to the parent channel summary lane
 
-This means:
+Channel lifecycle capability direction:
 
-- the first rollout should not insert optimistic task cards directly into Kanban on send
-- if later product work wants a stronger link, it should surface as:
-  - `requested task created`
-  - `linked to existing task`
-  - or another explicit follow-up event after canonicalization
+- `team_channel_create`
+- `team_channel_update`
+- `team_channel_archive`
+- `team_channel_delete`
 
-#### 7.7 URL And Persistence Guidance
+Constraints:
 
-The first rollout should avoid introducing a dedicated URL mode for task-request composer state.
+- worker actors should not create or delete channels by default;
+- thread open must stay anchored to an existing root message;
+- actor/runtime capability should project the same canonical behavior as the UI shell.
 
-Guidance:
+### 10) Conversation-To-Task Intent Contract
 
-- ordinary `channel` / `thread` route state remains canonical
-- the temporary armed-state of the composer does not need its own query parameter
-- drafts may stay local to the current page session in the first rollout
+Conversation surfaces may expose a lightweight task-intent affordance near the composer, but that
+affordance must remain upstream of canonical task creation.
 
-This keeps the feature lightweight and prevents task-intent UX from overcomplicating shell routing.
+Rules:
 
-#### 7.8 Rollout Slice
+- sending a task-intent message still creates a conversation or thread message first;
+- task-intent metadata is a signal to coordinator/runtime, not a direct canonical task create;
+- the first rollout should not ask for full task configuration inside the composer;
+- channel or thread context may shape the meaning of the request, but must not bypass coordinator
+  materialization of canonical task records.
 
-The first implementation slice should be intentionally narrow.
+This preserves:
 
-Phase 5A:
+- conversation clarity
+- thread continuity
+- task-first ownership discipline
 
-- add the lightweight composer affordance
-- add the thin active-state strip
-- send one conversation message with task-request intent metadata
-- do not change Kanban materialization semantics yet
+## Validation Matrix
 
-Phase 5B:
+1. Channel and thread routing
+- opening a thread keeps the parent channel visible and routes replies into the thread context;
+- closing a thread preserves the selected channel;
+- deep links reopen the expected `channel + root_message_id` pair.
 
-- surface clearer follow-up feedback when coordinator/runtime later materialize a task from that request
-- optionally show a compact linkage from the request message to the resulting canonical task
+2. Reply-target fidelity
+- human and agent follow-up on an existing thread stays on that same thread by default;
+- escalation or transfer changes the visible surface only through explicit state transitions.
 
-Phase 5C:
+3. Task/thread boundary
+- creating a thread does not create a canonical task automatically;
+- task detail, note journal, and mailbox task links continue to treat task as the primary work
+  object;
+- thread messages attach to existing task context rather than creating parallel task truth by
+  default.
 
-- evaluate whether richer task-draft affordances are needed
-- only after the lightweight mode proves useful and does not blur the Team task contract
+4. Mailbox/thread boundary
+- mailbox claim and watching state remain authoritative for execution ownership;
+- thread visibility alone does not satisfy reply obligation or ownership rules;
+- thread claim state, linked task, and open reply obligations are visible in Team runtime surfaces.
 
-### 8) Relationship To Existing Team Semantics
+5. Shared default lane
+- the default shared-thread target is stable and idempotent across reload, restart, and replay;
+- human and agent replies in the default lane remain visible through the same canonical target.
 
-This design must preserve the existing Team operating model.
+6. UI behavior
+- channel timeline remains summary-first and scannable;
+- thread pane carries the deeper context;
+- narrow-screen shell preserves the same distinction without turning thread into a top-level lens.
 
-Still true after rollout:
+## Operational Notes
 
-- human intent enters through conversation
-- coordinator/runtime own canonical task materialization
-- `Kanban` remains the canonical Team task lane
-- `Execution Runs` remains the canonical execution-history/debug lane
-- `run` and `step` remain execution/debug artifacts, not communication objects
+- Keep channel roots summary-first; move long logs, detailed evidence, and extended back-and-forth
+  into the thread.
+- Prefer expanding an existing task/thread lane over creating parallel lanes for the same work.
+- Keep channel taxonomy sparse and durable.
+- Treat thread routing as a correctness contract for prompts, runtime fan-out, and UI actions.
+- When task, mailbox, and thread disagree, task ownership and mailbox triage remain authoritative
+  for execution responsibility.
 
-### 9) Notion-Style Constraints
+## Open Risks
 
-The channel/thread rollout must keep the current visual direction:
-
-- restrained chrome
-- thin headers
-- compact directory rows
-- low badge density
-- content-first panes
-
-Explicit anti-goals:
-
-- do not add Slack-like thick composer toolbars
-- do not add persistent runtime/status panels around every channel
-- do not overload thread headers with debugging metadata
-
-## Rollout Phases
-
-### Phase 1: Channel/Thread Spec And Routing
-
-- define canonical Team `channel` and `thread` route/query grammar
-- introduce shell-level selected-channel / selected-thread state
-- keep the current single channel (`# all`) behavior working through the new shell model
-
-### Phase 2: Thread Split View
-
-- add a real right-side `ThreadPane` in Team conversation
-- keep the center channel timeline visible
-- wire message reply/thread-count affordances to open/close the pane
-
-### Phase 3: Actor Capability Integration
-
-- add Team actor-level `thread_open` / `thread_reply` behavior
-- make shell thread open/close a projection of actor-side thread identity instead of pure UI state
-
-### Phase 4: Additional Team Channels
-
-- make `Channels` in the Team rail a true Team-local directory instead of a fixed two-item list
-- support more than `# all` while preserving current Team defaults
-- require channel descriptions that explain the work focus of each non-default lane
-
-### Phase 5: Composer Task Draft Affordance
-
-- add a lightweight task affordance near the composer
-- keep canonical task creation behind Team planning/runtime semantics
-
-## Validation
-
-- route-level tests for `channel` and `thread` query/deep-link behavior
-- Team shell tests for `channel-only` vs `channel + thread` layouts
-- conversation tests for opening and closing the right thread pane
-- focused tests or prompt-contract checks proving summary-first root messages and thread-first deep
-  context guidance stay encoded in the Team behavior surface
-- actor command / capability tests for thread-open anchored to `root_message_id`
-- channel-directory tests for `# all` plus descriptive non-default channels
-- regression tests confirming `Kanban` and `Execution Runs` stay canonical for task/run ownership
-- Chrome DevTools MCP checks against:
-  - Slock channel/thread reference page
-  - local Team workspace regression after implementation
+- Channel sprawl can recreate folder-like clutter and hide work instead of clarifying it.
+- Weak reply-target discipline can still cause replies to leak into the wrong visible surface.
+- Long-lived threads may require stronger history windowing and replay optimization.
+- Cross-actor takeover rules can become confusing if thread participation and mailbox ownership are
+  presented as the same thing in the UI.
+- Conversation-level task-intent can over-promise if the UI does not make coordinator
+  canonicalization explicit.
 
 ## Source Journals
 
-- `docs/journal/2026-05-03-team-thread-prompt-contract.md`
+- [docs/journal/2026-03-08-teams-conversation-tasks-mailbox-workflow.md](../journal/2026-03-08-teams-conversation-tasks-mailbox-workflow.md)
+- [docs/journal/2026-03-13-team-shared-thread-canonical-replies.md](../journal/2026-03-13-team-shared-thread-canonical-replies.md)
+- [docs/journal/2026-05-18-team-workspace-p0-matrix.md](../journal/2026-05-18-team-workspace-p0-matrix.md)
+- [docs/journal/2026-05-20-team-mailbox-phase2-ownership-and-task-links.md](../journal/2026-05-20-team-mailbox-phase2-ownership-and-task-links.md)
+- [docs/journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md](../journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md)
+- [docs/journal/2026-05-21-team-prompt-operating-contract-refresh.md](../journal/2026-05-21-team-prompt-operating-contract-refresh.md)
+- [docs/journal/2026-05-21-team-task-first-and-mailbox-envelope-slice.md](../journal/2026-05-21-team-task-first-and-mailbox-envelope-slice.md)
