@@ -298,6 +298,11 @@ Rules:
 
 - sending a task-intent message still creates a conversation or thread message first;
 - task-intent metadata is a signal to coordinator/runtime, not a direct canonical task create;
+- workers and other non-coordinator actors may propose task intent or suggest that existing work
+  should be split, linked, or promoted, but they do not materialize new canonical Team tasks
+  themselves;
+- only coordinator/runtime may turn that task-intent signal into a new canonical Team task after
+  choosing explicit ownership, priority, and linkage;
 - the first rollout should not ask for full task configuration inside the composer;
 - channel or thread context may shape the meaning of the request, but must not bypass coordinator
   materialization of canonical task records.

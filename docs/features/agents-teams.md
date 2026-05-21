@@ -50,6 +50,11 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   Kanban task is invalid.
 - Canonical execution task creation also requires an explicit `priority`; new Kanban work should
   not rely on an implicit default lane.
+- Worker agents may surface task intent, scope split proposals, or ownership suggestions through
+  conversation, thread, mailbox, or task notes, but they do not materialize canonical execution
+  tasks directly.
+- Only coordinator/runtime may materialize a new canonical Team task onto Kanban after choosing the
+  explicit owner, priority, and linkage to the originating conversation or thread context.
 - Explicit ownership changes happen through canonical task updates (`assigned_member_id` assign /
   unassign), not implicit runtime scheduling.
 - A task also carries an append-only note journal used for:
