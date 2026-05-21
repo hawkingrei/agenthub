@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 pub const ACTOR_MAIN_PEER_ID: &str = "main";
 pub const ACTOR_NODE_PEER_ID: &str = "node";
@@ -9,6 +9,26 @@ pub const ACTOR_NODE_PEER_ID: &str = "node";
 pub enum ActorIdentityKind {
     Agent,
     Human,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActorMessageSourceKind {
+    Human,
+    Agent,
+    Trigger,
+    System,
+}
+
+impl ActorMessageSourceKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Agent => "agent",
+            Self::Trigger => "trigger",
+            Self::System => "system",
+        }
+    }
 }
 
 pub fn infer_actor_identity_kind(actor_id: &str) -> ActorIdentityKind {
@@ -154,6 +174,16 @@ pub fn parse_actor_message_kind(raw: &str) -> ActorMessageKind {
     }
 }
 
+pub fn parse_actor_message_source_kind(raw: &str) -> Option<ActorMessageSourceKind> {
+    match raw.trim() {
+        "human" => Some(ActorMessageSourceKind::Human),
+        "agent" => Some(ActorMessageSourceKind::Agent),
+        "trigger" => Some(ActorMessageSourceKind::Trigger),
+        "system" => Some(ActorMessageSourceKind::System),
+        _ => None,
+    }
+}
+
 pub fn parse_actor_message_handling_disposition(raw: &str) -> ActorMessageHandlingDisposition {
     match raw.trim() {
         "ignored" => ActorMessageHandlingDisposition::Ignored,
@@ -201,6 +231,13 @@ fn payload_trimmed_string(payload: &Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+fn payload_bool(payload: &Value, key: &str) -> Option<bool> {
+    payload
+        .as_object()
+        .and_then(|map| map.get(key))
+        .and_then(Value::as_bool)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActorMessageTopicMetadata {
     pub topic_key: String,
@@ -214,6 +251,197 @@ pub fn actor_message_payload_task_id(payload: &Value) -> Option<String> {
 
 pub fn actor_message_payload_thread_root_message_id(payload: &Value) -> Option<i64> {
     payload_positive_i64(payload, "thread_root_message_id")
+}
+
+pub fn actor_message_payload_conversation_id(payload: &Value) -> Option<String> {
+    for key in [
+        "task_conversation_id",
+        "channel_conversation_id",
+        "conversation_id",
+    ] {
+        if let Some(value) = payload_trimmed_string(payload, key) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+pub fn actor_message_payload_source_surface(payload: &Value) -> Option<String> {
+    payload_trimmed_string(payload, "source_surface")
+}
+
+pub fn actor_message_payload_reply_target(payload: &Value) -> Option<Value> {
+    payload
+        .as_object()
+        .and_then(|map| map.get("reply_target"))
+        .filter(|value| !value.is_null())
+        .cloned()
+}
+
+pub fn actor_message_payload_requires_user_visible_reply(payload: &Value) -> Option<bool> {
+    payload_bool(payload, "requires_user_visible_reply")
+}
+
+pub fn infer_actor_message_source_kind(
+    from_actor_id: &str,
+    message_kind: &ActorMessageKind,
+    payload: &Value,
+) -> ActorMessageSourceKind {
+    if let Some(explicit) = payload
+        .as_object()
+        .and_then(|map| map.get("source_kind"))
+        .and_then(Value::as_str)
+        .and_then(parse_actor_message_source_kind)
+    {
+        return explicit;
+    }
+    match message_kind {
+        ActorMessageKind::TriggerEvent => ActorMessageSourceKind::Trigger,
+        ActorMessageKind::SystemNotice => ActorMessageSourceKind::System,
+        _ => {
+            if infer_actor_identity_kind(from_actor_id) == ActorIdentityKind::Human {
+                ActorMessageSourceKind::Human
+            } else {
+                ActorMessageSourceKind::Agent
+            }
+        }
+    }
+}
+
+fn infer_actor_message_source_surface(message_kind: &ActorMessageKind, payload: &Value) -> String {
+    if let Some(explicit) = actor_message_payload_source_surface(payload) {
+        return explicit;
+    }
+    if actor_message_payload_thread_root_message_id(payload).is_some() {
+        return "thread".to_string();
+    }
+    if actor_message_payload_conversation_id(payload).is_some() {
+        return "conversation".to_string();
+    }
+    match message_kind {
+        ActorMessageKind::TriggerEvent => "trigger".to_string(),
+        ActorMessageKind::SystemNotice => "system".to_string(),
+        _ => "mailbox".to_string(),
+    }
+}
+
+fn infer_actor_message_reply_target(payload: &Value) -> Option<Value> {
+    if let Some(explicit) = actor_message_payload_reply_target(payload) {
+        return Some(explicit);
+    }
+    let conversation_id = actor_message_payload_conversation_id(payload);
+    let task_id = actor_message_payload_task_id(payload);
+    let task_message_id = payload_positive_i64(payload, "task_message_id");
+    let thread_root_message_id = actor_message_payload_thread_root_message_id(payload);
+    if conversation_id.is_none() && task_message_id.is_none() && thread_root_message_id.is_none() {
+        return None;
+    }
+    let mut reply_target = Map::new();
+    reply_target.insert(
+        "surface".to_string(),
+        Value::String(if thread_root_message_id.is_some() {
+            "thread".to_string()
+        } else {
+            "conversation".to_string()
+        }),
+    );
+    if let Some(task_id) = task_id {
+        reply_target.insert("task_id".to_string(), Value::String(task_id));
+    }
+    if let Some(conversation_id) = conversation_id {
+        reply_target.insert(
+            "conversation_id".to_string(),
+            Value::String(conversation_id),
+        );
+    }
+    if let Some(task_message_id) = task_message_id {
+        reply_target.insert(
+            "task_message_id".to_string(),
+            Value::Number(task_message_id.into()),
+        );
+    }
+    if let Some(thread_root_message_id) = thread_root_message_id {
+        reply_target.insert(
+            "thread_root_message_id".to_string(),
+            Value::Number(thread_root_message_id.into()),
+        );
+    }
+    Some(Value::Object(reply_target))
+}
+
+fn infer_requires_user_visible_reply(
+    source_kind: &ActorMessageSourceKind,
+    to_actor_id: &str,
+    payload: &Value,
+) -> bool {
+    if let Some(explicit) = actor_message_payload_requires_user_visible_reply(payload) {
+        return explicit;
+    }
+    matches!(source_kind, ActorMessageSourceKind::Human)
+        && infer_actor_identity_kind(to_actor_id) == ActorIdentityKind::Agent
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ActorMessageEnvelopeProjection {
+    pub source_kind: ActorMessageSourceKind,
+    pub source_surface: String,
+    pub reply_target: Option<Value>,
+    pub requires_user_visible_reply: bool,
+    pub conversation_id: Option<String>,
+    pub thread_root_message_id: Option<i64>,
+}
+
+pub fn project_actor_message_envelope(
+    from_actor_id: &str,
+    to_actor_id: &str,
+    message_kind: &ActorMessageKind,
+    payload: &Value,
+) -> ActorMessageEnvelopeProjection {
+    let source_kind = infer_actor_message_source_kind(from_actor_id, message_kind, payload);
+    ActorMessageEnvelopeProjection {
+        source_surface: infer_actor_message_source_surface(message_kind, payload),
+        reply_target: infer_actor_message_reply_target(payload),
+        requires_user_visible_reply: infer_requires_user_visible_reply(
+            &source_kind,
+            to_actor_id,
+            payload,
+        ),
+        conversation_id: actor_message_payload_conversation_id(payload),
+        thread_root_message_id: actor_message_payload_thread_root_message_id(payload),
+        source_kind,
+    }
+}
+
+pub fn normalize_actor_message_envelope_payload(
+    from_actor_id: &str,
+    to_actor_id: &str,
+    message_kind: &ActorMessageKind,
+    payload: Value,
+) -> Value {
+    let Value::Object(mut payload_obj) = payload else {
+        return payload;
+    };
+    let projection = project_actor_message_envelope(
+        from_actor_id,
+        to_actor_id,
+        message_kind,
+        &Value::Object(payload_obj.clone()),
+    );
+    payload_obj
+        .entry("source_kind".to_string())
+        .or_insert_with(|| Value::String(projection.source_kind.as_str().to_string()));
+    payload_obj
+        .entry("source_surface".to_string())
+        .or_insert_with(|| Value::String(projection.source_surface));
+    payload_obj
+        .entry("requires_user_visible_reply".to_string())
+        .or_insert_with(|| Value::Bool(projection.requires_user_visible_reply));
+    if let Some(reply_target) = projection.reply_target {
+        payload_obj
+            .entry("reply_target".to_string())
+            .or_insert(reply_target);
+    }
+    Value::Object(payload_obj)
 }
 
 pub fn derive_actor_message_topic_metadata(
@@ -329,14 +557,27 @@ pub struct ActorMessageRecord {
     pub handled_at: Option<i64>,
 }
 
+impl ActorMessageRecord {
+    pub fn inbound_envelope(&self) -> ActorMessageEnvelopeProjection {
+        project_actor_message_envelope(
+            &self.from_actor_id,
+            &self.to_actor_id,
+            &self.message_kind,
+            &self.payload,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        ActorIdentityKind, ActorMessageHandlingDisposition, ActorMessageKind,
-        ActorMessageTaskRelation, ActorThreadClaimStatus, derive_actor_message_topic_metadata,
-        infer_actor_identity_kind, infer_actor_message_kind,
-        parse_actor_message_handling_disposition, parse_actor_message_kind,
+        ActorIdentityKind, ActorMessageEnvelopeProjection, ActorMessageHandlingDisposition,
+        ActorMessageKind, ActorMessageSourceKind, ActorMessageTaskRelation, ActorThreadClaimStatus,
+        derive_actor_message_topic_metadata, infer_actor_identity_kind, infer_actor_message_kind,
+        normalize_actor_message_envelope_payload, parse_actor_message_handling_disposition,
+        parse_actor_message_kind, parse_actor_message_source_kind,
         parse_actor_message_task_relation, parse_actor_thread_claim_status,
+        project_actor_message_envelope,
     };
     use serde_json::json;
 
@@ -517,6 +758,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_actor_message_source_kind_accepts_known_values() {
+        assert_eq!(
+            parse_actor_message_source_kind("human"),
+            Some(ActorMessageSourceKind::Human)
+        );
+        assert_eq!(
+            parse_actor_message_source_kind("system"),
+            Some(ActorMessageSourceKind::System)
+        );
+        assert_eq!(parse_actor_message_source_kind("unknown"), None);
+    }
+
+    #[test]
     fn infer_actor_message_kind_prefers_explicit_then_payload_then_actor_identity() {
         assert_eq!(
             infer_actor_message_kind(
@@ -549,6 +803,104 @@ mod tests {
         assert_eq!(
             infer_actor_message_kind("agent-worker-1", &json!({"type":"unknown"}), None),
             ActorMessageKind::CoordinationRequest
+        );
+    }
+
+    #[test]
+    fn project_actor_message_envelope_marks_human_conversation_reply_obligation() {
+        let projection = project_actor_message_envelope(
+            "user:alice",
+            "worker-1",
+            &ActorMessageKind::HumanRequest,
+            &json!({
+                "task_id":"task-1",
+                "task_conversation_id":"conversation-1",
+                "task_message_id": 42
+            }),
+        );
+        assert_eq!(
+            projection,
+            ActorMessageEnvelopeProjection {
+                source_kind: ActorMessageSourceKind::Human,
+                source_surface: "conversation".to_string(),
+                reply_target: Some(json!({
+                    "surface":"conversation",
+                    "task_id":"task-1",
+                    "conversation_id":"conversation-1",
+                    "task_message_id": 42
+                })),
+                requires_user_visible_reply: true,
+                conversation_id: Some("conversation-1".to_string()),
+                thread_root_message_id: None,
+            }
+        );
+    }
+
+    #[test]
+    fn project_actor_message_envelope_marks_system_and_thread_surfaces() {
+        let system_projection = project_actor_message_envelope(
+            "planner",
+            "reviewer",
+            &ActorMessageKind::SystemNotice,
+            &json!({
+                "type":"permission_review_request"
+            }),
+        );
+        assert_eq!(
+            system_projection.source_kind,
+            ActorMessageSourceKind::System
+        );
+        assert_eq!(system_projection.source_surface, "system");
+        assert!(!system_projection.requires_user_visible_reply);
+
+        let thread_projection = project_actor_message_envelope(
+            "user:bob",
+            "worker-1",
+            &ActorMessageKind::ThreadReply,
+            &json!({
+                "task_id":"task-2",
+                "task_conversation_id":"conversation-2",
+                "task_message_id": 9,
+                "thread_root_message_id": 7
+            }),
+        );
+        assert_eq!(thread_projection.source_surface, "thread");
+        assert_eq!(
+            thread_projection.reply_target,
+            Some(json!({
+                "surface":"thread",
+                "task_id":"task-2",
+                "conversation_id":"conversation-2",
+                "task_message_id": 9,
+                "thread_root_message_id": 7
+            }))
+        );
+        assert_eq!(thread_projection.thread_root_message_id, Some(7));
+    }
+
+    #[test]
+    fn normalize_actor_message_envelope_payload_backfills_canonical_fields() {
+        let normalized = normalize_actor_message_envelope_payload(
+            "user:alice",
+            "worker-1",
+            &ActorMessageKind::HumanRequest,
+            json!({
+                "task_id":"task-7",
+                "task_conversation_id":"conversation-7",
+                "task_message_id": 11
+            }),
+        );
+        assert_eq!(normalized["source_kind"], json!("human"));
+        assert_eq!(normalized["source_surface"], json!("conversation"));
+        assert_eq!(normalized["requires_user_visible_reply"], json!(true));
+        assert_eq!(
+            normalized["reply_target"],
+            json!({
+                "surface":"conversation",
+                "task_id":"task-7",
+                "conversation_id":"conversation-7",
+                "task_message_id": 11
+            })
         );
     }
 }

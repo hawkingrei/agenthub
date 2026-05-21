@@ -7036,9 +7036,15 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         })
         .await
         .expect("send message");
+    let expected_payload = json!({
+        "text":"please review",
+        "source_kind":"agent",
+        "source_surface":"mailbox",
+        "requires_user_visible_reply":false
+    });
     assert_eq!(sent.status, TeamActorMessageStatus::Pending);
     assert_eq!(sent.transport, TeamActorMessageTransport::Local);
-    assert_eq!(sent.payload, json!({"text":"please review"}));
+    assert_eq!(sent.payload, expected_payload);
     assert_eq!(sent.from_actor_kind, ActorIdentityKind::Agent);
     assert_eq!(sent.to_actor_kind, ActorIdentityKind::Agent);
 
@@ -7126,6 +7132,81 @@ async fn actor_messages_support_inbox_and_ack_flow() {
             "actor_message_delivered"
         ]
     );
+}
+
+#[tokio::test]
+async fn summarize_open_reply_obligations_prefers_lightweight_snapshot_loader() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "reply-obligation-team".to_string(),
+            description: Some("team for reply obligation summary".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-reply-obligation"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "user:alice",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"Need update",
+                "requires_user_visible_reply":true
+            }),
+            idempotency_key: None,
+            message_kind: None,
+        })
+        .await
+        .expect("send inbound obligation");
+    manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "reviewer",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "user:alice",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: Value::String(
+                r#"{"type":"chat_message","text":"Here is the update","correlation_id":"corr-summary"}"#
+                    .to_string(),
+            ),
+            idempotency_key: None,
+            message_kind: None,
+        })
+        .await
+        .expect("send visible reply");
+
+    let summary = manager
+        .summarize_open_reply_obligations(&run.id)
+        .await
+        .expect("summarize reply obligations");
+
+    assert_eq!(summary.open_total, 0);
+    assert!(summary.open_by_actor.is_empty());
+    assert!(summary.open_items.is_empty());
 }
 
 #[tokio::test]

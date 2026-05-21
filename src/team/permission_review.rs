@@ -350,6 +350,9 @@ fn build_permission_review_payload(
 ) -> Value {
     json!({
         "type": TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE,
+        "source_kind": "system",
+        "source_surface": "system",
+        "requires_user_visible_reply": false,
         "permission_id": request.request_id,
         "requester_actor_id": request.routing.requester_actor_id,
         "requester_role": request.routing.requester_role,

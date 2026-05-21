@@ -239,6 +239,27 @@ processing without one of these outcomes:
 The system should treat unresolved reply obligations as an explicit runtime state rather than as a
 successful no-op.
 
+Current minimum operator contract:
+
+- run snapshot and Team mailbox surfaces must expose open reply-obligation counts plus per-message
+  obligation detail for unresolved human-originated work;
+- operators may explicitly triage the underlying mailbox item to:
+  - `watching`
+  - `claimed`
+  - `released`
+  - `ignored`
+  - `completed`
+- operators may explicitly escalate reply-required human mailbox work to the coordinator; this
+  releases the original item and reissues the open reply obligation to the coordinator mailbox
+  instead of pretending the work is completed;
+- `ignored` clears the item from open-obligation and unread-actionable summaries;
+- `completed` is only valid when user-visible reply evidence already exists; unresolved
+  reply-obligation rows should not offer `completed` as a direct operator action;
+- `watching`, `claimed`, and `released` remain operator-visible mailbox states and do not satisfy
+  the user-visible reply requirement on their own;
+- transfer and cross-actor takeover remain distinct follow-up flows and must not be conflated with
+  the current triage-state surface.
+
 ### 9) Inbox Ordering Contract
 
 Unread actionable work must remain visible ahead of historical replay needs.
@@ -293,6 +314,7 @@ Rules:
   - claim -> task link creation
   - thread ownership preventing double takeover
   - required user-visible reply not being dropped silently
+  - operator triage clearing open reply-obligation summary state
 - Focused MCP/CLI prompt validation so coordinator and worker instructions match the canonical
   triage/ownership flow.
 
@@ -310,6 +332,8 @@ Rules:
   - released
 - Coordinator visibility should include thread owner, linked task, and unresolved reply-required
   items.
+- Current reply-obligation accounting may be derived from payload-backed envelope metadata and a
+  conservative actor-pair reply heuristic until explicit persisted resolution links exist.
 - Historical replay remains valuable for audit/debugging, but replay must not become the primary
   unread-discovery surface.
 - Existing `actor_receive` and `actor_ack` flows should be treated as compatibility behavior until
@@ -324,6 +348,8 @@ Rules:
   silent completion must stay narrow and explicit.
 - Backfilling message kind and handling disposition for legacy rows may require compatibility
   inference during migration.
+- Conservative pair-level reply-credit inference may under- or over-associate visible agent replies
+  until explicit transfer/reply-resolution links become first-class state.
 
 ## Source Journals
 

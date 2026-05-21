@@ -1,5 +1,9 @@
 import React from "react";
-import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
+import {
+  TeamActorMessageRecord,
+  TeamReplyObligationRecord,
+  TeamRunSnapshotRecord,
+} from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   ActionButton,
@@ -76,6 +80,7 @@ type MailboxActorRow = {
   memberId: string;
   role: string;
   pendingInboxCount: number;
+  replyObligationCount: number;
   status: string;
   unread: number;
   isHuman: boolean;
@@ -113,6 +118,11 @@ type TeamMailboxPanelProps = {
   busy: string | null;
   onAcceptMessage: (message: TeamActorMessageRecord) => Promise<void> | void;
   onAcceptVisibleMessages?: (messages: TeamActorMessageRecord[]) => Promise<void> | void;
+  onTriageMessage?: (
+    message: TeamActorMessageRecord,
+    disposition: "ignored" | "watching" | "claimed" | "completed" | "released"
+  ) => Promise<void> | void;
+  onEscalateMessage?: (message: TeamActorMessageRecord) => Promise<void> | void;
   chatDraft: string;
   onChatDraftChange: (value: string) => void;
   onSendChatMessage: () => Promise<void> | void;
@@ -188,6 +198,10 @@ function resolveMentionActorIdFromEventTarget(target: EventTarget | null): strin
   return actorId || null;
 }
 
+function resolveMailboxDispositionLabel(message: TeamActorMessageRecord | null): string {
+  return message?.handling_disposition ?? "untriaged";
+}
+
 function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
@@ -210,6 +224,8 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
     busy,
     onAcceptMessage,
     onAcceptVisibleMessages,
+    onTriageMessage,
+    onEscalateMessage,
     chatDraft,
     onChatDraftChange,
     onSendChatMessage,
@@ -246,6 +262,21 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const showAdvancedControls = mode === "advanced_only";
   const showDeveloperMailboxTools = developerMode && showAdvancedControls;
   const normalizedHumanActorId = humanActorId.trim();
+  const openReplyObligations = snapshot?.mailbox.open_reply_obligations ?? [];
+  const mailboxMessagesById = React.useMemo(
+    () => new Map(snapshot?.mailbox.recent_messages.map((message) => [message.message_id, message]) ?? []),
+    [snapshot?.mailbox.recent_messages]
+  );
+  const obligationRows = React.useMemo<
+    Array<{ obligation: TeamReplyObligationRecord; message: TeamActorMessageRecord | null }>
+  >(
+    () =>
+      openReplyObligations.map((obligation) => ({
+        obligation,
+        message: mailboxMessagesById.get(obligation.message_id) ?? null,
+      })),
+    [mailboxMessagesById, openReplyObligations]
+  );
   const humanPendingCount =
     snapshot?.mailbox.recent_messages.filter(
       (message) =>
@@ -263,6 +294,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               member_id: normalizedHumanActorId,
               role: "human",
               pending_inbox_count: humanPendingCount,
+              reply_obligation_count: 0,
               status: "human",
             },
           ]
@@ -274,6 +306,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
         memberId: member.member_id,
         role: member.role,
         pendingInboxCount: member.pending_inbox_count,
+        replyObligationCount: member.reply_obligation_count ?? 0,
         status: member.status,
         unread: unreadByMemberId[member.member_id] ?? 0,
         isHuman,
@@ -465,24 +498,162 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
       <PanelHeader title="Mailbox" titleClassName={TEAM_PANEL_TITLE_CLASS} />
 
       {showConversation && snapshot && (
-        <div className={MAILBOX_META_CLASS}>
-          <span>
-            <strong className={MAILBOX_META_LABEL_CLASS}>Pending:</strong>
-            <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.pending}</span>
-          </span>
-          <span>
-            <strong className={MAILBOX_META_LABEL_CLASS}>Delivered:</strong>
-            <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.delivered}</span>
-          </span>
-          <span>
-            <strong className={MAILBOX_META_LABEL_CLASS}>Dead Letter:</strong>
-            <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.dead_letter}</span>
-          </span>
-          <span>
-            <strong className={MAILBOX_META_LABEL_CLASS}>Recent Messages:</strong>
-            <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.recent_messages.length}</span>
-          </span>
-        </div>
+        <>
+          <div className={MAILBOX_META_CLASS}>
+            <span>
+              <strong className={MAILBOX_META_LABEL_CLASS}>Pending:</strong>
+              <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.pending}</span>
+            </span>
+            <span>
+              <strong className={MAILBOX_META_LABEL_CLASS}>Delivered:</strong>
+              <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.delivered}</span>
+            </span>
+            <span>
+              <strong className={MAILBOX_META_LABEL_CLASS}>Dead Letter:</strong>
+              <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.dead_letter}</span>
+            </span>
+            <span>
+              <strong className={MAILBOX_META_LABEL_CLASS}>Reply Obligations:</strong>
+              <span className={MAILBOX_META_VALUE_CLASS}>
+                {snapshot.mailbox.open_reply_obligation_count ?? 0}
+              </span>
+            </span>
+            <span>
+              <strong className={MAILBOX_META_LABEL_CLASS}>Recent Messages:</strong>
+              <span className={MAILBOX_META_VALUE_CLASS}>{snapshot.mailbox.recent_messages.length}</span>
+            </span>
+          </div>
+          {openReplyObligations.length > 0 ? (
+            <div className="mb-3 rounded-lg border border-notion-border/60 bg-notion-sidebar/5 p-3">
+              <h4 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
+                Open Reply Obligations
+              </h4>
+              <ul className="mt-2 flex flex-col gap-2 text-[12px] leading-relaxed text-notion-text">
+                {obligationRows.map(({ obligation, message }) => {
+                  const disposition = resolveMailboxDispositionLabel(message);
+                  const claimStatus = message?.thread_claim_status ?? null;
+                  const claimOwner = message?.thread_owner_actor_id?.trim() ?? "";
+                  const canRelease =
+                    !!message &&
+                    (message.thread_claim_status === "claimed" ||
+                      message.handling_disposition === "claimed") &&
+                    (!claimOwner || claimOwner === obligation.agent_actor_id);
+                  const canTakeOver = !!message && message.handling_disposition !== "claimed";
+                  const canWatch = !!message && message.handling_disposition !== "watching";
+                  const canEscalate =
+                    !!message &&
+                    !!snapshot?.coordinator_member_id &&
+                    obligation.agent_actor_id !== snapshot.coordinator_member_id;
+                  return (
+                    <li key={obligation.message_id} className="rounded-md bg-white px-3 py-2">
+                    <div className="font-medium">
+                      {resolveMailboxActorLabel(
+                        obligation.agent_actor_id,
+                        displayNameByActorId,
+                        normalizedHumanActorId
+                      )}{" "}
+                      owes{" "}
+                      {resolveMailboxActorLabel(
+                        obligation.human_actor_id,
+                        displayNameByActorId,
+                        normalizedHumanActorId
+                      )}{" "}
+                      a reply
+                    </div>
+                    <div className="text-notion-text-muted">
+                      state={disposition}
+                      {claimStatus ? ` · claim=${claimStatus}` : ""}
+                      {claimOwner
+                        ? ` · owner=${resolveMailboxActorLabel(
+                            claimOwner,
+                            displayNameByActorId,
+                            normalizedHumanActorId
+                          )}`
+                        : ""}
+                      {" · "}source={obligation.source_surface} · ts={formatTs(obligation.created_at)}
+                    </div>
+                    {obligation.text_excerpt ? (
+                      <div className="mt-1 whitespace-pre-wrap break-words text-notion-text-muted">
+                        {obligation.text_excerpt}
+                      </div>
+                    ) : null}
+                    <ToolbarRow className="mt-2 justify-end gap-2">
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => onSelectMember(obligation.agent_actor_id)}
+                        disabled={busy !== null}
+                      >
+                        Open mailbox
+                      </ActionButton>
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => {
+                          if (message) {
+                            void onTriageMessage?.(message, "watching");
+                          }
+                        }}
+                        disabled={busy !== null || !canWatch || !onTriageMessage}
+                      >
+                        Watch
+                      </ActionButton>
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => {
+                          if (message) {
+                            void onTriageMessage?.(message, "claimed");
+                          }
+                        }}
+                        disabled={busy !== null || !canTakeOver || !onTriageMessage}
+                      >
+                        Take over
+                      </ActionButton>
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => {
+                          if (message) {
+                            void onTriageMessage?.(message, "released");
+                          }
+                        }}
+                        disabled={busy !== null || !canRelease || !onTriageMessage}
+                      >
+                        Release
+                      </ActionButton>
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => {
+                          if (message) {
+                            void onEscalateMessage?.(message);
+                          }
+                        }}
+                        disabled={busy !== null || !canEscalate || !onEscalateMessage}
+                      >
+                        Escalate
+                      </ActionButton>
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => {
+                          if (message) {
+                            void onTriageMessage?.(message, "ignored");
+                          }
+                        }}
+                        disabled={busy !== null || !message || !onTriageMessage}
+                      >
+                        Ignore
+                      </ActionButton>
+                    </ToolbarRow>
+                  </li>
+                );
+              })}
+              </ul>
+            </div>
+          ) : null}
+        </>
       )}
 
       {showConversation && (
@@ -511,7 +682,9 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                   </div>
                   <div className={MAILBOX_MEMBER_ROW_META_CLASS}>
                     <span className={TEAM_LIST_ITEM_META_CLASS}>
-                      {member.isHuman ? "human actor" : `pending=${member.pendingInboxCount}`}
+                      {member.isHuman
+                        ? "human actor"
+                        : `pending=${member.pendingInboxCount} reply=${member.replyObligationCount}`}
                     </span>
                     {member.unread > 0 && (
                       <span className={MAILBOX_MEMBER_UNREAD_BADGE_CLASS}>

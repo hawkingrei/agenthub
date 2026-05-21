@@ -205,6 +205,11 @@ export type TeamWorkbenchRuntimeContext = {
   conversationMessages: TeamActorMessageRecord[];
   onAcceptMessage: (message: TeamActorMessageRecord) => void | Promise<void>;
   onAcceptVisibleMessages: (messages: TeamActorMessageRecord[]) => void | Promise<void>;
+  onTriageMessage?: (
+    message: TeamActorMessageRecord,
+    disposition: "ignored" | "watching" | "claimed" | "completed" | "released"
+  ) => void | Promise<void>;
+  onEscalateMessage?: (message: TeamActorMessageRecord) => void | Promise<void>;
   onSendChatMessage: () => void;
   MAILBOX_TEMPLATE_OPTIONS: Array<{ value: MailboxTemplateKey; label: string }>;
   onMailboxTemplateChange: (value: string) => void;
@@ -422,6 +427,8 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     conversationMessages,
     onAcceptMessage,
     onAcceptVisibleMessages,
+    onTriageMessage,
+    onEscalateMessage,
     onSendChatMessage,
     MAILBOX_TEMPLATE_OPTIONS,
     onMailboxTemplateChange,
@@ -746,6 +753,8 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         busy,
         onAcceptMessage,
         onAcceptVisibleMessages,
+        onTriageMessage,
+        onEscalateMessage,
         chatDraft,
         onChatDraftChange,
         onSendChatMessage,

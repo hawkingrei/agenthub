@@ -10,6 +10,8 @@ vi.mock("../../api", () => ({
   api: {
     sendTeamRunMessage: vi.fn(),
     ackTeamRunMessage: vi.fn(),
+    triageTeamRunMessage: vi.fn(),
+    escalateTeamRunMessage: vi.fn(),
   },
 }));
 
@@ -83,6 +85,8 @@ function createBaseOptions(
           pending: 0,
           delivered: 0,
           dead_letter: 0,
+          open_reply_obligation_count: 0,
+          open_reply_obligations: [],
           recent_messages: [],
         },
       } as TeamRunSnapshotRecord;
@@ -237,6 +241,97 @@ describe("useTeamMailboxActions", () => {
       expect(options.loadInbox).toHaveBeenCalledWith();
       expect(options.refreshEvents).toHaveBeenCalledWith("run-1");
       expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("triages mailbox obligation and refreshes snapshot + inbox", async () => {
+    mockedApi.triageTeamRunMessage.mockResolvedValueOnce(
+      buildMessage({ status: "pending" })
+    );
+
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.onTriageMessage(
+          buildMessage({ message_id: 42, to_actor_id: "worker-2" }),
+          "completed"
+        );
+      });
+
+      expect(mockedApi.triageTeamRunMessage).toHaveBeenCalledWith("token-1", "run-1", 42, {
+        actor_id: "worker-2",
+        disposition: "completed",
+      });
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+      expect(options.loadInbox).toHaveBeenCalledWith("worker-2");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("supports mailbox takeover-style triage states", async () => {
+    mockedApi.triageTeamRunMessage.mockResolvedValueOnce(
+      buildMessage({ status: "pending", handling_disposition: "claimed" })
+    );
+
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.onTriageMessage(
+          buildMessage({ message_id: 43, to_actor_id: "worker-2" }),
+          "claimed"
+        );
+      });
+
+      expect(mockedApi.triageTeamRunMessage).toHaveBeenCalledWith("token-1", "run-1", 43, {
+        actor_id: "worker-2",
+        disposition: "claimed",
+      });
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+      expect(options.loadInbox).toHaveBeenCalledWith("worker-2");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("escalates mailbox obligation to the coordinator and refreshes inbox + snapshot", async () => {
+    mockedApi.escalateTeamRunMessage.mockResolvedValueOnce(
+      buildMessage({ message_id: 44, to_actor_id: "coordinator-1", status: "pending" })
+    );
+
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.onEscalateMessage?.(
+          buildMessage({ message_id: 44, to_actor_id: "worker-2" })
+        );
+      });
+
+      expect(mockedApi.escalateTeamRunMessage).toHaveBeenCalledWith(
+        "token-1",
+        "run-1",
+        44,
+        "worker-2"
+      );
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+      expect(options.loadInbox).toHaveBeenCalledWith("worker-2");
     } finally {
       cleanupHarness(root, container);
     }

@@ -433,6 +433,7 @@ function buildMemberSnapshot(overrides: Partial<TeamMemberSnapshot> = {}): TeamM
     prompt: "plan",
     skills: ["team-coordinator-orchestrator"],
     pending_inbox_count: 1,
+    reply_obligation_count: 0,
     status: "working",
     latest_step: buildStep(),
     session_status: "active",
@@ -458,12 +459,14 @@ function buildSnapshot(overrides: Partial<TeamRunSnapshotRecord> = {}): TeamRunS
     ],
     steps: [buildStep()],
     latest_events: [buildRunEvent(1, { text: "event" })],
-    mailbox: {
-      pending: 3,
-      delivered: 2,
-      dead_letter: 1,
-      recent_messages: [buildMailboxMessage(1)],
-    },
+      mailbox: {
+        pending: 3,
+        delivered: 2,
+        dead_letter: 1,
+        open_reply_obligation_count: 0,
+        open_reply_obligations: [],
+        recent_messages: [buildMailboxMessage(1)],
+      },
     ...overrides,
   };
 }
@@ -2220,12 +2223,48 @@ describe("team panels interactions", () => {
     const onRefreshSnapshot = vi.fn();
     const onOpenMailboxForMember = vi.fn();
     const onEditAgentProfile = vi.fn();
+    const snapshot = buildSnapshot({
+      members: [
+        buildMemberSnapshot({
+          member_id: "coordinator-agent",
+          reply_obligation_count: 2,
+        }),
+        buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          model: null,
+          prompt: null,
+          skills: ["team-worker-executor"],
+          pending_inbox_count: 3,
+          reply_obligation_count: 1,
+        }),
+      ],
+      mailbox: {
+        pending: 3,
+        delivered: 2,
+        dead_letter: 1,
+        open_reply_obligation_count: 3,
+        open_reply_obligations: [
+          {
+            message_id: 77,
+            agent_actor_id: "worker-agent",
+            human_actor_id: "user",
+            source_surface: "conversation",
+            conversation_id: "conversation-1",
+            thread_root_message_id: null,
+            text_excerpt: "Please confirm deployment status",
+            created_at: 1_700_000_321,
+          },
+        ],
+        recent_messages: [buildMailboxMessage(1)],
+      },
+    });
 
     act(() => {
       root.render(
         <MantineProvider>
           <TeamOverviewPanel
-            snapshot={buildSnapshot()}
+            snapshot={snapshot}
             snapshotLoading={false}
             onRefreshSnapshot={onRefreshSnapshot}
             selectedMemberId="coordinator-agent"
@@ -2255,6 +2294,10 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("plan");
     expect(container.textContent).toContain("team-coordinator-orchestrator");
+    expect(container.textContent).toContain("Reply obligations");
+    expect(container.textContent).toContain("reply=1");
+    expect(container.textContent).toContain("worker-agent owes user a reply");
+    expect(container.textContent).toContain("Please confirm deployment status");
     expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
     const overviewPanel = required(
       container.querySelector(".teams-overview-panel"),
@@ -7524,6 +7567,8 @@ describe("team panels interactions", () => {
     const onJumpToBottom = vi.fn();
     const onAcceptMessage = vi.fn();
     const onAcceptVisibleMessages = vi.fn();
+    const onTriageMessage = vi.fn();
+    const onEscalateMessage = vi.fn();
     const onChatDraftChange = vi.fn();
     const onSendChatMessage = vi.fn();
     const onMsgFromActorIdChange = vi.fn();
@@ -7556,13 +7601,67 @@ describe("team panels interactions", () => {
       payload: { type: "status_update", done: true },
       delivered_at: 1_700_000_200,
     });
+    const snapshot = buildSnapshot({
+      members: [
+        buildMemberSnapshot({
+          member_id: "coordinator-agent",
+          reply_obligation_count: 0,
+        }),
+        buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          model: null,
+          prompt: null,
+          skills: ["team-worker-executor"],
+          pending_inbox_count: 3,
+          reply_obligation_count: 2,
+        }),
+      ],
+      mailbox: {
+        pending: 3,
+        delivered: 2,
+        dead_letter: 1,
+        open_reply_obligation_count: 2,
+        open_reply_obligations: [
+          {
+            message_id: 88,
+            agent_actor_id: "worker-agent",
+            human_actor_id: "user",
+            source_surface: "thread",
+            conversation_id: "conversation-1",
+            thread_root_message_id: 42,
+            text_excerpt: "Need deployment confirmation",
+            created_at: 1_700_000_555,
+          },
+        ],
+        recent_messages: [
+          buildMailboxMessage(88, {
+            from_actor_id: "user",
+            from_actor_kind: "human",
+            to_actor_id: "worker-agent",
+            to_actor_kind: "agent",
+            payload: {
+              type: "chat_message",
+              text: "Need deployment confirmation",
+              source_kind: "human",
+              source_surface: "thread",
+              task_id: "task-1",
+              task_message_id: 77,
+              thread_root_message_id: 42,
+              requires_user_visible_reply: true,
+            },
+            handling_disposition: "untriaged",
+          }),
+        ],
+      },
+    });
 
     act(() => {
       root.render(
         <MantineProvider>
           <TeamMailboxPanel
             developerMode={true}
-            snapshot={buildSnapshot()}
+            snapshot={snapshot}
             humanActorId="user"
             displayNameByActorId={{
               "coordinator-agent": "Coordinator Agent",
@@ -7588,6 +7687,8 @@ describe("team panels interactions", () => {
             busy={null}
             onAcceptMessage={onAcceptMessage}
             onAcceptVisibleMessages={onAcceptVisibleMessages}
+            onTriageMessage={onTriageMessage}
+            onEscalateMessage={onEscalateMessage}
             chatDraft="draft"
             onChatDraftChange={onChatDraftChange}
             onSendChatMessage={onSendChatMessage}
@@ -7653,6 +7754,10 @@ describe("team panels interactions", () => {
     );
     clickElement(findButtonByText(container, "Accept visible pending"));
     clickElement(findButtonByText(container, "Jump to bottom"));
+    clickElement(findButtonByText(container, "Watch"));
+    clickElement(findButtonByText(container, "Take over"));
+    clickElement(findButtonByText(container, "Escalate"));
+    clickElement(findButtonByText(container, "Ignore"));
 
     const chatDraft = required(
       container.querySelector('textarea[placeholder="Type a message to selected agent"]') as
@@ -7681,11 +7786,33 @@ describe("team panels interactions", () => {
     expect(onJumpToBottom).toHaveBeenCalledTimes(1);
     expect(onAcceptMessage).toHaveBeenCalledWith(pendingMessage);
     expect(onAcceptVisibleMessages).toHaveBeenCalledWith([pendingMessage]);
+    expect(onTriageMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ message_id: 88 }),
+      "watching"
+    );
+    expect(onTriageMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ message_id: 88 }),
+      "claimed"
+    );
+    expect(onTriageMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ message_id: 88 }),
+      "ignored"
+    );
+    expect(onEscalateMessage).toHaveBeenCalledWith(expect.objectContaining({ message_id: 88 }));
     expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
     expect(onSendChatMessage).toHaveBeenCalledTimes(2);
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).toContain("Coordinator Agent → Worker Agent");
     expect(container.textContent).toContain("Worker Agent (worker)");
+    expect(container.textContent).toContain("Reply Obligations:");
+    expect(container.textContent).toContain("pending=3 reply=2");
+    expect(container.textContent).toContain("Worker Agent owes You a reply");
+    expect(container.textContent).toContain("Need deployment confirmation");
+    expect(container.textContent).toContain("state=untriaged");
+    expect(queryButtonByText(container, "Mark resolved")).toBeNull();
     expect(
       required(container.querySelector(".teams-chat-head"), "mailbox header missing").textContent
     ).toContain("auto_follow=on");

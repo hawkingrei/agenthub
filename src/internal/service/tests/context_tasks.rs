@@ -299,6 +299,47 @@ async fn internal_grpc_team_task_create_requires_priority() {
 }
 
 #[tokio::test]
+async fn internal_grpc_team_task_create_requires_assigned_member_id() {
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let authz = build_authz();
+    let token = issue_token(
+        &authz,
+        InternalRole::Coordinator,
+        Some("planner"),
+        Some(&run.id),
+    );
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let err = TeamInternalControl::create_team_task(
+        &service,
+        authenticated_request(
+            CreateTeamTaskRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                title: "Missing assignee".to_string(),
+                status: "open".to_string(),
+                priority: "high".to_string(),
+                assigned_member_id: String::new(),
+                topic: "actor-cli".to_string(),
+                context_json: json!({"goal":"require explicit assignee"}).to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect_err("create team task should require assigned member id");
+    assert_eq!(err.code(), Code::InvalidArgument);
+    assert!(err.message().contains("assigned_member_id is required"));
+}
+
+#[tokio::test]
 async fn internal_grpc_team_task_update_rolls_back_note_when_metadata_patch_fails() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
