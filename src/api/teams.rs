@@ -11,8 +11,9 @@ use self::errors::{
 use agenthub_message_archive::{MessageDocumentKind, MessageSearchHit, MessageSearchQuery};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
-    ActorMailboxService, ActorMessageHandlingDisposition, ActorMessageStatus, ActorSendRequest,
-    ActorServiceErrorCode, ActorTriageRequest, canonical_json, parse_actor_transport,
+    ActorMailboxService, ActorMessageHandlingDisposition, ActorMessageKind, ActorMessageStatus,
+    ActorSendRequest, ActorServiceErrorCode, ActorTriageRequest, canonical_json,
+    normalize_actor_message_envelope_payload, parse_actor_transport,
 };
 use agenthub_team_prompts::{
     DEFAULT_TEAM_COORDINATOR_PROMPT, DEFAULT_TEAM_WORKER_PROMPT, default_team_prompt_for_role,
@@ -3136,6 +3137,12 @@ async fn forward_mailbox_payload_to_actor_ids(
         let actor_mailbox_service = actor_mailbox_service.clone();
         let idempotency_key = format!("{idempotency_prefix}:{to_actor_id}");
         async move {
+            let normalized_payload = normalize_actor_message_envelope_payload(
+                TEAM_SPECIAL_USER_ACTOR_ALIAS,
+                to_actor_id.as_str(),
+                &ActorMessageKind::HumanRequest,
+                payload,
+            );
             let send_result = actor_mailbox_service
                 .actor_send(ActorSendRequest {
                     run_id: run_id.clone(),
@@ -3147,7 +3154,7 @@ async fn forward_mailbox_payload_to_actor_ids(
                     channel: Some("default".to_string()),
                     transport: Some(TeamActorMessageTransport::Local),
                     route: None,
-                    payload,
+                    payload: normalized_payload,
                     idempotency_key: Some(idempotency_key),
                     message_kind: None,
                 })
@@ -3364,10 +3371,6 @@ fn build_task_mailbox_forward_payload(
         Value::Object(map) => map.clone(),
         _ => Map::new(),
     };
-    let thread_root_message_id = payload_obj
-        .get("thread_root_message_id")
-        .and_then(Value::as_i64)
-        .filter(|value| *value > 0);
     let mention_values = mention_actor_ids
         .iter()
         .cloned()
@@ -3401,47 +3404,6 @@ fn build_task_mailbox_forward_payload(
         "task_conversation_id".to_string(),
         Value::String(message.conversation_id.clone()),
     );
-    payload_obj.insert(
-        "source_kind".to_string(),
-        Value::String("human".to_string()),
-    );
-    payload_obj.insert(
-        "source_surface".to_string(),
-        Value::String(if thread_root_message_id.is_some() {
-            "thread".to_string()
-        } else {
-            "conversation".to_string()
-        }),
-    );
-    payload_obj.insert("requires_user_visible_reply".to_string(), Value::Bool(true));
-    let mut reply_target = Map::new();
-    reply_target.insert(
-        "surface".to_string(),
-        Value::String(if thread_root_message_id.is_some() {
-            "thread".to_string()
-        } else {
-            "conversation".to_string()
-        }),
-    );
-    reply_target.insert(
-        "task_id".to_string(),
-        Value::String(message.task_id.clone()),
-    );
-    reply_target.insert(
-        "conversation_id".to_string(),
-        Value::String(message.conversation_id.clone()),
-    );
-    reply_target.insert(
-        "task_message_id".to_string(),
-        Value::Number(serde_json::Number::from(message.message_id)),
-    );
-    if let Some(thread_root_message_id) = thread_root_message_id {
-        reply_target.insert(
-            "thread_root_message_id".to_string(),
-            Value::Number(serde_json::Number::from(thread_root_message_id)),
-        );
-    }
-    payload_obj.insert("reply_target".to_string(), Value::Object(reply_target));
     Value::Object(payload_obj)
 }
 
