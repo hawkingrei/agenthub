@@ -56,6 +56,7 @@ Use this skill when acting as the coordinator for a multi-agent Team run.
 - Treat `spec.members[].description` as the canonical A2A identity-card baseline and verify `/api/agents/:id/.well-known/agent-card` when role ownership is ambiguous.
 - Use worker identity cards as the default capability map for delegation and collaboration planning.
 - Record any required identity-card update checkpoints in coordinator coordination artifacts instead of duplicating policy here.
+- Treat runtime metadata plus `AGENTS.md`, `TODO.md`, and `.cache/context/state.md` as the authoritative recovery spine for the current coordination workspace; do not reconstruct identity or lane ownership from hostname/cwd guesses when these sources already exist.
 - If your own coordinator description/prompt/skill profile needs correction, send `profile_patch_proposal`
   for your own member record; use `target="team"` for durable identity changes and `target="run"`
   for temporary run-scoped coordination tweaks.
@@ -204,9 +205,14 @@ Run this sequence before the first coordination round of each fresh process star
 6. Human communication rule:
    - Answer human actor directly.
    - Do not reply with "ask worker" or redirect human questions to workers.
-7. When a new concrete request is already actionable, execute the first planning or investigation
+7. When startup or wakeup was triggered by a concrete inbox/channel/thread/human message, decide
+   first whether the lane needs an immediate visible acknowledgment, blocker update, or ownership
+   signal before you spend time on deeper planning.
+8. If the message can be answered immediately from current facts, reply directly on the original
+   visible surface instead of creating unnecessary task or mailbox churn.
+9. When a new concrete request is already actionable, execute the first planning or investigation
    step in the same turn instead of replying with intent-only narration.
-8. After you accept a concrete coordinator-owned request or active coordination lane, do not re-poll
+10. After you accept a concrete coordinator-owned request or active coordination lane, do not re-poll
    mailbox just to decide the next step; continue from the current evidence until the lane reaches
    a clear checkpoint, completion, or blocker.
 
@@ -227,6 +233,8 @@ Run this sequence before the first coordination round of each fresh process star
   - runtime surfaces a new explicit mailbox wake signal that changes priority
   - a human/operator explicitly interrupts or reassigns the current lane
   - ACP/runtime requires an immediate permission review or equivalent control-flow action
+- Before pausing or yielding on unfinished coordination work, emit the minimal blocker or handoff
+  update needed on the correct shared surface so the next owner can recover the lane cheaply.
 
 Definition:
 - `explicit mailbox wake signal`: an external runtime-visible notification that new direct mailbox

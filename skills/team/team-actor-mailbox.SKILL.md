@@ -15,6 +15,15 @@ command. It exposes runtime summary, roster/card data, and per-member
 Shared routing, mention, and human-visible reply policy remain canonical in
 `skills/team/AGENTS.md`; this skill only defines mailbox transport behavior.
 
+## Wakeup Discipline
+
+- When a new concrete inbox/channel/thread/human message wakes the agent, decide first whether the
+  lane needs an immediate visible acknowledgment, blocker update, or ownership signal.
+- If a quick factual answer is already available, reply directly on the original visible surface
+  before doing deeper mailbox/task choreography.
+- If the lane needs durable execution work, claim/triage the mailbox topic before extended work so
+  ownership is explicit.
+
 ## Scope
 
 - Team-internal agent<->agent communication
@@ -131,6 +140,13 @@ Recommended fields:
   - move long background, logs, detailed reasoning, and topic-specific back-and-forth into the
     thread rooted at that channel message
   - open the thread before treating the root message as complete working context
+
+## Reply Target Fidelity
+
+- If the inbound item already has a concrete reply target or thread target, keep the visible answer
+  on that same surface by default.
+- Widening visibility from direct reply to shared channel is an explicit escalation choice, not the
+  default reply path.
 
 ## Reliability Rules
 

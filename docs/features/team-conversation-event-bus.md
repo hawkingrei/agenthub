@@ -206,6 +206,6 @@ Rule:
 
 ## Source Journals
 
-- `docs/journal/2026-03-05-team-mcp-enforcement-lessons-from-slock.md`
+- `docs/journal/2026-03-05-team-mcp-enforcement-external-review.md`
 - `docs/journal/2026-03-05-main-node-terminology-and-doc-pruning.md`
 - `docs/journal/2026-02-22-team-task-routing-user-actor-semantics.md`

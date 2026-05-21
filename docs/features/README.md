@@ -35,6 +35,9 @@ Each active feature spec should include:
 ## File Policy
 
 - `docs/features/`: theme/domain docs only (no date-prefixed changelog notes).
+- Active specs in `docs/features/` may define normative contracts.
+- Historical references in `docs/features/` must say so explicitly near the top and point to the
+  active replacement specs.
 - `docs/journal/`: date-prefixed implementation records (`YYYY-MM-DD-topic.md`).
 - When a feature evolves, update the canonical feature doc and add/append a journal note.
 
@@ -46,6 +49,19 @@ When multiple journal notes describe the same area:
 2. keep detailed implementation timeline in `docs/journal/`;
 3. update `docs/todo.md` to reference the canonical feature spec for ongoing validation;
 4. avoid duplicating operational contracts across multiple feature specs.
+
+When an older spec becomes historical:
+
+1. keep one short historical reference page instead of a full parallel spec;
+2. move any still-active contracts into the current canonical specs first;
+3. add explicit links from the historical page to the active replacements;
+4. do not let a historical page silently remain normative.
+
+When older journals are superseded:
+
+1. leave the chronology intact;
+2. add a short note or follow-up pointer to the newer canonical spec/journal when helpful;
+3. avoid editing new normative rules into old rollout journals.
 
 ## Current Canonical Specs
 

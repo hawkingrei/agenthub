@@ -253,9 +253,50 @@ Practical consequences:
 - If a field rename is semantically necessary, prefer a staged dual-read or dual-write window over
   a one-shot replacement.
 
+### 8) Recovery Entry-Point And Runtime Identity Contract
+
+- Runtime-injected Team identity and continuity metadata are authoritative when present:
+  - `team_id`
+  - `member_id`
+  - `actor_id`
+  - `run_id`
+  - `session_id`
+  - `peer_id` / node identity
+  - workspace path
+- Agents must not invent a competing identity model by guessing from hostname, shell cwd, or other
+  ambient process details when authoritative runtime context is already injected.
+- Recovery entry points should stay index-first:
+  - workspace-root `AGENTS.md`
+  - workspace-root `TODO.md`
+  - `.cache/context/state.md`
+  - relevant `.cache/context/memory/*.md`
+  - worker-only `.agenthubmemory/TODO.md`, `journal/`, and `note/` when they exist
+- A concrete wakeup should read only enough from these entry points to recover the next action,
+  then follow pointers into deeper artifacts as needed.
+- Before a long tool-heavy execution stretch, or before yielding with a blocker/handoff, the agent
+  should persist enough active context that the next wake can resume cheaply from the stable entry
+  points.
+- After completing or handing off work, the agent should update the durable indexes or append-only
+  journals that make the next recovery step obvious.
+
+## Validation Matrix
+
+- Rust continuity tests for workspace memory readers/writers, including mixed-version index
+  compatibility and pointer-preserving upgrades.
+- Prompt assembly tests that verify pointer-first tails stay compact while still exposing the stable
+  recovery entry points.
+- Focused Team runtime tests that verify worker memory stays workspace-local and is not read from
+  another member workspace by direct filesystem traversal.
+- Manual workspace inspection during development for:
+  - stable `AGENTS.md` / `TODO.md` recovery entry points
+  - `.cache/context/run/<run_id>/...` artifact offload
+  - `.agenthubmemory/` durable note and journal updates
+
 ## Operational Notes
 
 - Treat prompt text as the bounded working set, not the durable notebook.
+- Treat `AGENTS.md`, `TODO.md`, and `.cache/context/state.md` as the stable recovery spine instead
+  of re-deriving identity or state from ambient shell/process context.
 - Prefer stable index files plus append-only trails over large rewrite-heavy state dumps.
 - Keep file names predictable so agents can navigate them cheaply.
 - Avoid creating new parallel memory roots unless the contract above proves insufficient.
@@ -275,3 +316,4 @@ Practical consequences:
 - [2026-04-10-team-workspace-memory-contract.md](../journal/2026-04-10-team-workspace-memory-contract.md)
 - [2026-04-18-team-memory-index-rolling-upgrade.md](../journal/2026-04-18-team-memory-index-rolling-upgrade.md)
 - [2026-04-18-team-memory-index-schema-metadata.md](../journal/2026-04-18-team-memory-index-schema-metadata.md)
+- [2026-05-21-team-spec-refresh-from-external-daemon-review.md](../journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md)

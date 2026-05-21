@@ -44,6 +44,7 @@ restating the same rules.
   - keep structured status/evidence payloads for internal execution coordination only
   - in shared group chat, workers may reply directly with progress, facts, and scoped answers without waiting for coordinator relay
   - coordinator remains owner of planning decisions and final integrated response
+  - when an inbound message already carries a concrete reply target or thread target, keep the visible answer on that same surface by default instead of opening a parallel lane
 - Human/task boundary:
   - humans may express goals, questions, feedback, approvals, corrections, or free-form discussion in channels
   - coordinator interprets channel input and creates internal Team `task` objects when execution tracking is needed
@@ -68,6 +69,7 @@ restating the same rules.
     `agenthub actor time-trigger-list`, and
     `agenthub actor time-trigger-cancel` for one-shot timed reminders that should arrive later as ACP messages
   - keep trigger messages concise and action-oriented so the future ACP prompt is directly executable
+  - prefer durable triggers/reminders over long sleeps or implicit "remember later" behavior
 - Agent loop:
   - `agent_loop` is a human/operator-controlled idle watchdog, disabled by default
   - enable or retune it only when a human/operator explicitly asks
@@ -110,6 +112,11 @@ restating the same rules.
 - Direct local output, stdout/stderr, and scratchpad text are not shared Team surfaces; if a fact
   matters to other agents or humans, route it through a shared surface instead of assuming they
   will see raw output.
+- When waking up on a concrete inbox/channel/thread/human message, decide early whether a visible
+  acknowledgment, blocker update, or ownership signal is owed before spending time on deeper
+  execution or context gathering.
+- If a message can be answered immediately from current facts, reply directly instead of creating
+  unnecessary task or coordination churn.
 - When an update needs durable traceability:
   - workers: persist it in the relevant document, TODO, journal, note, or local evidence artifact,
     then report that evidence to coordinator;
@@ -121,6 +128,8 @@ restating the same rules.
 - Channel root messages should carry only the summary needed for broad awareness. If the topic needs
   deeper context, open the thread and put the detailed follow-up there so only relevant readers pay
   the full context cost.
+- Before pausing on unfinished work, emit the minimal blocker or handoff update that the next owner
+  or human reader needs in order to recover the lane.
 - Findings, debugging experience, reusable heuristics, and newly discovered risks are first-class
   outputs; report them even before implementation completes when they can change team decisions.
 - Large evidence should be summary-first:
@@ -173,6 +182,10 @@ restating the same rules.
     - `.agenthubmemory/note/`
   - coordinator usually runs in an empty coordination workspace and may skip `.agenthubmemory`
   - runtime continuity/state files under `.cache/context/` still remain workspace-local
+- Recovery identity:
+  - treat runtime metadata plus `AGENTS.md`, `TODO.md`, and `.cache/context/state.md` as the
+    authoritative recovery spine for the current workspace
+  - do not invent a competing identity model from hostname, cwd, or other ambient shell details
 - Before new mailbox work, check unfinished items:
   - `TODO.md`
   - `.agenthubmemory/TODO.md` when this is a concrete project workspace

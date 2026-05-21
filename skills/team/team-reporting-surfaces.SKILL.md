@@ -25,6 +25,9 @@ remain canonical in `team-actor-mailbox.SKILL.md`.
   surface.
 - Do not assume a local command result, tool output, or one-agent reply is visible to other
   participants.
+- If the current inbound item already has a concrete reply target or thread target, treat that
+  surface as the default place to make the next visible update unless you intentionally escalate the
+  audience.
 
 ## Surface Selection
 
@@ -48,6 +51,11 @@ Use `shared-channel` or thread when:
 - a human asked in-channel and a visible acknowledgement or answer should land back in that same
   shared surface
 - multiple teammates need to see the update at once
+
+Use a direct visible reply with no new task when:
+
+- the question can be answered immediately from current facts
+- no durable ownership, multi-step execution, or lifecycle tracking is needed beyond that reply
 
 ## Preferred Order
 
