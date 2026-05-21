@@ -2719,6 +2719,8 @@ describe("team panels interactions", () => {
   });
 
   it("TeamThreadContainer only renders routed thread replies for the active thread", () => {
+    const navigateTeamRoute = vi.fn();
+    const setChannelFocusMessageId = vi.fn();
     const taskMessages = [
       buildTaskMessage(1, {
         from_actor_id: "coordinator-agent",
@@ -2794,12 +2796,12 @@ describe("team panels interactions", () => {
       busy: null,
       routeThreadRootMessageId: 1,
       channelFocusMessageId: null,
-      setChannelFocusMessageId: vi.fn(),
+      setChannelFocusMessageId,
       effectiveSelectedTeamId: "team-1",
       routeWorkspaceLens: "channels",
       routeChannelId: "all",
       activeChannelConversationTaskId: "task-1",
-      navigateTeamRoute: vi.fn(),
+      navigateTeamRoute,
       isCompactWorkbench: false,
       selectedChannelItem: undefined,
       workspaceTasks: [],
@@ -2841,6 +2843,17 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("user:u-1");
     expect(container.textContent).not.toContain("Channel message with a thread id should stay out.");
     expect(container.textContent).not.toContain("Different thread reply should stay out.");
+
+    clickElement(findButtonByText(container, "View in channel"));
+    expect(setChannelFocusMessageId).toHaveBeenCalledWith(1);
+    expect(navigateTeamRoute).toHaveBeenCalledWith(
+      "/workspace/teams/team-1?task=task-1"
+    );
+
+    clickElement(findButtonByText(container, "Close thread"));
+    expect(navigateTeamRoute).toHaveBeenLastCalledWith(
+      "/workspace/teams/team-1?task=task-1"
+    );
   });
 
   it("TeamThreadContainer stays hidden when no thread root is selected", () => {
