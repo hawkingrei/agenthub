@@ -354,11 +354,15 @@ describe("mailbox helpers", () => {
     const lookup = createDisplayNameLookup([
       ["worker-1", "Worker One"],
       ["toString", "String Agent"],
+      ["   ", "Empty Actor"],
+      ["empty-label", "   "],
     ]);
     expect(Object.getPrototypeOf(lookup)).toBeNull();
     expect(resolveDisplayName("worker-1", lookup)).toBe("Worker One");
     expect(resolveDisplayName("toString", lookup)).toBe("String Agent");
+    expect(resolveDisplayName("   ", lookup, "Anonymous")).toBe("Anonymous");
     expect(resolveDisplayName("valueOf", lookup, "valueOf")).toBe("valueOf");
+    expect(lookup["empty-label"]).toBeUndefined();
   });
 
   it("renders mention chips with safe display-name lookup values only", () => {

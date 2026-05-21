@@ -36,6 +36,14 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
     }) as MediaQueryList) as typeof window.matchMedia;
 }
 
+function setNativeTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "value"
+  );
+  descriptor?.set?.call(textarea, value);
+}
+
 describe("TeamThreadPane", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -560,5 +568,169 @@ describe("TeamThreadPane", () => {
     });
 
     expect(onReplyDraftChange).toHaveBeenCalledWith("@Writer Agent");
+  });
+
+  it("keeps keyboard mention selection when arrow navigation wraps upward", () => {
+    const onReplyDraftChange = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# review"
+            rootMessageId={88}
+            rootAuthorLabel="coordinator"
+            rootCreatedAt={1713480000000}
+            rootText="Discuss here."
+            replies={[]}
+            replyDraft="@w"
+            onReplyDraftChange={onReplyDraftChange}
+            onSendReply={vi.fn()}
+            replyBusy={false}
+            mentionCandidates={[
+              {
+                actorId: "worker-agent",
+                label: "Worker Agent",
+                aliases: ["worker-agent"],
+              },
+              {
+                actorId: "writer-agent",
+                label: "Writer Agent",
+                aliases: ["writer-agent"],
+              },
+            ]}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const textarea = container.querySelector("textarea");
+    expect(textarea).not.toBeNull();
+
+    act(() => {
+      textarea?.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+      textarea?.setSelectionRange(2, 2);
+      textarea?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      textarea?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true })
+      );
+    });
+    act(() => {
+      textarea?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })
+      );
+    });
+
+    expect(onReplyDraftChange).toHaveBeenCalledWith("@Writer Agent");
+  });
+
+  it("updates and clears thread mention suggestions from textarea events", async () => {
+    const onReplyDraftChange = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# review"
+            rootMessageId={88}
+            rootAuthorLabel="coordinator"
+            rootCreatedAt={1713480000000}
+            rootText="Discuss here."
+            replies={[]}
+            replyDraft="@w"
+            onReplyDraftChange={onReplyDraftChange}
+            onSendReply={vi.fn()}
+            replyBusy={false}
+            mentionCandidates={[
+              {
+                actorId: "worker-agent",
+                label: "Worker Agent",
+                aliases: ["worker-agent"],
+              },
+            ]}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const textarea = container.querySelector("textarea");
+    expect(textarea).not.toBeNull();
+    act(() => {
+      textarea?.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+      textarea?.setSelectionRange(2, 2);
+      textarea?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(container.querySelector('[data-team-mention-option="worker-agent"]')).not.toBeNull();
+
+    act(() => {
+      textarea?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+      );
+    });
+    expect(container.querySelector('[data-team-mention-option="worker-agent"]')).toBeNull();
+
+    act(() => {
+      textarea?.dispatchEvent(
+        new KeyboardEvent("keyup", { key: "w", bubbles: true, cancelable: true })
+      );
+    });
+    expect(container.querySelector('[data-team-mention-option="worker-agent"]')).not.toBeNull();
+
+    act(() => {
+      textarea?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    expect(container.querySelector('[data-team-mention-option="worker-agent"]')).toBeNull();
+  });
+
+  it("updates reply draft from textarea input and ignores empty sends", () => {
+    const onReplyDraftChange = vi.fn();
+    const onSendReply = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# review"
+            rootMessageId={88}
+            rootAuthorLabel="coordinator"
+            rootCreatedAt={1713480000000}
+            rootText="Discuss here."
+            replies={[]}
+            replyDraft="   "
+            onReplyDraftChange={onReplyDraftChange}
+            onSendReply={onSendReply}
+            replyBusy={false}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const textarea = container.querySelector("textarea");
+    const replyButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Reply")
+    );
+    expect(textarea).not.toBeNull();
+    expect(replyButton).not.toBeNull();
+
+    act(() => {
+      setNativeTextareaValue(textarea!, "@worker-agent");
+      textarea!.dispatchEvent(new Event("input", { bubbles: true }));
+      replyButton!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onReplyDraftChange).toHaveBeenCalledWith("@worker-agent");
+    expect(onSendReply).not.toHaveBeenCalled();
   });
 });
