@@ -12,6 +12,7 @@ import {
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
+  normalizeRawMentionActorId,
   renderMarkdownWithMentions,
   renderPlainTextWithMentions,
   resolveChatMessageText,
@@ -250,6 +251,22 @@ describe("mailbox helpers", () => {
     expect(rendered).toContain("@Coordinator Agent</button>.");
     expect(rendered).not.toContain('data-team-agent-mention-id="worker-agent."');
     expect(rendered).not.toContain("@worker-agent.");
+  });
+
+  it("normalizes raw mention ids without swallowing sentence punctuation", () => {
+    expect(normalizeRawMentionActorId("worker-agent.")).toBe("worker-agent");
+    expect(normalizeRawMentionActorId(" coordinator-agent.. ")).toBe("coordinator-agent");
+    expect(normalizeRawMentionActorId("worker-agent:")).toBe("worker-agent:");
+  });
+
+  it("renders canonical mentions with display-name lookup values", () => {
+    const rendered = renderMarkdownWithMentions("hello <at>worker-agent</at>", {
+      "worker-agent": "Worker Agent",
+    });
+
+    expect(rendered).toContain('data-team-agent-mention-id="worker-agent"');
+    expect(rendered).toContain("@Worker Agent");
+    expect(rendered).not.toContain("@worker-agent");
   });
 
   it("does not convert raw mentions inside markdown code spans or links into chips", () => {

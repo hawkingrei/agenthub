@@ -95,7 +95,7 @@ export const TeamThreadContainer = React.memo(function TeamThreadContainer() {
       mailboxDisplayNameByActorId,
       "You"
     );
-    return createDisplayNameLookup([
+    const entries: [string, string][] = [
       ...Object.entries(mailboxDisplayNameByActorId),
       ...selectedTeamMemberLiveStates.map(
         (member): [string, string] => [
@@ -103,21 +103,35 @@ export const TeamThreadContainer = React.memo(function TeamThreadContainer() {
           member.agent_name?.trim() || member.member_id,
         ]
       ),
-      ...taskMessages
-        .filter((message) => isHumanMailboxActor(message.from_actor_id, HUMAN_MAILBOX_ACTOR_ID))
-        .map((message): [string, string] => [message.from_actor_id, humanDisplayName]),
-      ...taskMessages.flatMap((message) =>
-        collectThreadMentionActorIds(resolveChatMessageText(message.payload) ?? "").map(
-          (actorId): [string, string] => [
-            actorId,
-            resolveThreadActorLabel(actorId) ?? actorId,
-          ]
-        )
-      ),
-    ]);
+    ];
+
+    if (routeThreadRootMessageId == null) {
+      return createDisplayNameLookup(entries);
+    }
+
+    for (const message of taskMessages) {
+      const isRoot = message.message_id === routeThreadRootMessageId;
+      const isReply =
+        message.route === "team_thread_reply" &&
+        resolveThreadRootMessageIdFromPayload(message.payload) === routeThreadRootMessageId;
+      if (!isRoot && !isReply) {
+        continue;
+      }
+      if (isHumanMailboxActor(message.from_actor_id, HUMAN_MAILBOX_ACTOR_ID)) {
+        entries.push([message.from_actor_id, humanDisplayName]);
+      }
+      for (const actorId of collectThreadMentionActorIds(
+        resolveChatMessageText(message.payload) ?? ""
+      )) {
+        entries.push([actorId, resolveThreadActorLabel(actorId) ?? actorId]);
+      }
+    }
+
+    return createDisplayNameLookup(entries);
   }, [
     mailboxDisplayNameByActorId,
     resolveThreadActorLabel,
+    routeThreadRootMessageId,
     selectedTeamMemberLiveStates,
     taskMessages,
   ]);

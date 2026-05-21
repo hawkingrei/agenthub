@@ -257,6 +257,39 @@ describe("TeamThreadPane", () => {
     expect(html).toContain(longRootText);
   });
 
+  it("truncates source preview input before resolving mentions", () => {
+    const rootText = `${"source ".repeat(90)} <at>worker-agent</at>`;
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# review"
+            rootMessageId={89}
+            rootAuthorLabel="coordinator"
+            rootCreatedAt={1713480000000}
+            rootText={rootText}
+            replies={[]}
+            replyDraft=""
+            onReplyDraftChange={vi.fn()}
+            onSendReply={vi.fn()}
+            replyBusy={false}
+            displayNameByActorId={{ "worker-agent": "Worker Agent" }}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const sourcePreview = container.querySelector(
+      '[data-team-surface="thread-source-preview"]'
+    );
+    expect(sourcePreview?.textContent).not.toContain("Worker Agent");
+    expect(container.textContent).toContain("@Worker Agent");
+  });
+
   it("shows the empty state when no thread root is selected", () => {
     const html = renderToStaticMarkup(
       <MantineProvider>

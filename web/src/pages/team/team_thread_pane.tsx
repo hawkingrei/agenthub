@@ -135,7 +135,8 @@ function formatThreadSourcePreview(
   if (!normalized) {
     return null;
   }
-  const displayText = formatThreadPreviewMentionText(normalized, displayNameByActorId);
+  const truncatedInput = normalized.length > 500 ? normalized.slice(0, 500) : normalized;
+  const displayText = formatThreadPreviewMentionText(truncatedInput, displayNameByActorId);
   if (displayText.length <= 120) {
     return displayText;
   }
@@ -323,7 +324,10 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                 <span className={TEAM_THREAD_SOURCE_VALUE_CLASS}>{sourceSummary}</span>
               </div>
               {sourcePreview ? (
-                <div className={TEAM_THREAD_SOURCE_PREVIEW_CLASS}>
+                <div
+                  className={TEAM_THREAD_SOURCE_PREVIEW_CLASS}
+                  data-team-surface="thread-source-preview"
+                >
                   {sourcePreview}
                 </div>
               ) : null}
