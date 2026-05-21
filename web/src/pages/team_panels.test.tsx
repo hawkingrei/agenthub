@@ -7568,6 +7568,7 @@ describe("team panels interactions", () => {
     const onAcceptMessage = vi.fn();
     const onAcceptVisibleMessages = vi.fn();
     const onTriageMessage = vi.fn();
+    const onEscalateMessage = vi.fn();
     const onChatDraftChange = vi.fn();
     const onSendChatMessage = vi.fn();
     const onMsgFromActorIdChange = vi.fn();
@@ -7687,6 +7688,7 @@ describe("team panels interactions", () => {
             onAcceptMessage={onAcceptMessage}
             onAcceptVisibleMessages={onAcceptVisibleMessages}
             onTriageMessage={onTriageMessage}
+            onEscalateMessage={onEscalateMessage}
             chatDraft="draft"
             onChatDraftChange={onChatDraftChange}
             onSendChatMessage={onSendChatMessage}
@@ -7754,6 +7756,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Jump to bottom"));
     clickElement(findButtonByText(container, "Watch"));
     clickElement(findButtonByText(container, "Take over"));
+    clickElement(findButtonByText(container, "Escalate"));
     clickElement(findButtonByText(container, "Ignore"));
 
     const chatDraft = required(
@@ -7798,6 +7801,7 @@ describe("team panels interactions", () => {
       expect.objectContaining({ message_id: 88 }),
       "ignored"
     );
+    expect(onEscalateMessage).toHaveBeenCalledWith(expect.objectContaining({ message_id: 88 }));
     expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
     expect(onSendChatMessage).toHaveBeenCalledTimes(2);
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });

@@ -3755,6 +3755,160 @@ async fn team_run_messages_api_triage_ignored_clears_open_reply_obligation_witho
 }
 
 #[tokio::test]
+async fn team_run_messages_api_escalation_reassigns_open_reply_obligation_to_coordinator() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-escalation-team".to_string(),
+            description: Some("escalation reassigns reply obligation".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-escalation".to_string()),
+            input: Some(json!({"prompt":"escalate reply obligation"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let now = Utc::now().timestamp();
+    let payload_json = json!({
+        "type":"chat_message",
+        "text":"Please confirm the final release owner.",
+        "source_kind":"human",
+        "source_surface":"conversation",
+        "conversation_id":"conv-escalation-1",
+        "requires_user_visible_reply": true,
+        "reply_target": {
+            "surface":"conversation",
+            "conversation_id":"conv-escalation-1",
+            "task_message_id": 1
+        }
+    })
+    .to_string();
+    let original_message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("user")
+    .bind("worker-1")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert human mailbox message")
+    .last_insert_rowid();
+
+    let Json(escalated) = escalate_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), original_message_id)),
+        Json(EscalateTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+        }),
+    )
+    .await
+    .expect("escalate mailbox obligation");
+    assert_eq!(escalated.to_actor_id, "planner");
+    assert_eq!(escalated.status, agenthub_team_actor::ActorMessageStatus::Pending);
+
+    let Json(worker_pending_after) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: "worker-1".to_string(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: Some(false),
+        }),
+    )
+    .await
+    .expect("list worker inbox after escalation");
+    assert!(worker_pending_after.is_empty());
+
+    let Json(planner_pending_after) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: "planner".to_string(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: Some(false),
+        }),
+    )
+    .await
+    .expect("list planner inbox after escalation");
+    assert_eq!(planner_pending_after.len(), 1);
+    assert_eq!(planner_pending_after[0].message_id, escalated.message_id);
+
+    let Json(snapshot_after) = get_team_run_snapshot(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get snapshot after escalation");
+    assert_eq!(snapshot_after.mailbox.open_reply_obligation_count, 1);
+    assert_eq!(snapshot_after.mailbox.open_reply_obligations.len(), 1);
+    assert_eq!(
+        snapshot_after.mailbox.open_reply_obligations[0].agent_actor_id,
+        "planner"
+    );
+    let planner_after = snapshot_after
+        .members
+        .iter()
+        .find(|member| member.member_id == "planner")
+        .expect("find planner after escalation");
+    assert_eq!(planner_after.reply_obligation_count, 1);
+    let worker_after = snapshot_after
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-1")
+        .expect("find worker after escalation");
+    assert_eq!(worker_after.reply_obligation_count, 0);
+}
+
+#[tokio::test]
 async fn team_run_messages_api_triage_surfaces_takeover_state() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

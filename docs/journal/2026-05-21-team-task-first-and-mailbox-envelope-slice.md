@@ -46,8 +46,8 @@ It did not yet attempt to:
 - add final database columns for every envelope field
 - enforce the full `requires_user_visible_reply` runtime invariant with explicit transfer/reply
   state transitions
-- add explicit transfer/escalation/manual-takeover flows beyond the minimal `ignored` /
-  `completed` resolution path
+- add full transfer and cross-actor manual-takeover flows beyond the current coordinator
+  escalation path plus `ignored` / guarded-`completed` resolution surface
 
 # Key Decisions
 
@@ -131,10 +131,21 @@ This slice now also exposes a narrow but useful action path:
 This is intentionally smaller than the final phase-3 target. It does not yet model:
 
 - explicit user-visible reply evidence links
-- transfer with preserved reply responsibility
-- escalation to coordinator/human as a first-class obligation outcome
+- general transfer with preserved reply responsibility
 - cross-actor takeover beyond the current recipient actor's `watching` / `claimed` / `released`
   state
+
+## 7. Add coordinator escalation as the first explicit obligation reassignment outcome
+
+This slice now also exposes one real reassignment path instead of forcing operators to hide
+reply-required work behind `ignored`:
+
+- unresolved reply-required human mailbox work can be explicitly escalated to the coordinator
+- escalation releases the original mailbox item and reissues one new pending mailbox item to the
+  coordinator
+- the original released item no longer counts as an open reply obligation
+- run snapshot/open-obligation summaries now move responsibility from the original worker to the
+  coordinator without pretending the human-visible reply requirement is already satisfied
 
 # Validation
 
@@ -155,6 +166,7 @@ cd web && npm exec vitest -- run src/pages/team/use_team_mailbox_actions.test.ts
 cargo test -p agenthub team_run_messages_api_triage_rejects_completed_without_visible_reply -- --nocapture
 cargo test -p agenthub team_run_messages_api_triage_resolves_open_reply_obligation -- --nocapture
 cargo test -p agenthub team_run_messages_api_triage_surfaces_takeover_state -- --nocapture
+cargo test -p agenthub team_run_messages_api_escalation_reassigns_open_reply_obligation_to_coordinator -- --nocapture
 ```
 
 # Follow-Ups
@@ -162,8 +174,7 @@ cargo test -p agenthub team_run_messages_api_triage_surfaces_takeover_state -- -
 - Finish the remaining `task-first Team model` verification items that still depend on broader
   prompt/docs/runtime evidence, then remove the `P0` backlog item from `docs/todo.md`.
 - Build the next mailbox phase-3 slice on top of the new envelope projection:
-  - add explicit escalation/transfer outcomes that satisfy reply-required work without relying on
-    `ignored`
+  - add general transfer outcomes beyond the now-supported coordinator escalation path
   - add cross-actor-takeover outcomes on top of the current recipient-scoped triage-state surface
 - Decide whether the envelope projection should remain payload-backed or be promoted into explicit
   stored actor-message columns once the runtime/UI contract stabilizes.

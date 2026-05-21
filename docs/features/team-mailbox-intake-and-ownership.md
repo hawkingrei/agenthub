@@ -249,13 +249,16 @@ Current minimum operator contract:
   - `released`
   - `ignored`
   - `completed`
+- operators may explicitly escalate reply-required human mailbox work to the coordinator; this
+  releases the original item and reissues the open reply obligation to the coordinator mailbox
+  instead of pretending the work is completed;
 - `ignored` clears the item from open-obligation and unread-actionable summaries;
 - `completed` is only valid when user-visible reply evidence already exists; unresolved
   reply-obligation rows should not offer `completed` as a direct operator action;
 - `watching`, `claimed`, and `released` remain operator-visible mailbox states and do not satisfy
   the user-visible reply requirement on their own;
-- transfer, escalation, and cross-actor takeover remain distinct follow-up flows and must not be
-  conflated with the current triage-state surface.
+- transfer and cross-actor takeover remain distinct follow-up flows and must not be conflated with
+  the current triage-state surface.
 
 ### 9) Inbox Ordering Contract
 

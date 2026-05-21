@@ -1320,6 +1320,17 @@ export const api = {
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),
+  escalateTeamRunMessage: (
+    token: string,
+    runId: string,
+    messageId: number,
+    actorId: string
+  ) =>
+    apiFetch<TeamActorMessageRecord>(
+      `/api/teams/runs/${encodePathSegment(runId)}/messages/${encodePathSegment(messageId)}/escalate`,
+      token,
+      { method: "POST", body: JSON.stringify({ actor_id: actorId }) }
+    ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
   listAgentNodes: (token: string) =>
     apiFetch<AgentNodeRecord[]>("/api/agent_nodes", token),

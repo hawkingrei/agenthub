@@ -122,6 +122,7 @@ type TeamMailboxPanelProps = {
     message: TeamActorMessageRecord,
     disposition: "ignored" | "watching" | "claimed" | "completed" | "released"
   ) => Promise<void> | void;
+  onEscalateMessage?: (message: TeamActorMessageRecord) => Promise<void> | void;
   chatDraft: string;
   onChatDraftChange: (value: string) => void;
   onSendChatMessage: () => Promise<void> | void;
@@ -224,6 +225,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
     onAcceptMessage,
     onAcceptVisibleMessages,
     onTriageMessage,
+    onEscalateMessage,
     chatDraft,
     onChatDraftChange,
     onSendChatMessage,
@@ -538,6 +540,10 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                     (!claimOwner || claimOwner === obligation.agent_actor_id);
                   const canTakeOver = !!message && message.handling_disposition !== "claimed";
                   const canWatch = !!message && message.handling_disposition !== "watching";
+                  const canEscalate =
+                    !!message &&
+                    !!snapshot?.coordinator_member_id &&
+                    obligation.agent_actor_id !== snapshot.coordinator_member_id;
                   return (
                     <li key={obligation.message_id} className="rounded-md bg-white px-3 py-2">
                     <div className="font-medium">
@@ -615,6 +621,18 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                         disabled={busy !== null || !canRelease || !onTriageMessage}
                       >
                         Release
+                      </ActionButton>
+                      <ActionButton
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => {
+                          if (message) {
+                            void onEscalateMessage?.(message);
+                          }
+                        }}
+                        disabled={busy !== null || !canEscalate || !onEscalateMessage}
+                      >
+                        Escalate
                       </ActionButton>
                       <ActionButton
                         tone="secondary"

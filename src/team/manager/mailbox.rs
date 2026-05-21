@@ -46,6 +46,7 @@ use crate::team::{
 const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
+const MAILBOX_RESOLUTION_ESCALATED: &str = "escalated";
 const SQLITE_READONLY_BASE_CODE: i32 = 8;
 const MAILBOX_RUN_EVENT_ARCHIVE_MAX_CONCURRENCY: usize = 4;
 const ACTOR_THREAD_CLAIM_DEFAULT_LEASE_SECS: i64 = 30 * 60;
@@ -761,6 +762,193 @@ impl TeamActorMailboxService {
         parse_team_member_specs(&team.spec)
     }
 
+    pub async fn escalate_reply_required_message_to_coordinator(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+        peer_id: &str,
+        message_id: i64,
+    ) -> Result<TeamActorMessageRecord, ActorServiceError> {
+        let member_specs = self
+            .load_member_specs_for_run(run_id)
+            .await
+            .map_err(map_actor_service_error)?;
+        let coordinator_actor_id = member_specs
+            .iter()
+            .find(|member| member.role.eq_ignore_ascii_case("coordinator"))
+            .map(|member| member.member_id.clone())
+            .ok_or_else(|| {
+                map_actor_service_error(anyhow::Error::new(
+                    SqlActorMailboxStoreError::ReplyRequiredEscalationTargetUnavailable,
+                ))
+            })?;
+        if coordinator_actor_id == actor_id {
+            return Err(map_actor_service_error(anyhow::Error::new(
+                SqlActorMailboxStoreError::ReplyRequiredEscalationAlreadyAtCoordinator,
+            )));
+        }
+
+        let delivery = self
+            .manager
+            .resolve_channel_recipient_deliveries(std::slice::from_ref(&coordinator_actor_id))
+            .await
+            .map_err(map_actor_service_error)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                map_actor_service_error(anyhow::Error::new(
+                    SqlActorMailboxStoreError::ReplyRequiredEscalationTargetUnavailable,
+                ))
+            })?;
+
+        let now = Utc::now().timestamp();
+        let route_json = delivery
+            .route
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| {
+                ActorServiceError::new(ActorServiceErrorCode::Internal, err.to_string())
+            })?;
+        let transport_raw = team_actor_message_transport_to_str(&delivery.transport);
+        let status_raw = team_actor_message_status_to_str(&TeamActorMessageStatus::Pending);
+
+        let mut tx = self
+            .manager
+            .db
+            .begin()
+            .await
+            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+        let message = fetch_message_for_actor(&mut tx, run_id, actor_id, peer_id, message_id)
+            .await
+            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+        if reply_actor_pair_for_inbound_obligation(&message).is_none() {
+            return Err(map_actor_service_error(anyhow::Error::new(
+                SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported,
+            )));
+        }
+        if reply_obligation_is_terminal(&message) {
+            return Err(ActorServiceError::new(
+                ActorServiceErrorCode::BadRequest,
+                "mailbox work is already in a terminal state",
+            ));
+        }
+
+        let release_payload = build_mailbox_resolution_payload(
+            &message.payload,
+            MAILBOX_RESOLUTION_ESCALATED,
+            actor_id,
+            &coordinator_actor_id,
+            now,
+        );
+        let released_payload_json = serde_json::to_string(&release_payload).map_err(|err| {
+            ActorServiceError::new(ActorServiceErrorCode::Internal, err.to_string())
+        })?;
+        let escalated_payload = normalize_actor_message_envelope_payload(
+            &message.from_actor_id,
+            &coordinator_actor_id,
+            &message.message_kind,
+            build_escalated_mailbox_payload(
+                &message.payload,
+                message.message_id,
+                actor_id,
+                &coordinator_actor_id,
+                actor_id,
+                now,
+            ),
+        );
+        let escalated_payload_json = serde_json::to_string(&escalated_payload).map_err(|err| {
+            ActorServiceError::new(ActorServiceErrorCode::Internal, err.to_string())
+        })?;
+
+        if message.handling_disposition == ActorMessageHandlingDisposition::Claimed {
+            apply_thread_claim_transition(
+                &mut tx,
+                &message,
+                &TriageActorMessageCommand {
+                    run_id: run_id.to_string(),
+                    actor_id: actor_id.to_string(),
+                    peer_id: peer_id.to_string(),
+                    message_id,
+                    disposition: ActorMessageHandlingDisposition::Released,
+                    handled_at: now,
+                },
+            )
+            .await
+            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+        }
+
+        sqlx::query(
+            r#"
+            UPDATE team_actor_messages
+            SET
+                handling_disposition = 'released',
+                handled_by_actor_id = ?1,
+                handled_at = ?2,
+                payload_json = ?3
+            WHERE id = ?4
+              AND run_id = ?5
+              AND to_actor_id = ?6
+              AND to_peer_id = ?7
+            "#,
+        )
+        .bind(actor_id)
+        .bind(now)
+        .bind(&released_payload_json)
+        .bind(message_id)
+        .bind(run_id)
+        .bind(actor_id)
+        .bind(peer_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+
+        let inserted = sqlx::query(
+            r#"
+            INSERT INTO team_actor_messages (
+                run_id,
+                from_actor_id,
+                from_peer_id,
+                to_actor_id,
+                to_peer_id,
+                channel,
+                transport,
+                route_json,
+                payload_json,
+                message_kind,
+                group_id,
+                status,
+                created_at,
+                idempotency_key
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, (SELECT group_id FROM team_runs WHERE id = ?1), ?11, ?12, NULL)
+            "#,
+        )
+        .bind(run_id)
+        .bind(&message.from_actor_id)
+        .bind(&message.from_peer_id)
+        .bind(&coordinator_actor_id)
+        .bind(&delivery.to_peer_id)
+        .bind(&message.channel)
+        .bind(transport_raw)
+        .bind(route_json)
+        .bind(escalated_payload_json)
+        .bind(message.message_kind.as_str())
+        .bind(status_raw)
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+        let escalated_message_id = inserted.last_insert_rowid();
+
+        tx.commit()
+            .await
+            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+        fetch_enriched_message_by_id(&self.manager.db, escalated_message_id)
+            .await
+            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn send_channel_message(
         &self,
@@ -1159,6 +1347,12 @@ enum SqlActorMailboxStoreError {
         "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred"
     )]
     ReplyRequiredVisibleOutcomeMissing,
+    #[error("only human-originated reply-required mailbox work can be escalated")]
+    ReplyRequiredEscalationUnsupported,
+    #[error("reply-required mailbox work is already owned by the coordinator")]
+    ReplyRequiredEscalationAlreadyAtCoordinator,
+    #[error("reply-required mailbox work cannot find a coordinator target")]
+    ReplyRequiredEscalationTargetUnavailable,
     #[error("mailbox thread/topic is already claimed by actor `{owner_actor_id}`")]
     ThreadClaimConflict { owner_actor_id: String },
     #[error("mailbox thread/topic must be actively claimed by the acting actor")]
@@ -1604,10 +1798,7 @@ fn summarize_open_reply_obligations_from_messages(
         let Some(pair_key) = reply_actor_pair_for_inbound_obligation(message) else {
             continue;
         };
-        if matches!(
-            message.handling_disposition,
-            ActorMessageHandlingDisposition::Ignored | ActorMessageHandlingDisposition::Completed
-        ) {
+        if reply_obligation_is_terminal(message) {
             continue;
         }
         if let Some(credits) = visible_reply_credits.get_mut(&pair_key)
@@ -1685,6 +1876,85 @@ fn build_reply_obligation_record(
     }
 }
 
+fn mailbox_resolution_kind(payload: &Value) -> Option<&str> {
+    payload
+        .as_object()
+        .and_then(|map| map.get("mailbox_resolution"))
+        .and_then(Value::as_object)
+        .and_then(|map| map.get("kind"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn reply_obligation_is_terminal(message: &TeamActorMessageRecord) -> bool {
+    if matches!(
+        message.handling_disposition,
+        ActorMessageHandlingDisposition::Ignored | ActorMessageHandlingDisposition::Completed
+    ) {
+        return true;
+    }
+    matches!(
+        (
+            message.handling_disposition.clone(),
+            mailbox_resolution_kind(&message.payload),
+        ),
+        (
+            ActorMessageHandlingDisposition::Released,
+            Some(MAILBOX_RESOLUTION_ESCALATED)
+        )
+    )
+}
+
+fn build_mailbox_resolution_payload(
+    source_payload: &Value,
+    kind: &str,
+    resolved_by_actor_id: &str,
+    target_actor_id: &str,
+    resolved_at: i64,
+) -> Value {
+    let mut payload_obj = match source_payload {
+        Value::Object(map) => map.clone(),
+        _ => Map::new(),
+    };
+    payload_obj.insert(
+        "mailbox_resolution".to_string(),
+        serde_json::json!({
+            "kind": kind,
+            "resolved_by_actor_id": resolved_by_actor_id,
+            "target_actor_id": target_actor_id,
+            "resolved_at": resolved_at
+        }),
+    );
+    Value::Object(payload_obj)
+}
+
+fn build_escalated_mailbox_payload(
+    source_payload: &Value,
+    source_message_id: i64,
+    source_actor_id: &str,
+    target_actor_id: &str,
+    escalated_by_actor_id: &str,
+    escalated_at: i64,
+) -> Value {
+    let mut payload_obj = match source_payload {
+        Value::Object(map) => map.clone(),
+        _ => Map::new(),
+    };
+    payload_obj.insert(
+        "mailbox_escalation".to_string(),
+        serde_json::json!({
+            "kind": MAILBOX_RESOLUTION_ESCALATED,
+            "source_message_id": source_message_id,
+            "source_actor_id": source_actor_id,
+            "target_actor_id": target_actor_id,
+            "escalated_by_actor_id": escalated_by_actor_id,
+            "escalated_at": escalated_at
+        }),
+    );
+    Value::Object(payload_obj)
+}
+
 async fn load_run_messages_for_reply_obligation(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     run_id: &str,
@@ -1741,10 +2011,7 @@ fn has_visible_reply_credit_for_message(
         let Some(pair_key) = reply_actor_pair_for_inbound_obligation(message) else {
             continue;
         };
-        if matches!(
-            message.handling_disposition,
-            ActorMessageHandlingDisposition::Ignored | ActorMessageHandlingDisposition::Completed
-        ) {
+        if reply_obligation_is_terminal(message) {
             continue;
         }
         if let Some(credits) = visible_reply_credits.get_mut(&pair_key)
@@ -3159,6 +3426,48 @@ fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
             "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred",
         );
     }
+    if err
+        .downcast_ref::<SqlActorMailboxStoreError>()
+        .is_some_and(|cause| {
+            matches!(
+                cause,
+                SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported
+            )
+        })
+    {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            "only human-originated reply-required mailbox work can be escalated",
+        );
+    }
+    if err
+        .downcast_ref::<SqlActorMailboxStoreError>()
+        .is_some_and(|cause| {
+            matches!(
+                cause,
+                SqlActorMailboxStoreError::ReplyRequiredEscalationAlreadyAtCoordinator
+            )
+        })
+    {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            "reply-required mailbox work is already owned by the coordinator",
+        );
+    }
+    if err
+        .downcast_ref::<SqlActorMailboxStoreError>()
+        .is_some_and(|cause| {
+            matches!(
+                cause,
+                SqlActorMailboxStoreError::ReplyRequiredEscalationTargetUnavailable
+            )
+        })
+    {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            "run team cannot resolve a coordinator mailbox delivery target",
+        );
+    }
     if is_row_not_found(&err) {
         return ActorServiceError::new(ActorServiceErrorCode::NotFound, "message not found");
     }
@@ -3193,6 +3502,19 @@ fn map_actor_mailbox_store_error(
             }
             SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing => {
                 anyhow::Error::new(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)
+            }
+            SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported => {
+                anyhow::Error::new(SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported)
+            }
+            SqlActorMailboxStoreError::ReplyRequiredEscalationAlreadyAtCoordinator => {
+                anyhow::Error::new(
+                    SqlActorMailboxStoreError::ReplyRequiredEscalationAlreadyAtCoordinator,
+                )
+            }
+            SqlActorMailboxStoreError::ReplyRequiredEscalationTargetUnavailable => {
+                anyhow::Error::new(
+                    SqlActorMailboxStoreError::ReplyRequiredEscalationTargetUnavailable,
+                )
             }
         },
     }
