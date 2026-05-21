@@ -499,7 +499,7 @@ export const TEAM_MEMBER_ACP_INPUT_DOCK_SHELL_CLASS = "mt-1.5 shrink-0";
 export const TEAM_MEMBER_ACP_SENDING_TEXT_CLASS = "mt-1.5";
 
 export const TEAM_THREAD_PANE_CLASS =
-  "flex min-h-0 w-full max-w-[360px] shrink-0 flex-col overflow-hidden border-notion-border/80";
+  "flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden border-notion-border/80";
 
 export const TEAM_THREAD_HEADER_CLASS =
   "items-start gap-2 border-b border-notion-border/70 px-2.5 py-2";
@@ -537,7 +537,8 @@ export const TEAM_THREAD_HEADER_BUTTON_CLASS = "px-1.5 text-[10px] text-notion-t
 
 export const TEAM_THREAD_HEADER_ICON_CLASS = "text-[10px]";
 
-export const TEAM_THREAD_BODY_CLASS = "flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 py-2";
+export const TEAM_THREAD_BODY_CLASS =
+  "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2.5 py-2 pr-1.5";
 
 export const TEAM_THREAD_EMPTY_STATE_CLASS = "border-0 bg-transparent px-0 py-0";
 

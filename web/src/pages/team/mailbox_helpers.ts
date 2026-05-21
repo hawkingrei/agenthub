@@ -74,6 +74,10 @@ export function createDisplayNameLookup(
   return lookup;
 }
 
+export function normalizeRawMentionActorId(rawActorId: string): string {
+  return rawActorId.trim().replace(/\.+$/, "");
+}
+
 export function isHumanMailboxActor(
   actorId: string | null | undefined,
   humanActorId: string
@@ -477,8 +481,14 @@ function replaceRawMentionsWithTokens(text: string): string {
       cursor += 1;
       continue;
     }
-    const actorId = text.slice(cursor + 1, end).trim();
-    chunks.push(`%%AGH_AT_MENTION:${actorId}%%`);
+    const rawActorId = text.slice(cursor + 1, end).trim();
+    const actorId = normalizeRawMentionActorId(rawActorId);
+    if (!actorId) {
+      chunks.push(`@${rawActorId}`);
+      cursor = end;
+      continue;
+    }
+    chunks.push(`%%AGH_AT_MENTION:${actorId}%%${rawActorId.slice(actorId.length)}`);
     cursor = end;
   }
   return chunks.join("");

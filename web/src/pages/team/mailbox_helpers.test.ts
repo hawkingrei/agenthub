@@ -12,6 +12,7 @@ import {
   countUnreadConversationMessages,
   extractMentionedActorIds,
   mergeMailboxMessages,
+  normalizeRawMentionActorId,
   renderMarkdownWithMentions,
   renderPlainTextWithMentions,
   resolveChatMessageText,
@@ -233,6 +234,51 @@ describe("mailbox helpers", () => {
     expect(markdown).toContain("team-mention");
     expect(markdown).toContain('data-team-agent-mention-id="worker-1"');
     expect(markdown).toContain("@worker-1");
+  });
+
+  it("keeps sentence punctuation outside raw mention actor ids", () => {
+    const rendered = renderMarkdownWithMentions(
+      "ping @worker-agent. then @coordinator-agent.",
+      {
+        "worker-agent": "Worker Agent",
+        "coordinator-agent": "Coordinator Agent",
+      }
+    );
+
+    expect(rendered).toContain('data-team-agent-mention-id="worker-agent"');
+    expect(rendered).toContain("@Worker Agent</button>.");
+    expect(rendered).toContain('data-team-agent-mention-id="coordinator-agent"');
+    expect(rendered).toContain("@Coordinator Agent</button>.");
+    expect(rendered).not.toContain('data-team-agent-mention-id="worker-agent."');
+    expect(rendered).not.toContain("@worker-agent.");
+  });
+
+  it("normalizes raw mention ids without swallowing sentence punctuation", () => {
+    expect(normalizeRawMentionActorId("worker-agent.")).toBe("worker-agent");
+    expect(normalizeRawMentionActorId(" coordinator-agent.. ")).toBe("coordinator-agent");
+    expect(normalizeRawMentionActorId("worker-agent:")).toBe("worker-agent:");
+  });
+
+  it("leaves punctuation-only raw mentions as plain text", () => {
+    const rendered = renderMarkdownWithMentions("ping @. then continue");
+    expect(rendered).toContain("@.");
+    expect(rendered).not.toContain("team-mention");
+  });
+
+  it("leaves a bare at-sign as plain text", () => {
+    const rendered = renderMarkdownWithMentions("ping @ then continue");
+    expect(rendered).toContain("@");
+    expect(rendered).not.toContain("team-mention");
+  });
+
+  it("renders canonical mentions with display-name lookup values", () => {
+    const rendered = renderMarkdownWithMentions("hello <at>worker-agent</at>", {
+      "worker-agent": "Worker Agent",
+    });
+
+    expect(rendered).toContain('data-team-agent-mention-id="worker-agent"');
+    expect(rendered).toContain("@Worker Agent");
+    expect(rendered).not.toContain("@worker-agent");
   });
 
   it("does not convert raw mentions inside markdown code spans or links into chips", () => {
