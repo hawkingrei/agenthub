@@ -183,7 +183,16 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
     assert_eq!(pending.channel, "coordination");
     assert_eq!(pending.transport, "local");
     assert_eq!(pending.route_json, r#"{"topic":"review"}"#);
-    assert_eq!(pending.payload_json, r#"{"text":"please review"}"#);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&pending.payload_json)
+            .expect("decode pending payload"),
+        json!({
+            "text":"please review",
+            "source_kind":"agent",
+            "source_surface":"mailbox",
+            "requires_user_visible_reply":false
+        })
+    );
     assert_eq!(pending.status, "pending");
     assert_eq!(pending.idempotency_key, "internal-grpc-msg-1");
     assert_eq!(pending.from_peer_id, "node-a");
