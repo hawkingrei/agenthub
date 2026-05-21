@@ -2725,7 +2725,7 @@ describe("team panels interactions", () => {
         route: "group_chat",
         payload: {
           type: "chat_message",
-          text: "Root message for @worker-agent and @user:u-1.",
+          text: "Root message for @worker-agent, <at>coordinator-agent</at>, and @user:u-1.",
         },
       }),
       buildTaskMessage(2, {
@@ -2841,6 +2841,136 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("user:u-1");
     expect(container.textContent).not.toContain("Channel message with a thread id should stay out.");
     expect(container.textContent).not.toContain("Different thread reply should stay out.");
+  });
+
+  it("TeamThreadContainer stays hidden when no thread root is selected", () => {
+    const workspaceContext: TeamWorkspaceContextValue = {
+      selectedConversation: null,
+      developerMode: false,
+      token: "token",
+      tasksLoading: false,
+      onRefreshTasks: vi.fn(),
+      taskMessageDraft: "",
+      setTaskMessageDraft: vi.fn(),
+      onSendTaskMessage: vi.fn(),
+      taskMessages: [
+        buildTaskMessage(1, {
+          from_actor_id: "coordinator-agent",
+          route: "group_chat",
+          payload: {
+            type: "chat_message",
+            text: "Hidden channel message",
+          },
+        }),
+      ],
+      conversationMailboxMessages: [],
+      snapshot: null,
+      mailboxDisplayNameByActorId: {
+        "coordinator-agent": "Coordinator Agent",
+      },
+      selectedTeamMemberLiveStates: [],
+      taskConversationMemberIds: [],
+      activeConversationTitle: "# all",
+      selectedConversationMatchesChannelLane: true,
+      taskMessagesLoading: false,
+      busy: null,
+      routeThreadRootMessageId: null,
+      channelFocusMessageId: null,
+      setChannelFocusMessageId: vi.fn(),
+      effectiveSelectedTeamId: "team-1",
+      routeWorkspaceLens: "channels",
+      routeChannelId: "all",
+      activeChannelConversationTaskId: "task-1",
+      navigateTeamRoute: vi.fn(),
+      isCompactWorkbench: false,
+      selectedChannelItem: undefined,
+      workspaceTasks: [],
+      selectedTaskId: "",
+      setSelectedTaskId: vi.fn(),
+      onSelectConversationSubject: vi.fn(),
+      runs: [],
+      onOpenTaskRun: vi.fn(),
+      compilePreviewContextId: "",
+      setCompilePreviewContextId: vi.fn(),
+      onCompileTaskRunPreview: vi.fn(),
+      canCompileTask: false,
+      compiledRunPreview: null,
+      onUseCompiledRunPayload: vi.fn(),
+      onCreateRunFromCompiledPreview: vi.fn(),
+      onSendThreadReply: vi.fn(),
+      threadReplyDraft: "",
+      setThreadReplyDraft: vi.fn(),
+    };
+
+    renderWithMantine(
+      root,
+      <TeamWorkspaceProvider value={workspaceContext}>
+        <TeamThreadContainer />
+      </TeamWorkspaceProvider>
+    );
+
+    expect(container.querySelector('[data-team-surface="thread-pane"]')).toBeNull();
+    expect(container.textContent).not.toContain("Hidden channel message");
+  });
+
+  it("TeamThreadContainer keeps a routed thread shell while the root message is missing", () => {
+    const workspaceContext: TeamWorkspaceContextValue = {
+      selectedConversation: null,
+      developerMode: false,
+      token: "token",
+      tasksLoading: false,
+      onRefreshTasks: vi.fn(),
+      taskMessageDraft: "",
+      setTaskMessageDraft: vi.fn(),
+      onSendTaskMessage: vi.fn(),
+      taskMessages: [],
+      conversationMailboxMessages: [],
+      snapshot: null,
+      mailboxDisplayNameByActorId: {},
+      selectedTeamMemberLiveStates: [],
+      taskConversationMemberIds: [],
+      activeConversationTitle: "# all",
+      selectedConversationMatchesChannelLane: true,
+      taskMessagesLoading: false,
+      busy: null,
+      routeThreadRootMessageId: 404,
+      channelFocusMessageId: null,
+      setChannelFocusMessageId: vi.fn(),
+      effectiveSelectedTeamId: "team-1",
+      routeWorkspaceLens: "channels",
+      routeChannelId: "all",
+      activeChannelConversationTaskId: "task-1",
+      navigateTeamRoute: vi.fn(),
+      isCompactWorkbench: false,
+      selectedChannelItem: undefined,
+      workspaceTasks: [],
+      selectedTaskId: "",
+      setSelectedTaskId: vi.fn(),
+      onSelectConversationSubject: vi.fn(),
+      runs: [],
+      onOpenTaskRun: vi.fn(),
+      compilePreviewContextId: "",
+      setCompilePreviewContextId: vi.fn(),
+      onCompileTaskRunPreview: vi.fn(),
+      canCompileTask: false,
+      compiledRunPreview: null,
+      onUseCompiledRunPayload: vi.fn(),
+      onCreateRunFromCompiledPreview: vi.fn(),
+      onSendThreadReply: vi.fn(),
+      threadReplyDraft: "",
+      setThreadReplyDraft: vi.fn(),
+    };
+
+    renderWithMantine(
+      root,
+      <TeamWorkspaceProvider value={workspaceContext}>
+        <TeamThreadContainer />
+      </TeamWorkspaceProvider>
+    );
+
+    expect(container.querySelector('[data-team-surface="thread-pane"]')).not.toBeNull();
+    expect(container.textContent).toContain("From Unknown · #404");
+    expect(container.textContent).toContain("Original content is not available in chat text form.");
   });
 
   it("TeamWorkbenchContainer fails fast when the workbench context slice is missing", () => {

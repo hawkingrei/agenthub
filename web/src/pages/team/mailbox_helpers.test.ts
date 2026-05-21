@@ -259,6 +259,18 @@ describe("mailbox helpers", () => {
     expect(normalizeRawMentionActorId("worker-agent:")).toBe("worker-agent:");
   });
 
+  it("leaves punctuation-only raw mentions as plain text", () => {
+    const rendered = renderMarkdownWithMentions("ping @. then continue");
+    expect(rendered).toContain("@.");
+    expect(rendered).not.toContain("team-mention");
+  });
+
+  it("leaves a bare at-sign as plain text", () => {
+    const rendered = renderMarkdownWithMentions("ping @ then continue");
+    expect(rendered).toContain("@");
+    expect(rendered).not.toContain("team-mention");
+  });
+
   it("renders canonical mentions with display-name lookup values", () => {
     const rendered = renderMarkdownWithMentions("hello <at>worker-agent</at>", {
       "worker-agent": "Worker Agent",
