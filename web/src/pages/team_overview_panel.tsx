@@ -125,8 +125,57 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
             <KeyValueItem label="Pending mailbox" value={snapshot.mailbox.pending} />
             <KeyValueItem label="Delivered" value={snapshot.mailbox.delivered} />
             <KeyValueItem label="Dead letter" value={snapshot.mailbox.dead_letter} />
+            <KeyValueItem
+              label="Reply obligations"
+              value={snapshot.mailbox.open_reply_obligation_count ?? 0}
+            />
             <KeyValueItem label="Recent events" value={snapshot.latest_events.length} />
           </KeyValueList>}
+
+          {!profileOnly &&
+          (snapshot.mailbox.open_reply_obligations?.length ?? 0) > 0 ? (
+            <InsetSurface className="mb-6 bg-white shadow-sm">
+              <h4 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
+                Open Reply Obligations
+              </h4>
+              <ul className="mt-3 flex flex-col gap-2">
+                {(snapshot.mailbox.open_reply_obligations ?? []).map((obligation) => {
+                  const agentLabel = resolveDisplayName(
+                    obligation.agent_actor_id,
+                    displayNameByActorId,
+                    obligation.agent_actor_id
+                  );
+                  const humanLabel = resolveDisplayName(
+                    obligation.human_actor_id,
+                    displayNameByActorId,
+                    obligation.human_actor_id
+                  );
+                  return (
+                    <li
+                      key={obligation.message_id}
+                      className="rounded-lg border border-notion-border/60 bg-notion-sidebar/5 px-3 py-2 text-[12px] leading-relaxed text-notion-text"
+                    >
+                      <div className="font-medium">
+                        {agentLabel} owes {humanLabel} a reply
+                      </div>
+                      <div className="text-notion-text-muted">
+                        source={obligation.source_surface}
+                        {obligation.conversation_id ? ` conversation=${obligation.conversation_id}` : ""}
+                        {obligation.thread_root_message_id
+                          ? ` thread=${obligation.thread_root_message_id}`
+                          : ""}
+                      </div>
+                      {obligation.text_excerpt ? (
+                        <div className="mt-1 whitespace-pre-wrap break-words text-notion-text-muted">
+                          {obligation.text_excerpt}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </InsetSurface>
+          ) : null}
 
           {selectedMember && (
             <InsetSurface className="teams-agent-profile mb-6 bg-white shadow-sm">
@@ -189,6 +238,10 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                 />
                 <KeyValueItem label="Session" value={selectedMember.session_status ?? "-"} />
                 <KeyValueItem label="Pending inbox" value={selectedMember.pending_inbox_count} />
+                <KeyValueItem
+                  label="Reply obligations"
+                  value={selectedMember.reply_obligation_count ?? 0}
+                />
                 <KeyValueItem label="Machine" value={selectedMemberNodeId ?? "Machine unavailable"} />
               </KeyValueList>
               {selectedMember.description ? (
@@ -257,7 +310,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                   />
                 </div>
                 <span className="break-words whitespace-normal text-[11px] leading-relaxed text-notion-text-muted">
-                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count} `}
+                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count} reply=${member.reply_obligation_count ?? 0} `}
                   {attachedNodeId ? (
                     <span className="inline-flex flex-wrap items-center gap-1 align-middle">
                       <a

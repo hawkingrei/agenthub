@@ -15,7 +15,8 @@ use agenthub_team_actor::{
     PendingRemoteRelayRecord, RelayRemotePendingCommand, RelayRemotePendingResult,
     SendActorMessageCommand, TriageActorMessageCommand, actor_message_fingerprint,
     derive_actor_message_topic_metadata, infer_actor_message_kind,
-    parse_actor_message_task_relation, parse_actor_thread_claim_status,
+    normalize_actor_message_envelope_payload, parse_actor_message_task_relation,
+    parse_actor_thread_claim_status,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -32,13 +33,14 @@ use super::codec::{
 };
 use super::{
     TEAM_SHARED_THREAD_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_TITLE, TeamConversationStreamEvent,
-    TeamManager, TeamMemberSpecView, fetch_canonical_shared_thread_target, parse_team_member_specs,
-    redact_sensitive_json, team_run_event_archive_document_for_db,
+    TeamManager, TeamMemberSpecView, TeamReplyObligationSummary,
+    fetch_canonical_shared_thread_target, parse_team_member_specs, redact_sensitive_json,
+    team_run_event_archive_document_for_db,
 };
 use crate::agent::normalize_target_node_id;
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
-    TeamConversationMessageRecord, TeamRunEventRecord,
+    TeamConversationMessageRecord, TeamReplyObligationRecord, TeamRunEventRecord,
 };
 
 const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
@@ -84,6 +86,12 @@ struct ResolvedMailboxRecipientDelivery {
     route: Option<Value>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ReplyActorPairKey {
+    agent_actor_id: String,
+    human_actor_id: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct TeamRemoteRelayWorkerSettings {
     pub poll_interval_secs: i64,
@@ -107,6 +115,48 @@ impl TeamManager {
     pub fn is_actor_message_idempotency_conflict(err: &anyhow::Error) -> bool {
         err.downcast_ref::<SqlActorMailboxStoreError>()
             .is_some_and(|cause| matches!(cause, SqlActorMailboxStoreError::IdempotencyConflict))
+    }
+
+    pub(crate) async fn summarize_open_reply_obligations(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<TeamReplyObligationSummary> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                from_actor_id,
+                from_peer_id,
+                to_actor_id,
+                to_peer_id,
+                channel,
+                transport,
+                route_json,
+                payload_json,
+                message_kind,
+                handling_disposition,
+                handled_by_actor_id,
+                handled_at,
+                status,
+                created_at,
+                delivered_at,
+                idempotency_key
+            FROM team_actor_messages
+            WHERE run_id = ?1
+            ORDER BY id ASC
+            "#,
+        )
+        .bind(run_id)
+        .fetch_all(&self.db)
+        .await?;
+        let mut messages = Vec::with_capacity(rows.len());
+        for row in rows {
+            messages.push(parse_team_actor_message_row(&row)?);
+        }
+        Ok(summarize_open_reply_obligations_from_messages(
+            messages.as_slice(),
+        ))
     }
 
     pub fn actor_thread_claim_conflict_owner(err: &anyhow::Error) -> Option<&str> {
@@ -199,12 +249,18 @@ impl TeamManager {
             &payload,
             explicit_message_kind.or(message_kind),
         );
+        let normalized_payload = normalize_actor_message_envelope_payload(
+            from_actor_id,
+            to_actor_id,
+            &message_kind,
+            payload,
+        );
         let should_emit_human_visible_reply = should_persist_human_visible_chat_reply_for_payload(
             &transport,
             to_actor_id,
             to_peer_id,
             from_actor_id,
-            &payload,
+            &normalized_payload,
         );
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
@@ -219,7 +275,7 @@ impl TeamManager {
                 transport,
                 message_kind,
                 route,
-                payload,
+                payload: normalized_payload,
                 idempotency_key: idempotency_key.map(str::to_string),
                 created_at: now,
             })
@@ -1099,6 +1155,10 @@ enum SqlActorMailboxStoreError {
     Sql(#[from] sqlx::Error),
     #[error("actor message idempotency conflict")]
     IdempotencyConflict,
+    #[error(
+        "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred"
+    )]
+    ReplyRequiredVisibleOutcomeMissing,
     #[error("mailbox thread/topic is already claimed by actor `{owner_actor_id}`")]
     ThreadClaimConflict { owner_actor_id: String },
     #[error("mailbox thread/topic must be actively claimed by the acting actor")]
@@ -1451,7 +1511,7 @@ async fn load_active_thread_claims(
     Ok(out)
 }
 
-async fn enrich_actor_messages(
+pub(super) async fn enrich_actor_messages(
     pool: &SqlitePool,
     messages: &mut [TeamActorMessageRecord],
 ) -> Result<(), sqlx::Error> {
@@ -1524,6 +1584,197 @@ fn inbox_rows_include_pending(rows: &[SqliteRow]) -> bool {
             .unwrap_or_else(|_| "untriaged".to_string());
         status.as_deref() == Some("pending") && disposition == "untriaged"
     })
+}
+
+fn summarize_open_reply_obligations_from_messages(
+    messages: &[TeamActorMessageRecord],
+) -> TeamReplyObligationSummary {
+    let mut visible_reply_credits = HashMap::<ReplyActorPairKey, i64>::new();
+    let mut summary = TeamReplyObligationSummary::default();
+
+    // This is the first phase-3 runtime invariant slice. We conservatively
+    // consume one earlier human-originated obligation for each later agent ->
+    // human visible chat reply on the same actor pair until explicit reply
+    // linkage lands as a first-class contract.
+    for message in messages.iter().rev() {
+        if let Some(pair_key) = reply_actor_pair_for_visible_reply(message) {
+            *visible_reply_credits.entry(pair_key).or_default() += 1;
+            continue;
+        }
+        let Some(pair_key) = reply_actor_pair_for_inbound_obligation(message) else {
+            continue;
+        };
+        if matches!(
+            message.handling_disposition,
+            ActorMessageHandlingDisposition::Ignored | ActorMessageHandlingDisposition::Completed
+        ) {
+            continue;
+        }
+        if let Some(credits) = visible_reply_credits.get_mut(&pair_key)
+            && *credits > 0
+        {
+            *credits -= 1;
+            continue;
+        }
+        *summary
+            .open_by_actor
+            .entry(pair_key.agent_actor_id.clone())
+            .or_default() += 1;
+        summary.open_total += 1;
+        summary
+            .open_items
+            .push(build_reply_obligation_record(message, pair_key));
+    }
+
+    summary
+}
+
+fn reply_actor_pair_for_inbound_obligation(
+    message: &TeamActorMessageRecord,
+) -> Option<ReplyActorPairKey> {
+    let envelope = message.inbound_envelope();
+    if !envelope.requires_user_visible_reply {
+        return None;
+    }
+    if message.from_actor_kind != agenthub_team_actor::ActorIdentityKind::Human
+        || message.to_actor_kind != agenthub_team_actor::ActorIdentityKind::Agent
+    {
+        return None;
+    }
+    Some(ReplyActorPairKey {
+        agent_actor_id: message.to_actor_id.clone(),
+        human_actor_id: message.from_actor_id.clone(),
+    })
+}
+
+fn reply_actor_pair_for_visible_reply(
+    message: &TeamActorMessageRecord,
+) -> Option<ReplyActorPairKey> {
+    if message.status == TeamActorMessageStatus::DeadLetter
+        || !should_persist_human_visible_chat_reply_for_payload(
+            &message.transport,
+            &message.to_actor_id,
+            &message.to_peer_id,
+            &message.from_actor_id,
+            &message.payload,
+        )
+    {
+        return None;
+    }
+    Some(ReplyActorPairKey {
+        agent_actor_id: message.from_actor_id.clone(),
+        human_actor_id: message.to_actor_id.clone(),
+    })
+}
+
+fn build_reply_obligation_record(
+    message: &TeamActorMessageRecord,
+    pair_key: ReplyActorPairKey,
+) -> TeamReplyObligationRecord {
+    let envelope = message.inbound_envelope();
+    TeamReplyObligationRecord {
+        message_id: message.message_id,
+        agent_actor_id: pair_key.agent_actor_id,
+        human_actor_id: pair_key.human_actor_id,
+        source_surface: envelope.source_surface,
+        reply_target: envelope.reply_target,
+        conversation_id: envelope.conversation_id,
+        thread_root_message_id: envelope.thread_root_message_id,
+        text_excerpt: resolve_canonical_chat_reply(&message.payload).map(|reply| reply.text),
+        created_at: message.created_at,
+    }
+}
+
+async fn load_run_messages_for_reply_obligation(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+) -> Result<Vec<TeamActorMessageRecord>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            id,
+            run_id,
+            from_actor_id,
+            from_peer_id,
+            to_actor_id,
+            to_peer_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            message_kind,
+            handling_disposition,
+            handled_by_actor_id,
+            handled_at,
+            status,
+            created_at,
+            delivered_at,
+            idempotency_key
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut messages = Vec::with_capacity(rows.len());
+    for row in rows {
+        messages.push(
+            parse_team_actor_message_row(&row)
+                .map_err(|err| sqlx::Error::Protocol(err.to_string()))?,
+        );
+    }
+    Ok(messages)
+}
+
+fn has_visible_reply_credit_for_message(
+    messages: &[TeamActorMessageRecord],
+    target_message_id: i64,
+) -> bool {
+    let mut visible_reply_credits = HashMap::<ReplyActorPairKey, i64>::new();
+    for message in messages.iter().rev() {
+        if let Some(pair_key) = reply_actor_pair_for_visible_reply(message) {
+            *visible_reply_credits.entry(pair_key).or_default() += 1;
+            continue;
+        }
+        let Some(pair_key) = reply_actor_pair_for_inbound_obligation(message) else {
+            continue;
+        };
+        if matches!(
+            message.handling_disposition,
+            ActorMessageHandlingDisposition::Ignored | ActorMessageHandlingDisposition::Completed
+        ) {
+            continue;
+        }
+        if let Some(credits) = visible_reply_credits.get_mut(&pair_key)
+            && *credits > 0
+        {
+            if message.message_id == target_message_id {
+                return true;
+            }
+            *credits -= 1;
+            continue;
+        }
+        if message.message_id == target_message_id {
+            return false;
+        }
+    }
+    true
+}
+
+async fn ensure_reply_required_completion_allowed(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    message: &TeamActorMessageRecord,
+) -> Result<(), SqlActorMailboxStoreError> {
+    if reply_actor_pair_for_inbound_obligation(message).is_none() {
+        return Ok(());
+    }
+    let messages = load_run_messages_for_reply_obligation(tx, &message.run_id).await?;
+    if has_visible_reply_credit_for_message(&messages, message.message_id) {
+        return Ok(());
+    }
+    Err(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)
 }
 
 impl SqlActorMailboxStore {
@@ -1736,6 +1987,9 @@ impl ActorMailboxStore for SqlActorMailboxStore {
             cmd.message_id,
         )
         .await?;
+        if cmd.disposition == ActorMessageHandlingDisposition::Completed {
+            ensure_reply_required_completion_allowed(&mut tx, &message).await?;
+        }
         apply_thread_claim_transition(&mut tx, &message, cmd).await?;
         let update = sqlx::query(
             r#"
@@ -2891,6 +3145,20 @@ fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
             "mailbox topic must be actively claimed by the acting actor before release or complete",
         );
     }
+    if err
+        .downcast_ref::<SqlActorMailboxStoreError>()
+        .is_some_and(|cause| {
+            matches!(
+                cause,
+                SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing
+            )
+        })
+    {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::UnprocessableEntity,
+            "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred",
+        );
+    }
     if is_row_not_found(&err) {
         return ActorServiceError::new(ActorServiceErrorCode::NotFound, "message not found");
     }
@@ -2923,6 +3191,9 @@ fn map_actor_mailbox_store_error(
             SqlActorMailboxStoreError::ThreadClaimOwnershipRequired => {
                 anyhow::Error::new(SqlActorMailboxStoreError::ThreadClaimOwnershipRequired)
             }
+            SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing => {
+                anyhow::Error::new(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)
+            }
         },
     }
 }
@@ -2942,6 +3213,42 @@ mod tests {
                 description: None,
             })
             .collect()
+    }
+
+    fn build_mailbox_record(
+        message_id: i64,
+        from_actor_id: &str,
+        to_actor_id: &str,
+        payload: Value,
+    ) -> TeamActorMessageRecord {
+        TeamActorMessageRecord {
+            message_id,
+            run_id: "run-1".to_string(),
+            from_actor_id: from_actor_id.to_string(),
+            from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+            from_actor_kind: agenthub_team_actor::infer_actor_identity_kind(from_actor_id),
+            to_actor_id: to_actor_id.to_string(),
+            to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+            to_actor_kind: agenthub_team_actor::infer_actor_identity_kind(to_actor_id),
+            channel: "default".to_string(),
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: payload.clone(),
+            idempotency_key: None,
+            message_kind: infer_actor_message_kind(from_actor_id, &payload, None),
+            status: TeamActorMessageStatus::Pending,
+            handling_disposition: ActorMessageHandlingDisposition::Untriaged,
+            handled_by_actor_id: None,
+            thread_topic_key: None,
+            thread_claim_status: None,
+            thread_owner_actor_id: None,
+            thread_lease_expires_at: None,
+            linked_task_id: None,
+            linked_task_relation: None,
+            created_at: 1_700_000_000 + message_id,
+            delivered_at: None,
+            handled_at: None,
+        }
     }
 
     #[test]
@@ -3104,6 +3411,91 @@ mod tests {
 
         assert_eq!(reply.text, "hello");
         assert_eq!(reply.correlation_id.as_deref(), Some("corr-9"));
+    }
+
+    #[test]
+    fn summarize_open_reply_obligations_counts_unanswered_human_requests() {
+        let messages = vec![build_mailbox_record(
+            1,
+            "user",
+            "worker",
+            json!({
+                "type": "chat_message",
+                "text": "Need update",
+                "requires_user_visible_reply": true
+            }),
+        )];
+
+        let summary = summarize_open_reply_obligations_from_messages(messages.as_slice());
+
+        assert_eq!(summary.open_total, 1);
+        assert_eq!(summary.open_by_actor.get("worker").copied(), Some(1));
+        assert_eq!(summary.open_items.len(), 1);
+        let obligation = &summary.open_items[0];
+        assert_eq!(obligation.agent_actor_id, "worker");
+        assert_eq!(obligation.human_actor_id, "user");
+        assert_eq!(obligation.source_surface, "mailbox");
+        assert_eq!(obligation.text_excerpt.as_deref(), Some("Need update"));
+    }
+
+    #[test]
+    fn summarize_open_reply_obligations_consumes_visible_reply_credit() {
+        let mut inbound = build_mailbox_record(
+            1,
+            "user",
+            "worker",
+            json!({
+                "type": "chat_message",
+                "text": "Need update",
+                "requires_user_visible_reply": true
+            }),
+        );
+        inbound.status = TeamActorMessageStatus::Delivered;
+        let outbound = build_mailbox_record(
+            2,
+            "worker",
+            "user",
+            json!({
+                "type": "chat_message",
+                "text": "Here is the update"
+            }),
+        );
+
+        let summary = summarize_open_reply_obligations_from_messages(&[inbound, outbound]);
+
+        assert_eq!(summary.open_total, 0);
+        assert!(summary.open_by_actor.is_empty());
+    }
+
+    #[test]
+    fn summarize_open_reply_obligations_skips_ignored_and_completed_items() {
+        let mut ignored = build_mailbox_record(
+            1,
+            "user",
+            "worker",
+            json!({
+                "type": "chat_message",
+                "text": "Need update",
+                "requires_user_visible_reply": true
+            }),
+        );
+        ignored.handling_disposition = ActorMessageHandlingDisposition::Ignored;
+        let mut completed = build_mailbox_record(
+            2,
+            "user",
+            "reviewer",
+            json!({
+                "type": "chat_message",
+                "text": "Please review",
+                "requires_user_visible_reply": true
+            }),
+        );
+        completed.handling_disposition = ActorMessageHandlingDisposition::Completed;
+
+        let summary = summarize_open_reply_obligations_from_messages(&[ignored, completed]);
+
+        assert_eq!(summary.open_total, 0);
+        assert!(summary.open_by_actor.is_empty());
     }
 
     #[test]

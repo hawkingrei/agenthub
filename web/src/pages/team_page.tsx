@@ -1786,6 +1786,7 @@ export function TeamPage(props: TeamPageProps) {
     onRefreshInbox,
     onAcceptMessage,
     onAcceptVisibleMessages,
+    onTriageMessage,
   } =
     useTeamMailboxActions({
       token: props.token,
@@ -3189,6 +3190,7 @@ export function TeamPage(props: TeamPageProps) {
     conversationMessages,
     onAcceptMessage,
     onAcceptVisibleMessages,
+    onTriageMessage,
     onSendChatMessage,
     MAILBOX_TEMPLATE_OPTIONS,
     onMailboxTemplateChange,

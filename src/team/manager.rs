@@ -853,6 +853,26 @@ pub struct TeamRuntimeRecord {
     pub members: Vec<TeamRuntimeMemberRecord>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TeamReplyObligationRecord {
+    pub message_id: i64,
+    pub agent_actor_id: String,
+    pub human_actor_id: String,
+    pub source_surface: String,
+    pub reply_target: Option<Value>,
+    pub conversation_id: Option<String>,
+    pub thread_root_message_id: Option<i64>,
+    pub text_excerpt: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TeamReplyObligationSummary {
+    pub open_total: i64,
+    pub open_by_actor: HashMap<String, i64>,
+    pub open_items: Vec<TeamReplyObligationRecord>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TeamTaskAssignmentUpdate {
     Unchanged,
@@ -1281,6 +1301,9 @@ impl TeamManager {
         Ok(team)
     }
 
+    // Compatibility helper for legacy/bootstrap task seeding in tests and narrow internal setup
+    // paths. Canonical Kanban task authoring should use `create_task_with_metadata` so explicit
+    // priority and owner requirements remain visible at the call site.
     #[allow(dead_code)]
     pub async fn create_task(
         &self,
@@ -5659,6 +5682,7 @@ impl TeamManager {
         for row in rows {
             messages.push(parse_team_actor_message_row(&row)?);
         }
+        mailbox::enrich_actor_messages(&self.db, &mut messages).await?;
         Ok(messages)
     }
 

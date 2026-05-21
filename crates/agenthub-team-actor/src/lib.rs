@@ -23,13 +23,17 @@ pub use mailbox::{
     TriageActorMessageCommand, TriageActorMessageResult,
 };
 pub use message::{
-    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorIdentityKind, ActorMessageHandlingDisposition,
-    ActorMessageKind, ActorMessageRecord, ActorMessageStatus, ActorMessageTaskRelation,
-    ActorMessageTopicMetadata, ActorMessageTransport, ActorThreadClaimStatus,
-    actor_message_payload_task_id, actor_message_payload_thread_root_message_id,
-    derive_actor_message_topic_metadata, infer_actor_identity_kind, infer_actor_message_kind,
-    parse_actor_message_handling_disposition, parse_actor_message_kind,
-    parse_actor_message_task_relation, parse_actor_thread_claim_status,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorIdentityKind, ActorMessageEnvelopeProjection,
+    ActorMessageHandlingDisposition, ActorMessageKind, ActorMessageRecord, ActorMessageSourceKind,
+    ActorMessageStatus, ActorMessageTaskRelation, ActorMessageTopicMetadata, ActorMessageTransport,
+    ActorThreadClaimStatus, actor_message_payload_conversation_id,
+    actor_message_payload_reply_target, actor_message_payload_requires_user_visible_reply,
+    actor_message_payload_source_surface, actor_message_payload_task_id,
+    actor_message_payload_thread_root_message_id, derive_actor_message_topic_metadata,
+    infer_actor_identity_kind, infer_actor_message_kind, infer_actor_message_source_kind,
+    normalize_actor_message_envelope_payload, parse_actor_message_handling_disposition,
+    parse_actor_message_kind, parse_actor_message_source_kind, parse_actor_message_task_relation,
+    parse_actor_thread_claim_status, project_actor_message_envelope,
 };
 pub use relay::{ActorMessageRelay, ActorRelayError};
 pub use transport::{ParseActorTransportError, parse_actor_transport};

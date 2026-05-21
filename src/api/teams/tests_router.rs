@@ -211,21 +211,30 @@ async fn teams_router_http_contract() {
         .expect("create task via router");
     assert_eq!(create_task_resp.status(), StatusCode::METHOD_NOT_ALLOWED);
 
-    let (seeded_task, _) = state
-        .teams
-        .create_task(
-            &team_id,
-            "router task",
-            "user:test",
-            json!({
+    let mut token_headers = HeaderMap::new();
+    token_headers.insert(
+        header::AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {token}")).expect("router auth header"),
+    );
+    let seeded_task = create_team_task(
+        &state,
+        &token_headers,
+        &team_id,
+        CreateTeamTaskRequest {
+            title: "router task".to_string(),
+            priority: "high".to_string(),
+            assigned_member_id: "planner".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
                 "token":"should-redact"
-            }),
-            "group_chat",
-            Some("kickoff"),
-        )
-        .await
-        .expect("seed task for router contract");
-    let task_id = seeded_task.id.clone();
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("kickoff".to_string()),
+        },
+    )
+    .await
+    .expect("seed canonical task for router contract");
+    let task_id = seeded_task.task.id.clone();
 
     let list_tasks_resp = app
         .clone()
@@ -257,7 +266,7 @@ async fn teams_router_http_contract() {
         Value::from("[redacted]")
     );
     assert_eq!(get_task_body["task"]["status"], Value::from("open"));
-    assert_eq!(get_task_body["task"]["assigned_member_id"], Value::Null);
+    assert_eq!(get_task_body["task"]["assigned_member_id"], Value::from("planner"));
     assert_eq!(get_task_body["latest_run"], Value::Null);
     assert!(
         get_task_body["task"]["created_by_actor_id"]

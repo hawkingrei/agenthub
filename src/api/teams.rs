@@ -11,8 +11,8 @@ use self::errors::{
 use agenthub_message_archive::{MessageDocumentKind, MessageSearchHit, MessageSearchQuery};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
-    ActorMailboxService, ActorMessageStatus, ActorSendRequest, ActorServiceErrorCode,
-    canonical_json, parse_actor_transport,
+    ActorMailboxService, ActorMessageHandlingDisposition, ActorMessageStatus, ActorSendRequest,
+    ActorServiceErrorCode, ActorTriageRequest, canonical_json, parse_actor_transport,
 };
 use agenthub_team_prompts::{
     DEFAULT_TEAM_COORDINATOR_PROMPT, DEFAULT_TEAM_WORKER_PROMPT, default_team_prompt_for_role,
@@ -37,11 +37,11 @@ use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport, TeamChannelRecord,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
-    TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskExecutionPlan, TeamTaskNoteRecord,
-    TeamTaskPriority, TeamTaskRecord, TeamTaskStepExecutionSpec, TeamThreadReplyRecord,
-    dispatch_actor_mailbox_immediate_hint, effective_team_member_skills,
-    ensure_team_runtime_started, force_team_member_new_session,
+    TeamDefinitionRecord, TeamMemoryFlushRequest, TeamReplyObligationRecord, TeamRunEventRecord,
+    TeamRunRecord, TeamRunStatus, TeamRuntimeRecord, TeamStepRecord, TeamStepStatus,
+    TeamTaskExecutionPlan, TeamTaskNoteRecord, TeamTaskPriority, TeamTaskRecord,
+    TeamTaskStepExecutionSpec, TeamThreadReplyRecord, dispatch_actor_mailbox_immediate_hint,
+    effective_team_member_skills, ensure_team_runtime_started, force_team_member_new_session,
     normalize_optional_idempotency_key_input, parse_task_execution_plan,
     plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
@@ -366,6 +366,12 @@ pub struct AckTeamRunMessageRequest {
     pub actor_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TriageTeamRunMessageRequest {
+    pub actor_id: String,
+    pub disposition: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct TeamRunSnapshotResponse {
     pub run: TeamRunRecord,
@@ -386,6 +392,7 @@ pub struct TeamMemberSnapshot {
     pub prompt: Option<String>,
     pub skills: Vec<String>,
     pub pending_inbox_count: i64,
+    pub reply_obligation_count: i64,
     pub status: String,
     pub latest_step: Option<TeamStepRecord>,
     pub session_id: Option<String>,
@@ -397,6 +404,8 @@ pub struct TeamMailboxSnapshot {
     pub pending: i64,
     pub delivered: i64,
     pub dead_letter: i64,
+    pub open_reply_obligation_count: i64,
+    pub open_reply_obligations: Vec<TeamReplyObligationRecord>,
     pub recent_messages: Vec<TeamActorMessageRecord>,
 }
 
@@ -535,6 +544,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/runs/{run_id}/messages/{message_id}/ack",
             post(ack_team_run_message),
+        )
+        .route(
+            "/runs/{run_id}/messages/{message_id}/triage",
+            post(triage_team_run_message),
         )
         .with_state(state)
 }
@@ -1355,6 +1368,11 @@ async fn get_team_run_snapshot(
         .list_actor_messages_for_run(&run_id, message_limit)
         .await
         .map_err(map_team_internal_error)?;
+    let reply_obligation_summary = state
+        .teams
+        .summarize_open_reply_obligations(&run_id)
+        .await
+        .map_err(map_team_internal_error)?;
     let run_member_overrides = extract_run_member_profile_overrides(&run.input);
 
     let mut members = Vec::with_capacity(member_specs.len());
@@ -1397,6 +1415,11 @@ async fn get_team_run_snapshot(
             prompt,
             skills: effective_skills,
             pending_inbox_count: pending_counts.get(&member.member_id).copied().unwrap_or(0),
+            reply_obligation_count: reply_obligation_summary
+                .open_by_actor
+                .get(&member.member_id)
+                .copied()
+                .unwrap_or(0),
             status,
             latest_step,
             session_id,
@@ -1408,6 +1431,8 @@ async fn get_team_run_snapshot(
         pending: status_counts.get("pending").copied().unwrap_or(0),
         delivered: status_counts.get("delivered").copied().unwrap_or(0),
         dead_letter: status_counts.get("dead_letter").copied().unwrap_or(0),
+        open_reply_obligation_count: reply_obligation_summary.open_total,
+        open_reply_obligations: reply_obligation_summary.open_items.clone(),
         recent_messages,
     };
 
@@ -1861,6 +1886,49 @@ async fn ack_team_run_message(
                 message_id,
                 ack_token: None,
                 result: None,
+            })
+            .await;
+        match result {
+            Ok(message) => return Ok(Json(message.message)),
+            Err(err) if err.code == ActorServiceErrorCode::NotFound => continue,
+            Err(err) => return Err(map_actor_service_api_error(err)),
+        }
+    }
+    Err(ApiError::not_found("message not found"))
+}
+
+fn parse_actor_triage_disposition(raw: &str) -> Result<ActorMessageHandlingDisposition, ApiError> {
+    match raw.trim() {
+        "ignored" => Ok(ActorMessageHandlingDisposition::Ignored),
+        "watching" => Ok(ActorMessageHandlingDisposition::Watching),
+        "claimed" => Ok(ActorMessageHandlingDisposition::Claimed),
+        "completed" => Ok(ActorMessageHandlingDisposition::Completed),
+        "released" => Ok(ActorMessageHandlingDisposition::Released),
+        _ => Err(ApiError::bad_request(
+            "invalid mailbox disposition; expected one of: ignored, watching, claimed, completed, released",
+        )),
+    }
+}
+
+async fn triage_team_run_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((run_id, message_id)): Path<(String, i64)>,
+    Json(payload): Json<TriageTeamRunMessageRequest>,
+) -> Result<Json<TeamActorMessageRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
+    let actor_ids =
+        resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
+    let disposition = parse_actor_triage_disposition(&payload.disposition)?;
+    let service = state.teams.actor_mailbox_service();
+    for actor_id in actor_ids {
+        let result = service
+            .actor_triage(ActorTriageRequest {
+                run_id: run_id.clone(),
+                actor_id,
+                message_id,
+                disposition: disposition.clone(),
             })
             .await;
         match result {
@@ -3258,6 +3326,10 @@ fn build_task_mailbox_forward_payload(
         Value::Object(map) => map.clone(),
         _ => Map::new(),
     };
+    let thread_root_message_id = payload_obj
+        .get("thread_root_message_id")
+        .and_then(Value::as_i64)
+        .filter(|value| *value > 0);
     let mention_values = mention_actor_ids
         .iter()
         .cloned()
@@ -3291,6 +3363,47 @@ fn build_task_mailbox_forward_payload(
         "task_conversation_id".to_string(),
         Value::String(message.conversation_id.clone()),
     );
+    payload_obj.insert(
+        "source_kind".to_string(),
+        Value::String("human".to_string()),
+    );
+    payload_obj.insert(
+        "source_surface".to_string(),
+        Value::String(if thread_root_message_id.is_some() {
+            "thread".to_string()
+        } else {
+            "conversation".to_string()
+        }),
+    );
+    payload_obj.insert("requires_user_visible_reply".to_string(), Value::Bool(true));
+    let mut reply_target = Map::new();
+    reply_target.insert(
+        "surface".to_string(),
+        Value::String(if thread_root_message_id.is_some() {
+            "thread".to_string()
+        } else {
+            "conversation".to_string()
+        }),
+    );
+    reply_target.insert(
+        "task_id".to_string(),
+        Value::String(message.task_id.clone()),
+    );
+    reply_target.insert(
+        "conversation_id".to_string(),
+        Value::String(message.conversation_id.clone()),
+    );
+    reply_target.insert(
+        "task_message_id".to_string(),
+        Value::Number(serde_json::Number::from(message.message_id)),
+    );
+    if let Some(thread_root_message_id) = thread_root_message_id {
+        reply_target.insert(
+            "thread_root_message_id".to_string(),
+            Value::Number(serde_json::Number::from(thread_root_message_id)),
+        );
+    }
+    payload_obj.insert("reply_target".to_string(), Value::Object(reply_target));
     Value::Object(payload_obj)
 }
 

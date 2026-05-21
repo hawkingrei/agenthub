@@ -2393,6 +2393,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_team_task_create_requires_assigned_member_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-create-missing-assignee");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
+        }
+        let args = vec![
+            "team-task-create".to_string(),
+            "--title".to_string(),
+            "Missing assignee".to_string(),
+            "--priority".to_string(),
+            "high".to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("team-task-create should require assigned member id");
+        assert!(err.to_string().contains("assigned_member_id is required"));
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
     fn parse_team_task_show_accepts_run_scope() {
         let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();

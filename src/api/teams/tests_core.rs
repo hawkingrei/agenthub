@@ -3308,6 +3308,630 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
 }
 
 #[tokio::test]
+async fn team_run_messages_api_triage_resolves_open_reply_obligation() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-triage-team".to_string(),
+            description: Some("triage reply obligation coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-triage".to_string()),
+            input: Some(json!({"prompt":"triage mailbox obligation"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let now = Utc::now().timestamp();
+    let payload_json = json!({
+        "type":"chat_message",
+        "text":"Please reply with the current status.",
+        "source_kind":"human",
+        "source_surface":"conversation",
+        "conversation_id":"conv-human-1",
+        "requires_user_visible_reply": true,
+        "reply_target": {
+            "surface":"conversation",
+            "conversation_id":"conv-human-1",
+            "task_message_id": 1
+        }
+    })
+    .to_string();
+    let message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("user")
+    .bind("worker-1")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert human mailbox message")
+    .last_insert_rowid();
+
+    let Json(snapshot_before) = get_team_run_snapshot(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get snapshot before triage");
+    assert_eq!(snapshot_before.mailbox.open_reply_obligation_count, 1);
+    assert_eq!(snapshot_before.mailbox.open_reply_obligations.len(), 1);
+    assert_eq!(
+        snapshot_before.mailbox.open_reply_obligations[0].message_id,
+        message_id
+    );
+    assert_eq!(
+        snapshot_before.mailbox.open_reply_obligations[0].agent_actor_id,
+        "worker-1"
+    );
+    assert_eq!(
+        snapshot_before.mailbox.open_reply_obligations[0].human_actor_id,
+        "user"
+    );
+    assert_eq!(
+        snapshot_before.mailbox.open_reply_obligations[0].source_surface,
+        "conversation"
+    );
+    let worker_before = snapshot_before
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-1")
+        .expect("find worker before triage");
+    assert_eq!(worker_before.reply_obligation_count, 1);
+
+    let Json(pending_before) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: "worker-1".to_string(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: Some(false),
+        }),
+    )
+    .await
+    .expect("list pending before triage");
+    assert_eq!(pending_before.len(), 1);
+    assert_eq!(pending_before[0].message_id, message_id);
+
+    let visible_reply_payload_json = json!({
+        "type":"chat_message",
+        "text":"Current status: deploy is in progress."
+    })
+    .to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'delivered', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("worker-1")
+    .bind("user")
+    .bind("default")
+    .bind("local")
+    .bind(&visible_reply_payload_json)
+    .bind(now + 1)
+    .execute(&state.db)
+    .await
+    .expect("insert visible human reply");
+
+    let Json(triaged) = triage_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), message_id)),
+        Json(TriageTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            disposition: "completed".to_string(),
+        }),
+    )
+    .await
+    .expect("triage mailbox message");
+    assert_eq!(
+        triaged.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Completed
+    );
+
+    let Json(pending_after) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: "worker-1".to_string(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: Some(false),
+        }),
+    )
+    .await
+    .expect("list pending after triage");
+    assert!(pending_after.is_empty());
+
+    let Json(snapshot_after) = get_team_run_snapshot(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get snapshot after triage");
+    assert_eq!(snapshot_after.mailbox.open_reply_obligation_count, 0);
+    assert!(snapshot_after.mailbox.open_reply_obligations.is_empty());
+    let worker_after = snapshot_after
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-1")
+        .expect("find worker after triage");
+    assert_eq!(worker_after.reply_obligation_count, 0);
+}
+
+#[tokio::test]
+async fn team_run_messages_api_triage_rejects_completed_without_visible_reply() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-complete-guard-team".to_string(),
+            description: Some("completed triage requires visible reply".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-complete-guard".to_string()),
+            input: Some(json!({"prompt":"completed requires visible reply"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let now = Utc::now().timestamp();
+    let payload_json = json!({
+        "type":"chat_message",
+        "text":"Please confirm the rollout result.",
+        "source_kind":"human",
+        "source_surface":"conversation",
+        "conversation_id":"conv-complete-guard-1",
+        "requires_user_visible_reply": true,
+        "reply_target": {
+            "surface":"conversation",
+            "conversation_id":"conv-complete-guard-1",
+            "task_message_id": 1
+        }
+    })
+    .to_string();
+    let message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("user")
+    .bind("worker-1")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert human mailbox message")
+    .last_insert_rowid();
+
+    let completed_err = triage_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), message_id)),
+        Json(TriageTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            disposition: "completed".to_string(),
+        }),
+    )
+    .await
+    .expect_err("completed triage without visible reply should fail");
+    assert_eq!(
+        completed_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+
+    let Json(snapshot_after) = get_team_run_snapshot(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get snapshot after rejected completion");
+    assert_eq!(snapshot_after.mailbox.open_reply_obligation_count, 1);
+    let worker_after = snapshot_after
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-1")
+        .expect("find worker after rejected completion");
+    assert_eq!(worker_after.reply_obligation_count, 1);
+}
+
+#[tokio::test]
+async fn team_run_messages_api_triage_ignored_clears_open_reply_obligation_without_visible_reply() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-ignore-team".to_string(),
+            description: Some("ignored triage clears reply obligation".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-ignore-guard".to_string()),
+            input: Some(json!({"prompt":"ignored clears reply obligation"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let now = Utc::now().timestamp();
+    let payload_json = json!({
+        "type":"chat_message",
+        "text":"Please respond with the rollout owner.",
+        "source_kind":"human",
+        "source_surface":"conversation",
+        "conversation_id":"conv-ignore-guard-1",
+        "requires_user_visible_reply": true,
+        "reply_target": {
+            "surface":"conversation",
+            "conversation_id":"conv-ignore-guard-1",
+            "task_message_id": 1
+        }
+    })
+    .to_string();
+    let message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("user")
+    .bind("worker-1")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert human mailbox message")
+    .last_insert_rowid();
+
+    let Json(ignored) = triage_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), message_id)),
+        Json(TriageTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            disposition: "ignored".to_string(),
+        }),
+    )
+    .await
+    .expect("ignored triage should succeed");
+    assert_eq!(
+        ignored.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Ignored
+    );
+
+    let Json(snapshot_after) = get_team_run_snapshot(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get snapshot after ignored triage");
+    assert_eq!(snapshot_after.mailbox.open_reply_obligation_count, 0);
+    assert!(snapshot_after.mailbox.open_reply_obligations.is_empty());
+    let worker_after = snapshot_after
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-1")
+        .expect("find worker after ignored triage");
+    assert_eq!(worker_after.reply_obligation_count, 0);
+}
+
+#[tokio::test]
+async fn team_run_messages_api_triage_surfaces_takeover_state() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-takeover-team".to_string(),
+            description: Some("triage takeover coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-takeover".to_string()),
+            input: Some(json!({"prompt":"triage takeover"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let now = Utc::now().timestamp();
+    let payload_json = json!({
+        "type":"chat_message",
+        "text":"Please take over the deployment thread.",
+        "source_kind":"human",
+        "source_surface":"thread",
+        "task_id":"task-mailbox-1",
+        "task_message_id": 77,
+        "thread_root_message_id": 42,
+        "conversation_id":"conv-takeover-1",
+        "requires_user_visible_reply": true,
+        "reply_target": {
+            "surface":"thread",
+            "task_id":"task-mailbox-1",
+            "conversation_id":"conv-takeover-1",
+            "task_message_id": 77,
+            "thread_root_message_id": 42
+        }
+    })
+    .to_string();
+    let message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("user")
+    .bind("worker-1")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert human takeover message")
+    .last_insert_rowid();
+
+    let Json(claimed) = triage_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), message_id)),
+        Json(TriageTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            disposition: "claimed".to_string(),
+        }),
+    )
+    .await
+    .expect("claim mailbox topic");
+    assert_eq!(
+        claimed.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Claimed
+    );
+    assert_eq!(
+        claimed.thread_claim_status,
+        Some(agenthub_team_actor::ActorThreadClaimStatus::Claimed)
+    );
+    assert_eq!(claimed.thread_owner_actor_id.as_deref(), Some("worker-1"));
+
+    let Json(snapshot_claimed) = get_team_run_snapshot(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get snapshot after claim");
+    assert_eq!(snapshot_claimed.mailbox.open_reply_obligation_count, 1);
+    let claimed_message = snapshot_claimed
+        .mailbox
+        .recent_messages
+        .iter()
+        .find(|message| message.message_id == message_id)
+        .expect("find claimed snapshot message");
+    assert_eq!(
+        claimed_message.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Claimed
+    );
+    assert_eq!(
+        claimed_message.thread_claim_status,
+        Some(agenthub_team_actor::ActorThreadClaimStatus::Claimed)
+    );
+    assert_eq!(claimed_message.thread_owner_actor_id.as_deref(), Some("worker-1"));
+
+    let Json(released) = triage_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), message_id)),
+        Json(TriageTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            disposition: "released".to_string(),
+        }),
+    )
+    .await
+    .expect("release mailbox topic");
+    assert_eq!(
+        released.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Released
+    );
+    assert_eq!(released.thread_claim_status, None);
+    assert_eq!(released.thread_owner_actor_id, None);
+
+    let Json(snapshot_released) = get_team_run_snapshot(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get snapshot after release");
+    assert_eq!(snapshot_released.mailbox.open_reply_obligation_count, 1);
+    let released_message = snapshot_released
+        .mailbox
+        .recent_messages
+        .iter()
+        .find(|message| message.message_id == message_id)
+        .expect("find released snapshot message");
+    assert_eq!(
+        released_message.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Released
+    );
+    assert_eq!(released_message.thread_claim_status, None);
+    assert_eq!(released_message.thread_owner_actor_id, None);
+}
+
+#[tokio::test]
 async fn team_run_messages_api_supports_human_actor_list_and_ack_fallback() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -5260,6 +5884,19 @@ async fn team_thread_reply_api_notifies_existing_thread_participants() {
             Value::from(root_message.message_id)
         );
         assert_eq!(forwarded_payload["mention_actor_ids"], json!(["worker-2"]));
+        assert_eq!(forwarded_payload["source_kind"], json!("human"));
+        assert_eq!(forwarded_payload["source_surface"], json!("thread"));
+        assert_eq!(forwarded_payload["requires_user_visible_reply"], json!(true));
+        assert_eq!(
+            forwarded_payload["reply_target"],
+            json!({
+                "surface":"thread",
+                "task_id": shared_thread.task.id,
+                "conversation_id": reply.message.conversation_id,
+                "task_message_id": reply.message.message_id,
+                "thread_root_message_id": root_message.message_id
+            })
+        );
     }
 }
 
@@ -6264,6 +6901,18 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
             directed_payload["mentioned_actor_ids"],
             Value::from(vec!["worker-1"])
         );
+        assert_eq!(directed_payload["source_kind"], json!("human"));
+        assert_eq!(directed_payload["source_surface"], json!("conversation"));
+        assert_eq!(directed_payload["requires_user_visible_reply"], json!(true));
+        assert_eq!(
+            directed_payload["reply_target"],
+            json!({
+                "surface":"conversation",
+                "task_id": task_created.task.id,
+                "conversation_id": directed_message.conversation_id,
+                "task_message_id": directed_message.message_id
+            })
+        );
         assert_eq!(
             directed_payload["text"],
             Value::from("@worker-1 please validate api contract")
@@ -6327,6 +6976,9 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
                 .map(|value| !value.trim().is_empty())
                 .unwrap_or(false)
         );
+        assert_eq!(payload["source_kind"], json!("human"));
+        assert_eq!(payload["source_surface"], json!("conversation"));
+        assert_eq!(payload["requires_user_visible_reply"], json!(true));
     }
 }
 
@@ -6442,6 +7094,18 @@ async fn team_task_messages_api_infers_direct_route_for_single_mention_and_norma
         json!("artifact://task-direct-default/full-review-1")
     );
     assert_eq!(payload["mention_actor_ids"], json!(["worker-1"]));
+    assert_eq!(payload["source_kind"], json!("human"));
+    assert_eq!(payload["source_surface"], json!("conversation"));
+    assert_eq!(payload["requires_user_visible_reply"], json!(true));
+    assert_eq!(
+        payload["reply_target"],
+        json!({
+            "surface":"conversation",
+            "task_id": task_created.task.id,
+            "conversation_id": message.conversation_id,
+            "task_message_id": message.message_id
+        })
+    );
 }
 
 #[tokio::test]

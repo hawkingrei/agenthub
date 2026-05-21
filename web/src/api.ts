@@ -456,8 +456,34 @@ export type TeamActorMessageRecord = {
   route?: unknown;
   payload: unknown;
   status: TeamActorMessageStatus;
+  handling_disposition?:
+    | "untriaged"
+    | "ignored"
+    | "watching"
+    | "claimed"
+    | "completed"
+    | "released";
+  handled_by_actor_id?: string | null;
+  thread_topic_key?: string | null;
+  thread_claim_status?: "claimed" | "released" | "completed" | null;
+  thread_owner_actor_id?: string | null;
+  thread_lease_expires_at?: number | null;
+  linked_task_id?: string | null;
+  linked_task_relation?: "spawned_task" | "related_task" | "evidence_for_task" | null;
   created_at: number;
   delivered_at?: number | null;
+};
+
+export type TeamReplyObligationRecord = {
+  message_id: number;
+  agent_actor_id: string;
+  human_actor_id: string;
+  source_surface: string;
+  reply_target?: unknown | null;
+  conversation_id?: string | null;
+  thread_root_message_id?: number | null;
+  text_excerpt?: string | null;
+  created_at: number;
 };
 
 export type TeamMemberSnapshot = {
@@ -468,6 +494,7 @@ export type TeamMemberSnapshot = {
   prompt?: string | null;
   skills: string[];
   pending_inbox_count: number;
+  reply_obligation_count?: number | null;
   status: string;
   latest_step?: TeamStepRecord | null;
   session_id?: string | null;
@@ -478,6 +505,8 @@ export type TeamMailboxSnapshot = {
   pending: number;
   delivered: number;
   dead_letter: number;
+  open_reply_obligation_count?: number | null;
+  open_reply_obligations?: TeamReplyObligationRecord[];
   recent_messages: TeamActorMessageRecord[];
 };
 
@@ -1276,6 +1305,20 @@ export const api = {
       `/api/teams/runs/${encodePathSegment(runId)}/messages/${encodePathSegment(messageId)}/ack`,
       token,
       { method: "POST", body: JSON.stringify({ actor_id: actorId }) }
+    ),
+  triageTeamRunMessage: (
+    token: string,
+    runId: string,
+    messageId: number,
+    payload: {
+      actor_id: string;
+      disposition: "ignored" | "watching" | "claimed" | "completed" | "released";
+    }
+  ) =>
+    apiFetch<TeamActorMessageRecord>(
+      `/api/teams/runs/${encodePathSegment(runId)}/messages/${encodePathSegment(messageId)}/triage`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
     ),
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
   listAgentNodes: (token: string) =>

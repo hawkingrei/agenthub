@@ -49,6 +49,14 @@ type TeamMailboxApiClient = {
     messageId: number,
     actorId: string
   ) => Promise<TeamActorMessageRecord>;
+  triageTeamRunMessage: (
+    runId: string,
+    messageId: number,
+    payload: {
+      actor_id: string;
+      disposition: "ignored" | "watching" | "claimed" | "completed" | "released";
+    }
+  ) => Promise<TeamActorMessageRecord>;
 };
 
 function collectPendingMessages(messages: TeamActorMessageRecord[]): TeamActorMessageRecord[] {
@@ -69,6 +77,8 @@ function buildTeamMailboxApiClient(token: string): TeamMailboxApiClient {
     sendTeamRunMessage: (runId, payload) => api.sendTeamRunMessage(token, runId, payload),
     ackTeamRunMessage: (runId, messageId, actorId) =>
       api.ackTeamRunMessage(token, runId, messageId, actorId),
+    triageTeamRunMessage: (runId, messageId, payload) =>
+      api.triageTeamRunMessage(token, runId, messageId, payload),
   };
 }
 
@@ -309,11 +319,45 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
     ]
   );
 
+  const onTriageMessage = useCallback(
+    async (
+      message: TeamActorMessageRecord,
+      disposition: "ignored" | "watching" | "claimed" | "completed" | "released"
+    ) => {
+      if (!activeRunIdForSelectedTeam) return;
+      setBusy(`triage-${message.message_id}-${disposition}`);
+      setError(null);
+      try {
+        await teamMailboxApi.triageTeamRunMessage(
+          activeRunIdForSelectedTeam,
+          message.message_id,
+          {
+            actor_id: message.to_actor_id,
+            disposition,
+          }
+        );
+        await refreshAfterMailboxAccept(message.to_actor_id);
+      } catch (err) {
+        setError(parseErrorMessage(err));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [
+      activeRunIdForSelectedTeam,
+      refreshAfterMailboxAccept,
+      setBusy,
+      setError,
+      teamMailboxApi,
+    ]
+  );
+
   return {
     onSendChatMessage,
     onSendMessage,
     onRefreshInbox,
     onAcceptMessage,
     onAcceptVisibleMessages,
+    onTriageMessage,
   };
 }
