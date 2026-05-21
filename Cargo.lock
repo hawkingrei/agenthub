@@ -10340,15 +10340,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "names"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bddcd3bf5144b6392de80e04c347cd7fab2508f6df16a85fc496ecd5cec39bc"
-dependencies = [
- "rand 0.8.6",
-]
-
-[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11919,15 +11910,15 @@ checksum = "e0c5ccf5294c6ccd63a74f1565028353830a9c2f5eb0c682c355c471726a6e3f"
 
 [[package]]
 name = "pyroscope"
-version = "2.0.3"
+version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc050356140f6c47dcaab95b6554ce12d461e4902c0a5baf4e888fcc86dcfaf4"
+checksum = "942d4561e34d24ce01820f6e6bdf1dcff292b6f0c03245b0b4e5b4f89dddd85d"
 dependencies = [
+ "framehop",
  "lazy_static",
  "libc",
  "libflate",
  "log",
- "names",
  "pprof-pyroscope-fork",
  "prost",
  "reqwest 0.13.3",
