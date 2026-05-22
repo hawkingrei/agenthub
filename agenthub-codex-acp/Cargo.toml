@@ -40,7 +40,7 @@ codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.132
 codex-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.132.0" }
 codex-login = { git = "https://github.com/openai/codex", tag = "rust-v0.132.0" }
 codex-models-manager = { git = "https://github.com/openai/codex", tag = "rust-v0.132.0" }
-codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.132.0" }
+codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.133.0" }
 codex-utils-approval-presets = { git = "https://github.com/openai/codex", tag = "rust-v0.132.0" }
 codex-utils-absolute-path = { git = "https://github.com/openai/codex", tag = "rust-v0.132.0" }
 codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.132.0" }
