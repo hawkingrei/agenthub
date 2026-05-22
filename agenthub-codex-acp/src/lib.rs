@@ -97,7 +97,7 @@ pub(crate) async fn build_environment_manager(
             "failed to resolve exec-server runtime paths: {err}"
         ))
     })?;
-    EnvironmentManager::from_codex_home(&config.codex_home, runtime_paths)
+    EnvironmentManager::from_codex_home(&config.codex_home, Some(runtime_paths))
         .await
         .map(Arc::new)
         .map_err(|err| {

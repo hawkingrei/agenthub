@@ -1061,7 +1061,8 @@ impl AppServerCodexThread {
         notification: ServerNotification,
     ) -> Result<Option<Event>, CodexErr> {
         match notification {
-            ServerNotification::ThreadNameUpdated(_) => Ok(None),
+            ServerNotification::ThreadNameUpdated(_)
+            | ServerNotification::ThreadSettingsUpdated(_) => Ok(None),
             ServerNotification::FileChangePatchUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
                 Ok(submission_id.map(|id| Event {
@@ -1319,6 +1320,7 @@ impl AppServerCodexThread {
                                 arguments: Some(arguments),
                             },
                             mcp_app_resource_uri,
+                            plugin_id: None,
                         }),
                     }),
                     (
@@ -1550,6 +1552,7 @@ impl AppServerCodexThread {
                                     arguments: Some(arguments),
                                 },
                                 mcp_app_resource_uri,
+                                plugin_id: None,
                                 duration: duration_ms
                                     .and_then(|ms| u64::try_from(ms).ok())
                                     .map(Duration::from_millis)
@@ -1800,30 +1803,17 @@ impl CodexThreadImpl for AppServerCodexThread {
             | Op::ThreadRollback { .. }) => self.submit_prompt_like(submission_id, op).await,
             Op::Interrupt => self.interrupt_active_turn().await,
             Op::Shutdown => self.shutdown_thread().await,
-            Op::OverrideTurnContext {
-                cwd,
-                approval_policy,
-                approvals_reviewer,
-                sandbox_policy,
-                model,
-                effort,
-                summary,
-                collaboration_mode: _,
-                personality,
-                windows_sandbox_level: _,
-                service_tier,
-                permission_profile: _,
-            } => {
+            Op::ThreadSettings { thread_settings } => {
                 self.override_turn_context(OverrideTurnContextArgs {
-                    cwd,
-                    approval_policy,
-                    approvals_reviewer,
-                    sandbox_policy,
-                    model,
-                    effort,
-                    summary,
-                    personality,
-                    service_tier,
+                    cwd: thread_settings.cwd,
+                    approval_policy: thread_settings.approval_policy,
+                    approvals_reviewer: thread_settings.approvals_reviewer,
+                    sandbox_policy: thread_settings.sandbox_policy,
+                    model: thread_settings.model,
+                    effort: thread_settings.effort,
+                    summary: thread_settings.summary,
+                    personality: thread_settings.personality,
+                    service_tier: thread_settings.service_tier,
                 })
                 .await
             }
@@ -3499,6 +3489,7 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 environments: None,
+                thread_settings: Default::default(),
             },
         )
         .expect_err("dirty custom tool history should block new turns");
@@ -3571,6 +3562,7 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 environments: None,
+                thread_settings: Default::default(),
             },
         )
         .expect("undo should clear the local pending tool guard");
@@ -3592,6 +3584,7 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 environments: None,
+                thread_settings: Default::default(),
             },
         )
         .expect("prepare submission")
