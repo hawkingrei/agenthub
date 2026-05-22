@@ -242,12 +242,18 @@ enum PreparedSubmissionStart {
 
 struct OverrideTurnContextArgs {
     cwd: Option<PathBuf>,
+    workspace_roots: Option<Vec<codex_utils_absolute_path::AbsolutePathBuf>>,
+    profile_workspace_roots: Option<Vec<codex_utils_absolute_path::AbsolutePathBuf>>,
     approval_policy: Option<codex_protocol::protocol::AskForApproval>,
     approvals_reviewer: Option<codex_protocol::config_types::ApprovalsReviewer>,
     sandbox_policy: Option<codex_protocol::protocol::SandboxPolicy>,
+    permission_profile: Option<codex_protocol::models::PermissionProfile>,
+    active_permission_profile: Option<codex_protocol::models::ActivePermissionProfile>,
+    windows_sandbox_level: Option<codex_protocol::config_types::WindowsSandboxLevel>,
     model: Option<String>,
     effort: Option<Option<ReasoningEffort>>,
     summary: Option<ReasoningSummary>,
+    collaboration_mode: Option<codex_protocol::config_types::CollaborationMode>,
     personality: Option<codex_protocol::config_types::Personality>,
     service_tier: Option<Option<String>>,
 }
@@ -667,6 +673,12 @@ impl AppServerCodexThread {
                     .set_legacy_sandbox_policy(sandbox_policy, updated_config.cwd.as_path())
                     .map_err(|err| CodexErr::Fatal(err.to_string()))?;
             }
+            if let Some(permission_profile) = args.permission_profile {
+                updated_config
+                    .permissions
+                    .set_permission_profile(permission_profile)
+                    .map_err(|err| CodexErr::Fatal(err.to_string()))?;
+            }
             if let Some(model) = args.model {
                 updated_config.model = Some(model);
             }
@@ -681,6 +693,31 @@ impl AppServerCodexThread {
             }
             if let Some(service_tier) = args.service_tier {
                 updated_config.service_tier = service_tier;
+            }
+            if args.workspace_roots.is_some() {
+                warn!(
+                    "ignoring ThreadSettings.workspace_roots because app-server resume params do not expose runtime workspace roots through the ACP adapter yet"
+                );
+            }
+            if args.profile_workspace_roots.is_some() {
+                warn!(
+                    "ignoring ThreadSettings.profile_workspace_roots because app-server resume params do not expose profile workspace roots through the ACP adapter yet"
+                );
+            }
+            if args.active_permission_profile.is_some() {
+                warn!(
+                    "ignoring ThreadSettings.active_permission_profile because the ACP adapter currently reapplies only the resolved permission profile snapshot"
+                );
+            }
+            if args.windows_sandbox_level.is_some() {
+                warn!(
+                    "ignoring ThreadSettings.windows_sandbox_level because the ACP adapter does not currently project Windows sandbox level into app-server resume params"
+                );
+            }
+            if args.collaboration_mode.is_some() {
+                warn!(
+                    "ignoring ThreadSettings.collaboration_mode because the ACP adapter does not currently project collaboration mode into app-server resume params"
+                );
             }
 
             let request_id = next_request_id(&mut state);
@@ -1806,12 +1843,18 @@ impl CodexThreadImpl for AppServerCodexThread {
             Op::ThreadSettings { thread_settings } => {
                 self.override_turn_context(OverrideTurnContextArgs {
                     cwd: thread_settings.cwd,
+                    workspace_roots: thread_settings.workspace_roots,
+                    profile_workspace_roots: thread_settings.profile_workspace_roots,
                     approval_policy: thread_settings.approval_policy,
                     approvals_reviewer: thread_settings.approvals_reviewer,
                     sandbox_policy: thread_settings.sandbox_policy,
+                    permission_profile: thread_settings.permission_profile,
+                    active_permission_profile: thread_settings.active_permission_profile,
+                    windows_sandbox_level: thread_settings.windows_sandbox_level,
                     model: thread_settings.model,
                     effort: thread_settings.effort,
                     summary: thread_settings.summary,
+                    collaboration_mode: thread_settings.collaboration_mode,
                     personality: thread_settings.personality,
                     service_tier: thread_settings.service_tier,
                 })

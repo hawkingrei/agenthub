@@ -3339,21 +3339,9 @@ impl<A: Auth> ThreadActor<A> {
                 "config".to_string(),
                 Op::ThreadSettings {
                     thread_settings: ThreadSettingsOverrides {
-                        cwd: None,
-                        workspace_roots: None,
-                        profile_workspace_roots: None,
-                        approval_policy: None,
-                        approvals_reviewer: None,
-                        sandbox_policy: None,
-                        permission_profile: None,
-                        active_permission_profile: None,
-                        windows_sandbox_level: None,
                         model: Some(model_to_use.clone()),
                         effort: Some(effort_to_use),
-                        summary: None,
-                        service_tier: None,
-                        collaboration_mode: None,
-                        personality: None,
+                        ..Default::default()
                     },
                 },
             )
@@ -3395,21 +3383,8 @@ impl<A: Auth> ThreadActor<A> {
                 "config".to_string(),
                 Op::ThreadSettings {
                     thread_settings: ThreadSettingsOverrides {
-                        cwd: None,
-                        workspace_roots: None,
-                        profile_workspace_roots: None,
-                        approval_policy: None,
-                        approvals_reviewer: None,
-                        sandbox_policy: None,
-                        permission_profile: None,
-                        active_permission_profile: None,
-                        windows_sandbox_level: None,
-                        model: None,
                         effort: Some(Some(effort)),
-                        summary: None,
-                        service_tier: None,
-                        collaboration_mode: None,
-                        personality: None,
+                        ..Default::default()
                     },
                 },
             )
@@ -3659,21 +3634,9 @@ impl<A: Auth> ThreadActor<A> {
                 "config".to_string(),
                 Op::ThreadSettings {
                     thread_settings: ThreadSettingsOverrides {
-                        cwd: None,
-                        workspace_roots: None,
-                        profile_workspace_roots: None,
                         approval_policy: Some(preset.approval),
-                        approvals_reviewer: None,
                         sandbox_policy: Some(legacy_sandbox_policy.clone()),
-                        permission_profile: None,
-                        active_permission_profile: None,
-                        windows_sandbox_level: None,
-                        model: None,
-                        effort: None,
-                        summary: None,
-                        service_tier: None,
-                        collaboration_mode: None,
-                        personality: None,
+                        ..Default::default()
                     },
                 },
             )
@@ -3733,21 +3696,9 @@ impl<A: Auth> ThreadActor<A> {
                 "config".to_string(),
                 Op::ThreadSettings {
                     thread_settings: ThreadSettingsOverrides {
-                        cwd: None,
-                        workspace_roots: None,
-                        profile_workspace_roots: None,
-                        approval_policy: None,
-                        approvals_reviewer: None,
-                        sandbox_policy: None,
-                        permission_profile: None,
-                        active_permission_profile: None,
-                        windows_sandbox_level: None,
                         model: Some(model_to_use.clone()),
                         effort: Some(effort_to_use),
-                        summary: None,
-                        service_tier: None,
-                        collaboration_mode: None,
-                        personality: None,
+                        ..Default::default()
                     },
                 },
             )
