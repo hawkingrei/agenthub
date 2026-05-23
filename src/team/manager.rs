@@ -2,6 +2,7 @@ mod archive_documents;
 mod archive_migration;
 mod channels;
 mod codec;
+mod context_artifact_support;
 mod context_artifacts;
 mod conversation;
 mod mailbox;
