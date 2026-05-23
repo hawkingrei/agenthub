@@ -10,6 +10,16 @@ members = [
     "crates/agenthub-team-actor",
     "crates/agenthub-team-domain",
     "crates/agenthub-team-prompts",
+    "crates/agenthub-agent-domain",
+    "crates/agenthub-agent-event-codec",
+    "crates/agenthub-auth-domain",
+    "crates/agenthub-auth-passkeys",
+    "crates/agenthub-auth-store",
+    "crates/agenthub-diagnostics",
+    "crates/agenthub-doctor-cli",
+    "crates/agenthub-internal-tls",
+    "crates/agenthub-linkers",
+    "crates/agenthub-push",
     "crates/agenthub-logging",
     "crates/agenthub-config",
     "crates/agenthub-db",
@@ -87,6 +97,16 @@ agenthub-text = { path = "crates/agenthub-text" }
 agenthub-team-actor = { path = "crates/agenthub-team-actor" }
 agenthub-team-domain = { path = "crates/agenthub-team-domain" }
 agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
+agenthub-agent-domain = { path = "crates/agenthub-agent-domain" }
+agenthub-agent-event-codec = { path = "crates/agenthub-agent-event-codec" }
+agenthub-auth-domain = { path = "crates/agenthub-auth-domain" }
+agenthub-auth-passkeys = { path = "crates/agenthub-auth-passkeys" }
+agenthub-auth-store = { path = "crates/agenthub-auth-store" }
+agenthub-diagnostics = { path = "crates/agenthub-diagnostics" }
+agenthub-doctor-cli = { path = "crates/agenthub-doctor-cli" }
+agenthub-internal-tls = { path = "crates/agenthub-internal-tls" }
+agenthub-linkers = { path = "crates/agenthub-linkers" }
+agenthub-push = { path = "crates/agenthub-push" }
 agenthub-logging = { path = "crates/agenthub-logging" }
 agenthub-message-archive = { path = "crates/agenthub-message-archive" }
 agenthub-config = { path = "crates/agenthub-config" }

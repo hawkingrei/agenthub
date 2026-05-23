@@ -1,0 +1,16 @@
+load("@crate_index//:defs.bzl", "aliases", "all_crate_deps")
+load("@rules_rust//rust:defs.bzl", "rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "agenthub_auth_store",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "agenthub_auth_store",
+    edition = "2024",
+    aliases = aliases(),
+    deps = all_crate_deps(normal = True) + [
+        "//crates/agenthub-auth-domain:agenthub_auth_domain",
+    ],
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)

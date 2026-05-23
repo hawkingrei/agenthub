@@ -1,0 +1,16 @@
+[package]
+name = "agenthub-internal-tls"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+rand = "0.10"
+rcgen = "0.14"
+rustls = "0.23.40"
+tracing = "0.1"
+
+[dev-dependencies]
+uuid = { version = "1", features = ["v4"] }

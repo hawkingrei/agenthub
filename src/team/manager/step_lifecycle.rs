@@ -1,0 +1,1626 @@
+use serde_json::Value;
+use sqlx::Sqlite;
+use uuid::Uuid;
+
+use super::context_artifacts::{
+    ContextArtifactOwner, ContinuitySnapshot, RuntimeStateSnapshotWritePlan,
+};
+use super::run_status_sync::{load_run_status_sync_meta_tx, sync_linked_task_status_tx};
+use super::{
+    CONTINUITY_MAX_HISTORY_CHARS, CONTINUITY_MAX_SUMMARY_CHARS, CONTINUITY_MODE_DEFAULT,
+    CONTINUITY_MODE_RESET, TEAM_RUN_CONTINUITY_MODE_VALUES, TeamManager, TeamRunEventRecord,
+    TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus, TeamTaskStepExecutionSpec,
+    maybe_attach_context_artifact_pointer, merge_json_value, parse_task_execution_plan,
+    parse_team_step_row, redact_sensitive_json, team_step_status_to_str,
+    validate_task_execution_steps,
+};
+use agenthub_text::truncate_chars;
+use chrono::Utc;
+
+#[derive(Debug, Clone)]
+pub(super) struct MaterializedRunStepTemplate {
+    pub(super) step_key: String,
+    pub(super) member_id: String,
+    pub(super) depends_on: Vec<String>,
+    pub(super) input: Option<Value>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ReconcileRoundRuntime {
+    pub(super) current_round: i64,
+    pub(super) goal: Option<String>,
+    pub(super) acceptance: Vec<String>,
+    pub(super) execution: TeamTaskStepExecutionSpec,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ReconcileRoundArtifactSnapshot<'a> {
+    pub(super) round: i64,
+    pub(super) status: &'a str,
+    pub(super) summary: Option<&'a str>,
+    pub(super) output: Option<&'a Value>,
+    pub(super) input: Option<&'a Value>,
+    pub(super) reason: Option<&'a str>,
+    pub(super) error_text: Option<&'a str>,
+}
+
+pub(super) fn build_step_runtime_handle_event_payload(
+    step: &TeamStepRecord,
+    status: &'static str,
+) -> Value {
+    serde_json::json!({
+        "step_id": step.id,
+        "step_key": step.step_key,
+        "status": status,
+        "runtime_handle_id": step.runtime_handle_id,
+    })
+}
+
+pub(super) fn build_continuity_event_payload(
+    continuity_state: &crate::team::TeamMemberContinuityStateRecord,
+    step: &TeamStepRecord,
+    continuity_mode: &str,
+    artifact_offload_status: &str,
+) -> Value {
+    serde_json::json!({
+        "team_id": continuity_state.team_id,
+        "member_id": continuity_state.member_id,
+        "step_id": step.id,
+        "step_key": step.step_key,
+        "mode": continuity_mode,
+        "source_run_id": continuity_state.source_run_id,
+        "source_runtime_handle_id": continuity_state.source_session_id,
+        "summary_chars": continuity_state.summary_text.chars().count(),
+        "artifact_offload_status": artifact_offload_status,
+    })
+}
+
+fn build_materialized_step_input(
+    goal: Option<String>,
+    acceptance: Vec<String>,
+    execution: TeamTaskStepExecutionSpec,
+) -> Option<Value> {
+    let goal = goal
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let acceptance = acceptance
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+
+    if goal.is_none() && acceptance.is_empty() && execution == TeamTaskStepExecutionSpec::default()
+    {
+        return None;
+    }
+
+    Some(serde_json::json!({
+        "task_execution_step": {
+            "goal": goal,
+            "acceptance": acceptance,
+            "execution": execution,
+            "round_state": {
+                "current_round": 0_i64,
+            },
+        }
+    }))
+}
+
+fn parse_task_execution_step_input(
+    input: Option<&Value>,
+) -> anyhow::Result<(Option<String>, Vec<String>, TeamTaskStepExecutionSpec)> {
+    let Some(step) = input
+        .and_then(|value| value.get("task_execution_step"))
+        .and_then(Value::as_object)
+    else {
+        return Ok((None, Vec::new(), TeamTaskStepExecutionSpec::default()));
+    };
+    let goal = step
+        .get("goal")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let acceptance = step
+        .get("acceptance")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let execution = step
+        .get("execution")
+        .map(|value| serde_json::from_value::<TeamTaskStepExecutionSpec>(value.clone()))
+        .transpose()?
+        .unwrap_or_default();
+    Ok((goal, acceptance, execution))
+}
+
+pub(super) fn validate_materialized_run_step_templates(
+    team_spec: &Value,
+    steps: &[MaterializedRunStepTemplate],
+    scope: &str,
+) -> anyhow::Result<()> {
+    let execution_steps = steps
+        .iter()
+        .map(|step| {
+            let (goal, acceptance, execution) =
+                parse_task_execution_step_input(step.input.as_ref())?;
+            Ok(agenthub_team_domain::TeamTaskExecutionStepSpec {
+                step_key: step.step_key.clone(),
+                member_id: step.member_id.clone(),
+                depends_on: step.depends_on.clone(),
+                goal,
+                acceptance,
+                execution,
+            })
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    validate_task_execution_steps(team_spec, &execution_steps, scope)
+}
+
+pub(super) fn merge_step_input(
+    current_input: Option<&Value>,
+    next_input: Option<Value>,
+) -> Option<Value> {
+    next_input.map(|next_input| {
+        if let Some(current_input) = current_input
+            && next_input.get("task_execution_step").is_none()
+        {
+            let mut merged = current_input.clone();
+            merge_json_value(&mut merged, &next_input);
+            return merged;
+        }
+        next_input
+    })
+}
+
+pub(super) fn extract_reconcile_round_runtime(
+    input: Option<&Value>,
+) -> Option<ReconcileRoundRuntime> {
+    let root = input?.as_object()?;
+    let step = root.get("task_execution_step")?.as_object()?;
+    let execution = step
+        .get("execution")
+        .map(|value| serde_json::from_value::<TeamTaskStepExecutionSpec>(value.clone()))
+        .transpose()
+        .ok()?
+        .unwrap_or_default();
+    if execution.mode != super::super::TeamTaskStepExecutionMode::ReconcileLoop {
+        return None;
+    }
+    let current_round = step
+        .get("round_state")
+        .and_then(Value::as_object)
+        .and_then(|round_state| round_state.get("current_round"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let goal = step
+        .get("goal")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let acceptance = step
+        .get("acceptance")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Some(ReconcileRoundRuntime {
+        current_round,
+        goal,
+        acceptance,
+        execution,
+    })
+}
+
+pub(super) fn build_reconcile_round_started_input(input: Option<&Value>) -> Option<(Value, i64)> {
+    let runtime = extract_reconcile_round_runtime(input)?;
+    let next_round = runtime.current_round + 1;
+    let mut next = input.cloned().unwrap_or_else(|| serde_json::json!({}));
+    let root = next.as_object_mut()?;
+    let step = root.get_mut("task_execution_step")?.as_object_mut()?;
+    let round_state = step
+        .entry("round_state".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let round_state = round_state.as_object_mut()?;
+    round_state.insert("current_round".to_string(), Value::from(next_round));
+    round_state.insert("latest_status".to_string(), Value::from("working"));
+    round_state.remove("latest_outcome");
+    round_state.remove("latest_summary");
+    Some((next, next_round))
+}
+
+pub(super) fn build_reconcile_round_finished_input(
+    input: Option<&Value>,
+    outcome: &str,
+    summary: Option<&str>,
+) -> Option<(Value, i64)> {
+    let runtime = extract_reconcile_round_runtime(input)?;
+    let mut next = input.cloned().unwrap_or_else(|| serde_json::json!({}));
+    let root = next.as_object_mut()?;
+    let step = root.get_mut("task_execution_step")?.as_object_mut()?;
+    let round_state = step
+        .entry("round_state".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let round_state = round_state.as_object_mut()?;
+    round_state.insert(
+        "current_round".to_string(),
+        Value::from(runtime.current_round.max(1)),
+    );
+    round_state.insert("latest_status".to_string(), Value::from(outcome));
+    round_state.insert("latest_outcome".to_string(), Value::from(outcome));
+    if let Some(summary) = summary.map(str::trim).filter(|value| !value.is_empty()) {
+        round_state.insert("latest_summary".to_string(), Value::from(summary));
+    } else {
+        round_state.remove("latest_summary");
+    }
+    Some((next, runtime.current_round.max(1)))
+}
+
+pub(super) fn summarize_reconcile_output(output: Option<&Value>) -> Option<String> {
+    let output = output?;
+    output
+        .as_object()
+        .and_then(|obj| obj.get("summary"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            let text = output.to_string();
+            let trimmed = text.trim();
+            (!trimmed.is_empty()).then(|| truncate_chars(trimmed, 240))
+        })
+}
+
+pub(super) fn extract_materialized_run_step_templates_from_input(
+    input: &Value,
+) -> anyhow::Result<Vec<MaterializedRunStepTemplate>> {
+    let Some(input_obj) = input.as_object() else {
+        return Ok(Vec::new());
+    };
+    let Some(raw_steps) = input_obj.get("step_template") else {
+        return Ok(Vec::new());
+    };
+    let steps = raw_steps
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("run input step_template must be an array"))?;
+    let mut out = Vec::with_capacity(steps.len());
+    for step in steps {
+        let step_obj = step
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("run input step_template entries must be objects"))?;
+        let step_key = step_obj
+            .get("step_key")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("run input step_template[].step_key is required"))?;
+        let member_id = step_obj
+            .get("member_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("run input step_template[].member_id is required"))?;
+        let depends_on = step_obj
+            .get("depends_on")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let goal = step_obj
+            .get("goal")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let acceptance = step_obj
+            .get("acceptance")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let execution = step_obj
+            .get("execution")
+            .map(|value| serde_json::from_value::<TeamTaskStepExecutionSpec>(value.clone()))
+            .transpose()?
+            .unwrap_or_default();
+        out.push(MaterializedRunStepTemplate {
+            step_key: step_key.to_string(),
+            member_id: member_id.to_string(),
+            depends_on,
+            input: build_materialized_step_input(goal, acceptance, execution),
+        });
+    }
+    Ok(out)
+}
+
+pub(super) fn build_materialized_run_step_templates_from_task_execution_plan(
+    task: &TeamTaskRecord,
+) -> anyhow::Result<Vec<MaterializedRunStepTemplate>> {
+    let Some(plan) = parse_task_execution_plan(&task.context)? else {
+        return Ok(Vec::new());
+    };
+    Ok(plan
+        .steps
+        .into_iter()
+        .map(|step| MaterializedRunStepTemplate {
+            step_key: step.step_key.trim().to_string(),
+            member_id: step.member_id.trim().to_string(),
+            depends_on: step
+                .depends_on
+                .into_iter()
+                .map(|value| value.trim().to_string())
+                .collect(),
+            input: build_materialized_step_input(step.goal, step.acceptance, step.execution),
+        })
+        .collect())
+}
+
+pub(super) async fn insert_materialized_run_steps_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+    steps: &[MaterializedRunStepTemplate],
+    now: i64,
+) -> anyhow::Result<Vec<TeamRunEventRecord>> {
+    let mut events = Vec::with_capacity(steps.len());
+    for step in steps {
+        let step_id = Uuid::new_v4().to_string();
+        let depends_on_json = serde_json::to_string(&step.depends_on)?;
+        let input_json = step.input.as_ref().map(serde_json::to_string).transpose()?;
+        sqlx::query(
+            r#"
+            INSERT INTO team_steps (
+                id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json
+            )
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, ?6, ?7)
+            "#,
+        )
+        .bind(&step_id)
+        .bind(run_id)
+        .bind(&step.step_key)
+        .bind(&step.member_id)
+        .bind(team_step_status_to_str(&TeamStepStatus::Submitted))
+        .bind(depends_on_json)
+        .bind(input_json)
+        .execute(&mut **tx)
+        .await?;
+
+        let payload = serde_json::json!({
+            "step_id": step_id,
+            "step_key": step.step_key,
+            "member_id": step.member_id,
+            "status": team_step_status_to_str(&TeamStepStatus::Submitted),
+        });
+        let event = TeamManager::append_run_event_tx(
+            tx,
+            run_id,
+            Some(&step_id),
+            "step_submitted",
+            now,
+            &payload,
+        )
+        .await?;
+        events.push(event);
+    }
+    Ok(events)
+}
+
+pub(super) async fn load_step_record_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    step_id: &str,
+) -> anyhow::Result<TeamStepRecord> {
+    let step_row = sqlx::query(
+        r#"
+        SELECT
+            id,
+            run_id,
+            step_key,
+            member_id,
+            remote_task_id,
+            status,
+            attempt,
+            depends_on_json,
+            input_json,
+            output_json,
+            error_text,
+            started_at,
+            ended_at
+        FROM team_steps
+        WHERE id = ?1
+        "#,
+    )
+    .bind(step_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    parse_team_step_row(&step_row)
+}
+
+pub(super) fn normalize_run_input_continuity(mut input: Value) -> Value {
+    let Some(input_obj) = input.as_object_mut() else {
+        return input;
+    };
+    let continuity_value = input_obj
+        .entry("continuity".to_string())
+        .or_insert_with(|| serde_json::json!({ "mode": CONTINUITY_MODE_DEFAULT }));
+    if !continuity_value.is_object() {
+        *continuity_value = serde_json::json!({ "mode": CONTINUITY_MODE_DEFAULT });
+        return input;
+    }
+    let continuity_obj = continuity_value
+        .as_object_mut()
+        .expect("continuity object must be object");
+    let mode = continuity_obj
+        .get("mode")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(CONTINUITY_MODE_DEFAULT);
+    let normalized_mode = if TEAM_RUN_CONTINUITY_MODE_VALUES.contains(&mode) {
+        mode
+    } else {
+        CONTINUITY_MODE_DEFAULT
+    };
+    continuity_obj.insert(
+        "mode".to_string(),
+        Value::String(normalized_mode.to_string()),
+    );
+
+    if let Some(raw) = continuity_obj
+        .get("max_history_items")
+        .and_then(Value::as_i64)
+    {
+        if !(1..=200).contains(&raw) {
+            continuity_obj.remove("max_history_items");
+        }
+    } else {
+        continuity_obj.remove("max_history_items");
+    }
+
+    if let Some(raw) = continuity_obj.get("max_chars").and_then(Value::as_i64) {
+        if !(256..=20000).contains(&raw) {
+            continuity_obj.remove("max_chars");
+        }
+    } else {
+        continuity_obj.remove("max_chars");
+    }
+
+    input
+}
+
+pub(super) fn extract_continuity_mode_from_input(input: &Value) -> String {
+    let Some(input_obj) = input.as_object() else {
+        return CONTINUITY_MODE_DEFAULT.to_string();
+    };
+    let mode = input_obj
+        .get("continuity")
+        .and_then(Value::as_object)
+        .and_then(|continuity| continuity.get("mode"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(CONTINUITY_MODE_DEFAULT);
+    if mode == CONTINUITY_MODE_RESET {
+        CONTINUITY_MODE_RESET.to_string()
+    } else if TEAM_RUN_CONTINUITY_MODE_VALUES.contains(&mode) {
+        mode.to_string()
+    } else {
+        CONTINUITY_MODE_DEFAULT.to_string()
+    }
+}
+
+pub(super) fn build_continuity_snapshot(output: Option<&Value>) -> ContinuitySnapshot {
+    let redacted_output = output
+        .map(redact_sensitive_json)
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let summary_seed = redacted_output
+        .as_object()
+        .and_then(|obj| obj.get("summary"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| redacted_output.as_str().map(str::to_string))
+        .unwrap_or_else(|| redacted_output.to_string());
+    let summary_text = truncate_chars(summary_seed.as_str(), CONTINUITY_MAX_SUMMARY_CHARS);
+
+    let output_excerpt_seed = redacted_output.to_string();
+    let history_window = serde_json::json!({
+        "schema_version": 1,
+        "output_excerpt": truncate_chars(
+            output_excerpt_seed.as_str(),
+            CONTINUITY_MAX_HISTORY_CHARS
+        ),
+    });
+    ContinuitySnapshot {
+        summary_text,
+        history_window,
+        redacted_output,
+        redacted_output_text: output_excerpt_seed,
+    }
+}
+
+pub(super) fn should_offload_continuity_output(raw_output: &str) -> bool {
+    raw_output.chars().count() > CONTINUITY_MAX_HISTORY_CHARS
+}
+
+impl TeamManager {
+    #[allow(dead_code)]
+    pub async fn start_step(
+        &self,
+        step_id: &str,
+        runtime_handle_id: Option<&str>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let reconcile_started = build_reconcile_round_started_input(current.input.as_ref()).map(
+            |(next_input, round)| {
+                (
+                    serde_json::to_string(&next_input)
+                        .expect("reconcile round input should serialize"),
+                    round,
+                )
+            },
+        );
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                status = 'working',
+                remote_task_id = COALESCE(?1, remote_task_id),
+                input_json = COALESCE(?2, input_json),
+                started_at = COALESCE(started_at, ?3)
+            WHERE id = ?4 AND status IN ('submitted', 'input_required')
+            "#,
+        )
+        .bind(runtime_handle_id)
+        .bind(
+            reconcile_started
+                .as_ref()
+                .map(|(input_json, _)| input_json.as_str()),
+        )
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
+
+        if update.rows_affected() > 0 {
+            let run_update = sqlx::query(
+                r#"
+                UPDATE team_runs
+                SET status = 'working', started_at = COALESCE(started_at, ?1)
+                WHERE id = ?2 AND status IN ('submitted', 'input_required')
+                "#,
+            )
+            .bind(now)
+            .bind(&step.run_id)
+            .execute(&mut *tx)
+            .await?;
+            if run_update.rows_affected() > 0 {
+                let run_payload = serde_json::json!({
+                    "status": "working",
+                });
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    None,
+                    "run_working",
+                    now,
+                    &run_payload,
+                )
+                .await?;
+                archive_events.push(event);
+            }
+
+            let step_payload = build_step_runtime_handle_event_payload(&step, "working");
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_working",
+                now,
+                &step_payload,
+            )
+            .await?;
+            archive_events.push(event);
+
+            if let Some((_, round)) = reconcile_started.as_ref() {
+                let runtime = extract_reconcile_round_runtime(step.input.as_ref());
+                let round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "working",
+                    "goal": runtime.as_ref().and_then(|item| item.goal.clone()),
+                    "acceptance_count": runtime.as_ref().map(|item| item.acceptance.len()).unwrap_or(0),
+                    "max_rounds": runtime.and_then(|item| item.execution.max_rounds),
+                });
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_started",
+                    now,
+                    &round_payload,
+                )
+                .await?;
+                archive_events.push(event);
+            }
+        }
+
+        tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
+        Ok(step)
+    }
+
+    #[allow(dead_code)]
+    pub async fn set_step_input_required(
+        &self,
+        step_id: &str,
+        reason: Option<&str>,
+        input: Option<Value>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let summary = reason
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| summarize_reconcile_output(input.as_ref()));
+        let merged_input = merge_step_input(current.input.as_ref(), input);
+        let reconcile_finished = build_reconcile_round_finished_input(
+            merged_input.as_ref().or(current.input.as_ref()),
+            "input_required",
+            summary.as_deref(),
+        );
+        let input_json = reconcile_finished
+            .as_ref()
+            .map(|(value, _)| serde_json::to_string(value))
+            .transpose()?
+            .or_else(|| {
+                merged_input
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .ok()
+                    .flatten()
+            });
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                status = 'input_required',
+                input_json = COALESCE(?1, input_json),
+                error_text = COALESCE(?2, error_text),
+                started_at = COALESCE(started_at, ?3)
+            WHERE id = ?4 AND status IN ('submitted', 'working')
+            "#,
+        )
+        .bind(input_json)
+        .bind(reason)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
+
+        if update.rows_affected() > 0 {
+            let mut round_artifact_pointer = None;
+            let mut round_artifact_offload_reason: Option<&str> = None;
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                match self
+                    .persist_reconcile_round_artifact_tx(
+                        &mut tx,
+                        &step,
+                        ReconcileRoundArtifactSnapshot {
+                            round: *round,
+                            status: "input_required",
+                            summary: summary.as_deref(),
+                            output: None,
+                            input: step.input.as_ref(),
+                            reason: step.error_text.as_deref(),
+                            error_text: None,
+                        },
+                        now,
+                    )
+                    .await
+                {
+                    Ok(Some(pointer)) => round_artifact_pointer = Some(pointer),
+                    Ok(None) => round_artifact_offload_reason = Some("agent_workdir_missing"),
+                    Err(err) => {
+                        tracing::warn!(
+                            run_id = %step.run_id,
+                            step_id = %step.id,
+                            member_id = %step.member_id,
+                            "team manager failed to persist reconcile round artifact: {}",
+                            err
+                        );
+                        round_artifact_offload_reason = Some("artifact_write_failed");
+                    }
+                }
+            }
+
+            let run_update = sqlx::query(
+                r#"
+                UPDATE team_runs
+                SET status = 'input_required', started_at = COALESCE(started_at, ?1)
+                WHERE id = ?2 AND status IN ('submitted', 'working')
+                "#,
+            )
+            .bind(now)
+            .bind(&step.run_id)
+            .execute(&mut *tx)
+            .await?;
+            if run_update.rows_affected() > 0 {
+                let run_payload = serde_json::json!({
+                    "status": "input_required",
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                });
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    None,
+                    "run_input_required",
+                    now,
+                    &run_payload,
+                )
+                .await?;
+                archive_events.push(event);
+                let (team_id, run_input) =
+                    load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
+                sync_linked_task_status_tx(
+                    &mut tx,
+                    &team_id,
+                    &run_input,
+                    TeamTaskStatus::Waiting,
+                    now,
+                    true,
+                )
+                .await?;
+            }
+
+            let step_payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "status": "input_required",
+                "reason": step.error_text,
+                "input": step.input,
+            });
+            let mut step_payload = step_payload;
+            maybe_attach_context_artifact_pointer(
+                &mut step_payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_input_required",
+                now,
+                &step_payload,
+            )
+            .await?;
+            archive_events.push(event);
+
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                let round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "input_required",
+                    "summary": summary,
+                });
+                let mut round_payload = round_payload;
+                maybe_attach_context_artifact_pointer(
+                    &mut round_payload,
+                    round_artifact_pointer.as_ref(),
+                    round_artifact_offload_reason,
+                );
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_finished",
+                    now,
+                    &round_payload,
+                )
+                .await?;
+                archive_events.push(event);
+            }
+        }
+
+        tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
+        Ok(step)
+    }
+
+    #[allow(dead_code)]
+    pub async fn resume_step(
+        &self,
+        step_id: &str,
+        input: Option<Value>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let merged_input = merge_step_input(current.input.as_ref(), input);
+        let started_input =
+            build_reconcile_round_started_input(merged_input.as_ref().or(current.input.as_ref()));
+        let input_json = started_input
+            .as_ref()
+            .map(|(value, _)| serde_json::to_string(value))
+            .transpose()?
+            .or_else(|| {
+                merged_input
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .ok()
+                    .flatten()
+            });
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                status = 'working',
+                input_json = COALESCE(?1, input_json),
+                error_text = NULL,
+                started_at = COALESCE(started_at, ?2)
+            WHERE id = ?3 AND status = 'input_required'
+            "#,
+        )
+        .bind(input_json)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
+
+        if update.rows_affected() > 0 {
+            let run_update = sqlx::query(
+                r#"
+                UPDATE team_runs
+                SET status = 'working', started_at = COALESCE(started_at, ?1)
+                WHERE id = ?2 AND status = 'input_required'
+                "#,
+            )
+            .bind(now)
+            .bind(&step.run_id)
+            .execute(&mut *tx)
+            .await?;
+            if run_update.rows_affected() > 0 {
+                let run_payload = serde_json::json!({
+                    "status": "working",
+                });
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    None,
+                    "run_working",
+                    now,
+                    &run_payload,
+                )
+                .await?;
+                archive_events.push(event);
+                let (team_id, run_input) =
+                    load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
+                sync_linked_task_status_tx(
+                    &mut tx,
+                    &team_id,
+                    &run_input,
+                    TeamTaskStatus::InProgress,
+                    now,
+                    false,
+                )
+                .await?;
+            }
+
+            let step_payload = build_step_runtime_handle_event_payload(&step, "working");
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_resumed",
+                now,
+                &step_payload,
+            )
+            .await?;
+            archive_events.push(event);
+
+            if let Some((_, round)) = started_input.as_ref() {
+                let runtime = extract_reconcile_round_runtime(step.input.as_ref());
+                let round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "working",
+                    "goal": runtime.as_ref().and_then(|item| item.goal.clone()),
+                    "acceptance_count": runtime.as_ref().map(|item| item.acceptance.len()).unwrap_or(0),
+                    "max_rounds": runtime.and_then(|item| item.execution.max_rounds),
+                });
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_started",
+                    now,
+                    &round_payload,
+                )
+                .await?;
+                archive_events.push(event);
+            }
+        }
+
+        tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
+        Ok(step)
+    }
+
+    #[allow(dead_code)]
+    pub async fn continue_step(
+        &self,
+        step_id: &str,
+        output: Option<Value>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        if current.status != TeamStepStatus::Working {
+            anyhow::bail!("continue_step requires a working reconcile step");
+        }
+        let runtime = extract_reconcile_round_runtime(current.input.as_ref())
+            .ok_or_else(|| anyhow::anyhow!("continue_step requires reconcile_loop step input"))?;
+        let current_round = runtime.current_round.max(1);
+        if let Some(max_rounds) = runtime.execution.max_rounds
+            && current_round >= max_rounds
+        {
+            anyhow::bail!(
+                "reconcile_loop step reached max_rounds={max_rounds}; use complete, input_required, or fail instead"
+            );
+        }
+
+        let summary = summarize_reconcile_output(output.as_ref());
+        let finished_input = build_reconcile_round_finished_input(
+            current.input.as_ref(),
+            "continued",
+            summary.as_deref(),
+        )
+        .ok_or_else(|| anyhow::anyhow!("continue_step requires reconcile_loop round state"))?;
+        let started_input = build_reconcile_round_started_input(Some(&finished_input.0))
+            .ok_or_else(|| anyhow::anyhow!("continue_step failed to start next reconcile round"))?;
+        let output_json = output.as_ref().map(serde_json::to_string).transpose()?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                input_json = ?1,
+                output_json = COALESCE(?2, output_json),
+                error_text = NULL,
+                started_at = COALESCE(started_at, ?3)
+            WHERE id = ?4 AND status = 'working'
+            "#,
+        )
+        .bind(serde_json::to_string(&started_input.0)?)
+        .bind(output_json)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
+
+        if update.rows_affected() > 0 {
+            let mut round_artifact_pointer = None;
+            let mut round_artifact_offload_reason: Option<&str> = None;
+            match self
+                .persist_reconcile_round_artifact_tx(
+                    &mut tx,
+                    &step,
+                    ReconcileRoundArtifactSnapshot {
+                        round: finished_input.1,
+                        status: "continued",
+                        summary: summary.as_deref(),
+                        output: output.as_ref(),
+                        input: Some(&finished_input.0),
+                        reason: None,
+                        error_text: None,
+                    },
+                    now,
+                )
+                .await
+            {
+                Ok(Some(pointer)) => round_artifact_pointer = Some(pointer),
+                Ok(None) => round_artifact_offload_reason = Some("agent_workdir_missing"),
+                Err(err) => {
+                    tracing::warn!(
+                        run_id = %step.run_id,
+                        step_id = %step.id,
+                        member_id = %step.member_id,
+                        "team manager failed to persist reconcile round artifact: {}",
+                        err
+                    );
+                    round_artifact_offload_reason = Some("artifact_write_failed");
+                }
+            }
+
+            let continue_payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "status": "working",
+                "continued_from_round": finished_input.1,
+                "continued_to_round": started_input.1,
+                "summary": summary,
+            });
+            let mut continue_payload = continue_payload;
+            maybe_attach_context_artifact_pointer(
+                &mut continue_payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
+            if round_artifact_pointer.is_none()
+                && let (Some(output), Some(payload_obj)) =
+                    (output.as_ref(), continue_payload.as_object_mut())
+            {
+                payload_obj.insert("output".to_string(), output.clone());
+                payload_obj.insert(
+                    "output_inlined_because".to_string(),
+                    serde_json::json!(
+                        round_artifact_offload_reason.unwrap_or("artifact_pointer_missing")
+                    ),
+                );
+            }
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_continued",
+                now,
+                &continue_payload,
+            )
+            .await?;
+            archive_events.push(event);
+
+            let round_finished_payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "round": finished_input.1,
+                "status": "continued",
+                "summary": summary,
+            });
+            let mut round_finished_payload = round_finished_payload;
+            maybe_attach_context_artifact_pointer(
+                &mut round_finished_payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
+            if round_artifact_pointer.is_none()
+                && let (Some(output), Some(payload_obj)) =
+                    (output.as_ref(), round_finished_payload.as_object_mut())
+            {
+                payload_obj.insert("output".to_string(), output.clone());
+                payload_obj.insert(
+                    "output_inlined_because".to_string(),
+                    serde_json::json!(
+                        round_artifact_offload_reason.unwrap_or("artifact_pointer_missing")
+                    ),
+                );
+            }
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_reconcile_round_finished",
+                now,
+                &round_finished_payload,
+            )
+            .await?;
+            archive_events.push(event);
+
+            let round_started_payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "round": started_input.1,
+                "status": "working",
+                "goal": runtime.goal,
+                "acceptance_count": runtime.acceptance.len(),
+                "max_rounds": runtime.execution.max_rounds,
+            });
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_reconcile_round_started",
+                now,
+                &round_started_payload,
+            )
+            .await?;
+            archive_events.push(event);
+        }
+
+        tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
+        Ok(step)
+    }
+
+    #[allow(dead_code)]
+    pub async fn complete_step(
+        &self,
+        step_id: &str,
+        output: Option<Value>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let summary = summarize_reconcile_output(output.as_ref());
+        let reconcile_finished = build_reconcile_round_finished_input(
+            current.input.as_ref(),
+            "completed",
+            summary.as_deref(),
+        );
+        let output_json = output.as_ref().map(serde_json::to_string).transpose()?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                status = 'completed',
+                input_json = COALESCE(?1, input_json),
+                output_json = ?2,
+                ended_at = COALESCE(ended_at, ?3)
+            WHERE id = ?4 AND status IN ('working', 'input_required')
+            "#,
+        )
+        .bind(
+            reconcile_finished
+                .as_ref()
+                .map(|(value, _)| serde_json::to_string(value))
+                .transpose()?,
+        )
+        .bind(output_json)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut runtime_state_snapshot: Option<RuntimeStateSnapshotWritePlan> = None;
+        let mut archive_events = Vec::new();
+
+        if update.rows_affected() > 0 {
+            let mut round_artifact_pointer = None;
+            let mut round_artifact_offload_reason: Option<&str> = None;
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                match self
+                    .persist_reconcile_round_artifact_tx(
+                        &mut tx,
+                        &step,
+                        ReconcileRoundArtifactSnapshot {
+                            round: *round,
+                            status: "completed",
+                            summary: summary.as_deref(),
+                            output: step.output.as_ref(),
+                            input: step.input.as_ref(),
+                            reason: None,
+                            error_text: None,
+                        },
+                        now,
+                    )
+                    .await
+                {
+                    Ok(Some(pointer)) => round_artifact_pointer = Some(pointer),
+                    Ok(None) => round_artifact_offload_reason = Some("agent_workdir_missing"),
+                    Err(err) => {
+                        tracing::warn!(
+                            run_id = %step.run_id,
+                            step_id = %step.id,
+                            member_id = %step.member_id,
+                            "team manager failed to persist reconcile round artifact: {}",
+                            err
+                        );
+                        round_artifact_offload_reason = Some("artifact_write_failed");
+                    }
+                }
+            }
+
+            let payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "status": "completed",
+            });
+            let mut payload = payload;
+            maybe_attach_context_artifact_pointer(
+                &mut payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_completed",
+                now,
+                &payload,
+            )
+            .await?;
+            archive_events.push(event);
+
+            let (team_id, run_input) = load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
+            let continuity_mode = extract_continuity_mode_from_input(&run_input);
+            let mut continuity_snapshot = build_continuity_snapshot(step.output.as_ref());
+            let mut artifact_pointer_for_event: Option<Value> = None;
+            let mut artifact_offload_status = "inline";
+            let mut artifact_offload_reason: Option<&str> = None;
+            if should_offload_continuity_output(continuity_snapshot.redacted_output_text.as_str()) {
+                match self
+                    .persist_continuity_artifact_tx(
+                        &mut tx,
+                        ContextArtifactOwner {
+                            team_id: &team_id,
+                            run_id: &step.run_id,
+                            member_id: &step.member_id,
+                            session_id: step.runtime_handle_id.as_deref(),
+                        },
+                        &continuity_snapshot,
+                        now,
+                    )
+                    .await
+                {
+                    Ok(Some(pointer)) => {
+                        let pointer_payload = serde_json::json!({
+                            "kind": pointer.artifact_kind,
+                            "path": pointer.relative_path,
+                            "size_bytes": pointer.artifact_size_bytes,
+                            "checksum": pointer.content_checksum,
+                        });
+                        if let Some(history_obj) =
+                            continuity_snapshot.history_window.as_object_mut()
+                        {
+                            history_obj
+                                .insert("artifact_pointer".to_string(), pointer_payload.clone());
+                        }
+                        artifact_pointer_for_event = Some(pointer_payload);
+                        artifact_offload_status = "persisted";
+                    }
+                    Ok(None) => {
+                        artifact_offload_reason = Some("agent_workdir_missing");
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            run_id = %step.run_id,
+                            step_id = %step.id,
+                            member_id = %step.member_id,
+                            "team manager failed to persist continuity artifact: {}",
+                            err
+                        );
+                        artifact_offload_reason = Some("artifact_write_failed");
+                    }
+                }
+            }
+            let continuity_state = crate::team::TeamMemberContinuityStateRecord {
+                team_id: team_id.clone(),
+                member_id: step.member_id.clone(),
+                source_run_id: step.run_id.clone(),
+                source_session_id: step.runtime_handle_id.clone(),
+                summary_text: continuity_snapshot.summary_text,
+                history_window: continuity_snapshot.history_window,
+                updated_at: now,
+            };
+            Self::upsert_member_continuity_state_tx(&mut tx, &continuity_state).await?;
+            runtime_state_snapshot = self
+                .prepare_runtime_state_snapshot_write_tx(
+                    &mut tx,
+                    ContextArtifactOwner {
+                        team_id: &team_id,
+                        run_id: &step.run_id,
+                        member_id: &step.member_id,
+                        session_id: step.runtime_handle_id.as_deref(),
+                    },
+                    &continuity_mode,
+                    &continuity_state,
+                )
+                .await?;
+
+            let mut continuity_payload = build_continuity_event_payload(
+                &continuity_state,
+                &step,
+                &continuity_mode,
+                artifact_offload_status,
+            );
+            if let Some(payload_obj) = continuity_payload.as_object_mut() {
+                if let Some(pointer_payload) = artifact_pointer_for_event.as_ref() {
+                    payload_obj.insert("artifact_pointer".to_string(), pointer_payload.clone());
+                }
+                if let Some(reason) = artifact_offload_reason {
+                    payload_obj.insert(
+                        "artifact_offload_reason".to_string(),
+                        Value::String(reason.to_string()),
+                    );
+                }
+            }
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "continuity_state_updated",
+                now,
+                &continuity_payload,
+            )
+            .await?;
+            archive_events.push(event);
+
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                let mut round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "completed",
+                    "summary": summary,
+                });
+                maybe_attach_context_artifact_pointer(
+                    &mut round_payload,
+                    round_artifact_pointer.as_ref(),
+                    round_artifact_offload_reason,
+                );
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_finished",
+                    now,
+                    &round_payload,
+                )
+                .await?;
+                archive_events.push(event);
+            }
+
+            let non_completed_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*)
+                FROM team_steps
+                WHERE run_id = ?1 AND status <> 'completed'
+                "#,
+            )
+            .bind(&step.run_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            if non_completed_count == 0 {
+                let run_update = sqlx::query(
+                    r#"
+                    UPDATE team_runs
+                    SET status = 'completed', ended_at = COALESCE(ended_at, ?1)
+                    WHERE id = ?2 AND status IN ('submitted', 'working', 'input_required')
+                    "#,
+                )
+                .bind(now)
+                .bind(&step.run_id)
+                .execute(&mut *tx)
+                .await?;
+
+                if run_update.rows_affected() > 0 {
+                    let run_payload = serde_json::json!({
+                        "status": "completed",
+                    });
+                    let event = Self::append_run_event_tx(
+                        &mut tx,
+                        &step.run_id,
+                        None,
+                        "run_completed",
+                        now,
+                        &run_payload,
+                    )
+                    .await?;
+                    archive_events.push(event);
+                    sync_linked_task_status_tx(
+                        &mut tx,
+                        &team_id,
+                        &run_input,
+                        TeamTaskStatus::InReview,
+                        now,
+                        true,
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
+        if let Some(plan) = runtime_state_snapshot {
+            Self::write_runtime_state_snapshot_best_effort(plan).await?;
+        }
+        Ok(step)
+    }
+
+    #[allow(dead_code)]
+    pub async fn fail_step(
+        &self,
+        step_id: &str,
+        error_text: &str,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let reconcile_finished = build_reconcile_round_finished_input(
+            current.input.as_ref(),
+            "failed",
+            Some(error_text),
+        );
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                status = 'failed',
+                input_json = COALESCE(?1, input_json),
+                error_text = ?2,
+                ended_at = COALESCE(ended_at, ?3)
+            WHERE id = ?4 AND status IN ('submitted', 'working', 'input_required')
+            "#,
+        )
+        .bind(
+            reconcile_finished
+                .as_ref()
+                .map(|(value, _)| serde_json::to_string(value))
+                .transpose()?,
+        )
+        .bind(error_text)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut archive_events = Vec::new();
+
+        if update.rows_affected() > 0 {
+            let mut round_artifact_pointer = None;
+            let mut round_artifact_offload_reason: Option<&str> = None;
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                match self
+                    .persist_reconcile_round_artifact_tx(
+                        &mut tx,
+                        &step,
+                        ReconcileRoundArtifactSnapshot {
+                            round: *round,
+                            status: "failed",
+                            summary: step.error_text.as_deref(),
+                            output: None,
+                            input: step.input.as_ref(),
+                            reason: None,
+                            error_text: step.error_text.as_deref(),
+                        },
+                        now,
+                    )
+                    .await
+                {
+                    Ok(Some(pointer)) => round_artifact_pointer = Some(pointer),
+                    Ok(None) => round_artifact_offload_reason = Some("agent_workdir_missing"),
+                    Err(err) => {
+                        tracing::warn!(
+                            run_id = %step.run_id,
+                            step_id = %step.id,
+                            member_id = %step.member_id,
+                            "team manager failed to persist reconcile round artifact: {}",
+                            err
+                        );
+                        round_artifact_offload_reason = Some("artifact_write_failed");
+                    }
+                }
+            }
+
+            let payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "status": "failed",
+                "error_text": step.error_text,
+            });
+            let mut payload = payload;
+            maybe_attach_context_artifact_pointer(
+                &mut payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
+            let event = Self::append_run_event_tx(
+                &mut tx,
+                &step.run_id,
+                Some(&step.id),
+                "step_failed",
+                now,
+                &payload,
+            )
+            .await?;
+            archive_events.push(event);
+
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                let round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "failed",
+                    "summary": step.error_text,
+                });
+                let mut round_payload = round_payload;
+                maybe_attach_context_artifact_pointer(
+                    &mut round_payload,
+                    round_artifact_pointer.as_ref(),
+                    round_artifact_offload_reason,
+                );
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    Some(&step.id),
+                    "step_reconcile_round_finished",
+                    now,
+                    &round_payload,
+                )
+                .await?;
+                archive_events.push(event);
+            }
+
+            let run_update = sqlx::query(
+                r#"
+                UPDATE team_runs
+                SET status = 'failed', ended_at = COALESCE(ended_at, ?1)
+                WHERE id = ?2 AND status IN ('submitted', 'working', 'input_required')
+                "#,
+            )
+            .bind(now)
+            .bind(&step.run_id)
+            .execute(&mut *tx)
+            .await?;
+
+            if run_update.rows_affected() > 0 {
+                let run_payload = serde_json::json!({
+                    "status": "failed",
+                });
+                let event = Self::append_run_event_tx(
+                    &mut tx,
+                    &step.run_id,
+                    None,
+                    "run_failed",
+                    now,
+                    &run_payload,
+                )
+                .await?;
+                archive_events.push(event);
+            }
+        }
+
+        tx.commit().await?;
+        self.spawn_archive_team_run_events(archive_events);
+        Ok(step)
+    }
+}

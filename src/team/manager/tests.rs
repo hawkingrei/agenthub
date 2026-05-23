@@ -3,18 +3,15 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
-use super::{
-    TeamManager, TeamRunResumeError, message_archive_body_text,
-    task_conversation_payload_correlation_id,
-};
+use super::{TeamManager, message_archive_body_text, task_conversation_payload_correlation_id};
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL};
 use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
-    TeamRunEventRecord, TeamRunStatus, TeamStepStatus, TeamTaskAssignmentUpdate,
-    TeamTaskContextPatch, TeamTaskListQuery, TeamTaskStatus,
+    TeamRunEventRecord, TeamRunResumeError, TeamRunStatus, TeamStepStatus,
+    TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskListQuery, TeamTaskStatus,
 };
 use agenthub_db::AgentEventDbRouter;
 use agenthub_message_archive::{

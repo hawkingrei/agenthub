@@ -1,74 +1,25 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use argon2::password_hash::SaltString;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use chrono::{Duration, Utc};
-use sqlx::{Row, SqlitePool};
-use tokio::sync::RwLock;
+use sqlx::SqlitePool;
 use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::*;
 
-#[derive(Debug)]
-pub enum RegisterStartResult {
-    Challenge {
-        challenge_id: String,
-        options: Box<CreationChallengeResponse>,
-    },
-    Complete {
-        user_id: String,
-        role: String,
-    },
-}
+mod pending;
 
-#[derive(Debug)]
-pub enum LoginStartResult {
-    Challenge {
-        challenge_id: String,
-        options: Box<RequestChallengeResponse>,
-    },
-    Registration {
-        challenge_id: String,
-        options: Box<CreationChallengeResponse>,
-        role: String,
-    },
-    Complete {
-        user_id: String,
-        role: String,
-    },
-}
+pub use agenthub_auth_domain::{LoginStartResult, RegisterStartResult, UserRecord};
+use agenthub_auth_domain::{hash_password, verify_password};
+use agenthub_auth_passkeys::PasskeyStore;
+use agenthub_auth_store::AuthStore;
+use pending::{PendingChallenge, PendingChallengeStore};
 
 #[derive(Clone)]
 pub struct AuthService {
-    db: SqlitePool,
+    store: AuthStore,
+    passkeys: PasskeyStore,
     webauthn: Arc<Webauthn>,
-    pending: Arc<RwLock<HashMap<String, PendingChallenge>>>,
+    pending: PendingChallengeStore,
     passkey_enabled: bool,
-}
-
-#[derive(Debug)]
-pub struct UserRecord {
-    pub id: String,
-    pub username: String,
-    pub display_name: String,
-    pub role: String,
-    pub password_hash: Option<String>,
-}
-
-#[derive(Debug)]
-enum PendingChallenge {
-    Registration {
-        user_id: String,
-        state: PasskeyRegistration,
-        role: String,
-        device_name: Option<String>,
-        user_agent: Option<String>,
-    },
-    Authentication {
-        user_id: String,
-        state: PasskeyAuthentication,
-    },
 }
 
 impl AuthService {
@@ -84,38 +35,20 @@ impl AuthService {
         let webauthn = builder.build()?;
 
         Ok(Self {
-            db,
+            store: AuthStore::new(db.clone()),
+            passkeys: PasskeyStore::new(db),
             webauthn: Arc::new(webauthn),
-            pending: Arc::new(RwLock::new(HashMap::new())),
+            pending: PendingChallengeStore::default(),
             passkey_enabled,
         })
     }
 
     pub async fn is_passkey_enabled(&self) -> anyhow::Result<bool> {
-        let row = sqlx::query("SELECT value FROM system_config WHERE key = 'passkey_enabled'")
-            .fetch_optional(&self.db)
-            .await?;
-
-        if let Some(row) = row {
-            let val: String = row.get("value");
-            Ok(val == "true")
-        } else {
-            Ok(self.passkey_enabled)
-        }
+        self.store.is_passkey_enabled(self.passkey_enabled).await
     }
 
     pub async fn set_passkey_enabled(&self, enabled: bool) -> anyhow::Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO system_config (key, value)
-            VALUES ('passkey_enabled', ?1)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            "#,
-        )
-        .bind(if enabled { "true" } else { "false" })
-        .execute(&self.db)
-        .await?;
-        Ok(())
+        self.store.set_passkey_enabled(enabled).await
     }
 
     pub async fn register_start(
@@ -148,17 +81,9 @@ impl AuthService {
             }
             if let Some(password) = password {
                 let password_hash = hash_password(password)?;
-                sqlx::query(
-                    r#"
-                    UPDATE users
-                    SET password_hash = ?1
-                    WHERE id = ?2
-                    "#,
-                )
-                .bind(password_hash)
-                .bind(&existing.id)
-                .execute(&self.db)
-                .await?;
+                self.store
+                    .update_user_password_hash(&existing.id, &password_hash)
+                    .await?;
             }
             return self
                 .start_registration_for_user(
@@ -173,26 +98,20 @@ impl AuthService {
         }
 
         let user_id = Uuid::new_v4().to_string();
-        let now = Utc::now().timestamp();
         let password_hash = if let Some(password) = password {
             Some(hash_password(password)?)
         } else {
             None
         };
-        sqlx::query(
-            r#"
-            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-        )
-        .bind(&user_id)
-        .bind(username)
-        .bind(display_name)
-        .bind(role)
-        .bind(password_hash)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
+        self.store
+            .insert_user(
+                &user_id,
+                username,
+                display_name,
+                role,
+                password_hash.as_deref(),
+            )
+            .await?;
 
         self.start_registration_for_user(
             &user_id,
@@ -218,7 +137,9 @@ impl AuthService {
                 && let Some(name) = device_name
             {
                 let user_agent = user_agent.unwrap_or_else(|| "unknown".to_string());
-                self.insert_device(user_id, &name, &user_agent).await?;
+                self.store
+                    .insert_device(user_id, &name, &user_agent)
+                    .await?;
             }
             return Ok(RegisterStartResult::Complete {
                 user_id: user_id.to_string(),
@@ -231,17 +152,16 @@ impl AuthService {
                 .start_passkey_registration(user_uuid, username, display_name, None)?;
 
         let challenge_id = Uuid::new_v4().to_string();
-        let mut pending = self.pending.write().await;
-        pending.insert(
-            challenge_id.clone(),
-            PendingChallenge::Registration {
-                user_id: user_id.to_string(),
+        self.pending
+            .insert_registration(
+                challenge_id.clone(),
+                user_id.to_string(),
                 state,
-                role: role.to_string(),
+                role.to_string(),
                 device_name,
                 user_agent,
-            },
-        );
+            )
+            .await;
 
         Ok(RegisterStartResult::Challenge {
             challenge_id,
@@ -254,12 +174,11 @@ impl AuthService {
         challenge_id: &str,
         cred: RegisterPublicKeyCredential,
     ) -> anyhow::Result<String> {
-        let pending = {
-            let mut guard = self.pending.write().await;
-            guard.remove(challenge_id)
-        };
-
-        let pending = pending.ok_or_else(|| anyhow::anyhow!("invalid challenge"))?;
+        let pending = self
+            .pending
+            .take(challenge_id)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("invalid challenge"))?;
         let PendingChallenge::Registration {
             user_id,
             state,
@@ -277,15 +196,17 @@ impl AuthService {
 
         let passkey = self.webauthn.finish_passkey_registration(&cred, &state)?;
 
-        let mut passkeys = self.load_passkeys(&user_id).await?;
+        let mut passkeys = self.passkeys.load_passkeys(&user_id).await?;
         passkeys.push(passkey);
-        self.save_passkeys(&user_id, &passkeys).await?;
+        self.passkeys.save_passkeys(&user_id, &passkeys).await?;
 
         if role == "device"
             && let Some(name) = device_name
         {
             let user_agent = user_agent.unwrap_or_else(|| "unknown".to_string());
-            self.insert_device(&user_id, &name, &user_agent).await?;
+            self.store
+                .insert_device(&user_id, &name, &user_agent)
+                .await?;
         }
 
         Ok(user_id)
@@ -324,7 +245,7 @@ impl AuthService {
             });
         }
 
-        let passkeys = self.load_passkeys(&user.id).await?;
+        let passkeys = self.passkeys.load_passkeys(&user.id).await?;
         if passkeys.is_empty() {
             // No passkeys registered, but passkeys are enabled globally.
             // Let the user "join" by providing a registration challenge.
@@ -355,14 +276,9 @@ impl AuthService {
 
         let (rcr, state) = self.webauthn.start_passkey_authentication(&passkeys)?;
         let challenge_id = Uuid::new_v4().to_string();
-        let mut pending = self.pending.write().await;
-        pending.insert(
-            challenge_id.clone(),
-            PendingChallenge::Authentication {
-                user_id: user.id,
-                state,
-            },
-        );
+        self.pending
+            .insert_authentication(challenge_id.clone(), user.id, state)
+            .await;
 
         Ok(LoginStartResult::Challenge {
             challenge_id,
@@ -375,12 +291,11 @@ impl AuthService {
         challenge_id: &str,
         cred: PublicKeyCredential,
     ) -> anyhow::Result<String> {
-        let pending = {
-            let mut guard = self.pending.write().await;
-            guard.remove(challenge_id)
-        };
-
-        let pending = pending.ok_or_else(|| anyhow::anyhow!("invalid challenge"))?;
+        let pending = self
+            .pending
+            .take(challenge_id)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("invalid challenge"))?;
         let PendingChallenge::Authentication { user_id, state } = pending else {
             anyhow::bail!("invalid challenge type");
         };
@@ -389,7 +304,7 @@ impl AuthService {
             anyhow::bail!("passkey authentication is disabled");
         }
 
-        let mut passkeys = self.load_passkeys(&user_id).await?;
+        let mut passkeys = self.passkeys.load_passkeys(&user_id).await?;
         let result = self.webauthn.finish_passkey_authentication(&cred, &state)?;
         let mut changed = false;
         for passkey in &mut passkeys {
@@ -398,137 +313,27 @@ impl AuthService {
             }
         }
         if changed {
-            self.save_passkeys(&user_id, &passkeys).await?;
+            self.passkeys.save_passkeys(&user_id, &passkeys).await?;
         }
 
         Ok(user_id)
     }
 
     pub async fn create_session(&self, user_id: &str) -> anyhow::Result<String> {
-        let token = Uuid::new_v4().to_string();
-        let now = Utc::now().timestamp();
-        let expires_at = (Utc::now() + Duration::hours(12)).timestamp();
-
-        sqlx::query(
-            r#"
-            INSERT INTO auth_sessions (token, user_id, created_at, expires_at, revoked_at)
-            VALUES (?1, ?2, ?3, ?4, NULL)
-            "#,
-        )
-        .bind(&token)
-        .bind(user_id)
-        .bind(now)
-        .bind(expires_at)
-        .execute(&self.db)
-        .await?;
-
-        Ok(token)
+        self.store.create_session(user_id).await
     }
 
     pub async fn validate_session(&self, token: &str) -> anyhow::Result<UserRecord> {
-        let row = sqlx::query(
-            r#"
-            SELECT u.id, u.username, u.display_name, u.role, u.password_hash
-            FROM auth_sessions s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.token = ?1 AND s.expires_at > ?2 AND s.revoked_at IS NULL
-            "#,
-        )
-        .bind(token)
-        .bind(Utc::now().timestamp())
-        .fetch_one(&self.db)
-        .await?;
-
-        let user = UserRecord {
-            id: row.get("id"),
-            username: row.get("username"),
-            display_name: row.get("display_name"),
-            role: row.get("role"),
-            password_hash: row.get("password_hash"),
-        };
-
-        if user.role == "device" {
-            let active = sqlx::query(
-                r#"
-                SELECT id FROM devices
-                WHERE user_id = ?1 AND status = 'active'
-                LIMIT 1
-                "#,
-            )
-            .bind(&user.id)
-            .fetch_optional(&self.db)
-            .await?;
-            if active.is_none() {
-                anyhow::bail!("device revoked");
-            }
-        }
-
-        Ok(user)
+        self.store.validate_session(token).await
     }
 
     pub async fn get_user_by_id(&self, user_id: &str) -> anyhow::Result<UserRecord> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, username, display_name, role, password_hash
-            FROM users
-            WHERE id = ?1
-            "#,
-        )
-        .bind(user_id)
-        .fetch_one(&self.db)
-        .await?;
-
-        Ok(UserRecord {
-            id: row.get("id"),
-            username: row.get("username"),
-            display_name: row.get("display_name"),
-            role: row.get("role"),
-            password_hash: row.get("password_hash"),
-        })
+        self.store.get_user_by_id(user_id).await
     }
 
     async fn get_user_by_username(&self, username: &str) -> anyhow::Result<Option<UserRecord>> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, username, display_name, role, password_hash
-            FROM users
-            WHERE username = ?1
-            "#,
-        )
-        .bind(username)
-        .fetch_optional(&self.db)
-        .await?;
-
-        Ok(row.map(|r| UserRecord {
-            id: r.get("id"),
-            username: r.get("username"),
-            display_name: r.get("display_name"),
-            role: r.get("role"),
-            password_hash: r.get("password_hash"),
-        }))
+        self.store.get_user_by_username(username).await
     }
-
-    async fn load_passkeys(&self, user_id: &str) -> anyhow::Result<Vec<Passkey>> {
-        let row = sqlx::query(
-            r#"
-            SELECT passkeys
-            FROM user_passkeys
-            WHERE user_id = ?1
-            "#,
-        )
-        .bind(user_id)
-        .fetch_optional(&self.db)
-        .await?;
-
-        if let Some(row) = row {
-            let json: String = row.get("passkeys");
-            let passkeys = serde_json::from_str::<Vec<Passkey>>(&json)?;
-            Ok(passkeys)
-        } else {
-            Ok(Vec::new())
-        }
-    }
-
     pub async fn record_audit(
         &self,
         user_id: Option<&str>,
@@ -538,122 +343,20 @@ impl AuthService {
         ip: Option<&str>,
         user_agent: Option<&str>,
     ) -> anyhow::Result<()> {
-        let ts = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO login_audit (user_id, device_id, event, ip, user_agent, detail, ts)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-            "#,
-        )
-        .bind(user_id)
-        .bind(device_id)
-        .bind(event)
-        .bind(ip)
-        .bind(user_agent)
-        .bind(detail)
-        .bind(ts)
-        .execute(&self.db)
-        .await?;
-        Ok(())
+        self.store
+            .record_audit(user_id, device_id, event, detail, ip, user_agent)
+            .await
     }
 
     pub async fn get_device_id_for_user(&self, user_id: &str) -> anyhow::Result<Option<String>> {
-        let row = sqlx::query(
-            r#"
-            SELECT id
-            FROM devices
-            WHERE user_id = ?1 AND status = 'active'
-            ORDER BY created_at DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(user_id)
-        .fetch_optional(&self.db)
-        .await?;
-        Ok(row.map(|r| r.get("id")))
+        self.store.get_device_id_for_user(user_id).await
     }
 
     pub async fn touch_device_login(&self, user_id: &str) -> anyhow::Result<()> {
-        let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            UPDATE devices
-            SET last_login_at = ?1
-            WHERE user_id = ?2
-            "#,
-        )
-        .bind(now)
-        .bind(user_id)
-        .execute(&self.db)
-        .await?;
-        Ok(())
+        self.store.touch_device_login(user_id).await
     }
 
     pub async fn root_exists(&self) -> anyhow::Result<bool> {
-        let row = sqlx::query("SELECT COUNT(*) FROM users WHERE role = 'root'")
-            .fetch_one(&self.db)
-            .await?;
-        let count: i64 = row.get(0);
-        Ok(count > 0)
+        self.store.root_exists().await
     }
-
-    async fn save_passkeys(&self, user_id: &str, passkeys: &[Passkey]) -> anyhow::Result<()> {
-        let now = Utc::now().timestamp();
-        let json = serde_json::to_string(passkeys)?;
-        sqlx::query(
-            r#"
-            INSERT INTO user_passkeys (user_id, passkeys, updated_at)
-            VALUES (?1, ?2, ?3)
-            ON CONFLICT(user_id) DO UPDATE SET
-                passkeys = excluded.passkeys,
-                updated_at = excluded.updated_at
-            "#,
-        )
-        .bind(user_id)
-        .bind(json)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
-        Ok(())
-    }
-
-    async fn insert_device(
-        &self,
-        user_id: &str,
-        name: &str,
-        user_agent: &str,
-    ) -> anyhow::Result<()> {
-        let id = Uuid::new_v4().to_string();
-        let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO devices (id, user_id, name, user_agent, status, created_at)
-            VALUES (?1, ?2, ?3, ?4, 'active', ?5)
-            "#,
-        )
-        .bind(&id)
-        .bind(user_id)
-        .bind(name)
-        .bind(user_agent)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
-        Ok(())
-    }
-}
-
-fn hash_password(password: &str) -> anyhow::Result<String> {
-    let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?
-        .to_string();
-    Ok(hash)
-}
-
-fn verify_password(password: &str, hash: &str) -> anyhow::Result<bool> {
-    let parsed = PasswordHash::new(hash).map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let argon2 = Argon2::default();
-    Ok(argon2.verify_password(password.as_bytes(), &parsed).is_ok())
 }

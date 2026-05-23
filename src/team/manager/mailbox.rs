@@ -6,17 +6,14 @@ use std::time::Duration;
 use agenthub_message_archive::MessageArchiveStoreRef;
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, AckActorMessageCommand, AckActorMessageResult,
-    ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailbox,
-    ActorMailboxError, ActorMailboxService, ActorMailboxStore, ActorMessageHandlingDisposition,
-    ActorMessageKind, ActorMessageTaskRelation, ActorSendRequest, ActorSendResponse,
-    ActorServiceError, ActorServiceErrorCode, ActorTaskLinkRequest, ActorTaskLinkResponse,
-    ActorThreadClaimStatus, ActorTriageRequest, ActorTriageResponse, CreatePendingMessageResult,
-    LinkActorMessageTaskCommand, LinkActorMessageTaskResult, ListActorInboxQuery,
-    PendingRemoteRelayRecord, RelayRemotePendingCommand, RelayRemotePendingResult,
-    SendActorMessageCommand, TriageActorMessageCommand, actor_message_fingerprint,
-    derive_actor_message_topic_metadata, infer_actor_message_kind,
-    normalize_actor_message_envelope_payload, parse_actor_message_handling_disposition,
-    parse_actor_message_kind, parse_actor_message_task_relation, parse_actor_thread_claim_status,
+    ActorMailbox, ActorMailboxError, ActorMailboxStore, ActorMessageHandlingDisposition,
+    ActorMessageKind, ActorMessageTaskRelation, ActorServiceError, ActorServiceErrorCode,
+    ActorThreadClaimStatus, CreatePendingMessageResult, LinkActorMessageTaskCommand,
+    LinkActorMessageTaskResult, ListActorInboxQuery, PendingRemoteRelayRecord,
+    RelayRemotePendingCommand, RelayRemotePendingResult, SendActorMessageCommand,
+    TriageActorMessageCommand, actor_message_fingerprint, derive_actor_message_topic_metadata,
+    infer_actor_message_kind, normalize_actor_message_envelope_payload,
+    parse_actor_message_task_relation, parse_actor_thread_claim_status,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -28,10 +25,15 @@ use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use super::codec::{
-    parse_team_actor_message_row, team_actor_message_status_from_str,
-    team_actor_message_status_to_str, team_actor_message_transport_from_str,
+    parse_team_actor_message_row, team_actor_message_status_to_str,
     team_actor_message_transport_to_str,
 };
+use super::mailbox_payloads::{
+    build_canonical_chat_payload, channel_payload_correlation_id,
+    collect_channel_mention_actor_ids, is_human_actor_id, resolve_canonical_chat_reply,
+    should_persist_human_visible_chat_reply_for_payload,
+};
+use super::mailbox_service::TeamActorMailboxService;
 use super::{
     TEAM_SHARED_THREAD_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_TITLE, TeamConversationStreamEvent,
     TeamManager, TeamMemberSpecView, TeamReplyObligationSummary,
@@ -41,13 +43,13 @@ use super::{
 use crate::agent::normalize_target_node_id;
 use crate::team::{
     TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
-    TeamConversationMessageRecord, TeamReplyObligationRecord, TeamRunEventRecord,
+    TeamConversationMessageRecord, TeamRunEventRecord,
 };
 
 const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
-const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
-const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
-const MAILBOX_RESOLUTION_ESCALATED: &str = "escalated";
+pub(super) const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
+pub(super) const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
+pub(super) const MAILBOX_RESOLUTION_ESCALATED: &str = "escalated";
 const SQLITE_READONLY_BASE_CODE: i32 = 8;
 const MAILBOX_RUN_EVENT_ARCHIVE_MAX_CONCURRENCY: usize = 4;
 const ACTOR_THREAD_CLAIM_DEFAULT_LEASE_SECS: i64 = 30 * 60;
@@ -61,37 +63,31 @@ fn mailbox_run_event_archive_semaphore() -> Arc<Semaphore> {
 }
 
 #[derive(Debug, Clone)]
-struct CanonicalChatReply {
-    text: String,
-    correlation_id: Option<String>,
-}
-
-#[derive(Debug, Clone)]
 struct SharedThreadTarget {
     task_id: String,
     conversation_id: String,
 }
 
 #[derive(Debug, Clone)]
-struct ResolvedChannelMailboxTarget {
-    team_id: String,
-    task_id: String,
-    conversation_id: String,
-    recipient_actor_ids: Vec<String>,
+pub(super) struct ResolvedChannelMailboxTarget {
+    pub(super) team_id: String,
+    pub(super) task_id: String,
+    pub(super) conversation_id: String,
+    pub(super) recipient_actor_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
-struct ResolvedMailboxRecipientDelivery {
-    actor_id: String,
-    to_peer_id: String,
-    transport: TeamActorMessageTransport,
-    route: Option<Value>,
+pub(super) struct ResolvedMailboxRecipientDelivery {
+    pub(super) actor_id: String,
+    pub(super) to_peer_id: String,
+    pub(super) transport: TeamActorMessageTransport,
+    pub(super) route: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ReplyActorPairKey {
-    agent_actor_id: String,
-    human_actor_id: String,
+pub(super) struct ReplyActorPairKey {
+    pub(super) agent_actor_id: String,
+    pub(super) human_actor_id: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -124,10 +120,15 @@ impl TeamManager {
         run_id: &str,
     ) -> anyhow::Result<TeamReplyObligationSummary> {
         let messages =
-            load_reply_obligation_message_snapshots_on_executor(&self.db, run_id).await?;
-        Ok(summarize_open_reply_obligations_from_snapshots(
-            messages.as_slice(),
-        ))
+            super::mailbox_reply_obligations::load_reply_obligation_message_snapshots_on_executor(
+                &self.db, run_id,
+            )
+            .await?;
+        Ok(
+            super::mailbox_reply_obligations::summarize_open_reply_obligations_from_snapshots(
+                messages.as_slice(),
+            ),
+        )
     }
 
     pub fn actor_thread_claim_conflict_owner(err: &anyhow::Error) -> Option<&str> {
@@ -197,7 +198,7 @@ impl TeamManager {
             .await
     }
 
-    async fn send_actor_message_with_created_kind(
+    pub(super) async fn send_actor_message_with_created_kind(
         &self,
         request: SendActorMessageInput<'_>,
         explicit_message_kind: Option<ActorMessageKind>,
@@ -432,7 +433,7 @@ impl TeamManager {
         })
     }
 
-    async fn resolve_channel_mailbox_target(
+    pub(super) async fn resolve_channel_mailbox_target(
         &self,
         run_id: &str,
         channel_id: &str,
@@ -504,7 +505,7 @@ impl TeamManager {
         })
     }
 
-    async fn extract_channel_mention_actor_ids(
+    pub(super) async fn extract_channel_mention_actor_ids(
         &self,
         run_id: &str,
         payload: &Value,
@@ -546,7 +547,7 @@ impl TeamManager {
         Ok(has_column)
     }
 
-    async fn resolve_channel_recipient_deliveries(
+    pub(super) async fn resolve_channel_recipient_deliveries(
         &self,
         recipient_actor_ids: &[String],
     ) -> anyhow::Result<Vec<ResolvedMailboxRecipientDelivery>> {
@@ -613,7 +614,7 @@ impl TeamManager {
         Ok(out)
     }
 
-    async fn find_channel_message_by_correlation_id(
+    pub(super) async fn find_channel_message_by_correlation_id(
         &self,
         conversation_id: &str,
         from_actor_id: &str,
@@ -667,648 +668,13 @@ pub struct SendActorMessageInput<'a> {
 }
 
 #[derive(Clone)]
-pub struct TeamActorMailboxService {
-    manager: TeamManager,
-}
-
-impl TeamActorMailboxService {
-    pub fn new(manager: TeamManager) -> Self {
-        Self { manager }
-    }
-
-    async fn validate_direct_send_target(
-        &self,
-        run_id: &str,
-        to_actor_id: &str,
-    ) -> Result<(), ActorServiceError> {
-        let member_specs = self
-            .load_member_specs_for_run(run_id)
-            .await
-            .map_err(map_actor_service_error)?;
-        validate_direct_mailbox_target_for_member_specs(&member_specs, to_actor_id)
-    }
-
-    fn validate_direct_remote_route(route: Option<&Value>) -> Result<(), ActorServiceError> {
-        let Some(route) = route else {
-            return Err(ActorServiceError::new(
-                ActorServiceErrorCode::BadRequest,
-                "route is required for remote transport",
-            ));
-        };
-        let Some(object) = route.as_object() else {
-            return Err(ActorServiceError::new(
-                ActorServiceErrorCode::BadRequest,
-                "route must be a JSON object for remote transport",
-            ));
-        };
-        let has_http_route = object
-            .get("endpoint")
-            .and_then(Value::as_str)
-            .is_some_and(|value| !value.trim().is_empty());
-        let has_grpc_route = object
-            .get("grpc_target")
-            .and_then(Value::as_str)
-            .is_some_and(|value| !value.trim().is_empty());
-        if has_http_route || has_grpc_route {
-            return Ok(());
-        }
-        Err(ActorServiceError::new(
-            ActorServiceErrorCode::BadRequest,
-            "route must contain endpoint or grpc_target for remote transport",
-        ))
-    }
-
-    async fn load_member_specs_for_run(
-        &self,
-        run_id: &str,
-    ) -> anyhow::Result<Vec<TeamMemberSpecView>> {
-        let team_id =
-            sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
-                .bind(run_id)
-                .fetch_optional(&self.manager.db)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("run not found"))?;
-        let team = self.manager.get_team(&team_id).await?;
-        parse_team_member_specs(&team.spec)
-    }
-
-    pub async fn escalate_reply_required_message_to_coordinator(
-        &self,
-        run_id: &str,
-        actor_id: &str,
-        peer_id: &str,
-        message_id: i64,
-    ) -> Result<TeamActorMessageRecord, ActorServiceError> {
-        let member_specs = self
-            .load_member_specs_for_run(run_id)
-            .await
-            .map_err(map_actor_service_error)?;
-        let coordinator_actor_id = member_specs
-            .iter()
-            .find(|member| member.role.eq_ignore_ascii_case("coordinator"))
-            .map(|member| member.member_id.clone())
-            .ok_or_else(|| {
-                map_actor_service_error(anyhow::Error::new(
-                    SqlActorMailboxStoreError::ReplyRequiredEscalationTargetUnavailable,
-                ))
-            })?;
-        if coordinator_actor_id == actor_id {
-            return Err(map_actor_service_error(anyhow::Error::new(
-                SqlActorMailboxStoreError::ReplyRequiredEscalationAlreadyAtCoordinator,
-            )));
-        }
-
-        let delivery = self
-            .manager
-            .resolve_channel_recipient_deliveries(std::slice::from_ref(&coordinator_actor_id))
-            .await
-            .map_err(map_actor_service_error)?
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                map_actor_service_error(anyhow::Error::new(
-                    SqlActorMailboxStoreError::ReplyRequiredEscalationTargetUnavailable,
-                ))
-            })?;
-
-        let now = Utc::now().timestamp();
-        let route_json = delivery
-            .route
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()
-            .map_err(|err| {
-                ActorServiceError::new(ActorServiceErrorCode::Internal, err.to_string())
-            })?;
-        let transport_raw = team_actor_message_transport_to_str(&delivery.transport);
-        let status_raw = team_actor_message_status_to_str(&TeamActorMessageStatus::Pending);
-
-        let mut tx = self
-            .manager
-            .db
-            .begin()
-            .await
-            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        let message = fetch_message_for_actor(&mut tx, run_id, actor_id, peer_id, message_id)
-            .await
-            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        if reply_actor_pair_for_inbound_obligation(&message).is_none() {
-            return Err(map_actor_service_error(anyhow::Error::new(
-                SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported,
-            )));
-        }
-        if reply_obligation_is_terminal(&message) {
-            return Err(ActorServiceError::new(
-                ActorServiceErrorCode::BadRequest,
-                "mailbox work is already in a terminal state",
-            ));
-        }
-
-        let release_payload = build_mailbox_resolution_payload(
-            &message.payload,
-            MAILBOX_RESOLUTION_ESCALATED,
-            actor_id,
-            &coordinator_actor_id,
-            now,
-        );
-        let released_payload_json = serde_json::to_string(&release_payload).map_err(|err| {
-            ActorServiceError::new(ActorServiceErrorCode::Internal, err.to_string())
-        })?;
-        let escalated_payload = normalize_actor_message_envelope_payload(
-            &message.from_actor_id,
-            &coordinator_actor_id,
-            &message.message_kind,
-            build_escalated_mailbox_payload(
-                &message.payload,
-                message.message_id,
-                actor_id,
-                &coordinator_actor_id,
-                actor_id,
-                now,
-            ),
-        );
-        let escalated_payload_json = serde_json::to_string(&escalated_payload).map_err(|err| {
-            ActorServiceError::new(ActorServiceErrorCode::Internal, err.to_string())
-        })?;
-
-        if message.handling_disposition == ActorMessageHandlingDisposition::Claimed {
-            apply_thread_claim_transition(
-                &mut tx,
-                &message,
-                &TriageActorMessageCommand {
-                    run_id: run_id.to_string(),
-                    actor_id: actor_id.to_string(),
-                    peer_id: peer_id.to_string(),
-                    message_id,
-                    disposition: ActorMessageHandlingDisposition::Released,
-                    handled_at: now,
-                },
-            )
-            .await
-            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        }
-
-        sqlx::query(
-            r#"
-            UPDATE team_actor_messages
-            SET
-                handling_disposition = 'released',
-                handled_by_actor_id = ?1,
-                handled_at = ?2,
-                payload_json = ?3
-            WHERE id = ?4
-              AND run_id = ?5
-              AND to_actor_id = ?6
-              AND to_peer_id = ?7
-            "#,
-        )
-        .bind(actor_id)
-        .bind(now)
-        .bind(&released_payload_json)
-        .bind(message_id)
-        .bind(run_id)
-        .bind(actor_id)
-        .bind(peer_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-
-        let inserted = sqlx::query(
-            r#"
-            INSERT INTO team_actor_messages (
-                run_id,
-                from_actor_id,
-                from_peer_id,
-                to_actor_id,
-                to_peer_id,
-                channel,
-                transport,
-                route_json,
-                payload_json,
-                message_kind,
-                group_id,
-                status,
-                created_at,
-                idempotency_key
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, (SELECT group_id FROM team_runs WHERE id = ?1), ?11, ?12, NULL)
-            "#,
-        )
-        .bind(run_id)
-        .bind(&message.from_actor_id)
-        .bind(&message.from_peer_id)
-        .bind(&coordinator_actor_id)
-        .bind(&delivery.to_peer_id)
-        .bind(&message.channel)
-        .bind(transport_raw)
-        .bind(route_json)
-        .bind(escalated_payload_json)
-        .bind(message.message_kind.as_str())
-        .bind(status_raw)
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        let escalated_message_id = inserted.last_insert_rowid();
-
-        tx.commit()
-            .await
-            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        fetch_enriched_message_by_id(&self.manager.db, escalated_message_id)
-            .await
-            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn send_channel_message(
-        &self,
-        run_id: &str,
-        from_actor_id: &str,
-        from_peer_id: &str,
-        channel_id: &str,
-        channel: &str,
-        message_kind: Option<ActorMessageKind>,
-        payload: Value,
-        idempotency_key: Option<&str>,
-    ) -> anyhow::Result<ActorSendResponse> {
-        let target = self
-            .manager
-            .resolve_channel_mailbox_target(run_id, channel_id, from_actor_id)
-            .await?;
-        if target.recipient_actor_ids.is_empty() {
-            anyhow::bail!("channel '{}' has no recipient agents", channel_id);
-        }
-        let recipient_deliveries = self
-            .manager
-            .resolve_channel_recipient_deliveries(&target.recipient_actor_ids)
-            .await?;
-
-        let mention_actor_ids = self
-            .manager
-            .extract_channel_mention_actor_ids(run_id, &payload)
-            .await?;
-        let normalized_payload = normalize_channel_message_payload(payload);
-
-        let base_idempotency_key = idempotency_key.map(str::to_string).unwrap_or_else(|| {
-            agenthub_team_actor::build_default_actor_channel_idempotency_key(
-                run_id,
-                from_actor_id,
-                from_peer_id,
-                channel_id,
-                channel,
-                TeamActorMessageTransport::Local.as_str(),
-                None,
-                &normalized_payload,
-            )
-        });
-        let canonical_payload = ensure_channel_message_correlation_id(
-            normalized_payload,
-            Some(base_idempotency_key.as_str()),
-        );
-        let (authority_message_id, source_payload) = if let Some(existing) = self
-            .manager
-            .find_channel_message_by_correlation_id(
-                &target.conversation_id,
-                from_actor_id,
-                channel_payload_correlation_id(&canonical_payload)
-                    .expect("canonical channel payload should carry correlation_id"),
-            )
-            .await?
-        {
-            (existing.message_id, existing.payload)
-        } else {
-            let canonical_message = self
-                .manager
-                .append_task_conversation_message(
-                    &target.task_id,
-                    from_actor_id,
-                    None,
-                    "group_chat",
-                    canonical_payload.clone(),
-                )
-                .await?;
-            (canonical_message.message_id, canonical_payload.clone())
-        };
-
-        let mut first_result = None;
-        let mut any_created = false;
-        for delivery in &recipient_deliveries {
-            let forwarded_payload = build_channel_mailbox_forward_payload(
-                &source_payload,
-                &target,
-                channel_id,
-                authority_message_id,
-                mention_actor_ids.as_slice(),
-            );
-            let fanout_idempotency_key =
-                agenthub_team_actor::build_actor_channel_fanout_idempotency_key(
-                    &base_idempotency_key,
-                    delivery.actor_id.as_str(),
-                );
-            let result = self
-                .manager
-                .send_actor_message_with_created_kind(
-                    SendActorMessageInput {
-                        run_id,
-                        from_actor_id,
-                        from_peer_id,
-                        to_actor_id: delivery.actor_id.as_str(),
-                        to_peer_id: delivery.to_peer_id.as_str(),
-                        channel,
-                        transport: delivery.transport.clone(),
-                        route: delivery.route.clone(),
-                        payload: forwarded_payload,
-                        message_kind: None,
-                        idempotency_key: Some(fanout_idempotency_key.as_str()),
-                    },
-                    message_kind.clone(),
-                )
-                .await?;
-            any_created |= result.1;
-            if first_result.is_none() {
-                first_result = Some(result);
-            }
-        }
-
-        let (message, created) = first_result.expect("channel fanout should produce a message");
-        Ok(ActorSendResponse {
-            message_id: message.message_id,
-            state: message.status.clone(),
-            deduped: !created && !any_created,
-            created_at: message.created_at,
-            message,
-        })
-    }
-}
-
-#[async_trait]
-impl ActorMailboxService for TeamActorMailboxService {
-    async fn actor_send(
-        &self,
-        request: ActorSendRequest,
-    ) -> Result<ActorSendResponse, ActorServiceError> {
-        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
-        let from_actor_id = required_trimmed_field(&request.from_actor_id, "from_actor_id")?;
-        let from_peer_id =
-            optional_trimmed(request.from_peer_id.as_deref()).unwrap_or(ACTOR_MAIN_PEER_ID);
-        let to_actor_id = optional_trimmed(request.to_actor_id.as_deref());
-        let channel_id = optional_trimmed(request.channel_id.as_deref());
-        let (to_actor_id, channel_id) = match (to_actor_id, channel_id) {
-            (Some(to_actor_id), None) => (Some(to_actor_id), None),
-            (None, Some(channel_id)) => (None, Some(channel_id)),
-            (Some(_), Some(_)) => {
-                return Err(ActorServiceError::new(
-                    ActorServiceErrorCode::BadRequest,
-                    "to_actor_id and channel_id cannot be used together",
-                ));
-            }
-            (None, None) => {
-                return Err(ActorServiceError::new(
-                    ActorServiceErrorCode::BadRequest,
-                    "to_actor_id or channel_id is required",
-                ));
-            }
-        };
-        let to_peer_id =
-            optional_trimmed(request.to_peer_id.as_deref()).unwrap_or(ACTOR_MAIN_PEER_ID);
-        let channel = request
-            .channel
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or("default");
-        let transport = request
-            .transport
-            .unwrap_or(TeamActorMessageTransport::Local);
-        let idempotency_key = optional_trimmed(request.idempotency_key.as_deref());
-
-        if request.route.is_some() && channel_id.is_some() {
-            return Err(ActorServiceError::new(
-                ActorServiceErrorCode::BadRequest,
-                "channel mailbox target does not support route",
-            ));
-        }
-        if let Some(channel_id) = channel_id {
-            return self
-                .send_channel_message(
-                    run_id,
-                    from_actor_id,
-                    from_peer_id,
-                    channel_id,
-                    channel,
-                    request.message_kind,
-                    request.payload,
-                    idempotency_key,
-                )
-                .await
-                .map_err(map_actor_service_error);
-        }
-        let to_actor_id = to_actor_id.expect("validated actor target");
-        match transport {
-            TeamActorMessageTransport::Local => {
-                self.validate_direct_send_target(run_id, to_actor_id)
-                    .await?;
-            }
-            TeamActorMessageTransport::Remote => {
-                Self::validate_direct_remote_route(request.route.as_ref())?;
-                if to_peer_id == ACTOR_MAIN_PEER_ID {
-                    return Err(ActorServiceError::new(
-                        ActorServiceErrorCode::BadRequest,
-                        "to_peer_id must not be 'main' for remote transport",
-                    ));
-                }
-            }
-        }
-
-        let (message, created) = self
-            .manager
-            .send_actor_message_with_created_kind(
-                SendActorMessageInput {
-                    run_id,
-                    from_actor_id,
-                    from_peer_id,
-                    to_actor_id,
-                    to_peer_id,
-                    channel,
-                    transport,
-                    route: request.route,
-                    payload: request.payload,
-                    message_kind: None,
-                    idempotency_key,
-                },
-                request.message_kind,
-            )
-            .await
-            .map_err(map_actor_service_error)?;
-        let message_id = message.message_id;
-        let state = message.status.clone();
-        let created_at = message.created_at;
-
-        Ok(ActorSendResponse {
-            message_id,
-            state,
-            deduped: !created,
-            created_at,
-            message,
-        })
-    }
-
-    async fn actor_inbox(
-        &self,
-        request: ActorInboxRequest,
-    ) -> Result<ActorInboxResponse, ActorServiceError> {
-        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
-        let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
-        let limit = request.limit.unwrap_or(50).clamp(1, 1000);
-        let include_delivered = request
-            .states
-            .as_ref()
-            .is_some_and(|states| states.contains(&TeamActorMessageStatus::Delivered));
-        let states = request
-            .states
-            .unwrap_or_else(|| vec![TeamActorMessageStatus::Pending]);
-        let snapshot = SqlActorMailboxStore {
-            db: self.manager.db.clone(),
-            message_archive: None,
-        }
-        .read_inbox_snapshot(&ListActorInboxQuery {
-            run_id: run_id.to_string(),
-            actor_id: actor_id.to_string(),
-            peer_id: ACTOR_MAIN_PEER_ID.to_string(),
-            limit,
-            after_id: request.cursor,
-            include_delivered,
-        })
-        .await
-        .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        let messages = snapshot
-            .messages
-            .into_iter()
-            .filter(|message| states.contains(&message.status))
-            .collect::<Vec<_>>();
-        let next_cursor = messages.last().map(|message| message.message_id);
-
-        Ok(ActorInboxResponse {
-            messages,
-            next_cursor,
-            pending_count: snapshot.pending_count,
-        })
-    }
-
-    async fn actor_ack(
-        &self,
-        request: ActorAckRequest,
-    ) -> Result<ActorAckResponse, ActorServiceError> {
-        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
-        let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
-        if request.message_id <= 0 {
-            return Err(ActorServiceError::new(
-                ActorServiceErrorCode::BadRequest,
-                "message_id must be positive",
-            ));
-        }
-
-        let result = self
-            .manager
-            .ack_actor_message(run_id, actor_id, request.message_id)
-            .await
-            .map_err(map_actor_service_error)?;
-        let message = result.message;
-        let state = message.status.clone();
-        let acked_at = message.delivered_at.unwrap_or(message.created_at);
-
-        Ok(ActorAckResponse {
-            message_id: message.message_id,
-            state,
-            acked_at,
-            status_changed: result.status_changed,
-            message,
-        })
-    }
-
-    async fn actor_triage(
-        &self,
-        request: ActorTriageRequest,
-    ) -> Result<ActorTriageResponse, ActorServiceError> {
-        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
-        let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
-        if request.message_id <= 0 {
-            return Err(ActorServiceError::new(
-                ActorServiceErrorCode::BadRequest,
-                "message_id must be positive",
-            ));
-        }
-
-        let result = self
-            .manager
-            .triage_actor_message(run_id, actor_id, request.message_id, request.disposition)
-            .await
-            .map_err(map_actor_service_error)?;
-        let triaged_at = result.message.handled_at.unwrap_or(
-            result
-                .message
-                .delivered_at
-                .unwrap_or(result.message.created_at),
-        );
-
-        Ok(ActorTriageResponse {
-            message_id: result.message.message_id,
-            disposition: result.message.handling_disposition.clone(),
-            triaged_at,
-            handling_changed: result.handling_changed,
-            message: result.message,
-        })
-    }
-
-    async fn actor_task_link(
-        &self,
-        request: ActorTaskLinkRequest,
-    ) -> Result<ActorTaskLinkResponse, ActorServiceError> {
-        let run_id = required_trimmed_field(&request.run_id, "run_id")?;
-        let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
-        let task_id = required_trimmed_field(&request.task_id, "task_id")?;
-        if request.message_id <= 0 {
-            return Err(ActorServiceError::new(
-                ActorServiceErrorCode::BadRequest,
-                "message_id must be positive",
-            ));
-        }
-
-        let result = self
-            .manager
-            .link_actor_message_task(
-                run_id,
-                actor_id,
-                request.message_id,
-                task_id,
-                request.relation,
-            )
-            .await
-            .map_err(map_actor_service_error)?;
-        let linked_at = result
-            .message
-            .handled_at
-            .unwrap_or(result.message.created_at);
-
-        Ok(ActorTaskLinkResponse {
-            message_id: result.message.message_id,
-            task_id: result.task_id,
-            relation: result.relation,
-            linked_at,
-            created: result.created,
-            message: result.message,
-        })
-    }
-}
-
-#[derive(Clone)]
-struct SqlActorMailboxStore {
-    db: SqlitePool,
-    message_archive: Option<MessageArchiveStoreRef>,
+pub(super) struct SqlActorMailboxStore {
+    pub(super) db: SqlitePool,
+    pub(super) message_archive: Option<MessageArchiveStoreRef>,
 }
 
 #[derive(Debug, Error)]
-enum SqlActorMailboxStoreError {
+pub(super) enum SqlActorMailboxStoreError {
     #[error(transparent)]
     Sql(#[from] sqlx::Error),
     #[error("actor message idempotency conflict")]
@@ -1330,9 +696,9 @@ enum SqlActorMailboxStoreError {
 }
 
 #[derive(Debug)]
-struct ActorInboxSnapshot {
-    messages: Vec<TeamActorMessageRecord>,
-    pending_count: i64,
+pub(super) struct ActorInboxSnapshot {
+    pub(super) messages: Vec<TeamActorMessageRecord>,
+    pub(super) pending_count: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1350,29 +716,6 @@ struct ActorThreadClaimRecord {
 struct ActorMessageTaskLinkRecord {
     task_id: String,
     relation: ActorMessageTaskRelation,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct ReplyObligationMessageSnapshot {
-    message_id: i64,
-    from_actor_id: String,
-    to_actor_id: String,
-    to_peer_id: String,
-    transport: TeamActorMessageTransport,
-    status: TeamActorMessageStatus,
-    handling_disposition: ActorMessageHandlingDisposition,
-    message_kind: ActorMessageKind,
-    source_surface: Option<String>,
-    reply_target: Option<Value>,
-    conversation_id: Option<String>,
-    thread_root_message_id: Option<i64>,
-    requires_user_visible_reply: bool,
-    mailbox_resolution_kind: Option<String>,
-    reply_payload_type: Option<String>,
-    reply_text: Option<String>,
-    reply_correlation_id: Option<String>,
-    reply_string_payload: Option<String>,
-    created_at: i64,
 }
 
 async fn count_pending_inbox_on_executor<'e, E>(
@@ -1773,12 +1116,14 @@ fn inbox_rows_include_pending(rows: &[SqliteRow]) -> bool {
     })
 }
 
-fn normalize_optional_sqlite_string(raw: Option<String>) -> Option<String> {
+pub(super) fn normalize_optional_sqlite_string(raw: Option<String>) -> Option<String> {
     raw.map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty() && value != "null")
 }
 
-fn parse_optional_sqlite_json_value(raw: Option<String>) -> Result<Option<Value>, sqlx::Error> {
+pub(super) fn parse_optional_sqlite_json_value(
+    raw: Option<String>,
+) -> Result<Option<Value>, sqlx::Error> {
     let Some(raw) = normalize_optional_sqlite_string(raw) else {
         return Ok(None);
     };
@@ -1788,485 +1133,31 @@ fn parse_optional_sqlite_json_value(raw: Option<String>) -> Result<Option<Value>
     }
 }
 
-fn parse_reply_obligation_message_snapshot_row(
-    row: &SqliteRow,
-) -> Result<ReplyObligationMessageSnapshot, sqlx::Error> {
-    let transport_raw: String = row.get("transport");
-    let status_raw: String = row.get("status");
-    let handling_disposition_raw: String = row
-        .try_get("handling_disposition")
-        .unwrap_or_else(|_| "untriaged".to_string());
-    let message_kind_raw: String = row.try_get("message_kind").unwrap_or_default();
-    let requires_user_visible_reply = row
-        .try_get::<Option<i64>, _>("requires_user_visible_reply")
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-        != 0;
-    Ok(ReplyObligationMessageSnapshot {
-        message_id: row.get("id"),
-        from_actor_id: row.get("from_actor_id"),
-        to_actor_id: row.get("to_actor_id"),
-        to_peer_id: row
-            .try_get("to_peer_id")
-            .unwrap_or_else(|_| ACTOR_MAIN_PEER_ID.to_string()),
-        transport: team_actor_message_transport_from_str(&transport_raw),
-        status: team_actor_message_status_from_str(&status_raw),
-        handling_disposition: parse_actor_message_handling_disposition(&handling_disposition_raw),
-        message_kind: parse_actor_message_kind(&message_kind_raw),
-        source_surface: normalize_optional_sqlite_string(row.try_get("source_surface")?),
-        reply_target: parse_optional_sqlite_json_value(row.try_get("reply_target_json")?)?,
-        conversation_id: normalize_optional_sqlite_string(row.try_get("conversation_id")?),
-        thread_root_message_id: row.try_get("thread_root_message_id").ok().flatten(),
-        requires_user_visible_reply,
-        mailbox_resolution_kind: normalize_optional_sqlite_string(
-            row.try_get("mailbox_resolution_kind")?,
-        ),
-        reply_payload_type: normalize_optional_sqlite_string(row.try_get("reply_payload_type")?),
-        reply_text: normalize_optional_sqlite_string(row.try_get("reply_text")?),
-        reply_correlation_id: normalize_optional_sqlite_string(
-            row.try_get("reply_correlation_id")?,
-        ),
-        reply_string_payload: normalize_optional_sqlite_string(
-            row.try_get("reply_string_payload")?,
-        ),
-        created_at: row.get("created_at"),
-    })
-}
-
-async fn load_reply_obligation_message_snapshots_on_executor<'e, E>(
-    executor: E,
-    run_id: &str,
-) -> Result<Vec<ReplyObligationMessageSnapshot>, sqlx::Error>
-where
-    E: Executor<'e, Database = Sqlite>,
-{
-    let rows = sqlx::query(
-        r#"
-        SELECT
-            id,
-            from_actor_id,
-            to_actor_id,
-            to_peer_id,
-            transport,
-            status,
-            message_kind,
-            handling_disposition,
-            trim(COALESCE(json_extract(payload_json, '$.source_surface'), '')) AS source_surface,
-            json_extract(payload_json, '$.reply_target') AS reply_target_json,
-            trim(COALESCE(
-                json_extract(payload_json, '$.task_conversation_id'),
-                json_extract(payload_json, '$.channel_conversation_id'),
-                json_extract(payload_json, '$.conversation_id'),
-                ''
-            )) AS conversation_id,
-            CAST(json_extract(payload_json, '$.thread_root_message_id') AS INTEGER) AS thread_root_message_id,
-            COALESCE(CAST(json_extract(payload_json, '$.requires_user_visible_reply') AS INTEGER), 0) AS requires_user_visible_reply,
-            trim(COALESCE(json_extract(payload_json, '$.mailbox_resolution.kind'), '')) AS mailbox_resolution_kind,
-            trim(COALESCE(json_extract(payload_json, '$.type'), '')) AS reply_payload_type,
-            trim(COALESCE(json_extract(payload_json, '$.text'), '')) AS reply_text,
-            trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) AS reply_correlation_id,
-            CASE
-                WHEN json_type(payload_json) = 'text' THEN trim(COALESCE(json_extract(payload_json, '$'), ''))
-                ELSE NULL
-            END AS reply_string_payload,
-            created_at
-        FROM team_actor_messages
-        WHERE run_id = ?1
-          AND (
-              COALESCE(CAST(json_extract(payload_json, '$.requires_user_visible_reply') AS INTEGER), 0) != 0
-              OR message_kind = 'human_request'
-              OR (
-                  transport = 'local'
-                  AND to_peer_id = 'main'
-                  AND (
-                      to_actor_id = 'user'
-                      OR to_actor_id = 'human'
-                      OR to_actor_id LIKE 'user:%'
-                      OR to_actor_id LIKE 'human:%'
-                  )
-              )
-          )
-        ORDER BY id ASC
-        "#,
-    )
-    .bind(run_id)
-    .fetch_all(executor)
-    .await?;
-    let mut snapshots = Vec::with_capacity(rows.len());
-    for row in rows {
-        snapshots.push(parse_reply_obligation_message_snapshot_row(&row)?);
-    }
-    Ok(snapshots)
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-fn summarize_open_reply_obligations_from_messages(
-    messages: &[TeamActorMessageRecord],
-) -> TeamReplyObligationSummary {
-    let snapshots = messages
-        .iter()
-        .map(reply_obligation_snapshot_from_message)
-        .collect::<Vec<_>>();
-    summarize_open_reply_obligations_from_snapshots(snapshots.as_slice())
-}
-
-fn summarize_open_reply_obligations_from_snapshots(
-    messages: &[ReplyObligationMessageSnapshot],
-) -> TeamReplyObligationSummary {
-    let mut visible_reply_credits = HashMap::<ReplyActorPairKey, i64>::new();
-    let mut summary = TeamReplyObligationSummary::default();
-
-    // This is the first phase-3 runtime invariant slice. We conservatively
-    // consume one earlier human-originated obligation for each later agent ->
-    // human visible chat reply on the same actor pair until explicit reply
-    // linkage lands as a first-class contract.
-    for message in messages.iter().rev() {
-        if let Some(pair_key) = reply_actor_pair_for_visible_reply_snapshot(message) {
-            *visible_reply_credits.entry(pair_key).or_default() += 1;
-            continue;
-        }
-        let Some(pair_key) = reply_actor_pair_for_inbound_obligation_snapshot(message) else {
-            continue;
-        };
-        if reply_obligation_snapshot_is_terminal(message) {
-            continue;
-        }
-        if let Some(credits) = visible_reply_credits.get_mut(&pair_key)
-            && *credits > 0
-        {
-            *credits -= 1;
-            continue;
-        }
-        *summary
-            .open_by_actor
-            .entry(pair_key.agent_actor_id.clone())
-            .or_default() += 1;
-        summary.open_total += 1;
-        summary
-            .open_items
-            .push(build_reply_obligation_record_from_snapshot(
-                message, pair_key,
-            ));
-    }
-
-    summary
-}
-
-fn reply_actor_pair_for_inbound_obligation(
-    message: &TeamActorMessageRecord,
-) -> Option<ReplyActorPairKey> {
-    let envelope = message.inbound_envelope();
-    if !envelope.requires_user_visible_reply {
-        return None;
-    }
-    if message.from_actor_kind != agenthub_team_actor::ActorIdentityKind::Human
-        || message.to_actor_kind != agenthub_team_actor::ActorIdentityKind::Agent
-    {
-        return None;
-    }
-    Some(ReplyActorPairKey {
-        agent_actor_id: message.to_actor_id.clone(),
-        human_actor_id: message.from_actor_id.clone(),
-    })
-}
-
-fn reply_actor_pair_for_inbound_obligation_snapshot(
-    message: &ReplyObligationMessageSnapshot,
-) -> Option<ReplyActorPairKey> {
-    if !(message.requires_user_visible_reply
-        || (message.message_kind == ActorMessageKind::HumanRequest
-            && is_human_actor_id(&message.from_actor_id)
-            && !is_human_actor_id(&message.to_actor_id)))
-    {
-        return None;
-    }
-    if !is_human_actor_id(&message.from_actor_id) || is_human_actor_id(&message.to_actor_id) {
-        return None;
-    }
-    Some(ReplyActorPairKey {
-        agent_actor_id: message.to_actor_id.clone(),
-        human_actor_id: message.from_actor_id.clone(),
-    })
-}
-
-fn reply_actor_pair_for_visible_reply_snapshot(
-    message: &ReplyObligationMessageSnapshot,
-) -> Option<ReplyActorPairKey> {
-    if message.status == TeamActorMessageStatus::DeadLetter
-        || message.transport != TeamActorMessageTransport::Local
-        || message.to_peer_id != ACTOR_MAIN_PEER_ID
-        || !is_human_actor_id(&message.to_actor_id)
-        || is_human_actor_id(&message.from_actor_id)
-        || resolve_canonical_chat_reply_from_snapshot(message).is_none()
-    {
-        return None;
-    }
-    Some(ReplyActorPairKey {
-        agent_actor_id: message.from_actor_id.clone(),
-        human_actor_id: message.to_actor_id.clone(),
-    })
-}
-
-fn build_reply_obligation_record_from_snapshot(
-    message: &ReplyObligationMessageSnapshot,
-    pair_key: ReplyActorPairKey,
-) -> TeamReplyObligationRecord {
-    TeamReplyObligationRecord {
-        message_id: message.message_id,
-        agent_actor_id: pair_key.agent_actor_id,
-        human_actor_id: pair_key.human_actor_id,
-        source_surface: reply_obligation_source_surface(message),
-        reply_target: message.reply_target.clone(),
-        conversation_id: message.conversation_id.clone(),
-        thread_root_message_id: message.thread_root_message_id,
-        text_excerpt: resolve_canonical_chat_reply_from_snapshot(message).map(|reply| reply.text),
-        created_at: message.created_at,
-    }
-}
-
-fn mailbox_resolution_kind(payload: &Value) -> Option<&str> {
-    payload
-        .as_object()
-        .and_then(|map| map.get("mailbox_resolution"))
-        .and_then(Value::as_object)
-        .and_then(|map| map.get("kind"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-}
-
-fn reply_obligation_is_terminal(message: &TeamActorMessageRecord) -> bool {
-    if matches!(
-        message.handling_disposition,
-        ActorMessageHandlingDisposition::Ignored | ActorMessageHandlingDisposition::Completed
-    ) {
-        return true;
-    }
-    matches!(
-        (
-            message.handling_disposition.clone(),
-            mailbox_resolution_kind(&message.payload),
-        ),
-        (
-            ActorMessageHandlingDisposition::Released,
-            Some(MAILBOX_RESOLUTION_ESCALATED)
-        )
-    )
-}
-
-fn reply_obligation_snapshot_is_terminal(message: &ReplyObligationMessageSnapshot) -> bool {
-    if matches!(
-        message.handling_disposition,
-        ActorMessageHandlingDisposition::Ignored | ActorMessageHandlingDisposition::Completed
-    ) {
-        return true;
-    }
-    matches!(
-        (
-            message.handling_disposition.clone(),
-            message.mailbox_resolution_kind.as_deref(),
-        ),
-        (
-            ActorMessageHandlingDisposition::Released,
-            Some(MAILBOX_RESOLUTION_ESCALATED)
-        )
-    )
-}
-
-fn reply_obligation_source_surface(message: &ReplyObligationMessageSnapshot) -> String {
-    if let Some(source_surface) = message.source_surface.as_deref() {
-        return source_surface.to_string();
-    }
-    if message.thread_root_message_id.is_some() {
-        return "thread".to_string();
-    }
-    if message.conversation_id.is_some() {
-        return "conversation".to_string();
-    }
-    match message.message_kind {
-        ActorMessageKind::TriggerEvent => "trigger".to_string(),
-        ActorMessageKind::SystemNotice => "system".to_string(),
-        _ => "mailbox".to_string(),
-    }
-}
-
-fn resolve_canonical_chat_reply_from_snapshot(
-    message: &ReplyObligationMessageSnapshot,
-) -> Option<CanonicalChatReply> {
-    if let Some(raw_text) = message.reply_string_payload.as_deref() {
-        if let Some(parsed) = parse_stringified_json_payload(raw_text)
-            && let Some(reply) = resolve_canonical_chat_reply(&parsed)
-        {
-            return Some(reply);
-        }
-        let trimmed = raw_text.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        return Some(CanonicalChatReply {
-            text: raw_text.to_string(),
-            correlation_id: None,
-        });
-    }
-    let payload_type = message
-        .reply_payload_type
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or_default();
-    if !payload_type.is_empty() && payload_type != "chat_message" {
-        return None;
-    }
-    let text = message
-        .reply_text
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())?
-        .to_string();
-    Some(CanonicalChatReply {
-        text,
-        correlation_id: message.reply_correlation_id.clone(),
-    })
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-fn reply_obligation_snapshot_from_message(
-    message: &TeamActorMessageRecord,
-) -> ReplyObligationMessageSnapshot {
-    let envelope = message.inbound_envelope();
-    let reply = resolve_canonical_chat_reply(&message.payload);
-    ReplyObligationMessageSnapshot {
-        message_id: message.message_id,
-        from_actor_id: message.from_actor_id.clone(),
-        to_actor_id: message.to_actor_id.clone(),
-        to_peer_id: message.to_peer_id.clone(),
-        transport: message.transport.clone(),
-        status: message.status.clone(),
-        handling_disposition: message.handling_disposition.clone(),
-        message_kind: message.message_kind.clone(),
-        source_surface: Some(envelope.source_surface),
-        reply_target: envelope.reply_target,
-        conversation_id: envelope.conversation_id,
-        thread_root_message_id: envelope.thread_root_message_id,
-        requires_user_visible_reply: envelope.requires_user_visible_reply,
-        mailbox_resolution_kind: mailbox_resolution_kind(&message.payload).map(str::to_string),
-        reply_payload_type: message
-            .payload
-            .get("type")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string),
-        reply_text: reply.as_ref().map(|reply| reply.text.clone()),
-        reply_correlation_id: reply
-            .as_ref()
-            .and_then(|reply| reply.correlation_id.clone()),
-        reply_string_payload: match &message.payload {
-            Value::String(text) => Some(text.clone()),
-            _ => None,
-        },
-        created_at: message.created_at,
-    }
-}
-
-fn build_mailbox_resolution_payload(
-    source_payload: &Value,
-    kind: &str,
-    resolved_by_actor_id: &str,
-    target_actor_id: &str,
-    resolved_at: i64,
-) -> Value {
-    let mut payload_obj = match source_payload {
-        Value::Object(map) => map.clone(),
-        _ => Map::new(),
-    };
-    payload_obj.insert(
-        "mailbox_resolution".to_string(),
-        serde_json::json!({
-            "kind": kind,
-            "resolved_by_actor_id": resolved_by_actor_id,
-            "target_actor_id": target_actor_id,
-            "resolved_at": resolved_at
-        }),
-    );
-    Value::Object(payload_obj)
-}
-
-fn build_escalated_mailbox_payload(
-    source_payload: &Value,
-    source_message_id: i64,
-    source_actor_id: &str,
-    target_actor_id: &str,
-    escalated_by_actor_id: &str,
-    escalated_at: i64,
-) -> Value {
-    let mut payload_obj = match source_payload {
-        Value::Object(map) => map.clone(),
-        _ => Map::new(),
-    };
-    payload_obj.insert(
-        "mailbox_escalation".to_string(),
-        serde_json::json!({
-            "kind": MAILBOX_RESOLUTION_ESCALATED,
-            "source_message_id": source_message_id,
-            "source_actor_id": source_actor_id,
-            "target_actor_id": target_actor_id,
-            "escalated_by_actor_id": escalated_by_actor_id,
-            "escalated_at": escalated_at
-        }),
-    );
-    Value::Object(payload_obj)
-}
-
-fn has_visible_reply_credit_for_message(
-    messages: &[ReplyObligationMessageSnapshot],
-    target_message_id: i64,
-) -> bool {
-    let mut visible_reply_credits = HashMap::<ReplyActorPairKey, i64>::new();
-    for message in messages.iter().rev() {
-        if let Some(pair_key) = reply_actor_pair_for_visible_reply_snapshot(message) {
-            *visible_reply_credits.entry(pair_key).or_default() += 1;
-            continue;
-        }
-        let Some(pair_key) = reply_actor_pair_for_inbound_obligation_snapshot(message) else {
-            continue;
-        };
-        if reply_obligation_snapshot_is_terminal(message) {
-            continue;
-        }
-        if let Some(credits) = visible_reply_credits.get_mut(&pair_key)
-            && *credits > 0
-        {
-            if message.message_id == target_message_id {
-                return true;
-            }
-            *credits -= 1;
-            continue;
-        }
-        if message.message_id == target_message_id {
-            return false;
-        }
-    }
-    true
-}
-
 async fn ensure_reply_required_completion_allowed(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     message: &TeamActorMessageRecord,
 ) -> Result<(), SqlActorMailboxStoreError> {
-    if reply_actor_pair_for_inbound_obligation(message).is_none() {
+    if super::mailbox_reply_obligations::reply_actor_pair_for_inbound_obligation(message).is_none()
+    {
         return Ok(());
     }
     let messages =
-        load_reply_obligation_message_snapshots_on_executor(&mut **tx, &message.run_id).await?;
-    if has_visible_reply_credit_for_message(&messages, message.message_id) {
+        super::mailbox_reply_obligations::load_reply_obligation_message_snapshots_on_executor(
+            &mut **tx,
+            &message.run_id,
+        )
+        .await?;
+    if super::mailbox_reply_obligations::has_visible_reply_credit_for_message(
+        &messages,
+        message.message_id,
+    ) {
         return Ok(());
     }
     Err(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)
 }
 
 impl SqlActorMailboxStore {
-    async fn read_inbox_snapshot(
+    pub(super) async fn read_inbox_snapshot(
         &self,
         query: &ListActorInboxQuery,
     ) -> Result<ActorInboxSnapshot, SqlActorMailboxStoreError> {
@@ -2811,91 +1702,7 @@ fn should_persist_human_visible_chat_reply(cmd: &SendActorMessageCommand) -> boo
     )
 }
 
-pub(super) fn should_persist_human_visible_chat_reply_for_payload(
-    transport: &agenthub_team_actor::ActorMessageTransport,
-    to_actor_id: &str,
-    to_peer_id: &str,
-    from_actor_id: &str,
-    payload: &Value,
-) -> bool {
-    *transport == agenthub_team_actor::ActorMessageTransport::Local
-        && to_peer_id == ACTOR_MAIN_PEER_ID
-        && is_human_actor_id(to_actor_id)
-        && !is_human_actor_id(from_actor_id)
-        && resolve_canonical_chat_reply(payload).is_some()
-}
-
-fn is_human_actor_id(actor_id: &str) -> bool {
-    let trimmed = actor_id.trim();
-    if trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS {
-        return true;
-    }
-    if let Some(suffix) = trimmed.strip_prefix(TEAM_SPECIAL_USER_ACTOR_PREFIX) {
-        return !suffix.trim().is_empty();
-    }
-    false
-}
-
-fn normalize_channel_message_payload(payload: Value) -> Value {
-    let payload_obj = match payload {
-        Value::Object(map) => map,
-        Value::String(text) => {
-            let mut payload_obj = Map::new();
-            payload_obj.insert(
-                "type".to_string(),
-                Value::String("chat_message".to_string()),
-            );
-            payload_obj.insert("text".to_string(), Value::String(text));
-            payload_obj
-        }
-        other => {
-            let mut payload_obj = Map::new();
-            payload_obj.insert(
-                "type".to_string(),
-                Value::String("chat_message".to_string()),
-            );
-            payload_obj.insert("text".to_string(), Value::String(other.to_string()));
-            payload_obj
-        }
-    };
-    Value::Object(payload_obj)
-}
-
-fn ensure_channel_message_correlation_id(
-    payload: Value,
-    fallback_correlation_id: Option<&str>,
-) -> Value {
-    let mut payload_obj = match normalize_channel_message_payload(payload) {
-        Value::Object(map) => map,
-        _ => unreachable!("channel payload normalization should always yield an object"),
-    };
-    let has_correlation_id = payload_obj
-        .get("correlation_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    if !has_correlation_id {
-        payload_obj.insert(
-            "correlation_id".to_string(),
-            Value::String(
-                fallback_correlation_id
-                    .map(str::to_string)
-                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
-            ),
-        );
-    }
-    Value::Object(payload_obj)
-}
-
-fn channel_payload_correlation_id(payload: &Value) -> Option<&str> {
-    payload
-        .get("correlation_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-}
-
-fn build_channel_mailbox_forward_payload(
+pub(super) fn build_channel_mailbox_forward_payload(
     source_payload: &Value,
     target: &ResolvedChannelMailboxTarget,
     channel_id: &str,
@@ -2937,39 +1744,6 @@ fn build_channel_mailbox_forward_payload(
     Value::Object(payload_obj)
 }
 
-fn collect_channel_mention_actor_ids(
-    payload: &Value,
-    member_ids: &BTreeSet<String>,
-) -> Vec<String> {
-    let mut mentioned = BTreeSet::new();
-    for key in ["mention_actor_ids", "mentioned_actor_ids"] {
-        if let Some(explicit_mentions) = payload.get(key).and_then(Value::as_array) {
-            for mention in explicit_mentions {
-                if let Some(actor_id) = mention.as_str().map(str::trim)
-                    && member_ids.contains(actor_id)
-                {
-                    mentioned.insert(actor_id.to_string());
-                }
-            }
-        }
-    }
-
-    let text = match payload {
-        Value::String(text) => Some(text.as_str()),
-        Value::Object(map) => map.get("text").and_then(Value::as_str),
-        _ => None,
-    };
-    if let Some(text) = text {
-        for actor_id in member_ids {
-            if find_raw_actor_mention_range(text, actor_id).is_some() {
-                mentioned.insert(actor_id.clone());
-            }
-        }
-    }
-
-    mentioned.into_iter().collect()
-}
-
 fn is_valid_mention_char(raw: u8) -> bool {
     matches!(raw, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_')
 }
@@ -2981,7 +1755,7 @@ fn is_email_local_char(raw: u8) -> bool {
     )
 }
 
-fn find_raw_actor_mention_range(text: &str, actor_id: &str) -> Option<(usize, usize)> {
+pub(super) fn find_raw_actor_mention_range(text: &str, actor_id: &str) -> Option<(usize, usize)> {
     let needle = format!("@{actor_id}");
     let bytes = text.as_bytes();
     let mut cursor = 0usize;
@@ -2996,80 +1770,6 @@ fn find_raw_actor_mention_range(text: &str, actor_id: &str) -> Option<(usize, us
         cursor = end;
     }
     None
-}
-
-fn resolve_canonical_chat_reply(payload: &Value) -> Option<CanonicalChatReply> {
-    match payload {
-        Value::Object(map) => resolve_canonical_chat_reply_from_map(map),
-        Value::String(text) => {
-            if let Some(parsed) = parse_stringified_json_payload(text)
-                && let Some(reply) = resolve_canonical_chat_reply(&parsed)
-            {
-                return Some(reply);
-            }
-            let trimmed = text.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(CanonicalChatReply {
-                    text: text.clone(),
-                    correlation_id: None,
-                })
-            }
-        }
-        _ => None,
-    }
-}
-
-fn resolve_canonical_chat_reply_from_map(map: &Map<String, Value>) -> Option<CanonicalChatReply> {
-    let payload_type = map
-        .get("type")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .unwrap_or_default();
-    if !payload_type.is_empty() && payload_type != "chat_message" {
-        return None;
-    }
-    let text = map
-        .get("text")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())?
-        .to_string();
-    let correlation_id = map
-        .get("correlation_id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    Some(CanonicalChatReply {
-        text,
-        correlation_id,
-    })
-}
-
-fn parse_stringified_json_payload(raw: &str) -> Option<Value> {
-    let trimmed = raw.trim();
-    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
-        return None;
-    }
-    serde_json::from_str(trimmed).ok()
-}
-
-fn build_canonical_chat_payload(reply: &CanonicalChatReply) -> Value {
-    let mut payload = Map::new();
-    payload.insert(
-        "type".to_string(),
-        Value::String("chat_message".to_string()),
-    );
-    payload.insert("text".to_string(), Value::String(reply.text.clone()));
-    if let Some(correlation_id) = reply.correlation_id.as_deref() {
-        payload.insert(
-            "correlation_id".to_string(),
-            Value::String(correlation_id.to_string()),
-        );
-    }
-    Value::Object(payload)
 }
 
 async fn resolve_or_create_shared_thread_for_run(
@@ -3205,7 +1905,7 @@ async fn fetch_message_by_id(
     parse_team_actor_message_row(&row).map_err(|err| sqlx::Error::Protocol(err.to_string()))
 }
 
-async fn fetch_enriched_message_by_id(
+pub(super) async fn fetch_enriched_message_by_id(
     pool: &SqlitePool,
     message_id: i64,
 ) -> Result<TeamActorMessageRecord, sqlx::Error> {
@@ -3216,7 +1916,7 @@ async fn fetch_enriched_message_by_id(
     Ok(message)
 }
 
-async fn fetch_message_for_actor(
+pub(super) async fn fetch_message_for_actor(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     run_id: &str,
     actor_id: &str,
@@ -3330,7 +2030,7 @@ async fn fetch_latest_task_link_for_message(
     }))
 }
 
-async fn apply_thread_claim_transition(
+pub(super) async fn apply_thread_claim_transition(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     message: &TeamActorMessageRecord,
     cmd: &TriageActorMessageCommand,
@@ -3505,7 +2205,7 @@ fn ensure_idempotency_compatible(
     Ok(())
 }
 
-fn required_trimmed_field<'a>(
+pub(super) fn required_trimmed_field<'a>(
     value: &'a str,
     field: &'static str,
 ) -> Result<&'a str, ActorServiceError> {
@@ -3519,11 +2219,11 @@ fn required_trimmed_field<'a>(
     Ok(trimmed)
 }
 
-fn optional_trimmed(value: Option<&str>) -> Option<&str> {
+pub(super) fn optional_trimmed(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|raw| !raw.is_empty())
 }
 
-fn validate_direct_mailbox_target_for_member_specs(
+pub(super) fn validate_direct_mailbox_target_for_member_specs(
     member_specs: &[TeamMemberSpecView],
     to_actor_id: &str,
 ) -> Result<(), ActorServiceError> {
@@ -3604,7 +2304,7 @@ fn is_readonly_database_error(err: &anyhow::Error) -> bool {
     })
 }
 
-fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
+pub(super) fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
     if TeamManager::is_actor_message_idempotency_conflict(&err) {
         return ActorServiceError::new(
             ActorServiceErrorCode::Conflict,
