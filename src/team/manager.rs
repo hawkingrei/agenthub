@@ -5,6 +5,7 @@ mod codec;
 mod context_artifacts;
 mod conversation;
 mod mailbox;
+mod mailbox_errors;
 mod mailbox_payloads;
 mod mailbox_reply_obligations;
 mod mailbox_service;
