@@ -14,7 +14,7 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 git_repository(
     name = "codex_src",
-    commit = "13595c36e218fcbd13df118eeadf00d4eb0e6d31",
+    commit = "9474e5cfc4494b0ba319352aa86ce436c59e65c8",
     remote = "https://github.com/openai/codex",
 )
 

@@ -52,8 +52,9 @@ use codex_protocol::{
         ReasoningContentDeltaEvent, ReasoningRawContentDeltaEvent, ReviewDecision,
         ReviewOutputEvent, ReviewRequest, ReviewTarget, RolloutItem, SandboxPolicy,
         StreamErrorEvent, TerminalInteractionEvent, ThreadGoalStatus, ThreadGoalUpdatedEvent,
-        TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, UserMessageEvent,
-        ViewImageToolCallEvent, WarningEvent, WebSearchBeginEvent, WebSearchEndEvent,
+        ThreadSettingsOverrides, TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent,
+        TurnStartedEvent, UserMessageEvent, ViewImageToolCallEvent, WarningEvent,
+        WebSearchBeginEvent, WebSearchEndEvent,
     },
     request_permissions::{
         PermissionGrantScope, RequestPermissionsEvent, RequestPermissionsResponse,
@@ -883,6 +884,7 @@ impl PromptState {
             | EventMsg::TurnComplete(..)
             | EventMsg::TurnDiff(..)
             | EventMsg::TurnAborted(..)
+            | EventMsg::ThreadSettingsApplied(..)
             | EventMsg::EnteredReviewMode(..)
             | EventMsg::ExitedReviewMode(..)
             | EventMsg::ShutdownComplete => {
@@ -997,6 +999,9 @@ impl PromptState {
                 client
                     .send_agent_text(format_thread_goal_update(&event))
                     .await;
+            }
+            EventMsg::ThreadSettingsApplied(event) => {
+                info!("Thread settings applied: {:?}", event.thread_settings);
             }
             EventMsg::PlanUpdate(UpdatePlanArgs { explanation, plan }) => {
                 // Send this to the client via session/update notification
@@ -3332,19 +3337,12 @@ impl<A: Auth> ThreadActor<A> {
         self.thread
             .submit(
                 "config".to_string(),
-                Op::OverrideTurnContext {
-                    cwd: None,
-                    approval_policy: None,
-                    approvals_reviewer: None,
-                    sandbox_policy: None,
-                    model: Some(model_to_use.clone()),
-                    effort: Some(effort_to_use),
-                    summary: None,
-                    collaboration_mode: None,
-                    personality: None,
-                    windows_sandbox_level: None,
-                    service_tier: None,
-                    permission_profile: None,
+                Op::ThreadSettings {
+                    thread_settings: ThreadSettingsOverrides {
+                        model: Some(model_to_use.clone()),
+                        effort: Some(effort_to_use),
+                        ..Default::default()
+                    },
                 },
             )
             .await
@@ -3383,19 +3381,11 @@ impl<A: Auth> ThreadActor<A> {
         self.thread
             .submit(
                 "config".to_string(),
-                Op::OverrideTurnContext {
-                    cwd: None,
-                    approval_policy: None,
-                    approvals_reviewer: None,
-                    sandbox_policy: None,
-                    model: None,
-                    effort: Some(Some(effort)),
-                    summary: None,
-                    collaboration_mode: None,
-                    personality: None,
-                    windows_sandbox_level: None,
-                    service_tier: None,
-                    permission_profile: None,
+                Op::ThreadSettings {
+                    thread_settings: ThreadSettingsOverrides {
+                        effort: Some(Some(effort)),
+                        ..Default::default()
+                    },
                 },
             )
             .await
@@ -3508,6 +3498,7 @@ impl<A: Auth> ThreadActor<A> {
                         final_output_json_schema: None,
                         responsesapi_client_metadata: None,
                         environments: None,
+                        thread_settings: ThreadSettingsOverrides::default(),
                     }
                 }
                 "review" => {
@@ -3560,6 +3551,7 @@ impl<A: Auth> ThreadActor<A> {
                         final_output_json_schema: None,
                         responsesapi_client_metadata: None,
                         environments: None,
+                        thread_settings: ThreadSettingsOverrides::default(),
                     }
                 }
             }
@@ -3569,6 +3561,7 @@ impl<A: Auth> ThreadActor<A> {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 environments: None,
+                thread_settings: ThreadSettingsOverrides::default(),
             }
         }
 
@@ -3639,19 +3632,12 @@ impl<A: Auth> ThreadActor<A> {
         self.thread
             .submit(
                 "config".to_string(),
-                Op::OverrideTurnContext {
-                    cwd: None,
-                    approval_policy: Some(preset.approval),
-                    approvals_reviewer: None,
-                    sandbox_policy: Some(legacy_sandbox_policy.clone()),
-                    model: None,
-                    effort: None,
-                    summary: None,
-                    collaboration_mode: None,
-                    personality: None,
-                    windows_sandbox_level: None,
-                    service_tier: None,
-                    permission_profile: None,
+                Op::ThreadSettings {
+                    thread_settings: ThreadSettingsOverrides {
+                        approval_policy: Some(preset.approval),
+                        sandbox_policy: Some(legacy_sandbox_policy.clone()),
+                        ..Default::default()
+                    },
                 },
             )
             .await
@@ -3708,19 +3694,12 @@ impl<A: Auth> ThreadActor<A> {
         self.thread
             .submit(
                 "config".to_string(),
-                Op::OverrideTurnContext {
-                    cwd: None,
-                    approval_policy: None,
-                    approvals_reviewer: None,
-                    sandbox_policy: None,
-                    model: Some(model_to_use.clone()),
-                    effort: Some(effort_to_use),
-                    summary: None,
-                    collaboration_mode: None,
-                    personality: None,
-                    windows_sandbox_level: None,
-                    service_tier: None,
-                    permission_profile: None,
+                Op::ThreadSettings {
+                    thread_settings: ThreadSettingsOverrides {
+                        model: Some(model_to_use.clone()),
+                        effort: Some(effort_to_use),
+                        ..Default::default()
+                    },
                 },
             )
             .await
@@ -5007,6 +4986,7 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 environments: None,
+                thread_settings: ThreadSettingsOverrides::default(),
             }],
             "ops don't match {ops:?}"
         );
@@ -5283,6 +5263,7 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 environments: None,
+                thread_settings: ThreadSettingsOverrides::default(),
             }],
             "ops don't match {ops:?}"
         );
@@ -6149,7 +6130,7 @@ mod tests {
                 | Op::RequestPermissionsResponse { .. }
                 | Op::PatchApproval { .. }
                 | Op::Interrupt
-                | Op::OverrideTurnContext { .. } => {}
+                | Op::ThreadSettings { .. } => {}
                 Op::Shutdown => {
                     if let Some(active_prompt_id) = self.active_prompt_id.lock().unwrap().take() {
                         self.op_tx
@@ -7384,6 +7365,7 @@ mod tests {
                             call_id: "call-1".to_string(),
                             invocation: invocation.clone(),
                             mcp_app_resource_uri: Some(resource_uri.clone()),
+                            plugin_id: None,
                         }),
                     )
                     .await;
@@ -7395,6 +7377,7 @@ mod tests {
                             call_id: "call-1".to_string(),
                             invocation,
                             mcp_app_resource_uri: Some(resource_uri.clone()),
+                            plugin_id: None,
                             duration: Duration::from_millis(5),
                             result: Ok(CallToolResult {
                                 content: vec![serde_json::to_value(ContentBlock::Text(
@@ -7876,7 +7859,7 @@ mod tests {
         drop(submission_ids);
 
         let ops = thread.ops.lock().unwrap();
-        assert!(matches!(ops.as_slice(), [Op::OverrideTurnContext { .. }]));
+        assert!(matches!(ops.as_slice(), [Op::ThreadSettings { .. }]));
 
         Ok(())
     }
@@ -7970,8 +7953,11 @@ mod tests {
         let ops = thread.ops.lock().unwrap();
         assert!(matches!(
             ops.as_slice(),
-            [Op::OverrideTurnContext {
-                model: Some(model),
+            [Op::ThreadSettings {
+                thread_settings: ThreadSettingsOverrides {
+                    model: Some(model),
+                    ..
+                },
                 ..
             }] if model == "test-model"
         ));
@@ -8011,8 +7997,11 @@ mod tests {
         let ops = thread.ops.lock().unwrap();
         assert!(matches!(
             ops.as_slice(),
-            [Op::OverrideTurnContext {
-                model: Some(model),
+            [Op::ThreadSettings {
+                thread_settings: ThreadSettingsOverrides {
+                    model: Some(model),
+                    ..
+                },
                 ..
             }] if model == "test-model"
         ));
