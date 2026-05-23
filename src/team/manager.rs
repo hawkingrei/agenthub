@@ -43,6 +43,7 @@ mod session_views;
 mod shared_thread;
 mod state_mutations;
 mod step_continuity;
+mod step_helpers;
 mod step_lifecycle;
 mod step_materialization;
 mod step_queries;
