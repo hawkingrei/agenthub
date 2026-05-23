@@ -4,10 +4,11 @@ use uuid::Uuid;
 use super::run_status_sync::{
     extract_linked_task_id_from_run_input, load_run_status_sync_meta_tx, sync_linked_task_status_tx,
 };
-use super::step_lifecycle::{
+use super::step_lifecycle::extract_continuity_mode_from_input;
+use super::step_lifecycle::normalize_run_input_continuity;
+use super::step_materialization::{
     build_materialized_run_step_templates_from_task_execution_plan,
-    extract_continuity_mode_from_input, extract_materialized_run_step_templates_from_input,
-    insert_materialized_run_steps_tx, normalize_run_input_continuity,
+    extract_materialized_run_step_templates_from_input, insert_materialized_run_steps_tx,
     validate_materialized_run_step_templates,
 };
 use super::{
