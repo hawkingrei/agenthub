@@ -1,0 +1,13 @@
+[package]
+name = "agenthub-agent-event-codec"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+agenthub-agent-domain = { path = "../agenthub-agent-domain" }
+agenthub-db = { path = "../agenthub-db" }
+anyhow = "1"
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+tracing = "0.1"
+zstd = "0.13"

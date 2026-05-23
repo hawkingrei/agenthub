@@ -456,6 +456,7 @@ pub fn derive_actor_message_topic_metadata(
         .or_else(|| actor_message_payload_task_id(payload));
     let root_message_id = actor_message_payload_thread_root_message_id(payload);
     let task_message_id = payload_positive_i64(payload, "task_message_id");
+    let topic = payload_trimmed_string(payload, "topic");
     let correlation_id = payload_trimmed_string(payload, "correlation_id");
 
     if let (Some(task_id), Some(root_message_id)) = (task_id.clone(), root_message_id) {
@@ -470,6 +471,16 @@ pub fn derive_actor_message_topic_metadata(
             topic_key: format!("task:{task_id}:message:{task_message_id}"),
             task_id: Some(task_id),
             root_message_id: None,
+        });
+    }
+    if let Some(topic) = topic {
+        return Some(ActorMessageTopicMetadata {
+            topic_key: match task_id.clone() {
+                Some(task_id) => format!("task:{task_id}:topic:{topic}"),
+                None => format!("topic:{topic}"),
+            },
+            task_id,
+            root_message_id,
         });
     }
     if let Some(correlation_id) = correlation_id {
@@ -645,30 +656,47 @@ mod tests {
     }
 
     #[test]
-    fn derive_actor_message_topic_metadata_falls_back_to_correlation_scope() {
+    fn derive_actor_message_topic_metadata_uses_explicit_topic_before_correlation() {
         let metadata = derive_actor_message_topic_metadata(
             12,
             &json!({
+                "topic": "incident/12",
                 "correlation_id": "corr-12",
                 "task_id": "task-12"
             }),
             None,
         )
         .expect("derive metadata");
-        assert_eq!(metadata.topic_key, "correlation:corr-12");
+        assert_eq!(metadata.topic_key, "task:task-12:topic:incident/12");
         assert_eq!(metadata.task_id.as_deref(), Some("task-12"));
+        assert_eq!(metadata.root_message_id, None);
+    }
+
+    #[test]
+    fn derive_actor_message_topic_metadata_falls_back_to_correlation_scope() {
+        let metadata = derive_actor_message_topic_metadata(
+            13,
+            &json!({
+                "correlation_id": "corr-13",
+                "task_id": "task-13"
+            }),
+            None,
+        )
+        .expect("derive metadata");
+        assert_eq!(metadata.topic_key, "correlation:corr-13");
+        assert_eq!(metadata.task_id.as_deref(), Some("task-13"));
         assert_eq!(metadata.root_message_id, None);
     }
 
     #[test]
     fn derive_actor_message_topic_metadata_returns_none_without_scope() {
         assert_eq!(
-            derive_actor_message_topic_metadata(13, &json!({"task_id":"   "}), Some("   ")),
+            derive_actor_message_topic_metadata(14, &json!({"task_id":"   "}), Some("   ")),
             None
         );
         assert_eq!(
             derive_actor_message_topic_metadata(
-                14,
+                15,
                 &json!({"thread_root_message_id": 0, "task_message_id": -1}),
                 None
             ),

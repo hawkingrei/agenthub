@@ -1,0 +1,12 @@
+[package]
+name = "agenthub-auth-store"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+agenthub-auth-domain = { path = "../agenthub-auth-domain" }
+chrono = { version = "0.4", features = ["clock"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+uuid = { version = "1", features = ["v4"] }

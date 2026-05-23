@@ -337,12 +337,22 @@ version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
  "agenthub-acp",
+ "agenthub-agent-domain",
+ "agenthub-agent-event-codec",
+ "agenthub-auth-domain",
+ "agenthub-auth-passkeys",
+ "agenthub-auth-store",
  "agenthub-config",
  "agenthub-db",
+ "agenthub-diagnostics",
+ "agenthub-doctor-cli",
  "agenthub-internal-p2p",
+ "agenthub-internal-tls",
+ "agenthub-linkers",
  "agenthub-logging",
  "agenthub-managed-skills",
  "agenthub-message-archive",
+ "agenthub-push",
  "agenthub-pyroscope",
  "agenthub-team-actor",
  "agenthub-team-domain",
@@ -428,6 +438,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "agenthub-agent-domain"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "url",
+]
+
+[[package]]
+name = "agenthub-agent-event-codec"
+version = "0.1.0"
+dependencies = [
+ "agenthub-agent-domain",
+ "agenthub-db",
+ "anyhow",
+ "sqlx",
+ "tracing",
+ "zstd",
+]
+
+[[package]]
+name = "agenthub-auth-domain"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "rand_core 0.6.4",
+ "webauthn-rs",
+]
+
+[[package]]
+name = "agenthub-auth-passkeys"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde_json",
+ "sqlx",
+ "webauthn-rs",
+]
+
+[[package]]
+name = "agenthub-auth-store"
+version = "0.1.0"
+dependencies = [
+ "agenthub-auth-domain",
+ "anyhow",
+ "chrono",
+ "sqlx",
+ "uuid",
+]
+
+[[package]]
 name = "agenthub-codex-acp"
 version = "0.10.0"
 dependencies = [
@@ -497,6 +560,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "agenthub-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "agenthub-agent-domain",
+ "agenthub-agent-event-codec",
+ "agenthub-db",
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "agenthub-doctor-cli"
+version = "0.1.0"
+dependencies = [
+ "agenthub-diagnostics",
+ "agenthub-managed-skills",
+ "anyhow",
+ "clap",
+ "reqwest 0.12.28",
+ "serde_json",
+]
+
+[[package]]
 name = "agenthub-internal-p2p"
 version = "0.1.0"
 dependencies = [
@@ -507,6 +597,35 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+]
+
+[[package]]
+name = "agenthub-internal-tls"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "rand 0.10.1",
+ "rcgen",
+ "rustls",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "agenthub-linkers"
+version = "0.1.0"
+dependencies = [
+ "agenthub-db",
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -542,6 +661,23 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "agenthub-push"
+version = "0.1.0"
+dependencies = [
+ "agenthub-config",
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "jwt-simple",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
+ "web-push",
 ]
 
 [[package]]
