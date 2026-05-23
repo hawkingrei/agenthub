@@ -13,6 +13,7 @@ mod mailbox_payloads;
 mod mailbox_queries;
 mod mailbox_reply_obligations;
 mod mailbox_service;
+mod mailbox_service_channels;
 mod mailbox_shared_thread;
 mod mailbox_sqlite;
 mod mailbox_store;
