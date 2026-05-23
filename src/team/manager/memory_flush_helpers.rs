@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sqlx::Row;
 
-use super::context_artifacts::ContextArtifactPointer;
+use super::context_artifact_persistence::ContextArtifactPointer;
 use super::{
     MEMORY_FLUSH_MAX_EVENTS_DEFAULT, MEMORY_FLUSH_MAX_EVENTS_MAX, MEMORY_FLUSH_MAX_EXCERPT_CHARS,
     MEMORY_FLUSH_MAX_SUMMARY_CHARS, TeamManager, TeamMemoryFlushRequest, TeamMemoryFlushResult,

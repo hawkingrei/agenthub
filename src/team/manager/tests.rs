@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -18,6 +20,7 @@ mod runtime_view_cases;
 mod step_lifecycle_cases;
 mod task_cases;
 mod team_cases;
+#[path = "tests_support.rs"]
 mod tests_support;
 
 use super::codec::team_run_status_from_str;

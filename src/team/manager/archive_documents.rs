@@ -425,7 +425,7 @@ pub(super) fn message_archive_payload_i64(payload: &Value, key: &str) -> Option<
     }
 }
 
-pub(super) fn message_archive_body_text(payload: &Value) -> String {
+pub(crate) fn message_archive_body_text(payload: &Value) -> String {
     payload
         .as_str()
         .or_else(|| payload.get("text").and_then(Value::as_str))

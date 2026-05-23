@@ -3,6 +3,7 @@ mod archive_migration;
 mod channels;
 mod codec;
 mod context_artifact_support;
+mod context_artifact_persistence;
 mod context_artifacts;
 mod conversation;
 mod mailbox;
@@ -27,8 +28,8 @@ mod mailbox_store_relay;
 mod mailbox_tests;
 mod mailbox_threads;
 mod mailbox_worker;
-mod memory_flush;
 mod memory_flush_helpers;
+mod memory_flush_execution;
 mod message_archive;
 mod payload_utils;
 mod remote_relay;
@@ -45,6 +46,7 @@ mod session_views;
 mod shared_thread;
 mod state_mutations;
 mod step_continuity;
+mod step_completion;
 mod step_helpers;
 mod step_lifecycle;
 mod step_materialization;
@@ -90,7 +92,6 @@ use self::archive_documents::{
     team_conversation_message_archive_document, team_run_event_archive_document,
     team_run_event_archive_document_for_db, team_run_event_archive_document_for_db_cached,
 };
-use self::context_artifacts::ContextArtifactPointer;
 use self::payload_utils::{
     filter_visible_team_runs, merge_json_value, redact_sensitive_json, resolve_task_context_patch,
 };

@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use super::context_artifacts::ContinuitySnapshot;
+use super::context_artifact_persistence::ContinuitySnapshot;
 use super::{
     CONTINUITY_MAX_HISTORY_CHARS, CONTINUITY_MAX_SUMMARY_CHARS, CONTINUITY_MODE_DEFAULT,
     CONTINUITY_MODE_RESET, TEAM_RUN_CONTINUITY_MODE_VALUES, redact_sensitive_json,

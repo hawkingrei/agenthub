@@ -31,28 +31,31 @@ pub(super) async fn build_auth_service(
     Ok(Arc::new(AuthService::new(db.clone(), config).await?))
 }
 
-pub(super) fn build_agent_manager(
-    db: &SqlitePool,
-    event_dbs: &agenthub_db::AgentEventDbRouter,
-    idle_gc: Option<agenthub_db::AgentEventIdleGc>,
-    push: Arc<PushService>,
-    config: &agenthub_config::AppConfig,
-    acp_permissions: Arc<AcpPermissionService>,
-    auth: Arc<AuthService>,
-    internal_peer_client: Option<crate::internal::client::InternalGrpcPeerClientConfig>,
-) -> Arc<AgentManager> {
+pub(super) struct AgentManagerBuildArgs<'a> {
+    pub(super) db: &'a SqlitePool,
+    pub(super) event_dbs: &'a agenthub_db::AgentEventDbRouter,
+    pub(super) idle_gc: Option<agenthub_db::AgentEventIdleGc>,
+    pub(super) push: Arc<PushService>,
+    pub(super) config: &'a agenthub_config::AppConfig,
+    pub(super) acp_permissions: Arc<AcpPermissionService>,
+    pub(super) auth: Arc<AuthService>,
+    pub(super)
+        internal_peer_client: Option<crate::internal::client::InternalGrpcPeerClientConfig>,
+}
+
+pub(super) fn build_agent_manager(args: AgentManagerBuildArgs<'_>) -> Arc<AgentManager> {
     Arc::new(AgentManager::new_with_internal_grpc(
-        db.clone(),
-        event_dbs.clone(),
-        idle_gc,
-        push,
-        config.proxy_env(),
-        config.codex_acp_binary(),
-        config.codex_acp_default_mode(),
-        config.codex_acp_multi_agent_enabled(),
-        acp_permissions,
-        auth,
-        internal_peer_client,
+        args.db.clone(),
+        args.event_dbs.clone(),
+        args.idle_gc,
+        args.push,
+        args.config.proxy_env(),
+        args.config.codex_acp_binary(),
+        args.config.codex_acp_default_mode(),
+        args.config.codex_acp_multi_agent_enabled(),
+        args.acp_permissions,
+        args.auth,
+        args.internal_peer_client,
     ))
 }
 

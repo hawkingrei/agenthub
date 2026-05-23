@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sqlx::{Row, Sqlite};
 
-use super::context_artifacts::ContextArtifactOwner;
+use super::context_artifact_persistence::ContextArtifactOwner;
 use super::{
     build_team_member_actor_context_for_role, continuity_note_relative_path,
     extract_context_artifact_path, team_member_role_from_spec,

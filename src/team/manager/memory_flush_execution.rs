@@ -1,4 +1,4 @@
-use super::context_artifacts::ContextArtifactOwner;
+use super::context_artifact_persistence::ContextArtifactOwner;
 use super::memory_flush_helpers::{
     MemoryFlushFinalizeContext, build_context_artifact_pointer_payload,
     build_memory_flush_observation, build_memory_flush_summary, finalize_memory_flush_failed_tx,

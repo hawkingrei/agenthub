@@ -40,13 +40,12 @@ async fn actor_messages_support_inbox_and_ack_flow() {
     assert_eq!(sent.status, TeamActorMessageStatus::Pending);
 
     let unread = manager
-        .list_actor_inbox(&run.id, "reviewer", None, 50, None)
+        .list_actor_inbox(&run.id, "reviewer", 50, None, false)
         .await
         .expect("list inbox");
-    assert_eq!(unread.pending_count, 1);
-    assert_eq!(unread.messages.len(), 1);
-    assert_eq!(unread.messages[0].message_id, sent.message_id);
-    assert_eq!(unread.messages[0].status, TeamActorMessageStatus::Pending);
+    assert_eq!(unread.len(), 1);
+    assert_eq!(unread[0].message_id, sent.message_id);
+    assert_eq!(unread[0].status, TeamActorMessageStatus::Pending);
 
     let ack = manager
         .ack_actor_message(&run.id, "reviewer", sent.message_id)
@@ -56,31 +55,17 @@ async fn actor_messages_support_inbox_and_ack_flow() {
     assert_eq!(ack.message.status, TeamActorMessageStatus::Delivered);
 
     let unread_after_ack = manager
-        .list_actor_inbox(&run.id, "reviewer", None, 50, None)
+        .list_actor_inbox(&run.id, "reviewer", 50, None, false)
         .await
         .expect("list inbox after ack");
-    assert_eq!(unread_after_ack.pending_count, 0);
-    assert!(unread_after_ack.messages.is_empty());
+    assert!(unread_after_ack.is_empty());
 
     let history = manager
-        .list_actor_inbox(
-            &run.id,
-            "reviewer",
-            None,
-            50,
-            Some(vec![
-                TeamActorMessageStatus::Pending,
-                TeamActorMessageStatus::Delivered,
-            ]),
-        )
+        .list_actor_inbox(&run.id, "reviewer", 50, None, true)
         .await
         .expect("list inbox history");
-    assert_eq!(history.pending_count, 0);
-    assert_eq!(history.messages.len(), 1);
-    assert_eq!(
-        history.messages[0].status,
-        TeamActorMessageStatus::Delivered
-    );
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].status, TeamActorMessageStatus::Delivered);
 }
 
 #[tokio::test]
@@ -1117,16 +1102,16 @@ async fn actor_mailbox_service_task_link_surfaces_durable_task_association() {
         .expect("actor send");
 
     let linked = service
-        .actor_link_task(ActorTaskLinkRequest {
+        .actor_task_link(ActorTaskLinkRequest {
             run_id: run.id.clone(),
             actor_id: "reviewer".to_string(),
             message_id: sent.message_id,
-            relation: ActorMessageTaskRelation::Primary,
+            relation: ActorMessageTaskRelation::RelatedTask,
             task_id: task.id.clone(),
         })
         .await
         .expect("link task");
-    assert_eq!(linked.task_id.as_deref(), Some(task.id.as_str()));
+    assert_eq!(linked.task_id, task.id);
 
     let history = service
         .actor_inbox(ActorInboxRequest {
@@ -1143,7 +1128,7 @@ async fn actor_mailbox_service_task_link_surfaces_durable_task_association() {
         .expect("linked task history");
     assert_eq!(history.messages.len(), 1);
     assert_eq!(
-        history.messages[0].task_id.as_deref(),
+        history.messages[0].linked_task_id.as_deref(),
         Some(task.id.as_str())
     );
 }

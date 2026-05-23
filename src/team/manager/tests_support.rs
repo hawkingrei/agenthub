@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Default)]
 pub(super) struct RecordingMessageArchive {
-    documents: Mutex<Vec<MessageDocument>>,
+    pub(super) documents: Mutex<Vec<MessageDocument>>,
 }
 
 #[async_trait]

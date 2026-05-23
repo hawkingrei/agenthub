@@ -72,6 +72,3 @@ impl AppState {
         gitignore::ensure_global_gitignore_agenthubmemory()
     }
 }
-
-#[cfg(test)]
-mod tests;

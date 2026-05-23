@@ -8,11 +8,16 @@ use crate::team::permission_review::tests_support::{
     PermissionReviewRequestFixture, TestMailboxHintAgentNudger, create_permission_review_team,
     insert_pending_permission_request, insert_running_agent,
 };
-use agenthub_acp::AcpPermissionReviewRequest;
+use agenthub_acp::{
+    AcpPermissionReviewDispatcher, AcpPermissionReviewRequest, AcpPermissionService,
+};
 use agenthub_acp::acp_permission_review_timeout;
 use agenthub_team_actor::{ActorInboxRequest, ActorMailboxService, ActorMessageStatus};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
+
+use super::payload::build_permission_review_summary;
+use super::selection::{PermissionReviewCandidate, collect_team_permission_review_candidates};
 
 #[test]
 fn permission_review_dispatcher_default_human_fallback_is_forty_seconds() {

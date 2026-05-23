@@ -27,14 +27,16 @@ impl AppState {
         let auth = super::service_factories::build_auth_service(&db, config).await?;
         let message_archive = Self::initialize_message_archive(config).await?;
         let agents = super::service_factories::build_agent_manager(
-            &db,
-            &event_dbs,
-            idle_gc,
-            push.clone(),
-            config,
-            acp_permissions.clone(),
-            auth.clone(),
-            internal_peer_client.clone(),
+            super::service_factories::AgentManagerBuildArgs {
+                db: &db,
+                event_dbs: &event_dbs,
+                idle_gc,
+                push: push.clone(),
+                config,
+                acp_permissions: acp_permissions.clone(),
+                auth: auth.clone(),
+                internal_peer_client: internal_peer_client.clone(),
+            },
         );
 
         let teams = super::service_factories::build_team_manager(&db, &event_dbs, message_archive);

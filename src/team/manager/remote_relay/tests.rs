@@ -241,7 +241,7 @@ async fn grpc_relay_requires_registered_target_node_match() {
         client_key_path: None,
     }));
 
-    let route = super::GrpcRemoteRelayRouteValue {
+    let route = GrpcRemoteRelayRouteValue {
         kind: Some("grpc".to_string()),
         grpc_target: "https://node-b.internal:50051".to_string(),
         access_token: Some("secret-token".to_string()),
@@ -253,7 +253,7 @@ async fn grpc_relay_requires_registered_target_node_match() {
         .await
         .expect("registered node should resolve");
 
-    let mismatch = super::GrpcRemoteRelayRouteValue {
+    let mismatch = GrpcRemoteRelayRouteValue {
         grpc_target: "https://evil.example:50051".to_string(),
         ..route
     };
@@ -438,7 +438,7 @@ async fn deliver_grpc_requires_peer_client_when_route_omits_access_token() {
     let err = adapter
         .deliver_grpc(
             &message,
-            super::GrpcRemoteRelayRouteValue {
+            GrpcRemoteRelayRouteValue {
                 kind: Some("grpc".to_string()),
                 grpc_target: "https://node-b.internal:50051".to_string(),
                 access_token: None,
