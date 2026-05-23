@@ -17,6 +17,7 @@ mod mailbox_service_channels;
 mod mailbox_shared_thread;
 mod mailbox_sqlite;
 mod mailbox_store;
+mod mailbox_store_delivery;
 mod mailbox_store_inbox;
 mod mailbox_store_mutations;
 mod mailbox_store_relay;
