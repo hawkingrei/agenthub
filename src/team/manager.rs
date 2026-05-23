@@ -30,6 +30,7 @@ mod memory_flush;
 mod message_archive;
 mod payload_utils;
 mod remote_relay;
+mod remote_relay_delivery;
 mod remote_relay_grpc;
 mod remote_relay_route;
 mod run_admin;

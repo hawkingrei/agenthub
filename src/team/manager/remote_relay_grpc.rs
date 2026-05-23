@@ -7,9 +7,9 @@ use super::remote_relay::{
     TeamRemoteRelayError,
 };
 use crate::agent::AGENT_NODE_MAIN_ID;
+use crate::internal::auth::InternalRole;
 use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig};
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig};
-use crate::internal::auth::InternalRole;
 use crate::internal::p2p::{CredentialProvider, NodeCredentialRequest};
 
 #[derive(Debug)]
