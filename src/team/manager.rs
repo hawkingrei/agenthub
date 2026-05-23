@@ -7,6 +7,7 @@ mod conversation;
 mod mailbox;
 mod mailbox_channels;
 mod mailbox_errors;
+mod mailbox_facade;
 mod mailbox_mentions;
 mod mailbox_payloads;
 mod mailbox_queries;
