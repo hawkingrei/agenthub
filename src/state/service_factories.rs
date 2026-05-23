@@ -39,8 +39,7 @@ pub(super) struct AgentManagerBuildArgs<'a> {
     pub(super) config: &'a agenthub_config::AppConfig,
     pub(super) acp_permissions: Arc<AcpPermissionService>,
     pub(super) auth: Arc<AuthService>,
-    pub(super)
-        internal_peer_client: Option<crate::internal::client::InternalGrpcPeerClientConfig>,
+    pub(super) internal_peer_client: Option<crate::internal::client::InternalGrpcPeerClientConfig>,
 }
 
 pub(super) fn build_agent_manager(args: AgentManagerBuildArgs<'_>) -> Arc<AgentManager> {

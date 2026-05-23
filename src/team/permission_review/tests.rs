@@ -8,10 +8,10 @@ use crate::team::permission_review::tests_support::{
     PermissionReviewRequestFixture, TestMailboxHintAgentNudger, create_permission_review_team,
     insert_pending_permission_request, insert_running_agent,
 };
+use agenthub_acp::acp_permission_review_timeout;
 use agenthub_acp::{
     AcpPermissionReviewDispatcher, AcpPermissionReviewRequest, AcpPermissionService,
 };
-use agenthub_acp::acp_permission_review_timeout;
 use agenthub_team_actor::{ActorInboxRequest, ActorMailboxService, ActorMessageStatus};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;

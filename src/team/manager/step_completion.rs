@@ -11,9 +11,7 @@ use super::step_reconcile::{
     ReconcileRoundArtifactSnapshot, build_reconcile_round_finished_input,
     summarize_reconcile_output,
 };
-use super::{
-    TeamManager, TeamStepRecord, TeamTaskStatus, maybe_attach_context_artifact_pointer,
-};
+use super::{TeamManager, TeamStepRecord, TeamTaskStatus, maybe_attach_context_artifact_pointer};
 use chrono::Utc;
 
 impl TeamManager {

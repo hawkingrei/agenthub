@@ -383,5 +383,4 @@ impl TeamManager {
         self.spawn_archive_team_run_events(archive_events);
         Ok(step)
     }
-
 }

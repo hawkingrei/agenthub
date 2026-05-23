@@ -2,11 +2,11 @@ use std::path::PathBuf;
 
 use sqlx::Sqlite;
 
+use super::context_artifact_persistence::ContextArtifactOwner;
 use super::context_artifact_support::{
     build_runtime_continuity_note_text, build_runtime_state_snapshot_text,
     load_team_member_context_workspace_tx,
 };
-use super::context_artifact_persistence::ContextArtifactOwner;
 use super::{TeamManager, continuity_note_relative_path};
 use crate::team::TeamMemberContinuityStateRecord;
 
