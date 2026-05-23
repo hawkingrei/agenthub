@@ -6,6 +6,7 @@ use super::mailbox::{
     required_trimmed_field, validate_direct_mailbox_target_for_member_specs,
 };
 use super::{TeamManager, TeamMemberSpecView, parse_team_member_specs};
+use crate::team::TeamActorMessageStatus;
 use crate::team::TeamActorMessageTransport;
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse,
@@ -13,7 +14,6 @@ use agenthub_team_actor::{
     ActorServiceErrorCode, ActorTaskLinkRequest, ActorTaskLinkResponse, ActorTriageRequest,
     ActorTriageResponse, ListActorInboxQuery,
 };
-use crate::team::TeamActorMessageStatus;
 
 #[derive(Clone)]
 pub struct TeamActorMailboxService {

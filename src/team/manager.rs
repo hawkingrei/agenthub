@@ -17,6 +17,7 @@ mod mailbox_service_channels;
 mod mailbox_shared_thread;
 mod mailbox_sqlite;
 mod mailbox_store;
+mod mailbox_store_inbox;
 #[cfg(test)]
 mod mailbox_tests;
 mod mailbox_threads;
