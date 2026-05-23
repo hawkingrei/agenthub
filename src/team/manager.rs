@@ -8,6 +8,7 @@ mod mailbox;
 mod mailbox_errors;
 mod mailbox_mentions;
 mod mailbox_payloads;
+mod mailbox_queries;
 mod mailbox_reply_obligations;
 mod mailbox_service;
 mod mailbox_shared_thread;
