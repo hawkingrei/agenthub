@@ -14,8 +14,12 @@ mod mailbox_queries;
 mod mailbox_reply_obligations;
 mod mailbox_service;
 mod mailbox_shared_thread;
+mod mailbox_sqlite;
 mod mailbox_store;
+#[cfg(test)]
+mod mailbox_tests;
 mod mailbox_threads;
+mod mailbox_worker;
 mod memory_flush;
 mod message_archive;
 mod payload_utils;
