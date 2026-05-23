@@ -1,13 +1,14 @@
-use super::{
-    GrpcRelayTlsDefaults, ParsedRemoteRelayRoute, RELAY_DEFAULT_TIMEOUT_MS, RELAY_TIMEOUT_MAX_MS,
-    RELAY_TIMEOUT_MIN_MS, RemoteRelaySigningValue, TeamRemoteRelayAdapter,
-};
+use super::TeamRemoteRelayAdapter;
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::p2p::NodeTransportMetadata;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::manager::remote_relay_route::{
     apply_route_signing, parse_remote_route, parse_route_header_name, parse_route_header_value,
     relay_timeout_ms,
+};
+use crate::team::manager::remote_relay_types::{
+    GrpcRelayTlsDefaults, GrpcRemoteRelayRouteValue, ParsedRemoteRelayRoute,
+    RELAY_DEFAULT_TIMEOUT_MS, RELAY_TIMEOUT_MAX_MS, RELAY_TIMEOUT_MIN_MS, RemoteRelaySigningValue,
 };
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorIdentityKind};
@@ -71,8 +72,8 @@ fn grpc_route_value(
     grpc_target: &str,
     access_token: &str,
     tls_server_name: &str,
-) -> super::GrpcRemoteRelayRouteValue {
-    super::GrpcRemoteRelayRouteValue {
+) -> GrpcRemoteRelayRouteValue {
+    GrpcRemoteRelayRouteValue {
         kind: Some("grpc".to_string()),
         grpc_target: grpc_target.to_string(),
         access_token: Some(access_token.to_string()),

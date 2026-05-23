@@ -9,7 +9,7 @@ use reqwest::{Method, header};
 use serde_json::{Value, json};
 use sha2::Sha256;
 
-use super::remote_relay::{
+use super::remote_relay_types::{
     GrpcRemoteRelayRouteValue, HttpRemoteRelayRouteValue, ParsedRemoteRelayRoute,
     RELAY_DEFAULT_TIMEOUT_MS, RELAY_TIMEOUT_MAX_MS, RELAY_TIMEOUT_MIN_MS, RemoteRelayAuthValue,
     RemoteRelaySigningValue, TeamRemoteRelayError,

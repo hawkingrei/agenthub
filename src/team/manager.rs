@@ -33,6 +33,7 @@ mod remote_relay;
 mod remote_relay_delivery;
 mod remote_relay_grpc;
 mod remote_relay_route;
+mod remote_relay_types;
 mod run_admin;
 mod run_lifecycle;
 mod run_queries;
@@ -120,7 +121,7 @@ use self::codec::{
 };
 #[cfg(test)]
 pub(super) use self::conversation::task_conversation_payload_correlation_id;
-use self::remote_relay::{GrpcRelayTlsDefaults, TeamRemoteRelayAdapter};
+use self::remote_relay_types::{GrpcRelayTlsDefaults, TeamRemoteRelayAdapter};
 pub(super) use self::shared_thread::fetch_canonical_shared_thread_target;
 use super::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TeamActorMessageRecord, TeamConversationRecord,

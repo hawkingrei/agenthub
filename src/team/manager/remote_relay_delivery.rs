@@ -6,13 +6,13 @@ use agenthub_team_actor::{
 };
 use reqwest::{Url, header};
 
-use super::remote_relay::{
-    GrpcRemoteRelayRouteValue, HttpRemoteRelayRouteValue, TeamRemoteRelayAdapter,
-    TeamRemoteRelayError,
-};
 use super::remote_relay_route::{
     apply_route_auth, apply_route_headers, apply_route_signing, build_remote_relay_envelope,
     map_grpc_actor_error, parse_route_method, relay_timeout_ms,
+};
+use super::remote_relay_types::{
+    GrpcRemoteRelayRouteValue, HttpRemoteRelayRouteValue, TeamRemoteRelayAdapter,
+    TeamRemoteRelayError,
 };
 use crate::internal::p2p::build_message_metadata;
 use crate::team::TeamActorMessageRecord;

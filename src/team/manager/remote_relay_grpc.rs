@@ -2,7 +2,7 @@ use agenthub_team_actor::ActorRelayError;
 use reqwest::Url;
 use sqlx::Row;
 
-use super::remote_relay::{
+use super::remote_relay_types::{
     GrpcRelayClientCacheKey, GrpcRemoteRelayRouteValue, TeamRemoteRelayAdapter,
     TeamRemoteRelayError,
 };
