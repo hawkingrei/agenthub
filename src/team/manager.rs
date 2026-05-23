@@ -48,6 +48,7 @@ mod step_continuity;
 mod step_helpers;
 mod step_lifecycle;
 mod step_materialization;
+mod step_progress;
 mod step_queries;
 mod step_reconcile;
 mod support;
