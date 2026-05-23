@@ -42,6 +42,7 @@ mod runtime_views;
 mod session_views;
 mod shared_thread;
 mod state_mutations;
+mod step_continuity;
 mod step_lifecycle;
 mod step_materialization;
 mod step_queries;
@@ -91,7 +92,6 @@ use self::payload_utils::{
 use self::run_status_sync::load_linked_task_ids_for_runs;
 use self::runtime_views::TeamMemberSpecView;
 use self::runtime_views::parse_team_member_specs;
-use self::step_lifecycle::build_continuity_snapshot;
 use self::support::maybe_attach_context_artifact_pointer;
 pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 

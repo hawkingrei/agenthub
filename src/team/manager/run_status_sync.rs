@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use serde_json::Value;
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 
+use super::step_continuity::build_continuity_snapshot;
 use super::{
-    CONTINUITY_MAX_SUMMARY_CHARS, TeamRunRecord, TeamRunStatus, TeamTaskStatus,
-    build_continuity_snapshot, codec, team_task_status_to_str,
+    CONTINUITY_MAX_SUMMARY_CHARS, TeamRunRecord, TeamRunStatus, TeamTaskStatus, codec,
+    team_task_status_to_str,
 };
 use agenthub_text::truncate_chars;
 
