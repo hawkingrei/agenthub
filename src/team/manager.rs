@@ -30,6 +30,7 @@ mod memory_flush;
 mod message_archive;
 mod payload_utils;
 mod remote_relay;
+mod remote_relay_route;
 mod run_admin;
 mod run_lifecycle;
 mod run_queries;
