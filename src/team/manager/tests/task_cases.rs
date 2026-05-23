@@ -476,3 +476,135 @@ async fn list_tasks_with_query_filters_by_run_topic_and_owner() {
     assert_eq!(listed[0].id, task_b.id);
     assert_ne!(listed[0].id, task_a.id);
 }
+
+#[tokio::test]
+async fn list_tasks_with_query_hides_shared_thread_bootstrap_kind_case_insensitively() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-shared-thread-casefold".to_string(),
+            description: Some(
+                "verify shared thread filtering remains case-insensitive".to_string(),
+            ),
+            spec: json!({
+                "entrypoint":"coordinator",
+                "members":[
+                    {"member_id":"coordinator","role":"coordinator"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (visible_task, _) = manager
+        .create_task(
+            &team.id,
+            "Normal task",
+            "coordinator",
+            json!({"topic":"visible"}),
+            "group_chat",
+            Some("visible"),
+        )
+        .await
+        .expect("create visible task");
+    manager
+        .create_task(
+            &team.id,
+            "Shared thread",
+            "coordinator",
+            json!({"bootstrap_kind":"Shared_Thread"}),
+            "group_chat",
+            Some("shared"),
+        )
+        .await
+        .expect("create shared thread task");
+
+    let listed = manager
+        .list_tasks_with_query(TeamTaskListQuery {
+            team_id: Some(team.id.clone()),
+            limit: 20,
+            include_shared_thread: false,
+            ..TeamTaskListQuery::default()
+        })
+        .await
+        .expect("list visible tasks");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, visible_task.id);
+}
+
+#[tokio::test]
+async fn list_tasks_with_query_keeps_tasks_without_conversation_rows() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-query-left-join".to_string(),
+            description: Some("list tasks should not require conversation rows".to_string()),
+            spec: json!({
+                "entrypoint":"coordinator",
+                "members":[
+                    {"member_id":"coordinator","role":"coordinator"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (orphan_task, _) = manager
+        .create_task(
+            &team.id,
+            "Legacy orphan task",
+            "coordinator",
+            json!({"source":"legacy"}),
+            "group_chat",
+            Some("legacy"),
+        )
+        .await
+        .expect("create orphan task");
+    sqlx::query("DELETE FROM team_conversations WHERE task_id = ?1")
+        .bind(&orphan_task.id)
+        .execute(&db)
+        .await
+        .expect("delete orphan task conversation");
+
+    let (topic_task, _) = manager
+        .create_task(
+            &team.id,
+            "Topic task",
+            "coordinator",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("topic-a"),
+        )
+        .await
+        .expect("create topic task");
+
+    let listed = manager
+        .list_tasks_with_query(TeamTaskListQuery {
+            team_id: Some(team.id.clone()),
+            limit: 20,
+            include_shared_thread: false,
+            ..TeamTaskListQuery::default()
+        })
+        .await
+        .expect("list tasks with orphan row");
+    assert_eq!(listed.len(), 2);
+    assert!(listed.iter().any(|task| task.id == orphan_task.id));
+    assert!(listed.iter().any(|task| task.id == topic_task.id));
+
+    let topic_filtered = manager
+        .list_tasks_with_query(TeamTaskListQuery {
+            team_id: Some(team.id),
+            limit: 20,
+            topic: Some("topic-a".to_string()),
+            include_shared_thread: false,
+            ..TeamTaskListQuery::default()
+        })
+        .await
+        .expect("list topic filtered tasks");
+    assert_eq!(topic_filtered.len(), 1);
+    assert_eq!(topic_filtered[0].id, topic_task.id);
+}
