@@ -21,10 +21,11 @@ use super::codec::{
     team_actor_message_transport_to_str,
 };
 use super::mailbox::{
-    apply_thread_claim_transition, fetch_enriched_message_by_id, fetch_message_by_idempotency,
-    fetch_message_for_actor, mailbox_run_event_archive_semaphore,
-    maybe_persist_human_visible_chat_reply, resolve_team_id_for_run,
+    fetch_enriched_message_by_id, fetch_message_by_idempotency, fetch_message_for_actor,
+    mailbox_run_event_archive_semaphore, maybe_persist_human_visible_chat_reply,
+    resolve_team_id_for_run,
 };
+use super::mailbox_threads::{apply_thread_claim_transition, ensure_idempotency_compatible};
 use super::team_run_event_archive_document_for_db;
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamRunEventRecord};
 
@@ -612,7 +613,7 @@ impl ActorMailboxStore for SqlActorMailboxStore {
                 idempotency_key,
             )
             .await?;
-            super::mailbox::ensure_idempotency_compatible(cmd, &message)?;
+            ensure_idempotency_compatible(cmd, &message)?;
             (message.message_id, false)
         } else {
             return Err(sqlx::Error::Protocol(

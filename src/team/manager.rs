@@ -9,6 +9,7 @@ mod mailbox_payloads;
 mod mailbox_reply_obligations;
 mod mailbox_service;
 mod mailbox_store;
+mod mailbox_threads;
 mod memory_flush;
 mod message_archive;
 mod payload_utils;
