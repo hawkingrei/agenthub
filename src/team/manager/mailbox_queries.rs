@@ -1,7 +1,7 @@
 use sqlx::{Row, Sqlite, SqlitePool};
 
-use super::codec::parse_team_actor_message_row;
-use super::mailbox_store_inbox::enrich_actor_messages;
+use super::codec_rows::parse_team_actor_message_row;
+use super::mailbox_store_inbox_enrichment::enrich_actor_messages;
 use crate::team::TeamActorMessageRecord;
 
 pub(super) async fn resolve_team_id_for_run(

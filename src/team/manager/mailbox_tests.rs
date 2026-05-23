@@ -14,7 +14,7 @@ use super::mailbox_payloads::{
     normalize_channel_message_payload, resolve_canonical_chat_reply,
     should_persist_human_visible_chat_reply_for_payload,
 };
-use super::mailbox_reply_obligations::summarize_open_reply_obligations_from_messages;
+use super::mailbox_reply_obligation_summary::summarize_open_reply_obligations_from_messages;
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 
 fn mock_member_specs(member_specs: &[(&str, &str)]) -> Vec<TeamMemberSpecView> {

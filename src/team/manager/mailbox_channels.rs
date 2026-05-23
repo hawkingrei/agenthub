@@ -224,7 +224,7 @@ impl TeamManager {
         .fetch_optional(&self.db)
         .await?;
         row.map(|row| {
-            super::codec::parse_team_conversation_message_row(&row)
+            super::codec_rows::parse_team_conversation_message_row(&row)
                 .map_err(|err| anyhow::anyhow!(err.to_string()))
         })
         .transpose()

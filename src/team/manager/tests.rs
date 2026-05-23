@@ -23,7 +23,7 @@ mod team_cases;
 #[path = "tests_support.rs"]
 mod tests_support;
 
-use super::codec::team_run_status_from_str;
+use super::codec_status::team_run_status_from_str;
 use super::{TeamManager, message_archive_body_text, task_conversation_payload_correlation_id};
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL};
 use crate::agent::{WorktreeMode, derive_team_runtime_workdir};

@@ -3,7 +3,7 @@ use agenthub_team_actor::{
     SendActorMessageCommand,
 };
 
-use super::codec::{team_actor_message_status_to_str, team_actor_message_transport_to_str};
+use super::codec_status::{team_actor_message_status_to_str, team_actor_message_transport_to_str};
 use super::mailbox::{
     fetch_enriched_message_by_id, fetch_message_by_idempotency, fetch_message_for_actor,
     maybe_persist_human_visible_chat_reply,

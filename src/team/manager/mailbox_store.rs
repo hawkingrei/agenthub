@@ -9,7 +9,6 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use thiserror::Error;
 
-pub(super) use super::mailbox_store_inbox::enrich_actor_messages;
 use crate::team::TeamActorMessageRecord;
 
 #[derive(Clone)]

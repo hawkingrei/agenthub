@@ -134,13 +134,7 @@ impl TeamManager {
             && *created
         {
             self.spawn_archive_task_conversation_message(conversation, message);
-            self.emit_conversation_event(super::TeamConversationStreamEvent {
-                team_id: conversation.team_id.clone(),
-                task_id: input.task_id.to_string(),
-                conversation_id: conversation.id.clone(),
-                message_id: Some(message.message_id),
-                source: "conversation_message".to_string(),
-            });
+            self.emit_task_conversation_message_created(conversation, message);
         }
 
         if prepared.has_changes() {

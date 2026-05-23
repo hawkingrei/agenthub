@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::context_artifact_persistence::ContextArtifactPointer;
-use super::memory_flush_helpers::build_context_artifact_pointer_payload;
+use super::memory_flush_finalize::build_context_artifact_pointer_payload;
 use super::{
     TeamConversationRecord, TeamConversationStreamEvent, TeamManager, TeamRunRecord, TeamTaskRecord,
 };

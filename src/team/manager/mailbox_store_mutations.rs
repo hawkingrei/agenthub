@@ -21,12 +21,12 @@ async fn ensure_reply_required_completion_allowed(
         return Ok(());
     }
     let messages =
-        super::mailbox_reply_obligations::load_reply_obligation_message_snapshots_on_executor(
+        super::mailbox_reply_obligation_summary::load_reply_obligation_message_snapshots_on_executor(
             &mut **tx,
             &message.run_id,
         )
         .await?;
-    if super::mailbox_reply_obligations::has_visible_reply_credit_for_message(
+    if super::mailbox_reply_obligation_summary::has_visible_reply_credit_for_message(
         &messages,
         message.message_id,
     ) {
