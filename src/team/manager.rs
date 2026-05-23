@@ -27,6 +27,7 @@ mod mailbox_tests;
 mod mailbox_threads;
 mod mailbox_worker;
 mod memory_flush;
+mod memory_flush_helpers;
 mod message_archive;
 mod payload_utils;
 mod remote_relay;
