@@ -1,22 +1,21 @@
 use agenthub_message_archive::MessageArchiveStoreRef;
 use agenthub_team_actor::{
-    AckActorMessageCommand, AckActorMessageResult, ActorMailboxStore,
-    ActorMessageHandlingDisposition, ActorMessageTaskRelation, CreatePendingMessageResult,
+    AckActorMessageCommand, AckActorMessageResult, ActorMailboxStore, CreatePendingMessageResult,
     LinkActorMessageTaskCommand, LinkActorMessageTaskResult, ListActorInboxQuery,
     PendingRemoteRelayRecord, SendActorMessageCommand, TriageActorMessageCommand,
 };
 use async_trait::async_trait;
 use serde_json::Value;
-use sqlx::{Sqlite, SqlitePool};
+use sqlx::SqlitePool;
 use thiserror::Error;
 
 use super::codec::{team_actor_message_status_to_str, team_actor_message_transport_to_str};
 use super::mailbox::{
     fetch_enriched_message_by_id, fetch_message_by_idempotency, fetch_message_for_actor,
-    maybe_persist_human_visible_chat_reply, resolve_team_id_for_run,
+    maybe_persist_human_visible_chat_reply,
 };
 pub(super) use super::mailbox_store_inbox::enrich_actor_messages;
-use super::mailbox_threads::{apply_thread_claim_transition, ensure_idempotency_compatible};
+use super::mailbox_threads::ensure_idempotency_compatible;
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus};
 
 #[derive(Clone)]
@@ -61,30 +60,7 @@ pub(super) struct ActorThreadClaimRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ActorMessageTaskLinkRecord {
     pub(super) task_id: String,
-    pub(super) relation: ActorMessageTaskRelation,
-}
-
-async fn ensure_reply_required_completion_allowed(
-    tx: &mut sqlx::Transaction<'_, Sqlite>,
-    message: &TeamActorMessageRecord,
-) -> Result<(), SqlActorMailboxStoreError> {
-    if super::mailbox_reply_obligations::reply_actor_pair_for_inbound_obligation(message).is_none()
-    {
-        return Ok(());
-    }
-    let messages =
-        super::mailbox_reply_obligations::load_reply_obligation_message_snapshots_on_executor(
-            &mut **tx,
-            &message.run_id,
-        )
-        .await?;
-    if super::mailbox_reply_obligations::has_visible_reply_credit_for_message(
-        &messages,
-        message.message_id,
-    ) {
-        return Ok(());
-    }
-    Err(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)
+    pub(super) relation: agenthub_team_actor::ActorMessageTaskRelation,
 }
 
 #[async_trait]
@@ -223,108 +199,14 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         &self,
         cmd: &TriageActorMessageCommand,
     ) -> Result<agenthub_team_actor::TriageActorMessageResult, Self::Error> {
-        let mut tx = self.db.begin().await?;
-        let message = fetch_message_for_actor(
-            &mut tx,
-            &cmd.run_id,
-            &cmd.actor_id,
-            &cmd.peer_id,
-            cmd.message_id,
-        )
-        .await?;
-        if cmd.disposition == ActorMessageHandlingDisposition::Completed {
-            ensure_reply_required_completion_allowed(&mut tx, &message).await?;
-        }
-        apply_thread_claim_transition(&mut tx, &message, cmd).await?;
-        let update = sqlx::query(
-            r#"
-            UPDATE team_actor_messages
-            SET
-                handling_disposition = ?1,
-                handled_by_actor_id = ?2,
-                handled_at = ?3
-            WHERE id = ?4
-              AND run_id = ?5
-              AND to_actor_id = ?6
-              AND to_peer_id = ?7
-              AND handling_disposition <> ?1
-            "#,
-        )
-        .bind(cmd.disposition.as_str())
-        .bind(&cmd.actor_id)
-        .bind(cmd.handled_at)
-        .bind(cmd.message_id)
-        .bind(&cmd.run_id)
-        .bind(&cmd.actor_id)
-        .bind(&cmd.peer_id)
-        .execute(&mut *tx)
-        .await?;
-        tx.commit().await?;
-        let message = fetch_enriched_message_by_id(&self.db, cmd.message_id).await?;
-        Ok(agenthub_team_actor::TriageActorMessageResult {
-            message,
-            handling_changed: update.rows_affected() > 0,
-        })
+        self.triage_message_impl(cmd).await
     }
 
     async fn link_message_task(
         &self,
         cmd: &LinkActorMessageTaskCommand,
     ) -> Result<LinkActorMessageTaskResult, Self::Error> {
-        let mut tx = self.db.begin().await?;
-        fetch_message_for_actor(
-            &mut tx,
-            &cmd.run_id,
-            &cmd.actor_id,
-            &cmd.peer_id,
-            cmd.message_id,
-        )
-        .await?;
-        let team_id = resolve_team_id_for_run(&mut tx, &cmd.run_id).await?;
-        let task_exists = sqlx::query_scalar::<_, i64>(
-            r#"
-            SELECT 1
-            FROM team_tasks
-            WHERE id = ?1 AND team_id = ?2
-            LIMIT 1
-            "#,
-        )
-        .bind(&cmd.task_id)
-        .bind(&team_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if task_exists.is_none() {
-            return Err(sqlx::Error::RowNotFound.into());
-        }
-        let inserted = sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO team_actor_message_links (
-                run_id,
-                message_id,
-                task_id,
-                relation,
-                created_by_actor_id,
-                created_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-        )
-        .bind(&cmd.run_id)
-        .bind(cmd.message_id)
-        .bind(&cmd.task_id)
-        .bind(cmd.relation.as_str())
-        .bind(&cmd.actor_id)
-        .bind(cmd.linked_at)
-        .execute(&mut *tx)
-        .await?;
-        tx.commit().await?;
-        let message = fetch_enriched_message_by_id(&self.db, cmd.message_id).await?;
-        Ok(LinkActorMessageTaskResult {
-            message,
-            task_id: cmd.task_id.clone(),
-            relation: cmd.relation.clone(),
-            created: inserted.rows_affected() > 0,
-        })
+        self.link_message_task_impl(cmd).await
     }
 
     async fn list_remote_pending_messages(
