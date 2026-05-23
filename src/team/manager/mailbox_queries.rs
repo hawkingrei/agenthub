@@ -1,7 +1,7 @@
 use sqlx::{Row, Sqlite, SqlitePool};
 
-use super::codec::parse_team_actor_message_row;
-use super::mailbox_store_inbox::enrich_actor_messages;
+use super::codec_rows::parse_team_actor_message_row;
+use super::mailbox_store_inbox_enrichment::enrich_actor_messages;
 use crate::team::TeamActorMessageRecord;
 
 pub(super) async fn resolve_team_id_for_run(
@@ -15,7 +15,7 @@ pub(super) async fn resolve_team_id_for_run(
     row.try_get("team_id")
 }
 
-pub(super) async fn fetch_message_by_id(
+async fn fetch_message_by_id(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     message_id: i64,
 ) -> Result<TeamActorMessageRecord, sqlx::Error> {

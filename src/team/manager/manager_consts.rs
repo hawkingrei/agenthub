@@ -1,0 +1,22 @@
+use std::time::Duration;
+
+pub(super) const CONTINUITY_MODE_DEFAULT: &str = "inherit_recent";
+pub(super) const CONTINUITY_MODE_RESET: &str = "reset";
+pub(super) const CONTINUITY_MAX_SUMMARY_CHARS: usize = 2048;
+pub(super) const CONTINUITY_MAX_HISTORY_CHARS: usize = 4096;
+pub(super) const CONTINUITY_ARTIFACT_KIND_OUTPUT: &str = "continuity_output";
+pub(super) const RECONCILE_ROUND_ARTIFACT_KIND: &str = "reconcile_round_result";
+pub(super) const MEMORY_FLUSH_MAX_EVENTS_DEFAULT: i64 = 200;
+pub(super) const MEMORY_FLUSH_MAX_EVENTS_MAX: i64 = 1000;
+pub(super) const MEMORY_FLUSH_MAX_SUMMARY_CHARS: usize = 2048;
+pub(super) const MEMORY_FLUSH_MAX_EXCERPT_CHARS: usize = 700;
+pub(super) const MEMORY_FLUSH_ARTIFACT_KIND: &str = "memory_flush";
+pub(super) const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND: &str = "shared_thread_mailbox";
+pub(super) const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_SOURCE: &str = "teams_all";
+pub(super) const TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY: usize = 256;
+pub(crate) const TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX: i64 = 500;
+pub(crate) const TEAM_SHARED_THREAD_TITLE: &str = "all";
+pub(crate) const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+pub(crate) const TEAM_CHANNEL_BOOTSTRAP_KIND: &str = "team_channel";
+pub(super) const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
+pub(super) const MESSAGE_ARCHIVE_APPEND_TIMEOUT: Duration = Duration::from_secs(2);

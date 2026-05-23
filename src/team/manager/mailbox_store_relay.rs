@@ -3,10 +3,10 @@ use sqlx::Row;
 
 use agenthub_team_actor::PendingRemoteRelayRecord;
 
-use super::codec::parse_team_actor_message_row;
+use super::archive_scope::team_run_event_archive_document_for_db;
+use super::codec_rows::parse_team_actor_message_row;
 use super::mailbox::mailbox_run_event_archive_semaphore;
 use super::mailbox_store::{SqlActorMailboxStore, SqlActorMailboxStoreError};
-use super::team_run_event_archive_document_for_db;
 use crate::team::TeamRunEventRecord;
 
 impl SqlActorMailboxStore {

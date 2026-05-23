@@ -119,9 +119,7 @@ pub(super) async fn apply_thread_claim_transition(
             .execute(&mut **tx)
             .await?;
         }
-        ActorMessageHandlingDisposition::Watching
-        | ActorMessageHandlingDisposition::Released
-        | ActorMessageHandlingDisposition::Completed => {
+        ActorMessageHandlingDisposition::Released | ActorMessageHandlingDisposition::Completed => {
             let existing = sqlx::query(
                 r#"
                 SELECT owner_actor_id, claim_status, lease_expires_at
@@ -152,7 +150,6 @@ pub(super) async fn apply_thread_claim_transition(
                 return Err(SqlActorMailboxStoreError::ThreadClaimOwnershipRequired);
             }
             let claim_status = match cmd.disposition {
-                ActorMessageHandlingDisposition::Watching => "released",
                 ActorMessageHandlingDisposition::Released => "released",
                 ActorMessageHandlingDisposition::Completed => "completed",
                 _ => unreachable!(),

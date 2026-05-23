@@ -20,9 +20,8 @@ pub(super) use super::mailbox_shared_thread::maybe_persist_human_visible_chat_re
 pub(super) use super::mailbox_sqlite::{
     normalize_optional_sqlite_string, parse_optional_sqlite_json_value,
 };
-pub(super) use super::mailbox_store::{
-    SqlActorMailboxStore, SqlActorMailboxStoreError, enrich_actor_messages,
-};
+pub(super) use super::mailbox_store::{SqlActorMailboxStore, SqlActorMailboxStoreError};
+pub(super) use super::mailbox_store_inbox_enrichment::enrich_actor_messages;
 pub(super) use super::mailbox_threads::apply_thread_claim_transition;
 use super::{TeamManager, TeamReplyObligationSummary};
 use crate::team::TeamActorMessageTransport;
@@ -100,12 +99,12 @@ impl TeamManager {
         run_id: &str,
     ) -> anyhow::Result<TeamReplyObligationSummary> {
         let messages =
-            super::mailbox_reply_obligations::load_reply_obligation_message_snapshots_on_executor(
+            super::mailbox_reply_obligation_summary::load_reply_obligation_message_snapshots_on_executor(
                 &self.db, run_id,
             )
             .await?;
         Ok(
-            super::mailbox_reply_obligations::summarize_open_reply_obligations_from_snapshots(
+            super::mailbox_reply_obligation_summary::summarize_open_reply_obligations_from_snapshots(
                 messages.as_slice(),
             ),
         )

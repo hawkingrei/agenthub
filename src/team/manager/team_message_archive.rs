@@ -4,14 +4,16 @@ use chrono::Utc;
 use serde_json::Value;
 use sqlx::Row;
 
+use super::archive_payloads::message_archive_payload_string;
 #[cfg(test)]
-use super::team_run_event_archive_document_for_db;
+use super::archive_scope::team_run_event_archive_document_for_db;
+use super::archive_scope::{
+    message_archive_scope_for_payload_db, team_run_event_archive_document_for_db_cached,
+};
 use super::{
     MESSAGE_ARCHIVE_APPEND_TIMEOUT, MessageArchiveScopeFallback,
     TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND, TeamActorMessageRecord, TeamManager,
-    TeamRunEventRecord, message_archive_payload_string, message_archive_scope_for_payload_db,
-    redact_sensitive_json, team_actor_message_archive_document,
-    team_run_event_archive_document_for_db_cached,
+    TeamRunEventRecord, redact_sensitive_json, team_actor_message_archive_document,
 };
 use agenthub_message_archive::MessageDocument;
 

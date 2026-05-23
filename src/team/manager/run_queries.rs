@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sqlx::QueryBuilder;
 
-use super::run_status_sync::{fallback_run_summary, load_run_summaries, load_run_summary};
+use super::run_summary::{fallback_run_summary, load_run_summaries, load_run_summary};
 use super::{
     TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND, TeamManager, TeamRunContextFingerprint,
     TeamRunEventRecord, TeamRunRecord, parse_team_run_row,

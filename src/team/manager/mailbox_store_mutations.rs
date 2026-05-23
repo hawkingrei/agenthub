@@ -2,12 +2,10 @@ use agenthub_team_actor::{
     ActorMessageHandlingDisposition, LinkActorMessageTaskCommand, LinkActorMessageTaskResult,
     TriageActorMessageCommand, TriageActorMessageResult,
 };
-use sqlx::Error as SqlxError;
 use sqlx::Sqlite;
 
 use super::mailbox_queries::{
-    fetch_enriched_message_by_id, fetch_message_by_id, fetch_message_for_actor,
-    resolve_team_id_for_run,
+    fetch_enriched_message_by_id, fetch_message_for_actor, resolve_team_id_for_run,
 };
 use super::mailbox_store::{SqlActorMailboxStore, SqlActorMailboxStoreError};
 use super::mailbox_threads::apply_thread_claim_transition;
@@ -21,12 +19,12 @@ async fn ensure_reply_required_completion_allowed(
         return Ok(());
     }
     let messages =
-        super::mailbox_reply_obligations::load_reply_obligation_message_snapshots_on_executor(
+        super::mailbox_reply_obligation_summary::load_reply_obligation_message_snapshots_on_executor(
             &mut **tx,
             &message.run_id,
         )
         .await?;
-    if super::mailbox_reply_obligations::has_visible_reply_credit_for_message(
+    if super::mailbox_reply_obligation_summary::has_visible_reply_credit_for_message(
         &messages,
         message.message_id,
     ) {
@@ -41,29 +39,14 @@ impl SqlActorMailboxStore {
         cmd: &TriageActorMessageCommand,
     ) -> Result<TriageActorMessageResult, SqlActorMailboxStoreError> {
         let mut tx = self.db.begin().await?;
-        let message = match fetch_message_for_actor(
+        let message = fetch_message_for_actor(
             &mut tx,
             &cmd.run_id,
             &cmd.actor_id,
             &cmd.peer_id,
             cmd.message_id,
         )
-        .await
-        {
-            Ok(message) => message,
-            Err(SqlxError::RowNotFound)
-                if matches!(
-                    cmd.disposition,
-                    ActorMessageHandlingDisposition::Claimed
-                        | ActorMessageHandlingDisposition::Watching
-                        | ActorMessageHandlingDisposition::Released
-                        | ActorMessageHandlingDisposition::Completed
-                ) =>
-            {
-                fetch_message_by_id(&mut tx, cmd.message_id).await?
-            }
-            Err(err) => return Err(err.into()),
-        };
+        .await?;
         if cmd.disposition == ActorMessageHandlingDisposition::Completed {
             ensure_reply_required_completion_allowed(&mut tx, &message).await?;
         }
