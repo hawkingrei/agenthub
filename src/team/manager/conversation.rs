@@ -437,6 +437,7 @@ impl TeamManager {
             .bind(&correlation_id)
             .bind(group_id.as_deref())
             .bind(&payload_json)
+            .bind(now)
             .execute(&self.db)
             .await?;
             (

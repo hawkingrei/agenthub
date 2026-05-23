@@ -15,7 +15,7 @@ pub(super) async fn resolve_team_id_for_run(
     row.try_get("team_id")
 }
 
-async fn fetch_message_by_id(
+pub(super) async fn fetch_message_by_id(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     message_id: i64,
 ) -> Result<TeamActorMessageRecord, sqlx::Error> {
