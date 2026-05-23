@@ -4,7 +4,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, Sqlite};
 
-use super::step_lifecycle::ReconcileRoundArtifactSnapshot;
+use super::step_reconcile::ReconcileRoundArtifactSnapshot;
 use super::{
     CONTINUITY_ARTIFACT_KIND_OUTPUT, RECONCILE_ROUND_ARTIFACT_KIND, TeamManager,
     build_team_member_actor_context_for_role, continuity_note_relative_path,
