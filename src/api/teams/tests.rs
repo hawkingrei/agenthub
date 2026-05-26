@@ -35,7 +35,7 @@ use agenthub_message_archive::{
     MessageArchiveStore, MessageDocument, MessageDocumentKind, MessageSearchHit, MessageSearchQuery,
 };
 use agenthub_team_actor::{
-    ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
+    ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
 };
 use async_trait::async_trait;
 

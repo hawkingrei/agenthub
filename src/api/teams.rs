@@ -3128,18 +3128,23 @@ async fn forward_mailbox_payload_to_actor_ids(
     idempotency_prefix: String,
 ) -> Result<(), ApiError> {
     let actor_mailbox_service = state.teams.actor_mailbox_service();
+    let recipient_deliveries = state
+        .teams
+        .resolve_mailbox_recipient_deliveries(&recipient_ids)
+        .await
+        .map_err(map_team_internal_error)?;
     let run_id = run.id.clone();
     let sender = from_actor_id.to_string();
-    try_join_all(recipient_ids.into_iter().map(|to_actor_id| {
+    try_join_all(recipient_deliveries.into_iter().map(|delivery| {
         let run_id = run_id.clone();
         let sender = sender.clone();
         let payload = forwarded_payload.clone();
         let actor_mailbox_service = actor_mailbox_service.clone();
-        let idempotency_key = format!("{idempotency_prefix}:{to_actor_id}");
+        let idempotency_key = format!("{idempotency_prefix}:{}", delivery.actor_id);
         async move {
             let normalized_payload = normalize_actor_message_envelope_payload(
                 TEAM_SPECIAL_USER_ACTOR_ALIAS,
-                to_actor_id.as_str(),
+                delivery.actor_id.as_str(),
                 &ActorMessageKind::HumanRequest,
                 payload,
             );
@@ -3148,12 +3153,12 @@ async fn forward_mailbox_payload_to_actor_ids(
                     run_id: run_id.clone(),
                     from_actor_id: sender,
                     from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
-                    to_actor_id: Some(to_actor_id.clone()),
+                    to_actor_id: Some(delivery.actor_id.clone()),
                     channel_id: None,
-                    to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+                    to_peer_id: Some(delivery.to_peer_id.clone()),
                     channel: Some("default".to_string()),
-                    transport: Some(TeamActorMessageTransport::Local),
-                    route: None,
+                    transport: Some(delivery.transport),
+                    route: delivery.route,
                     payload: normalized_payload,
                     idempotency_key: Some(idempotency_key),
                     message_kind: None,
@@ -3165,7 +3170,7 @@ async fn forward_mailbox_payload_to_actor_ids(
             {
                 tracing::warn!(
                     run_id = %run_id,
-                    to_actor_id = %to_actor_id,
+                    to_actor_id = %delivery.actor_id,
                     message_id = send_result.message_id,
                     "mailbox type hint notify failed: {}",
                     err

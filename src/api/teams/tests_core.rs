@@ -7263,6 +7263,203 @@ async fn team_task_messages_api_infers_direct_route_for_single_mention_and_norma
 }
 
 #[tokio::test]
+async fn team_task_messages_api_routes_single_remote_mention_over_p2p_and_preserves_summary_metadata()
+{
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
+        .execute(&state.db)
+        .await
+        .expect("add target_node_id");
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_nodes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            grpc_target TEXT NOT NULL,
+            tls_server_name TEXT,
+            default_worktree_root TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(&state.db)
+    .await
+    .expect("create agent_nodes");
+
+    state.teams.configure_internal_grpc_peer_client(Some(
+        crate::internal::client::InternalGrpcPeerClientConfig {
+            shared_secret: "task-direct-remote-secret".to_string(),
+            expected_issuer: Some("agenthub".to_string()),
+            expected_audience: Some("agenthub-internal".to_string()),
+            source_node_id: "main".to_string(),
+            cert_dir: std::env::temp_dir()
+                .join(format!("task-direct-remote-{}", Uuid::new_v4()))
+                .to_string_lossy()
+                .to_string(),
+            security_mode: crate::internal::tls::InternalGrpcSecurityMode::Mtls,
+        },
+    ));
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-direct-remote-team".to_string(),
+            description: Some("single remote mention should default to p2p relay".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO agent_nodes (id, name, grpc_target, tls_server_name, default_worktree_root, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)
+        "#,
+    )
+    .bind("node-east")
+    .bind("Node East")
+    .bind("https://node-east.internal:50051")
+    .bind("node-east.internal")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert agent node");
+    sqlx::query("UPDATE agents SET target_node_id = ?1 WHERE id = ?2")
+        .bind("node-east")
+        .bind("worker-1")
+        .execute(&state.db)
+        .await
+        .expect("mark worker-1 remote");
+
+    let task_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "Direct remote by default".to_string(),
+            priority: "high".to_string(),
+            assigned_member_id: "planner".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        },
+    )
+    .await
+    .expect("create task");
+
+    let run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some(task_created.task.id.as_str()),
+            json!({
+                "task_id": task_created.task.id.clone(),
+                "conversation_id": task_created.conversation.id.clone(),
+            }),
+        )
+        .await
+        .expect("create explicit task run");
+
+    let Json(message) = send_team_task_message(
+        State(state.clone()),
+        headers,
+        Path((team.id.clone(), task_created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"<at>worker-1</at> review the concise relay summary first",
+                "detail_ref":"artifact://task-direct-remote/full-review-1"
+            }),
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("send inferred remote direct message");
+
+    assert_eq!(message.route, "to_member");
+    assert_eq!(message.to_actor_id.as_deref(), Some("worker-1"));
+    assert_eq!(
+        message.payload["summary"],
+        json!("<at>worker-1</at> review the concise relay summary first")
+    );
+    assert_eq!(
+        message.payload["detail_ref"]["uri"],
+        json!("artifact://task-direct-remote/full-review-1")
+    );
+
+    let row = sqlx::query(
+        r#"
+        SELECT to_actor_id, to_peer_id, transport, route_json, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_one(&state.db)
+    .await
+    .expect("load inferred remote direct mailbox row");
+    assert_eq!(row.get::<String, _>("to_actor_id"), "worker-1");
+    assert_eq!(row.get::<String, _>("to_peer_id"), ACTOR_NODE_PEER_ID);
+    assert_eq!(row.get::<String, _>("transport"), "remote");
+
+    let route: Value =
+        serde_json::from_str(row.get::<String, _>("route_json").as_str()).expect("parse route");
+    assert_eq!(route["kind"], json!("grpc"));
+    assert_eq!(
+        route["grpc_target"],
+        json!("https://node-east.internal:50051")
+    );
+    assert_eq!(route["tls_server_name"], json!("node-east.internal"));
+    assert_eq!(route["target_node_id"], json!("node-east"));
+
+    let payload: Value = serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+        .expect("parse inferred remote direct payload");
+    assert_eq!(payload["delivery_scope"], json!("direct"));
+    assert_eq!(payload["mention_actor_ids"], json!(["worker-1"]));
+    assert_eq!(payload["mentioned_actor_ids"], json!(["worker-1"]));
+    assert_eq!(payload["source_kind"], json!("human"));
+    assert_eq!(payload["source_surface"], json!("conversation"));
+    assert_eq!(payload["requires_user_visible_reply"], json!(true));
+    assert_eq!(
+        payload["summary"],
+        json!("<at>worker-1</at> review the concise relay summary first")
+    );
+    assert_eq!(
+        payload["detail_ref"]["uri"],
+        json!("artifact://task-direct-remote/full-review-1")
+    );
+    assert_eq!(
+        payload["reply_target"],
+        json!({
+            "surface":"conversation",
+            "task_id": task_created.task.id,
+            "conversation_id": message.conversation_id,
+            "task_message_id": message.message_id
+        })
+    );
+}
+
+#[tokio::test]
 async fn team_task_messages_api_infers_to_coordinator_from_single_coordinator_mention() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

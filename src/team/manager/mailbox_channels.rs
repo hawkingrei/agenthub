@@ -125,7 +125,7 @@ impl TeamManager {
         Ok(has_column)
     }
 
-    pub(super) async fn resolve_channel_recipient_deliveries(
+    pub(crate) async fn resolve_mailbox_recipient_deliveries(
         &self,
         recipient_actor_ids: &[String],
     ) -> anyhow::Result<Vec<ResolvedMailboxRecipientDelivery>> {
