@@ -40,7 +40,7 @@ impl TeamActorMailboxService {
 
         let delivery = self
             .manager
-            .resolve_channel_recipient_deliveries(std::slice::from_ref(&coordinator_actor_id))
+            .resolve_mailbox_recipient_deliveries(std::slice::from_ref(&coordinator_actor_id))
             .await
             .map_err(map_actor_service_error)?
             .into_iter()

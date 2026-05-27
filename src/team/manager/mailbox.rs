@@ -56,11 +56,11 @@ pub(super) struct ResolvedChannelMailboxTarget {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ResolvedMailboxRecipientDelivery {
-    pub(super) actor_id: String,
-    pub(super) to_peer_id: String,
-    pub(super) transport: TeamActorMessageTransport,
-    pub(super) route: Option<Value>,
+pub(crate) struct ResolvedMailboxRecipientDelivery {
+    pub(crate) actor_id: String,
+    pub(crate) to_peer_id: String,
+    pub(crate) transport: TeamActorMessageTransport,
+    pub(crate) route: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

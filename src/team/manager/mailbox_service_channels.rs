@@ -31,7 +31,7 @@ impl TeamActorMailboxService {
         }
         let recipient_deliveries = self
             .manager
-            .resolve_channel_recipient_deliveries(&target.recipient_actor_ids)
+            .resolve_mailbox_recipient_deliveries(&target.recipient_actor_ids)
             .await?;
 
         let mention_actor_ids = self
