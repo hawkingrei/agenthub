@@ -5,6 +5,12 @@ use crate::acp::AcpActorSkillContext;
 async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
+    let run_count_before: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_runs WHERE team_id = ?1")
+            .bind(&run.team_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count team runs before task create");
     let authz = build_authz();
     let token = issue_token(
         &authz,
@@ -87,6 +93,16 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
     assert_eq!(created_json["task"]["priority"], json!("high"));
     assert_eq!(created_json["task"]["assigned_member_id"], json!("planner"));
     assert_eq!(created_json["conversation"]["topic"], json!("actor-cli"));
+    let run_count_after: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_runs WHERE team_id = ?1")
+            .bind(&run.team_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count team runs after task create");
+    assert_eq!(
+        run_count_after, run_count_before,
+        "canonical task creation should not auto-create a team run"
+    );
 
     let listed = TeamInternalControl::list_team_tasks(
         &service,
