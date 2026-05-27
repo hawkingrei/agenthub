@@ -413,7 +413,7 @@ async fn internal_grpc_permission_review_respond_keeps_pending_reviewer_guard() 
             acp_session_id: "acp-session-pending-1",
             requester_actor_id: "planner",
             requester_role: "coordinator",
-            review_target_actor_id: Some("reviewer"),
+            review_target_actor_id: Some("requester"),
             tool_call_id: "tool-call-pending-1",
             status: "pending",
         },
