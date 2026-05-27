@@ -446,6 +446,66 @@ async fn internal_grpc_permission_review_respond_keeps_pending_reviewer_guard() 
 }
 
 #[tokio::test]
+async fn internal_grpc_permission_review_respond_rejects_requester_self_review() {
+    let fixture = setup_permission_review_fixture_with_spec(
+        "self-review-guard",
+        "validate requester self-review guard",
+        json!({
+            "entrypoint":"planner",
+            "coordinator_member_id":"planner",
+            "members":[
+                {"member_id":"planner","role":"coordinator"},
+                {"member_id":"reviewer","role":"worker"},
+                {"member_id":"requester","role":"worker"}
+            ]
+        }),
+        InternalRole::Worker,
+        "requester",
+    )
+    .await;
+    seed_permission_review_request(
+        &fixture.state,
+        &fixture.run,
+        PermissionReviewSeed {
+            request_id: "perm-self-review-1",
+            agent_id: "self-review-worker-agent",
+            session_id: "self-review-worker-session",
+            acp_session_id: "acp-session-self-review-1",
+            requester_actor_id: "requester",
+            requester_role: "worker",
+            review_target_actor_id: Some("reviewer"),
+            tool_call_id: "tool-call-self-review-1",
+            status: "pending",
+        },
+        fixture.now,
+    )
+    .await;
+
+    let err = TeamInternalControl::respond_permission_review(
+        &fixture.service,
+        authenticated_request(
+            RespondPermissionReviewRequest {
+                team_id: fixture.run.team_id.clone(),
+                actor_id: "requester".to_string(),
+                permission_id: "perm-self-review-1".to_string(),
+                option_id: "allow".to_string(),
+                outcome: String::new(),
+            },
+            &fixture.token,
+        ),
+    )
+    .await
+    .expect_err("requester should not be allowed to review its own permission request");
+
+    assert_eq!(err.code(), tonic::Code::PermissionDenied);
+    assert!(
+        err.message()
+            .contains("requester cannot review its own permission request"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
 async fn internal_grpc_permission_review_respond_rejects_conflicting_outcome_fields() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
