@@ -502,7 +502,7 @@ dependencies = [
  "codex-app-server-client",
  "codex-app-server-protocol 0.133.0",
  "codex-apply-patch 0.134.0",
- "codex-arg0",
+ "codex-arg0 0.134.0",
  "codex-config",
  "codex-core",
  "codex-exec-server 0.133.0",
@@ -2705,7 +2705,7 @@ dependencies = [
  "codex-analytics",
  "codex-app-server-protocol 0.133.0",
  "codex-app-server-transport",
- "codex-arg0",
+ "codex-arg0 0.133.0",
  "codex-backend-client",
  "codex-chatgpt",
  "codex-cloud-requirements",
@@ -2765,7 +2765,7 @@ source = "git+https://github.com/openai/codex?tag=rust-v0.133.0#9474e5cfc4494b0b
 dependencies = [
  "codex-app-server",
  "codex-app-server-protocol 0.133.0",
- "codex-arg0",
+ "codex-arg0 0.133.0",
  "codex-config",
  "codex-core",
  "codex-exec-server 0.133.0",
@@ -2906,11 +2906,29 @@ dependencies = [
  "anyhow",
  "codex-apply-patch 0.133.0",
  "codex-exec-server 0.133.0",
- "codex-linux-sandbox",
+ "codex-linux-sandbox 0.133.0",
  "codex-sandboxing 0.133.0",
- "codex-shell-escalation",
+ "codex-shell-escalation 0.133.0",
  "codex-utils-absolute-path 0.133.0",
  "codex-utils-home-dir 0.133.0",
+ "dotenvy",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "codex-arg0"
+version = "0.134.0"
+source = "git+https://github.com/openai/codex?tag=rust-v0.134.0#a75c443fdb64db48c3cf4bdb247c7ee52c0144c9"
+dependencies = [
+ "anyhow",
+ "codex-apply-patch 0.134.0",
+ "codex-exec-server 0.134.0",
+ "codex-linux-sandbox 0.134.0",
+ "codex-sandboxing 0.134.0",
+ "codex-shell-escalation 0.134.0",
+ "codex-utils-absolute-path 0.134.0",
+ "codex-utils-home-dir 0.134.0",
  "dotenvy",
  "tempfile",
  "tokio",
@@ -3201,7 +3219,7 @@ dependencies = [
  "codex-rollout-trace",
  "codex-sandboxing 0.133.0",
  "codex-shell-command 0.133.0",
- "codex-shell-escalation",
+ "codex-shell-escalation 0.133.0",
  "codex-state",
  "codex-terminal-detection",
  "codex-thread-store",
@@ -3612,6 +3630,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-install-context"
+version = "0.134.0"
+source = "git+https://github.com/openai/codex?tag=rust-v0.134.0#a75c443fdb64db48c3cf4bdb247c7ee52c0144c9"
+dependencies = [
+ "codex-utils-absolute-path 0.134.0",
+ "codex-utils-home-dir 0.134.0",
+]
+
+[[package]]
 name = "codex-keyring-store"
 version = "0.133.0"
 source = "git+https://github.com/openai/codex?tag=rust-v0.133.0#9474e5cfc4494b0ba319352aa86ce436c59e65c8"
@@ -3626,11 +3653,32 @@ version = "0.133.0"
 source = "git+https://github.com/openai/codex?tag=rust-v0.133.0#9474e5cfc4494b0ba319352aa86ce436c59e65c8"
 dependencies = [
  "clap",
- "codex-install-context",
- "codex-process-hardening",
+ "codex-install-context 0.133.0",
+ "codex-process-hardening 0.133.0",
  "codex-protocol 0.133.0",
  "codex-sandboxing 0.133.0",
  "codex-utils-absolute-path 0.133.0",
+ "globset",
+ "landlock",
+ "libc",
+ "seccompiler",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "url",
+]
+
+[[package]]
+name = "codex-linux-sandbox"
+version = "0.134.0"
+source = "git+https://github.com/openai/codex?tag=rust-v0.134.0#a75c443fdb64db48c3cf4bdb247c7ee52c0144c9"
+dependencies = [
+ "clap",
+ "codex-install-context 0.134.0",
+ "codex-process-hardening 0.134.0",
+ "codex-protocol 0.134.0",
+ "codex-sandboxing 0.134.0",
+ "codex-utils-absolute-path 0.134.0",
  "globset",
  "landlock",
  "libc",
@@ -3712,7 +3760,7 @@ version = "0.133.0"
 source = "git+https://github.com/openai/codex?tag=rust-v0.133.0#9474e5cfc4494b0ba319352aa86ce436c59e65c8"
 dependencies = [
  "anyhow",
- "codex-arg0",
+ "codex-arg0 0.133.0",
  "codex-config",
  "codex-core",
  "codex-exec-server 0.133.0",
@@ -3957,6 +4005,14 @@ dependencies = [
 name = "codex-process-hardening"
 version = "0.133.0"
 source = "git+https://github.com/openai/codex?tag=rust-v0.133.0#9474e5cfc4494b0ba319352aa86ce436c59e65c8"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "codex-process-hardening"
+version = "0.134.0"
+source = "git+https://github.com/openai/codex?tag=rust-v0.134.0#a75c443fdb64db48c3cf4bdb247c7ee52c0144c9"
 dependencies = [
  "libc",
 ]
@@ -4221,6 +4277,26 @@ dependencies = [
  "clap",
  "codex-protocol 0.133.0",
  "codex-utils-absolute-path 0.133.0",
+ "libc",
+ "serde",
+ "serde_json",
+ "socket2 0.6.3",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "codex-shell-escalation"
+version = "0.134.0"
+source = "git+https://github.com/openai/codex?tag=rust-v0.134.0#a75c443fdb64db48c3cf4bdb247c7ee52c0144c9"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "codex-protocol 0.134.0",
+ "codex-utils-absolute-path 0.134.0",
  "libc",
  "serde",
  "serde_json",
