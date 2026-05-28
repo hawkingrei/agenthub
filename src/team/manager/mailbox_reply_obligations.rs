@@ -1,6 +1,8 @@
 use serde_json::{Map, Value};
 
-use super::mailbox::{MAILBOX_RESOLUTION_ESCALATED, ReplyActorPairKey};
+use super::mailbox::{
+    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey,
+};
 use super::mailbox_reply_obligation_snapshot_conversion::mailbox_resolution_kind;
 use crate::team::TeamActorMessageRecord;
 use agenthub_team_actor::{ActorIdentityKind, ActorMessageHandlingDisposition};
@@ -31,14 +33,11 @@ pub(super) fn reply_obligation_is_terminal(message: &TeamActorMessageRecord) -> 
         return true;
     }
     matches!(
-        (
-            message.handling_disposition.clone(),
-            mailbox_resolution_kind(&message.payload),
-        ),
-        (
-            ActorMessageHandlingDisposition::Released,
-            Some(MAILBOX_RESOLUTION_ESCALATED)
-        )
+        message.handling_disposition,
+        ActorMessageHandlingDisposition::Released
+    ) && matches!(
+        mailbox_resolution_kind(&message.payload),
+        Some(MAILBOX_RESOLUTION_ESCALATED | MAILBOX_RESOLUTION_TRANSFERRED)
     )
 }
 
@@ -86,6 +85,32 @@ pub(super) fn build_escalated_mailbox_payload(
             "target_actor_id": target_actor_id,
             "escalated_by_actor_id": escalated_by_actor_id,
             "escalated_at": escalated_at
+        }),
+    );
+    Value::Object(payload_obj)
+}
+
+pub(super) fn build_transferred_mailbox_payload(
+    source_payload: &Value,
+    source_message_id: i64,
+    source_actor_id: &str,
+    target_actor_id: &str,
+    transferred_by_actor_id: &str,
+    transferred_at: i64,
+) -> Value {
+    let mut payload_obj = match source_payload {
+        Value::Object(map) => map.clone(),
+        _ => Map::new(),
+    };
+    payload_obj.insert(
+        "mailbox_transfer".to_string(),
+        serde_json::json!({
+            "kind": MAILBOX_RESOLUTION_TRANSFERRED,
+            "source_message_id": source_message_id,
+            "source_actor_id": source_actor_id,
+            "target_actor_id": target_actor_id,
+            "transferred_by_actor_id": transferred_by_actor_id,
+            "transferred_at": transferred_at
         }),
     );
     Value::Object(payload_obj)

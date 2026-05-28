@@ -1,4 +1,6 @@
-use super::mailbox::{MAILBOX_RESOLUTION_ESCALATED, ReplyActorPairKey};
+use super::mailbox::{
+    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey,
+};
 use super::mailbox_payloads::is_human_actor_id;
 use super::mailbox_reply_obligation_snapshot_conversion::resolve_canonical_chat_reply_from_snapshot;
 use super::mailbox_reply_obligation_snapshots::ReplyObligationMessageSnapshot;
@@ -69,14 +71,11 @@ pub(super) fn reply_obligation_snapshot_is_terminal(
         return true;
     }
     matches!(
-        (
-            message.handling_disposition.clone(),
-            message.mailbox_resolution_kind.as_deref(),
-        ),
-        (
-            ActorMessageHandlingDisposition::Released,
-            Some(MAILBOX_RESOLUTION_ESCALATED)
-        )
+        message.handling_disposition,
+        ActorMessageHandlingDisposition::Released
+    ) && matches!(
+        message.mailbox_resolution_kind.as_deref(),
+        Some(MAILBOX_RESOLUTION_ESCALATED | MAILBOX_RESOLUTION_TRANSFERRED)
     )
 }
 

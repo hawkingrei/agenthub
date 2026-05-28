@@ -48,10 +48,10 @@ use super::{
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamMemberSpec,
     TeamMessageSearchHitResponse, TeamRunSnapshotQuery, TeamTaskDetailResponse,
-    TriageTeamRunMessageRequest, UpdateTeamSpecRequest, UpdateTeamTaskRequest,
-    ack_team_run_message, cancel_team_run, compile_team_task_run_preview, complete_team_run_step,
-    create_team, create_team_channel, create_team_run, delete_team, delete_team_channel,
-    ensure_team_shared_thread, escalate_team_run_message, fail_team_run_step,
+    TransferTeamRunMessageRequest, TriageTeamRunMessageRequest, UpdateTeamSpecRequest,
+    UpdateTeamTaskRequest, ack_team_run_message, cancel_team_run, compile_team_task_run_preview,
+    complete_team_run_step, create_team, create_team_channel, create_team_run, delete_team,
+    delete_team_channel, ensure_team_shared_thread, escalate_team_run_message, fail_team_run_step,
     flush_team_run_context, force_new_session_for_team_member, get_team, get_team_run,
     get_team_run_snapshot, get_team_runtime, get_team_shared_thread, get_team_task,
     list_team_channels, list_team_run_events, list_team_run_inbox, list_team_run_steps,
@@ -60,8 +60,8 @@ use super::{
     normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, require_user,
     restart_team_run, resume_team_run, resume_team_run_step, search_team_messages,
     send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
-    start_team_run_step, stop_team, submit_team_run_step, triage_team_run_message,
-    update_team_spec, update_team_task, validate_team_spec,
+    start_team_run_step, stop_team, submit_team_run_step, transfer_team_run_message,
+    triage_team_run_message, update_team_spec, update_team_task, validate_team_spec,
 };
 
 #[derive(Default)]

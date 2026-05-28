@@ -1,8 +1,8 @@
 use chrono::Utc;
 
 use super::mailbox::{
-    MAILBOX_RESOLUTION_ESCALATED, apply_thread_claim_transition, fetch_enriched_message_by_id,
-    fetch_message_for_actor, map_actor_service_error,
+    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TRANSFERRED, apply_thread_claim_transition,
+    fetch_enriched_message_by_id, fetch_message_for_actor, map_actor_service_error,
 };
 use super::mailbox_service::TeamActorMailboxService;
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus};
@@ -12,6 +12,59 @@ use agenthub_team_actor::{
 };
 
 impl TeamActorMailboxService {
+    pub async fn transfer_reply_required_message(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+        peer_id: &str,
+        message_id: i64,
+        target_actor_id: &str,
+    ) -> Result<TeamActorMessageRecord, agenthub_team_actor::ActorServiceError> {
+        let member_specs = self
+            .load_member_specs_for_run(run_id)
+            .await
+            .map_err(map_actor_service_error)?;
+        let target_actor_id = target_actor_id.trim();
+        if target_actor_id.is_empty() {
+            return Err(agenthub_team_actor::ActorServiceError::new(
+                agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                "target_actor_id is required",
+            ));
+        }
+        if target_actor_id == actor_id {
+            return Err(agenthub_team_actor::ActorServiceError::new(
+                agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                "reply-required mailbox work cannot be transferred to the acting actor",
+            ));
+        }
+        if !member_specs
+            .iter()
+            .any(|member| member.member_id == target_actor_id)
+        {
+            let valid_member_ids = member_specs
+                .iter()
+                .map(|member| member.member_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(agenthub_team_actor::ActorServiceError::new(
+                agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                format!(
+                    "target_actor_id `{}` must reference a canonical team member_id; valid member_ids: {}",
+                    target_actor_id, valid_member_ids
+                ),
+            ));
+        }
+        self.reassign_reply_required_message(
+            run_id,
+            actor_id,
+            peer_id,
+            message_id,
+            target_actor_id,
+            MAILBOX_RESOLUTION_TRANSFERRED,
+        )
+        .await
+    }
+
     pub async fn escalate_reply_required_message_to_coordinator(
         &self,
         run_id: &str,
@@ -38,19 +91,42 @@ impl TeamActorMailboxService {
             )));
         }
 
+        self.reassign_reply_required_message(
+            run_id,
+            actor_id,
+            peer_id,
+            message_id,
+            &coordinator_actor_id,
+            MAILBOX_RESOLUTION_ESCALATED,
+        )
+        .await
+    }
+
+    async fn reassign_reply_required_message(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+        peer_id: &str,
+        message_id: i64,
+        target_actor_id: &str,
+        resolution_kind: &str,
+    ) -> Result<TeamActorMessageRecord, agenthub_team_actor::ActorServiceError> {
+        let target_actor_id_owned = target_actor_id.to_string();
         let delivery = self
             .manager
-            .resolve_mailbox_recipient_deliveries(std::slice::from_ref(&coordinator_actor_id))
+            .resolve_mailbox_recipient_deliveries(std::slice::from_ref(&target_actor_id_owned))
             .await
             .map_err(map_actor_service_error)?
             .into_iter()
             .next()
             .ok_or_else(|| {
-                map_actor_service_error(anyhow::Error::new(
-                    super::mailbox::SqlActorMailboxStoreError::ReplyRequiredEscalationTargetUnavailable,
-                ))
+                agenthub_team_actor::ActorServiceError::new(
+                    agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                    format!(
+                        "run team cannot resolve mailbox delivery target for actor `{target_actor_id}`"
+                    ),
+                )
             })?;
-
         let now = Utc::now().timestamp();
         let route_json = delivery
             .route
@@ -80,9 +156,10 @@ impl TeamActorMailboxService {
         if super::mailbox_reply_obligations::reply_actor_pair_for_inbound_obligation(&message)
             .is_none()
         {
-            return Err(map_actor_service_error(anyhow::Error::new(
-                super::mailbox::SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported,
-            )));
+            return Err(agenthub_team_actor::ActorServiceError::new(
+                agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                "only human-originated reply-required mailbox work can be escalated or transferred",
+            ));
         }
         if super::mailbox_reply_obligations::reply_obligation_is_terminal(&message) {
             return Err(agenthub_team_actor::ActorServiceError::new(
@@ -93,9 +170,9 @@ impl TeamActorMailboxService {
 
         let release_payload = super::mailbox_reply_obligations::build_mailbox_resolution_payload(
             &message.payload,
-            MAILBOX_RESOLUTION_ESCALATED,
+            resolution_kind,
             actor_id,
-            &coordinator_actor_id,
+            target_actor_id,
             now,
         );
         let released_payload_json = serde_json::to_string(&release_payload).map_err(|err| {
@@ -104,25 +181,41 @@ impl TeamActorMailboxService {
                 err.to_string(),
             )
         })?;
-        let escalated_payload = normalize_actor_message_envelope_payload(
+        let reassigned_payload = normalize_actor_message_envelope_payload(
             &message.from_actor_id,
-            &coordinator_actor_id,
+            target_actor_id,
             &message.message_kind,
-            super::mailbox_reply_obligations::build_escalated_mailbox_payload(
-                &message.payload,
-                message.message_id,
-                actor_id,
-                &coordinator_actor_id,
-                actor_id,
-                now,
-            ),
+            match resolution_kind {
+                MAILBOX_RESOLUTION_ESCALATED => {
+                    super::mailbox_reply_obligations::build_escalated_mailbox_payload(
+                        &message.payload,
+                        message.message_id,
+                        actor_id,
+                        target_actor_id,
+                        actor_id,
+                        now,
+                    )
+                }
+                MAILBOX_RESOLUTION_TRANSFERRED => {
+                    super::mailbox_reply_obligations::build_transferred_mailbox_payload(
+                        &message.payload,
+                        message.message_id,
+                        actor_id,
+                        target_actor_id,
+                        actor_id,
+                        now,
+                    )
+                }
+                _ => unreachable!(),
+            },
         );
-        let escalated_payload_json = serde_json::to_string(&escalated_payload).map_err(|err| {
-            agenthub_team_actor::ActorServiceError::new(
-                agenthub_team_actor::ActorServiceErrorCode::Internal,
-                err.to_string(),
-            )
-        })?;
+        let reassigned_payload_json =
+            serde_json::to_string(&reassigned_payload).map_err(|err| {
+                agenthub_team_actor::ActorServiceError::new(
+                    agenthub_team_actor::ActorServiceErrorCode::Internal,
+                    err.to_string(),
+                )
+            })?;
 
         if message.handling_disposition == ActorMessageHandlingDisposition::Claimed {
             apply_thread_claim_transition(
@@ -190,12 +283,12 @@ impl TeamActorMailboxService {
         .bind(run_id)
         .bind(&message.from_actor_id)
         .bind(&message.from_peer_id)
-        .bind(&coordinator_actor_id)
+        .bind(target_actor_id)
         .bind(&delivery.to_peer_id)
         .bind(&message.channel)
         .bind(transport_raw)
         .bind(route_json)
-        .bind(escalated_payload_json)
+        .bind(reassigned_payload_json)
         .bind(message.message_kind.as_str())
         .bind(status_raw)
         .bind(now)
