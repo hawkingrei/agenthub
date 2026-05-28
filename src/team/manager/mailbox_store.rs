@@ -27,8 +27,6 @@ pub(super) enum SqlActorMailboxStoreError {
         "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred"
     )]
     ReplyRequiredVisibleOutcomeMissing,
-    #[error("only human-originated reply-required mailbox work can be escalated")]
-    ReplyRequiredEscalationUnsupported,
     #[error("reply-required mailbox work is already assigned to coordinator")]
     ReplyRequiredEscalationAlreadyAtCoordinator,
     #[error("reply-required mailbox escalation target is unavailable")]
