@@ -156,20 +156,6 @@ pub(super) fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
         .is_some_and(|cause| {
             matches!(
                 cause,
-                SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported
-            )
-        })
-    {
-        return ActorServiceError::new(
-            ActorServiceErrorCode::BadRequest,
-            "only human-originated reply-required mailbox work can be escalated",
-        );
-    }
-    if err
-        .downcast_ref::<SqlActorMailboxStoreError>()
-        .is_some_and(|cause| {
-            matches!(
-                cause,
                 SqlActorMailboxStoreError::ReplyRequiredEscalationAlreadyAtCoordinator
             )
         })
@@ -227,9 +213,6 @@ pub(super) fn map_actor_mailbox_store_error(
             }
             SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing => {
                 anyhow::Error::new(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)
-            }
-            SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported => {
-                anyhow::Error::new(SqlActorMailboxStoreError::ReplyRequiredEscalationUnsupported)
             }
             SqlActorMailboxStoreError::ReplyRequiredEscalationAlreadyAtCoordinator => {
                 anyhow::Error::new(

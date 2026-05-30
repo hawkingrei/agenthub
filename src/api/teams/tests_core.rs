@@ -3909,6 +3909,179 @@ async fn team_run_messages_api_escalation_reassigns_open_reply_obligation_to_coo
 }
 
 #[tokio::test]
+async fn team_run_messages_api_transfer_reassigns_open_reply_obligation_to_target_actor() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-transfer-team".to_string(),
+            description: Some("transfer reassigns reply obligation".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-transfer".to_string()),
+            input: Some(json!({"prompt":"transfer reply obligation"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let now = Utc::now().timestamp();
+    let payload_json = json!({
+        "type":"chat_message",
+        "text":"Please hand this customer reply to worker two.",
+        "source_kind":"human",
+        "source_surface":"conversation",
+        "conversation_id":"conv-transfer-1",
+        "requires_user_visible_reply": true,
+        "reply_target": {
+            "surface":"conversation",
+            "conversation_id":"conv-transfer-1",
+            "task_message_id": 1
+        }
+    })
+    .to_string();
+    let original_message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("user")
+    .bind("worker-1")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert human mailbox message")
+    .last_insert_rowid();
+
+    let Json(transferred) = transfer_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), original_message_id)),
+        Json(TransferTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            target_actor_id: "worker-2".to_string(),
+        }),
+    )
+    .await
+    .expect("transfer mailbox obligation");
+    assert_eq!(transferred.to_actor_id, "worker-2");
+    assert_eq!(transferred.status, agenthub_team_actor::ActorMessageStatus::Pending);
+    assert_eq!(
+        transferred.payload["mailbox_transfer"]["kind"],
+        json!("transferred")
+    );
+
+    let Json(worker_one_pending_after) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: "worker-1".to_string(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: Some(false),
+        }),
+    )
+    .await
+    .expect("list worker-1 inbox after transfer");
+    assert!(worker_one_pending_after.is_empty());
+
+    let Json(worker_two_pending_after) = list_team_run_inbox(
+        State(state.clone()),
+        headers.clone(),
+        Path(run.id.clone()),
+        Query(ListTeamRunInboxQuery {
+            actor_id: "worker-2".to_string(),
+            limit: Some(100),
+            after_id: None,
+            include_delivered: Some(false),
+        }),
+    )
+    .await
+    .expect("list worker-2 inbox after transfer");
+    assert_eq!(worker_two_pending_after.len(), 1);
+    assert_eq!(worker_two_pending_after[0].message_id, transferred.message_id);
+
+    let original_resolution_kind = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT json_extract(payload_json, '$.mailbox_resolution.kind')
+        FROM team_actor_messages
+        WHERE id = ?1
+        "#,
+    )
+    .bind(original_message_id)
+    .fetch_one(&state.db)
+    .await
+    .expect("load original message resolution kind");
+    assert_eq!(original_resolution_kind, "transferred");
+
+    let Json(snapshot_after) = get_team_run_snapshot(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(100),
+            message_limit: Some(100),
+        }),
+    )
+    .await
+    .expect("get snapshot after transfer");
+    assert_eq!(snapshot_after.mailbox.open_reply_obligation_count, 1);
+    assert_eq!(snapshot_after.mailbox.open_reply_obligations.len(), 1);
+    assert_eq!(
+        snapshot_after.mailbox.open_reply_obligations[0].agent_actor_id,
+        "worker-2"
+    );
+    let worker_one_after = snapshot_after
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-1")
+        .expect("find worker-1 after transfer");
+    assert_eq!(worker_one_after.reply_obligation_count, 0);
+    let worker_two_after = snapshot_after
+        .members
+        .iter()
+        .find(|member| member.member_id == "worker-2")
+        .expect("find worker-2 after transfer");
+    assert_eq!(worker_two_after.reply_obligation_count, 1);
+}
+
+#[tokio::test]
 async fn team_run_messages_api_triage_surfaces_takeover_state() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
