@@ -233,6 +233,8 @@ processing without one of these outcomes:
 
 - user-visible reply emitted successfully;
 - work transferred explicitly to another actor with preserved reply obligation;
+- claimed work taken over explicitly by another actor with preserved reply obligation and topic
+  ownership;
 - message marked ignored with an explicit allowed reason;
 - issue escalated to coordinator or human operator with visible evidence.
 
@@ -252,13 +254,16 @@ Current minimum operator contract:
 - operators may explicitly escalate reply-required human mailbox work to the coordinator; this
   releases the original item and reissues the open reply obligation to the coordinator mailbox
   instead of pretending the work is completed;
+- operators may explicitly take over actively claimed reply-required work for another actor; this
+  releases the original item as `taken_over`, reissues the open reply obligation to the target
+  actor, and moves the topic claim owner to that target actor;
 - `ignored` clears the item from open-obligation and unread-actionable summaries;
 - `completed` is only valid when user-visible reply evidence already exists; unresolved
   reply-obligation rows should not offer `completed` as a direct operator action;
 - `watching`, `claimed`, and `released` remain operator-visible mailbox states and do not satisfy
   the user-visible reply requirement on their own;
-- transfer and cross-actor takeover remain distinct follow-up flows and must not be conflated with
-  the current triage-state surface.
+- transfer and cross-actor takeover are distinct flows and are not conflated with the triage-state
+  surface.
 
 ### 9) Inbox Ordering Contract
 

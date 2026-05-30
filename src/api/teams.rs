@@ -384,6 +384,12 @@ pub struct TransferTeamRunMessageRequest {
     pub target_actor_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TakeoverTeamRunMessageRequest {
+    pub actor_id: String,
+    pub target_actor_id: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct TeamRunSnapshotResponse {
     pub run: TeamRunRecord,
@@ -568,6 +574,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/runs/{run_id}/messages/{message_id}/transfer",
             post(transfer_team_run_message),
+        )
+        .route(
+            "/runs/{run_id}/messages/{message_id}/takeover",
+            post(takeover_team_run_message),
         )
         .with_state(state)
 }
@@ -2007,6 +2017,40 @@ async fn transfer_team_run_message(
     for actor_id in actor_ids {
         let result = service
             .transfer_reply_required_message(
+                &run_id,
+                &actor_id,
+                ACTOR_MAIN_PEER_ID,
+                message_id,
+                target_actor_id,
+            )
+            .await;
+        match result {
+            Ok(message) => return Ok(Json(message)),
+            Err(err) if err.code == ActorServiceErrorCode::NotFound => continue,
+            Err(err) => return Err(map_actor_service_api_error(err)),
+        }
+    }
+    Err(ApiError::not_found("message not found"))
+}
+
+async fn takeover_team_run_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((run_id, message_id)): Path<(String, i64)>,
+    Json(payload): Json<TakeoverTeamRunMessageRequest>,
+) -> Result<Json<TeamActorMessageRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
+    let actor_ids =
+        resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
+    let target_actor_id = payload.target_actor_id.trim();
+    if target_actor_id.is_empty() {
+        return Err(ApiError::bad_request("target_actor_id is required"));
+    }
+    let service = state.teams.actor_mailbox_service();
+    for actor_id in actor_ids {
+        let result = service
+            .takeover_reply_required_message(
                 &run_id,
                 &actor_id,
                 ACTOR_MAIN_PEER_ID,

@@ -148,7 +148,21 @@ pub(super) fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
     {
         return ActorServiceError::new(
             ActorServiceErrorCode::UnprocessableEntity,
-            "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred",
+            "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred/taken over",
+        );
+    }
+    if err
+        .downcast_ref::<SqlActorMailboxStoreError>()
+        .is_some_and(|cause| {
+            matches!(
+                cause,
+                SqlActorMailboxStoreError::ThreadClaimTakeoverRequired
+            )
+        })
+    {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            "mailbox takeover requires a currently claimed topic",
         );
     }
     if err
@@ -210,6 +224,9 @@ pub(super) fn map_actor_mailbox_store_error(
             }
             SqlActorMailboxStoreError::ThreadClaimOwnershipRequired => {
                 anyhow::Error::new(SqlActorMailboxStoreError::ThreadClaimOwnershipRequired)
+            }
+            SqlActorMailboxStoreError::ThreadClaimTakeoverRequired => {
+                anyhow::Error::new(SqlActorMailboxStoreError::ThreadClaimTakeoverRequired)
             }
             SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing => {
                 anyhow::Error::new(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)

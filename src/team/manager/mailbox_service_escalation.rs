@@ -1,8 +1,9 @@
 use chrono::Utc;
 
 use super::mailbox::{
-    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TRANSFERRED, apply_thread_claim_transition,
-    fetch_enriched_message_by_id, fetch_message_for_actor, map_actor_service_error,
+    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TAKEN_OVER, MAILBOX_RESOLUTION_TRANSFERRED,
+    apply_thread_claim_takeover, apply_thread_claim_transition, fetch_enriched_message_by_id,
+    fetch_message_for_actor, map_actor_service_error,
 };
 use super::mailbox_service::TeamActorMailboxService;
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus};
@@ -61,6 +62,59 @@ impl TeamActorMailboxService {
             message_id,
             target_actor_id,
             MAILBOX_RESOLUTION_TRANSFERRED,
+        )
+        .await
+    }
+
+    pub async fn takeover_reply_required_message(
+        &self,
+        run_id: &str,
+        actor_id: &str,
+        peer_id: &str,
+        message_id: i64,
+        target_actor_id: &str,
+    ) -> Result<TeamActorMessageRecord, agenthub_team_actor::ActorServiceError> {
+        let member_specs = self
+            .load_member_specs_for_run(run_id)
+            .await
+            .map_err(map_actor_service_error)?;
+        let target_actor_id = target_actor_id.trim();
+        if target_actor_id.is_empty() {
+            return Err(agenthub_team_actor::ActorServiceError::new(
+                agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                "target_actor_id is required",
+            ));
+        }
+        if target_actor_id == actor_id {
+            return Err(agenthub_team_actor::ActorServiceError::new(
+                agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                "reply-required mailbox work cannot be taken over by the acting actor",
+            ));
+        }
+        if !member_specs
+            .iter()
+            .any(|member| member.member_id == target_actor_id)
+        {
+            let valid_member_ids = member_specs
+                .iter()
+                .map(|member| member.member_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(agenthub_team_actor::ActorServiceError::new(
+                agenthub_team_actor::ActorServiceErrorCode::BadRequest,
+                format!(
+                    "target_actor_id `{}` must reference a canonical team member_id; valid member_ids: {}",
+                    target_actor_id, valid_member_ids
+                ),
+            ));
+        }
+        self.reassign_reply_required_message(
+            run_id,
+            actor_id,
+            peer_id,
+            message_id,
+            target_actor_id,
+            MAILBOX_RESOLUTION_TAKEN_OVER,
         )
         .await
     }
@@ -158,7 +212,7 @@ impl TeamActorMailboxService {
         {
             return Err(agenthub_team_actor::ActorServiceError::new(
                 agenthub_team_actor::ActorServiceErrorCode::BadRequest,
-                "only human-originated reply-required mailbox work can be escalated or transferred",
+                "only human-originated reply-required mailbox work can be escalated, transferred, or taken over",
             ));
         }
         if super::mailbox_reply_obligations::reply_obligation_is_terminal(&message) {
@@ -206,6 +260,16 @@ impl TeamActorMailboxService {
                         now,
                     )
                 }
+                MAILBOX_RESOLUTION_TAKEN_OVER => {
+                    super::mailbox_reply_obligations::build_taken_over_mailbox_payload(
+                        &message.payload,
+                        message.message_id,
+                        actor_id,
+                        target_actor_id,
+                        target_actor_id,
+                        now,
+                    )
+                }
                 _ => unreachable!(),
             },
         );
@@ -217,7 +281,9 @@ impl TeamActorMailboxService {
                 )
             })?;
 
-        if message.handling_disposition == ActorMessageHandlingDisposition::Claimed {
+        if message.handling_disposition == ActorMessageHandlingDisposition::Claimed
+            && resolution_kind != MAILBOX_RESOLUTION_TAKEN_OVER
+        {
             apply_thread_claim_transition(
                 &mut tx,
                 &message,
@@ -295,12 +361,43 @@ impl TeamActorMailboxService {
         .execute(&mut *tx)
         .await
         .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        let escalated_message_id = inserted.last_insert_rowid();
+        let reassigned_message_id = inserted.last_insert_rowid();
+        if resolution_kind == MAILBOX_RESOLUTION_TAKEN_OVER {
+            sqlx::query(
+                r#"
+                UPDATE team_actor_messages
+                SET
+                    handling_disposition = 'claimed',
+                    handled_by_actor_id = ?1,
+                    handled_at = ?2
+                WHERE id = ?3
+                  AND run_id = ?4
+                  AND to_actor_id = ?1
+                "#,
+            )
+            .bind(target_actor_id)
+            .bind(now)
+            .bind(reassigned_message_id)
+            .bind(run_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+            apply_thread_claim_takeover(
+                &mut tx,
+                &message,
+                run_id,
+                target_actor_id,
+                reassigned_message_id,
+                now,
+            )
+            .await
+            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+        }
 
         tx.commit()
             .await
             .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        fetch_enriched_message_by_id(&self.manager.db, escalated_message_id)
+        fetch_enriched_message_by_id(&self.manager.db, reassigned_message_id)
             .await
             .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))
     }

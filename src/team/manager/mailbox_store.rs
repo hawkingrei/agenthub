@@ -24,13 +24,15 @@ pub(super) enum SqlActorMailboxStoreError {
     #[error("actor message idempotency conflict")]
     IdempotencyConflict,
     #[error(
-        "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred"
+        "reply-required mailbox work cannot be completed before a visible reply is emitted or the item is explicitly escalated/transferred/taken over"
     )]
     ReplyRequiredVisibleOutcomeMissing,
     #[error("reply-required mailbox work is already assigned to coordinator")]
     ReplyRequiredEscalationAlreadyAtCoordinator,
     #[error("reply-required mailbox escalation target is unavailable")]
     ReplyRequiredEscalationTargetUnavailable,
+    #[error("mailbox takeover requires a claimed topic")]
+    ThreadClaimTakeoverRequired,
     #[error("thread topic is already claimed by actor `{owner_actor_id}`")]
     ThreadClaimConflict { owner_actor_id: String },
     #[error("thread topic must be claimed by the acting actor")]

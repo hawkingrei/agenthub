@@ -186,6 +186,93 @@ pub(super) async fn apply_thread_claim_transition(
     Ok(())
 }
 
+pub(super) async fn apply_thread_claim_takeover(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    source_message: &TeamActorMessageRecord,
+    run_id: &str,
+    target_actor_id: &str,
+    target_message_id: i64,
+    claimed_at: i64,
+) -> Result<(), SqlActorMailboxStoreError> {
+    if source_message.handling_disposition != ActorMessageHandlingDisposition::Claimed {
+        return Err(SqlActorMailboxStoreError::ThreadClaimTakeoverRequired);
+    }
+    let explicit_task_id =
+        fetch_latest_task_link_for_message(tx, run_id, source_message.message_id)
+            .await?
+            .map(|link| link.task_id);
+    let Some(topic) = derive_actor_message_topic_metadata(
+        source_message.message_id,
+        &source_message.payload,
+        explicit_task_id.as_deref(),
+    ) else {
+        return Err(SqlActorMailboxStoreError::ThreadClaimTakeoverRequired);
+    };
+    let existing = sqlx::query(
+        r#"
+        SELECT owner_actor_id, claim_status, lease_expires_at
+        FROM team_actor_thread_claims
+        WHERE run_id = ?1 AND topic_key = ?2
+        LIMIT 1
+        "#,
+    )
+    .bind(run_id)
+    .bind(&topic.topic_key)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(existing) = existing else {
+        return Err(SqlActorMailboxStoreError::ThreadClaimTakeoverRequired);
+    };
+    let owner_actor_id: String = existing.get("owner_actor_id");
+    let claim_status_raw: String = existing.get("claim_status");
+    let lease_expires_at = existing
+        .try_get::<Option<i64>, _>("lease_expires_at")
+        .unwrap_or(None);
+    let is_active = parse_actor_thread_claim_status(&claim_status_raw)
+        == Some(ActorThreadClaimStatus::Claimed)
+        && lease_expires_at.is_none_or(|value| value > claimed_at);
+    if !is_active || owner_actor_id != source_message.to_actor_id {
+        return Err(SqlActorMailboxStoreError::ThreadClaimTakeoverRequired);
+    }
+    sqlx::query(
+        r#"
+        INSERT INTO team_actor_thread_claims (
+            run_id,
+            topic_key,
+            task_id,
+            root_message_id,
+            owner_actor_id,
+            claim_status,
+            claimed_message_id,
+            claimed_at,
+            lease_expires_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'claimed', ?6, ?7, ?8, ?7)
+        ON CONFLICT(run_id, topic_key) DO UPDATE SET
+            task_id = excluded.task_id,
+            root_message_id = excluded.root_message_id,
+            owner_actor_id = excluded.owner_actor_id,
+            claim_status = excluded.claim_status,
+            claimed_message_id = excluded.claimed_message_id,
+            claimed_at = excluded.claimed_at,
+            lease_expires_at = excluded.lease_expires_at,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(run_id)
+    .bind(&topic.topic_key)
+    .bind(&topic.task_id)
+    .bind(topic.root_message_id)
+    .bind(target_actor_id)
+    .bind(target_message_id)
+    .bind(claimed_at)
+    .bind(claimed_at + ACTOR_THREAD_CLAIM_DEFAULT_LEASE_SECS)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 pub(super) fn ensure_idempotency_compatible(
     cmd: &SendActorMessageCommand,
     existing: &TeamActorMessageRecord,
