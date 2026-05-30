@@ -1,5 +1,6 @@
 use super::mailbox::{
-    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey,
+    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TAKEN_OVER, MAILBOX_RESOLUTION_TRANSFERRED,
+    ReplyActorPairKey,
 };
 use super::mailbox_payloads::is_human_actor_id;
 use super::mailbox_reply_obligation_snapshot_conversion::resolve_canonical_chat_reply_from_snapshot;
@@ -75,7 +76,11 @@ pub(super) fn reply_obligation_snapshot_is_terminal(
         ActorMessageHandlingDisposition::Released
     ) && matches!(
         message.mailbox_resolution_kind.as_deref(),
-        Some(MAILBOX_RESOLUTION_ESCALATED | MAILBOX_RESOLUTION_TRANSFERRED)
+        Some(
+            MAILBOX_RESOLUTION_ESCALATED
+                | MAILBOX_RESOLUTION_TRANSFERRED
+                | MAILBOX_RESOLUTION_TAKEN_OVER,
+        )
     )
 }
 

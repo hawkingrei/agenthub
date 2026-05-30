@@ -1,7 +1,8 @@
 use serde_json::{Map, Value};
 
 use super::mailbox::{
-    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey,
+    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TAKEN_OVER, MAILBOX_RESOLUTION_TRANSFERRED,
+    ReplyActorPairKey,
 };
 use super::mailbox_reply_obligation_snapshot_conversion::mailbox_resolution_kind;
 use crate::team::TeamActorMessageRecord;
@@ -37,7 +38,11 @@ pub(super) fn reply_obligation_is_terminal(message: &TeamActorMessageRecord) -> 
         ActorMessageHandlingDisposition::Released
     ) && matches!(
         mailbox_resolution_kind(&message.payload),
-        Some(MAILBOX_RESOLUTION_ESCALATED | MAILBOX_RESOLUTION_TRANSFERRED)
+        Some(
+            MAILBOX_RESOLUTION_ESCALATED
+                | MAILBOX_RESOLUTION_TRANSFERRED
+                | MAILBOX_RESOLUTION_TAKEN_OVER,
+        )
     )
 }
 
@@ -111,6 +116,32 @@ pub(super) fn build_transferred_mailbox_payload(
             "target_actor_id": target_actor_id,
             "transferred_by_actor_id": transferred_by_actor_id,
             "transferred_at": transferred_at
+        }),
+    );
+    Value::Object(payload_obj)
+}
+
+pub(super) fn build_taken_over_mailbox_payload(
+    source_payload: &Value,
+    source_message_id: i64,
+    source_actor_id: &str,
+    target_actor_id: &str,
+    taken_over_by_actor_id: &str,
+    taken_over_at: i64,
+) -> Value {
+    let mut payload_obj = match source_payload {
+        Value::Object(map) => map.clone(),
+        _ => Map::new(),
+    };
+    payload_obj.insert(
+        "mailbox_takeover".to_string(),
+        serde_json::json!({
+            "kind": MAILBOX_RESOLUTION_TAKEN_OVER,
+            "source_message_id": source_message_id,
+            "source_actor_id": source_actor_id,
+            "target_actor_id": target_actor_id,
+            "taken_over_by_actor_id": taken_over_by_actor_id,
+            "taken_over_at": taken_over_at
         }),
     );
     Value::Object(payload_obj)

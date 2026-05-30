@@ -4096,7 +4096,8 @@ async fn team_run_messages_api_triage_surfaces_takeover_state() {
                 "entrypoint":"planner",
                 "members":[
                     {"member_id":"planner","role":"coordinator"},
-                    {"member_id":"worker-1","role":"worker"}
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
                 ]
             }),
         }),
@@ -4165,6 +4166,22 @@ async fn team_run_messages_api_triage_surfaces_takeover_state() {
     .expect("insert human takeover message")
     .last_insert_rowid();
 
+    let unclaimed_takeover = takeover_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), message_id)),
+        Json(TakeoverTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            target_actor_id: "worker-2".to_string(),
+        }),
+    )
+    .await
+    .expect_err("takeover requires an active source claim");
+    assert_eq!(
+        unclaimed_takeover.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+
     let Json(claimed) = triage_team_run_message(
         State(state.clone()),
         headers.clone(),
@@ -4214,25 +4231,33 @@ async fn team_run_messages_api_triage_surfaces_takeover_state() {
     );
     assert_eq!(claimed_message.thread_owner_actor_id.as_deref(), Some("worker-1"));
 
-    let Json(released) = triage_team_run_message(
+    let Json(taken_over) = takeover_team_run_message(
         State(state.clone()),
         headers.clone(),
         Path((run.id.clone(), message_id)),
-        Json(TriageTeamRunMessageRequest {
+        Json(TakeoverTeamRunMessageRequest {
             actor_id: "worker-1".to_string(),
-            disposition: "released".to_string(),
+            target_actor_id: "worker-2".to_string(),
         }),
     )
     .await
-    .expect("release mailbox topic");
+    .expect("take over mailbox topic");
+    assert_eq!(taken_over.to_actor_id, "worker-2");
     assert_eq!(
-        released.handling_disposition,
-        agenthub_team_actor::ActorMessageHandlingDisposition::Released
+        taken_over.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Claimed
     );
-    assert_eq!(released.thread_claim_status, None);
-    assert_eq!(released.thread_owner_actor_id, None);
+    assert_eq!(
+        taken_over.thread_claim_status,
+        Some(agenthub_team_actor::ActorThreadClaimStatus::Claimed)
+    );
+    assert_eq!(taken_over.thread_owner_actor_id.as_deref(), Some("worker-2"));
+    assert_eq!(
+        taken_over.payload["mailbox_takeover"]["kind"],
+        json!("taken_over")
+    );
 
-    let Json(snapshot_released) = get_team_run_snapshot(
+    let Json(snapshot_taken_over) = get_team_run_snapshot(
         State(state),
         headers,
         Path(run.id),
@@ -4242,20 +4267,44 @@ async fn team_run_messages_api_triage_surfaces_takeover_state() {
         }),
     )
     .await
-    .expect("get snapshot after release");
-    assert_eq!(snapshot_released.mailbox.open_reply_obligation_count, 1);
-    let released_message = snapshot_released
+    .expect("get snapshot after takeover");
+    assert_eq!(snapshot_taken_over.mailbox.open_reply_obligation_count, 1);
+    assert_eq!(
+        snapshot_taken_over.mailbox.open_reply_obligations[0].agent_actor_id,
+        "worker-2"
+    );
+    let source_message = snapshot_taken_over
         .mailbox
         .recent_messages
         .iter()
         .find(|message| message.message_id == message_id)
-        .expect("find released snapshot message");
+        .expect("find source snapshot message");
     assert_eq!(
-        released_message.handling_disposition,
+        source_message.handling_disposition,
         agenthub_team_actor::ActorMessageHandlingDisposition::Released
     );
-    assert_eq!(released_message.thread_claim_status, None);
-    assert_eq!(released_message.thread_owner_actor_id, None);
+    assert_eq!(
+        source_message.payload["mailbox_resolution"]["kind"],
+        json!("taken_over")
+    );
+    let takeover_message = snapshot_taken_over
+        .mailbox
+        .recent_messages
+        .iter()
+        .find(|message| message.message_id == taken_over.message_id)
+        .expect("find takeover snapshot message");
+    assert_eq!(
+        takeover_message.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Claimed
+    );
+    assert_eq!(
+        takeover_message.thread_claim_status,
+        Some(agenthub_team_actor::ActorThreadClaimStatus::Claimed)
+    );
+    assert_eq!(
+        takeover_message.thread_owner_actor_id.as_deref(),
+        Some("worker-2")
+    );
 }
 
 #[tokio::test]
