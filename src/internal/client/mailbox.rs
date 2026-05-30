@@ -316,6 +316,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 actor_id: request.actor_id,
                 message_id: request.message_id,
                 disposition: request.disposition.as_str().to_string(),
+                reason: request.reason.unwrap_or_default(),
             },
         )?))
         .await

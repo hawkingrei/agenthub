@@ -72,6 +72,7 @@ pub struct ActorTriageRequest {
     pub actor_id: String,
     pub message_id: i64,
     pub disposition: ActorMessageHandlingDisposition,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -311,6 +311,7 @@ async fn internal_grpc_mailbox_triage_and_task_link_are_wire_compatible() {
                 actor_id: "reviewer".to_string(),
                 message_id: send.message_id,
                 disposition: "claimed".to_string(),
+                reason: String::new(),
             },
             &token,
         ),

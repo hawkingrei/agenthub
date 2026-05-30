@@ -53,7 +53,13 @@ impl TeamActorMailboxService {
 
         let result = self
             .manager
-            .triage_actor_message(run_id, actor_id, request.message_id, request.disposition)
+            .triage_actor_message(
+                run_id,
+                actor_id,
+                request.message_id,
+                request.disposition,
+                request.reason,
+            )
             .await
             .map_err(map_actor_service_error)?;
         let triaged_at = result.message.handled_at.unwrap_or(

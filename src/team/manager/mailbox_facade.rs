@@ -155,6 +155,7 @@ impl TeamManager {
         actor_id: &str,
         message_id: i64,
         disposition: ActorMessageHandlingDisposition,
+        reason: Option<String>,
     ) -> anyhow::Result<agenthub_team_actor::TriageActorMessageResult> {
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
@@ -165,6 +166,7 @@ impl TeamManager {
                 peer_id: ACTOR_MAIN_PEER_ID.to_string(),
                 message_id,
                 disposition,
+                reason,
                 handled_at: now,
             })
             .await

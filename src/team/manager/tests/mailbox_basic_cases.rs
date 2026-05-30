@@ -749,6 +749,7 @@ async fn actor_mailbox_service_triage_hides_watching_messages_from_unread_snapsh
             actor_id: "reviewer".to_string(),
             message_id: sent.message_id,
             disposition: ActorMessageHandlingDisposition::Watching,
+            reason: None,
         })
         .await
         .expect("triage watching");
@@ -844,6 +845,7 @@ async fn actor_mailbox_service_claims_topics_and_prevents_parallel_takeover() {
             actor_id: "reviewer".to_string(),
             message_id: sent.message_id,
             disposition: ActorMessageHandlingDisposition::Claimed,
+            reason: None,
         })
         .await
         .expect("claim topic");
@@ -859,6 +861,7 @@ async fn actor_mailbox_service_claims_topics_and_prevents_parallel_takeover() {
             actor_id: "observer".to_string(),
             message_id: sent.message_id,
             disposition: ActorMessageHandlingDisposition::Claimed,
+            reason: None,
         })
         .await
         .expect_err("parallel claim should fail");
@@ -933,6 +936,7 @@ async fn actor_mailbox_service_requires_active_owner_for_release_and_complete() 
             actor_id: "reviewer".to_string(),
             message_id: sent.message_id,
             disposition: ActorMessageHandlingDisposition::Claimed,
+            reason: None,
         })
         .await
         .expect("claim message");
@@ -943,6 +947,7 @@ async fn actor_mailbox_service_requires_active_owner_for_release_and_complete() 
             actor_id: "observer".to_string(),
             message_id: sent.message_id,
             disposition: ActorMessageHandlingDisposition::Watching,
+            reason: None,
         })
         .await
         .expect_err("non-owner release should fail");
@@ -954,6 +959,7 @@ async fn actor_mailbox_service_requires_active_owner_for_release_and_complete() 
             actor_id: "observer".to_string(),
             message_id: sent.message_id,
             disposition: ActorMessageHandlingDisposition::Completed,
+            reason: None,
         })
         .await
         .expect_err("non-owner complete should fail");
@@ -1013,6 +1019,7 @@ async fn actor_mailbox_service_completed_claim_remains_visible_in_history() {
             actor_id: "reviewer".to_string(),
             message_id: sent.message_id,
             disposition: ActorMessageHandlingDisposition::Claimed,
+            reason: None,
         })
         .await
         .expect("claim message");
@@ -1022,6 +1029,7 @@ async fn actor_mailbox_service_completed_claim_remains_visible_in_history() {
             actor_id: "reviewer".to_string(),
             message_id: sent.message_id,
             disposition: ActorMessageHandlingDisposition::Completed,
+            reason: None,
         })
         .await
         .expect("complete claim");

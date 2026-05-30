@@ -89,6 +89,7 @@ message TriageActorMessageRequest {
   string actor_id = 2;
   int64 message_id = 3;
   string disposition = 4;
+  string reason = 5;
 }
 
 message TriageActorMessageResponse {

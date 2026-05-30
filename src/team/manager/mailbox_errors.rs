@@ -156,6 +156,20 @@ pub(super) fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
         .is_some_and(|cause| {
             matches!(
                 cause,
+                SqlActorMailboxStoreError::ReplyRequiredIgnoreReasonMissing
+            )
+        })
+    {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::UnprocessableEntity,
+            "reply-required mailbox work cannot be ignored without an explicit reason",
+        );
+    }
+    if err
+        .downcast_ref::<SqlActorMailboxStoreError>()
+        .is_some_and(|cause| {
+            matches!(
+                cause,
                 SqlActorMailboxStoreError::ThreadClaimTakeoverRequired
             )
         })
@@ -230,6 +244,9 @@ pub(super) fn map_actor_mailbox_store_error(
             }
             SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing => {
                 anyhow::Error::new(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)
+            }
+            SqlActorMailboxStoreError::ReplyRequiredIgnoreReasonMissing => {
+                anyhow::Error::new(SqlActorMailboxStoreError::ReplyRequiredIgnoreReasonMissing)
             }
             SqlActorMailboxStoreError::ReplyRequiredEscalationAlreadyAtCoordinator => {
                 anyhow::Error::new(

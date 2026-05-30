@@ -181,6 +181,7 @@ enum ActorCommand {
         actor_id: String,
         message_ids: Vec<i64>,
         disposition: ActorMessageHandlingDisposition,
+        reason: Option<String>,
     },
     TaskLink {
         run_id: Option<String>,
@@ -1269,6 +1270,8 @@ mod tests {
             "triage".to_string(),
             "--disposition".to_string(),
             "watch".to_string(),
+            "--reason".to_string(),
+            "observe later".to_string(),
             "--message-id".to_string(),
             "41".to_string(),
             "42".to_string(),
@@ -1281,11 +1284,13 @@ mod tests {
                 actor_id,
                 message_ids,
                 disposition,
+                reason,
             } => {
                 assert_eq!(run_id.as_deref(), Some("run-triage"));
                 assert_eq!(actor_id, "worker");
                 assert_eq!(message_ids, vec![41, 42]);
                 assert_eq!(disposition, ActorMessageHandlingDisposition::Watching);
+                assert_eq!(reason.as_deref(), Some("observe later"));
             }
             _ => panic!("expected triage command"),
         }

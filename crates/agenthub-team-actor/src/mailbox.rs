@@ -62,6 +62,7 @@ pub struct TriageActorMessageCommand {
     pub peer_id: String,
     pub message_id: i64,
     pub disposition: ActorMessageHandlingDisposition,
+    pub reason: Option<String>,
     pub handled_at: i64,
 }
 

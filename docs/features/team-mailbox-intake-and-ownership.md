@@ -257,7 +257,8 @@ Current minimum operator contract:
 - operators may explicitly take over actively claimed reply-required work for another actor; this
   releases the original item as `taken_over`, reissues the open reply obligation to the target
   actor, and moves the topic claim owner to that target actor;
-- `ignored` clears the item from open-obligation and unread-actionable summaries;
+- `ignored` clears the item from open-obligation and unread-actionable summaries only when
+  reply-required human work records an explicit reason;
 - `completed` is only valid when user-visible reply evidence already exists; unresolved
   reply-obligation rows should not offer `completed` as a direct operator action;
 - `watching`, `claimed`, and `released` remain operator-visible mailbox states and do not satisfy
