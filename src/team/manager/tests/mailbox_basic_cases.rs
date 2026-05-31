@@ -69,6 +69,65 @@ async fn actor_messages_support_inbox_and_ack_flow() {
 }
 
 #[tokio::test]
+async fn actor_messages_persist_canonical_inbound_envelope_for_text_payload() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-message-envelope-normalization-team".to_string(),
+            description: Some("team for actor message envelope normalization".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-envelope"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let sent = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!("please review"),
+            idempotency_key: Some("msg-envelope-1"),
+            message_kind: None,
+        })
+        .await
+        .expect("send actor message");
+
+    assert_eq!(sent.payload["type"], json!("chat_message"));
+    assert_eq!(sent.payload["text"], json!("please review"));
+    assert_eq!(sent.payload["source_kind"], json!("agent"));
+    assert_eq!(sent.payload["source_surface"], json!("mailbox"));
+    assert_eq!(sent.payload["requires_user_visible_reply"], json!(false));
+
+    let stored_payload_json: String =
+        sqlx::query_scalar("SELECT payload_json FROM team_actor_messages WHERE id = ?1")
+            .bind(sent.message_id)
+            .fetch_one(&db)
+            .await
+            .expect("load stored payload");
+    let stored_payload: Value =
+        serde_json::from_str(&stored_payload_json).expect("decode stored payload");
+    assert_eq!(stored_payload, sent.payload);
+}
+
+#[tokio::test]
 async fn summarize_open_reply_obligations_prefers_lightweight_snapshot_loader() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
