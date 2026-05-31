@@ -125,6 +125,17 @@ fn map_actor_service_error_surfaces_readonly_database_failures() {
 }
 
 #[test]
+fn map_actor_service_error_preserves_internal_error_details() {
+    let mapped = map_actor_service_error(anyhow::anyhow!("database is locked"));
+
+    assert_eq!(mapped.code, ActorServiceErrorCode::Internal);
+    assert_eq!(
+        mapped.message,
+        "internal actor mailbox error: database is locked"
+    );
+}
+
+#[test]
 fn human_visible_chat_reply_requires_local_non_human_to_human_chat_message() {
     let payload = json!({
         "type": "chat_message",
