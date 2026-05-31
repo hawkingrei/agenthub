@@ -1,10 +1,12 @@
 use serde_json::{Map, Value};
 
 use super::mailbox::{
-    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_TAKEN_OVER, MAILBOX_RESOLUTION_TRANSFERRED,
-    ReplyActorPairKey,
+    MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_IGNORED, MAILBOX_RESOLUTION_TAKEN_OVER,
+    MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey,
 };
-use super::mailbox_reply_obligation_snapshot_conversion::mailbox_resolution_kind;
+use super::mailbox_reply_obligation_snapshot_conversion::{
+    mailbox_resolution_kind, mailbox_resolution_reason,
+};
 use crate::team::TeamActorMessageRecord;
 use agenthub_team_actor::{ActorIdentityKind, ActorMessageHandlingDisposition};
 
@@ -27,11 +29,9 @@ pub(super) fn reply_actor_pair_for_inbound_obligation(
 }
 
 pub(super) fn reply_obligation_is_terminal(message: &TeamActorMessageRecord) -> bool {
-    if matches!(
-        message.handling_disposition,
-        ActorMessageHandlingDisposition::Ignored | ActorMessageHandlingDisposition::Completed
-    ) {
-        return true;
+    if message.handling_disposition == ActorMessageHandlingDisposition::Ignored {
+        return mailbox_resolution_kind(&message.payload) == Some(MAILBOX_RESOLUTION_IGNORED)
+            && mailbox_resolution_reason(&message.payload).is_some();
     }
     matches!(
         message.handling_disposition,
@@ -82,7 +82,7 @@ pub(super) fn build_ignored_mailbox_payload(
     payload_obj.insert(
         "mailbox_resolution".to_string(),
         serde_json::json!({
-            "kind": "ignored",
+            "kind": MAILBOX_RESOLUTION_IGNORED,
             "resolved_by_actor_id": ignored_by_actor_id,
             "reason": reason,
             "resolved_at": ignored_at

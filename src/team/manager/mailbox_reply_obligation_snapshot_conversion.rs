@@ -17,6 +17,17 @@ pub(super) fn mailbox_resolution_kind(payload: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+pub(super) fn mailbox_resolution_reason(payload: &Value) -> Option<&str> {
+    payload
+        .as_object()
+        .and_then(|map| map.get("mailbox_resolution"))
+        .and_then(Value::as_object)
+        .and_then(|map| map.get("reason"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
 pub(super) fn resolve_canonical_chat_reply_from_snapshot(
     message: &ReplyObligationMessageSnapshot,
 ) -> Option<CanonicalChatReply> {
@@ -76,6 +87,7 @@ pub(super) fn reply_obligation_snapshot_from_message(
         thread_root_message_id: envelope.thread_root_message_id,
         requires_user_visible_reply: envelope.requires_user_visible_reply,
         mailbox_resolution_kind: mailbox_resolution_kind(&message.payload).map(str::to_string),
+        mailbox_resolution_reason: mailbox_resolution_reason(&message.payload).map(str::to_string),
         reply_payload_type: message
             .payload
             .get("type")
