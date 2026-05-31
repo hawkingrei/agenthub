@@ -512,6 +512,7 @@ dependencies = [
  "codex-login",
  "codex-mcp-server",
  "codex-models-manager",
+ "codex-otel",
  "codex-protocol",
  "codex-shell-command",
  "codex-utils-absolute-path",
