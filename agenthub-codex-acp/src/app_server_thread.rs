@@ -365,6 +365,7 @@ impl AppServerCodexThread {
                     input: items.into_iter().map(Into::into).collect(),
                     expected_turn_id: turn_id,
                     responsesapi_client_metadata,
+                    additional_context: None,
                 },
             })
             .await;
@@ -1169,6 +1170,7 @@ impl AppServerCodexThread {
                     id: submission_id,
                     msg: EventMsg::TurnStarted(TurnStartedEvent {
                         turn_id: payload.turn.id,
+                        trace_id: None,
                         started_at: payload.turn.started_at,
                         model_context_window: None,
                         collaboration_mode_kind: Default::default(),
@@ -2264,6 +2266,7 @@ fn prepare_submission_start(
                 params: Box::new(TurnStartParams {
                     thread_id: state.thread_id.clone(),
                     input: items.clone().into_iter().map(Into::into).collect(),
+                    additional_context: None,
                     cwd: Some(state.config.cwd.to_path_buf()),
                     runtime_workspace_roots: None,
                     approval_policy: Some(state.config.permissions.approval_policy.value().into()),
@@ -2941,12 +2944,22 @@ fn sandbox_mode_from_policy(
 fn config_request_overrides_from_config(
     config: &Config,
 ) -> Option<HashMap<String, serde_json::Value>> {
-    config.active_profile.as_ref().map(|profile| {
-        HashMap::from([(
-            "profile".to_string(),
-            serde_json::Value::String(profile.clone()),
-        )])
-    })
+    config
+        .config_layer_stack
+        .get_active_user_layer()
+        .and_then(|layer| match &layer.name {
+            codex_app_server_protocol::ConfigLayerSource::User {
+                profile: Some(profile),
+                ..
+            } => Some(profile),
+            _ => None,
+        })
+        .map(|profile| {
+            HashMap::from([(
+                "profile".to_string(),
+                serde_json::Value::String(profile.clone()),
+            )])
+        })
 }
 
 fn elicitation_request_key(server_name: &str, request_id: &McpRequestId) -> String {
@@ -3531,6 +3544,7 @@ mod tests {
                 }],
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
+                additional_context: Default::default(),
                 environments: None,
                 thread_settings: Default::default(),
             },
@@ -3604,6 +3618,7 @@ mod tests {
                 items: Vec::new(),
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
+                additional_context: Default::default(),
                 environments: None,
                 thread_settings: Default::default(),
             },
@@ -3626,6 +3641,7 @@ mod tests {
                 items: Vec::new(),
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
+                additional_context: Default::default(),
                 environments: None,
                 thread_settings: Default::default(),
             },
