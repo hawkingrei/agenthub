@@ -412,34 +412,108 @@ pub fn project_actor_message_envelope(
     }
 }
 
+fn parse_stringified_json_value(raw: &str) -> Option<Value> {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+        return None;
+    }
+    serde_json::from_str(trimmed).ok()
+}
+
+fn canonical_actor_message_payload_object(
+    message_kind: &ActorMessageKind,
+    payload: Value,
+) -> Map<String, Value> {
+    match payload {
+        Value::Object(payload_obj) => payload_obj,
+        Value::String(text) => {
+            if let Some(parsed) = parse_stringified_json_value(&text)
+                && let Value::Object(payload_obj) = parsed
+            {
+                return payload_obj;
+            }
+            let mut payload_obj = Map::new();
+            payload_obj.insert(
+                "type".to_string(),
+                Value::String("chat_message".to_string()),
+            );
+            payload_obj.insert("text".to_string(), Value::String(text));
+            payload_obj
+        }
+        other => {
+            let mut payload_obj = Map::new();
+            payload_obj.insert(
+                "type".to_string(),
+                Value::String(message_kind.as_str().to_string()),
+            );
+            payload_obj.insert("payload".to_string(), other);
+            payload_obj
+        }
+    }
+}
+
+fn insert_canonical_string(payload_obj: &mut Map<String, Value>, key: &str, value: String) {
+    let needs_value = payload_obj
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_none_or(str::is_empty);
+    if needs_value {
+        payload_obj.insert(key.to_string(), Value::String(value));
+    }
+}
+
+fn insert_canonical_value(payload_obj: &mut Map<String, Value>, key: &str, value: Value) {
+    if payload_obj.get(key).is_none_or(Value::is_null) {
+        payload_obj.insert(key.to_string(), value);
+    }
+}
+
 pub fn normalize_actor_message_envelope_payload(
     from_actor_id: &str,
     to_actor_id: &str,
     message_kind: &ActorMessageKind,
     payload: Value,
 ) -> Value {
-    let Value::Object(mut payload_obj) = payload else {
-        return payload;
-    };
+    let mut payload_obj = canonical_actor_message_payload_object(message_kind, payload);
     let projection = project_actor_message_envelope(
         from_actor_id,
         to_actor_id,
         message_kind,
         &Value::Object(payload_obj.clone()),
     );
-    payload_obj
-        .entry("source_kind".to_string())
-        .or_insert_with(|| Value::String(projection.source_kind.as_str().to_string()));
-    payload_obj
-        .entry("source_surface".to_string())
-        .or_insert_with(|| Value::String(projection.source_surface));
-    payload_obj
-        .entry("requires_user_visible_reply".to_string())
-        .or_insert_with(|| Value::Bool(projection.requires_user_visible_reply));
+    insert_canonical_string(
+        &mut payload_obj,
+        "source_kind",
+        projection.source_kind.as_str().to_string(),
+    );
+    insert_canonical_string(
+        &mut payload_obj,
+        "source_surface",
+        projection.source_surface,
+    );
+    if payload_obj
+        .get("requires_user_visible_reply")
+        .and_then(Value::as_bool)
+        .is_none()
+    {
+        payload_obj.insert(
+            "requires_user_visible_reply".to_string(),
+            Value::Bool(projection.requires_user_visible_reply),
+        );
+    }
+    if let Some(conversation_id) = projection.conversation_id {
+        insert_canonical_string(&mut payload_obj, "conversation_id", conversation_id);
+    }
+    if let Some(thread_root_message_id) = projection.thread_root_message_id {
+        insert_canonical_value(
+            &mut payload_obj,
+            "thread_root_message_id",
+            Value::Number(thread_root_message_id.into()),
+        );
+    }
     if let Some(reply_target) = projection.reply_target {
-        payload_obj
-            .entry("reply_target".to_string())
-            .or_insert(reply_target);
+        insert_canonical_value(&mut payload_obj, "reply_target", reply_target);
     }
     Value::Object(payload_obj)
 }
@@ -930,5 +1004,116 @@ mod tests {
                 "task_message_id": 11
             })
         );
+    }
+
+    #[test]
+    fn normalize_actor_message_envelope_payload_wraps_text_as_canonical_chat() {
+        let normalized = normalize_actor_message_envelope_payload(
+            "planner",
+            "reviewer",
+            &ActorMessageKind::CoordinationRequest,
+            json!("please review the patch"),
+        );
+        assert_eq!(normalized["type"], json!("chat_message"));
+        assert_eq!(normalized["text"], json!("please review the patch"));
+        assert_eq!(normalized["source_kind"], json!("agent"));
+        assert_eq!(normalized["source_surface"], json!("mailbox"));
+        assert_eq!(normalized["requires_user_visible_reply"], json!(false));
+    }
+
+    #[test]
+    fn normalize_actor_message_envelope_payload_parses_stringified_json_object() {
+        let normalized = normalize_actor_message_envelope_payload(
+            "reviewer",
+            "user:alice",
+            &ActorMessageKind::CoordinationRequest,
+            json!(r#"{"type":"chat_message","text":"done","correlation_id":"corr-1"}"#),
+        );
+        assert_eq!(normalized["type"], json!("chat_message"));
+        assert_eq!(normalized["text"], json!("done"));
+        assert_eq!(normalized["correlation_id"], json!("corr-1"));
+        assert_eq!(normalized["source_kind"], json!("agent"));
+        assert_eq!(normalized["source_surface"], json!("mailbox"));
+        assert_eq!(normalized["requires_user_visible_reply"], json!(false));
+    }
+
+    #[test]
+    fn normalize_actor_message_envelope_payload_replaces_blank_or_null_canonical_fields() {
+        let normalized = normalize_actor_message_envelope_payload(
+            "user:bob",
+            "worker-1",
+            &ActorMessageKind::HumanRequest,
+            json!({
+                "type":"chat_message",
+                "text":"Need help",
+                "source_kind":" ",
+                "source_surface":"",
+                "requires_user_visible_reply": null,
+                "reply_target": null,
+                "task_conversation_id":"conversation-9",
+                "task_message_id": 5
+            }),
+        );
+        assert_eq!(normalized["source_kind"], json!("human"));
+        assert_eq!(normalized["source_surface"], json!("conversation"));
+        assert_eq!(normalized["conversation_id"], json!("conversation-9"));
+        assert_eq!(normalized["requires_user_visible_reply"], json!(true));
+        assert_eq!(
+            normalized["reply_target"],
+            json!({
+                "surface":"conversation",
+                "conversation_id":"conversation-9",
+                "task_message_id": 5
+            })
+        );
+    }
+
+    #[test]
+    fn normalize_actor_message_envelope_payload_replaces_non_boolean_reply_required_flag() {
+        let normalized = normalize_actor_message_envelope_payload(
+            "coordinator",
+            "worker-1",
+            &ActorMessageKind::CoordinationRequest,
+            json!({
+                "type":"chat_message",
+                "text":"Review this when free",
+                "requires_user_visible_reply":"yes"
+            }),
+        );
+        assert_eq!(normalized["source_kind"], json!("agent"));
+        assert_eq!(normalized["source_surface"], json!("mailbox"));
+        assert_eq!(normalized["requires_user_visible_reply"], json!(false));
+    }
+
+    #[test]
+    fn normalize_actor_message_envelope_payload_preserves_boolean_reply_required_flag() {
+        let normalized = normalize_actor_message_envelope_payload(
+            "worker-1",
+            "user:alice",
+            &ActorMessageKind::CoordinationRequest,
+            json!({
+                "type":"chat_message",
+                "text":"Operator follow-up needed",
+                "requires_user_visible_reply": true
+            }),
+        );
+        assert_eq!(normalized["source_kind"], json!("agent"));
+        assert_eq!(normalized["source_surface"], json!("mailbox"));
+        assert_eq!(normalized["requires_user_visible_reply"], json!(true));
+    }
+
+    #[test]
+    fn normalize_actor_message_envelope_payload_marks_trigger_events() {
+        let normalized = normalize_actor_message_envelope_payload(
+            "timer",
+            "worker-1",
+            &ActorMessageKind::TriggerEvent,
+            json!({
+                "payload": {"wake": true}
+            }),
+        );
+        assert_eq!(normalized["source_kind"], json!("trigger"));
+        assert_eq!(normalized["source_surface"], json!("trigger"));
+        assert_eq!(normalized["requires_user_visible_reply"], json!(false));
     }
 }

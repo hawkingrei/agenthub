@@ -243,6 +243,10 @@ successful no-op.
 
 Current minimum operator contract:
 
+- `team_actor_messages.payload_json` is normalized at the persistence boundary so direct mailbox,
+  shared-channel fan-out, remote relay, trigger, and future webhook writers cannot bypass the
+  canonical `source_kind`, `source_surface`, `reply_target`, `conversation_id`,
+  `thread_root_message_id`, and `requires_user_visible_reply` projection;
 - run snapshot and Team mailbox surfaces must expose open reply-obligation counts plus per-message
   obligation detail for unresolved human-originated work;
 - operators may explicitly triage the underlying mailbox item to:
