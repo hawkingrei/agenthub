@@ -1026,6 +1026,174 @@ async fn actor_mailbox_service_requires_active_owner_for_release_and_complete() 
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_rejects_complete_after_terminal_ignore_without_visible_reply() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-terminal-ignore-complete-team".to_string(),
+            description: Some("team for terminal ignore completion guard".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-terminal-ignore-complete"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let sent = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "user:alice",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"Need update",
+                "requires_user_visible_reply":true
+            }),
+            idempotency_key: Some("msg-terminal-ignore-complete-1"),
+            message_kind: None,
+        })
+        .await
+        .expect("send inbound obligation");
+
+    service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            disposition: ActorMessageHandlingDisposition::Ignored,
+            reason: Some("duplicate request".to_string()),
+        })
+        .await
+        .expect("ignore with reason");
+
+    let complete_err = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id,
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            disposition: ActorMessageHandlingDisposition::Completed,
+            reason: None,
+        })
+        .await
+        .expect_err("terminal ignored work should still require visible reply evidence");
+    assert_eq!(
+        complete_err.code,
+        ActorServiceErrorCode::UnprocessableEntity
+    );
+}
+
+#[tokio::test]
+async fn actor_mailbox_service_allows_complete_after_terminal_ignore_with_visible_reply() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-terminal-ignore-visible-reply-team".to_string(),
+            description: Some("team for terminal ignore with visible reply".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-msg-terminal-ignore-visible-reply"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let sent = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "user:alice",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"Need update",
+                "requires_user_visible_reply":true
+            }),
+            idempotency_key: Some("msg-terminal-ignore-visible-reply-1"),
+            message_kind: None,
+        })
+        .await
+        .expect("send inbound obligation");
+
+    service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            disposition: ActorMessageHandlingDisposition::Ignored,
+            reason: Some("duplicate request".to_string()),
+        })
+        .await
+        .expect("ignore with reason");
+
+    manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "reviewer",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "user:alice",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"Here is the update"
+            }),
+            idempotency_key: Some("msg-terminal-ignore-visible-reply-2"),
+            message_kind: None,
+        })
+        .await
+        .expect("send visible reply");
+
+    let completed = service
+        .actor_triage(ActorTriageRequest {
+            run_id: run.id,
+            actor_id: "reviewer".to_string(),
+            message_id: sent.message_id,
+            disposition: ActorMessageHandlingDisposition::Completed,
+            reason: None,
+        })
+        .await
+        .expect("visible reply should allow completion");
+    assert_eq!(
+        completed.disposition,
+        ActorMessageHandlingDisposition::Completed
+    );
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_completed_claim_remains_visible_in_history() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
