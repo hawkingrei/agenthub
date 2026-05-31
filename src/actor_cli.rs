@@ -406,6 +406,9 @@ mod tests {
         claim_conflict_ids: Arc<std::collections::HashSet<i64>>,
         triage_attempts:
             Arc<StdMutex<Vec<(i64, agenthub_team_actor::ActorMessageHandlingDisposition)>>>,
+        fail_on_concurrent_mutation: bool,
+        mutation_hold_ms: u64,
+        active_mutations: Arc<std::sync::atomic::AtomicUsize>,
     }
 
     #[derive(Clone)]
@@ -441,6 +444,26 @@ mod tests {
             &self,
             request: ActorAckRequest,
         ) -> Result<ActorAckResponse, ActorServiceError> {
+            let active = if self.fail_on_concurrent_mutation {
+                Some(
+                    self.active_mutations
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                        + 1,
+                )
+            } else {
+                None
+            };
+            if active.is_some() && self.mutation_hold_ms > 0 {
+                tokio::time::sleep(Duration::from_millis(self.mutation_hold_ms)).await;
+            }
+            if active.is_some_and(|count| count > 1) {
+                self.active_mutations
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                return Err(ActorServiceError::new(
+                    ActorServiceErrorCode::Internal,
+                    "database is locked",
+                ));
+            }
             if let Some(delay_ms) = self.ack_delays_ms.get(&request.message_id) {
                 tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
             }
@@ -464,6 +487,12 @@ mod tests {
                     delivered_at: Some(100),
                     ..message
                 },
+            })
+            .inspect(|_| {
+                if active.is_some() {
+                    self.active_mutations
+                        .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                }
             })
         }
 
@@ -1904,6 +1933,9 @@ mod tests {
             ack_delays_ms: Arc::new(HashMap::new()),
             claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
             triage_attempts: Arc::new(StdMutex::new(Vec::new())),
+            fail_on_concurrent_mutation: false,
+            mutation_hold_ms: 0,
+            active_mutations: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         let response = load_actor_inbox(
             &service,
@@ -1937,6 +1969,9 @@ mod tests {
             ack_delays_ms: Arc::new(HashMap::new()),
             claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
             triage_attempts: Arc::new(StdMutex::new(Vec::new())),
+            fail_on_concurrent_mutation: false,
+            mutation_hold_ms: 0,
+            active_mutations: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         let response = receive_actor_inbox(
             &service,
@@ -1964,7 +1999,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn receive_actor_inbox_preserves_message_order_with_concurrent_ack() {
+    async fn receive_actor_inbox_preserves_message_order_when_multiple_messages_are_pending() {
         let service = MockMailboxService {
             inbox: vec![
                 mock_inbox_message(7, ActorMessageStatus::Pending),
@@ -1974,6 +2009,9 @@ mod tests {
             ack_delays_ms: Arc::new(HashMap::from([(7, 50_u64), (8, 0_u64)])),
             claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
             triage_attempts: Arc::new(StdMutex::new(Vec::new())),
+            fail_on_concurrent_mutation: false,
+            mutation_hold_ms: 0,
+            active_mutations: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         let response = receive_actor_inbox(
             &service,
@@ -1986,7 +2024,7 @@ mod tests {
             },
         )
         .await
-        .expect("receive inbox concurrently");
+        .expect("receive inbox");
         assert_eq!(response.pending_count, 0);
         assert_eq!(response.messages.len(), 2);
         assert_eq!(response.messages[0].message_id, 7);
@@ -2006,6 +2044,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn receive_actor_inbox_avoids_concurrent_mutations_for_sqlite_like_services() {
+        let service = MockMailboxService {
+            inbox: vec![
+                mock_inbox_message(7, ActorMessageStatus::Pending),
+                mock_inbox_message(8, ActorMessageStatus::Pending),
+            ],
+            acked_ids: Arc::new(StdMutex::new(Vec::new())),
+            ack_delays_ms: Arc::new(HashMap::new()),
+            claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
+            triage_attempts: Arc::new(StdMutex::new(Vec::new())),
+            fail_on_concurrent_mutation: true,
+            mutation_hold_ms: 25,
+            active_mutations: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+        let response = receive_actor_inbox(
+            &service,
+            ActorInboxRequest {
+                run_id: "run-1".to_string(),
+                actor_id: "worker".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: Some(vec![ActorMessageStatus::Pending]),
+            },
+        )
+        .await
+        .expect("serial receive inbox should tolerate sqlite-like write locking");
+        assert_eq!(response.pending_count, 0);
+        assert_eq!(response.messages.len(), 2);
+        assert!(response.messages.iter().all(
+            |message| message.handling_disposition == ActorMessageHandlingDisposition::Claimed
+        ));
+        assert_eq!(
+            service
+                .active_mutations
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+
+    #[tokio::test]
     async fn receive_actor_inbox_falls_back_to_watching_when_claim_conflicts() {
         let service = MockMailboxService {
             inbox: vec![mock_inbox_message(7, ActorMessageStatus::Pending)],
@@ -2013,6 +2091,9 @@ mod tests {
             ack_delays_ms: Arc::new(HashMap::new()),
             claim_conflict_ids: Arc::new(std::collections::HashSet::from([7])),
             triage_attempts: Arc::new(StdMutex::new(Vec::new())),
+            fail_on_concurrent_mutation: false,
+            mutation_hold_ms: 0,
+            active_mutations: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         let response = receive_actor_inbox(
             &service,
@@ -2060,6 +2141,9 @@ mod tests {
             ack_delays_ms: Arc::new(HashMap::new()),
             claim_conflict_ids: Arc::new(std::collections::HashSet::new()),
             triage_attempts: Arc::new(StdMutex::new(Vec::new())),
+            fail_on_concurrent_mutation: false,
+            mutation_hold_ms: 0,
+            active_mutations: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         let responses = ack_actor_messages(&service, "run-1", "worker", &[11, 12])
             .await

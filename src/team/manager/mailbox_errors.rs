@@ -216,9 +216,13 @@ pub(super) fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
             "mailbox write failed: attempt to write a readonly database",
         );
     }
+    let detail_chain = err
+        .chain()
+        .map(|cause| cause.to_string())
+        .collect::<Vec<_>>();
     ActorServiceError::new(
         ActorServiceErrorCode::Internal,
-        "internal actor mailbox error",
+        format!("internal actor mailbox error: {}", detail_chain.join(" | ")),
     )
 }
 
