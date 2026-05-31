@@ -10,6 +10,7 @@ use agent_client_protocol::schema::{
     SessionListCapabilities, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
     SetSessionModeRequest, SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
 };
+use codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID;
 use codex_config::types::{McpServerConfig, McpServerTransportConfig};
 use codex_core::{
     RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey, config::Config,
@@ -201,7 +202,7 @@ fn codex_mcp_server_config(cwd: &Path, mcp_server: McpServer) -> Option<(String,
         sanitize_codex_mcp_server_name(&name),
         McpServerConfig {
             transport,
-            experimental_environment: None,
+            environment_id: DEFAULT_MCP_SERVER_ENVIRONMENT_ID.to_string(),
             required: false,
             enabled: true,
             supports_parallel_tool_calls: agenthub_managed_mcp_supports_parallel_tool_calls(),
