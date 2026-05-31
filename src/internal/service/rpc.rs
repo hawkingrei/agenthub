@@ -279,6 +279,11 @@ impl TeamInternalControl for TeamInternalControlService {
         let disposition = agenthub_team_actor::parse_actor_message_handling_disposition(
             required_field(&payload.disposition, "disposition")?,
         );
+        let reason = if payload.reason.trim().is_empty() {
+            None
+        } else {
+            Some(payload.reason)
+        };
         let triaged = self
             .deps
             .teams
@@ -288,6 +293,7 @@ impl TeamInternalControl for TeamInternalControlService {
                 actor_id: actor_id.to_string(),
                 message_id: payload.message_id,
                 disposition,
+                reason,
             })
             .await
             .map_err(map_actor_service_status)?;

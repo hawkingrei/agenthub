@@ -293,6 +293,7 @@ impl TeamActorMailboxService {
                     peer_id: peer_id.to_string(),
                     message_id,
                     disposition: ActorMessageHandlingDisposition::Released,
+                    reason: None,
                     handled_at: now,
                 },
             )

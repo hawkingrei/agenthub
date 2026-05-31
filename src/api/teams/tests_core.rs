@@ -3478,6 +3478,7 @@ async fn team_run_messages_api_triage_resolves_open_reply_obligation() {
         Json(TriageTeamRunMessageRequest {
             actor_id: "worker-1".to_string(),
             disposition: "completed".to_string(),
+            reason: None,
         }),
     )
     .await
@@ -3609,6 +3610,7 @@ async fn team_run_messages_api_triage_rejects_completed_without_visible_reply() 
         Json(TriageTeamRunMessageRequest {
             actor_id: "worker-1".to_string(),
             disposition: "completed".to_string(),
+            reason: None,
         }),
     )
     .await
@@ -3717,6 +3719,23 @@ async fn team_run_messages_api_triage_ignored_clears_open_reply_obligation_witho
     .expect("insert human mailbox message")
     .last_insert_rowid();
 
+    let ignored_without_reason = triage_team_run_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), message_id)),
+        Json(TriageTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            disposition: "ignored".to_string(),
+            reason: None,
+        }),
+    )
+    .await
+    .expect_err("ignored triage without reason should fail");
+    assert_eq!(
+        ignored_without_reason.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+
     let Json(ignored) = triage_team_run_message(
         State(state.clone()),
         headers.clone(),
@@ -3724,6 +3743,7 @@ async fn team_run_messages_api_triage_ignored_clears_open_reply_obligation_witho
         Json(TriageTeamRunMessageRequest {
             actor_id: "worker-1".to_string(),
             disposition: "ignored".to_string(),
+            reason: Some("Not actionable for this run".to_string()),
         }),
     )
     .await
@@ -3731,6 +3751,14 @@ async fn team_run_messages_api_triage_ignored_clears_open_reply_obligation_witho
     assert_eq!(
         ignored.handling_disposition,
         agenthub_team_actor::ActorMessageHandlingDisposition::Ignored
+    );
+    assert_eq!(
+        ignored.payload["mailbox_resolution"]["kind"],
+        json!("ignored")
+    );
+    assert_eq!(
+        ignored.payload["mailbox_resolution"]["reason"],
+        json!("Not actionable for this run")
     );
 
     let Json(snapshot_after) = get_team_run_snapshot(
@@ -3752,6 +3780,102 @@ async fn team_run_messages_api_triage_ignored_clears_open_reply_obligation_witho
         .find(|member| member.member_id == "worker-1")
         .expect("find worker after ignored triage");
     assert_eq!(worker_after.reply_obligation_count, 0);
+}
+
+#[tokio::test]
+async fn team_run_messages_api_triage_ignored_persists_optional_reason() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-mailbox-optional-ignore-reason-team".to_string(),
+            description: Some("ignored triage persists optional reason".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"coordinator"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-message-optional-ignore-reason".to_string()),
+            input: Some(json!({"prompt":"optional ignored reason"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let now = Utc::now().timestamp();
+    let payload_json = json!({
+        "type":"coordination_note",
+        "text":"FYI only, no visible reply required."
+    })
+    .to_string();
+    let message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("planner")
+    .bind("worker-1")
+    .bind("coordination")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert coordination mailbox message")
+    .last_insert_rowid();
+
+    let Json(ignored) = triage_team_run_message(
+        State(state),
+        headers,
+        Path((run.id, message_id)),
+        Json(TriageTeamRunMessageRequest {
+            actor_id: "worker-1".to_string(),
+            disposition: "ignored".to_string(),
+            reason: Some("Duplicate context already captured".to_string()),
+        }),
+    )
+    .await
+    .expect("ignored triage should succeed");
+    assert_eq!(
+        ignored.handling_disposition,
+        agenthub_team_actor::ActorMessageHandlingDisposition::Ignored
+    );
+    assert_eq!(
+        ignored.payload["mailbox_resolution"]["kind"],
+        json!("ignored")
+    );
+    assert_eq!(
+        ignored.payload["mailbox_resolution"]["reason"],
+        json!("Duplicate context already captured")
+    );
 }
 
 #[tokio::test]
@@ -4189,6 +4313,7 @@ async fn team_run_messages_api_triage_surfaces_takeover_state() {
         Json(TriageTeamRunMessageRequest {
             actor_id: "worker-1".to_string(),
             disposition: "claimed".to_string(),
+            reason: None,
         }),
     )
     .await

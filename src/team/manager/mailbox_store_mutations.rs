@@ -35,6 +35,37 @@ async fn ensure_reply_required_completion_allowed(
     Err(SqlActorMailboxStoreError::ReplyRequiredVisibleOutcomeMissing)
 }
 
+fn trimmed_triage_reason(cmd: &TriageActorMessageCommand) -> Option<&str> {
+    cmd.reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn build_reply_required_ignore_payload(
+    message: &crate::team::TeamActorMessageRecord,
+    cmd: &TriageActorMessageCommand,
+) -> Result<Option<serde_json::Value>, SqlActorMailboxStoreError> {
+    if cmd.disposition != ActorMessageHandlingDisposition::Ignored {
+        return Ok(None);
+    }
+    let is_reply_required =
+        super::mailbox_reply_obligations::reply_actor_pair_for_inbound_obligation(message)
+            .is_some();
+    let reason = trimmed_triage_reason(cmd);
+    if is_reply_required && reason.is_none() {
+        return Err(SqlActorMailboxStoreError::ReplyRequiredIgnoreReasonMissing);
+    }
+    Ok(reason.map(|reason| {
+        super::mailbox_reply_obligations::build_ignored_mailbox_payload(
+            &message.payload,
+            &cmd.actor_id,
+            reason,
+            cmd.handled_at,
+        )
+    }))
+}
+
 impl SqlActorMailboxStore {
     pub(super) async fn triage_message_impl(
         &self,
@@ -67,6 +98,7 @@ impl SqlActorMailboxStore {
         if cmd.disposition == ActorMessageHandlingDisposition::Completed {
             ensure_reply_required_completion_allowed(&mut tx, &message).await?;
         }
+        let ignore_payload = build_reply_required_ignore_payload(&message, cmd)?;
         apply_thread_claim_transition(&mut tx, &message, cmd).await?;
         let update = sqlx::query(
             r#"
@@ -74,17 +106,25 @@ impl SqlActorMailboxStore {
             SET
                 handling_disposition = ?1,
                 handled_by_actor_id = ?2,
-                handled_at = ?3
-            WHERE id = ?4
-              AND run_id = ?5
-              AND to_actor_id = ?6
-              AND to_peer_id = ?7
+                handled_at = ?3,
+                payload_json = COALESCE(?4, payload_json)
+            WHERE id = ?5
+              AND run_id = ?6
+              AND to_actor_id = ?7
+              AND to_peer_id = ?8
               AND handling_disposition <> ?1
             "#,
         )
         .bind(cmd.disposition.as_str())
         .bind(&cmd.actor_id)
         .bind(cmd.handled_at)
+        .bind(
+            ignore_payload
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()
+                .map_err(|err| sqlx::Error::Protocol(err.to_string()))?,
+        )
         .bind(cmd.message_id)
         .bind(&cmd.run_id)
         .bind(&cmd.actor_id)

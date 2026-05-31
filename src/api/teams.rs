@@ -371,6 +371,7 @@ pub struct AckTeamRunMessageRequest {
 pub struct TriageTeamRunMessageRequest {
     pub actor_id: String,
     pub disposition: String,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1959,6 +1960,7 @@ async fn triage_team_run_message(
                 actor_id,
                 message_id,
                 disposition: disposition.clone(),
+                reason: payload.reason.clone(),
             })
             .await;
         match result {

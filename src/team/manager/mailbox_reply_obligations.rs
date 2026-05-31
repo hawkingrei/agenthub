@@ -69,6 +69,28 @@ pub(super) fn build_mailbox_resolution_payload(
     Value::Object(payload_obj)
 }
 
+pub(super) fn build_ignored_mailbox_payload(
+    source_payload: &Value,
+    ignored_by_actor_id: &str,
+    reason: &str,
+    ignored_at: i64,
+) -> Value {
+    let mut payload_obj = match source_payload {
+        Value::Object(map) => map.clone(),
+        _ => Map::new(),
+    };
+    payload_obj.insert(
+        "mailbox_resolution".to_string(),
+        serde_json::json!({
+            "kind": "ignored",
+            "resolved_by_actor_id": ignored_by_actor_id,
+            "reason": reason,
+            "resolved_at": ignored_at
+        }),
+    );
+    Value::Object(payload_obj)
+}
+
 pub(super) fn build_escalated_mailbox_payload(
     source_payload: &Value,
     source_message_id: i64,

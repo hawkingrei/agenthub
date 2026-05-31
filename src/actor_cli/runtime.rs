@@ -22,6 +22,7 @@ async fn triage_received_message<S: ActorMailboxService + ?Sized>(
         actor_id: acked.message.to_actor_id.clone(),
         message_id: acked.message.message_id,
         disposition: ActorMessageHandlingDisposition::Claimed,
+        reason: None,
     };
     match service.actor_triage(claimed_request.clone()).await {
         Ok(triaged) => Ok(triaged.message),

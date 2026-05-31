@@ -83,6 +83,8 @@ pub struct TriageActorMessageRequest {
     pub message_id: i64,
     #[prost(string, tag = "4")]
     pub disposition: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub reason: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TriageActorMessageResponse {

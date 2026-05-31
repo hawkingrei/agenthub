@@ -1868,6 +1868,7 @@ pub(super) fn parse_actor_command(
             let mut actor_id = None;
             let mut message_ids = Vec::new();
             let mut disposition = None;
+            let mut reason = None;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -1902,6 +1903,14 @@ pub(super) fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--disposition requires a value"))?;
                         disposition = Some(parse_actor_message_disposition(raw)?);
                     }
+                    "--reason" => {
+                        idx += 1;
+                        reason = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--reason requires a value"))?,
+                        );
+                    }
                     raw if !raw.starts_with('-') => {
                         message_ids.push(parse_i64(raw, "message_id")?);
                     }
@@ -1917,6 +1926,7 @@ pub(super) fn parse_actor_command(
                     .ok_or_else(|| anyhow::anyhow!("at least one message_id is required"))?,
                 disposition: disposition
                     .ok_or_else(|| anyhow::anyhow!("--disposition is required for actor triage"))?,
+                reason,
             })
         }
         "task-link" => {

@@ -279,6 +279,7 @@ pub(super) async fn triage_actor_messages<S: ActorMailboxService + ?Sized>(
     actor_id: &str,
     message_ids: &[i64],
     disposition: agenthub_team_actor::ActorMessageHandlingDisposition,
+    reason: Option<String>,
 ) -> anyhow::Result<Vec<ActorTriageResponse>> {
     let mut responses = Vec::with_capacity(message_ids.len());
     for &message_id in message_ids {
@@ -288,6 +289,7 @@ pub(super) async fn triage_actor_messages<S: ActorMailboxService + ?Sized>(
                 actor_id: actor_id.to_string(),
                 message_id,
                 disposition: disposition.clone(),
+                reason: reason.clone(),
             })
             .await
             .map_err(|err| map_actor_service_error("actor triage", err))
@@ -766,6 +768,7 @@ pub(super) async fn run_actor_command(
             actor_id,
             message_ids,
             disposition,
+            reason,
         } => {
             let run_id = resolve_direct_mailbox_run_id(&actor_id, run_id, "actor triage").await?;
             let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
@@ -775,6 +778,7 @@ pub(super) async fn run_actor_command(
                 &actor_id,
                 &message_ids,
                 disposition,
+                reason,
             )
             .await?;
             if messages.len() == 1 {
