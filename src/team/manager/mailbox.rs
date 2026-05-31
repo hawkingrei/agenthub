@@ -32,6 +32,7 @@ use tokio::sync::Semaphore;
 pub(super) const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 pub(super) const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
 pub(super) const MAILBOX_RESOLUTION_ESCALATED: &str = "escalated";
+pub(super) const MAILBOX_RESOLUTION_IGNORED: &str = "ignored";
 pub(super) const MAILBOX_RESOLUTION_TRANSFERRED: &str = "transferred";
 pub(super) const MAILBOX_RESOLUTION_TAKEN_OVER: &str = "taken_over";
 const MAILBOX_RUN_EVENT_ARCHIVE_MAX_CONCURRENCY: usize = 4;

@@ -25,6 +25,7 @@ pub(super) struct ReplyObligationMessageSnapshot {
     pub(super) thread_root_message_id: Option<i64>,
     pub(super) requires_user_visible_reply: bool,
     pub(super) mailbox_resolution_kind: Option<String>,
+    pub(super) mailbox_resolution_reason: Option<String>,
     pub(super) reply_payload_type: Option<String>,
     pub(super) reply_text: Option<String>,
     pub(super) reply_correlation_id: Option<String>,
@@ -65,6 +66,9 @@ fn parse_reply_obligation_message_snapshot_row(
         requires_user_visible_reply,
         mailbox_resolution_kind: normalize_optional_sqlite_string(
             row.try_get("mailbox_resolution_kind")?,
+        ),
+        mailbox_resolution_reason: normalize_optional_sqlite_string(
+            row.try_get("mailbox_resolution_reason")?,
         ),
         reply_payload_type: normalize_optional_sqlite_string(row.try_get("reply_payload_type")?),
         reply_text: normalize_optional_sqlite_string(row.try_get("reply_text")?),
@@ -107,6 +111,7 @@ where
             CAST(json_extract(payload_json, '$.thread_root_message_id') AS INTEGER) AS thread_root_message_id,
             COALESCE(CAST(json_extract(payload_json, '$.requires_user_visible_reply') AS INTEGER), 0) AS requires_user_visible_reply,
             trim(COALESCE(json_extract(payload_json, '$.mailbox_resolution.kind'), '')) AS mailbox_resolution_kind,
+            trim(COALESCE(json_extract(payload_json, '$.mailbox_resolution.reason'), '')) AS mailbox_resolution_reason,
             trim(COALESCE(json_extract(payload_json, '$.type'), '')) AS reply_payload_type,
             trim(COALESCE(json_extract(payload_json, '$.text'), '')) AS reply_text,
             trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) AS reply_correlation_id,

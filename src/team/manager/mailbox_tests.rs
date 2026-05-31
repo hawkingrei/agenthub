@@ -248,8 +248,8 @@ fn summarize_open_reply_obligations_consumes_visible_reply_credit() {
 }
 
 #[test]
-fn summarize_open_reply_obligations_skips_ignored_and_completed_items() {
-    let mut ignored = build_mailbox_record(
+fn summarize_open_reply_obligations_requires_ignored_resolution_reason() {
+    let mut ignored_without_reason = build_mailbox_record(
         1,
         "user",
         "worker",
@@ -259,8 +259,49 @@ fn summarize_open_reply_obligations_skips_ignored_and_completed_items() {
             "requires_user_visible_reply": true
         }),
     );
-    ignored.handling_disposition = ActorMessageHandlingDisposition::Ignored;
-    let mut completed = build_mailbox_record(
+    ignored_without_reason.handling_disposition = ActorMessageHandlingDisposition::Ignored;
+    let mut ignored_with_reason = build_mailbox_record(
+        2,
+        "user",
+        "reviewer",
+        json!({
+            "type": "chat_message",
+            "text": "Please review",
+            "requires_user_visible_reply": true,
+            "mailbox_resolution": {
+                "kind": "ignored",
+                "reason": "duplicate request",
+                "resolved_by_actor_id": "reviewer",
+                "resolved_at": 1_700_000_100
+            }
+        }),
+    );
+    ignored_with_reason.handling_disposition = ActorMessageHandlingDisposition::Ignored;
+
+    let summary = summarize_open_reply_obligations_from_messages(&[
+        ignored_without_reason,
+        ignored_with_reason,
+    ]);
+
+    assert_eq!(summary.open_total, 1);
+    assert_eq!(summary.open_by_actor.get("worker").copied(), Some(1));
+    assert_eq!(summary.open_items[0].agent_actor_id, "worker");
+}
+
+#[test]
+fn summarize_open_reply_obligations_requires_visible_reply_for_completed_items() {
+    let mut completed_without_reply = build_mailbox_record(
+        1,
+        "user",
+        "worker",
+        json!({
+            "type": "chat_message",
+            "text": "Need update",
+            "requires_user_visible_reply": true
+        }),
+    );
+    completed_without_reply.handling_disposition = ActorMessageHandlingDisposition::Completed;
+    let mut completed_with_reply = build_mailbox_record(
         2,
         "user",
         "reviewer",
@@ -270,12 +311,26 @@ fn summarize_open_reply_obligations_skips_ignored_and_completed_items() {
             "requires_user_visible_reply": true
         }),
     );
-    completed.handling_disposition = ActorMessageHandlingDisposition::Completed;
+    completed_with_reply.handling_disposition = ActorMessageHandlingDisposition::Completed;
+    let outbound_reply = build_mailbox_record(
+        3,
+        "reviewer",
+        "user",
+        json!({
+            "type": "chat_message",
+            "text": "Review is complete"
+        }),
+    );
 
-    let summary = summarize_open_reply_obligations_from_messages(&[ignored, completed]);
+    let summary = summarize_open_reply_obligations_from_messages(&[
+        completed_without_reply,
+        completed_with_reply,
+        outbound_reply,
+    ]);
 
-    assert_eq!(summary.open_total, 0);
-    assert!(summary.open_by_actor.is_empty());
+    assert_eq!(summary.open_total, 1);
+    assert_eq!(summary.open_by_actor.get("worker").copied(), Some(1));
+    assert_eq!(summary.open_items[0].agent_actor_id, "worker");
 }
 
 #[test]
