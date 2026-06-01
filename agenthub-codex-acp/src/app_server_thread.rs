@@ -26,6 +26,7 @@ use codex_arg0::Arg0DispatchPaths;
 use codex_config::{CloudRequirementsLoader, LoaderOverrides};
 use codex_core::config::Config;
 use codex_feedback::CodexFeedback;
+use codex_otel::current_span_trace_id;
 use codex_protocol::approvals::{
     ApplyPatchApprovalRequestEvent, ElicitationAction, ElicitationRequest, ElicitationRequestEvent,
     ExecApprovalRequestEvent,
@@ -152,6 +153,9 @@ struct ActiveTurn {
     submission_id: String,
     turn_id: Option<String>,
     steerable: bool,
+    // App-server v2 turn-start notifications do not currently echo the
+    // submit-side trace id, so preserve it locally until the turn starts.
+    trace_id: Option<String>,
     last_agent_message: Option<String>,
 }
 
@@ -206,6 +210,7 @@ impl PrepareSubmissionStartError {
 struct QueuedSubmission {
     submission_id: String,
     op: Op,
+    trace_id: Option<String>,
 }
 
 enum SteerFollowUpAction {
@@ -292,6 +297,7 @@ impl AppServerCodexThread {
     }
 
     async fn submit_prompt_like(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
+        let trace_id = current_span_trace_id();
         let active_turn = {
             let state = self.state.lock().await;
             state.active_turn.clone()
@@ -307,10 +313,12 @@ impl AppServerCodexThread {
                         state.queued_submissions.push_back(QueuedSubmission {
                             submission_id: submission_id.clone(),
                             op,
+                            trace_id,
                         });
                     } else {
                         drop(state);
-                        self.start_submission(submission_id.clone(), op).await?;
+                        self.start_submission(submission_id.clone(), op, trace_id)
+                            .await?;
                     }
                     return Ok(submission_id);
                 }
@@ -318,7 +326,8 @@ impl AppServerCodexThread {
             }
         }
 
-        self.start_submission(submission_id.clone(), op).await?;
+        self.start_submission(submission_id.clone(), op, trace_id)
+            .await?;
         Ok(submission_id)
     }
 
@@ -430,16 +439,23 @@ impl AppServerCodexThread {
         }
     }
 
-    async fn start_submission(&self, submission_id: String, op: Op) -> Result<(), CodexErr> {
+    async fn start_submission(
+        &self,
+        submission_id: String,
+        op: Op,
+        trace_id: Option<String>,
+    ) -> Result<(), CodexErr> {
         let prepared = {
             let mut state = self.state.lock().await;
             if state.active_turn.is_some() {
-                state
-                    .queued_submissions
-                    .push_back(QueuedSubmission { submission_id, op });
+                state.queued_submissions.push_back(QueuedSubmission {
+                    submission_id,
+                    op,
+                    trace_id,
+                });
                 return Ok(());
             }
-            match prepare_submission_start(&mut state, &submission_id, &op) {
+            match prepare_submission_start(&mut state, &submission_id, &op, trace_id) {
                 Ok(Some(prepared)) => prepared,
                 Ok(None) => {
                     return Err(CodexErr::UnsupportedOperation(format!(
@@ -577,7 +593,7 @@ impl AppServerCodexThread {
             };
 
             match self
-                .start_submission(queued.submission_id.clone(), queued.op)
+                .start_submission(queued.submission_id.clone(), queued.op, queued.trace_id)
                 .await
             {
                 Ok(()) => return,
@@ -1128,7 +1144,7 @@ impl AppServerCodexThread {
                 }))
             }
             ServerNotification::TurnStarted(payload) => {
-                let (submission_id, interrupt_request) = {
+                let (submission_id, trace_id, interrupt_request) = {
                     let mut state = self.state.lock().await;
                     let submission_id = if let Some(active_turn) = state.active_turn.as_mut() {
                         active_turn.turn_id = Some(payload.turn.id.clone());
@@ -1139,10 +1155,15 @@ impl AppServerCodexThread {
                             submission_id: submission_id.clone(),
                             turn_id: Some(payload.turn.id.clone()),
                             steerable: false,
+                            trace_id: None,
                             last_agent_message: None,
                         });
                         submission_id
                     };
+                    let trace_id = state
+                        .active_turn
+                        .as_ref()
+                        .and_then(|active_turn| active_turn.trace_id.clone());
 
                     let interrupt_request = if state.interrupt_after_turn_starts {
                         state.interrupt_after_turn_starts = false;
@@ -1152,7 +1173,7 @@ impl AppServerCodexThread {
                     } else {
                         None
                     };
-                    (submission_id, interrupt_request)
+                    (submission_id, trace_id, interrupt_request)
                 };
 
                 if let Some((request_id, thread_id, turn_id)) = interrupt_request {
@@ -1170,7 +1191,7 @@ impl AppServerCodexThread {
                     id: submission_id,
                     msg: EventMsg::TurnStarted(TurnStartedEvent {
                         turn_id: payload.turn.id,
-                        trace_id: None,
+                        trace_id,
                         started_at: payload.turn.started_at,
                         model_context_window: None,
                         collaboration_mode_kind: Default::default(),
@@ -1982,6 +2003,7 @@ fn resumed_active_turn(thread_status: &ThreadStatus, turns: &[Turn]) -> Option<A
             submission_id: turn.id.clone(),
             turn_id: Some(turn.id.clone()),
             steerable: resumed_turn_is_steerable(turn),
+            trace_id: None,
             last_agent_message: resumed_last_agent_message(turn),
         })
 }
@@ -2242,6 +2264,7 @@ fn prepare_submission_start(
     state: &mut AppServerState,
     submission_id: &str,
     op: &Op,
+    trace_id: Option<String>,
 ) -> Result<Option<PreparedSubmissionStart>, PrepareSubmissionStartError> {
     match op {
         Op::UserInput {
@@ -2259,6 +2282,7 @@ fn prepare_submission_start(
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: true,
+                trace_id,
                 last_agent_message: None,
             });
             Ok(Some(PreparedSubmissionStart::TurnStart {
@@ -2301,6 +2325,7 @@ fn prepare_submission_start(
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: false,
+                trace_id,
                 last_agent_message: None,
             });
             Ok(Some(PreparedSubmissionStart::ReviewStart {
@@ -2322,6 +2347,7 @@ fn prepare_submission_start(
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: false,
+                trace_id,
                 last_agent_message: None,
             });
             Ok(Some(PreparedSubmissionStart::CompactStart {
@@ -3411,6 +3437,7 @@ mod tests {
             submission_id: "shared-submission".to_string(),
             turn_id: Some("turn-1".to_string()),
             steerable: true,
+            trace_id: None,
             last_agent_message: None,
         };
         let state = test_state_with_active_turn(Some(active_turn.clone())).await;
@@ -3427,6 +3454,7 @@ mod tests {
             submission_id: "new-submission".to_string(),
             turn_id: Some("turn-2".to_string()),
             steerable: true,
+            trace_id: None,
             last_agent_message: None,
         }))
         .await;
@@ -3434,6 +3462,7 @@ mod tests {
             submission_id: "shared-submission".to_string(),
             turn_id: Some("turn-1".to_string()),
             steerable: true,
+            trace_id: None,
             last_agent_message: None,
         };
 
@@ -3449,6 +3478,7 @@ mod tests {
             submission_id: "active-submission".to_string(),
             turn_id: Some("turn-1".to_string()),
             steerable: true,
+            trace_id: None,
             last_agent_message: None,
         }))
         .await;
@@ -3462,6 +3492,134 @@ mod tests {
         assert!(
             state.active_turn.is_none(),
             "local active turn should be released before provider ack"
+        );
+    }
+
+    #[tokio::test]
+    async fn turn_started_notification_reuses_submit_side_trace_id() {
+        let state = test_state_with_active_turn(None).await;
+        let config = state.config.clone();
+        let client = start_client(&config).await.expect("start client");
+        let request_handle = client.request_handle();
+        let thread = AppServerCodexThread::new(
+            client,
+            request_handle,
+            "thread-1".to_string(),
+            config,
+            1,
+            ThreadStatus::Idle,
+            Vec::new(),
+        );
+
+        {
+            let mut state = thread.state.lock().await;
+            state.active_turn = Some(ActiveTurn {
+                submission_id: "submission-1".to_string(),
+                turn_id: None,
+                steerable: true,
+                trace_id: Some("00000000000000000000000000000042".to_string()),
+                last_agent_message: None,
+            });
+        }
+
+        let event = thread
+            .translate_server_notification(ServerNotification::TurnStarted(
+                codex_app_server_protocol::TurnStartedNotification {
+                    thread_id: "thread-1".to_string(),
+                    turn: Turn {
+                        id: "turn-1".to_string(),
+                        items: Vec::new(),
+                        items_view: codex_app_server_protocol::TurnItemsView::NotLoaded,
+                        status: TurnStatus::InProgress,
+                        error: None,
+                        started_at: Some(123),
+                        completed_at: None,
+                        duration_ms: None,
+                    },
+                },
+            ))
+            .await
+            .expect("translate notification")
+            .expect("turn started event");
+
+        match event.msg {
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id,
+                trace_id,
+                started_at,
+                ..
+            }) => {
+                assert_eq!(turn_id, "turn-1");
+                assert_eq!(
+                    trace_id.as_deref(),
+                    Some("00000000000000000000000000000042")
+                );
+                assert_eq!(started_at, Some(123));
+            }
+            other => panic!("expected turn started event, got {other:?}"),
+        }
+
+        let state = thread.state.lock().await;
+        let active_turn = state.active_turn.as_ref().expect("active turn");
+        assert_eq!(active_turn.turn_id.as_deref(), Some("turn-1"));
+        assert_eq!(
+            active_turn.trace_id.as_deref(),
+            Some("00000000000000000000000000000042")
+        );
+    }
+
+    #[tokio::test]
+    async fn start_submission_queues_submit_side_trace_id() {
+        let state = test_state_with_active_turn(None).await;
+        let config = state.config.clone();
+        let client = start_client(&config).await.expect("start client");
+        let request_handle = client.request_handle();
+        let thread = AppServerCodexThread::new(
+            client,
+            request_handle,
+            "thread-1".to_string(),
+            config,
+            1,
+            ThreadStatus::Idle,
+            Vec::new(),
+        );
+
+        {
+            let mut state = thread.state.lock().await;
+            state.active_turn = Some(ActiveTurn {
+                submission_id: "active-submission".to_string(),
+                turn_id: Some("active-turn".to_string()),
+                steerable: false,
+                trace_id: Some("00000000000000000000000000000011".to_string()),
+                last_agent_message: None,
+            });
+        }
+
+        thread
+            .start_submission(
+                "queued-submission".to_string(),
+                Op::UserInput {
+                    items: vec![codex_protocol::user_input::UserInput::Text {
+                        text: "follow up".to_string(),
+                        text_elements: Vec::new(),
+                    }],
+                    final_output_json_schema: None,
+                    responsesapi_client_metadata: None,
+                    additional_context: Default::default(),
+                    environments: None,
+                    thread_settings: Default::default(),
+                },
+                Some("00000000000000000000000000000042".to_string()),
+            )
+            .await
+            .expect("queue submission");
+
+        let state = thread.state.lock().await;
+        let queued = state.queued_submissions.front().expect("queued submission");
+        assert_eq!(queued.submission_id, "queued-submission");
+        assert_eq!(
+            queued.trace_id.as_deref(),
+            Some("00000000000000000000000000000042")
         );
     }
 
@@ -3548,6 +3706,7 @@ mod tests {
                 environments: None,
                 thread_settings: Default::default(),
             },
+            None,
         )
         .expect_err("dirty custom tool history should block new turns");
 
@@ -3576,6 +3735,7 @@ mod tests {
                     user_facing_hint: None,
                 },
             },
+            None,
         )
         .expect_err("dirty custom tool history should block review");
         assert!(matches!(
@@ -3584,8 +3744,9 @@ mod tests {
         ));
         assert!(state.active_turn.is_none());
 
-        let compact_err = prepare_submission_start(&mut state, "compact-submission", &Op::Compact)
-            .expect_err("dirty custom tool history should block compaction");
+        let compact_err =
+            prepare_submission_start(&mut state, "compact-submission", &Op::Compact, None)
+                .expect_err("dirty custom tool history should block compaction");
         assert!(matches!(
             compact_err,
             PrepareSubmissionStartError::MissingCustomToolOutputs(_)
@@ -3604,6 +3765,7 @@ mod tests {
             &mut state,
             "undo-submission",
             &Op::ThreadRollback { num_turns: 1 },
+            None,
         )
         .expect("undo should remain available")
         .expect("prepared rollback");
@@ -3622,6 +3784,7 @@ mod tests {
                 environments: None,
                 thread_settings: Default::default(),
             },
+            None,
         )
         .expect("undo should clear the local pending tool guard");
         assert!(matches!(
@@ -3645,6 +3808,7 @@ mod tests {
                 environments: None,
                 thread_settings: Default::default(),
             },
+            None,
         )
         .expect("prepare submission")
         .expect("turn start");
