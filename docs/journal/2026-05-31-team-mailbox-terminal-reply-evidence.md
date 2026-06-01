@@ -24,6 +24,8 @@ Team mailbox contract.
   `escalated`, `transferred`, and `taken_over` mailbox resolutions.
 - Project `mailbox_resolution.reason` through both in-memory and SQL snapshot
   loaders so the lightweight summary path enforces the same rule.
+- Reject completion guard checks when the target reply-required message is not
+  explicitly matched to visible reply credit during traversal.
 
 ## Key Decisions
 
@@ -36,6 +38,11 @@ Team mailbox contract.
 - This slice does not close the whole phase 3 audit. It narrows the remaining
   work to any future terminal outcomes that can end human-visible work without
   explicit evidence.
+- Completion guard checks now fail closed when the target message is skipped as
+  already terminal or is otherwise absent from the reply-obligation traversal,
+  unless the target terminal message has an explicit visible reply credit. A
+  terminal ignored/escalated/transferred/taken-over source cannot later be
+  converted into `completed` without visible reply evidence.
 
 ## Validation
 
@@ -43,6 +50,9 @@ Team mailbox contract.
 cargo test -p agenthub summarize_open_reply_obligations -- --nocapture
 cargo test -p agenthub team_run_messages_api_triage_ignored_clears_open_reply_obligation_without_visible_reply -- --nocapture
 cargo test -p agenthub team_run_messages_api_triage_resolves_open_reply_obligation -- --nocapture
+cargo test -p agenthub actor_mailbox_service_rejects_complete_after_terminal_ignore_without_visible_reply -- --nocapture
+cargo test -p agenthub actor_mailbox_service_allows_complete_after_terminal_ignore_with_visible_reply -- --nocapture
+cargo test -p agenthub actor_mailbox_service_completed_claim_remains_visible_in_history -- --nocapture
 cargo fmt --all --check
 git -c core.fsmonitor=false diff --check
 cargo clippy -p agenthub --all-targets -- -D warnings

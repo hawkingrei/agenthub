@@ -74,6 +74,11 @@ pub(super) fn has_visible_reply_credit_for_message(
             continue;
         };
         if reply_obligation_snapshot_is_terminal(message) {
+            if message.message_id == target_message_id {
+                return visible_reply_credits
+                    .get(&pair_key)
+                    .is_some_and(|credits| *credits > 0);
+            }
             continue;
         }
         if let Some(credits) = visible_reply_credits.get_mut(&pair_key)
@@ -89,5 +94,5 @@ pub(super) fn has_visible_reply_credit_for_message(
             return false;
         }
     }
-    true
+    false
 }
