@@ -210,6 +210,7 @@ impl PrepareSubmissionStartError {
 struct QueuedSubmission {
     submission_id: String,
     op: Op,
+    trace_id: Option<String>,
 }
 
 enum SteerFollowUpAction {
@@ -296,6 +297,7 @@ impl AppServerCodexThread {
     }
 
     async fn submit_prompt_like(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
+        let trace_id = current_span_trace_id();
         let active_turn = {
             let state = self.state.lock().await;
             state.active_turn.clone()
@@ -311,10 +313,12 @@ impl AppServerCodexThread {
                         state.queued_submissions.push_back(QueuedSubmission {
                             submission_id: submission_id.clone(),
                             op,
+                            trace_id,
                         });
                     } else {
                         drop(state);
-                        self.start_submission(submission_id.clone(), op).await?;
+                        self.start_submission(submission_id.clone(), op, trace_id)
+                            .await?;
                     }
                     return Ok(submission_id);
                 }
@@ -322,7 +326,8 @@ impl AppServerCodexThread {
             }
         }
 
-        self.start_submission(submission_id.clone(), op).await?;
+        self.start_submission(submission_id.clone(), op, trace_id)
+            .await?;
         Ok(submission_id)
     }
 
@@ -434,16 +439,23 @@ impl AppServerCodexThread {
         }
     }
 
-    async fn start_submission(&self, submission_id: String, op: Op) -> Result<(), CodexErr> {
+    async fn start_submission(
+        &self,
+        submission_id: String,
+        op: Op,
+        trace_id: Option<String>,
+    ) -> Result<(), CodexErr> {
         let prepared = {
             let mut state = self.state.lock().await;
             if state.active_turn.is_some() {
-                state
-                    .queued_submissions
-                    .push_back(QueuedSubmission { submission_id, op });
+                state.queued_submissions.push_back(QueuedSubmission {
+                    submission_id,
+                    op,
+                    trace_id,
+                });
                 return Ok(());
             }
-            match prepare_submission_start(&mut state, &submission_id, &op) {
+            match prepare_submission_start(&mut state, &submission_id, &op, trace_id) {
                 Ok(Some(prepared)) => prepared,
                 Ok(None) => {
                     return Err(CodexErr::UnsupportedOperation(format!(
@@ -581,7 +593,7 @@ impl AppServerCodexThread {
             };
 
             match self
-                .start_submission(queued.submission_id.clone(), queued.op)
+                .start_submission(queued.submission_id.clone(), queued.op, queued.trace_id)
                 .await
             {
                 Ok(()) => return,
@@ -2252,6 +2264,7 @@ fn prepare_submission_start(
     state: &mut AppServerState,
     submission_id: &str,
     op: &Op,
+    trace_id: Option<String>,
 ) -> Result<Option<PreparedSubmissionStart>, PrepareSubmissionStartError> {
     match op {
         Op::UserInput {
@@ -2269,7 +2282,7 @@ fn prepare_submission_start(
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: true,
-                trace_id: current_span_trace_id(),
+                trace_id,
                 last_agent_message: None,
             });
             Ok(Some(PreparedSubmissionStart::TurnStart {
@@ -2312,7 +2325,7 @@ fn prepare_submission_start(
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: false,
-                trace_id: current_span_trace_id(),
+                trace_id,
                 last_agent_message: None,
             });
             Ok(Some(PreparedSubmissionStart::ReviewStart {
@@ -2334,7 +2347,7 @@ fn prepare_submission_start(
                 submission_id: submission_id.to_string(),
                 turn_id: None,
                 steerable: false,
-                trace_id: current_span_trace_id(),
+                trace_id,
                 last_agent_message: None,
             });
             Ok(Some(PreparedSubmissionStart::CompactStart {
@@ -3556,6 +3569,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn start_submission_queues_submit_side_trace_id() {
+        let state = test_state_with_active_turn(None).await;
+        let config = state.config.clone();
+        let client = start_client(&config).await.expect("start client");
+        let request_handle = client.request_handle();
+        let thread = AppServerCodexThread::new(
+            client,
+            request_handle,
+            "thread-1".to_string(),
+            config,
+            1,
+            ThreadStatus::Idle,
+            Vec::new(),
+        );
+
+        {
+            let mut state = thread.state.lock().await;
+            state.active_turn = Some(ActiveTurn {
+                submission_id: "active-submission".to_string(),
+                turn_id: Some("active-turn".to_string()),
+                steerable: false,
+                trace_id: Some("00000000000000000000000000000011".to_string()),
+                last_agent_message: None,
+            });
+        }
+
+        thread
+            .start_submission(
+                "queued-submission".to_string(),
+                Op::UserInput {
+                    items: vec![codex_protocol::user_input::UserInput::Text {
+                        text: "follow up".to_string(),
+                        text_elements: Vec::new(),
+                    }],
+                    final_output_json_schema: None,
+                    responsesapi_client_metadata: None,
+                    additional_context: Default::default(),
+                    environments: None,
+                    thread_settings: Default::default(),
+                },
+                Some("00000000000000000000000000000042".to_string()),
+            )
+            .await
+            .expect("queue submission");
+
+        let state = thread.state.lock().await;
+        let queued = state.queued_submissions.front().expect("queued submission");
+        assert_eq!(queued.submission_id, "queued-submission");
+        assert_eq!(
+            queued.trace_id.as_deref(),
+            Some("00000000000000000000000000000042")
+        );
+    }
+
+    #[tokio::test]
     async fn raw_response_item_tracking_clears_custom_tool_call_after_output() {
         let mut state = test_state_with_active_turn(None).await;
         let call = ResponseItem::CustomToolCall {
@@ -3638,6 +3706,7 @@ mod tests {
                 environments: None,
                 thread_settings: Default::default(),
             },
+            None,
         )
         .expect_err("dirty custom tool history should block new turns");
 
@@ -3666,6 +3735,7 @@ mod tests {
                     user_facing_hint: None,
                 },
             },
+            None,
         )
         .expect_err("dirty custom tool history should block review");
         assert!(matches!(
@@ -3674,8 +3744,9 @@ mod tests {
         ));
         assert!(state.active_turn.is_none());
 
-        let compact_err = prepare_submission_start(&mut state, "compact-submission", &Op::Compact)
-            .expect_err("dirty custom tool history should block compaction");
+        let compact_err =
+            prepare_submission_start(&mut state, "compact-submission", &Op::Compact, None)
+                .expect_err("dirty custom tool history should block compaction");
         assert!(matches!(
             compact_err,
             PrepareSubmissionStartError::MissingCustomToolOutputs(_)
@@ -3694,6 +3765,7 @@ mod tests {
             &mut state,
             "undo-submission",
             &Op::ThreadRollback { num_turns: 1 },
+            None,
         )
         .expect("undo should remain available")
         .expect("prepared rollback");
@@ -3712,6 +3784,7 @@ mod tests {
                 environments: None,
                 thread_settings: Default::default(),
             },
+            None,
         )
         .expect("undo should clear the local pending tool guard");
         assert!(matches!(
@@ -3735,6 +3808,7 @@ mod tests {
                 environments: None,
                 thread_settings: Default::default(),
             },
+            None,
         )
         .expect("prepare submission")
         .expect("turn start");
