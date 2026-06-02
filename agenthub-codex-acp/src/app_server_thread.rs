@@ -366,6 +366,7 @@ impl AppServerCodexThread {
                     expected_turn_id: turn_id,
                     responsesapi_client_metadata,
                     additional_context: None,
+                    client_user_message_id: None,
                 },
             })
             .await;
@@ -2267,6 +2268,7 @@ fn prepare_submission_start(
                     thread_id: state.thread_id.clone(),
                     input: items.clone().into_iter().map(Into::into).collect(),
                     additional_context: None,
+                    client_user_message_id: None,
                     cwd: Some(state.config.cwd.to_path_buf()),
                     runtime_workspace_roots: None,
                     approval_policy: Some(state.config.permissions.approval_policy.value().into()),
