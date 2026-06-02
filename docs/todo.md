@@ -72,7 +72,6 @@ Stable contracts:
 
 Matrix to keep current across CI and at least one real multi-node rollout:
 
-- [ ] `P0` Distributed node phase 0/1 rollout: remote agent start/input/events, mailbox relay plus ack, node-local data isolation, `tests/distributed_p2p_pipeline.rs`, and wire-compatibility tests stay green on both `push` and `pull_request`; record workflow run IDs in the related journal.
 - [ ] `P1` Node startup boundaries: `server.role = "node"` boots internal gRPC only, skips main-only startup side effects, and fails fast when `server.node_id` is missing or `internal_grpc.enabled` is false. Existing notes: [journal/2026-04-05-node-mode-startup-boundary.md](journal/2026-04-05-node-mode-startup-boundary.md).
 - [ ] `P1` Token-first Agent Node join: root `Agents` surfaces node bootstrap token/details, Admin join exposes token/link without QR onboarding, and user docs match the current `internal_grpc.bootstrap.token` contract. Existing notes: [journal/2026-04-17-node-join-token-flow.md](journal/2026-04-17-node-join-token-flow.md).
 - [ ] `P1` Refreshed agent-node deployment docs: `userdocs/docs/deployment/overview-and-topology.md`, `userdocs/docs/core/agent-nodes.md`, and `userdocs/docs/getting-started/configuration-basics.md` match current `internal_grpc` config shape, remote-node registration flow, and remote-target startup behavior.
