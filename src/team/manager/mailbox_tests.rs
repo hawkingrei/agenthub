@@ -260,8 +260,25 @@ fn summarize_open_reply_obligations_requires_ignored_resolution_reason() {
         }),
     );
     ignored_without_reason.handling_disposition = ActorMessageHandlingDisposition::Ignored;
-    let mut ignored_with_reason = build_mailbox_record(
+    let mut ignored_with_blank_reason = build_mailbox_record(
         2,
+        "user",
+        "planner",
+        json!({
+            "type": "chat_message",
+            "text": "Please plan",
+            "requires_user_visible_reply": true,
+            "mailbox_resolution": {
+                "kind": "ignored",
+                "reason": "   ",
+                "resolved_by_actor_id": "planner",
+                "resolved_at": 1_700_000_050
+            }
+        }),
+    );
+    ignored_with_blank_reason.handling_disposition = ActorMessageHandlingDisposition::Ignored;
+    let mut ignored_with_reason = build_mailbox_record(
+        3,
         "user",
         "reviewer",
         json!({
@@ -280,12 +297,15 @@ fn summarize_open_reply_obligations_requires_ignored_resolution_reason() {
 
     let summary = summarize_open_reply_obligations_from_messages(&[
         ignored_without_reason,
+        ignored_with_blank_reason,
         ignored_with_reason,
     ]);
 
-    assert_eq!(summary.open_total, 1);
+    assert_eq!(summary.open_total, 2);
     assert_eq!(summary.open_by_actor.get("worker").copied(), Some(1));
-    assert_eq!(summary.open_items[0].agent_actor_id, "worker");
+    assert_eq!(summary.open_by_actor.get("planner").copied(), Some(1));
+    assert_eq!(summary.open_items[0].agent_actor_id, "planner");
+    assert_eq!(summary.open_items[1].agent_actor_id, "worker");
 }
 
 #[test]
