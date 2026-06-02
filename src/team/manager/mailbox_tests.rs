@@ -14,6 +14,8 @@ use super::mailbox_payloads::{
     normalize_channel_message_payload, resolve_canonical_chat_reply,
     should_persist_human_visible_chat_reply_for_payload,
 };
+use super::mailbox_reply_obligation_payloads::reply_obligation_snapshot_is_terminal;
+use super::mailbox_reply_obligation_snapshot_conversion::reply_obligation_snapshot_from_message;
 use super::mailbox_reply_obligation_summary::summarize_open_reply_obligations_from_messages;
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 
@@ -277,6 +279,15 @@ fn summarize_open_reply_obligations_requires_ignored_resolution_reason() {
         }),
     );
     ignored_with_blank_reason.handling_disposition = ActorMessageHandlingDisposition::Ignored;
+    let mut blank_reason_snapshot =
+        reply_obligation_snapshot_from_message(&ignored_with_blank_reason);
+    blank_reason_snapshot.mailbox_resolution_kind = Some("ignored".to_string());
+    blank_reason_snapshot.mailbox_resolution_reason = Some("   ".to_string());
+
+    assert!(!reply_obligation_snapshot_is_terminal(
+        &blank_reason_snapshot
+    ));
+
     let mut ignored_with_reason = build_mailbox_record(
         3,
         "user",
