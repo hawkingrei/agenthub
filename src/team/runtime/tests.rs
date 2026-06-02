@@ -4,6 +4,7 @@ use super::repair::{
 };
 use super::types::TeamRuntimeStartError;
 use crate::path_utils::expand_tilde;
+use core::assert_matches;
 use sqlx::Error as SqlxError;
 
 #[test]
@@ -32,7 +33,7 @@ fn worker_runtime_adjust_rejects_workdir_outside_safe_paths() {
     let typed = err
         .downcast_ref::<TeamRuntimeStartError>()
         .expect("typed runtime error");
-    assert!(matches!(typed, TeamRuntimeStartError::InvalidConfig(_)));
+    assert_matches!(typed, TeamRuntimeStartError::InvalidConfig(_));
 }
 
 #[test]
@@ -49,10 +50,7 @@ fn member_agent_lookup_maps_row_not_found_to_missing_member_agent() {
     let typed = err
         .downcast_ref::<TeamRuntimeStartError>()
         .expect("typed runtime error");
-    assert!(matches!(
-        typed,
-        TeamRuntimeStartError::MissingMemberAgent(_)
-    ));
+    assert_matches!(typed, TeamRuntimeStartError::MissingMemberAgent(_));
 }
 
 #[test]
