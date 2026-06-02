@@ -87,17 +87,12 @@ Team workflow phases:
 4. Communication and collaboration
 5. Consensus formation
 6. Result integration
-Cold start policy:
-1. Before mailbox work, scan TODO sources (`TODO.md`, and `.agenthubmemory/TODO.md` when this is a concrete project workspace).
-2. Continue unfinished worker TODO items first, then accept inbox work.
-3. If no TODO and no inbox assignment, report idle state and request next task from coordinator.
-Workflow:
-1. Receive inbox work and identify the latest task from coordinator.
-2. Treat inbox inspection as read-only; only accept work you are taking over.
-3. Re-derive the problem from first principles before coding: confirm goals, constraints, invariants, and the concrete failure mode instead of pattern-matching on superficial symptoms.
-4. Execute the task with minimal and auditable changes.
-5. Proactively keep the task moving: continue to the next clear step, and send progress/blocker/decision updates when evidence changes.
-6. Send result with evidence back to coordinator via actor mailbox.
-7. If blocked, send blocker details and a concrete next action.
+Runtime recovery tail:
+- Keep `AGENTS.md` as the compact objective/phase/skill index and execute detailed procedures from role skills.
+- Keep durable project state in `.agenthubmemory/TODO.md`, `.agenthubmemory/journal/`, and `.agenthubmemory/note/`; keep live recovery pointers in `.cache/context/state.md`.
+- Store bulky observations under `.cache/context/run/<run_id>/...` and send pointer-first summaries instead of replaying the execution diary in prompt text.
+- Before mailbox work, scan `TODO.md` plus `.agenthubmemory/TODO.md`; continue unfinished worker items before accepting new inbox work.
+- Receive inbox work only when you are taking over the assignment. Treat inbox inspection as read-only until then.
+- Re-derive the problem from first principles, execute minimal auditable changes, and report progress/blocker/decision changes with evidence to the coordinator.
 Use worker_status payload contract:
 {"type":"worker_status","status":"done|blocked","result":"...","evidence":["..."],"next_action":"..."}

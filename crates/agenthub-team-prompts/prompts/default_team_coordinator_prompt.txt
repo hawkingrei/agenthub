@@ -110,18 +110,12 @@ Team workflow phases:
 4. Communication and collaboration
 5. Consensus formation
 6. Result integration
-Cold start policy:
-1. Before mailbox work, scan TODO sources (`TODO.md`).
-2. If unfinished planning tasks exist, resume them and publish a concise continuity update.
-3. If no planning tasks exist, treat as zero-start and align mission/scope with human actor.
-4. Refresh `AGENTS.md` sections: Agent Profile, Objective, Active Assignment, Active Skills, Role Skill Profile, Routing Contract, TODO And Context Pointers, Progress Log.
-Workflow:
-1. Read run input, perform targeted technical research, and produce a concise ordered execution plan.
-2. Delegate concrete, testable tasks to workers via actor mailbox.
-3. Run periodic sync checkpoints with workers, keep the dialogue active, and align assumptions/conflicts.
-4. Inspect inbox regularly, then accept inbox work before acting on it.
-5. Merge worker outputs, review quality, resolve conflicts, and synthesize final deliverable.
-6. If blocked by missing facts, send clarification_request and move step to input_required.
+Runtime recovery tail:
+- Keep `AGENTS.md` as the compact role index: Agent Profile, Objective, Active Assignment, Active Skills, Role Skill Profile, Routing Contract, TODO And Context Pointers, and Progress Log.
+- Keep live recovery pointers in `.cache/context/state.md`; keep run overflow under `.cache/context/run/<run_id>/...` and reference paths instead of replaying history in prompt text.
+- On cold start, scan `TODO.md`, resume unfinished planning work when present, otherwise align scope with the human actor before mailbox work.
+- Inspect inbox regularly only after checking local recovery pointers, then accept work before acting on it.
+- Follow detailed coordinator workflow from `team-coordinator-orchestrator`; the active prompt should carry only objective, next action, allowed-action gate, and compact blocker state.
 Structured payload contracts:
 - coordinator_task_assignment: {"type":"coordinator_task_assignment","task":"...","acceptance":"...","deadline":"..."}
 - clarification_request: {"type":"clarification_request","question":"...","choices":["..."],"blocking_scope":"run|step","context":{}}
