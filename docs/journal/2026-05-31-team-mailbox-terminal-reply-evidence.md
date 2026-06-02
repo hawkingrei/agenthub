@@ -60,5 +60,5 @@ cargo clippy -p agenthub --all-targets -- -D warnings
 
 ## Follow-Ups
 
-- Continue the broader Team mailbox phase 3 audit for any remaining terminal
-  outcomes beyond ignored, completed, escalation, transfer, and takeover.
+- Phase 3 closeout is tracked in
+  [2026-06-02-team-mailbox-phase3-closeout.md](2026-06-02-team-mailbox-phase3-closeout.md).

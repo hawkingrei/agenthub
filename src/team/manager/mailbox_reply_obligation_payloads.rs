@@ -67,7 +67,10 @@ pub(super) fn reply_obligation_snapshot_is_terminal(
 ) -> bool {
     if message.handling_disposition == ActorMessageHandlingDisposition::Ignored {
         return message.mailbox_resolution_kind.as_deref() == Some(MAILBOX_RESOLUTION_IGNORED)
-            && message.mailbox_resolution_reason.is_some();
+            && message
+                .mailbox_resolution_reason
+                .as_deref()
+                .is_some_and(|reason| !reason.trim().is_empty());
     }
     matches!(
         message.handling_disposition,
