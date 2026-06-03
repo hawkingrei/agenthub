@@ -501,6 +501,7 @@ fn acp_accepts_best_effort_hint(
         && diagnostics.stale_prompt.is_none()
 }
 
+#[cfg(any(debug_assertions, test))]
 fn safe_acp_provider_diagnostics_details(diagnostics: &AcpHandleDiagnostics) -> serde_json::Value {
     serde_json::json!({
         "session_id": &diagnostics.session_id,

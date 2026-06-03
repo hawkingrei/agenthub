@@ -847,11 +847,20 @@ pub mod agent_trace {
         PROVIDER_METADATA_ID_FIELDS
             .iter()
             .filter_map(|field| {
-                object
-                    .get(*field)
-                    .and_then(Value::as_str)
-                    .filter(|value| !value.trim().is_empty())
-                    .map(|value| ((*field).to_string(), value.to_string()))
+                let value = object.get(*field)?;
+                let metadata_value = match value {
+                    Value::String(raw) => {
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return None;
+                        }
+                        trimmed.to_string()
+                    }
+                    Value::Number(number) => number.to_string(),
+                    Value::Bool(flag) => flag.to_string(),
+                    _ => return None,
+                };
+                Some(((*field).to_string(), metadata_value))
             })
             .collect()
     }
@@ -1182,9 +1191,11 @@ pub mod agent_trace {
                 r#"{
                     "type":"item_completed",
                     "thread_id":"thread-1",
-                    "turn_id":"turn-1",
+                    "turn_id":7,
                     "item_id":"item-1",
                     "tool_call_id":"tool-1",
+                    "request_id":42,
+                    "client_id":true,
                     "content":"private model output",
                     "arguments":{"path":"/private/file"},
                     "raw_output":"private tool output",
@@ -1214,17 +1225,30 @@ pub mod agent_trace {
             );
             assert_eq!(
                 latest.provider_metadata.get("turn_id").map(String::as_str),
-                Some("turn-1")
+                Some("7")
+            );
+            assert_eq!(
+                latest
+                    .provider_metadata
+                    .get("request_id")
+                    .map(String::as_str),
+                Some("42")
+            );
+            assert_eq!(
+                latest
+                    .provider_metadata
+                    .get("client_id")
+                    .map(String::as_str),
+                Some("true")
             );
             assert_eq!(
                 latest.provider_metadata.get("item_id").map(String::as_str),
                 Some("item-1")
             );
             assert!(
-                latest
+                !latest
                     .provider_metadata
-                    .get("unreviewed_internal_id")
-                    .is_none()
+                    .contains_key("unreviewed_internal_id")
             );
             assert!(latest.redacted_fields.contains(&"content".to_string()));
             assert!(latest.redacted_fields.contains(&"arguments".to_string()));
