@@ -1,6 +1,7 @@
 #[cfg(debug_assertions)]
 pub mod agent_trace {
     use std::{
+        collections::BTreeMap,
         path::{Path, PathBuf},
         time::Duration,
     };
@@ -14,6 +15,24 @@ pub mod agent_trace {
     };
 
     const DEFAULT_EVENT_LIMIT: i64 = 16;
+    const PROVIDER_METADATA_ID_FIELDS: &[&str] = &[
+        "call_id",
+        "client_id",
+        "conversation_id",
+        "elicitation_id",
+        "item_id",
+        "permission_id",
+        "provider_id",
+        "provider_session_id",
+        "request_id",
+        "response_id",
+        "session_id",
+        "submission_id",
+        "thread_id",
+        "tool_call_id",
+        "trace_id",
+        "turn_id",
+    ];
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct AgentTraceRequest {
@@ -166,6 +185,8 @@ pub mod agent_trace {
         pub status: Option<String>,
         pub tool_call_id: Option<String>,
         pub permission_id: Option<String>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        pub provider_metadata: BTreeMap<String, String>,
         pub redacted_fields: Vec<String>,
     }
 
@@ -350,6 +371,15 @@ pub mod agent_trace {
                 event.tool_call_id.as_deref().unwrap_or("<none>"),
                 event.permission_id.as_deref().unwrap_or("<none>")
             ));
+            if !event.provider_metadata.is_empty() {
+                let metadata = event
+                    .provider_metadata
+                    .iter()
+                    .map(|(key, value)| format!("{key}={value}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                lines.push(format!("events.latest.provider_metadata: {metadata}"));
+            }
         }
         lines.push(format!(
             "permissions.pending_count: {}",
@@ -772,11 +802,26 @@ pub mod agent_trace {
             .as_ref()
             .and_then(Value::as_object)
             .map(|object| {
-                ["text", "content", "raw_input", "raw_output", "tool_call"]
-                    .into_iter()
-                    .filter(|field| object.contains_key(*field))
-                    .map(str::to_string)
-                    .collect()
+                [
+                    "text",
+                    "content",
+                    "message",
+                    "messages",
+                    "input",
+                    "output",
+                    "raw_input",
+                    "raw_output",
+                    "tool_call",
+                    "tool_calls",
+                    "tool_result",
+                    "tool_results",
+                    "arguments",
+                    "args",
+                ]
+                .into_iter()
+                .filter(|field| object.contains_key(*field))
+                .map(str::to_string)
+                .collect()
             })
             .unwrap_or_default();
 
@@ -790,8 +835,34 @@ pub mod agent_trace {
             status,
             tool_call_id,
             permission_id,
+            provider_metadata: provider_metadata_from_event(parsed.as_ref()),
             redacted_fields,
         }
+    }
+
+    fn provider_metadata_from_event(parsed: Option<&Value>) -> BTreeMap<String, String> {
+        let Some(object) = parsed.and_then(Value::as_object) else {
+            return BTreeMap::new();
+        };
+        PROVIDER_METADATA_ID_FIELDS
+            .iter()
+            .filter_map(|field| {
+                let value = object.get(*field)?;
+                let metadata_value = match value {
+                    Value::String(raw) => {
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return None;
+                        }
+                        trimmed.to_string()
+                    }
+                    Value::Number(number) => number.to_string(),
+                    Value::Bool(flag) => flag.to_string(),
+                    _ => return None,
+                };
+                Some(((*field).to_string(), metadata_value))
+            })
+            .collect()
     }
 
     fn value_to_short_string(value: &Value) -> Option<String> {
@@ -1107,6 +1178,86 @@ pub mod agent_trace {
             assert_eq!(latest.event_type.as_deref(), Some("tool_call_update"));
             assert_eq!(latest.tool_call_id.as_deref(), Some("tool-large"));
             assert!(latest.redacted_fields.contains(&"raw_input".to_string()));
+            let _ = std::fs::remove_dir_all(event_dir);
+        }
+
+        #[tokio::test]
+        async fn agent_trace_event_metadata_allowlist_keeps_ids_and_redacts_bodies() {
+            let pool = test_pool().await;
+            insert_agent_fixture(&pool).await;
+            let event_dir = test_event_dir();
+            insert_event(
+                &event_dir,
+                r#"{
+                    "type":"item_completed",
+                    "thread_id":"thread-1",
+                    "turn_id":7,
+                    "item_id":"item-1",
+                    "tool_call_id":"tool-1",
+                    "request_id":42,
+                    "client_id":true,
+                    "content":"private model output",
+                    "arguments":{"path":"/private/file"},
+                    "raw_output":"private tool output",
+                    "unreviewed_internal_id":"must-not-leak"
+                }"#,
+            )
+            .await;
+
+            let report = collect_from_pool(
+                &pool,
+                event_dir.clone(),
+                AgentTraceRequest {
+                    agent_id: Some("worker".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("collect trace");
+
+            let latest = report.events.latest.as_ref().expect("latest event");
+            assert_eq!(
+                latest
+                    .provider_metadata
+                    .get("thread_id")
+                    .map(String::as_str),
+                Some("thread-1")
+            );
+            assert_eq!(
+                latest.provider_metadata.get("turn_id").map(String::as_str),
+                Some("7")
+            );
+            assert_eq!(
+                latest
+                    .provider_metadata
+                    .get("request_id")
+                    .map(String::as_str),
+                Some("42")
+            );
+            assert_eq!(
+                latest
+                    .provider_metadata
+                    .get("client_id")
+                    .map(String::as_str),
+                Some("true")
+            );
+            assert_eq!(
+                latest.provider_metadata.get("item_id").map(String::as_str),
+                Some("item-1")
+            );
+            assert!(
+                !latest
+                    .provider_metadata
+                    .contains_key("unreviewed_internal_id")
+            );
+            assert!(latest.redacted_fields.contains(&"content".to_string()));
+            assert!(latest.redacted_fields.contains(&"arguments".to_string()));
+            assert!(latest.redacted_fields.contains(&"raw_output".to_string()));
+            assert!(
+                !serde_json::to_string(latest)
+                    .expect("serialize event")
+                    .contains("private model output")
+            );
             let _ = std::fs::remove_dir_all(event_dir);
         }
 
