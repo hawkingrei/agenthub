@@ -43,7 +43,6 @@ Stable contracts:
 Matrix to keep current across real long-running Codex and non-Codex sessions:
 
 - [ ] `P1` Verify deployed ACP long-session browser behavior under real long output histories: the shipped stick-to-bottom, permission-history jump/copy, stale-session `send input` recovery, debug/runtime-metrics surfaces, and provider session switching should stay stable during real Codex and non-Codex sessions.
-- [ ] `P1` Provider-native metadata allowlist: define one reviewed safe metadata contract for ACP adapters, then surface provider-native turn/thread/session ids in `agenthub doctor agent-trace` only for fields that can be exposed without serializing prompt, message, tool argument, or tool output bodies.
 - [ ] `P2` Provider-driven config selectors: verify real Gemini and Kimi ACP sessions end to end so upstream `config_options` render `mode`/`model` controls, `Set Model` / `Set Mode` works without manual ID entry, and selected values remain stable across reconnects.
 - [ ] `P2` Polish ACP-native Codex `request_user_input` UX after the inline card rollout: cover richer note-entry flows in browser-level fixtures and decide whether pending questions should bypass prompt-text serialization entirely.
 

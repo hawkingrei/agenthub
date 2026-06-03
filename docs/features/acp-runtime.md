@@ -190,6 +190,12 @@ ACP permission requests are first-class runtime records:
   - whether each custom tool call has observed a matching output item before turn completion,
     compaction, resume, or shutdown
   - the last Codex `EventMsg` class and timestamp seen by the adapter
+- Provider-native metadata exposed through `agenthub doctor agent-trace` must use an explicit
+  allowlist. Safe fields are limited to identifiers and counters needed to correlate provider
+  state, such as ACP session id, provider session id, Codex thread/turn/item/request/submission ids,
+  tool-call/permission ids, event classes, timestamps, and queue counts. Diagnostics must not
+  serialize prompt text, message bodies, tool arguments, tool outputs, command error messages, or
+  arbitrary provider JSON fields.
 - Codex `ReviewDecision::Abort` is a whole-turn interrupt in upstream Codex core. AgentHub's
   provider adapter must not expose it as the default "No" permission-review option and must not map
   permission timeout or failed review delivery to it. Ordinary denial should map to
@@ -237,6 +243,11 @@ ACP permission requests are first-class runtime records:
   - updating `codex_acp_default_mode` changes persisted agent configuration without restarting or
     controlling the active provider session
   - web create/edit controls send the startup mode and label it as restart-required configuration
+- Focused `agenthub-diagnostics` / `agenthub` tests:
+  - `agent-trace` event summaries extract only allowlisted provider-native ids from persisted ACP
+    JSON and mark body-like fields as redacted
+  - live ACP provider diagnostics preserve safe ids/counters while omitting command error messages
+    and other body-like text
 
 ## Operational Notes
 
@@ -273,6 +284,9 @@ ACP permission requests are first-class runtime records:
 - Treat Codex app-server/protocol state as an adapter-local observability source. It can explain
   Codex-specific failures such as missing custom-tool outputs, but it should not become the primary
   AgentHub runtime contract while Gemini/Kimi and future providers still rely on ACP.
+- Treat provider-native diagnostics as a correlation aid, not a data dump. Adding a new field to
+  `agent-trace` requires updating the allowlist and confirming the field cannot carry prompt,
+  message, tool argument, or tool output bodies.
 - When a Codex ACP agent appears stuck after permission timeout, first verify the option id and
   submitted Codex decision. If the persisted option is `abort` or the adapter submits
   `ReviewDecision::Abort`, the adapter is using interrupt semantics and should be fixed before
@@ -313,3 +327,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-05-09-acp-permission-tool-call-settlement.md`
 - `docs/journal/2026-05-13-acp-permission-deny-drain.md`
 - `docs/journal/2026-05-15-codex-acp-prompt-steering.md`
+- `docs/journal/2026-06-03-acp-provider-metadata-allowlist.md`

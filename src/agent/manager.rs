@@ -501,6 +501,49 @@ fn acp_accepts_best_effort_hint(
         && diagnostics.stale_prompt.is_none()
 }
 
+fn safe_acp_provider_diagnostics_details(diagnostics: &AcpHandleDiagnostics) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": &diagnostics.session_id,
+        "command_channel_closed": diagnostics.command_channel_closed,
+        "command_channel_capacity": diagnostics.command_channel_capacity,
+        "command_channel_max_capacity": diagnostics.command_channel_max_capacity,
+        "active_prompt_count": diagnostics.active_prompt_count,
+        "pending_command_count": diagnostics.pending_command_count,
+        "pending_permission_count": diagnostics.pending_permission_count,
+        "active_submission_ids": &diagnostics.active_submission_ids,
+        "last_submission_id": &diagnostics.last_submission_id,
+        "last_provider_event_type": &diagnostics.last_provider_event_type,
+        "last_provider_event_at": diagnostics.last_provider_event_at,
+        "pending_tool_call_count": diagnostics.pending_tool_call_count,
+        "pending_tool_calls": diagnostics
+            .pending_tool_calls
+            .iter()
+            .map(|tool_call| {
+                serde_json::json!({
+                    "tool_call_id": &tool_call.tool_call_id,
+                    "status": &tool_call.status,
+                    "updated_at": tool_call.updated_at,
+                })
+            })
+            .collect::<Vec<_>>(),
+        "stale_prompt": diagnostics.stale_prompt.as_ref().map(|stale| {
+            serde_json::json!({
+                "active_prompt_count": stale.active_prompt_count,
+                "pending_permission_count": stale.pending_permission_count,
+                "stale_for_seconds": stale.stale_for_seconds,
+                "last_activity_at": stale.last_activity_at,
+                "active_submission_ids": &stale.active_submission_ids,
+            })
+        }),
+        "last_command_error": diagnostics.last_command_error.as_ref().map(|error| {
+            serde_json::json!({
+                "command_kind": &error.command_kind,
+            })
+        }),
+        "last_command_error_at": diagnostics.last_command_error_at,
+    })
+}
+
 fn is_agent_user_message(message: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(message)
         .ok()
@@ -1764,10 +1807,7 @@ impl AgentManager {
                 } else {
                     "idle"
                 };
-                (
-                    status,
-                    serde_json::to_value(diagnostics).unwrap_or_default(),
-                )
+                (status, safe_acp_provider_diagnostics_details(&diagnostics))
             }
             AgentInput::Stdin(_) => (
                 "non_acp",
