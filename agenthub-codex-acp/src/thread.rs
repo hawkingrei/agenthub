@@ -930,6 +930,7 @@ impl PromptState {
                 text_elements: _,
                 local_images,
                 local_image_details,
+                client_id: _,
             }) => {
                 info!(
                     "User message: {message:?}, image_count: {}, image_details: {image_details:?}, local_image_count: {}, local_image_details: {local_image_details:?}",
@@ -6719,6 +6720,7 @@ mod tests {
                         RequestPermissionsEvent {
                             call_id: "permissions-call".to_string(),
                             turn_id: "turn-id".to_string(),
+                            environment_id: None,
                             started_at_ms: 0,
                             reason: Some("Need additional permissions".to_string()),
                             permissions:

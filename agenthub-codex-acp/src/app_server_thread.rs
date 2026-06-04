@@ -23,7 +23,7 @@ use codex_app_server_protocol::{
     TurnSteerParams, TurnSteerResponse,
 };
 use codex_arg0::Arg0DispatchPaths;
-use codex_config::{CloudRequirementsLoader, LoaderOverrides};
+use codex_config::{CloudConfigBundleLoader, LoaderOverrides};
 use codex_core::config::Config;
 use codex_feedback::CodexFeedback;
 use codex_protocol::approvals::{
@@ -362,6 +362,7 @@ impl AppServerCodexThread {
                 request_id,
                 params: TurnSteerParams {
                     thread_id,
+                    client_user_message_id: None,
                     input: items.into_iter().map(Into::into).collect(),
                     expected_turn_id: turn_id,
                     responsesapi_client_metadata,
@@ -2265,6 +2266,7 @@ fn prepare_submission_start(
                 request_id: next_request_id(state),
                 params: Box::new(TurnStartParams {
                     thread_id: state.thread_id.clone(),
+                    client_user_message_id: None,
                     input: items.clone().into_iter().map(Into::into).collect(),
                     additional_context: None,
                     cwd: Some(state.config.cwd.to_path_buf()),
@@ -2789,7 +2791,7 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         cli_overrides: Vec::new(),
         loader_overrides: LoaderOverrides::default(),
         strict_config: false,
-        cloud_requirements: CloudRequirementsLoader::default(),
+        cloud_config_bundle: CloudConfigBundleLoader::default(),
         feedback: CodexFeedback::new(),
         log_db: None,
         state_db: None,
@@ -2813,6 +2815,7 @@ fn permissions_request_event_from_params(
     RequestPermissionsEvent {
         call_id: params.item_id,
         turn_id: params.turn_id,
+        environment_id: None,
         started_at_ms: params.started_at_ms,
         reason: params.reason,
         permissions: RequestPermissionProfile {
@@ -2902,7 +2905,6 @@ fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {
         ),
         config: config_request_overrides_from_config(config),
         ephemeral: Some(config.ephemeral),
-        persist_extended_history: true,
         ..ThreadStartParams::default()
     }
 }
@@ -2921,7 +2923,6 @@ fn thread_resume_params_from_config(config: &Config, session_id: &SessionId) -> 
                 .legacy_sandbox_policy(config.cwd.as_path()),
         ),
         config: config_request_overrides_from_config(config),
-        persist_extended_history: true,
         ..ThreadResumeParams::default()
     }
 }
@@ -3278,6 +3279,7 @@ mod tests {
             codex_app_server_protocol::PermissionsRequestApprovalParams {
                 thread_id: "thread-1".to_string(),
                 turn_id: "turn-1".to_string(),
+                environment_id: None,
                 item_id: "call-1".to_string(),
                 started_at_ms: 0,
                 cwd: cwd.clone(),
