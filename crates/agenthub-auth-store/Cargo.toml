@@ -8,5 +8,5 @@ license = "Apache-2.0"
 anyhow = "1"
 agenthub-auth-domain = { path = "../agenthub-auth-domain" }
 chrono = { version = "0.4", features = ["clock"] }
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
 uuid = { version = "1", features = ["v4"] }
