@@ -3296,8 +3296,10 @@ mod tests {
         assert_eq!(event.call_id, "call-1");
         assert_eq!(event.turn_id, "turn-1");
         assert_eq!(event.environment_id.as_deref(), Some("env-1"));
+        assert_eq!(event.started_at_ms, 0);
         assert_eq!(event.cwd, Some(cwd));
         assert_eq!(event.reason.as_deref(), Some("need write access"));
+        assert!(event.permissions.file_system.is_none());
         assert_eq!(
             event.permissions.network,
             Some(codex_protocol::models::NetworkPermissions {
