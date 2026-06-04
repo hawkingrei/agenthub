@@ -330,17 +330,27 @@ spec:
       containers:
       - name: agenthub
         image: agenthub:latest
-        command: ["agenthub", "--node-mode"]
+        command: ["agenthub", "-c", "/etc/agenthub/config.toml"]
         ports:
         - containerPort: 50051
         volumeMounts:
+        - name: config
+          mountPath: /etc/agenthub
         - name: workdir
           mountPath: /workdirs
       volumes:
+      - name: config
+        configMap:
+          name: agenthub-node-config
       - name: workdir
         hostPath:
           path: /var/agenthub/workdirs
 ```
+
+The node config should set `server.role = "node"`, a non-`main`
+`server.node_id`, `internal_grpc.enabled = true`, and the bootstrap token copied
+from `Agents -> Join node with token`. Node mode is config-driven; QR onboarding
+and a separate `--node-mode` flag are not part of the Agent Node join path.
 
 ## Internal gRPC Also Powers `agenthub actor ...`
 
@@ -395,10 +405,17 @@ only `cancelled`.
 
 ### Via Web UI
 
-1. Go to `Agents` page
-2. Click "Register Node" (root only)
-3. Fill in node details
-4. Test connection
+1. Go to the `Agents` page as a root operator.
+2. Open `Join node with token` and copy the bootstrap token/details into the
+   remote node config.
+3. Start the remote node with `server.role = "node"` and the matching
+   `server.node_id`.
+4. Register the node route from the same `Agents` page.
+5. Fill in routing details and test connection.
+
+The bootstrap token is not stored in the node registry. Registered node records
+store routing metadata such as `grpc_target`, `tls_server_name`, and
+`default_worktree_root`.
 
 ### Via API
 

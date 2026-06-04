@@ -224,8 +224,8 @@ mod tests {
 
     #[test]
     fn prompt_templates_keep_runtime_tails_compact() {
-        assert!(line_count(DEFAULT_TEAM_COORDINATOR_PROMPT) <= 122);
-        assert!(line_count(DEFAULT_TEAM_WORKER_PROMPT) <= 98);
+        assert!(line_count(DEFAULT_TEAM_COORDINATOR_PROMPT) <= 115);
+        assert!(line_count(DEFAULT_TEAM_WORKER_PROMPT) <= 93);
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Runtime recovery tail"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Runtime recovery tail"));
         assert!(

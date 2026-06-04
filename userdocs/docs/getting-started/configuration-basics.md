@@ -114,7 +114,7 @@ ACP (Agent Control Protocol) provider settings.
 The built-in adapter path assumes the repository's current ACP baseline:
 
 - `agenthub-codex-acp`
-- official Codex `0.121.x`
+- official Codex `0.137.x`
 
 If you point `codex_acp.binary` at a custom binary, keep it compatible with the
 same ACP protocol surface before mixing it into a shared deployment.
@@ -194,6 +194,17 @@ Internal gRPC control plane for remote nodes and actor CLI.
 This token is the primary Agent Node onboarding path. Operators copy it from the
 `Agents` page, configure it on the remote node, and then register the node's
 reachable `grpc_target` in the UI. QR onboarding is not used for Agent Nodes.
+
+Bootstrap scope:
+
+- `internal_grpc.bootstrap.token` authenticates the remote-node join/bootstrap
+  handshake.
+- `internal_grpc.auth.shared_secret`, `issuer`, and `audience` still define the
+  internal gRPC JWT contract used after bootstrap and by `agenthub actor ...`.
+- The node registry stores routing metadata only; it does not store bootstrap
+  tokens, shared secrets, or TLS file paths.
+- In `server.role = "node"` mode, `server.node_id` must be explicit and must
+  not be `main`.
 
 **Complete Internal gRPC Example**:
 
