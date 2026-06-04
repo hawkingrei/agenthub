@@ -11,7 +11,7 @@ agenthub-agent-event-codec = { path = "../agenthub-agent-event-codec" }
 agenthub-db = { path = "../agenthub-db" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
