@@ -55,8 +55,6 @@ Stable contracts:
 - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
 
 - [ ] `P1` Verify remote Team direct-mailbox routing on real multi-node teams: after the local API regression and routing fix in [journal/2026-05-26-team-remote-direct-mailbox-routing.md](journal/2026-05-26-team-remote-direct-mailbox-routing.md), confirm direct single-member delivery still preserves mention metadata plus summary/`detail_ref` payloads when the recipient agent is remote and transport falls back to p2p relay in a real multi-node rollout. Existing notes: [journal/2026-03-26-team-direct-mailbox-summary-first.md](journal/2026-03-26-team-direct-mailbox-summary-first.md).
-- [ ] `P1` Continue slimming coordinator/worker prompt tails: move ephemeral runtime state into filesystem-backed memory/index artifacts, keep prompt text focused on role charter plus allowed actions and current-goal gating, and re-verify mailbox/task routing behavior after the prompt shrink. Existing notes: [journal/2026-06-02-team-prompt-tail-slimming.md](journal/2026-06-02-team-prompt-tail-slimming.md).
-- [ ] `P1` Finalize Team context and memory continuity design for long-horizon memory: publish one reviewed v1 contract for `L0` / `L1` / `L2` ownership, retrieval budget by prompt mode, retention/redaction, promotion rules, and pre-compaction flush ordering before more implementation continues.
 - [ ] `P2` Verify Team agent self-maintenance and deferred follow-up flows: `profile_patch_proposal`, `agent_time_trigger_*`, and operator-controlled `agent_loop` should behave consistently without blocking normal task progress.
 
 ## Distributed, Nodes, And Release Matrix
@@ -70,8 +68,6 @@ Stable contracts:
 
 Matrix to keep current across CI and at least one real multi-node rollout:
 
-- [ ] `P1` Token-first Agent Node join: root `Agents` surfaces node bootstrap token/details, Admin join exposes token/link without QR onboarding, and user docs match the current `internal_grpc.bootstrap.token` contract. Existing notes: [journal/2026-04-17-node-join-token-flow.md](journal/2026-04-17-node-join-token-flow.md).
-- [ ] `P1` Refreshed agent-node deployment docs: `userdocs/docs/deployment/overview-and-topology.md`, `userdocs/docs/core/agent-nodes.md`, and `userdocs/docs/getting-started/configuration-basics.md` match current `internal_grpc` config shape, remote-node registration flow, and remote-target startup behavior.
 - [ ] `P1` Remote-node transport posture: validate relay dedupe and timestamp-window policy in staging, design same-port HTTP plus gRPC multiplexing, and define the production identity path for long-term mTLS rollout.
 
 ## Observability, CI, And Docs

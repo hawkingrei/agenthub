@@ -186,7 +186,25 @@ The same rule applies to worker project memory:
 - oversized raw evidence should still live under `.cache/context/run/<run_id>/...`, with
   `.agenthubmemory/note/` or `.agenthubmemory/journal/` pointing to it when needed
 
-### 5) Role-Specific Rules
+### 5) Retention And Redaction Contract
+
+- `L0` is ephemeral prompt working state. It should be dropped or rebuilt on each turn instead of
+  written verbatim into durable memory.
+- `L1` run artifacts may contain raw tool output, mailbox payloads, or detailed evidence. Keep them
+  workspace-local under `.cache/context/run/<run_id>/...` and reference them by pointer from compact
+  indexes.
+- `L2` durable memory requires deliberate promotion. Do not promote secrets, credentials, raw
+  bootstrap tokens, permission payloads, or personal data unless the content is explicitly needed
+  and redacted to the smallest useful summary.
+- `.agenthubmemory/scratch/` is not permanent storage. Promote useful material into `journal/` or
+  `note/` with source pointers, or delete it when it is no longer useful.
+- Pre-compaction flush order is stable:
+  1. write high-fidelity evidence into `L1`
+  2. update prompt-visible state/log pointers
+  3. promote only redacted durable summaries into `L2`
+  4. keep the next prompt tail pointer-first instead of replaying the raw history
+
+### 6) Role-Specific Rules
 
 - Coordinator
   - Default workspace is an empty coordination workspace.
@@ -197,7 +215,7 @@ The same rule applies to worker project memory:
   - Uses `.agenthubmemory/` for durable repository/task memory that survives one run and remains
     useful for future local execution.
 
-### 6) Recovery And Flush Contract
+### 7) Recovery And Flush Contract
 
 - Pre-compaction flush writes new durable evidence into `.cache/context/run/<run_id>/...` before
   reducing prompt-visible state.
@@ -206,7 +224,7 @@ The same rule applies to worker project memory:
 - Durable facts promoted from flush output should be written into `.cache/context/memory/*.md` or
   `.agenthubmemory/note/` as concise summaries with source pointers.
 
-### 7) Rolling Upgrade Compatibility Contract
+### 8) Rolling Upgrade Compatibility Contract
 
 Filesystem-backed Team memory must support mixed-version runtime deployments without requiring one
 atomic workspace rewrite.
@@ -253,7 +271,7 @@ Practical consequences:
 - If a field rename is semantically necessary, prefer a staged dual-read or dual-write window over
   a one-shot replacement.
 
-### 8) Recovery Entry-Point And Runtime Identity Contract
+### 9) Recovery Entry-Point And Runtime Identity Contract
 
 - Runtime-injected Team identity and continuity metadata are authoritative when present:
   - `team_id`
@@ -285,6 +303,7 @@ Practical consequences:
   compatibility and pointer-preserving upgrades.
 - Prompt assembly tests that verify pointer-first tails stay compact while still exposing the stable
   recovery entry points.
+  - `cargo test -p agenthub-team-prompts prompt_templates_keep_runtime_tails_compact -- --nocapture`
 - Focused Team runtime tests that verify worker memory stays workspace-local and is not read from
   another member workspace by direct filesystem traversal.
 - Manual workspace inspection during development for:
@@ -303,8 +322,8 @@ Practical consequences:
 
 ## Open Risks
 
-- The exact line between `.cache/context/memory/*.md` and `.agenthubmemory/` may still need tuning
-  once more long-running Team sessions are observed in practice.
+- The operational split between `.cache/context/memory/*.md` and `.agenthubmemory/` may still be
+  tuned as usage grows, but v1 ownership, promotion, retention, and recovery boundaries are stable.
 - Retrieval/ranking policy for promoted memory remains intentionally out of scope for v1.
 
 ## Source Journals
@@ -317,3 +336,4 @@ Practical consequences:
 - [2026-04-18-team-memory-index-rolling-upgrade.md](../journal/2026-04-18-team-memory-index-rolling-upgrade.md)
 - [2026-04-18-team-memory-index-schema-metadata.md](../journal/2026-04-18-team-memory-index-schema-metadata.md)
 - [2026-05-21-team-spec-refresh-from-external-daemon-review.md](../journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md)
+- [2026-06-04-team-node-continuity-rollup.md](../journal/2026-06-04-team-node-continuity-rollup.md)
