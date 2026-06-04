@@ -930,7 +930,7 @@ impl PromptState {
                 text_elements: _,
                 local_images,
                 local_image_details,
-                client_id: _,
+                ..
             }) => {
                 info!(
                     "User message: {message:?}, image_count: {}, image_details: {image_details:?}, local_image_count: {}, local_image_details: {local_image_details:?}",

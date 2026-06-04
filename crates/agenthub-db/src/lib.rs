@@ -1719,7 +1719,7 @@ pub async fn cleanup_agent_event_history(
     })
 }
 
-async fn add_column_if_missing(pool: &SqlitePool, sql: &str, column: &str) {
+async fn add_column_if_missing(pool: &SqlitePool, sql: &'static str, column: &str) {
     if let Err(err) = sqlx::query(sql).execute(pool).await {
         let message = err.to_string();
         if !message.contains("duplicate column name") {
@@ -2537,12 +2537,13 @@ async fn sqlite_table_has_column(
     if !sqlite_table_exists(pool, table_name).await? {
         return Ok(false);
     }
-    let query = format!("PRAGMA table_info('{table_name}')");
-    let columns = sqlx::query(&query).fetch_all(pool).await?;
-    Ok(columns.iter().any(|row| {
-        row.get::<String, _>("name")
-            .eq_ignore_ascii_case(column_name)
-    }))
+    let columns = sqlx::query_scalar::<_, String>("SELECT name FROM pragma_table_info(?1)")
+        .bind(table_name)
+        .fetch_all(pool)
+        .await?;
+    Ok(columns
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(column_name)))
 }
 
 async fn backfill_team_authority_group_ids(pool: &SqlitePool) -> anyhow::Result<()> {
@@ -3733,13 +3734,14 @@ mod tests {
             .expect("init db with team authority group migration");
 
         for table in ["team_definitions", "team_tasks", "team_runs"] {
-            let group_id_column: String = sqlx::query_scalar(&format!(
+            let group_id_column: String = sqlx::query_scalar(
                 r#"
                 SELECT name
-                FROM pragma_table_info('{table}')
+                FROM pragma_table_info(?1)
                 WHERE name = 'group_id'
-                "#
-            ))
+                "#,
+            )
+            .bind(table)
             .fetch_one(&pool)
             .await
             .unwrap_or_else(|err| panic!("read {table}.group_id column: {err}"));

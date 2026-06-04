@@ -52,7 +52,7 @@ Current release binaries are available for:
 
 ### Prerequisites
 
-- Rust `1.95.0` (stable toolchain baseline)
+- Rust `1.96.0` (stable toolchain baseline)
 - Node.js 20+
 - Git
 
