@@ -2815,7 +2815,7 @@ fn permissions_request_event_from_params(
     RequestPermissionsEvent {
         call_id: params.item_id,
         turn_id: params.turn_id,
-        environment_id: None,
+        environment_id: params.environment_id,
         started_at_ms: params.started_at_ms,
         reason: params.reason,
         permissions: RequestPermissionProfile {
@@ -3279,7 +3279,7 @@ mod tests {
             codex_app_server_protocol::PermissionsRequestApprovalParams {
                 thread_id: "thread-1".to_string(),
                 turn_id: "turn-1".to_string(),
-                environment_id: None,
+                environment_id: Some("env-1".to_string()),
                 item_id: "call-1".to_string(),
                 started_at_ms: 0,
                 cwd: cwd.clone(),
@@ -3295,6 +3295,7 @@ mod tests {
 
         assert_eq!(event.call_id, "call-1");
         assert_eq!(event.turn_id, "turn-1");
+        assert_eq!(event.environment_id.as_deref(), Some("env-1"));
         assert_eq!(event.cwd, Some(cwd));
         assert_eq!(event.reason.as_deref(), Some("need write access"));
         assert_eq!(
