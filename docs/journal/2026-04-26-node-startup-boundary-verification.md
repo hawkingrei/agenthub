@@ -5,6 +5,7 @@
 - tightened focused Rust coverage around node-vs-main startup boundaries
 - confirmed the existing implementation already enforces the intended node-mode
   contract; the missing gap was regression coverage, not a new runtime fix
+- closed the active TODO after PR #425 passed the full check matrix
 
 ## Scope
 
@@ -32,8 +33,27 @@ These tests lock the most important startup boundaries:
 - `cargo test -p agenthub validate_startup_config_ -- --nocapture`
 - `cargo test -p agenthub state::tests::setup_database_ -- --nocapture`
 - `cargo test -p agenthub state::tests::initialize_services_ -- --nocapture`
+- PR CI: `gh pr checks 425 | cat`
 
-## Follow-up
+```text
+Bazel Build              pass
+Bazel Build and Test     pass
+Bazel Coverage           pass
+Bazel Test (Crates)      pass
+Bazel Test (Root)        pass
+Cargo Clippy             pass
+Distributed P2P Pipeline pass
+Rust (Cargo)             pass
+Rust (Coverage)          pass
+Rust (Fmt)               pass
+Rust (Proto Check)       pass
+Rust (gRPC Integration)  pass
+Web                      pass
+Web E2E                  pass
+codecov/patch            pass
+codecov/project          pass
+```
 
-- This does not close the broader TODO by itself; push/PR CI evidence still
-  needs to be recorded before the TODO can be removed.
+## Follow-Ups
+
+None.
