@@ -112,7 +112,7 @@ agenthub-message-archive = { path = "crates/agenthub-message-archive" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
-agent-client-protocol = { version = "0.12.1", features = ["unstable"] }
+agent-client-protocol = { version = "0.13.1", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }

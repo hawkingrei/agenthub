@@ -282,9 +282,9 @@ dependencies = [
 
 [[package]]
 name = "agent-client-protocol"
-version = "0.12.1"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4361ba6627e51de955b10f3c77fb9eb959c85191a236c1c2c84e32f4ff240faf"
+checksum = "8d197653697b91b3a2cfb579d061a3388cda9fdc79cb6f9393da65cbad46baf8"
 dependencies = [
  "agent-client-protocol-derive",
  "agent-client-protocol-schema",
@@ -293,23 +293,20 @@ dependencies = [
  "futures",
  "futures-concurrency",
  "jsonrpcmsg",
- "rmcp",
  "rustc-hash 2.1.2",
  "schemars 1.2.1",
  "serde",
  "serde_json",
  "shell-words",
- "tokio",
- "tokio-util",
  "tracing",
  "uuid",
 ]
 
 [[package]]
 name = "agent-client-protocol-derive"
-version = "0.11.1"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cabdc9d845d08ec7ed2d0c9de1ae4a1b198301407d55855261572761be90ec9f"
+checksum = "b9e4fbf6733a900814fb921b2aac06612e15b42020b76a356fbc1192e725cebc"
 dependencies = [
  "quote",
  "syn 2.0.117",
@@ -317,9 +314,9 @@ dependencies = [
 
 [[package]]
 name = "agent-client-protocol-schema"
-version = "0.13.2"
+version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b957d8391ac3933e2a940446171c508d2b8ffc386d8fa7d0b9c936a2575b463e"
+checksum = "0d419a87e28240978e4bfdf2a5b91bccb95ae8d5b06e10721bb07c449b9f43dd"
 dependencies = [
  "anyhow",
  "derive_more 2.1.1",
