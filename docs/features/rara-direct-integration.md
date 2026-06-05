@@ -202,7 +202,7 @@ or reference summaries, but it must not treat Rara memory files as AgentHub's ca
 
 ### 6) Diagnostics
 
-AgentHub `doctor agent-trace` and web debug surfaces should report a Rara provider adapter section
+`agenthub doctor agent-trace` and web debug surfaces should report a Rara provider adapter section
 when the active provider is Rara:
 
 - Rara process status and placement node
@@ -235,10 +235,10 @@ Phase 0 spec validation:
 - `cargo fmt --check`
 - `git diff --check`
 - manual review against `linkerdog/rara`:
-  - `README.md`
-  - `docs/features/runtime-control-plane.md`
-  - `docs/features/app-server-architecture.md`
-  - `crates/rara-app-server/src/runtime_control.rs`
+  - [README.md](https://github.com/linkerdog/rara/blob/main/README.md)
+  - [runtime-control-plane.md](https://github.com/linkerdog/rara/blob/main/docs/features/runtime-control-plane.md)
+  - [app-server-architecture.md](https://github.com/linkerdog/rara/blob/main/docs/features/app-server-architecture.md)
+  - [runtime_control.rs](https://github.com/linkerdog/rara/blob/main/crates/rara-app-server/src/runtime_control.rs)
 
 Phase 1 implementation validation:
 
@@ -247,7 +247,7 @@ Phase 1 implementation validation:
 - input mapping tests for submit, follow-up, pending answer, approval, cancel, and interrupt
 - event translation tests for assistant text, tool lifecycle, approval, request-input, error, and
   completion events
-- redaction tests for Rara provider metadata in persisted events and `doctor agent-trace`
+- redaction tests for Rara provider metadata in persisted events and `agenthub doctor agent-trace`
 - local smoke test that starts `rara` in app-server mode, sends one prompt, receives structured
   output, and shuts down cleanly
 - remote-node smoke test after local mode is stable
@@ -286,7 +286,7 @@ Phase 1 implementation validation:
 
 ## External References
 
-- `linkerdog/rara` `README.md`
-- `linkerdog/rara` `docs/features/runtime-control-plane.md`
-- `linkerdog/rara` `docs/features/app-server-architecture.md`
-- `linkerdog/rara` `crates/rara-app-server/src/runtime_control.rs`
+- [README.md](https://github.com/linkerdog/rara/blob/main/README.md)
+- [runtime-control-plane.md](https://github.com/linkerdog/rara/blob/main/docs/features/runtime-control-plane.md)
+- [app-server-architecture.md](https://github.com/linkerdog/rara/blob/main/docs/features/app-server-architecture.md)
+- [runtime_control.rs](https://github.com/linkerdog/rara/blob/main/crates/rara-app-server/src/runtime_control.rs)
