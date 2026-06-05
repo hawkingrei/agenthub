@@ -76,6 +76,7 @@ When older journals are superseded:
 - `docs/features/team-mailbox-intake-and-ownership.md`
 - `docs/features/team-conversation-event-bus.md`
 - `docs/features/backend-runtime-logic.md`
+- `docs/features/rara-direct-integration.md`
 - `docs/features/distributed-node-architecture.md`
 - `docs/features/distributed-node-registry-and-gossip.md`
 - `docs/features/logical-message-metadata-contract.md`
