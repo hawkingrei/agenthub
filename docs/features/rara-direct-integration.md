@@ -57,8 +57,8 @@ Rara's direct integration boundary is its runtime-control protocol, based on:
 - `RuntimeControlRequest`
 - structured runtime events from Rara's event bus
 
-AgentHub should launch a Rara app-server command once Rara exposes a stable command for it. Phase 1
-uses one child-process transport contract:
+AgentHub launches Rara through the phase 1 app-server command and one child-process transport
+contract:
 
 ```bash
 rara app-server --protocol-version 1 --transport stdio-jsonl
@@ -146,8 +146,10 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
 - The phase 1 command shape is:
   - argv[0]: configured Rara binary path
   - argv[1]: `app-server`
-  - `--protocol-version 1`
-  - `--transport stdio-jsonl`
+  - argv[2]: `--protocol-version`
+  - argv[3]: `1`
+  - argv[4]: `--transport`
+  - argv[5]: `stdio-jsonl`
 - AgentHub passes workspace, environment, and proxy policy through the placement layer.
 - The first stdout frame must be a handshake event. AgentHub must not send runtime-control requests
   until this frame is accepted.
@@ -160,6 +162,15 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   - shutdown capabilities
   - safe provider/model summary
   - current or resumable Rara thread/session identity when available
+- AgentHub accepts the handshake only when:
+  - the frame parses as valid JSON
+  - the frame type is the app-server handshake
+  - app-server protocol version is exactly `1`
+  - transport id is exactly `stdio-jsonl`
+  - all phase 1 required request and event families are present
+  - required identity/version fields are non-empty
+- Any missing required field, incompatible protocol version, incompatible transport id, unsupported
+  request/event family, malformed JSON, or non-handshake first frame is a handshake rejection.
 - If the app-server handshake is unsupported, AgentHub fails startup with an actionable
   `rara_app_server_unsupported` error instead of falling back to another Rara mode.
 - Graceful shutdown is a semantic runtime-control request followed by child-process drain. Process
@@ -208,13 +219,15 @@ busy/rejected states if Rara rejects a queued follow-up.
 Every AgentHub-submitted `RuntimeControlEnvelope.request_id` must receive a correlated Rara response
 or runtime event before AgentHub treats the browser/API-side state transition as committed.
 
-The minimum request lifecycle states are:
+Required request lifecycle states are:
 
 - `accepted`: Rara accepted and applied the request immediately
 - `queued`: Rara accepted the request for later execution, preserving order
 - `rejected`: Rara rejected the request with a stable reason code and safe message
-- `completed`: optional terminal request outcome when Rara can report one separately from stream
-  events
+
+Optional request lifecycle state:
+
+- `completed`: terminal request outcome when Rara can report one separately from stream events
 
 Contract details:
 
