@@ -4,7 +4,7 @@
 use agent_client_protocol::schema::{
     AuthenticateRequest, CancelNotification, CloseSessionRequest, InitializeRequest,
     ListSessionsRequest, LoadSessionRequest, NewSessionRequest, PromptRequest,
-    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest,
+    SetSessionConfigOptionRequest, SetSessionModeRequest,
 };
 use agent_client_protocol::{Agent, Client, ConnectionTo};
 use codex_core::config::ManagedFeatures;
@@ -492,7 +492,6 @@ pub async fn run_main(
             let agent_for_prompt = agent.clone();
             let agent_for_cancel = agent.clone();
             let agent_for_mode = agent.clone();
-            let agent_for_model = agent.clone();
             let agent_for_config = agent.clone();
 
             Agent
@@ -565,14 +564,6 @@ pub async fn run_main(
                     async move |request: SetSessionModeRequest, responder, _connection| {
                         responder.respond_with_result(
                             local_send_future(agent_for_mode.set_session_mode(request)).await,
-                        )
-                    },
-                    agent_client_protocol::on_receive_request!(),
-                )
-                .on_receive_request(
-                    async move |request: SetSessionModelRequest, responder, _connection| {
-                        responder.respond_with_result(
-                            local_send_future(agent_for_model.set_session_model(request)).await,
                         )
                     },
                     agent_client_protocol::on_receive_request!(),

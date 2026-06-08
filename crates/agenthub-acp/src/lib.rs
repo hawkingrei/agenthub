@@ -20,8 +20,7 @@ use agent_client_protocol::schema::{
     PermissionOptionKind, PromptRequest, ProtocolVersion, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
     SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
-    SetSessionModelRequest, TextContent, ToolCall, ToolCallStatus, ToolCallUpdate,
-    ToolCallUpdateFields,
+    TextContent, ToolCall, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
 };
 use agent_client_protocol::{Agent, ConnectionTo, Error as AcpError, ErrorCode as AcpErrorCode};
 use chrono::Utc;
@@ -1346,7 +1345,11 @@ async fn dispatch_acp_command(
             }
         }
         AcpCommand::SetModel(model_id) => {
-            let request = SetSessionModelRequest::new(context.session_id.to_string(), model_id);
+            let request = SetSessionConfigOptionRequest::new(
+                context.session_id.to_string(),
+                "model",
+                model_id.as_str(),
+            );
             if let Err(err) = send_acp_request(&context.conn, request).await {
                 context
                     .diagnostics
