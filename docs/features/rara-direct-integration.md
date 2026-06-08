@@ -107,7 +107,39 @@ Rara remains responsible for:
 - Rara memory under `<workspace>/.rara/` and Rara home/cache directories
 - local model preparation and provider-specific model catalog behavior
 
-### 4) Session Identity
+### 4) Rara Team Modes
+
+Rara direct integration must support two different Team shapes without collapsing their identity
+models:
+
+- Local Rara agent team:
+  - AgentHub starts one Rara app-server runtime in a local AgentHub workspace.
+  - Rara may use a lightweight model as its internal team leader.
+  - Rara may start one or more local subagents as internal workers under that Rara runtime.
+  - AgentHub observes and supervises the outer Rara runtime as one AgentHub agent/session unless
+    Rara explicitly exposes safe structured subagent telemetry.
+- Remote AgentHub Team member:
+  - AgentHub assigns the Rara-backed agent one canonical AgentHub Team identity and role.
+  - The assigned AgentHub role may be `coordinator` or `worker`.
+  - The Rara-backed agent may still create its own internal Rara subteam, including local or remote
+    subagents, to complete the assigned work.
+  - AgentHub mailbox routing, permission-review routing, task ownership, and Team conversation
+    accountability remain bound to the outer AgentHub Team member identity, not to Rara's internal
+    subagent ids.
+
+This means Rara can be a Team runtime and can also contain a Rara-managed team. AgentHub must treat
+those as nested layers:
+
+```text
+AgentHub Team member identity
+  -> Rara app-server runtime
+  -> optional Rara-managed local/remote subteam
+```
+
+The nested Rara subteam must not silently create additional AgentHub Team members, bypass AgentHub
+mailbox delivery, or claim another AgentHub member's role.
+
+### 5) Session Identity
 
 AgentHub and Rara session identities must stay separate:
 
@@ -117,7 +149,7 @@ AgentHub and Rara session identities must stay separate:
 - Force-new-session semantics clear Rara continuity intentionally; ordinary AgentHub restart should
   attempt to resume the stored Rara continuity id when the adapter reports it is reusable.
 
-### 5) Event Translation
+### 6) Event Translation
 
 Rara app-server events should be normalized into AgentHub's existing agent event persistence and
 conversation surfaces without pretending they are Codex-native or ACP-native events.
@@ -306,7 +338,39 @@ when the active provider is Rara:
 Diagnostics must stay read-only by default. Repair, restart, cancel, or interrupt actions require
 explicit user/operator action.
 
-### 9) Remote Nodes
+### 9) Team Role And Agent Card Guard
+
+When AgentHub starts Rara as a Team member, startup context must include the outer Team identity:
+
+- AgentHub team id
+- AgentHub member id / actor id
+- assigned AgentHub Team role (`coordinator` or `worker`)
+- safe agent card fields for that member, including name, description, mission, role summary, and
+  allowed collaboration boundaries
+
+Rara may use a lightweight semantic judge before acting on remote Team conversation or mailbox
+context. The judge decides whether the incoming conversation/task is compatible with the assigned
+AgentHub member's agent card and current role.
+
+The semantic guard has three stable outcomes:
+
+- `compatible`: proceed normally
+- `mismatch`: do not execute the request; return a safe status event explaining that the request does
+  not match the assigned agent card or role
+- `needs_clarification`: ask AgentHub or the Team conversation for clarification before executing
+
+Guardrails:
+
+- The lite judge is advisory control flow inside the Rara runtime; it must not mutate AgentHub's
+  canonical Team role, task owner, or member card directly.
+- A `mismatch` result must not be treated as a runtime crash, cancel, or permission denial.
+- If Rara proposes an agent-card update, it must use AgentHub's profile patch proposal flow rather
+  than editing the Team card out of band.
+- For local Rara agent teams that are not attached to an AgentHub Team, the same guard may validate
+  against Rara's own internal agent cards, but AgentHub does not interpret those internal cards as
+  AgentHub Team membership.
+
+### 10) Remote Nodes
 
 Remote Rara execution should reuse AgentHub Agent Node placement:
 
@@ -353,6 +417,10 @@ Phase 1 implementation validation:
 - redaction tests for Rara provider metadata in persisted events and `agenthub doctor agent-trace`
 - remote-node capability preflight tests for incompatible protocol version, missing transport, and
   unsupported request families
+- Team-mode startup tests for local Rara team context and remote AgentHub Team member context
+- semantic guard translation tests for `compatible`, `mismatch`, and `needs_clarification`
+- nested subteam identity tests that verify Rara internal subagent ids do not become AgentHub Team
+  member ids or mailbox targets
 - local smoke test that starts `rara` in app-server mode, sends one prompt, receives structured
   output, and shuts down cleanly
 - remote-node smoke test after local mode is stable
@@ -369,7 +437,9 @@ Phase 1 implementation validation:
   3. event translation + persistence/replay
   4. approvals + diagnostics
   5. Team skill/prompt-source injection
-  6. remote-node placement
+  6. local Rara team mode with lite leader and internal workers
+  7. remote AgentHub Team member mode with role/card guard
+  8. remote-node placement
 
 ## Open Risks
 
@@ -383,10 +453,15 @@ Phase 1 implementation validation:
   should distinguish model bootstrap from runtime failure.
 - Remote-node Rara placement may expose host capability differences that AgentHub does not yet
   inventory.
+- Nested Team semantics can become confusing if Rara internal subagents are displayed as AgentHub
+  Team members without an explicit product decision.
+- The lite semantic guard needs stable safe input fields and explainable outcomes; otherwise it could
+  reject valid Team work or hide role/card drift behind model judgment.
 
 ## Source Journals
 
 - [2026-06-06-rara-app-server-phase1-contract.md](../journal/2026-06-06-rara-app-server-phase1-contract.md)
+- [2026-06-08-rara-team-modes-requirements.md](../journal/2026-06-08-rara-team-modes-requirements.md)
 - The first implementation PR should add or update a dated journal that links back to this spec.
 
 ## External References
