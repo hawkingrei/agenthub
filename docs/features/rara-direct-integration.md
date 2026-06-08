@@ -297,6 +297,18 @@ AgentHub must not concatenate raw Team prompt tails directly into Rara system pr
 source registration path. Rara's `<workspace>/.rara/` memory remains Rara-owned; AgentHub may archive
 or reference summaries, but it must not treat Rara memory files as AgentHub's canonical Team memory.
 
+Task-scoped memory updates may derive their routing prefix from the canonical Team task expression.
+The prefix must be stable for the lifetime of that task:
+
+- derive the prefix from the task id plus normalized task title/summary, not from transient chat text
+- persist the derived prefix with the task or Rara thread continuity before writing memory
+- reuse the same prefix for follow-ups, clarifications, retries, and nested Rara subteam work for
+  that task
+- create a new prefix only when AgentHub creates a new canonical task or explicitly retitles/rekeys
+  the task
+
+This lets Rara tune memory around the task wording while avoiding prefix drift across turns.
+
 ### 7) Event Replay And Idempotency
 
 Rara app-server events must carry enough identity for AgentHub to dedupe, replay, and diagnose
@@ -347,6 +359,8 @@ When AgentHub starts Rara as a Team member, startup context must include the out
 - assigned AgentHub Team role (`coordinator` or `worker`)
 - safe agent card fields for that member, including name, description, mission, role summary, and
   allowed collaboration boundaries
+- canonical task expression when the Team work is task-backed, including task id, title, summary, and
+  the stable memory prefix if one already exists
 
 Rara may use a lightweight semantic judge before acting on remote Team conversation or mailbox
 context. The judge decides whether the incoming conversation/task is compatible with the assigned
@@ -421,6 +435,8 @@ Phase 1 implementation validation:
 - semantic guard translation tests for `compatible`, `mismatch`, and `needs_clarification`
 - nested subteam identity tests that verify Rara internal subagent ids do not become AgentHub Team
   member ids or mailbox targets
+- task-scoped memory prefix tests that verify follow-ups and retries reuse the same prefix while new
+  canonical tasks receive distinct prefixes
 - local smoke test that starts `rara` in app-server mode, sends one prompt, receives structured
   output, and shuts down cleanly
 - remote-node smoke test after local mode is stable

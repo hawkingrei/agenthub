@@ -24,6 +24,7 @@ Team message or task matches the assigned AgentHub agent card before acting.
   `worker` role.
 - Rara-managed nested subteams under the outer AgentHub Team member identity.
 - Lightweight semantic guard outcomes for agent-card and role compatibility.
+- Task-scoped memory routing that can follow the task wording while keeping its prefix stable.
 
 ## Key Decisions
 
@@ -42,6 +43,9 @@ Team message or task matches the assigned AgentHub agent card before acting.
 - A guard mismatch is a safe runtime status, not a crash, cancel, or permission denial.
 - Agent-card updates must flow through AgentHub profile patch proposals instead of out-of-band Rara
   mutation.
+- Rara memory updates may derive a task-scoped prefix from the canonical task expression, but the
+  prefix must be persisted and reused for follow-ups, retries, clarifications, and nested subteam work
+  under the same task.
 
 ## Validation
 
@@ -59,11 +63,13 @@ Implementation validation should add focused tests for:
 - semantic guard outcome translation
 - nested Rara subagent identity isolation
 - mailbox and permission-review routing remaining bound to the outer AgentHub member
+- stable task-scoped memory prefix derivation and reuse
 
 ## Follow-Ups
 
 - Define the concrete runtime-control request/event fields for Team identity and safe agent-card
   context.
 - Define the Rara-side lite semantic guard event schema.
+- Define the concrete task expression fields and memory prefix derivation rules.
 - Decide whether and how safe Rara subagent telemetry appears in AgentHub diagnostics without making
   those subagents first-class AgentHub Team members.
