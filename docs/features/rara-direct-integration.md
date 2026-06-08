@@ -57,9 +57,23 @@ Rara's direct integration boundary is its runtime-control protocol, based on:
 - `RuntimeControlRequest`
 - structured runtime events from Rara's event bus
 
-AgentHub should launch a Rara app-server command once Rara exposes a stable command for it. The
-expected transport is a framed JSON byte stream over stdio or an equivalent local child-process
-transport. HTTP or socket transports are future extensions, not the phase 1 requirement.
+AgentHub launches Rara through the phase 1 app-server command and one child-process transport
+contract:
+
+```bash
+rara app-server --protocol-version 1 --transport stdio-jsonl
+```
+
+The app-server stream is UTF-8 JSON Lines over stdio:
+
+- one JSON object per line
+- newline terminates each frame
+- no pretty-printed multi-line JSON
+- stdout is reserved for protocol frames
+- stderr is reserved for human-readable diagnostics and must not be parsed as protocol state
+- binary payloads are out of scope for phase 1
+
+HTTP, sockets, and length-prefixed framing are future extensions, not phase 1 compatibility paths.
 
 AgentHub must not simulate terminal keys, scrape TUI output, parse `rara print` text, or invoke
 `rara acp` for runtime state. It should send semantic runtime-control requests and consume structured
@@ -93,7 +107,39 @@ Rara remains responsible for:
 - Rara memory under `<workspace>/.rara/` and Rara home/cache directories
 - local model preparation and provider-specific model catalog behavior
 
-### 4) Session Identity
+### 4) Rara Team Modes
+
+Rara direct integration must support two different Team shapes without collapsing their identity
+models:
+
+- Local Rara agent team:
+  - AgentHub starts one Rara app-server runtime in a local AgentHub workspace.
+  - Rara may use a lightweight model as its internal team leader.
+  - Rara may start one or more local subagents as internal workers under that Rara runtime.
+  - AgentHub observes and supervises the outer Rara runtime as one AgentHub agent/session unless
+    Rara explicitly exposes safe structured subagent telemetry.
+- Remote AgentHub Team member:
+  - AgentHub assigns the Rara-backed agent one canonical AgentHub Team identity and role.
+  - The assigned AgentHub role may be `coordinator` or `worker`.
+  - The Rara-backed agent may still create its own internal Rara subteam, including local or remote
+    subagents, to complete the assigned work.
+  - AgentHub mailbox routing, permission-review routing, task ownership, and Team conversation
+    accountability remain bound to the outer AgentHub Team member identity, not to Rara's internal
+    subagent ids.
+
+This means Rara can be a Team runtime and can also contain a Rara-managed team. AgentHub must treat
+those as nested layers:
+
+```text
+AgentHub Team member identity
+  -> Rara app-server runtime
+  -> optional Rara-managed local/remote subteam
+```
+
+The nested Rara subteam must not silently create additional AgentHub Team members, bypass AgentHub
+mailbox delivery, or claim another AgentHub member's role.
+
+### 5) Session Identity
 
 AgentHub and Rara session identities must stay separate:
 
@@ -103,7 +149,7 @@ AgentHub and Rara session identities must stay separate:
 - Force-new-session semantics clear Rara continuity intentionally; ordinary AgentHub restart should
   attempt to resume the stored Rara continuity id when the adapter reports it is reusable.
 
-### 5) Event Translation
+### 6) Event Translation
 
 Rara app-server events should be normalized into AgentHub's existing agent event persistence and
 conversation surfaces without pretending they are Codex-native or ACP-native events.
@@ -129,16 +175,39 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
 - AgentHub starts Rara through a configured binary path, defaulting to `rara` on `PATH`.
 - The required startup mode is an app-server/runtime-control mode, not `rara tui`, `rara print`,
   `rara wire`, or `rara acp`.
+- The phase 1 command shape is:
+  - argv[0]: configured Rara binary path
+  - argv[1]: `app-server`
+  - argv[2]: `--protocol-version`
+  - argv[3]: `1`
+  - argv[4]: `--transport`
+  - argv[5]: `stdio-jsonl`
 - AgentHub passes workspace, environment, and proxy policy through the placement layer.
+- The first stdout frame must be a handshake event. AgentHub must not send runtime-control requests
+  until this frame is accepted.
 - Rara reports a handshake containing at least:
   - app-server protocol version
   - Rara version
+  - transport id (`stdio-jsonl`)
   - supported request families
   - supported event families
+  - shutdown capabilities
   - safe provider/model summary
   - current or resumable Rara thread/session identity when available
+- AgentHub accepts the handshake only when:
+  - the frame parses as valid JSON
+  - the frame type is the app-server handshake
+  - app-server protocol version is exactly `1`
+  - transport id is exactly `stdio-jsonl`
+  - all phase 1 required request and event families are present
+  - required identity/version fields are non-empty
+- Any missing required field, incompatible protocol version, incompatible transport id, unsupported
+  request/event family, malformed JSON, or non-handshake first frame is a handshake rejection.
 - If the app-server handshake is unsupported, AgentHub fails startup with an actionable
   `rara_app_server_unsupported` error instead of falling back to another Rara mode.
+- Graceful shutdown is a semantic runtime-control request followed by child-process drain. Process
+  kill is reserved for startup failure, transport loss, explicit force-stop, or graceful shutdown
+  timeout.
 
 ### 2) Configuration
 
@@ -148,7 +217,7 @@ configuration surface, for example:
 ```toml
 [rara]
 binary = "rara"
-transport = "stdio"
+transport = "stdio-jsonl"
 default_provider = "deepseek"
 default_model = "deepseek-chat"
 ```
@@ -177,7 +246,35 @@ AgentHub maps browser/API/Team input into Rara semantic requests:
 Follow-up input must preserve ordering and must not imply cancel or interrupt. AgentHub should expose
 busy/rejected states if Rara rejects a queued follow-up.
 
-### 4) Approval And Permission
+### 4) Request Acceptance And Ack
+
+Every AgentHub-submitted `RuntimeControlEnvelope.request_id` must receive a correlated Rara response
+or runtime event before AgentHub treats the browser/API-side state transition as committed.
+
+Required request lifecycle states are:
+
+- `accepted`: Rara accepted and applied the request immediately
+- `queued`: Rara accepted the request for later execution, preserving order
+- `rejected`: Rara rejected the request with a stable reason code and safe message
+
+Optional request lifecycle state:
+
+- `completed`: terminal request outcome when Rara can report one separately from stream events
+
+Contract details:
+
+- `SubmitUserPrompt`, `SubmitFollowUp`, pending-input answers, plan approvals, shell/tool approvals,
+  cancel, and interrupt all require request correlation.
+- AgentHub may persist the user's attempted input before dispatch for auditability, but the visible
+  committed state must reflect Rara's ack result.
+- If Rara returns `rejected`, AgentHub should append a redacted visible status event and keep the
+  original request pending/failed according to the existing AgentHub input semantics.
+- If the app-server transport closes before ack, AgentHub must treat the request outcome as unknown
+  and reconcile through event replay before retrying.
+- Re-sending a request after an unknown outcome must reuse either the original `request_id` or an
+  explicit `idempotency_key`; Rara must not apply the same accepted request twice.
+
+### 5) Approval And Permission
 
 - Rara owns local sandbox and tool approval semantics.
 - AgentHub may render and answer Rara approval requests through its existing permission/review UI.
@@ -186,7 +283,7 @@ busy/rejected states if Rara rejects a queued follow-up.
 - Team permission-review routing may be reused, but the requester must never review its own Rara
   approval request.
 
-### 5) Prompt, Skills, Memory, MCP, And Hooks
+### 6) Prompt, Skills, Memory, MCP, And Hooks
 
 AgentHub may provide Team/runtime context to Rara only through structured control-plane sources:
 
@@ -200,7 +297,43 @@ AgentHub must not concatenate raw Team prompt tails directly into Rara system pr
 source registration path. Rara's `<workspace>/.rara/` memory remains Rara-owned; AgentHub may archive
 or reference summaries, but it must not treat Rara memory files as AgentHub's canonical Team memory.
 
-### 6) Diagnostics
+Task-scoped memory updates may derive their routing prefix from the canonical Team task expression.
+The prefix must be stable for the lifetime of that task:
+
+- derive the prefix from the task id plus normalized task title/summary, not from transient chat text
+- persist the derived prefix with the task or Rara thread continuity before writing memory
+- reuse the same prefix for follow-ups, clarifications, retries, and nested Rara subteam work for
+  that task
+- create a new prefix only when AgentHub creates a new canonical task or explicitly retitles/rekeys
+  the task
+
+This lets Rara tune memory around the task wording while avoiding prefix drift across turns.
+
+### 7) Event Replay And Idempotency
+
+Rara app-server events must carry enough identity for AgentHub to dedupe, replay, and diagnose
+reconnect boundaries.
+
+AgentHub should persist these provider-native identifiers alongside each normalized AgentHub event:
+
+- Rara `event_id`
+- Rara monotonic `sequence`
+- Rara thread/session id
+- AgentHub `agent_sessions.id`
+- AgentHub agent id and, for Team members, actor/member ids
+
+Replay contract:
+
+- The tuple `(rara_thread_or_session_id, event_id)` is the primary dedupe key.
+- `sequence` is the gap-detection cursor within one Rara thread/session stream.
+- Reconnect should resume from the last persisted Rara sequence when Rara supports replay.
+- If replay is unavailable or returns a gap, AgentHub must mark the stream as having a replay gap
+  instead of silently rendering a partial timeline as complete.
+- Duplicate tool results, deltas, approvals, and completion events must be ignored after dedupe.
+- AgentHub should store the latest translated Rara sequence in the provider adapter diagnostics so
+  `agenthub doctor agent-trace` can explain whether persistence, transport, or rendering is stale.
+
+### 8) Diagnostics
 
 `agenthub doctor agent-trace` and web debug surfaces should report a Rara provider adapter section
 when the active provider is Rara:
@@ -212,11 +345,46 @@ when the active provider is Rara:
 - last Rara runtime event class and timestamp
 - pending approvals/tool calls by safe id and status
 - event translation cursor into AgentHub persistence
+- latest Rara `event_id`, `sequence`, and replay-gap status when available
 
 Diagnostics must stay read-only by default. Repair, restart, cancel, or interrupt actions require
 explicit user/operator action.
 
-### 7) Remote Nodes
+### 9) Team Role And Agent Card Guard
+
+When AgentHub starts Rara as a Team member, startup context must include the outer Team identity:
+
+- AgentHub team id
+- AgentHub member id / actor id
+- assigned AgentHub Team role (`coordinator` or `worker`)
+- safe agent card fields for that member, including name, description, mission, role summary, and
+  allowed collaboration boundaries
+- canonical task expression when the Team work is task-backed, including task id, title, summary, and
+  the stable memory prefix if one already exists
+
+Rara may use a lightweight semantic judge before acting on remote Team conversation or mailbox
+context. The judge decides whether the incoming conversation/task is compatible with the assigned
+AgentHub member's agent card and current role.
+
+The semantic guard has three stable outcomes:
+
+- `compatible`: proceed normally
+- `mismatch`: do not execute the request; return a safe status event explaining that the request does
+  not match the assigned agent card or role
+- `needs_clarification`: ask AgentHub or the Team conversation for clarification before executing
+
+Guardrails:
+
+- The lite judge is advisory control flow inside the Rara runtime; it must not mutate AgentHub's
+  canonical Team role, task owner, or member card directly.
+- A `mismatch` result must not be treated as a runtime crash, cancel, or permission denial.
+- If Rara proposes an agent-card update, it must use AgentHub's profile patch proposal flow rather
+  than editing the Team card out of band.
+- For local Rara agent teams that are not attached to an AgentHub Team, the same guard may validate
+  against Rara's own internal agent cards, but AgentHub does not interpret those internal cards as
+  AgentHub Team membership.
+
+### 10) Remote Nodes
 
 Remote Rara execution should reuse AgentHub Agent Node placement:
 
@@ -224,9 +392,19 @@ Remote Rara execution should reuse AgentHub Agent Node placement:
 - selected Agent Node starts the Rara process in the node-local workspace
 - Rara state and `.rara/` memory stay on the execution node
 - AgentHub streams normalized events back through the existing remote-control/event path
+- before remote launch, AgentHub must verify the selected node reports compatible Rara app-server
+  capability:
+  - Rara binary availability
+  - app-server protocol version
+  - transport id (`stdio-jsonl` for phase 1)
+  - supported request/event families needed by the agent mode
+  - safe workspace and environment readiness
 
 Rara direct integration must not introduce a separate remote transport stack that bypasses AgentHub's
 node registry, internal gRPC auth, or remote worktree policy.
+
+If a remote node cannot report a compatible Rara app-server capability, AgentHub must fail before
+creating or starting the remote runtime session.
 
 ## Validation Matrix
 
@@ -245,9 +423,20 @@ Phase 1 implementation validation:
 - focused AgentHub config tests for Rara-specific config parsing and environment overrides
 - provider adapter unit tests for app-server handshake and capability negotiation
 - input mapping tests for submit, follow-up, pending answer, approval, cancel, and interrupt
+- request ack tests for accepted, queued, rejected, unknown-before-ack, and idempotent retry
 - event translation tests for assistant text, tool lifecycle, approval, request-input, error, and
   completion events
+- replay/idempotency tests for duplicate event ids, sequence gaps, reconnect resume, and duplicate
+  tool-result suppression
 - redaction tests for Rara provider metadata in persisted events and `agenthub doctor agent-trace`
+- remote-node capability preflight tests for incompatible protocol version, missing transport, and
+  unsupported request families
+- Team-mode startup tests for local Rara team context and remote AgentHub Team member context
+- semantic guard translation tests for `compatible`, `mismatch`, and `needs_clarification`
+- nested subteam identity tests that verify Rara internal subagent ids do not become AgentHub Team
+  member ids or mailbox targets
+- task-scoped memory prefix tests that verify follow-ups and retries reuse the same prefix while new
+  canonical tasks receive distinct prefixes
 - local smoke test that starts `rara` in app-server mode, sends one prompt, receives structured
   output, and shuts down cleanly
 - remote-node smoke test after local mode is stable
@@ -264,7 +453,9 @@ Phase 1 implementation validation:
   3. event translation + persistence/replay
   4. approvals + diagnostics
   5. Team skill/prompt-source injection
-  6. remote-node placement
+  6. local Rara team mode with lite leader and internal workers
+  7. remote AgentHub Team member mode with role/card guard
+  8. remote-node placement
 
 ## Open Risks
 
@@ -278,11 +469,16 @@ Phase 1 implementation validation:
   should distinguish model bootstrap from runtime failure.
 - Remote-node Rara placement may expose host capability differences that AgentHub does not yet
   inventory.
+- Nested Team semantics can become confusing if Rara internal subagents are displayed as AgentHub
+  Team members without an explicit product decision.
+- The lite semantic guard needs stable safe input fields and explainable outcomes; otherwise it could
+  reject valid Team work or hide role/card drift behind model judgment.
 
 ## Source Journals
 
-- No AgentHub implementation journal exists yet. The first implementation PR should add a dated
-  journal that links back to this spec.
+- [2026-06-06-rara-app-server-phase1-contract.md](../journal/2026-06-06-rara-app-server-phase1-contract.md)
+- [2026-06-08-rara-team-modes-requirements.md](../journal/2026-06-08-rara-team-modes-requirements.md)
+- The first implementation PR should add or update a dated journal that links back to this spec.
 
 ## External References
 
