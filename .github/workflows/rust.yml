@@ -111,7 +111,7 @@ jobs:
           wc -l rust-cargo.lcov
       - name: Upload coverage reports to Codecov
         if: github.event.pull_request.user.login != 'dependabot[bot]'
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: rust-cargo.lcov
