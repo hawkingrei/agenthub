@@ -121,16 +121,18 @@ Operational notes:
 #### Recommended rollout order
 
 1. Bring up the main AgentHub control plane with `internal_grpc.enabled = true`.
-2. Bring up each remote AgentHub node with the same internal gRPC auth/security
-   policy plus a unique `server.node_id`.
-3. Verify the remote node exposes an `https://` internal gRPC endpoint that is
+2. Copy the bootstrap token/details from `Agents -> Join node with token`.
+3. Configure each remote AgentHub node with that bootstrap token, the same
+   internal gRPC auth/security policy, `server.role = "node"`, and a unique
+   `server.node_id`.
+4. Verify the remote node exposes an `https://` internal gRPC endpoint that is
    reachable from the main control plane.
-4. Log into the main AgentHub UI as root and register the remote node from the
+5. Log into the main AgentHub UI as root and register the remote node from the
    `Agents` page.
-5. Set `Default worktree root` if the remote node should derive blank
+6. Set `Default worktree root` if the remote node should derive blank
    `create_worktree` workdirs automatically.
-6. Create a remote-target agent and confirm the agent card shows `node:<id>`.
-7. Start the agent and verify output/events are visible from the main control
+7. Create a remote-target agent and confirm the agent card shows `node:<id>`.
+8. Start the agent and verify output/events are visible from the main control
    plane.
 
 ## Recommended Network Shape

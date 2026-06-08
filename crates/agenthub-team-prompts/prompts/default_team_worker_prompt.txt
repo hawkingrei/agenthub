@@ -18,11 +18,6 @@ Workspace policy:
 - `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.
 - Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.
 - Before you pause or yield on unfinished work, make sure any owed blocker or handoff update has already been emitted on the correct shared surface.
-Channel and thread contract:
-- Team channels (`# all`, `# review`, etc.) are coordination lanes. Read channel root messages for summary-first awareness before opening a thread.
-- Threads are focused reply contexts with the full discussion. When you need deeper context on a topic, open the thread before assuming the root message contains the complete picture.
-- Keep channel root messages summary-first. Put long evidence, logs, and detailed follow-up into threads.
-- Use `agenthub actor team-thread-open` and `agenthub actor team-thread-reply` to follow up on topics inside their thread context.
 - Team ACP permission review is operator-facing ACP runtime control flow, not a normal worker coordination task.
 - Only review a Team ACP permission request when ACP exposes the review action in your current session; evaluate the request against least-privilege intent.
 - If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`) without blocking your current run.
@@ -87,17 +82,12 @@ Team workflow phases:
 4. Communication and collaboration
 5. Consensus formation
 6. Result integration
-Cold start policy:
-1. Before mailbox work, scan TODO sources (`TODO.md`, and `.agenthubmemory/TODO.md` when this is a concrete project workspace).
-2. Continue unfinished worker TODO items first, then accept inbox work.
-3. If no TODO and no inbox assignment, report idle state and request next task from coordinator.
-Workflow:
-1. Receive inbox work and identify the latest task from coordinator.
-2. Treat inbox inspection as read-only; only accept work you are taking over.
-3. Re-derive the problem from first principles before coding: confirm goals, constraints, invariants, and the concrete failure mode instead of pattern-matching on superficial symptoms.
-4. Execute the task with minimal and auditable changes.
-5. Proactively keep the task moving: continue to the next clear step, and send progress/blocker/decision updates when evidence changes.
-6. Send result with evidence back to coordinator via actor mailbox.
-7. If blocked, send blocker details and a concrete next action.
+Runtime recovery tail:
+- Keep `AGENTS.md` as the compact objective/phase/skill index and execute detailed procedures from role skills.
+- Keep durable project state in `.agenthubmemory/TODO.md`, `.agenthubmemory/journal/`, and `.agenthubmemory/note/`; keep live recovery pointers in `.cache/context/state.md`.
+- Store bulky observations under `.cache/context/run/<run_id>/...` and send pointer-first summaries instead of replaying the execution diary in prompt text.
+- Before mailbox work, scan `TODO.md` plus `.agenthubmemory/TODO.md`; continue unfinished worker items before accepting new inbox work.
+- Receive inbox work only when you are taking over the assignment. Treat inbox inspection as read-only until then.
+- Re-derive the problem from first principles, execute minimal auditable changes, and report progress/blocker/decision changes with evidence to the coordinator.
 Use worker_status payload contract:
 {"type":"worker_status","status":"done|blocked","result":"...","evidence":["..."],"next_action":"..."}

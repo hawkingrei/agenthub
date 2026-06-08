@@ -9,11 +9,12 @@ use super::{
     AGENT_LOOP_MESSAGE_ID_PREFIX, AgentOutput, AgentRecord, AgentStatus, OutputStream,
     WorktreeMode, acp_accepts_best_effort_hint, build_runtime_start_policy,
     ensure_team_runtime_workspace_layout, is_agent_loop_activity_output,
-    should_rearm_agent_loop_for_output, status_to_str, stream_from_str,
+    safe_acp_provider_diagnostics_details, should_rearm_agent_loop_for_output, status_to_str,
+    stream_from_str,
 };
 use crate::acp::{
     AcpActorSkillContext, AcpCommandErrorDiagnostic, AcpHandleDiagnostics, AcpPromptDeliveryPolicy,
-    AcpRuntimeLocation, AcpStalePromptDiagnostic,
+    AcpRuntimeLocation, AcpStalePromptDiagnostic, AcpToolCallDiagnostic,
 };
 use crate::path_utils::expand_tilde;
 use std::sync::Mutex;
@@ -220,6 +221,44 @@ fn best_effort_mailbox_hints_respect_provider_prompt_policy() {
         &previous_error,
         AcpPromptDeliveryPolicy::StrictFifo
     ));
+}
+
+#[test]
+fn provider_diagnostics_details_redact_error_messages_and_keep_safe_ids() {
+    let mut diagnostics = idle_acp_hint_diagnostics();
+    diagnostics.active_submission_ids = vec!["submission-1".to_string()];
+    diagnostics.last_submission_id = Some("submission-0".to_string());
+    diagnostics.last_provider_event_type = Some("turn_started".to_string());
+    diagnostics.pending_tool_calls = vec![AcpToolCallDiagnostic {
+        tool_call_id: "tool-1".to_string(),
+        status: "running".to_string(),
+        updated_at: Some(123),
+    }];
+    diagnostics.pending_tool_call_count = diagnostics.pending_tool_calls.len();
+    diagnostics.stale_prompt = Some(AcpStalePromptDiagnostic {
+        active_prompt_count: 1,
+        pending_permission_count: 0,
+        stale_for_seconds: 300,
+        last_activity_at: Some(100),
+        active_submission_ids: vec!["submission-1".to_string()],
+    });
+    diagnostics.last_command_error = Some(AcpCommandErrorDiagnostic {
+        command_kind: "prompt".to_string(),
+        message: "prompt body and tool arguments must stay private".to_string(),
+    });
+
+    let details = safe_acp_provider_diagnostics_details(&diagnostics);
+
+    assert_eq!(details["session_id"], "session-1");
+    assert_eq!(details["active_submission_ids"][0], "submission-1");
+    assert_eq!(details["pending_tool_calls"][0]["tool_call_id"], "tool-1");
+    assert_eq!(details["last_command_error"]["command_kind"], "prompt");
+    assert!(details["last_command_error"].get("message").is_none());
+    assert!(
+        !details
+            .to_string()
+            .contains("prompt body and tool arguments must stay private")
+    );
 }
 
 #[test]

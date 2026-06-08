@@ -25,6 +25,10 @@ mod tests {
         assert!(prompt.contains("in_review"));
     }
 
+    fn line_count(prompt: &str) -> usize {
+        prompt.lines().count()
+    }
+
     #[test]
     fn default_prompt_resolves_by_role() {
         assert_eq!(
@@ -215,6 +219,22 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agenthub actor team-thread-reply"));
         assert!(
             DEFAULT_TEAM_WORKER_PROMPT.contains("answer directly in the relevant Team channel")
+        );
+    }
+
+    #[test]
+    fn prompt_templates_keep_runtime_tails_compact() {
+        assert!(line_count(DEFAULT_TEAM_COORDINATOR_PROMPT) <= 115);
+        assert!(line_count(DEFAULT_TEAM_WORKER_PROMPT) <= 93);
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Runtime recovery tail"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Runtime recovery tail"));
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT.contains(
+                "Follow detailed coordinator workflow from `team-coordinator-orchestrator`"
+            )
+        );
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT.contains("execute detailed procedures from role skills")
         );
     }
 }

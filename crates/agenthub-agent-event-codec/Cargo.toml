@@ -8,6 +8,6 @@ license = "Apache-2.0"
 agenthub-agent-domain = { path = "../agenthub-agent-domain" }
 agenthub-db = { path = "../agenthub-db" }
 anyhow = "1"
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
 tracing = "0.1"
 zstd = "0.13"

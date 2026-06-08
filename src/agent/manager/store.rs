@@ -1,4 +1,4 @@
-use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool, sqlite::SqliteRow};
+use sqlx::{AssertSqlSafe, QueryBuilder, Row, Sqlite, SqlitePool, sqlite::SqliteRow};
 
 use agenthub_config::normalize_optional_codex_acp_mode_id;
 
@@ -97,7 +97,7 @@ pub(super) async fn list_agent_rows(
         query.push_str(" WHERE COALESCE(source, 'manual') != ?1");
     }
     query.push_str(" ORDER BY created_at DESC");
-    let mut query = sqlx::query(&query);
+    let mut query = sqlx::query(AssertSqlSafe(query));
     if let Some(source) = excluded_source.filter(|_| caps.has_source_column) {
         query = query.bind(source);
     }
@@ -113,7 +113,7 @@ pub(super) async fn get_agent_row(
         "SELECT {} FROM agents WHERE id = ?1",
         agent_select_columns(caps)
     );
-    sqlx::query(&query)
+    sqlx::query(AssertSqlSafe(query))
         .bind(agent_id)
         .fetch_one(db)
         .await
@@ -309,7 +309,7 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
         }
     }
 
-    fn push_insert_columns(&self, builder: &mut QueryBuilder<'_, Sqlite>, caps: AgentSchemaCaps) {
+    fn push_insert_columns(&self, builder: &mut QueryBuilder<Sqlite>, caps: AgentSchemaCaps) {
         let mut first = true;
         push_insert_column(builder, &mut first, "id");
         push_insert_column(builder, &mut first, "name");
@@ -334,7 +334,7 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
         push_insert_column(builder, &mut first, "updated_at");
     }
 
-    fn push_insert_values(&'a self, builder: &mut QueryBuilder<'a, Sqlite>, caps: AgentSchemaCaps) {
+    fn push_insert_values(&'a self, builder: &mut QueryBuilder<Sqlite>, caps: AgentSchemaCaps) {
         let mut first = true;
         push_bound_value(builder, &mut first, self.agent_id);
         push_bound_value(builder, &mut first, self.name);
@@ -361,7 +361,7 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
 
     fn push_update_assignments(
         &'a self,
-        builder: &mut QueryBuilder<'a, Sqlite>,
+        builder: &mut QueryBuilder<Sqlite>,
         caps: AgentSchemaCaps,
     ) {
         let mut first = true;
@@ -418,7 +418,7 @@ pub(super) async fn upsert_remote_managed_agent_record(
     Ok(())
 }
 
-fn push_separator(builder: &mut QueryBuilder<'_, Sqlite>, first: &mut bool) {
+fn push_separator(builder: &mut QueryBuilder<Sqlite>, first: &mut bool) {
     if !*first {
         builder.push(", ");
         return;
@@ -426,12 +426,12 @@ fn push_separator(builder: &mut QueryBuilder<'_, Sqlite>, first: &mut bool) {
     *first = false;
 }
 
-fn push_insert_column(builder: &mut QueryBuilder<'_, Sqlite>, first: &mut bool, column: &str) {
+fn push_insert_column(builder: &mut QueryBuilder<Sqlite>, first: &mut bool, column: &str) {
     push_separator(builder, first);
     builder.push(column);
 }
 
-fn push_bound_value<'args, T>(builder: &mut QueryBuilder<'args, Sqlite>, first: &mut bool, value: T)
+fn push_bound_value<'args, T>(builder: &mut QueryBuilder<Sqlite>, first: &mut bool, value: T)
 where
     T: 'args + Send + sqlx::Encode<'args, Sqlite> + sqlx::Type<Sqlite>,
 {
@@ -440,7 +440,7 @@ where
 }
 
 fn push_assignment<'args, T>(
-    builder: &mut QueryBuilder<'args, Sqlite>,
+    builder: &mut QueryBuilder<Sqlite>,
     first: &mut bool,
     column: &str,
     value: T,
@@ -455,7 +455,7 @@ fn push_assignment<'args, T>(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::{Row, sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions};
+    use sqlx::{AssertSqlSafe, Row, sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions};
 
     use super::{
         AgentConfig, AgentSchemaCaps, RemoteManagedAgentUpsert, upsert_remote_managed_agent_record,
@@ -540,7 +540,7 @@ mod tests {
             )
             "#,
         );
-        sqlx::query(&builder)
+        sqlx::query(AssertSqlSafe(builder))
             .execute(db)
             .await
             .expect("create agents");

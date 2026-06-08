@@ -56,7 +56,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           profile: minimal
       - name: Setup Bazel
@@ -78,7 +78,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           profile: minimal
       - name: Setup Bazel
@@ -102,7 +102,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           profile: minimal
       - name: Setup Bazel
@@ -124,7 +124,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           profile: minimal
       - name: Setup Bazel
@@ -145,7 +145,7 @@ jobs:
           wc -l bazel.lcov
       - name: Upload coverage reports to Codecov
         if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         env:
           AGENTHUB_CODECOV_UPLOAD_TAG: bazel
         with:

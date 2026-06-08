@@ -1407,7 +1407,7 @@ async fn teams_api_injects_role_workflow_prompt_policy_defaults() {
         .and_then(Value::as_str)
         .unwrap_or_default();
     assert!(coordinator_prompt.contains("Do not implement feature code directly."));
-    assert!(coordinator_prompt.contains("perform targeted technical research"));
+    assert!(coordinator_prompt.contains("Follow detailed coordinator workflow"));
     assert!(coordinator_prompt.contains("Start from an empty workspace."));
     assert!(coordinator_prompt.contains("summary entrypoint for one topic"));
     assert!(coordinator_prompt.contains("full-context container for that topic"));

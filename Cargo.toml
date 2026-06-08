@@ -56,7 +56,7 @@ futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1.1"
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "signal", "sync", "time", "io-util", "io-std"] }
 tokio-util = { version = "0.7", features = ["compat"] }
@@ -112,7 +112,7 @@ agenthub-message-archive = { path = "crates/agenthub-message-archive" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
-agent-client-protocol = { version = "0.12.1", features = ["unstable"] }
+agent-client-protocol = { version = "0.14.0", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }

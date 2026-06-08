@@ -21,29 +21,29 @@ default = []
 release-vendored-openssl = ["dep:openssl"]
 
 [dependencies]
-agent-client-protocol = { version = "=0.12.1", features = ["unstable"] }
+agent-client-protocol = { version = "=0.14.0", features = ["unstable"] }
 agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
 clap = "4"
-codex-apply-patch = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-config = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-arg0 = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-app-server-client = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-app-server-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-core = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-exec-server = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-extension-api = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-features = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-feedback = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-login = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-models-manager = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-utils-approval-presets = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-utils-absolute-path = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
-codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.135.0" }
+codex-apply-patch = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-config = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-arg0 = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-app-server-client = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-app-server-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-core = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-exec-server = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-extension-api = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-features = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-feedback = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-login = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-models-manager = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-utils-approval-presets = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-utils-absolute-path = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
 heck = "0.5.0"
 itertools = "0.14.0"
 libc = "0.2"
@@ -56,7 +56,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-
 tokio-util = { version = "0.7", features = ["compat"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-unicode-segmentation = "1.13.2"
+unicode-segmentation = "1.13.3"
 uuid = { version = "1", features = ["v4"] }
 # Codex upstream currently reaches OpenSSL through native-tls-backed reqwest /
 # oauth2 paths on Linux. Keep vendored OpenSSL behind a release-only feature so

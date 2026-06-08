@@ -5,5 +5,5 @@ edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
-pyroscope = { version = "2.0.4", features = ["backend-pprof-rs"] }
+pyroscope = { version = "2.0.6", features = ["backend-pprof-rs"] }
 tracing = "0.1"

@@ -1,4 +1,4 @@
-use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
+use sqlx::{AssertSqlSafe, Row, SqlitePool, sqlite::SqliteRow};
 
 use crate::agent::AgentNodeRecord;
 
@@ -383,7 +383,10 @@ pub(super) async fn list_agent_node_rows(
             ORDER BY created_at DESC
             "
         );
-        return sqlx::query(&sql).fetch_all(db).await.map_err(Into::into);
+        return sqlx::query(AssertSqlSafe(sql))
+            .fetch_all(db)
+            .await
+            .map_err(Into::into);
     }
 
     let select_last_seen = if caps.has_last_seen_at_column {
@@ -403,7 +406,10 @@ pub(super) async fn list_agent_node_rows(
         ORDER BY created_at DESC
         "
     );
-    sqlx::query(&sql).fetch_all(db).await.map_err(Into::into)
+    sqlx::query(AssertSqlSafe(sql))
+        .fetch_all(db)
+        .await
+        .map_err(Into::into)
 }
 
 pub(super) async fn get_agent_node_row(
@@ -429,7 +435,7 @@ pub(super) async fn get_agent_node_row(
             WHERE id = ?1
             "
         );
-        return sqlx::query(&sql)
+        return sqlx::query(AssertSqlSafe(sql))
             .bind(node_id)
             .fetch_one(db)
             .await
@@ -453,7 +459,7 @@ pub(super) async fn get_agent_node_row(
         WHERE id = ?1
         "
     );
-    sqlx::query(&sql)
+    sqlx::query(AssertSqlSafe(sql))
         .bind(node_id)
         .fetch_one(db)
         .await

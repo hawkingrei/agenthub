@@ -35,6 +35,11 @@ AgentHub needs a node-level abstraction for distributed execution and actor deli
 - `main` is a reserved built-in node identifier and always resolves to the local process.
 - `AgentConfig` / `AgentRecord` now carry `target_node_id`.
 - Root operators can update registered node routing and `default_worktree_root` in place without re-registering the node.
+- Agent Node join is token-first:
+  - root operators copy bootstrap details from `Agents -> Join node with token`
+  - remote nodes place the token under `[internal_grpc.bootstrap]`
+  - QR/device join is not part of the Agent Node onboarding path
+  - the node registry stores routing metadata only and never stores bootstrap tokens, shared secrets, or TLS file paths
 
 ### Actor Transport
 
@@ -89,6 +94,10 @@ AgentHub needs a node-level abstraction for distributed execution and actor deli
   - `server.role = "main"` keeps the current public HTTP/UI + optional internal gRPC control plane
   - `server.role = "node"` requires `internal_grpc.enabled = true` and a non-`main` `server.node_id`
   - `node` mode serves internal gRPC execution/control only and must not boot the public web/API surface
+- token-first join must keep bootstrap and steady-state auth separate:
+  - `internal_grpc.bootstrap.token` authenticates node bootstrap/join
+  - `internal_grpc.auth.shared_secret`, `issuer`, and `audience` authenticate internal gRPC control and actor CLI traffic after bootstrap
+  - node registry records are routes, not credential stores
 
 ## Validation Matrix
 
@@ -143,3 +152,4 @@ Manual checks:
 - `docs/journal/2026-03-18-agent-node-grpc-control-plane.md`
 - `docs/journal/2026-03-19-agent-node-review-hardening.md`
 - `docs/journal/2026-03-19-agent-node-config-and-userdocs.md`
+- `docs/journal/2026-06-04-team-node-continuity-rollup.md`
