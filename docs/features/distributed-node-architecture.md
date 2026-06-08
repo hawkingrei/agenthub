@@ -55,7 +55,8 @@ The architecture therefore needs a phased plan that keeps today's encrypted gRPC
 
 ### Current Implementation Status
 
-As of `2026-03-19`, phases `0` and `1` are implemented in the main codebase:
+As of `2026-06-09`, phases `0` and `1` are implemented in the main codebase and the
+remote-node transport posture is stable enough for small-cluster production trials:
 
 - phase 0 abstraction freeze now has concrete runtime surfaces in:
   - `src/internal/p2p.rs`
@@ -72,6 +73,46 @@ One implementation boundary is intentionally explicit:
 - destination-local mailbox delivery still keeps `to_peer_id = main` so inbox lookup semantics remain local
 - source node identity is preserved on delivered messages via `from_peer_id`
 - explicit `target_node_id` continues to live in route/envelope metadata instead of overloading the destination-local mailbox partition key
+
+### Remote-Node Transport Posture
+
+The current production posture is `HTTPS gRPC on a dedicated internal port`.
+
+Required behavior:
+
+- remote-node mailbox and agent-control payloads use authenticated internal `gRPC`
+- relay sends are at-least-once; receivers must make duplicate delivery harmless
+- `idempotency_key`, `source_node_id`, `target_node_id`, `issued_at`, and `expires_at`
+  remain first-class transport metadata, not optional debug fields
+- stale transport credentials or stale relay envelopes must be rejected before business payload handling
+- registered node routing is pinned to the main-owned `agent_nodes` row; route JSON cannot override TLS file paths or silently redirect to a different target
+- destination-local delivery strips the cross-node route and stores a local mailbox row after successful relay
+
+Dedupe and timestamp-window policy:
+
+- the canonical dedupe key is the transport `idempotency_key`
+- when an old relay route does not carry a first-class `idempotency_key`, the receiver may fall back to `(source_node_id, message_id)` for compatibility
+- the recommended timestamp skew window is `+-120s`
+- accepted dedupe keys should be retained for at least `24h` or the configured retry horizon, whichever is longer
+- duplicate deliveries should return success after skipping business processing so relay retries can converge without creating extra mailbox rows
+- rejected stale, duplicate, or signature-invalid deliveries should be auditable by reason
+
+Same-port HTTP plus gRPC multiplexing is a future deployment simplification, not the current
+canonical runtime mode. The design target is:
+
+- one public listener can accept browser HTTP/SSE and internal gRPC on the same TLS endpoint
+- ALPN and `Content-Type: application/grpc` decide the gRPC path; normal HTTP requests continue to route through the web/API stack
+- internal gRPC authentication and authorization stay identical whether the listener is dedicated or multiplexed
+- node-only mode may still expose only the internal gRPC service even when the implementation uses a shared accept loop
+- rollout must preserve the dedicated-port mode as the conservative fallback until reverse-proxy behavior is validated
+
+Long-term identity path:
+
+1. phase 1 keeps a shared cluster signing secret plus TLS/mTLS transport because it is operationally small
+2. each node already carries stable `node_id`, route metadata, scoped claims, and key identifiers so later credentials can bind to node identity
+3. the next identity step should add main-issued, short-lived node credentials tied to `node_id`, `audience`, `scope`, and `expires_at`
+4. production mTLS should then bind the certificate subject/SAN or SPIFFE-like URI to the same `node_id`
+5. once revocation and rotation are available, the shared secret becomes bootstrap/recovery material rather than the steady-state trust root
 
 ### Phase Breakdown
 
@@ -294,9 +335,13 @@ Even in phase 1, messages and envelopes should carry fields that keep later migr
 ## Contracts
 
 - `node <-> node` mailbox and agent-control business traffic must use authenticated `gRPC`
+- the current canonical deployment uses a dedicated internal `https://` gRPC endpoint; same-port HTTP plus gRPC multiplexing is an explicit future-compatible design target
 - `gossip` is a metadata plane only and must not carry mailbox business payloads
 - the control plane remains authoritative for registry, bootstrap, policy, and audit
 - phase 1 may use a cluster-wide shared signing key, but protocol shapes must remain compatible with per-node identity in later phases
+- receivers must enforce timestamp windows and idempotency dedupe before applying remote mailbox business logic
+- route-level TLS file paths are not accepted; TLS material comes from cluster-level internal gRPC configuration
+- node registry rows are routing authority, not credential stores
 - cross-node broadcast must aggregate by target node before local per-member fanout
 - nodes may use gossip-derived membership and load information only as routing hints, never as a standalone trust source
 - phase boundaries are driven by protocol stability and operational readiness, not by implementation convenience
@@ -312,6 +357,13 @@ Phase 1:
 
 - 2-node blackbox `gRPC` p2p pipeline
 - point-to-point retry/idempotency coverage
+- relay route hardening coverage for registry target pinning, TLS material sourcing, and rejected route-level TLS paths
+- staging smoke with one main node and one remote node:
+  - duplicate relay retry does not create duplicate destination mailbox rows
+  - stale timestamp outside `+-120s` is rejected
+  - valid retry inside the allowed window converges to delivered/acked state
+  - node-only process does not expose the public HTTP/UI surface
+- deployment review for dedicated-port `https://` gRPC and the future same-port multiplexing fallback plan
 
 Phase 2:
 
@@ -342,6 +394,7 @@ Phase 6:
 - node revoke / deny-list propagation
 - spoofed membership advertisement rejection
 - replayed credential rejection
+- certificate identity and token `node_id` mismatch rejection
 
 Recommended implementation commands should be added as each phase lands; phase 1 currently depends on:
 
@@ -353,6 +406,9 @@ cargo test --locked --test distributed_p2p_pipeline -- --nocapture
 
 - phase 1 intentionally trades strict zero trust for lower bootstrap complexity
 - that simplification is acceptable only if message/envelope schemas already include forward-compatible identity and scope fields
+- production small-cluster deployments should prefer private-network `https://` gRPC targets and root-managed node registry entries
+- same-port HTTP plus gRPC multiplexing should be introduced only after reverse-proxy behavior, ALPN forwarding, and node-only mode boundaries have dedicated validation
+- the mTLS long-term path should bind certificate identity to the same `node_id` used by registry rows and scoped credentials
 - gossip should be introduced only when node count and fanout patterns justify it
 - when large fanout appears, the preferred model is `gossip descriptor + gRPC payload`, not `gossip payload flood`
 - debugging and auditability must remain possible across every phase; this is another reason not to use gossip as the primary mailbox transport
@@ -365,7 +421,9 @@ cargo test --locked --test distributed_p2p_pipeline -- --nocapture
 - phase 3 can become a thin wrapper with little value if planners keep bypassing `MembershipView`
 - phase 4 gossip-based load hints can become stale and cause suboptimal routing under rapid cluster churn
 - phase 6 identity migration will still require a careful bootstrap and revocation design
+- same-port multiplexing can be proxy-sensitive and should not replace dedicated internal gRPC until deployed HTTP/SSE and gRPC behavior are validated together
 
 ## Source Journals
 
 - `docs/journal/2026-03-19-distributed-node-architecture.md`
+- `docs/journal/2026-06-09-remote-node-transport-posture.md`

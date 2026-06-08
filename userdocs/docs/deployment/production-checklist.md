@@ -22,6 +22,21 @@ Use this checklist before and after deploying AgentHub in a shared environment.
 - Enforce strong user credentials and periodic rotation.
 - Avoid putting sensitive directories under `safe_paths`.
 
+## Remote Node Baseline
+
+When remote Agent Nodes are enabled:
+
+- Keep node-only processes on internal `https://` gRPC endpoints.
+- Register remote nodes from the main control plane; do not treat registry rows
+  as credential storage.
+- Keep internal gRPC `issuer`, `audience`, and `shared_secret` aligned across
+  peers until per-node identity is available.
+- Keep node clocks synchronized so timestamp-window validation is reliable.
+- Smoke test duplicate relay retries in staging and confirm they do not create
+  duplicate destination mailbox rows.
+- Keep the dedicated gRPC port until same-port HTTP plus gRPC multiplexing has
+  been validated with your reverse proxy.
+
 ## Data and Backup
 
 AgentHub persists runtime data under `~/.agenthub/` by default.
@@ -60,4 +75,5 @@ If smoke checks fail or critical flows regress:
 ## Related Pages
 
 - [Deployment Overview and Topology](./overview-and-topology.md)
+- [Remote Node Transport](./remote-node-transport.md)
 - [Security and Path Safety](../operations/security-and-path-safety.md)
