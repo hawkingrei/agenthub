@@ -37,7 +37,7 @@ it was the missing operator-facing transport posture:
 4. The canonical dedupe key is transport `idempotency_key`; compatibility may
    fall back to `(source_node_id, message_id)` when legacy metadata lacks a
    first-class idempotency key.
-5. The recommended timestamp skew window is `+-120s`, with accepted dedupe keys
+5. The recommended timestamp skew window is `±120s`, with accepted dedupe keys
    retained for at least `24h` or the configured retry horizon.
 6. The long-term identity path is main-issued short-lived node credentials plus
    mTLS certificate identity bound to the same `node_id`.

@@ -45,7 +45,7 @@ and dedupe repeated delivery before processing the business payload.
 
 Recommended policy:
 
-- accept relay timestamps only inside a `+-120s` skew window
+- accept relay timestamps only inside a `±120s` skew window
 - use the transport `idempotency_key` as the canonical dedupe key
 - for compatibility with old relay metadata, fall back to `(source_node_id,
   message_id)` only when no first-class `idempotency_key` is present
@@ -93,7 +93,7 @@ The long-term path is:
    `audience`, `scope`, `issued_at`, and `expires_at`
 3. bind production mTLS certificate identity to the same `node_id`
 4. reject requests where token identity and certificate identity disagree
-5. add rotation and revocation before treating per-node identity as the steady
+5. add rotation and revocation before treating per-node identity as the steady-
    state trust root
 
 Until that path is complete, treat the shared secret as sensitive cluster-wide

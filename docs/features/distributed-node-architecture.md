@@ -92,7 +92,7 @@ Dedupe and timestamp-window policy:
 
 - the canonical dedupe key is the transport `idempotency_key`
 - when an old relay route does not carry a first-class `idempotency_key`, the receiver may fall back to `(source_node_id, message_id)` for compatibility
-- the recommended timestamp skew window is `+-120s`
+- the recommended timestamp skew window is `±120s`
 - accepted dedupe keys should be retained for at least `24h` or the configured retry horizon, whichever is longer
 - duplicate deliveries should return success after skipping business processing so relay retries can converge without creating extra mailbox rows
 - rejected stale, duplicate, or signature-invalid deliveries should be auditable by reason
@@ -110,7 +110,7 @@ Long-term identity path:
 
 1. phase 1 keeps a shared cluster signing secret plus TLS/mTLS transport because it is operationally small
 2. each node already carries stable `node_id`, route metadata, scoped claims, and key identifiers so later credentials can bind to node identity
-3. the next identity step should add main-issued, short-lived node credentials tied to `node_id`, `audience`, `scope`, and `expires_at`
+3. the next identity step should add main-issued, short-lived node credentials tied to `node_id`, `audience`, `scope`, `issued_at`, and `expires_at`
 4. production mTLS should then bind the certificate subject/SAN or SPIFFE-like URI to the same `node_id`
 5. once revocation and rotation are available, the shared secret becomes bootstrap/recovery material rather than the steady-state trust root
 
@@ -360,7 +360,7 @@ Phase 1:
 - relay route hardening coverage for registry target pinning, TLS material sourcing, and rejected route-level TLS paths
 - staging smoke with one main node and one remote node:
   - duplicate relay retry does not create duplicate destination mailbox rows
-  - stale timestamp outside `+-120s` is rejected
+  - stale timestamp outside `±120s` is rejected
   - valid retry inside the allowed window converges to delivered/acked state
   - node-only process does not expose the public HTTP/UI surface
 - deployment review for dedicated-port `https://` gRPC and the future same-port multiplexing fallback plan
