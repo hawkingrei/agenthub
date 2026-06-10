@@ -12,7 +12,8 @@ spec is required to keep contracts consistent across providers and UI/runtime la
 - ACP event ingestion/rendering model in web conversation/debug surfaces.
 - ACP transport/reliability behavior (streaming + fallback).
 - ACP permission workflow and scoping guarantees.
-- ACP provider compatibility baseline for Codex/Gemini/Kimi/Claude adapters.
+- ACP provider compatibility baseline for Codex/Gemini/Kimi/Claude adapters, including
+  AgentHub-distributed adapter binaries where available.
 - Codex-specific diagnostic side-channel boundaries for live turn/tool-call integrity.
 
 ## Non-Goals
@@ -60,11 +61,17 @@ ACP runtime concerns should stay split across three orthogonal layers:
 3. Frontend ACP conversation/debug surfaces consume ordered events.
 4. UI applies rendering policies (group/fold/humanized payloads/permission linking).
 
-Codex is a special case inside the provider adapter: `agenthub-codex-acp` uses the upstream Codex
-app-server/thread protocol internally, but AgentHub's main process and web surfaces should continue
-to consume ACP requests, ACP notifications, and AgentHub-normalized ACP event JSON as the stable
-boundary. Codex-native state may be exposed only through explicit diagnostics metadata, not by
-making the primary runtime path Codex-specific.
+Codex and Claude are special cases inside the provider adapter layer:
+
+- `agenthub-codex-acp` uses the upstream Codex app-server/thread protocol internally, but
+  AgentHub's main process and web surfaces should continue to consume ACP requests, ACP
+  notifications, and AgentHub-normalized ACP event JSON as the stable boundary. Codex-native state
+  may be exposed only through explicit diagnostics metadata, not by making the primary runtime path
+  Codex-specific.
+- `agenthub-claude-acp` is AgentHub's distributed Claude ACP binary. It wraps the Rust
+  `claude-code-acp-rs` library and always starts ACP server mode for AgentHub-managed sessions,
+  while still leaving Claude credentials and model settings in the adapter-supported Anthropic
+  environment or Claude settings files.
 
 ### 4) Conversation/Debug Surfaces
 
@@ -204,9 +211,10 @@ ACP permission requests are first-class runtime records:
   not an abort/cancel outcome.
 - Gemini/Kimi/Claude ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
 - Gemini CLI bootstrap should track the current upstream ACP contract (`gemini --acp`) while continuing to tolerate the legacy `--experimental-acp` flag in provider detection for backward compatibility.
-- Claude ACP support is external-adapter based. AgentHub recognizes `claude-agent-acp` as an ACP
-  runtime directly, and recognizes `claude-code-acp-rs` only when launched with `--acp` so
-  headless or diagnostic Claude Code invocations are not misclassified as interactive ACP sessions.
+- Claude ACP support has a canonical AgentHub-distributed command: `agenthub-claude-acp`.
+  Compatibility detection still recognizes `claude-agent-acp` as an ACP runtime directly, and
+  recognizes `claude-code-acp-rs` only when launched with `--acp` so headless or diagnostic Claude
+  Code invocations are not misclassified as interactive ACP sessions.
 - When an ACP provider returns `auth_required`, AgentHub should surface an explicit setup error instead of silently retrying interactive auth flows on behalf of a remote user.
 
 ### 7) Placement And Proxy Contract

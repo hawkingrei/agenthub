@@ -16,6 +16,7 @@ describe("agent presets", () => {
       "codex",
       "gemini",
       "kimi",
+      "claude",
       "claude_agent",
       "claude_code_rs",
     ]);
@@ -25,6 +26,7 @@ describe("agent presets", () => {
     expect(isAgentPresetId("codex")).toBe(true);
     expect(isAgentPresetId("gemini")).toBe(true);
     expect(isAgentPresetId("kimi")).toBe(true);
+    expect(isAgentPresetId("claude")).toBe(true);
     expect(isAgentPresetId("claude_agent")).toBe(true);
     expect(isAgentPresetId("claude_code_rs")).toBe(true);
     expect(isAgentPresetId("unknown")).toBe(false);
@@ -33,10 +35,12 @@ describe("agent presets", () => {
   it("formats command summaries", () => {
     const codex = getAgentPreset(DEFAULT_AGENT_PRESET_ID);
     const gemini = getAgentPreset("gemini");
+    const claude = getAgentPreset("claude");
     const claudeAgent = getAgentPreset("claude_agent");
     const claudeCodeRs = getAgentPreset("claude_code_rs");
     expect(formatAgentCommand(codex)).toBe("agenthub-codex-acp");
     expect(formatAgentCommand(gemini)).toBe("gemini --acp");
+    expect(formatAgentCommand(claude)).toBe("agenthub-claude-acp");
     expect(formatAgentCommand(claudeAgent)).toBe("claude-agent-acp");
     expect(formatAgentCommand(claudeCodeRs)).toBe("claude-code-acp-rs --acp");
   });
@@ -45,6 +49,7 @@ describe("agent presets", () => {
     expect(resolveAcpProvider("agenthub-codex-acp")).toBe("codex");
     expect(resolveAcpProvider("/usr/local/bin/gemini")).toBe("gemini");
     expect(resolveAcpProvider("kimi")).toBe("kimi");
+    expect(resolveAcpProvider("agenthub-claude-acp")).toBe("claude");
     expect(resolveAcpProvider("claude-agent-acp")).toBe("claude");
     expect(resolveAcpProvider("/opt/bin/claude-code-acp-rs")).toBe("claude");
     expect(resolveAcpProvider("claude-code-acp-rs --acp")).toBe("claude");
@@ -59,6 +64,7 @@ describe("agent presets", () => {
       .toBe("gemini-1.5-pro");
     expect(formatAgentModelLabel("kimi", ["--model=moonshot-v1"]))
       .toBe("moonshot-v1");
+    expect(formatAgentModelLabel("agenthub-claude-acp", [])).toBe("Claude");
     expect(formatAgentModelLabel("claude-code-acp-rs", [])).toBe("Claude");
     expect(formatAgentModelLabel("claude-code-acp-rs --acp", []))
       .toBe("Claude");

@@ -1,0 +1,28 @@
+[package]
+name = "agenthub-claude-acp"
+version = "0.1.0"
+edition = "2024"
+authors = ["AgentHub <dev@agenthub.local>"]
+license = "Apache-2.0"
+description = "AgentHub ACP adapter wrapper for Claude Code"
+repository = "https://github.com/hawkingrei/agenthub"
+homepage = "https://github.com/hawkingrei/agenthub"
+
+[[bin]]
+name = "agenthub-claude-acp"
+path = "src/main.rs"
+
+[lib]
+name = "agenthub_claude_acp"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+claude-code-acp-rs = { version = "0.1.22", default-features = false }
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+
+[lints.rust]
+let-underscore = "warn"
+rust-2018-idioms = "warn"
+unused = "warn"

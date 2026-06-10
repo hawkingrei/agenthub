@@ -89,7 +89,10 @@ function isClaudeAcpRuntime(agent: AgentRecord): boolean {
   const commandName = commandParts[0]?.split(/[\\/]/).pop();
   const args = [...commandParts.slice(1), ...(agent.args ?? []).map((arg) => arg.toLowerCase())];
 
-  if (commandName === "claude-agent-acp") {
+  if (
+    commandName === "agenthub-claude-acp" ||
+    commandName === "claude-agent-acp"
+  ) {
     return true;
   }
   return commandName === "claude-code-acp-rs" && args.includes("--acp");

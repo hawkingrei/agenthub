@@ -2,6 +2,7 @@
 members = [
     ".",
     "agenthub-codex-acp",
+    "crates/agenthub-claude-acp",
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
     "crates/agenthub-managed-skills",

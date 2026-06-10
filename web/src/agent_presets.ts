@@ -2,6 +2,7 @@ export type AgentPresetId =
   | "codex"
   | "gemini"
   | "kimi"
+  | "claude"
   | "claude_agent"
   | "claude_code_rs";
 
@@ -36,15 +37,22 @@ const PRESETS: AgentPreset[] = [
     provider: "kimi",
   },
   {
+    id: "claude",
+    label: "Claude ACP",
+    command: "agenthub-claude-acp",
+    args: [],
+    provider: "claude",
+  },
+  {
     id: "claude_agent",
-    label: "Claude Agent ACP",
+    label: "Claude Agent ACP (external)",
     command: "claude-agent-acp",
     args: [],
     provider: "claude",
   },
   {
     id: "claude_code_rs",
-    label: "Claude Code ACP (Rust)",
+    label: "Claude Code ACP (external Rust)",
     command: "claude-code-acp-rs",
     args: ["--acp"],
     provider: "claude",
@@ -60,6 +68,7 @@ const COMMAND_PROVIDER_MAP = new Map<string, string>([
   ["codex-acp", "codex"],
   ["gemini", "gemini"],
   ["kimi", "kimi"],
+  ["agenthub-claude-acp", "claude"],
   ["claude-agent-acp", "claude"],
   ["claude-code-acp-rs", "claude"],
 ]);

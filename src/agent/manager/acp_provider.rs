@@ -170,7 +170,9 @@ fn acp_provider_for_command_with_binary(
     match command_name {
         "gemini" => Some(AcpProviderSpec::GEMINI),
         "kimi" => Some(AcpProviderSpec::KIMI),
-        "claude-agent-acp" | "claude-code-acp-rs" => Some(AcpProviderSpec::CLAUDE),
+        "agenthub-claude-acp" | "claude-agent-acp" | "claude-code-acp-rs" => {
+            Some(AcpProviderSpec::CLAUDE)
+        }
         "agenthub-codex-acp" | "codex-acp" => Some(AcpProviderSpec::CODEX),
         name => {
             let target_name = Path::new(codex_acp_binary)
