@@ -518,6 +518,9 @@ Remote execution preserves the actor model:
 
 This ensures remote execution feels like `AgentHub`, not a different product.
 
+For deployment-level transport rules, timestamp-window policy, and the mTLS
+identity roadmap, see [Remote Node Transport](../deployment/remote-node-transport.md).
+
 ## Health Checking
 
 ### Manual Health Check

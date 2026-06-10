@@ -57,19 +57,6 @@ Stable contracts:
 - [ ] `P1` Verify remote Team direct-mailbox routing on real multi-node teams: after the local API regression and routing fix in [journal/2026-05-26-team-remote-direct-mailbox-routing.md](journal/2026-05-26-team-remote-direct-mailbox-routing.md), confirm direct single-member delivery still preserves mention metadata plus summary/`detail_ref` payloads when the recipient agent is remote and transport falls back to p2p relay in a real multi-node rollout. Existing notes: [journal/2026-03-26-team-direct-mailbox-summary-first.md](journal/2026-03-26-team-direct-mailbox-summary-first.md).
 - [ ] `P2` Verify Team agent self-maintenance and deferred follow-up flows: `profile_patch_proposal`, `agent_time_trigger_*`, and operator-controlled `agent_loop` should behave consistently without blocking normal task progress.
 
-## Distributed, Nodes, And Release Matrix
-
-Stable contracts:
-
-- [features/agent-nodes.md](features/agent-nodes.md)
-- [features/distributed-node-architecture.md](features/distributed-node-architecture.md)
-- [features/distributed-node-registry-and-gossip.md](features/distributed-node-registry-and-gossip.md)
-- [features/logical-message-metadata-contract.md](features/logical-message-metadata-contract.md)
-
-Matrix to keep current across CI and at least one real multi-node rollout:
-
-- [ ] `P1` Remote-node transport posture: validate relay dedupe and timestamp-window policy in staging, design same-port HTTP plus gRPC multiplexing, and define the production identity path for long-term mTLS rollout.
-
 ## Observability, CI, And Docs
 
 - [ ] `P1` Verify deployed Pyroscope bootstrap: full configuration starts one process-wide profiler agent, partial configuration warns and keeps the service running, and shutdown stops the profiler cleanly. Stable contract: [features/pyroscope-profiling.md](features/pyroscope-profiling.md).

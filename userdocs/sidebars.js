@@ -45,6 +45,7 @@ const sidebars = {
       items: [
         'deployment/overview-and-topology',
         'deployment/production-checklist',
+        'deployment/remote-node-transport',
         'deployment/vercel-static-userdocs',
       ],
     },

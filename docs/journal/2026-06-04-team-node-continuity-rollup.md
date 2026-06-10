@@ -56,4 +56,5 @@ printed a local update-check config-store permission warning, which does not aff
 ## Follow-Ups
 
 - Real multi-node Team direct-mailbox routing still needs deployed verification.
-- Remote-node transport posture remains open for staging validation, same-port HTTP/gRPC multiplexing design, and long-term production identity/mTLS rollout.
+- Remote-node transport posture is superseded by `docs/journal/2026-06-09-remote-node-transport-posture.md`
+  and the canonical deployment contract in `docs/features/distributed-node-architecture.md`.

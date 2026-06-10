@@ -59,6 +59,9 @@ Use this when execution must span multiple machines:
 - Register remote Agent Nodes from the `Agents` page
 - Use encrypted gRPC between AgentHub and nodes
 - Configure a node-specific default worktree root when remote filesystems differ
+- Keep the current production posture on a dedicated internal `https://` gRPC
+  port; same-port HTTP plus gRPC multiplexing is a future-compatible design
+  target, not the conservative default.
 
 #### Distributed node prerequisites
 
@@ -117,6 +120,9 @@ Operational notes:
 - Remote-target agent creation fails fast when internal gRPC peer config is not
   available, so this should be treated as a deployment precondition rather than
   a runtime toggle.
+- Remote mailbox relay is at-least-once. Keep clocks synchronized and use the
+  documented idempotency/timestamp policy so retries do not create duplicate
+  destination mailbox rows.
 
 #### Recommended rollout order
 
@@ -169,5 +175,6 @@ cargo run -- -c /path/to/config.toml
 ## Related Pages
 
 - [Production Checklist](./production-checklist.md)
+- [Remote Node Transport](./remote-node-transport.md)
 - [Troubleshooting](../operations/troubleshooting.md)
 - [Configuration Basics](../getting-started/configuration-basics.md)
