@@ -40,7 +40,7 @@ describe("deriveDetectedNodeRuntimes", () => {
     const runtimes = deriveDetectedNodeRuntimes(remoteNode, [
       agent({ command: "gemini" }),
       agent({ id: "agent-2", command: "agenthub codex" }),
-      agent({ id: "agent-3", command: "claude-code-acp-rs" }),
+      agent({ id: "agent-3", command: "claude-code-acp-rs", args: ["--acp"] }),
     ]);
 
     expect(runtimes).toEqual([
@@ -76,6 +76,17 @@ describe("resolveAgentRuntimeLabels", () => {
     expect(
       resolveAgentRuntimeLabels(agent({ command: "claude-agent-acp" }))
     ).toEqual([{ label: "Claude ACP", tone: "subtle" }]);
+    expect(
+      resolveAgentRuntimeLabels(
+        agent({ command: "claude-code-acp-rs", args: ["--acp"] })
+      )
+    ).toEqual([{ label: "Claude ACP", tone: "subtle" }]);
+  });
+
+  it("does not label non-ACP Claude Code Rust invocations as ACP", () => {
+    expect(
+      resolveAgentRuntimeLabels(agent({ command: "claude-code-acp-rs", args: [] }))
+    ).toEqual([{ label: "Custom Runtime", tone: "outline" }]);
   });
 
   it("falls back to a custom runtime label when no known provider is detected", () => {
