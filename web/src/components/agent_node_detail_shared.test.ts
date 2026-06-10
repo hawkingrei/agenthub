@@ -40,7 +40,7 @@ describe("deriveDetectedNodeRuntimes", () => {
     const runtimes = deriveDetectedNodeRuntimes(remoteNode, [
       agent({ command: "gemini" }),
       agent({ id: "agent-2", command: "agenthub codex" }),
-      agent({ id: "agent-3", command: "agenthub-claude-acp" }),
+      agent({ id: "agent-3", command: "agenthub-acp", args: ["claude"] }),
     ]);
 
     expect(runtimes).toEqual([
@@ -74,7 +74,10 @@ describe("resolveAgentRuntimeLabels", () => {
 
   it("labels Claude ACP runtimes", () => {
     expect(
-      resolveAgentRuntimeLabels(agent({ command: "agenthub-claude-acp" }))
+      resolveAgentRuntimeLabels(agent({ command: "agenthub-acp", args: ["claude"] }))
+    ).toContainEqual({ label: "AgentHub Runtime", tone: "outline" });
+    expect(
+      resolveAgentRuntimeLabels(agent({ command: "agenthub-acp", args: ["claude"] }))
     ).toContainEqual({ label: "Claude ACP", tone: "subtle" });
     expect(
       resolveAgentRuntimeLabels(agent({ command: "claude-agent-acp" }))

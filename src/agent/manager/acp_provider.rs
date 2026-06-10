@@ -105,6 +105,11 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
     command: &str,
     args: &[String],
 ) -> Option<AcpProviderSpec> {
+    let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
+    if command_name == Some("agenthub-acp") {
+        return agenthub_acp_provider_spec_for_args(args);
+    }
+
     let provider = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
     match provider.id {
         ACP_PROVIDER_GEMINI => {
@@ -124,7 +129,6 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
             }
         }
         ACP_PROVIDER_CLAUDE => {
-            let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
             if command_name == Some("claude-code-acp-rs") && !args.iter().any(|arg| arg == "--acp")
             {
                 None
@@ -133,6 +137,13 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
             }
         }
         _ => Some(provider),
+    }
+}
+
+fn agenthub_acp_provider_spec_for_args(args: &[String]) -> Option<AcpProviderSpec> {
+    match args.first().map(|arg| arg.as_str()) {
+        Some("claude") => Some(AcpProviderSpec::CLAUDE),
+        _ => None,
     }
 }
 
@@ -170,9 +181,7 @@ fn acp_provider_for_command_with_binary(
     match command_name {
         "gemini" => Some(AcpProviderSpec::GEMINI),
         "kimi" => Some(AcpProviderSpec::KIMI),
-        "agenthub-claude-acp" | "claude-agent-acp" | "claude-code-acp-rs" => {
-            Some(AcpProviderSpec::CLAUDE)
-        }
+        "claude-agent-acp" | "claude-code-acp-rs" => Some(AcpProviderSpec::CLAUDE),
         "agenthub-codex-acp" | "codex-acp" => Some(AcpProviderSpec::CODEX),
         name => {
             let target_name = Path::new(codex_acp_binary)

@@ -338,8 +338,16 @@ fn acp_provider_for_agent_requires_expected_args() {
         Some(ACP_PROVIDER_KIMI)
     );
     assert_eq!(
-        acp_provider_for_agent_with_binary(codex_bin, "agenthub-claude-acp", &[]),
+        acp_provider_for_agent_with_binary(codex_bin, "agenthub-acp", &[]),
+        None
+    );
+    assert_eq!(
+        acp_provider_for_agent_with_binary(codex_bin, "agenthub-acp", &["claude".to_string()]),
         Some(ACP_PROVIDER_CLAUDE)
+    );
+    assert_eq!(
+        acp_provider_for_agent_with_binary(codex_bin, "agenthub-acp", &["unknown".to_string()]),
+        None
     );
     assert_eq!(
         acp_provider_for_agent_with_binary(codex_bin, "claude-agent-acp", &[]),

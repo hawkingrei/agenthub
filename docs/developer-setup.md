@@ -22,7 +22,7 @@ agenthub/
   docs/                   # Internal engineering docs and journals
   skills/                 # Team/agent runtime skill definitions
   agenthub-codex-acp/     # Codex ACP integration workspace member
-  crates/agenthub-claude-acp/ # Claude ACP wrapper workspace member
+  crates/agenthub-acp-adapter/ # Generic ACP provider adapter workspace member
 ```
 
 ## Local Startup

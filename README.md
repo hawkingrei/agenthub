@@ -60,7 +60,7 @@ Installed binaries:
 
 - `agenthub`
 - `agenthub-codex-acp`
-- `agenthub-claude-acp`
+- `agenthub-acp`
 
 To run AgentHub in the background:
 

@@ -2,16 +2,17 @@
 
 ## Summary
 
-AgentHub now treats Claude ACP as a first-class provider and ships an AgentHub-owned wrapper binary,
-`agenthub-claude-acp`. The implementation keeps Claude on the existing ACP boundary: AgentHub
-launches the configured command, detects the provider id, applies strict FIFO prompt delivery, and
-lets the adapter own Claude-specific protocol details.
+AgentHub now treats Claude ACP as a first-class provider and ships an AgentHub-owned generic ACP
+adapter binary, `agenthub-acp`. The Claude path is selected as `agenthub-acp claude`. The
+implementation keeps Claude on the existing ACP boundary: AgentHub launches the configured command,
+detects the provider id, applies strict FIFO prompt delivery, and lets the adapter own
+Claude-specific protocol details.
 
 ## Background
 
 Three Claude ACP command shapes are relevant:
 
-- `agenthub-claude-acp` is AgentHub's canonical distributed command. It wraps the Rust
+- `agenthub-acp claude` is AgentHub's canonical distributed command for Claude. It wraps the Rust
   `claude-code-acp-rs` library and forces ACP server mode.
 - `@agentclientprotocol/claude-agent-acp` exposes the `claude-agent-acp` executable and runs ACP over
   stdio by default as a compatibility path.
@@ -24,13 +25,14 @@ copying provider implementation code into AgentHub.
 
 ## Scope
 
-- Add `crates/agenthub-claude-acp` as the canonical Claude ACP wrapper binary.
-- Detect `agenthub-claude-acp` as Claude ACP.
+- Add `crates/agenthub-acp-adapter` as the generic ACP adapter crate with an `agenthub-acp`
+  binary.
+- Detect `agenthub-acp claude` as Claude ACP without treating bare `agenthub-acp` as a provider.
 - Detect `claude-agent-acp` as Claude ACP.
 - Detect `claude-code-acp-rs --acp` as Claude ACP.
 - Do not detect `claude-code-acp-rs` without `--acp`, because the binary also supports non-ACP
   modes.
-- Add Claude presets and runtime labels in the web UI, with `agenthub-claude-acp` as the primary
+- Add Claude presets and runtime labels in the web UI, with `agenthub-acp claude` as the primary
   preset.
 - Document Claude ACP command setup for operators.
 
@@ -43,8 +45,11 @@ copying provider implementation code into AgentHub.
 - The stable AgentHub boundary remains ACP JSON-RPC over the child process stream. Claude
   credentials and model configuration stay in the adapter-supported environment or Claude settings
   files.
-- The wrapper depends on the published `claude-code-acp-rs` library with default features disabled,
+- The adapter depends on the published `claude-code-acp-rs` library with default features disabled,
   avoiding a build-time bundled-Claude-CLI copy step in AgentHub's default Cargo/Bazel graph.
+- `agenthub-codex-acp` remains as the compatibility Codex entrypoint for this rollout. A future
+  follow-up can add `agenthub-acp codex` once the Codex adapter CLI can be folded without breaking
+  existing configs.
 
 ## Validation
 
@@ -52,8 +57,8 @@ Focused checks:
 
 ```bash
 cargo test acp_provider_for_agent_requires_expected_args -- --nocapture
-cargo test -p agenthub-claude-acp
-cargo check -p agenthub-claude-acp
+cargo test -p agenthub-acp-adapter
+cargo check -p agenthub-acp-adapter
 npm --prefix web run test -- src/agent_presets.test.ts src/components/agent_node_detail_shared.test.ts
 npm --prefix web run build
 npm --prefix userdocs run build

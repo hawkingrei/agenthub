@@ -41,7 +41,7 @@ agents:
 
 | Adapter | Command | Notes |
 |---------|---------|-------|
-| AgentHub Claude ACP | `agenthub-claude-acp` | Recommended. Shipped with AgentHub and runs Claude Code through ACP server mode. |
+| AgentHub Claude ACP | `agenthub-acp claude` | Recommended. Shipped with AgentHub and runs Claude Code through ACP server mode. |
 | Claude Agent SDK ACP | `claude-agent-acp` | Compatibility path provided by `@agentclientprotocol/claude-agent-acp`; runs in ACP mode by default. |
 | Claude Code ACP Rust | `claude-code-acp-rs --acp` | Compatibility path provided by `claude-code-acp-rs`; `--acp` is required for interactive ACP mode. |
 

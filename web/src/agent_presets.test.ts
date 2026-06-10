@@ -40,7 +40,7 @@ describe("agent presets", () => {
     const claudeCodeRs = getAgentPreset("claude_code_rs");
     expect(formatAgentCommand(codex)).toBe("agenthub-codex-acp");
     expect(formatAgentCommand(gemini)).toBe("gemini --acp");
-    expect(formatAgentCommand(claude)).toBe("agenthub-claude-acp");
+    expect(formatAgentCommand(claude)).toBe("agenthub-acp claude");
     expect(formatAgentCommand(claudeAgent)).toBe("claude-agent-acp");
     expect(formatAgentCommand(claudeCodeRs)).toBe("claude-code-acp-rs --acp");
   });
@@ -49,7 +49,9 @@ describe("agent presets", () => {
     expect(resolveAcpProvider("agenthub-codex-acp")).toBe("codex");
     expect(resolveAcpProvider("/usr/local/bin/gemini")).toBe("gemini");
     expect(resolveAcpProvider("kimi")).toBe("kimi");
-    expect(resolveAcpProvider("agenthub-claude-acp")).toBe("claude");
+    expect(resolveAcpProvider("agenthub-acp")).toBe(null);
+    expect(resolveAcpProvider("agenthub-acp claude")).toBe("claude");
+    expect(resolveAcpProvider("/opt/bin/agenthub-acp claude")).toBe("claude");
     expect(resolveAcpProvider("claude-agent-acp")).toBe("claude");
     expect(resolveAcpProvider("/opt/bin/claude-code-acp-rs")).toBe("claude");
     expect(resolveAcpProvider("claude-code-acp-rs --acp")).toBe("claude");
@@ -64,7 +66,8 @@ describe("agent presets", () => {
       .toBe("gemini-1.5-pro");
     expect(formatAgentModelLabel("kimi", ["--model=moonshot-v1"]))
       .toBe("moonshot-v1");
-    expect(formatAgentModelLabel("agenthub-claude-acp", [])).toBe("Claude");
+    expect(formatAgentModelLabel("agenthub-acp", ["claude"])).toBe("Claude");
+    expect(formatAgentModelLabel("agenthub-acp claude", [])).toBe("Claude");
     expect(formatAgentModelLabel("claude-code-acp-rs", [])).toBe("Claude");
     expect(formatAgentModelLabel("claude-code-acp-rs --acp", []))
       .toBe("Claude");

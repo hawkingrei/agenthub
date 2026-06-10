@@ -9,13 +9,13 @@ build-web:
 	cd web && npm run build
 
 build:
-	cargo build -p agenthub -p agenthub-codex-acp -p agenthub-claude-acp
+	cargo build -p agenthub -p agenthub-codex-acp -p agenthub-acp-adapter
 
 run: run-server
 
 run-server: build-web
 	cargo build -p agenthub-codex-acp
-	cargo build -p agenthub-claude-acp
+	cargo build -p agenthub-acp-adapter
 	cargo run -p agenthub --
 
 test:

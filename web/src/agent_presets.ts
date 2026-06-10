@@ -39,8 +39,8 @@ const PRESETS: AgentPreset[] = [
   {
     id: "claude",
     label: "Claude ACP",
-    command: "agenthub-claude-acp",
-    args: [],
+    command: "agenthub-acp",
+    args: ["claude"],
     provider: "claude",
   },
   {
@@ -68,7 +68,6 @@ const COMMAND_PROVIDER_MAP = new Map<string, string>([
   ["codex-acp", "codex"],
   ["gemini", "gemini"],
   ["kimi", "kimi"],
-  ["agenthub-claude-acp", "claude"],
   ["claude-agent-acp", "claude"],
   ["claude-code-acp-rs", "claude"],
 ]);
@@ -102,8 +101,12 @@ export function formatAgentCommand(preset: AgentPreset): string {
 }
 
 export function resolveAcpProvider(command: string): string | null {
-  const name = commandBinaryName(command);
+  const tokens = commandTokens(command);
+  const name = commandBinaryNameFromToken(tokens[0] ?? "");
   if (!name) return null;
+  if (name === "agenthub-acp") {
+    return resolveAgenthubAcpProvider(tokens.slice(1));
+  }
   return COMMAND_PROVIDER_MAP.get(name) ?? null;
 }
 
@@ -113,7 +116,7 @@ export function formatAgentModelLabel(
 ): string | null {
   const model = extractArgValue(args, ["--model", "-m"]);
   if (model) return model;
-  const provider = resolveAcpProvider(command);
+  const provider = resolveAcpProviderFromCommandAndArgs(command, args);
   if (provider) {
     return PROVIDER_MODEL_LABELS.get(provider) ?? provider;
   }
@@ -122,8 +125,32 @@ export function formatAgentModelLabel(
 }
 
 function commandBinaryName(command: string): string | null {
-  const token = command.trim().split(/\s+/, 1)[0]?.trim();
+  return commandBinaryNameFromToken(commandTokens(command)[0] ?? "");
+}
+
+function commandBinaryNameFromToken(token: string): string | null {
   return token?.split(/[\\/]/).pop()?.trim() || null;
+}
+
+function commandTokens(command: string): string[] {
+  return command.trim().split(/\s+/).filter(Boolean);
+}
+
+function resolveAcpProviderFromCommandAndArgs(
+  command: string,
+  args: string[],
+): string | null {
+  const tokens = commandTokens(command);
+  const name = commandBinaryNameFromToken(tokens[0] ?? "");
+  if (!name) return null;
+  if (name === "agenthub-acp") {
+    return resolveAgenthubAcpProvider([...tokens.slice(1), ...args]);
+  }
+  return COMMAND_PROVIDER_MAP.get(name) ?? null;
+}
+
+function resolveAgenthubAcpProvider(args: string[]): string | null {
+  return args[0]?.trim().toLowerCase() === "claude" ? "claude" : null;
 }
 
 function extractArgValue(args: string[], flags: string[]): string | null {

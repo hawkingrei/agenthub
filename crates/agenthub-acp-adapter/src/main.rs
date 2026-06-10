@@ -1,6 +1,6 @@
 use std::io::IsTerminal;
 
-use agenthub_claude_acp::{Cli, run_with_cli, shutdown};
+use agenthub_acp_adapter::{Cli, run_with_cli, shutdown};
 use clap::Parser;
 use tokio::signal;
 

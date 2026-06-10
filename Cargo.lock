@@ -439,6 +439,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "agenthub-acp-adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "claude-code-acp-rs",
+ "tokio",
+]
+
+[[package]]
 name = "agenthub-acp-core"
 version = "0.1.0"
 dependencies = [
@@ -499,16 +509,6 @@ dependencies = [
  "chrono",
  "sqlx",
  "uuid",
-]
-
-[[package]]
-name = "agenthub-claude-acp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "claude-code-acp-rs",
- "tokio",
 ]
 
 [[package]]

@@ -120,7 +120,7 @@ If you point `codex_acp.binary` at a custom binary, keep it compatible with the
 same ACP protocol surface before mixing it into a shared deployment.
 
 Other ACP adapters are configured per agent command rather than through this
-section. For Claude, prefer the AgentHub-distributed `agenthub-claude-acp`
+section. For Claude, prefer the AgentHub-distributed `agenthub-acp claude`
 command. Compatibility commands `claude-agent-acp` and `claude-code-acp-rs --acp`
 are also recognized. Configure Anthropic credentials through the adapter-supported
 environment or Claude settings files.

@@ -9,7 +9,7 @@ env:
   BAZEL_BUILD_TARGETS: >-
     //:agenthub
     //agenthub-codex-acp:agenthub_codex_acp_bin
-    //crates/agenthub-claude-acp:agenthub_claude_acp_bin
+    //crates/agenthub-acp-adapter:agenthub_acp_adapter_bin
   BAZEL_ROOT_RUNTIME_PREREQ_TARGETS: >-
     //:agenthub
   BAZEL_ROOT_TEST_TARGETS: >-
@@ -17,7 +17,7 @@ env:
     //:web_assets_test
   BAZEL_CRATE_TEST_TARGETS: >-
     //agenthub-codex-acp:agenthub_codex_acp_tests
-    //crates/agenthub-claude-acp:agenthub_claude_acp_tests
+    //crates/agenthub-acp-adapter:agenthub_acp_adapter_tests
     //crates/agenthub-acp-core:agenthub_acp_core_tests
     //crates/agenthub-acp:agenthub_acp_tests
     //crates/agenthub-config:agenthub_config_tests
@@ -34,7 +34,7 @@ env:
   BAZEL_COVERAGE_TARGETS: >-
     //:agenthub_unit_tests
     //agenthub-codex-acp:agenthub_codex_acp_tests
-    //crates/agenthub-claude-acp:agenthub_claude_acp_tests
+    //crates/agenthub-acp-adapter:agenthub_acp_adapter_tests
     //crates/agenthub-acp-core:agenthub_acp_core_tests
     //crates/agenthub-acp:agenthub_acp_tests
     //crates/agenthub-config:agenthub_config_tests

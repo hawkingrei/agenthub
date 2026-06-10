@@ -1,15 +1,27 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use claude_code_acp::Cli as UpstreamCli;
 
 const UPSTREAM_DEFAULT_OTEL_SERVICE_NAME: &str = "claude-code-acp-rs";
-const AGENTHUB_OTEL_SERVICE_NAME: &str = "agenthub-claude-acp";
+const AGENTHUB_OTEL_SERVICE_NAME: &str = "agenthub-acp";
 
 #[derive(Parser, Debug, Clone, PartialEq, Eq)]
-#[command(name = "agenthub-claude-acp")]
-#[command(version, about = "AgentHub ACP adapter wrapper for Claude Code")]
+#[command(name = "agenthub-acp")]
+#[command(version, about = "AgentHub ACP provider adapter")]
 pub struct Cli {
+    #[command(subcommand)]
+    pub provider: ProviderCommand,
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum ProviderCommand {
+    /// Run Claude Code through ACP server mode.
+    Claude(ClaudeCli),
+}
+
+#[derive(Args, Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeCli {
     /// Compatibility no-op. AgentHub's wrapper always runs ACP server mode.
     #[arg(long, hide = true)]
     pub acp: bool,
@@ -43,8 +55,8 @@ pub struct Cli {
     pub otel_service_name: String,
 }
 
-impl From<Cli> for UpstreamCli {
-    fn from(cli: Cli) -> Self {
+impl From<ClaudeCli> for UpstreamCli {
+    fn from(cli: ClaudeCli) -> Self {
         Self {
             acp: true,
             prompt: None,
@@ -60,8 +72,12 @@ impl From<Cli> for UpstreamCli {
 }
 
 pub async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
-    let upstream_cli = UpstreamCli::from(cli);
-    claude_code_acp::run_acp_with_cli(&upstream_cli).await
+    match cli.provider {
+        ProviderCommand::Claude(claude) => {
+            let upstream_cli = UpstreamCli::from(claude);
+            claude_code_acp::run_acp_with_cli(&upstream_cli).await
+        }
+    }
 }
 
 pub fn shutdown() {
@@ -82,23 +98,32 @@ mod tests {
 
     #[test]
     fn maps_to_upstream_acp_mode() {
-        let upstream = UpstreamCli::from(Cli::parse_from(["agenthub-claude-acp"]));
+        let Cli {
+            provider: ProviderCommand::Claude(claude),
+        } = Cli::parse_from(["agenthub-acp", "claude"]);
+        let upstream = UpstreamCli::from(claude);
         assert!(upstream.acp);
         assert!(upstream.prompt.is_none());
-        assert_eq!(upstream.otel_service_name, "agenthub-claude-acp");
+        assert_eq!(upstream.otel_service_name, "agenthub-acp");
     }
 
     #[test]
     fn keeps_upstream_acp_flag_compatible() {
-        let upstream = UpstreamCli::from(Cli::parse_from(["agenthub-claude-acp", "--acp"]));
+        let Cli {
+            provider: ProviderCommand::Claude(claude),
+        } = Cli::parse_from(["agenthub-acp", "claude", "--acp"]);
+        let upstream = UpstreamCli::from(claude);
         assert!(upstream.acp);
         assert!(upstream.prompt.is_none());
     }
 
     #[test]
     fn maps_diagnostic_and_logging_flags() {
-        let upstream = UpstreamCli::from(Cli::parse_from([
-            "agenthub-claude-acp",
+        let Cli {
+            provider: ProviderCommand::Claude(claude),
+        } = Cli::parse_from([
+            "agenthub-acp",
+            "claude",
             "--diagnostic",
             "--log-dir",
             "/tmp/agenthub-claude",
@@ -110,7 +135,8 @@ mod tests {
             "http://localhost:4317",
             "--otel-service-name",
             "custom-claude",
-        ]));
+        ]);
+        let upstream = UpstreamCli::from(claude);
         assert!(upstream.acp);
         assert!(upstream.diagnostic);
         assert_eq!(
@@ -131,7 +157,7 @@ mod tests {
     fn normalizes_upstream_default_service_name() {
         assert_eq!(
             normalize_otel_service_name("claude-code-acp-rs".to_string()),
-            "agenthub-claude-acp"
+            "agenthub-acp"
         );
     }
 }

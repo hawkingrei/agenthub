@@ -1,19 +1,19 @@
 [package]
-name = "agenthub-claude-acp"
+name = "agenthub-acp-adapter"
 version = "0.1.0"
 edition = "2024"
 authors = ["AgentHub <dev@agenthub.local>"]
 license = "Apache-2.0"
-description = "AgentHub ACP adapter wrapper for Claude Code"
+description = "AgentHub ACP provider adapter entrypoint"
 repository = "https://github.com/hawkingrei/agenthub"
 homepage = "https://github.com/hawkingrei/agenthub"
 
 [[bin]]
-name = "agenthub-claude-acp"
+name = "agenthub-acp"
 path = "src/main.rs"
 
 [lib]
-name = "agenthub_claude_acp"
+name = "agenthub_acp_adapter"
 path = "src/lib.rs"
 
 [dependencies]
