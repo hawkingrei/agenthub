@@ -47,9 +47,9 @@ copying provider implementation code into AgentHub.
   files.
 - The adapter depends on the published `claude-code-acp-rs` library with default features disabled,
   avoiding a build-time bundled-Claude-CLI copy step in AgentHub's default Cargo/Bazel graph.
-- `agenthub-codex-acp` remains as the compatibility Codex entrypoint for this rollout. A future
-  follow-up can add `agenthub-acp codex` once the Codex adapter CLI can be folded without breaking
-  existing configs.
+- `agenthub-codex-acp` remains as the compatibility Codex entrypoint for this rollout. The
+  follow-up `agenthub-acp codex` path is tracked in
+  [2026-06-11-generic-codex-acp-entrypoint.md](2026-06-11-generic-codex-acp-entrypoint.md).
 
 ## Validation
 

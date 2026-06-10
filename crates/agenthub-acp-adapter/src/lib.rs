@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 use claude_code_acp::Cli as UpstreamCli;
+use codex_utils_cli::CliConfigOverrides;
 
 const UPSTREAM_DEFAULT_OTEL_SERVICE_NAME: &str = "claude-code-acp-rs";
 const AGENTHUB_OTEL_SERVICE_NAME: &str = "agenthub-acp";
@@ -16,8 +17,18 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
 pub enum ProviderCommand {
+    /// Run Codex through AgentHub's ACP server mode.
+    Codex(CodexCli),
+
     /// Run Claude Code through ACP server mode.
     Claude(ClaudeCli),
+}
+
+#[derive(Args, Debug, Clone, PartialEq, Eq)]
+pub struct CodexCli {
+    /// Override a Codex configuration value, using the same key=value format as codex -c.
+    #[arg(short = 'c', long = "config", value_name = "key=value", action = clap::ArgAction::Append)]
+    pub config_overrides: Vec<String>,
 }
 
 #[derive(Args, Debug, Clone, PartialEq, Eq)]
@@ -55,6 +66,14 @@ pub struct ClaudeCli {
     pub otel_service_name: String,
 }
 
+impl From<CodexCli> for CliConfigOverrides {
+    fn from(cli: CodexCli) -> Self {
+        Self {
+            raw_overrides: cli.config_overrides,
+        }
+    }
+}
+
 impl From<ClaudeCli> for UpstreamCli {
     fn from(cli: ClaudeCli) -> Self {
         let diagnostic = cli.diagnostic || cli.log_dir.is_some() || cli.log_file.is_some();
@@ -74,6 +93,10 @@ impl From<ClaudeCli> for UpstreamCli {
 
 pub async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
     match cli.provider {
+        ProviderCommand::Codex(codex) => {
+            agenthub_codex_acp::run_main(None, CliConfigOverrides::from(codex)).await?;
+            Ok(())
+        }
         ProviderCommand::Claude(claude) => {
             let upstream_cli = UpstreamCli::from(claude);
             claude_code_acp::run_acp_with_cli(&upstream_cli).await
@@ -98,10 +121,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn maps_codex_config_overrides() {
+        let Cli {
+            provider: ProviderCommand::Codex(codex),
+        } = Cli::parse_from([
+            "agenthub-acp",
+            "codex",
+            "-c",
+            "model=gpt-5",
+            "--config",
+            "sandbox_mode=workspace-write",
+        ])
+        else {
+            panic!("expected codex provider");
+        };
+        let overrides = CliConfigOverrides::from(codex);
+        assert_eq!(
+            overrides.raw_overrides,
+            vec![
+                "model=gpt-5".to_string(),
+                "sandbox_mode=workspace-write".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn maps_to_upstream_acp_mode() {
         let Cli {
             provider: ProviderCommand::Claude(claude),
-        } = Cli::parse_from(["agenthub-acp", "claude"]);
+        } = Cli::parse_from(["agenthub-acp", "claude"])
+        else {
+            panic!("expected claude provider");
+        };
         let upstream = UpstreamCli::from(claude);
         assert!(upstream.acp);
         assert!(upstream.prompt.is_none());
@@ -112,7 +163,10 @@ mod tests {
     fn keeps_upstream_acp_flag_compatible() {
         let Cli {
             provider: ProviderCommand::Claude(claude),
-        } = Cli::parse_from(["agenthub-acp", "claude", "--acp"]);
+        } = Cli::parse_from(["agenthub-acp", "claude", "--acp"])
+        else {
+            panic!("expected claude provider");
+        };
         let upstream = UpstreamCli::from(claude);
         assert!(upstream.acp);
         assert!(upstream.prompt.is_none());
@@ -136,7 +190,10 @@ mod tests {
             "http://localhost:4317",
             "--otel-service-name",
             "custom-claude",
-        ]);
+        ])
+        else {
+            panic!("expected claude provider");
+        };
         let upstream = UpstreamCli::from(claude);
         assert!(upstream.acp);
         assert!(upstream.diagnostic);
@@ -163,7 +220,10 @@ mod tests {
             "claude",
             "--log-dir",
             "/tmp/agenthub-claude",
-        ]);
+        ])
+        else {
+            panic!("expected claude provider");
+        };
         let upstream = UpstreamCli::from(claude);
         assert!(upstream.diagnostic);
         assert_eq!(
@@ -173,7 +233,10 @@ mod tests {
 
         let Cli {
             provider: ProviderCommand::Claude(claude),
-        } = Cli::parse_from(["agenthub-acp", "claude", "--log-file", "claude.log"]);
+        } = Cli::parse_from(["agenthub-acp", "claude", "--log-file", "claude.log"])
+        else {
+            panic!("expected claude provider");
+        };
         let upstream = UpstreamCli::from(claude);
         assert!(upstream.diagnostic);
         assert_eq!(upstream.log_file, Some("claude.log".to_string()));

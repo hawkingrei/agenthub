@@ -41,6 +41,7 @@ describe("deriveDetectedNodeRuntimes", () => {
       agent({ command: "gemini" }),
       agent({ id: "agent-2", command: "agenthub codex" }),
       agent({ id: "agent-3", command: "agenthub-acp", args: ["claude"] }),
+      agent({ id: "agent-4", command: "agenthub-acp", args: ["codex"] }),
     ]);
 
     expect(runtimes).toEqual([
@@ -67,6 +68,12 @@ describe("deriveDetectedNodeRuntimes", () => {
 describe("resolveAgentRuntimeLabels", () => {
   it("keeps stable runtime badges for agenthub and codex-backed agents", () => {
     expect(resolveAgentRuntimeLabels(agent({ command: "agenthub codex" }))).toEqual([
+      { label: "AgentHub Runtime", tone: "outline" },
+      { label: "Codex CLI", tone: "subtle" },
+    ]);
+    expect(
+      resolveAgentRuntimeLabels(agent({ command: "agenthub-acp", args: ["codex"] }))
+    ).toEqual([
       { label: "AgentHub Runtime", tone: "outline" },
       { label: "Codex CLI", tone: "subtle" },
     ]);

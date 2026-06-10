@@ -80,7 +80,7 @@ impl AgentManager {
             return command.to_string();
         }
         let configured = &self.codex_acp_binary;
-        if configured == command {
+        if !should_use_configured_codex_binary(configured, command) {
             return command.to_string();
         }
         let configured_path = Path::new(configured);
@@ -142,9 +142,18 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
 
 fn agenthub_acp_provider_spec_for_args(args: &[String]) -> Option<AcpProviderSpec> {
     match args.first().map(|arg| arg.as_str()) {
+        Some("codex") => Some(AcpProviderSpec::CODEX),
         Some("claude") => Some(AcpProviderSpec::CLAUDE),
         _ => None,
     }
+}
+
+fn should_use_configured_codex_binary(codex_acp_binary: &str, command: &str) -> bool {
+    if command == codex_acp_binary {
+        return false;
+    }
+    let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
+    command_name != Some("agenthub-acp")
 }
 
 pub(super) fn default_env_for_acp_provider(
@@ -203,6 +212,7 @@ mod tests {
     use super::{
         ACP_PROVIDER_CODEX, AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, AcpProviderSpec,
         acp_provider_spec_for_agent_with_binary, default_env_for_acp_provider,
+        should_use_configured_codex_binary,
     };
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -240,6 +250,22 @@ mod tests {
         );
         assert_ne!(provider.map(|spec| spec.id), Some(ACP_PROVIDER_CODEX));
         assert!(default_env_for_acp_provider(provider, true).is_empty());
+    }
+
+    #[test]
+    fn generic_codex_adapter_does_not_resolve_to_legacy_configured_binary() {
+        assert!(!should_use_configured_codex_binary(
+            "/opt/agenthub/bin/agenthub-codex-acp",
+            "agenthub-acp"
+        ));
+        assert!(!should_use_configured_codex_binary(
+            "/opt/agenthub/bin/agenthub-codex-acp",
+            "/usr/local/bin/agenthub-acp"
+        ));
+        assert!(should_use_configured_codex_binary(
+            "/opt/agenthub/bin/agenthub-codex-acp",
+            "codex-acp"
+        ));
     }
 
     #[test]

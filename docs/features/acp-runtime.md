@@ -63,11 +63,12 @@ ACP runtime concerns should stay split across three orthogonal layers:
 
 Codex and Claude are special cases inside the provider adapter layer:
 
-- `agenthub-codex-acp` uses the upstream Codex app-server/thread protocol internally, but
-  AgentHub's main process and web surfaces should continue to consume ACP requests, ACP
-  notifications, and AgentHub-normalized ACP event JSON as the stable boundary. Codex-native state
-  may be exposed only through explicit diagnostics metadata, not by making the primary runtime path
-  Codex-specific.
+- `agenthub-acp codex` is AgentHub's canonical distributed Codex ACP adapter path. It reuses the
+  same adapter implementation as the compatibility `agenthub-codex-acp` binary, which uses the
+  upstream Codex app-server/thread protocol internally. AgentHub's main process and web surfaces
+  should continue to consume ACP requests, ACP notifications, and AgentHub-normalized ACP event JSON
+  as the stable boundary. Codex-native state may be exposed only through explicit diagnostics
+  metadata, not by making the primary runtime path Codex-specific.
 - `agenthub-acp claude` is AgentHub's distributed Claude ACP adapter path. It wraps the Rust
   `claude-code-acp-rs` library and always starts ACP server mode for AgentHub-managed sessions,
   while still leaving Claude credentials and model settings in the adapter-supported Anthropic
@@ -212,6 +213,10 @@ ACP permission requests are first-class runtime records:
   not an abort/cancel outcome.
 - Gemini/Kimi/Claude ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
 - Gemini CLI bootstrap should track the current upstream ACP contract (`gemini --acp`) while continuing to tolerate the legacy `--experimental-acp` flag in provider detection for backward compatibility.
+- Codex ACP support has a canonical AgentHub-distributed command: `agenthub-acp codex`.
+  Compatibility detection still recognizes `agenthub-codex-acp` and `codex-acp` as Codex ACP
+  runtimes, and releases must keep packaging `agenthub-codex-acp` until a reviewed deprecation
+  window completes.
 - Claude ACP support has a canonical AgentHub-distributed command: `agenthub-acp claude`.
   Compatibility detection still recognizes `claude-agent-acp` as an ACP runtime directly, and
   recognizes `claude-code-acp-rs` only when launched with `--acp` so headless or diagnostic Claude
@@ -229,6 +234,8 @@ ACP permission requests are first-class runtime records:
 - `pnpm -C web run lint`
 - `pnpm -C web run build`
 - `pnpm -C web exec vitest run src/acp_panel.test.tsx src/acp_debug.test.tsx src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx src/hooks/use_acp_conversation.test.ts`
+- `cargo check -p agenthub-acp-adapter`
+- `cargo test -p agenthub-acp-adapter`
 - `cargo check -p agenthub-codex-acp`
 - `cargo test -p agenthub-codex-acp`
 - Focused `agenthub-codex-acp` tests for live-turn tool-call completeness:
@@ -266,19 +273,20 @@ ACP permission requests are first-class runtime records:
 - Keep ACP contracts provider-agnostic at system boundary; isolate provider drift in adapter modules.
 - Prefer additive compatibility changes when protocol evolves.
 - AgentHub owns Codex subagent enablement through `codex_acp.multi_agent_enabled` (default
-  `true`). When launching `agenthub-codex-acp`, AgentHub should pass an explicit
+  `true`). When launching Codex ACP through `agenthub-acp codex`, `agenthub-codex-acp`, or another
+  recognized Codex ACP command, AgentHub should pass an explicit
   `AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED=1|0` child-process env override so ACP sessions expose
-  Codex `Feature::Collab` deterministically without depending on per-user
-  `~/.codex/config.toml` toggles.
+  Codex `Feature::Collab` deterministically without depending on per-user `~/.codex/config.toml`
+  toggles.
 - `agenthub-acp` should materialize AgentHub-managed Codex skills under
   `~/.agents/skills/agenthub-runtime/.../SKILL.md` during ACP session bootstrap, then inject those
-  file-backed skills through ACP `<skill>` wrappers so `agenthub-codex-acp` can translate them into
+  file-backed skills through ACP `<skill>` wrappers so the Codex adapter can translate them into
   native Codex `UserInput::Skill` items.
 - Global managed-skill paths should stay on the home-rooted forms only: canonical absolute paths,
   with `~/...` accepted as a compatibility spelling before translation. Repo-local
   `<workdir>/.agents/skills/**/SKILL.md` remains an independent discovery path and should not be
   rewritten into the managed global namespace.
-- `agenthub-codex-acp` must keep ACP request/response I/O alive on a dedicated runtime thread so
+- The Codex ACP adapter must keep ACP request/response I/O alive on a dedicated runtime thread so
   ACP-backed filesystem reads can safely round-trip while tool handlers synchronously verify or
   patch existing files.
 - Dynamic actor runtime fields such as `team_id`, `current_run_id`, and continuity summaries should
@@ -341,3 +349,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-05-15-codex-acp-prompt-steering.md`
 - `docs/journal/2026-06-03-acp-provider-metadata-allowlist.md`
 - `docs/journal/2026-06-10-claude-acp-provider-support.md`
+- `docs/journal/2026-06-11-generic-codex-acp-entrypoint.md`

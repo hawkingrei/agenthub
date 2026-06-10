@@ -98,6 +98,17 @@ function isClaudeAcpRuntime(agent: AgentRecord): boolean {
   return commandName === "claude-code-acp-rs" && args.includes("--acp");
 }
 
+function isCodexAcpRuntime(agent: AgentRecord): boolean {
+  const commandParts = (agent.command ?? "").trim().toLowerCase().split(/\s+/);
+  const commandName = commandParts[0]?.split(/[\\/]/).pop();
+  const args = [...commandParts.slice(1), ...(agent.args ?? []).map((arg) => arg.toLowerCase())];
+
+  if (commandName === "agenthub-acp") {
+    return args[0] === "codex";
+  }
+  return commandName === "agenthub-codex-acp" || commandName === "codex-acp";
+}
+
 export function resolveAgentRuntimeLabels(
   agent: AgentRecord,
 ): AgentRuntimeLabel[] {
@@ -109,7 +120,7 @@ export function resolveAgentRuntimeLabels(
       tone: "outline",
     });
   }
-  if (command.includes("codex") || agent.code_mode) {
+  if (isCodexAcpRuntime(agent) || command.includes("codex") || agent.code_mode) {
     labels.set("Codex CLI", {
       label: "Codex CLI",
       tone: "subtle",
