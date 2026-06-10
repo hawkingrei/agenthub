@@ -88,6 +88,16 @@ jobs:
         run: |
           cross build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp --features release-vendored-openssl
 
+      - name: Build agenthub-acp (native)
+        if: '!matrix.cross'
+        run: |
+          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-acp-adapter
+
+      - name: Build agenthub-acp (cross)
+        if: matrix.cross
+        run: |
+          cross build --locked --release --target ${{ matrix.target }} -p agenthub-acp-adapter
+
       - name: Package
         shell: bash
         run: |
@@ -122,6 +132,7 @@ jobs:
 
           package_binary "agenthub"
           package_binary "agenthub-codex-acp"
+          package_binary "agenthub-acp"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

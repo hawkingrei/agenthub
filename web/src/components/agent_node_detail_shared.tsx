@@ -84,6 +84,20 @@ type AgentRuntimeLabel = {
   tone: "subtle" | "outline";
 };
 
+function isClaudeAcpRuntime(agent: AgentRecord): boolean {
+  const commandParts = (agent.command ?? "").trim().toLowerCase().split(/\s+/);
+  const commandName = commandParts[0]?.split(/[\\/]/).pop();
+  const args = [...commandParts.slice(1), ...(agent.args ?? []).map((arg) => arg.toLowerCase())];
+
+  if (commandName === "agenthub-acp") {
+    return args[0] === "claude";
+  }
+  if (commandName === "claude-agent-acp") {
+    return true;
+  }
+  return commandName === "claude-code-acp-rs" && args.includes("--acp");
+}
+
 export function resolveAgentRuntimeLabels(
   agent: AgentRecord,
 ): AgentRuntimeLabel[] {
@@ -104,6 +118,12 @@ export function resolveAgentRuntimeLabels(
   if (command.includes("gemini")) {
     labels.set("Gemini CLI", {
       label: "Gemini CLI",
+      tone: "subtle",
+    });
+  }
+  if (isClaudeAcpRuntime(agent)) {
+    labels.set("Claude ACP", {
+      label: "Claude ACP",
       tone: "subtle",
     });
   }
@@ -229,6 +249,9 @@ export function deriveDetectedNodeRuntimes(
     if (command.includes("gemini")) {
       observed.add("Gemini CLI");
     }
+    if (isClaudeAcpRuntime(agent)) {
+      observed.add("Claude ACP");
+    }
     if (command.includes("agenthub")) {
       observed.add("AgentHub Runtime");
     }
@@ -238,6 +261,7 @@ export function deriveDetectedNodeRuntimes(
     "AgentHub Runtime",
     "Codex CLI",
     "Gemini CLI",
+    "Claude ACP",
   ] as const;
   const tags: NodeDetectedRuntime[] = [];
   for (const label of orderedLabels) {
@@ -245,7 +269,11 @@ export function deriveDetectedNodeRuntimes(
       tags.push({ label, available: true });
       continue;
     }
-    if (label === "Codex CLI" || label === "Gemini CLI") {
+    if (
+      label === "Codex CLI" ||
+      label === "Gemini CLI" ||
+      label === "Claude ACP"
+    ) {
       tags.push({
         label: `${label} (no attached agent observed)`,
         available: false,

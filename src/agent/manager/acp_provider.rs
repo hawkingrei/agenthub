@@ -7,6 +7,7 @@ use super::AgentManager;
 pub(super) const ACP_PROVIDER_CODEX: &str = "codex";
 pub(super) const ACP_PROVIDER_GEMINI: &str = "gemini";
 pub(super) const ACP_PROVIDER_KIMI: &str = "kimi";
+pub(super) const ACP_PROVIDER_CLAUDE: &str = "claude";
 pub(super) const AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV: &str =
     "AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED";
 
@@ -38,6 +39,12 @@ impl AcpProviderSpec {
 
     const KIMI: Self = Self {
         id: ACP_PROVIDER_KIMI,
+        prompt_delivery_policy: AcpPromptDeliveryPolicy::StrictFifo,
+        default_mode_behavior: AcpDefaultModeBehavior::IgnoreConfigured,
+    };
+
+    const CLAUDE: Self = Self {
+        id: ACP_PROVIDER_CLAUDE,
         prompt_delivery_policy: AcpPromptDeliveryPolicy::StrictFifo,
         default_mode_behavior: AcpDefaultModeBehavior::IgnoreConfigured,
     };
@@ -98,6 +105,11 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
     command: &str,
     args: &[String],
 ) -> Option<AcpProviderSpec> {
+    let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
+    if command_name == Some("agenthub-acp") {
+        return agenthub_acp_provider_spec_for_args(args);
+    }
+
     let provider = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
     match provider.id {
         ACP_PROVIDER_GEMINI => {
@@ -116,7 +128,22 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
                 None
             }
         }
+        ACP_PROVIDER_CLAUDE => {
+            if command_name == Some("claude-code-acp-rs") && !args.iter().any(|arg| arg == "--acp")
+            {
+                None
+            } else {
+                Some(provider)
+            }
+        }
         _ => Some(provider),
+    }
+}
+
+fn agenthub_acp_provider_spec_for_args(args: &[String]) -> Option<AcpProviderSpec> {
+    match args.first().map(|arg| arg.as_str()) {
+        Some("claude") => Some(AcpProviderSpec::CLAUDE),
+        _ => None,
     }
 }
 
@@ -154,6 +181,7 @@ fn acp_provider_for_command_with_binary(
     match command_name {
         "gemini" => Some(AcpProviderSpec::GEMINI),
         "kimi" => Some(AcpProviderSpec::KIMI),
+        "claude-agent-acp" | "claude-code-acp-rs" => Some(AcpProviderSpec::CLAUDE),
         "agenthub-codex-acp" | "codex-acp" => Some(AcpProviderSpec::CODEX),
         name => {
             let target_name = Path::new(codex_acp_binary)

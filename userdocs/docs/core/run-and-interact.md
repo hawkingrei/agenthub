@@ -31,8 +31,22 @@ let you:
 - cancel an actively running ACP turn
 - force a new session when recovery is easier than continuing the current one
 
-These controls are runtime-specific. Codex, Gemini, and other ACP providers may
-surface different option sets.
+These controls are runtime-specific. Codex, Gemini, Claude, and other ACP
+providers may surface different option sets.
+
+## Claude ACP Runtimes
+
+AgentHub ships a Claude ACP wrapper and can also launch compatible external adapters as normal
+agents:
+
+| Adapter | Command | Notes |
+|---------|---------|-------|
+| AgentHub Claude ACP | `agenthub-acp claude` | Recommended. Shipped with AgentHub and runs Claude Code through ACP server mode. |
+| Claude Agent SDK ACP | `claude-agent-acp` | Compatibility path provided by `@agentclientprotocol/claude-agent-acp`; runs in ACP mode by default. |
+| Claude Code ACP Rust | `claude-code-acp-rs --acp` | Compatibility path provided by `claude-code-acp-rs`; `--acp` is required for interactive ACP mode. |
+
+Configure Anthropic credentials through the adapter-supported environment or Claude settings files
+before starting the agent.
 
 ## Pre-Run Checklist
 

@@ -1,4 +1,10 @@
-export type AgentPresetId = "codex" | "gemini" | "kimi";
+export type AgentPresetId =
+  | "codex"
+  | "gemini"
+  | "kimi"
+  | "claude"
+  | "claude_agent"
+  | "claude_code_rs";
 
 export type AgentPreset = {
   id: AgentPresetId;
@@ -30,11 +36,48 @@ const PRESETS: AgentPreset[] = [
     args: ["acp"],
     provider: "kimi",
   },
+  {
+    id: "claude",
+    label: "Claude ACP",
+    command: "agenthub-acp",
+    args: ["claude"],
+    provider: "claude",
+  },
+  {
+    id: "claude_agent",
+    label: "Claude Agent ACP (external)",
+    command: "claude-agent-acp",
+    args: [],
+    provider: "claude",
+  },
+  {
+    id: "claude_code_rs",
+    label: "Claude Code ACP (external Rust)",
+    command: "claude-code-acp-rs",
+    args: ["--acp"],
+    provider: "claude",
+  },
 ];
 
 const PRESET_MAP = new Map<AgentPresetId, AgentPreset>(
   PRESETS.map((preset) => [preset.id, preset])
 );
+
+const COMMAND_PROVIDER_MAP = new Map<string, string>([
+  ["agenthub-codex-acp", "codex"],
+  ["codex-acp", "codex"],
+  ["gemini", "gemini"],
+  ["kimi", "kimi"],
+  ["claude-agent-acp", "claude"],
+  ["claude-code-acp-rs", "claude"],
+]);
+
+const PROVIDER_MODEL_LABELS = new Map<string, string>([
+  ["codex", "Codex"],
+  ["gemini", "Gemini"],
+  ["kimi", "Kimi"],
+  ["claude", "Claude"],
+]);
 
 export const DEFAULT_AGENT_PRESET_ID: AgentPresetId = "codex";
 
@@ -58,12 +101,13 @@ export function formatAgentCommand(preset: AgentPreset): string {
 }
 
 export function resolveAcpProvider(command: string): string | null {
-  const name = command.split(/[\\/]/).pop()?.trim();
+  const tokens = commandTokens(command);
+  const name = commandBinaryNameFromToken(tokens[0] ?? "");
   if (!name) return null;
-  if (name === "agenthub-codex-acp" || name === "codex-acp") return "codex";
-  if (name === "gemini") return "gemini";
-  if (name === "kimi") return "kimi";
-  return null;
+  if (name === "agenthub-acp") {
+    return resolveAgenthubAcpProvider(tokens.slice(1));
+  }
+  return COMMAND_PROVIDER_MAP.get(name) ?? null;
 }
 
 export function formatAgentModelLabel(
@@ -72,15 +116,41 @@ export function formatAgentModelLabel(
 ): string | null {
   const model = extractArgValue(args, ["--model", "-m"]);
   if (model) return model;
-  const provider = resolveAcpProvider(command);
+  const provider = resolveAcpProviderFromCommandAndArgs(command, args);
   if (provider) {
-    if (provider === "codex") return "Codex";
-    if (provider === "gemini") return "Gemini";
-    if (provider === "kimi") return "Kimi";
-    return provider;
+    return PROVIDER_MODEL_LABELS.get(provider) ?? provider;
   }
-  const name = command.split(/[\\/]/).pop()?.trim();
+  const name = commandBinaryName(command);
   return name || null;
+}
+
+function commandBinaryName(command: string): string | null {
+  return commandBinaryNameFromToken(commandTokens(command)[0] ?? "");
+}
+
+function commandBinaryNameFromToken(token: string): string | null {
+  return token?.split(/[\\/]/).pop()?.trim() || null;
+}
+
+function commandTokens(command: string): string[] {
+  return command.trim().split(/\s+/).filter(Boolean);
+}
+
+function resolveAcpProviderFromCommandAndArgs(
+  command: string,
+  args: string[],
+): string | null {
+  const tokens = commandTokens(command);
+  const name = commandBinaryNameFromToken(tokens[0] ?? "");
+  if (!name) return null;
+  if (name === "agenthub-acp") {
+    return resolveAgenthubAcpProvider([...tokens.slice(1), ...args]);
+  }
+  return COMMAND_PROVIDER_MAP.get(name) ?? null;
+}
+
+function resolveAgenthubAcpProvider(args: string[]): string | null {
+  return args[0]?.trim().toLowerCase() === "claude" ? "claude" : null;
 }
 
 function extractArgValue(args: string[], flags: string[]): string | null {

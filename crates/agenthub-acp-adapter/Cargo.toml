@@ -1,0 +1,28 @@
+[package]
+name = "agenthub-acp-adapter"
+version = "0.1.0"
+edition = "2024"
+authors = ["AgentHub <dev@agenthub.local>"]
+license = "Apache-2.0"
+description = "AgentHub ACP provider adapter entrypoint"
+repository = "https://github.com/hawkingrei/agenthub"
+homepage = "https://github.com/hawkingrei/agenthub"
+
+[[bin]]
+name = "agenthub-acp"
+path = "src/main.rs"
+
+[lib]
+name = "agenthub_acp_adapter"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+claude-code-acp-rs = { version = "0.1.22", default-features = false }
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+
+[lints.rust]
+let-underscore = "warn"
+rust-2018-idioms = "warn"
+unused = "warn"
