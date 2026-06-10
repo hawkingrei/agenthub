@@ -57,10 +57,11 @@ pub struct ClaudeCli {
 
 impl From<ClaudeCli> for UpstreamCli {
     fn from(cli: ClaudeCli) -> Self {
+        let diagnostic = cli.diagnostic || cli.log_dir.is_some() || cli.log_file.is_some();
         Self {
             acp: true,
             prompt: None,
-            diagnostic: cli.diagnostic,
+            diagnostic,
             log_dir: cli.log_dir,
             log_file: cli.log_file,
             verbose: cli.verbose,
@@ -151,6 +152,31 @@ mod tests {
             Some("http://localhost:4317".to_string())
         );
         assert_eq!(upstream.otel_service_name, "custom-claude");
+    }
+
+    #[test]
+    fn log_output_flags_enable_diagnostic_mode() {
+        let Cli {
+            provider: ProviderCommand::Claude(claude),
+        } = Cli::parse_from([
+            "agenthub-acp",
+            "claude",
+            "--log-dir",
+            "/tmp/agenthub-claude",
+        ]);
+        let upstream = UpstreamCli::from(claude);
+        assert!(upstream.diagnostic);
+        assert_eq!(
+            upstream.log_dir,
+            Some(PathBuf::from("/tmp/agenthub-claude"))
+        );
+
+        let Cli {
+            provider: ProviderCommand::Claude(claude),
+        } = Cli::parse_from(["agenthub-acp", "claude", "--log-file", "claude.log"]);
+        let upstream = UpstreamCli::from(claude);
+        assert!(upstream.diagnostic);
+        assert_eq!(upstream.log_file, Some("claude.log".to_string()));
     }
 
     #[test]
