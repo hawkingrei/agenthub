@@ -10139,7 +10139,7 @@ dependencies = [
  "encoding_rs_io",
  "glob",
  "log",
- "memmap2 0.9.10",
+ "memmap2",
  "num_cpus",
  "once_cell",
  "regex",
