@@ -93,7 +93,7 @@ export function formatAgentCommand(preset: AgentPreset): string {
 }
 
 export function resolveAcpProvider(command: string): string | null {
-  const name = command.split(/[\\/]/).pop()?.trim();
+  const name = commandBinaryName(command);
   if (!name) return null;
   return COMMAND_PROVIDER_MAP.get(name) ?? null;
 }
@@ -108,8 +108,13 @@ export function formatAgentModelLabel(
   if (provider) {
     return PROVIDER_MODEL_LABELS.get(provider) ?? provider;
   }
-  const name = command.split(/[\\/]/).pop()?.trim();
+  const name = commandBinaryName(command);
   return name || null;
+}
+
+function commandBinaryName(command: string): string | null {
+  const token = command.trim().split(/\s+/, 1)[0]?.trim();
+  return token?.split(/[\\/]/).pop()?.trim() || null;
 }
 
 function extractArgValue(args: string[], flags: string[]): string | null {

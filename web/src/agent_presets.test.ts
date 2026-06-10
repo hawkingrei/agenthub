@@ -47,6 +47,9 @@ describe("agent presets", () => {
     expect(resolveAcpProvider("kimi")).toBe("kimi");
     expect(resolveAcpProvider("claude-agent-acp")).toBe("claude");
     expect(resolveAcpProvider("/opt/bin/claude-code-acp-rs")).toBe("claude");
+    expect(resolveAcpProvider("claude-code-acp-rs --acp")).toBe("claude");
+    expect(resolveAcpProvider("/opt/bin/gemini --model gemini-1.5-pro"))
+      .toBe("gemini");
     expect(resolveAcpProvider("unknown")).toBe(null);
   });
 
@@ -57,5 +60,9 @@ describe("agent presets", () => {
     expect(formatAgentModelLabel("kimi", ["--model=moonshot-v1"]))
       .toBe("moonshot-v1");
     expect(formatAgentModelLabel("claude-code-acp-rs", [])).toBe("Claude");
+    expect(formatAgentModelLabel("claude-code-acp-rs --acp", []))
+      .toBe("Claude");
+    expect(formatAgentModelLabel("/opt/bin/custom-agent --flag", []))
+      .toBe("custom-agent");
   });
 });
