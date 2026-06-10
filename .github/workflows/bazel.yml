@@ -58,6 +58,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Free disk space
+        # The GitHub-hosted runner ships ~14 GB free, which the instrumented Bazel
+        # build plus the repository-contents cache can exhaust ("No space left on
+        # device"). Drop large preinstalled toolchains we do not use to reclaim ~20 GB.
+        run: |
+          echo "Disk before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          sudo docker image prune --all --force || true
+          echo "Disk after:"; df -h /
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
       - name: Setup Rust
@@ -80,6 +90,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Free disk space
+        # The GitHub-hosted runner ships ~14 GB free, which the instrumented Bazel
+        # build plus the repository-contents cache can exhaust ("No space left on
+        # device"). Drop large preinstalled toolchains we do not use to reclaim ~20 GB.
+        run: |
+          echo "Disk before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          sudo docker image prune --all --force || true
+          echo "Disk after:"; df -h /
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
       - name: Setup Rust
@@ -104,6 +124,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Free disk space
+        # The GitHub-hosted runner ships ~14 GB free, which the instrumented Bazel
+        # build plus the repository-contents cache can exhaust ("No space left on
+        # device"). Drop large preinstalled toolchains we do not use to reclaim ~20 GB.
+        run: |
+          echo "Disk before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          sudo docker image prune --all --force || true
+          echo "Disk after:"; df -h /
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
       - name: Setup Rust
@@ -126,6 +156,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Free disk space
+        # The GitHub-hosted runner ships ~14 GB free, which the instrumented Bazel
+        # build plus the repository-contents cache can exhaust ("No space left on
+        # device"). Drop large preinstalled toolchains we do not use to reclaim ~20 GB.
+        run: |
+          echo "Disk before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          sudo docker image prune --all --force || true
+          echo "Disk after:"; df -h /
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
       - name: Setup Rust
