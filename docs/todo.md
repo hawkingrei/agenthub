@@ -59,7 +59,6 @@ Stable contracts:
 
 ## Observability, CI, And Docs
 
-- [ ] `P1` Verify deployed Pyroscope bootstrap: full configuration starts one process-wide profiler agent, partial configuration warns and keeps the service running, and shutdown stops the profiler cleanly. Stable contract: [features/pyroscope-profiling.md](features/pyroscope-profiling.md).
 - [ ] `P2` Continue `features` compaction wave 2: finish a second pass over residual Team/UI micro-journals, extract stable decisions into canonical feature specs, and leave explicit supersession pointers on merged journals so only records with distinct implementation evidence remain. See [features/README.md](features/README.md).
 
 ## Maintenance Rules
