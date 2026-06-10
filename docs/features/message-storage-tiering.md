@@ -104,12 +104,18 @@ Delivery index column family (`cf_index`)
 
 Body column family (`cf_body`)
 
-- maps `message_id` to the full body payload (text, tool output, JSON);
+- maps `authority_message_id` to the full body payload (text, tool output, JSON);
+- keyed by the canonical logical-message identity, not a per-delivery id, so one logical message stores
+  exactly one body even when it fans out to multiple actors/channels;
 - aggressively compressed by SST block compression (see §4);
 - large payloads and full bodies live here only — never inlined into a `MessageRef`.
 
 Keeping bodies out of the index keeps ordered scans cheap (small ref blocks) and confines body
-decompression to explicit single-message fetches.
+decompression to explicit single-message fetches. `authority_message_id` is the canonical logical
+message identity defined in
+[logical-message-metadata-contract.md](logical-message-metadata-contract.md); a per-delivery
+`message_id` (one per delivery/fan-out attempt) identifies an index row but is never the body key, so
+fan-out never duplicates a body.
 
 ### 3) Keyspace Layout
 
@@ -131,7 +137,7 @@ cursor/by_actor/<actor_id>/<channel_id> -> CursorState
 Body column family (`cf_body`):
 
 ```text
-body/by_message/<message_id> -> MessageBody   (engine-compressed)
+body/by_message/<authority_message_id> -> MessageBody   (engine-compressed, one per logical message)
 ```
 
 `message_kind` is a compact presentation hint such as `text`, `tool_call`, `event`, `thought`, or
@@ -148,15 +154,18 @@ ordering. The preferred shape is a fixed-width encoding of an authority sequence
 (for example `authority_seq:source_kind:source_row_id`); a UUIDv7-derived tuple is acceptable for
 single-node single-source streams. String keys must use a bytewise-order-preserving encoding.
 
-`message_id` is the logical delivery id and the body key. `archive_document_id` points to the LanceDB
-document. They are related but not interchangeable.
+`message_id` is the per-delivery id used in index rows; `authority_message_id` is the canonical
+logical-message identity and the `cf_body` key; `archive_document_id` points to the LanceDB document.
+They are related but not interchangeable: a single `authority_message_id` (one body) may have several
+delivery `message_id` index rows fanned out to different actors/channels.
 
 ### 4) Body Compression (SST)
 
 The body column family relies on RocksDB SST block compression rather than an application codec.
 
-- `cf_body` compression is `zstd`; `bottommost_compression` is `zstd` at a higher level so cold,
-  rarely-rewritten body data compacts to a smaller footprint than hot levels.
+- `cf_body` compression is `zstd`; `bottommost_compression` is the same `zstd` algorithm at a higher
+  zstd *compression level* (not an LSM level) on the bottommost LSM level, so cold, rarely-rewritten
+  body data compacts to a smaller footprint than hot levels.
 - `block_size` for `cf_body` is tuned so multiple small messages aggregate into one block, giving zstd
   cross-message context within a block. The index column family keeps a small block size for scan
   locality.
@@ -171,19 +180,34 @@ stored inside each SST and needs no version management.
 
 ### 5) Write Path
 
-The canonical write path is authority-first:
+The canonical write path is authority-first, but failure semantics differ for **derived** state (the
+index, always rebuildable) and **primary** state (the body, which after Phase 2 lives only in
+RocksDB). The body must have a durable home before `cf_body` acknowledges, so the body is staged inside
+the SQLite authority transaction.
 
-1. Write or update SQLite authority metadata rows inside the existing transaction boundary.
+1. In the existing SQLite authority transaction: write/update the metadata rows **and** insert the body
+   into a SQLite body outbox (`message_body_outbox`, keyed by `authority_message_id`). The body is
+   durably committed with the metadata.
 2. Build deterministic archive documents and append/upsert them into LanceDB.
 3. In one RocksDB `WriteBatch`: put the body into `cf_body` and put the derived index refs into
    `cf_index`.
+4. Once `cf_body` durably acknowledges the body, delete the outbox row for that `authority_message_id`.
 
-If archive or RocksDB writes fail after the SQLite authority commit, user-visible authority writes must
-not be rolled back. The delivery index is recovered by deterministic re-indexing from SQLite metadata
-plus the stored body. To bound the consistency window between an authority commit and its index write,
-each ordered prefix tracks the authority sequence it has been indexed up to (a per-prefix high-water
-mark); a read that observes the index lagging the authority sequence either falls back to SQLite or
-triggers read-repair so a freshly written message is never silently missing from the hot path.
+Failure handling:
+
+- The delivery **index** is derived. If the `cf_index` write fails after the authority commit, the
+  authority write is not rolled back; the index is re-derived from SQLite metadata. To bound the
+  window, each ordered prefix tracks the authority sequence it has been indexed up to (a per-prefix
+  high-water mark); a read that sees the index lagging the authority sequence falls back to SQLite or
+  triggers read-repair, so a freshly written message is never silently missing from the hot path.
+- The message **body** is primary. A `cf_body` write failure is a hard failure for the body path, but
+  it still does not roll back the metadata commit, because the body survives in the SQLite outbox. A
+  background drainer retries outbox rows into `cf_body` and clears them on durable ack. The outbox is
+  the source of truth for "bodies not yet confirmed in `cf_body`", so no body is lost even if the
+  process crashes between the authority commit and the `cf_body` ack.
+
+During Phase 1 the legacy SQLite body column also still holds the body, so the outbox is effectively
+redundant; from Phase 2 onward the outbox is the only non-RocksDB durable home for an unconfirmed body.
 
 For flows where LanceDB append happens asynchronously, the index may store a pending
 `archive_document_id` state, but it must preserve enough authority metadata for a later repair job to
@@ -200,7 +224,7 @@ Hot ordered reads prefer RocksDB once the backend is enabled:
 - ack/cursor reads use `ack/by_actor` and `cursor/by_actor`.
 
 Ordered reads return body-free `MessageRef` rows. Rendering or returning a full message body fetches
-`body/by_message/<message_id>` from `cf_body` on demand (one block decompress per body).
+`body/by_message/<authority_message_id>` from `cf_body` on demand (one block decompress per body).
 
 Search APIs continue to use LanceDB. Search results may optionally hydrate delivery state from the
 index when the UI needs unread/ack/cursor hints, but search ranking and body matching stay in the
@@ -211,28 +235,30 @@ validated and the SQLite body column has been dropped.
 
 ### 7) Rebuild And Repair
 
-The delivery index is fully rebuildable. The body store is primary data and is not rebuildable from
-SQLite once the SQLite body column is dropped.
+The delivery index is fully rebuildable **from SQLite authority metadata alone**. The body store is
+primary data and is not rebuildable from SQLite once the SQLite body column is dropped. `cf_body` is
+therefore never an input to index rebuild — only to integrity checks — so partial body loss can never
+block an index rebuild.
 
-Index inputs:
+Index rebuild inputs:
 
 - SQLite authority rows: `team_conversation_messages`, `team_actor_messages`, `team_run_events`, main
   and per-agent `agent_events`, channel replica rows when present;
-- the stored body in `cf_body`;
-- LanceDB archive documents or deterministic archive document-id builders.
+- deterministic `archive_document_id` builders (the index stores the id; it does not need to read the
+  archive document to rebuild).
 
 Required operations:
 
 - dry-run index scan that reports expected key counts per namespace;
-- rebuild index namespace for one team, channel, agent, run, or actor;
-- rebuild all delivery indexes from SQLite metadata plus `cf_body`;
-- verify index refs point to existing `cf_body` entries and (when archive is enabled) existing archive
-  document ids;
+- rebuild index namespace for one team, channel, agent, run, or actor from SQLite metadata;
+- rebuild all delivery indexes from SQLite metadata;
+- integrity check (not rebuild): verify each index ref has a matching `cf_body` entry and, when archive
+  is enabled, an existing archive document id;
 - detect and report orphan index refs, with an explicit prune mode that deletes refs not backed by
   authority rows;
-- detect index refs whose `cf_body` entry is missing (a body-loss signal that backup restore must
-  resolve; LanceDB archive may be used as a best-effort body recovery source but is not authoritative
-  and may be incomplete).
+- detect index refs whose `cf_body` entry is missing (a body-loss signal that the SQLite body outbox or
+  a backup restore must resolve; LanceDB archive may be used as a best-effort body recovery source but
+  is not authoritative and may be incomplete).
 
 ### 8) Distributed Node Semantics
 
@@ -261,9 +287,11 @@ it must not authorize or redefine message authority.
 - SQLite authority rows are the source of truth for message identity, ownership, delivery state, and
   idempotency.
 - RocksDB `cf_index` rows are projections derived from SQLite authority rows; conflicts are resolved by
-  rebuilding the index from SQLite plus `cf_body`.
+  rebuilding the index from SQLite metadata alone (`cf_body` is never an index-rebuild input).
 - RocksDB `cf_body` is the authoritative store of message body bytes after migration; it is primary
-  data, must be backed up, and is not rebuildable from SQLite metadata alone.
+  data, must be backed up, and is not rebuildable from SQLite metadata alone. Until `cf_body` durably
+  acknowledges a body, that body remains in the SQLite `message_body_outbox`, so an authority commit
+  never leaves a body without a durable home.
 - LanceDB rows are eventually-consistent search projections; they may lag or be incomplete and are
   never the authoritative source of body bytes or delivery state.
 
@@ -278,7 +306,7 @@ it must not authorize or redefine message authority.
 
 ### 3) Body Storage And Compression Contract
 
-- The message body lives in `cf_body` keyed by `message_id`.
+- The message body lives in `cf_body` keyed by `authority_message_id` (one body per logical message).
 - Compression is engine-managed via SST block compression (`zstd`, higher-level `bottommost`); no
   application-level per-row codec is applied to `cf_body`.
 - A trained zstd dictionary is out of scope for the first rollout; plain zstd only.
@@ -317,10 +345,12 @@ it must not authorize or redefine message authority.
 
 - Migration is staged and non-destructive:
   - Phase 1 (canonical write becomes dual-body): new writes put the body into both SQLite (compat) and
-    `cf_body`; reads can be switched to RocksDB behind the flag; historical bodies are backfilled into
-    `cf_body` by idempotent, resumable, prefix-scoped jobs.
+    `cf_body`, with the SQLite body outbox staged in the authority transaction; reads can be switched
+    to RocksDB behind the flag; historical bodies are backfilled into `cf_body` by idempotent,
+    resumable, prefix-scoped jobs.
   - Phase 2 (canonical): once `cf_body` is validated and included in backups, the SQLite body column is
-    dropped; SQLite becomes metadata-only.
+    dropped; SQLite becomes metadata-only and the `message_body_outbox` becomes the only non-RocksDB
+    durable home for a not-yet-confirmed body.
 - Historical SQLite rows remain readable during Phase 1.
 - Backfill must be idempotent, resumable by prefix scope, and must never overwrite a newer live write.
 - Rebuild must be safe to interrupt.
@@ -351,7 +381,13 @@ it must not authorize or redefine message authority.
   - SQLite authority write succeeds when RocksDB is disabled;
   - SQLite authority write still succeeds when a RocksDB write fails after commit;
   - read-repair / high-water-mark guard surfaces a freshly written message rather than dropping it;
-  - repair job rebuilds missing index keys from SQLite metadata plus `cf_body`.
+  - repair job rebuilds missing index keys from SQLite metadata alone (no `cf_body` dependency).
+- Body durability tests:
+  - the body is committed to `message_body_outbox` inside the authority transaction;
+  - a `cf_body` write failure after the authority commit leaves the body recoverable from the outbox,
+    and the drainer retries it into `cf_body` and clears the outbox row on ack;
+  - a simulated crash between the authority commit and the `cf_body` ack loses no body (outbox replay);
+  - fan-out to multiple actors stores exactly one `cf_body` entry per `authority_message_id`.
 - Archive/search integration tests:
   - index `archive_document_id` points to a LanceDB document written by the archive layer;
   - search still uses LanceDB and returns the same document metadata.
