@@ -266,6 +266,18 @@ async fn run_node_server(
     Ok(())
 }
 
+fn pyroscope_bootstrap_options(
+    role: ServerRole,
+) -> agenthub_pyroscope::PyroscopeBootstrapOptions<'static> {
+    agenthub_pyroscope::PyroscopeBootstrapOptions {
+        application_name: match role {
+            ServerRole::Main => "agenthub.server",
+            ServerRole::Node => "agenthub.node",
+        },
+        application_version: env!("CARGO_PKG_VERSION"),
+    }
+}
+
 pub async fn run() -> anyhow::Result<()> {
     match crate::cli::parse_root_cli_from_env() {
         Ok(crate::cli::RootCliCommand::Serve) => {}
@@ -307,13 +319,7 @@ pub async fn run() -> anyhow::Result<()> {
     );
     validate_startup_config(&config)?;
     let _pyroscope =
-        agenthub_pyroscope::maybe_start_from_env(agenthub_pyroscope::PyroscopeBootstrapOptions {
-            application_name: match config.server_role() {
-                ServerRole::Main => "agenthub.server",
-                ServerRole::Node => "agenthub.node",
-            },
-            application_version: env!("CARGO_PKG_VERSION"),
-        });
+        agenthub_pyroscope::maybe_start_from_env(pyroscope_bootstrap_options(config.server_role()));
     let state = crate::state::AppState::init(config.clone()).await?;
     match config.server_role() {
         ServerRole::Main => run_main_server(state, &config, web_dir.as_deref()).await,
@@ -488,6 +494,17 @@ mod tests {
     fn validate_startup_config_accepts_main_role_without_internal_grpc() {
         super::validate_startup_config(&AppConfig::default())
             .expect("main role should not require internal grpc");
+    }
+
+    #[test]
+    fn pyroscope_bootstrap_options_use_role_scoped_application_names() {
+        let main_options = super::pyroscope_bootstrap_options(ServerRole::Main);
+        assert_eq!(main_options.application_name, "agenthub.server");
+        assert_eq!(main_options.application_version, env!("CARGO_PKG_VERSION"));
+
+        let node_options = super::pyroscope_bootstrap_options(ServerRole::Node);
+        assert_eq!(node_options.application_name, "agenthub.node");
+        assert_eq!(node_options.application_version, env!("CARGO_PKG_VERSION"));
     }
 
     #[tokio::test]

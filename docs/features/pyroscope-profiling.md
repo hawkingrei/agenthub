@@ -104,3 +104,4 @@ environment.
 ## Source Journals
 
 - `docs/journal/2026-03-26-agenthub-pyroscope-bootstrap.md`
+- `docs/journal/2026-06-10-pyroscope-bootstrap-verification.md`

@@ -302,7 +302,8 @@ export PYROSCOPE_BASIC_AUTH_PASSWORD="super-secret"
 agenthub
 ```
 
-The current bootstrap uses the fixed application name `agenthub.server`.
+Main-mode processes use the Pyroscope application name `agenthub.server`.
+Node-mode processes use `agenthub.node`.
 
 ## Safe Paths
 
