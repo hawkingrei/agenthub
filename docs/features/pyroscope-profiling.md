@@ -56,7 +56,9 @@ environment.
 
 ### 4) Profiling Identity
 
-- Application name: `agenthub.server`
+- Application name:
+  - Main-mode processes: `agenthub.server`
+  - Node-mode processes: `agenthub.node`
 - Backend: `pyroscope-rs` `backend-pprof-rs`
 - Sample rate: `100`
 - Static tags:
@@ -96,8 +98,8 @@ environment.
 
 ## Open Risks
 
-- The initial rollout uses a fixed application name and tag set; future multi-node deployments may
-  want additional topology tags.
+- The rollout uses role-scoped application names and a fixed tag set; future multi-node deployments
+  may want additional topology tags.
 - The upstream Pyroscope client uses its own internal `log` instrumentation, which AgentHub does
   not currently bridge into `tracing`.
 
