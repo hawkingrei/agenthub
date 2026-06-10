@@ -55,6 +55,22 @@ const PRESET_MAP = new Map<AgentPresetId, AgentPreset>(
   PRESETS.map((preset) => [preset.id, preset])
 );
 
+const COMMAND_PROVIDER_MAP = new Map<string, string>([
+  ["agenthub-codex-acp", "codex"],
+  ["codex-acp", "codex"],
+  ["gemini", "gemini"],
+  ["kimi", "kimi"],
+  ["claude-agent-acp", "claude"],
+  ["claude-code-acp-rs", "claude"],
+]);
+
+const PROVIDER_MODEL_LABELS = new Map<string, string>([
+  ["codex", "Codex"],
+  ["gemini", "Gemini"],
+  ["kimi", "Kimi"],
+  ["claude", "Claude"],
+]);
+
 export const DEFAULT_AGENT_PRESET_ID: AgentPresetId = "codex";
 
 export function listAgentPresets(): AgentPreset[] {
@@ -79,13 +95,7 @@ export function formatAgentCommand(preset: AgentPreset): string {
 export function resolveAcpProvider(command: string): string | null {
   const name = command.split(/[\\/]/).pop()?.trim();
   if (!name) return null;
-  if (name === "agenthub-codex-acp" || name === "codex-acp") return "codex";
-  if (name === "gemini") return "gemini";
-  if (name === "kimi") return "kimi";
-  if (name === "claude-agent-acp" || name === "claude-code-acp-rs") {
-    return "claude";
-  }
-  return null;
+  return COMMAND_PROVIDER_MAP.get(name) ?? null;
 }
 
 export function formatAgentModelLabel(
@@ -96,11 +106,7 @@ export function formatAgentModelLabel(
   if (model) return model;
   const provider = resolveAcpProvider(command);
   if (provider) {
-    if (provider === "codex") return "Codex";
-    if (provider === "gemini") return "Gemini";
-    if (provider === "kimi") return "Kimi";
-    if (provider === "claude") return "Claude";
-    return provider;
+    return PROVIDER_MODEL_LABELS.get(provider) ?? provider;
   }
   const name = command.split(/[\\/]/).pop()?.trim();
   return name || null;
