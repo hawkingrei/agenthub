@@ -119,6 +119,11 @@ The built-in adapter path assumes the repository's current ACP baseline:
 If you point `codex_acp.binary` at a custom binary, keep it compatible with the
 same ACP protocol surface before mixing it into a shared deployment.
 
+Other ACP adapters are configured per agent command rather than through this
+section. For Claude, use either `claude-agent-acp` or `claude-code-acp-rs
+--acp` as the agent command and configure Anthropic credentials through that
+adapter's supported environment or Claude settings files.
+
 ### `[history]` Section
 
 Event history retention settings.

@@ -12,7 +12,7 @@ spec is required to keep contracts consistent across providers and UI/runtime la
 - ACP event ingestion/rendering model in web conversation/debug surfaces.
 - ACP transport/reliability behavior (streaming + fallback).
 - ACP permission workflow and scoping guarantees.
-- ACP provider compatibility baseline for Codex/Gemini/Kimi adapters.
+- ACP provider compatibility baseline for Codex/Gemini/Kimi/Claude adapters.
 - Codex-specific diagnostic side-channel boundaries for live turn/tool-call integrity.
 
 ## Non-Goals
@@ -42,7 +42,7 @@ ACP runtime concerns should stay split across three orthogonal layers:
 - Provider adapter layer:
   - Detects whether a command speaks ACP.
   - Owns provider-specific defaults and prompt-delivery semantics.
-  - Examples today: Codex, Gemini, Kimi.
+  - Examples today: Codex, Gemini, Kimi, Claude.
 - Runtime placement layer:
   - Decides where the ACP runtime executes and how AgentHub connects to it.
   - The current baseline is explicit local-process execution.
@@ -202,14 +202,17 @@ ACP permission requests are first-class runtime records:
   `ReviewDecision::Denied` so Codex can continue the turn and decide the next model-visible step.
 - Codex `RequestPermissions` denial should return an empty permission profile scoped to the turn,
   not an abort/cancel outcome.
-- Gemini/Kimi ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
+- Gemini/Kimi/Claude ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
 - Gemini CLI bootstrap should track the current upstream ACP contract (`gemini --acp`) while continuing to tolerate the legacy `--experimental-acp` flag in provider detection for backward compatibility.
+- Claude ACP support is external-adapter based. AgentHub recognizes `claude-agent-acp` as an ACP
+  runtime directly, and recognizes `claude-code-acp-rs` only when launched with `--acp` so
+  headless or diagnostic Claude Code invocations are not misclassified as interactive ACP sessions.
 - When an ACP provider returns `auth_required`, AgentHub should surface an explicit setup error instead of silently retrying interactive auth flows on behalf of a remote user.
 
 ### 7) Placement And Proxy Contract
 
 - Provider identity and runtime placement must stay independent axes.
-- Introducing remote-node/P2P execution must not require duplicating Codex/Gemini/Kimi adapter logic.
+- Introducing remote-node/P2P execution must not require duplicating Codex/Gemini/Kimi/Claude adapter logic.
 - Proxy handling must remain a provider-agnostic launch policy that can be applied to both local and future remote runtimes.
 
 ## Validation Matrix
@@ -328,3 +331,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-05-13-acp-permission-deny-drain.md`
 - `docs/journal/2026-05-15-codex-acp-prompt-steering.md`
 - `docs/journal/2026-06-03-acp-provider-metadata-allowlist.md`
+- `docs/journal/2026-06-10-claude-acp-provider-support.md`

@@ -107,6 +107,12 @@ export function resolveAgentRuntimeLabels(
       tone: "subtle",
     });
   }
+  if (command.includes("claude")) {
+    labels.set("Claude ACP", {
+      label: "Claude ACP",
+      tone: "subtle",
+    });
+  }
   if (labels.size === 0) {
     labels.set("Custom Runtime", {
       label: "Custom Runtime",
@@ -229,6 +235,9 @@ export function deriveDetectedNodeRuntimes(
     if (command.includes("gemini")) {
       observed.add("Gemini CLI");
     }
+    if (command.includes("claude")) {
+      observed.add("Claude ACP");
+    }
     if (command.includes("agenthub")) {
       observed.add("AgentHub Runtime");
     }
@@ -238,6 +247,7 @@ export function deriveDetectedNodeRuntimes(
     "AgentHub Runtime",
     "Codex CLI",
     "Gemini CLI",
+    "Claude ACP",
   ] as const;
   const tags: NodeDetectedRuntime[] = [];
   for (const label of orderedLabels) {
@@ -245,7 +255,11 @@ export function deriveDetectedNodeRuntimes(
       tags.push({ label, available: true });
       continue;
     }
-    if (label === "Codex CLI" || label === "Gemini CLI") {
+    if (
+      label === "Codex CLI" ||
+      label === "Gemini CLI" ||
+      label === "Claude ACP"
+    ) {
       tags.push({
         label: `${label} (no attached agent observed)`,
         available: false,

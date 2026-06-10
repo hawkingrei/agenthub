@@ -1,6 +1,7 @@
 use super::acp_provider::{
-    ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI, AcpDefaultModeBehavior,
-    acp_provider_for_agent_with_binary, acp_provider_spec_for_agent_with_binary,
+    ACP_PROVIDER_CLAUDE, ACP_PROVIDER_CODEX, ACP_PROVIDER_GEMINI, ACP_PROVIDER_KIMI,
+    AcpDefaultModeBehavior, acp_provider_for_agent_with_binary,
+    acp_provider_spec_for_agent_with_binary,
 };
 use super::codec::{is_acp_message, status_from_str, stream_to_str};
 use super::session::effective_acp_default_mode;
@@ -337,6 +338,18 @@ fn acp_provider_for_agent_requires_expected_args() {
         Some(ACP_PROVIDER_KIMI)
     );
     assert_eq!(
+        acp_provider_for_agent_with_binary(codex_bin, "claude-agent-acp", &[]),
+        Some(ACP_PROVIDER_CLAUDE)
+    );
+    assert_eq!(
+        acp_provider_for_agent_with_binary(codex_bin, "claude-code-acp-rs", &[]),
+        None
+    );
+    assert_eq!(
+        acp_provider_for_agent_with_binary(codex_bin, "claude-code-acp-rs", &["--acp".to_string()]),
+        Some(ACP_PROVIDER_CLAUDE)
+    );
+    assert_eq!(
         acp_provider_for_agent_with_binary(codex_bin, "codex-acp", &[]),
         Some(ACP_PROVIDER_CODEX)
     );
@@ -367,6 +380,18 @@ fn acp_provider_for_agent_requires_expected_args() {
     );
     assert_eq!(
         kimi.default_mode_behavior,
+        AcpDefaultModeBehavior::IgnoreConfigured
+    );
+
+    let claude = acp_provider_spec_for_agent_with_binary(codex_bin, "claude-agent-acp", &[])
+        .expect("resolve claude acp provider");
+    assert_eq!(claude.id, ACP_PROVIDER_CLAUDE);
+    assert_eq!(
+        claude.prompt_delivery_policy,
+        AcpPromptDeliveryPolicy::StrictFifo
+    );
+    assert_eq!(
+        claude.default_mode_behavior,
         AcpDefaultModeBehavior::IgnoreConfigured
     );
 

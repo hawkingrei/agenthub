@@ -40,12 +40,14 @@ describe("deriveDetectedNodeRuntimes", () => {
     const runtimes = deriveDetectedNodeRuntimes(remoteNode, [
       agent({ command: "gemini" }),
       agent({ id: "agent-2", command: "agenthub codex" }),
+      agent({ id: "agent-3", command: "claude-code-acp-rs" }),
     ]);
 
     expect(runtimes).toEqual([
       { label: "AgentHub Runtime", available: true },
       { label: "Codex CLI", available: true },
       { label: "Gemini CLI", available: true },
+      { label: "Claude ACP", available: true },
     ]);
   });
 
@@ -57,6 +59,7 @@ describe("deriveDetectedNodeRuntimes", () => {
     expect(runtimes).toEqual([
       { label: "Codex CLI (no attached agent observed)", available: false },
       { label: "Gemini CLI (no attached agent observed)", available: false },
+      { label: "Claude ACP (no attached agent observed)", available: false },
     ]);
   });
 });
@@ -67,6 +70,12 @@ describe("resolveAgentRuntimeLabels", () => {
       { label: "AgentHub Runtime", tone: "outline" },
       { label: "Codex CLI", tone: "subtle" },
     ]);
+  });
+
+  it("labels Claude ACP runtimes", () => {
+    expect(
+      resolveAgentRuntimeLabels(agent({ command: "claude-agent-acp" }))
+    ).toEqual([{ label: "Claude ACP", tone: "subtle" }]);
   });
 
   it("falls back to a custom runtime label when no known provider is detected", () => {

@@ -1,4 +1,9 @@
-export type AgentPresetId = "codex" | "gemini" | "kimi";
+export type AgentPresetId =
+  | "codex"
+  | "gemini"
+  | "kimi"
+  | "claude_agent"
+  | "claude_code_rs";
 
 export type AgentPreset = {
   id: AgentPresetId;
@@ -29,6 +34,20 @@ const PRESETS: AgentPreset[] = [
     command: "kimi",
     args: ["acp"],
     provider: "kimi",
+  },
+  {
+    id: "claude_agent",
+    label: "Claude Agent ACP",
+    command: "claude-agent-acp",
+    args: [],
+    provider: "claude",
+  },
+  {
+    id: "claude_code_rs",
+    label: "Claude Code ACP (Rust)",
+    command: "claude-code-acp-rs",
+    args: ["--acp"],
+    provider: "claude",
   },
 ];
 
@@ -63,6 +82,9 @@ export function resolveAcpProvider(command: string): string | null {
   if (name === "agenthub-codex-acp" || name === "codex-acp") return "codex";
   if (name === "gemini") return "gemini";
   if (name === "kimi") return "kimi";
+  if (name === "claude-agent-acp" || name === "claude-code-acp-rs") {
+    return "claude";
+  }
   return null;
 }
 
@@ -77,6 +99,7 @@ export function formatAgentModelLabel(
     if (provider === "codex") return "Codex";
     if (provider === "gemini") return "Gemini";
     if (provider === "kimi") return "Kimi";
+    if (provider === "claude") return "Claude";
     return provider;
   }
   const name = command.split(/[\\/]/).pop()?.trim();
