@@ -21,7 +21,7 @@ agenthub-codex-acp = { path = "../../agenthub-codex-acp" }
 anyhow = "1"
 claude-code-acp-rs = { version = "0.1.22", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
-codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.137.0" }
+codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.138.0" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 
 [features]

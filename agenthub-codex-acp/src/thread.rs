@@ -35,7 +35,7 @@ use codex_protocol::{
     error::CodexErr,
     mcp::CallToolResult,
     models::{AdditionalPermissionProfile, ResponseItem, WebSearchAction},
-    openai_models::{ModelPreset, ReasoningEffort},
+    openai_models::{ModelPreset, ReasoningEffort, ReasoningEffortPreset},
     parse_command::ParsedCommand,
     plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs},
     protocol::{
@@ -77,6 +77,21 @@ use crate::{ACP_CLIENT, prompt_args::parse_slash_name};
 
 static APPROVAL_PRESETS: LazyLock<Vec<ApprovalPreset>> = LazyLock::new(builtin_approval_presets);
 const INIT_COMMAND_PROMPT: &str = include_str!("./prompt_for_init_command.md");
+
+fn resolve_reasoning_effort(
+    configured: Option<&ReasoningEffort>,
+    supported: &[ReasoningEffortPreset],
+    default_effort: &ReasoningEffort,
+) -> ReasoningEffort {
+    configured
+        .filter(|effort| {
+            supported
+                .iter()
+                .any(|candidate| candidate.effort == **effort)
+        })
+        .cloned()
+        .unwrap_or_else(|| default_effort.clone())
+}
 
 fn format_thread_goal_update(event: &ThreadGoalUpdatedEvent) -> String {
     let status = match event.goal.status {
@@ -1268,6 +1283,8 @@ impl PromptState {
             }
 
             // Ignore these events
+            EventMsg::TurnModerationMetadata(..)
+            |
             EventMsg::ImageGenerationBegin(..)
             | EventMsg::ImageGenerationEnd(..)
             | EventMsg::ThreadRolledBack(..)
@@ -3181,15 +3198,11 @@ impl<A: Auth> ThreadActor<A> {
         {
             let supported = &preset.supported_reasoning_efforts;
 
-            let current_effort = self
-                .config
-                .model_reasoning_effort
-                .and_then(|effort| {
-                    supported
-                        .iter()
-                        .find_map(|e| (e.effort == effort).then_some(effort))
-                })
-                .unwrap_or(preset.default_reasoning_effort);
+            let current_effort = resolve_reasoning_effort(
+                self.config.model_reasoning_effort.as_ref(),
+                supported,
+                &preset.default_reasoning_effort,
+            );
 
             let effort_select_options = supported
                 .iter()
@@ -3268,20 +3281,15 @@ impl<A: Auth> ThreadActor<A> {
         }
 
         let effort_to_use = if let Some(preset) = preset {
-            if let Some(effort) = self.config.model_reasoning_effort
-                && preset
-                    .supported_reasoning_efforts
-                    .iter()
-                    .any(|e| e.effort == effort)
-            {
-                Some(effort)
-            } else {
-                Some(preset.default_reasoning_effort)
-            }
+            Some(resolve_reasoning_effort(
+                self.config.model_reasoning_effort.as_ref(),
+                &preset.supported_reasoning_efforts,
+                &preset.default_reasoning_effort,
+            ))
         } else {
             // If the user selected a raw model string (not a known preset), don't invent a default.
             // Keep whatever was previously configured (or leave unset) so Codex can decide.
-            self.config.model_reasoning_effort
+            self.config.model_reasoning_effort.clone()
         };
 
         self.thread
@@ -3290,7 +3298,7 @@ impl<A: Auth> ThreadActor<A> {
                 Op::ThreadSettings {
                     thread_settings: ThreadSettingsOverrides {
                         model: Some(model_to_use.clone()),
-                        effort: Some(effort_to_use),
+                        effort: Some(effort_to_use.clone()),
                         ..Default::default()
                     },
                 },
@@ -3333,7 +3341,7 @@ impl<A: Auth> ThreadActor<A> {
                 "config".to_string(),
                 Op::ThreadSettings {
                     thread_settings: ThreadSettingsOverrides {
-                        effort: Some(Some(effort)),
+                        effort: Some(Some(effort.clone())),
                         ..Default::default()
                     },
                 },
@@ -4654,6 +4662,39 @@ mod tests {
         ]);
 
         assert_eq!(message, "Model verification: trusted_access_for_cyber");
+    }
+
+    #[test]
+    fn resolve_reasoning_effort_keeps_supported_configured_value() {
+        let preset = all_model_presets()
+            .iter()
+            .find(|preset| !preset.supported_reasoning_efforts.is_empty())
+            .expect("at least one preset has reasoning efforts");
+        let configured = preset.supported_reasoning_efforts[0].effort.clone();
+
+        let resolved = resolve_reasoning_effort(
+            Some(&configured),
+            &preset.supported_reasoning_efforts,
+            &preset.default_reasoning_effort,
+        );
+
+        assert_eq!(resolved, configured);
+    }
+
+    #[test]
+    fn resolve_reasoning_effort_uses_default_without_configured_value() {
+        let preset = all_model_presets()
+            .iter()
+            .find(|preset| !preset.supported_reasoning_efforts.is_empty())
+            .expect("at least one preset has reasoning efforts");
+
+        let resolved = resolve_reasoning_effort(
+            None,
+            &preset.supported_reasoning_efforts,
+            &preset.default_reasoning_effort,
+        );
+
+        assert_eq!(resolved, preset.default_reasoning_effort);
     }
 
     struct TempManagedSkillsHome {

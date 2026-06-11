@@ -1101,7 +1101,8 @@ impl AppServerCodexThread {
     ) -> Result<Option<Event>, CodexErr> {
         match notification {
             ServerNotification::ThreadNameUpdated(_)
-            | ServerNotification::ThreadSettingsUpdated(_) => Ok(None),
+            | ServerNotification::ThreadSettingsUpdated(_)
+            | ServerNotification::TurnModerationMetadata(_) => Ok(None),
             ServerNotification::FileChangePatchUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
                 Ok(submission_id.map(|id| Event {
@@ -1845,7 +1846,7 @@ impl CodexThreadImpl for AppServerCodexThread {
             Op::Shutdown => self.shutdown_thread().await,
             Op::ThreadSettings { thread_settings } => {
                 self.override_turn_context(OverrideTurnContextArgs {
-                    cwd: thread_settings.cwd,
+                    cwd: thread_settings.cwd.map(|cwd| cwd.to_path_buf()),
                     workspace_roots: thread_settings.workspace_roots,
                     profile_workspace_roots: thread_settings.profile_workspace_roots,
                     approval_policy: thread_settings.approval_policy,
@@ -2282,7 +2283,7 @@ fn prepare_submission_start(
                     ),
                     model: state.config.model.clone(),
                     service_tier: Some(state.config.service_tier.clone()),
-                    effort: state.config.model_reasoning_effort,
+                    effort: state.config.model_reasoning_effort.clone(),
                     summary: state.config.model_reasoning_summary,
                     personality: state.config.personality,
                     output_schema: final_output_json_schema.clone(),
