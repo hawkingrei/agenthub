@@ -572,6 +572,7 @@ name = "agenthub-db"
 version = "0.1.0"
 dependencies = [
  "agenthub-config",
+ "agenthub-message-store",
  "anyhow",
  "chrono",
  "serde",
