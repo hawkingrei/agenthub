@@ -442,9 +442,11 @@ dependencies = [
 name = "agenthub-acp-adapter"
 version = "0.1.0"
 dependencies = [
+ "agenthub-codex-acp",
  "anyhow",
  "clap",
  "claude-code-acp-rs",
+ "codex-utils-cli",
  "tokio",
 ]
 

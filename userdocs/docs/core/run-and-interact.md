@@ -34,6 +34,15 @@ let you:
 These controls are runtime-specific. Codex, Gemini, Claude, and other ACP
 providers may surface different option sets.
 
+## Codex ACP Runtimes
+
+For new Codex agents, use the generic AgentHub adapter command:
+
+| Adapter | Command | Notes |
+|---------|---------|-------|
+| AgentHub Codex ACP | `agenthub-acp codex` | Recommended. Shipped with AgentHub and backed by the AgentHub Codex adapter. |
+| AgentHub Codex ACP compatibility | `agenthub-codex-acp` | Existing configurations continue to work and the binary remains packaged. |
+
 ## Claude ACP Runtimes
 
 AgentHub ships a Claude ACP wrapper and can also launch compatible external adapters as normal

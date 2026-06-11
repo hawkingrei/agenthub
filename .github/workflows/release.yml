@@ -112,7 +112,7 @@ jobs:
       - name: Build agenthub-acp (cross)
         if: matrix.cross
         run: |
-          cross build --locked --release --target ${{ matrix.target }} -p agenthub-acp-adapter
+          cross build --locked --release --target ${{ matrix.target }} -p agenthub-acp-adapter --features release-vendored-openssl
 
       - name: Package
         shell: bash

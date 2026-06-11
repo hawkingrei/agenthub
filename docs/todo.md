@@ -43,7 +43,6 @@ Stable contracts:
 Matrix to keep current across real long-running Codex and non-Codex sessions:
 
 - [ ] `P1` Verify deployed ACP long-session browser behavior under real long output histories: the shipped stick-to-bottom, permission-history jump/copy, stale-session `send input` recovery, debug/runtime-metrics surfaces, and provider session switching should stay stable during real Codex and non-Codex sessions.
-- [ ] `P1` Fold Codex into the generic ACP adapter entrypoint: add `agenthub-acp codex` without breaking existing `agenthub-codex-acp` configs, migrate defaults/docs only after parity validation, and keep `package_binary "agenthub-codex-acp"` until a reviewed deprecation window completes. Stable contract: [features/acp-runtime.md](features/acp-runtime.md); rollout context: [journal/2026-06-10-claude-acp-provider-support.md](journal/2026-06-10-claude-acp-provider-support.md).
 - [ ] `P2` Provider-driven config selectors: verify real Gemini and Kimi ACP sessions end to end so upstream `config_options` render `mode`/`model` controls, `Set Model` / `Set Mode` works without manual ID entry, and selected values remain stable across reconnects.
 - [ ] `P2` Polish ACP-native Codex `request_user_input` UX after the inline card rollout: cover richer note-entry flows in browser-level fixtures and decide whether pending questions should bypass prompt-text serialization entirely.
 

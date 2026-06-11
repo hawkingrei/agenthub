@@ -112,8 +112,9 @@ By default, AgentHub serves the UI at `http://localhost:8080`.
 
 ### ACP Provider Baseline
 
-The default Codex ACP adapter binary is `agenthub-codex-acp`. AgentHub also ships
-`agenthub-acp claude` for Claude ACP sessions.
+The canonical AgentHub ACP adapter binary is `agenthub-acp`. Use `agenthub-acp codex` for Codex
+sessions and `agenthub-acp claude` for Claude sessions. AgentHub still installs
+`agenthub-codex-acp` for existing Codex configurations.
 
 - Current repository baseline: official Codex `0.137.x`
 - If you override `codex_acp.binary`, keep the replacement ACP binary protocol-

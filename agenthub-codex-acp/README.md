@@ -6,8 +6,14 @@ permissions, commands, plans, modes, and MCP servers.
 
 ## Usage
 
-Select `agenthub-codex-acp` as the command in the AgentHub create page.
-You can also run it directly:
+For new AgentHub agents, prefer the generic adapter command:
+
+```
+agenthub-acp codex
+```
+
+This compatibility binary remains supported for existing configurations and can
+still be run directly:
 
 ```
 agenthub-codex-acp

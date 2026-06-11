@@ -482,7 +482,8 @@ describe("useTeamManagementActions", () => {
       expect(mockedApi.createAgent).toHaveBeenCalledWith(
         "token-1",
         expect.objectContaining({
-          command: "agenthub-codex-acp",
+          command: "agenthub-acp",
+          args: ["codex"],
           codex_acp_default_mode: "full-access",
         })
       );

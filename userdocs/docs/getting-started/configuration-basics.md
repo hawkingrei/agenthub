@@ -107,12 +107,17 @@ ACP (Agent Control Protocol) provider settings.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `binary` | string | `"agenthub-codex-acp"` | ACP binary name or path |
+| `binary` | string | `"agenthub-codex-acp"` | Compatibility Codex ACP binary name or path |
 | `default_mode` | string | `"auto"` | Default ACP mode (`auto`, `full`, `suggest`) |
 | `multi_agent_enabled` | boolean | `true` | Force Codex ACP `Feature::Collab` on AgentHub-managed sessions |
 
-The built-in adapter path assumes the repository's current ACP baseline:
+The canonical Codex command for new agents is `agenthub-acp codex`. The
+`codex_acp.binary` setting remains the compatibility override for legacy or
+custom Codex ACP binaries.
 
+The built-in adapter paths assume the repository's current ACP baseline:
+
+- `agenthub-acp codex`
 - `agenthub-codex-acp`
 - official Codex `0.137.x`
 
