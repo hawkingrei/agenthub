@@ -1567,6 +1567,16 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     )
     .execute(&pool)
     .await?;
+    // The drainer scans oldest-first; index staged_at so ORDER BY ... LIMIT stays an index scan even
+    // if the outbox backs up during a prolonged body-store outage.
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_message_body_outbox_staged_at
+        ON message_body_outbox (staged_at);
+        "#,
+    )
+    .execute(&pool)
+    .await?;
 
     Ok(pool)
 }

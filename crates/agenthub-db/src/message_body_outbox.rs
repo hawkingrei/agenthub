@@ -56,7 +56,9 @@ pub async fn drain_into<S: MessageBodyStore>(
     .fetch_all(pool)
     .await?;
 
-    let mut confirmed = 0;
+    // Do the (potentially slow) store writes without holding a SQLite transaction, collecting the
+    // ids that were durably accepted. A failed write leaves its row for a later retry.
+    let mut confirmed_ids = Vec::new();
     for row in rows {
         let id: String = row.get("authority_message_id");
         let body: Vec<u8> = row.get("body");
@@ -64,14 +66,23 @@ pub async fn drain_into<S: MessageBodyStore>(
             .put_body(&AuthorityMessageId::new(id.clone()), &body)
             .is_ok()
         {
-            sqlx::query("DELETE FROM message_body_outbox WHERE authority_message_id = ?")
-                .bind(id)
-                .execute(pool)
-                .await?;
-            confirmed += 1;
+            confirmed_ids.push(id);
         }
     }
-    Ok(confirmed)
+
+    // Clear all confirmed rows in one transaction, so the batch costs a single fsync rather than one
+    // fsync per row.
+    if !confirmed_ids.is_empty() {
+        let mut tx = pool.begin().await?;
+        for id in &confirmed_ids {
+            sqlx::query("DELETE FROM message_body_outbox WHERE authority_message_id = ?")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+    }
+    Ok(confirmed_ids.len())
 }
 
 #[cfg(test)]
