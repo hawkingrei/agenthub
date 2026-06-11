@@ -65,7 +65,8 @@ jobs:
         run: |
           echo "Disk before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
-            /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+            /usr/local/lib/android /usr/local/share/boost || true
+          if [ -n "${AGENT_TOOLSDIRECTORY:-}" ]; then sudo rm -rf "${AGENT_TOOLSDIRECTORY}" || true; fi
           sudo docker image prune --all --force || true
           echo "Disk after:"; df -h /
       - name: Install system deps
@@ -97,7 +98,8 @@ jobs:
         run: |
           echo "Disk before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
-            /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+            /usr/local/lib/android /usr/local/share/boost || true
+          if [ -n "${AGENT_TOOLSDIRECTORY:-}" ]; then sudo rm -rf "${AGENT_TOOLSDIRECTORY}" || true; fi
           sudo docker image prune --all --force || true
           echo "Disk after:"; df -h /
       - name: Install system deps
@@ -131,7 +133,8 @@ jobs:
         run: |
           echo "Disk before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
-            /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+            /usr/local/lib/android /usr/local/share/boost || true
+          if [ -n "${AGENT_TOOLSDIRECTORY:-}" ]; then sudo rm -rf "${AGENT_TOOLSDIRECTORY}" || true; fi
           sudo docker image prune --all --force || true
           echo "Disk after:"; df -h /
       - name: Install system deps
@@ -163,7 +166,8 @@ jobs:
         run: |
           echo "Disk before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
-            /usr/local/lib/android /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+            /usr/local/lib/android /usr/local/share/boost || true
+          if [ -n "${AGENT_TOOLSDIRECTORY:-}" ]; then sudo rm -rf "${AGENT_TOOLSDIRECTORY}" || true; fi
           sudo docker image prune --all --force || true
           echo "Disk after:"; df -h /
       - name: Install system deps
