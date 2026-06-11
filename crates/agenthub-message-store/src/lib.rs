@@ -15,11 +15,15 @@ pub mod ids;
 pub mod keys;
 pub mod outbox;
 pub mod reference;
+#[cfg(feature = "rocksdb")]
+pub mod rocksdb_store;
 
 pub use body_store::{BodyStoreError, InMemoryBodyStore, MessageBodyStore};
 pub use ids::{AuthorityMessageId, DeliveryMessageId, MessageKind};
 pub use outbox::BodyOutbox;
 pub use reference::MessageRef;
+#[cfg(feature = "rocksdb")]
+pub use rocksdb_store::RocksdbBodyStore;
 
 #[cfg(test)]
 mod tests {

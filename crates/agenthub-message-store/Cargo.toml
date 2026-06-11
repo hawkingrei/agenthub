@@ -4,10 +4,19 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 
+[features]
+default = []
+# Opt-in RocksDB body-store backend. Off by default so the standard cargo and
+# Bazel builds do not pull the native librocksdb-sys dependency. The spec keeps
+# this backend isolated behind a flag until CI/prebuild coverage is stable.
+rocksdb = ["dep:rocksdb"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+rocksdb = { version = "0.23", optional = true }
 
 [dev-dependencies]
 zstd = "0.13"
+tempfile = "3"
