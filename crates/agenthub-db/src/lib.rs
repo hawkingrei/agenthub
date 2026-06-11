@@ -17,6 +17,8 @@ use anyhow::Context;
 
 use agenthub_config::path_utils::expand_tilde;
 
+pub mod message_body_outbox;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentEventCleanupResult {
     pub cutoff_ts: i64,
@@ -1549,6 +1551,22 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             err
         );
     }
+
+    // Durable staging for message bodies that are being moved into the tiered body store. A body is
+    // staged here inside the authority transaction and removed only after the body store durably
+    // acknowledges it, so a body store write failure or a crash never loses a body. See
+    // docs/features/message-storage-tiering.md and crate agenthub-message-store (BodyOutbox).
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS message_body_outbox (
+            authority_message_id TEXT PRIMARY KEY,
+            body BLOB NOT NULL,
+            staged_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
 
     Ok(pool)
 }
