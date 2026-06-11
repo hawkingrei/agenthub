@@ -4667,7 +4667,7 @@ mod tests {
     #[test]
     fn resolve_reasoning_effort_keeps_supported_configured_value() {
         let preset = all_model_presets()
-            .into_iter()
+            .iter()
             .find(|preset| !preset.supported_reasoning_efforts.is_empty())
             .expect("at least one preset has reasoning efforts");
         let configured = preset.supported_reasoning_efforts[0].effort.clone();
@@ -4684,7 +4684,7 @@ mod tests {
     #[test]
     fn resolve_reasoning_effort_uses_default_without_configured_value() {
         let preset = all_model_presets()
-            .into_iter()
+            .iter()
             .find(|preset| !preset.supported_reasoning_efforts.is_empty())
             .expect("at least one preset has reasoning efforts");
 
