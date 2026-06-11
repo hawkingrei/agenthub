@@ -105,7 +105,7 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
     command: &str,
     args: &[String],
 ) -> Option<AcpProviderSpec> {
-    let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
+    let command_name = command_executable_name(command);
     if command_name == Some("agenthub-acp") {
         return agenthub_acp_provider_spec_for_args(args);
     }
@@ -152,7 +152,7 @@ fn should_use_configured_codex_binary(codex_acp_binary: &str, command: &str) -> 
     if command == codex_acp_binary {
         return false;
     }
-    let command_name = Path::new(command).file_name().and_then(|n| n.to_str());
+    let command_name = command_executable_name(command);
     command_name != Some("agenthub-acp")
 }
 
@@ -186,16 +186,14 @@ fn acp_provider_for_command_with_binary(
     if command == codex_acp_binary {
         return Some(AcpProviderSpec::CODEX);
     }
-    let command_name = Path::new(command).file_name().and_then(|n| n.to_str())?;
+    let command_name = command_executable_name(command)?;
     match command_name {
         "gemini" => Some(AcpProviderSpec::GEMINI),
         "kimi" => Some(AcpProviderSpec::KIMI),
         "claude-agent-acp" | "claude-code-acp-rs" => Some(AcpProviderSpec::CLAUDE),
         "agenthub-codex-acp" | "codex-acp" => Some(AcpProviderSpec::CODEX),
         name => {
-            let target_name = Path::new(codex_acp_binary)
-                .file_name()
-                .and_then(|n| n.to_str());
+            let target_name = command_executable_name(codex_acp_binary);
             if target_name == Some(name) {
                 Some(AcpProviderSpec::CODEX)
             } else {
@@ -203,6 +201,14 @@ fn acp_provider_for_command_with_binary(
             }
         }
     }
+}
+
+fn command_executable_name(command: &str) -> Option<&str> {
+    let name = command.rsplit(['/', '\\']).next()?.trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(name.strip_suffix(".exe").unwrap_or(name))
 }
 
 #[cfg(test)]
@@ -261,6 +267,10 @@ mod tests {
         assert!(!should_use_configured_codex_binary(
             "/opt/agenthub/bin/agenthub-codex-acp",
             "/usr/local/bin/agenthub-acp"
+        ));
+        assert!(!should_use_configured_codex_binary(
+            r"C:\agenthub\agenthub-codex-acp.exe",
+            r"C:\agenthub\agenthub-acp.exe"
         ));
         assert!(should_use_configured_codex_binary(
             "/opt/agenthub/bin/agenthub-codex-acp",

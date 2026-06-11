@@ -84,11 +84,19 @@ type AgentRuntimeLabel = {
   tone: "subtle" | "outline";
 };
 
-function isClaudeAcpRuntime(agent: AgentRecord): boolean {
+function parseAgentCommand(agent: AgentRecord): {
+  commandName: string;
+  args: string[];
+} {
   const commandParts = (agent.command ?? "").trim().toLowerCase().split(/\s+/);
-  const commandName = commandParts[0]?.split(/[\\/]/).pop();
+  const command = commandParts[0] ?? "";
+  const commandName = command.split(/[\\/]/).pop() ?? "";
   const args = [...commandParts.slice(1), ...(agent.args ?? []).map((arg) => arg.toLowerCase())];
+  return { commandName, args };
+}
 
+function isClaudeAcpRuntime(agent: AgentRecord): boolean {
+  const { commandName, args } = parseAgentCommand(agent);
   if (commandName === "agenthub-acp") {
     return args[0] === "claude";
   }
@@ -99,10 +107,7 @@ function isClaudeAcpRuntime(agent: AgentRecord): boolean {
 }
 
 function isCodexAcpRuntime(agent: AgentRecord): boolean {
-  const commandParts = (agent.command ?? "").trim().toLowerCase().split(/\s+/);
-  const commandName = commandParts[0]?.split(/[\\/]/).pop();
-  const args = [...commandParts.slice(1), ...(agent.args ?? []).map((arg) => arg.toLowerCase())];
-
+  const { commandName, args } = parseAgentCommand(agent);
   if (commandName === "agenthub-acp") {
     return args[0] === "codex";
   }
@@ -254,7 +259,7 @@ export function deriveDetectedNodeRuntimes(
   }
   for (const agent of agents) {
     const command = (agent.command ?? "").trim().toLowerCase();
-    if (command.includes("codex") || agent.code_mode) {
+    if (isCodexAcpRuntime(agent) || command.includes("codex") || agent.code_mode) {
       observed.add("Codex CLI");
     }
     if (command.includes("gemini")) {
