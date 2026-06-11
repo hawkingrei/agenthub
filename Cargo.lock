@@ -363,6 +363,7 @@ dependencies = [
  "agenthub-logging",
  "agenthub-managed-skills",
  "agenthub-message-archive",
+ "agenthub-message-store",
  "agenthub-push",
  "agenthub-pyroscope",
  "agenthub-team-actor",

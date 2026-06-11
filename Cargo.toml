@@ -44,6 +44,10 @@ license = "Apache-2.0"
 default = []
 release-vendored-openssl = ["dep:openssl"]
 release-lance-fp16 = ["agenthub-message-archive/release-lance-fp16"]
+# Compile the native RocksDB-backed message body store into the binary. Off by
+# default and enabled per release target (x86_64) so the native librocksdb-sys
+# build does not affect default/Bazel/aarch64 builds.
+rocksdb = ["agenthub-message-store/rocksdb"]
 
 [[bin]]
 name = "agenthub"
@@ -113,6 +117,7 @@ agenthub-logging = { path = "crates/agenthub-logging" }
 agenthub-message-archive = { path = "crates/agenthub-message-archive" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
+agenthub-message-store = { path = "crates/agenthub-message-store" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
 agent-client-protocol = { version = "0.14.0", features = ["unstable"] }
 prost = "0.14"
