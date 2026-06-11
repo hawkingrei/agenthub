@@ -1268,6 +1268,8 @@ impl PromptState {
             }
 
             // Ignore these events
+            EventMsg::TurnModerationMetadata(..)
+            |
             EventMsg::ImageGenerationBegin(..)
             | EventMsg::ImageGenerationEnd(..)
             | EventMsg::ThreadRolledBack(..)
@@ -3184,12 +3186,13 @@ impl<A: Auth> ThreadActor<A> {
             let current_effort = self
                 .config
                 .model_reasoning_effort
+                .as_ref()
                 .and_then(|effort| {
                     supported
                         .iter()
-                        .find_map(|e| (e.effort == effort).then_some(effort))
+                        .find_map(|e| (e.effort == *effort).then(|| effort.clone()))
                 })
-                .unwrap_or(preset.default_reasoning_effort);
+                .unwrap_or_else(|| preset.default_reasoning_effort.clone());
 
             let effort_select_options = supported
                 .iter()
@@ -3268,7 +3271,7 @@ impl<A: Auth> ThreadActor<A> {
         }
 
         let effort_to_use = if let Some(preset) = preset {
-            if let Some(effort) = self.config.model_reasoning_effort
+            if let Some(effort) = self.config.model_reasoning_effort.clone()
                 && preset
                     .supported_reasoning_efforts
                     .iter()
@@ -3276,12 +3279,12 @@ impl<A: Auth> ThreadActor<A> {
             {
                 Some(effort)
             } else {
-                Some(preset.default_reasoning_effort)
+                Some(preset.default_reasoning_effort.clone())
             }
         } else {
             // If the user selected a raw model string (not a known preset), don't invent a default.
             // Keep whatever was previously configured (or leave unset) so Codex can decide.
-            self.config.model_reasoning_effort
+            self.config.model_reasoning_effort.clone()
         };
 
         self.thread
@@ -3290,7 +3293,7 @@ impl<A: Auth> ThreadActor<A> {
                 Op::ThreadSettings {
                     thread_settings: ThreadSettingsOverrides {
                         model: Some(model_to_use.clone()),
-                        effort: Some(effort_to_use),
+                        effort: Some(effort_to_use.clone()),
                         ..Default::default()
                     },
                 },
@@ -3333,7 +3336,7 @@ impl<A: Auth> ThreadActor<A> {
                 "config".to_string(),
                 Op::ThreadSettings {
                     thread_settings: ThreadSettingsOverrides {
-                        effort: Some(Some(effort)),
+                        effort: Some(Some(effort.clone())),
                         ..Default::default()
                     },
                 },
