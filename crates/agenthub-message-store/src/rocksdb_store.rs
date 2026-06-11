@@ -83,7 +83,7 @@ impl RocksdbBodyStore {
 }
 
 impl MessageBodyStore for RocksdbBodyStore {
-    fn put_body(&mut self, id: &AuthorityMessageId, body: &[u8]) -> Result<(), BodyStoreError> {
+    fn put_body(&self, id: &AuthorityMessageId, body: &[u8]) -> Result<(), BodyStoreError> {
         let cf = self.body_cf()?;
         self.db.put_cf(cf, body_key(id), body).map_err(backend_err)
     }
@@ -179,7 +179,7 @@ mod tests {
     fn write_compact_size(compression: DBCompressionType) -> u64 {
         let dir = tempfile::tempdir().expect("tempdir");
         {
-            let mut store =
+            let store =
                 RocksdbBodyStore::open_with_compression(dir.path(), compression).expect("open");
             for (id, body) in corpus(4000) {
                 store.put_body(&id, body.as_bytes()).expect("put");
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn body_round_trips_through_cf_body() {
         let dir = tempfile::tempdir().unwrap();
-        let mut store = RocksdbBodyStore::open(dir.path()).unwrap();
+        let store = RocksdbBodyStore::open(dir.path()).unwrap();
         let id = AuthorityMessageId::new("auth-1");
         let body = b"a meeting summary body";
         store.put_body(&id, body).unwrap();
@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn fan_out_stores_one_body_per_authority_message() {
         let dir = tempfile::tempdir().unwrap();
-        let mut store = RocksdbBodyStore::open(dir.path()).unwrap();
+        let store = RocksdbBodyStore::open(dir.path()).unwrap();
         let id = AuthorityMessageId::new("auth-fanout");
         for _delivery in 0..5 {
             store.put_body(&id, b"shared body").unwrap();

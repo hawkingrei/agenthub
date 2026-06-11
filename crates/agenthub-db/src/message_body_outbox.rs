@@ -43,9 +43,9 @@ pub async fn pending_count(pool: &SqlitePool) -> anyhow::Result<i64> {
 /// succeeds, so a failed write leaves the row for a later retry and no body is lost. The store write
 /// is idempotent per logical message, so a crash between the store write and the row delete is safe:
 /// the next drain simply re-writes and deletes. Returns the number of bodies confirmed in this drain.
-pub async fn drain_into<S: MessageBodyStore>(
+pub async fn drain_into<S: MessageBodyStore + ?Sized>(
     pool: &SqlitePool,
-    store: &mut S,
+    store: &S,
     batch: usize,
 ) -> anyhow::Result<usize> {
     let rows = sqlx::query(
@@ -94,13 +94,14 @@ mod tests {
     /// Body store that fails the first `fail_next` writes, to exercise the retry path.
     struct FlakyStore {
         inner: InMemoryBodyStore,
-        fail_next: usize,
+        fail_next: std::sync::atomic::AtomicUsize,
     }
 
     impl MessageBodyStore for FlakyStore {
-        fn put_body(&mut self, id: &AuthorityMessageId, body: &[u8]) -> Result<(), BodyStoreError> {
-            if self.fail_next > 0 {
-                self.fail_next -= 1;
+        fn put_body(&self, id: &AuthorityMessageId, body: &[u8]) -> Result<(), BodyStoreError> {
+            use std::sync::atomic::Ordering;
+            if self.fail_next.load(Ordering::SeqCst) > 0 {
+                self.fail_next.fetch_sub(1, Ordering::SeqCst);
                 return Err(BodyStoreError::Backend("injected".into()));
             }
             self.inner.put_body(id, body)
@@ -134,8 +135,8 @@ mod tests {
         tx.commit().await.unwrap();
         assert_eq!(pending_count(&pool).await.unwrap(), 1);
 
-        let mut store = InMemoryBodyStore::new();
-        let confirmed = drain_into(&pool, &mut store, 64).await.unwrap();
+        let store = InMemoryBodyStore::new();
+        let confirmed = drain_into(&pool, &store, 64).await.unwrap();
         assert_eq!(confirmed, 1);
         assert_eq!(pending_count(&pool).await.unwrap(), 0);
         assert_eq!(
@@ -168,16 +169,16 @@ mod tests {
             .unwrap();
         tx.commit().await.unwrap();
 
-        let mut store = FlakyStore {
+        let store = FlakyStore {
             inner: InMemoryBodyStore::new(),
-            fail_next: 1,
+            fail_next: std::sync::atomic::AtomicUsize::new(1),
         };
         // First drain hits the injected failure: nothing confirmed, body stays staged.
-        assert_eq!(drain_into(&pool, &mut store, 64).await.unwrap(), 0);
+        assert_eq!(drain_into(&pool, &store, 64).await.unwrap(), 0);
         assert_eq!(pending_count(&pool).await.unwrap(), 1);
 
         // Retry (e.g. background drainer after a crash) succeeds and clears the outbox.
-        assert_eq!(drain_into(&pool, &mut store, 64).await.unwrap(), 1);
+        assert_eq!(drain_into(&pool, &store, 64).await.unwrap(), 1);
         assert_eq!(pending_count(&pool).await.unwrap(), 0);
         assert_eq!(
             store.get_body(&id).unwrap().as_deref(),
