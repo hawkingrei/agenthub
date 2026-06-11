@@ -15,7 +15,12 @@ rocksdb = ["dep:rocksdb"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-rocksdb = { version = "0.23", optional = true }
+# Only zstd (what cf_body uses) plus the bindgen runtime are enabled, to keep the
+# native build surface minimal; the default snappy/lz4/bzip2/zlib backends are off.
+rocksdb = { version = "0.23", optional = true, default-features = false, features = [
+    "zstd",
+    "bindgen-runtime",
+] }
 
 [dev-dependencies]
 zstd = "0.13"

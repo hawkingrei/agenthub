@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use rocksdb::{ColumnFamilyDescriptor, DB, DBCompressionType, IteratorMode, Options, WriteBatch};
+use rocksdb::{ColumnFamilyDescriptor, DB, DBCompressionType, IteratorMode, Options};
 
 use crate::body_store::{BodyStoreError, MessageBodyStore};
 use crate::ids::AuthorityMessageId;
@@ -47,9 +47,9 @@ impl RocksdbBodyStore {
         Self::open_with_compression(path, DBCompressionType::Zstd)
     }
 
-    /// Open with an explicit compression type. Exposed mainly so tests can compare on-disk size
-    /// against an uncompressed store.
-    pub fn open_with_compression(
+    /// Open with an explicit compression type. Private: `open` is the public constructor; tests in
+    /// the child module use this to compare on-disk size against an uncompressed store.
+    fn open_with_compression(
         path: impl AsRef<Path>,
         compression: DBCompressionType,
     ) -> Result<Self, BodyStoreError> {
@@ -71,9 +71,10 @@ impl RocksdbBodyStore {
             .ok_or_else(|| BodyStoreError::Backend(format!("missing column family {CF_BODY}")))
     }
 
-    /// Flush memtables and compact `cf_body` so compression is applied to SST files. Used by tests
-    /// that measure on-disk size.
-    pub fn flush_and_compact(&self) -> Result<(), BodyStoreError> {
+    /// Flush memtables and compact `cf_body` so compression is applied to SST files. Test-only:
+    /// it forces a full compaction and is only needed by the on-disk size test.
+    #[cfg(test)]
+    fn flush_and_compact(&self) -> Result<(), BodyStoreError> {
         let cf = self.body_cf()?;
         self.db.flush_cf(cf).map_err(backend_err)?;
         self.db.compact_range_cf(cf, None::<&[u8]>, None::<&[u8]>);
@@ -84,10 +85,7 @@ impl RocksdbBodyStore {
 impl MessageBodyStore for RocksdbBodyStore {
     fn put_body(&mut self, id: &AuthorityMessageId, body: &[u8]) -> Result<(), BodyStoreError> {
         let cf = self.body_cf()?;
-        // A single logical write uses a WriteBatch so the body put composes with future index puts.
-        let mut batch = WriteBatch::default();
-        batch.put_cf(cf, body_key(id), body);
-        self.db.write(batch).map_err(backend_err)
+        self.db.put_cf(cf, body_key(id), body).map_err(backend_err)
     }
 
     fn get_body(&self, id: &AuthorityMessageId) -> Result<Option<Vec<u8>>, BodyStoreError> {
@@ -96,16 +94,30 @@ impl MessageBodyStore for RocksdbBodyStore {
     }
 
     fn contains(&self, id: &AuthorityMessageId) -> bool {
+        // `get_pinned_cf` avoids copying the (potentially large) body just to test existence.
         self.body_cf()
             .ok()
-            .and_then(|cf| self.db.get_cf(cf, body_key(id)).ok().flatten())
+            .and_then(|cf| self.db.get_pinned_cf(cf, body_key(id)).ok().flatten())
             .is_some()
     }
 
     fn len(&self) -> usize {
+        // RocksDB has no O(1) key count; this scans cf_body. Diagnostics/test use only.
         match self.body_cf() {
             Ok(cf) => self.db.iterator_cf(cf, IteratorMode::Start).count(),
             Err(_) => 0,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        // Avoid the O(N) default (`len() == 0`); checking for the first key is O(1).
+        match self.body_cf() {
+            Ok(cf) => self
+                .db
+                .iterator_cf(cf, IteratorMode::Start)
+                .next()
+                .is_none(),
+            Err(_) => true,
         }
     }
 }
@@ -133,7 +145,10 @@ mod tests {
         out
     }
 
-    fn dir_size(path: &Path) -> u64 {
+    /// Total size of the SST data files (`.sst`/`.ldb`) under `path`. Only these are subject to SST
+    /// block compression, so restricting to them keeps the assertion about compression and ignores
+    /// WAL/LOG/MANIFEST/OPTIONS noise.
+    fn sst_size(path: &Path) -> u64 {
         let mut total = 0;
         let mut stack = vec![path.to_path_buf()];
         while let Some(p) = stack.pop() {
@@ -147,7 +162,13 @@ mod tests {
                 };
                 if meta.is_dir() {
                     stack.push(entry.path());
-                } else {
+                    continue;
+                }
+                let is_sst = entry
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext == "sst" || ext == "ldb");
+                if is_sst {
                     total += meta.len();
                 }
             }
@@ -165,7 +186,7 @@ mod tests {
             }
             store.flush_and_compact().expect("compact");
         }
-        dir_size(dir.path())
+        sst_size(dir.path())
     }
 
     #[test]
@@ -201,7 +222,7 @@ mod tests {
         let none_size = write_compact_size(DBCompressionType::None);
         assert!(
             zstd_size < none_size,
-            "zstd on-disk size ({zstd_size}) must be smaller than uncompressed ({none_size})"
+            "zstd SST size ({zstd_size}) must be smaller than uncompressed ({none_size})"
         );
     }
 }

@@ -6,9 +6,10 @@
 //! canonical logical-message identity ([`MessageBodyStore`]), and the durability outbox
 //! ([`BodyOutbox`]).
 //!
-//! It intentionally contains no RocksDB dependency. The RocksDB backend (where SST block compression
-//! shrinks bodies at rest) implements [`MessageBodyStore`] in a follow-up, so the native dependency
-//! stays isolated behind this boundary as the spec requires.
+//! The default build has no native dependency. The RocksDB backend (where SST block compression
+//! shrinks bodies at rest) implements [`MessageBodyStore`] in [`rocksdb_store`] behind the optional,
+//! default-off `rocksdb` feature, so the native dependency stays isolated behind this boundary as the
+//! spec requires.
 
 pub mod body_store;
 pub mod ids;
