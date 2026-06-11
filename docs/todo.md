@@ -32,20 +32,6 @@ Matrix to keep current on `agenthub.hawkingrei.com` and in PR browser evidence:
 - [ ] `P1` Evaluate explicit Team adoption extensions after the copy-first rollout: design stopped-only `move existing agent to Team`, opt-in workspace-content copy, and opt-in memory/context seeding as separate reviewable modes with runtime, ownership, and history guardrails. Stable contract: [features/team-agent-adoption.md](features/team-agent-adoption.md).
 - [ ] `P2` Frontend performance hardening for Team and ACP-heavy pages: reduce avoidable rerenders, keep long lists and live surfaces responsive, and evaluate virtualization/stick-to-bottom behavior for extremely long histories. Stable contracts: [features/frontend-design.md](features/frontend-design.md) and [features/acp-runtime.md](features/acp-runtime.md).
 
-## ACP Long-Session Matrix
-
-Stable contracts:
-
-- [features/acp-runtime.md](features/acp-runtime.md)
-- [features/runtime-diagnostics.md](features/runtime-diagnostics.md)
-- [features/team-conversation-event-bus.md](features/team-conversation-event-bus.md)
-
-Matrix to keep current across real long-running Codex and non-Codex sessions:
-
-- [ ] `P1` Verify deployed ACP long-session browser behavior under real long output histories: the shipped stick-to-bottom, permission-history jump/copy, stale-session `send input` recovery, debug/runtime-metrics surfaces, and provider session switching should stay stable during real Codex and non-Codex sessions.
-- [ ] `P2` Provider-driven config selectors: verify real Gemini and Kimi ACP sessions end to end so upstream `config_options` render `mode`/`model` controls, `Set Model` / `Set Mode` works without manual ID entry, and selected values remain stable across reconnects.
-- [ ] `P2` Polish ACP-native Codex `request_user_input` UX after the inline card rollout: cover richer note-entry flows in browser-level fixtures and decide whether pending questions should bypass prompt-text serialization entirely.
-
 ## Team Runtime And Task Model
 
 Stable contracts:
