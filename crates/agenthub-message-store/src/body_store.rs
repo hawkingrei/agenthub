@@ -107,8 +107,14 @@ impl FailingBodyStore {
 impl MessageBodyStore for FailingBodyStore {
     fn put_body(&self, id: &AuthorityMessageId, body: &[u8]) -> Result<(), BodyStoreError> {
         use std::sync::atomic::Ordering;
-        if self.fail_next.load(Ordering::SeqCst) > 0 {
-            self.fail_next.fetch_sub(1, Ordering::SeqCst);
+        // Atomically check-and-decrement so concurrent callers can't underflow the counter.
+        if self
+            .fail_next
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+                (v > 0).then(|| v - 1)
+            })
+            .is_ok()
+        {
             return Err(BodyStoreError::Backend("injected failure".to_string()));
         }
         self.inner.put_body(id, body)
