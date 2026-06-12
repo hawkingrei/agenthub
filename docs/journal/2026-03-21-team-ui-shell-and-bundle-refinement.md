@@ -67,3 +67,7 @@
 - `npm --prefix web run build`
 - `npm --prefix web run lint`
 - inspected `web/dist/index.html` and preview-served `/workspace/teams` HTML to confirm the initial preload set still excludes `route-teams`, `route-teams-workbench`, `route-teams-agent-acp`, and `route-acp-shared`
+- `curl -L -s -D /tmp/agenthub-deployed-headers.txt https://agenthub.hawkingrei.com/workspace/teams -o /tmp/agenthub-deployed-teams.html`
+- `rg -n "modulepreload|route-teams|route-teams-workbench|route-teams-agent-acp|route-acp-shared|assets/index" /tmp/agenthub-deployed-teams.html`
+- verified the deployed `agenthub.hawkingrei.com/workspace/teams` HTML on 2026-06-12 returned `cache-control: no-cache` and an initial modulepreload set limited to `rolldown-runtime`, `route-agents`, `route-mantine-inputs`, `route-rich-text-shared`, and `vendor-mantine`; it did not preload `route-teams`, `route-teams-workbench`, `route-teams-agent-acp`, or `route-acp-shared` JavaScript
+- attempted a Chrome DevTools authenticated visual spot-check for the deployed Team selector, but the DevTools transport closed before navigation; the deployed route-split evidence above is based on the live HTML response
