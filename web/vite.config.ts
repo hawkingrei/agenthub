@@ -109,6 +109,26 @@ const ROUTE_AGENTS_WORKBENCH_IDS = [
   "/src/components/output_body.tsx",
 ];
 
+const ROUTE_TEAMS_WORKBENCH_IDS = [
+  "/src/pages/team/TeamWorkbenchContainer.tsx",
+  "/src/pages/team/TeamConversationContainer.tsx",
+  "/src/pages/team/TeamTasksContainer.tsx",
+  "/src/pages/team/TeamThreadContainer.tsx",
+  "/src/pages/team/team_workbench_content.tsx",
+  "/src/pages/team/team_workspace_header.tsx",
+  "/src/pages/team/team_thread_pane.tsx",
+  "/src/pages/team/team_conversation_viewport.ts",
+  "/src/pages/team/team_message_composer.tsx",
+  "/src/pages/team/team_text_helpers.ts",
+  "/src/pages/team/team_debug_panels.tsx",
+  "/src/pages/team_conversation_panel.tsx",
+  "/src/pages/team_member_status_strip.tsx",
+  "/src/pages/team_task_panel.tsx",
+  "/src/pages/team_tasks_panel.tsx",
+  "/src/pages/team_run_panel.tsx",
+  "/src/pages/team_workspace_state_panel.tsx",
+];
+
 function normalizeChunkId(id: string): string {
   const normalizedPath = id.split("\\").join("/");
   const withoutVirtualPrefix = normalizedPath.startsWith("\0")
@@ -162,6 +182,9 @@ export function resolveChunkGroupName(id: string): string | undefined {
   if (normalized.includes("/src/pages/team_member_acp_panel.tsx")) {
     return "route-teams-agent-acp";
   }
+  if (includesAny(normalized, ROUTE_TEAMS_WORKBENCH_IDS)) {
+    return "route-teams-workbench";
+  }
   if (normalized.includes("/src/pages/team_page.tsx") || normalized.includes("/src/pages/team/")) {
     return "route-teams";
   }
@@ -206,6 +229,7 @@ export default defineConfig({
             !dep.includes("route-acp-shared-") &&
             !dep.includes("route-acp-tools-") &&
             !dep.includes("route-teams-agent-acp-") &&
+            !dep.includes("route-teams-workbench-") &&
             !dep.includes("route-teams-") &&
             !dep.includes("vendor-markdown-")
         );

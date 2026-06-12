@@ -4,9 +4,11 @@ import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AgentRecord } from "../../api";
 import {
+  getTeamMemberBackfillCacheTokensForTest,
   resetTeamMemberBackfillCachesForTest,
+  seedTeamMemberBackfillCachesForTest,
   useTeamMemberBackfillEffect,
-} from "./use_team_member_backfill_effect";
+} from "../../team_member_backfill_effect";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -460,5 +462,18 @@ describe("useTeamMemberBackfillEffect", () => {
     });
 
     expect(getAgentSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("evicts inactive resolved buckets without dropping active in-flight buckets", () => {
+    seedTeamMemberBackfillCachesForTest({
+      resolvedTokens: Array.from({ length: 66 }, (_value, index) => `token-${index}`),
+      activeTokens: ["token-0"],
+    });
+
+    const tokens = getTeamMemberBackfillCacheTokensForTest();
+    expect(tokens).toHaveLength(64);
+    expect(tokens).toContain("token-0");
+    expect(tokens).not.toContain("token-1");
+    expect(tokens).not.toContain("token-2");
   });
 });
