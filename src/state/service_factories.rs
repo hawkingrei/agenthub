@@ -62,10 +62,14 @@ pub(super) fn build_team_manager(
     db: &SqlitePool,
     event_dbs: &agenthub_db::AgentEventDbRouter,
     message_archive: Option<agenthub_message_archive::MessageArchiveStoreRef>,
+    body_store: Option<crate::message_body_store::SharedBodyStore>,
 ) -> Arc<TeamManager> {
-    Arc::new(TeamManager::new_with_event_dbs_and_message_archive(
-        db.clone(),
-        event_dbs.clone(),
-        message_archive,
-    ))
+    Arc::new(
+        TeamManager::new_with_event_dbs_and_message_archive(
+            db.clone(),
+            event_dbs.clone(),
+            message_archive,
+        )
+        .with_body_store(body_store),
+    )
 }

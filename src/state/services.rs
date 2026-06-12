@@ -12,6 +12,7 @@ impl AppState {
         config: &agenthub_config::AppConfig,
         db: SqlitePool,
         event_dbs: agenthub_db::AgentEventDbRouter,
+        body_store: Option<crate::message_body_store::SharedBodyStore>,
     ) -> anyhow::Result<(
         Arc<AgentManager>,
         Arc<TeamManager>,
@@ -39,7 +40,12 @@ impl AppState {
             },
         );
 
-        let teams = super::service_factories::build_team_manager(&db, &event_dbs, message_archive);
+        let teams = super::service_factories::build_team_manager(
+            &db,
+            &event_dbs,
+            message_archive,
+            body_store,
+        );
         super::team_wiring::configure_team_services(
             &teams,
             &agents,

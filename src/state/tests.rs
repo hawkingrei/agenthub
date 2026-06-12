@@ -213,9 +213,13 @@ async fn initialize_services_skips_internal_grpc_material_when_disabled() {
         ..Default::default()
     };
 
-    let services =
-        AppState::initialize_services(&config, db, AgentEventDbRouter::with_default_base_dir())
-            .await;
+    let services = AppState::initialize_services(
+        &config,
+        db,
+        AgentEventDbRouter::with_default_base_dir(),
+        None,
+    )
+    .await;
     assert!(
         services.is_ok(),
         "initialize services should succeed when internal grpc is disabled"
@@ -314,7 +318,7 @@ async fn initialize_services_disables_push_for_node_role() {
     };
 
     let (_, _, push, _, _) =
-        AppState::initialize_services(&config, db, AgentEventDbRouter::new(event_dir))
+        AppState::initialize_services(&config, db, AgentEventDbRouter::new(event_dir), None)
             .await
             .expect("initialize node services");
 
@@ -356,7 +360,7 @@ async fn initialize_services_enables_push_for_main_role() {
     };
 
     let (_, _, push, _, _) =
-        AppState::initialize_services(&config, db, AgentEventDbRouter::new(event_dir))
+        AppState::initialize_services(&config, db, AgentEventDbRouter::new(event_dir), None)
             .await
             .expect("initialize main services");
 

@@ -181,6 +181,10 @@ pub struct TeamManager {
     db: SqlitePool,
     event_dbs: AgentEventDbRouter,
     message_archive: Option<MessageArchiveStoreRef>,
+    /// Tiered message body store, used by the read path to rehydrate moved-out bodies. Set in
+    /// production via `with_body_store`; the write/read wiring lands in a follow-up.
+    #[allow(dead_code)]
+    body_store: Option<crate::message_body_store::SharedBodyStore>,
     conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
     remote_relay_adapter: Arc<TeamRemoteRelayAdapter>,
     agents_target_node_id_column: Arc<Mutex<Option<bool>>>,
