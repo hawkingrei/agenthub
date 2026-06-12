@@ -68,7 +68,7 @@ Recent merges worth knowing before rollout or operator training:
 - **Token-based Agent Node onboarding**: remote node join now uses explicit
   bootstrap tokens from the `Agents` page instead of QR-style node onboarding.
 - **Rust / Codex baseline refresh**: local builds and bundled ACP integration
-  now track Rust `1.96.0` and the official Codex `0.137.x` line.
+  now track Rust `1.96.0` and the official Codex `0.138.x` line.
 
 ## Installable Web App And Push
 

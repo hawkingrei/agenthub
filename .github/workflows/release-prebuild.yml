@@ -44,7 +44,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.96.0
         with:
-          profile: minimal
           targets: ${{ matrix.target }}
 
       - name: Install cross (for Linux cross-compilation)
@@ -77,16 +76,6 @@ jobs:
         if: matrix.cross
         run: |
           cross build --locked --release --target ${{ matrix.target }} --bin agenthub --features ${{ matrix.agenthub_features }}
-
-      - name: Build agenthub-codex-acp (native)
-        if: '!matrix.cross'
-        run: |
-          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp
-
-      - name: Build agenthub-codex-acp (cross)
-        if: matrix.cross
-        run: |
-          cross build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp --features release-vendored-openssl
 
       - name: Build agenthub-acp (native)
         if: '!matrix.cross'
@@ -131,7 +120,6 @@ jobs:
           }
 
           package_binary "agenthub"
-          package_binary "agenthub-codex-acp"
           package_binary "agenthub-acp"
 
       - name: Upload artifact

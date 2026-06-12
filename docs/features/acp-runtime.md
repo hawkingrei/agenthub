@@ -63,8 +63,7 @@ ACP runtime concerns should stay split across three orthogonal layers:
 
 Codex and Claude are special cases inside the provider adapter layer:
 
-- `agenthub-acp codex` is AgentHub's canonical distributed Codex ACP adapter path. It reuses the
-  same adapter implementation as the compatibility `agenthub-codex-acp` binary, which uses the
+- `agenthub-acp codex` is AgentHub's canonical distributed Codex ACP adapter path. It uses the
   upstream Codex app-server/thread protocol internally. AgentHub's main process and web surfaces
   should continue to consume ACP requests, ACP notifications, and AgentHub-normalized ACP event JSON
   as the stable boundary. Codex-native state may be exposed only through explicit diagnostics
@@ -215,8 +214,8 @@ ACP permission requests are first-class runtime records:
 - Gemini CLI bootstrap should track the current upstream ACP contract (`gemini --acp`) while continuing to tolerate the legacy `--experimental-acp` flag in provider detection for backward compatibility.
 - Codex ACP support has a canonical AgentHub-distributed command: `agenthub-acp codex`.
   Compatibility detection still recognizes `agenthub-codex-acp` and `codex-acp` as Codex ACP
-  runtimes, and releases must keep packaging `agenthub-codex-acp` until a reviewed deprecation
-  window completes.
+  runtimes for existing deployments and custom overrides, but current AgentHub release assets should
+  publish the canonical `agenthub-acp` entrypoint instead of the legacy `agenthub-codex-acp` binary.
 - Claude ACP support has a canonical AgentHub-distributed command: `agenthub-acp claude`.
   Compatibility detection still recognizes `claude-agent-acp` as an ACP runtime directly, and
   recognizes `claude-code-acp-rs` only when launched with `--acp` so headless or diagnostic Claude

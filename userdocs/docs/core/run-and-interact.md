@@ -41,7 +41,7 @@ For new Codex agents, use the generic AgentHub adapter command:
 | Adapter | Command | Notes |
 |---------|---------|-------|
 | AgentHub Codex ACP | `agenthub-acp codex` | Recommended. Shipped with AgentHub and backed by the AgentHub Codex adapter. |
-| AgentHub Codex ACP compatibility | `agenthub-codex-acp` | Existing configurations continue to work and the binary remains packaged. |
+| Legacy Codex ACP override | `agenthub-codex-acp` or custom path | Existing deployments can still point `codex_acp.binary` at a compatible executable, but current AgentHub release packages should use `agenthub-acp codex`. |
 
 ## Claude ACP Runtimes
 
