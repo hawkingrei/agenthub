@@ -47,15 +47,31 @@ impl AppState {
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
-                match agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), DRAIN_BATCH)
+                // Keep draining while batches come back full so a backlog (e.g. on startup) isn't
+                // paced at one batch per interval; wait for the next tick once it is (nearly) empty.
+                loop {
+                    match agenthub_db::message_body_outbox::drain_into(
+                        &db,
+                        store.as_ref(),
+                        DRAIN_BATCH,
+                    )
                     .await
-                {
-                    Ok(drained) if drained > 0 => {
-                        tracing::debug!(drained, "message body outbox drained into body store");
-                    }
-                    Ok(_) => {}
-                    Err(error) => {
-                        tracing::warn!(error = %error, "message body outbox drain failed");
+                    {
+                        Ok(drained) => {
+                            if drained > 0 {
+                                tracing::debug!(
+                                    drained,
+                                    "message body outbox drained into body store"
+                                );
+                            }
+                            if drained < DRAIN_BATCH {
+                                break;
+                            }
+                        }
+                        Err(error) => {
+                            tracing::warn!(error = %error, "message body outbox drain failed");
+                            break;
+                        }
                     }
                 }
             }
