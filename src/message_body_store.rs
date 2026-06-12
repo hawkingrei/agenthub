@@ -2,16 +2,47 @@
 //!
 //! The durable SQLite outbox lives in `agenthub-db` (`message_body_outbox`). The RocksDB-backed body
 //! store that staged bodies drain into is only compiled when the binary is built with the `rocksdb`
-//! feature, which is enabled per release target (x86_64) so the native `librocksdb-sys` build does not
-//! affect the default, Bazel, or aarch64 builds. The background drainer and the body/metadata split on
-//! the write path are added in a follow-up.
+//! feature, which is enabled per release target so the native `librocksdb-sys` build does not affect
+//! the default or Bazel builds. The write-path body/metadata split is added in a follow-up.
 
-pub use agenthub_message_store::AuthorityMessageId;
+use std::sync::Arc;
 
-/// Open the RocksDB-backed message body store at `path`.
-#[cfg(feature = "rocksdb")]
-pub fn open_rocksdb_body_store(
-    path: impl AsRef<std::path::Path>,
-) -> Result<agenthub_message_store::RocksdbBodyStore, agenthub_message_store::BodyStoreError> {
-    agenthub_message_store::RocksdbBodyStore::open(path)
+pub use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
+
+/// A shared handle to the message body store, when one is active.
+pub type SharedBodyStore = Arc<dyn MessageBodyStore>;
+
+/// Construct the message body store from config, if it is enabled and compiled in.
+///
+/// The store is a default capability: it is on unless `message_body_store.enabled = false`. It can
+/// only actually be constructed when the binary is built with the `rocksdb` feature; otherwise this
+/// logs and returns `None` so the binary still runs (without compression).
+pub fn init_body_store(config: &agenthub_config::AppConfig) -> Option<SharedBodyStore> {
+    if !config.message_body_store_enabled() {
+        tracing::info!("message body store disabled by config");
+        return None;
+    }
+
+    #[cfg(feature = "rocksdb")]
+    {
+        let path = config.message_body_store_path();
+        match agenthub_message_store::RocksdbBodyStore::open(&path) {
+            Ok(store) => {
+                tracing::info!(path = %path, "message body store (rocksdb) enabled");
+                Some(Arc::new(store) as SharedBodyStore)
+            }
+            Err(error) => {
+                tracing::error!(error = %error, path = %path, "failed to open message body store; running without it");
+                None
+            }
+        }
+    }
+
+    #[cfg(not(feature = "rocksdb"))]
+    {
+        tracing::info!(
+            "message body store is enabled in config but this binary was built without the `rocksdb` feature; running without it"
+        );
+        None
+    }
 }

@@ -27,6 +27,7 @@ pub struct AppConfig {
     pub codex_acp: Option<CodexAcpConfig>,
     pub history: Option<HistoryConfig>,
     pub message_archive: Option<MessageArchiveConfig>,
+    pub message_body_store: Option<MessageBodyStoreConfig>,
     pub push: Option<PushConfig>,
     pub internal_grpc: Option<InternalGrpcConfig>,
     pub safe_paths: Option<Vec<String>>,
@@ -103,6 +104,14 @@ pub struct MessageArchiveConfig {
     pub backend: Option<String>,
     pub uri: Option<String>,
     pub message_table: Option<String>,
+}
+
+/// Tiered message body store (compresses message bodies into RocksDB). Default-on when the binary is
+/// built with the `rocksdb` feature; `enabled = false` turns it off.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MessageBodyStoreConfig {
+    pub enabled: Option<bool>,
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -334,6 +343,28 @@ impl AppConfig {
             .filter(|value| !value.is_empty())
             .unwrap_or("messages")
             .to_string()
+    }
+
+    /// Whether the tiered message body store is enabled. Default-on (a default capability); only an
+    /// explicit `enabled = false` turns it off. The build must also include the `rocksdb` feature for
+    /// the store to actually be constructed.
+    pub fn message_body_store_enabled(&self) -> bool {
+        self.message_body_store
+            .as_ref()
+            .and_then(|config| config.enabled)
+            .unwrap_or(true)
+    }
+
+    /// Filesystem path for the message body store. Defaults next to the other agenthub data.
+    pub fn message_body_store_path(&self) -> String {
+        let path = self
+            .message_body_store
+            .as_ref()
+            .and_then(|config| config.path.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("~/.agenthub/message-bodies");
+        expand_tilde(path)
     }
 
     pub fn history_event_retention_days(&self) -> Option<u32> {

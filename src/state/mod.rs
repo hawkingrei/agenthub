@@ -33,6 +33,10 @@ pub struct AppState {
     pub acp_permissions: Arc<AcpPermissionService>,
     pub agent_node_join_bootstrap: AgentNodeJoinBootstrapInfo,
     pub default_worktree_root: String,
+    /// Tiered message body store, when enabled and compiled in. Held here so the read path can fetch
+    /// bodies from it; the write/read wiring lands in a follow-up.
+    #[allow(dead_code)]
+    pub body_store: Option<crate::message_body_store::SharedBodyStore>,
 }
 
 impl AppState {
@@ -51,8 +55,10 @@ impl AppState {
             Self::initialize_services(&config, db.clone(), event_dbs.clone()).await?;
         let agent_node_join_bootstrap = Self::build_agent_node_join_bootstrap(&config)?;
 
+        let body_store = crate::message_body_store::init_body_store(&config);
+
         Self::run_startup_cleanup(&agents, &teams).await?;
-        Self::spawn_startup_workers(&db, &agents, &teams).await?;
+        Self::spawn_startup_workers(&db, &agents, &teams, &body_store).await?;
 
         let default_worktree_root = config.default_worktree_root();
         Ok(Self {
@@ -65,6 +71,7 @@ impl AppState {
             acp_permissions,
             agent_node_join_bootstrap,
             default_worktree_root,
+            body_store,
         })
     }
 

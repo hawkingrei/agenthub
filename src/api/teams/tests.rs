@@ -292,6 +292,7 @@ async fn build_test_state_with_db_source_and_archive(
         acp_permissions: permissions,
         agent_node_join_bootstrap: crate::agent::AgentNodeJoinBootstrapInfo::disabled(),
         default_worktree_root: config.default_worktree_root(),
+        body_store: None,
     };
     if seed_default_agents {
         seed_default_team_member_agents(&state).await;
