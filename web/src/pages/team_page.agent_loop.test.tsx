@@ -257,7 +257,48 @@ vi.mock("./team/team_page_modals", () => ({
   },
 }));
 
+vi.mock("./team/TeamWorkbenchContainer", async () => {
+  const { useTeamWorkspace } = await vi.importActual<typeof import("./team/team_workspace_context")>(
+    "./team/team_workspace_context"
+  );
+  return {
+    TeamWorkbenchContainer: () => {
+      const { workbench } = useTeamWorkspace();
+      if (!workbench) {
+        return null;
+      }
+      teamMemberAcpPanelPropsSpy({
+        selectedMemberId: workbench.selectedAgentWorkspaceMemberId,
+        selectedSessionId: workbench.selectedAgentWorkspaceSessionId,
+      });
+      return (
+        <div>
+          {workbench.isAgentWorkspace ? (
+            <button type="button" onClick={workbench.onOpenTeamMemberEditModal}>
+              Open edit profile
+            </button>
+          ) : null}
+          {workbench.tab === "agent_acp" ? (
+            <button
+              type="button"
+              onClick={() => {
+                workbench.onSendAgentAcpInput(
+                  "hello from acp",
+                  workbench.selectedAgentWorkspaceSessionId ?? ""
+                );
+              }}
+            >
+              Mock agent ACP panel
+            </button>
+          ) : null}
+        </div>
+      );
+    },
+  };
+});
+
 import { TeamPage } from "./team_page";
+import { buildTeamWorkspacePath, resolveTeamRoute } from "../app_route_selection";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -340,7 +381,7 @@ describe("TeamPage agent loop profile flow", () => {
     lookup: () => T | null,
     message: string
   ): Promise<T> {
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
       const element = lookup();
       if (element !== null) {
         return element;
@@ -350,6 +391,44 @@ describe("TeamPage agent loop profile flow", () => {
       });
     }
     throw new Error(message);
+  }
+
+  function TestTeamPageRouter() {
+    const [routeLocation, setRouteLocation] = React.useState(() => ({
+      pathname: window.location.pathname,
+      search: window.location.search,
+    }));
+    React.useEffect(() => {
+      const onPopState = () => {
+        setRouteLocation({
+          pathname: window.location.pathname,
+          search: window.location.search,
+        });
+      };
+      window.addEventListener("popstate", onPopState);
+      return () => {
+        window.removeEventListener("popstate", onPopState);
+      };
+    }, []);
+    const teamRoute = resolveTeamRoute(routeLocation.pathname);
+    return (
+      <MantineProvider>
+        <TeamPage
+          auth={{
+            token: "token",
+            userId: "user-1",
+            username: "root",
+            role: "root",
+          }}
+          token="token"
+          onLogout={() => {}}
+          developerMode={false}
+          routePathname={routeLocation.pathname}
+          routeTeamId={teamRoute?.teamId ?? null}
+          routeSearch={routeLocation.search}
+        />
+      </MantineProvider>
+    );
   }
 
   beforeEach(() => {
@@ -370,6 +449,7 @@ describe("TeamPage agent loop profile flow", () => {
     useMediaQueryMock.mockReturnValue(false);
     teamPageFixture.teams = [];
     teamPageFixture.agents = [];
+    window.history.pushState({}, "", buildTeamWorkspacePath("team-1"));
   });
 
   afterEach(() => {
@@ -475,37 +555,24 @@ describe("TeamPage agent loop profile flow", () => {
     const root: Root = createRoot(container);
 
     try {
+      window.history.pushState(
+        {},
+        "",
+        buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
+      );
       await act(async () => {
-        root.render(
-          <MantineProvider>
-            <TeamPage
-              auth={{
-                token: "token",
-                userId: "user-1",
-                username: "root",
-                role: "root",
-              }}
-              token="token"
-              onLogout={() => {}}
-              developerMode={false}
-              routePathname="/workspace/teams"
-              routeTeamId="team-1"
-            />
-          </MantineProvider>
-        );
+        root.render(<TestTeamPageRouter />);
         await flushEffects();
       });
 
-      await clickElement(
-        Array.from(container.querySelectorAll("button")).find((button) =>
-          button.textContent?.includes("Open worker workspace")
-        ) as HTMLButtonElement | null
+      const openEditProfileButton = await waitForElement(
+        () =>
+          Array.from(container.querySelectorAll("button")).find((button) =>
+            button.textContent?.includes("Open edit profile")
+          ) as HTMLButtonElement | undefined ?? null,
+        "open edit profile button missing"
       );
-      await clickElement(
-        Array.from(container.querySelectorAll("button")).find((button) =>
-          button.textContent?.includes("Open edit profile")
-        ) as HTMLButtonElement | null
-      );
+      await clickElement(openEditProfileButton);
 
       const identityInput = await waitForElement(
         () =>
@@ -693,32 +760,16 @@ describe("TeamPage agent loop profile flow", () => {
     const root: Root = createRoot(container);
 
     try {
+      window.history.pushState(
+        {},
+        "",
+        buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
+      );
       await act(async () => {
-        root.render(
-          <MantineProvider>
-            <TeamPage
-              auth={{
-                token: "token",
-                userId: "user-1",
-                username: "root",
-                role: "root",
-              }}
-              token="token"
-              onLogout={() => {}}
-              developerMode={false}
-              routePathname="/workspace/teams"
-              routeTeamId="team-1"
-            />
-          </MantineProvider>
-        );
+        root.render(<TestTeamPageRouter />);
         await flushEffects();
       });
 
-      await clickElement(
-        Array.from(container.querySelectorAll("button")).find((button) =>
-          button.textContent?.includes("Open worker workspace")
-        ) as HTMLButtonElement | null
-      );
       await clickElement(
         await waitForElement(
           () =>
@@ -826,32 +877,16 @@ describe("TeamPage agent loop profile flow", () => {
     const root: Root = createRoot(container);
 
     try {
+      window.history.pushState(
+        {},
+        "",
+        buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
+      );
       await act(async () => {
-        root.render(
-          <MantineProvider>
-            <TeamPage
-              auth={{
-                token: "token",
-                userId: "user-1",
-                username: "root",
-                role: "root",
-              }}
-              token="token"
-              onLogout={() => {}}
-              developerMode={false}
-              routePathname="/workspace/teams"
-              routeTeamId="team-1"
-            />
-          </MantineProvider>
-        );
+        root.render(<TestTeamPageRouter />);
         await flushEffects();
       });
 
-      await clickElement(
-        Array.from(container.querySelectorAll("button")).find((button) =>
-          button.textContent?.includes("Open worker workspace")
-        ) as HTMLButtonElement | null
-      );
       loadMemberEventsSpy.mockClear();
       sendInput.mockRejectedValueOnce(
         new Error("acp command send timed out due to backpressure")

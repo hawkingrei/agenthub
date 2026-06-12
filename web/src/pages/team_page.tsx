@@ -49,10 +49,6 @@ import {
 import { WorkspaceShell } from "../components/layout/workspace_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
 import {
-  prefetchTeamSetupSurface,
-  prefetchTeamWorkbenchTab,
-} from "./team/team_workbench_content";
-import {
   buildTeamPageModalsProps,
 } from "./team/team_page_route_props";
 import {
@@ -108,7 +104,7 @@ import { useTeamTaskWorkspaceData } from "./team/use_team_task_workspace_data";
 import { useTeamConversationActions } from "./team/use_team_conversation_actions";
 import { useTeamConversationEffects } from "./team/use_team_conversation_effects";
 import { useTeamMemberAcpEffects } from "./team/use_team_member_acp_effects";
-import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
+import { useTeamMemberBackfillEffect } from "../team_member_backfill_effect";
 import { useTeamCatalogViewModel } from "./team/use_team_catalog_view_model";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamWorkspaceViewModel } from "./team/use_team_workspace_view_model";
@@ -123,10 +119,7 @@ import { useTeamControlState } from "./team/use_team_control_state";
 import { useTeamCreateState } from "./team/use_team_create_state";
 import { useTeamMailboxState } from "./team/use_team_mailbox_state";
 import { TeamSidebarContainer } from "./team/TeamSidebarContainer";
-import {
-  TeamWorkbenchContainer,
-  type TeamWorkbenchRuntimeContext,
-} from "./team/TeamWorkbenchContainer";
+import type { TeamWorkbenchRuntimeContext } from "./team/TeamWorkbenchContainer";
 import {
   TeamWorkspaceProvider,
   type TeamWorkspaceContextValue,
@@ -177,11 +170,38 @@ function useShallowStableObject<T extends object>(value: T): T {
 
 const loadTeamMemberAcpPanel = () => import("./team_member_acp_panel");
 const loadTeamPageModals = () => import("./team/team_page_modals");
+const loadTeamWorkbenchContainer = () => import("./team/TeamWorkbenchContainer");
+const loadTeamWorkbenchContent = () => import("./team/team_workbench_content");
 
 const LazyTeamPageModals = React.lazy(async () => {
   const module = await loadTeamPageModals();
   return { default: module.TeamPageModals };
 });
+
+const LazyTeamWorkbenchContainer = React.lazy(async () => {
+  const module = await loadTeamWorkbenchContainer();
+  return { default: module.TeamWorkbenchContainer };
+});
+
+function TeamWorkbenchRouteFallback() {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6 text-sm text-notion-text-muted">
+      Loading team workspace...
+    </div>
+  );
+}
+
+function prefetchTeamWorkbenchTab(tab: TeamTab): void {
+  void loadTeamWorkbenchContent().then((module) => {
+    module.prefetchTeamWorkbenchTab(tab);
+  });
+}
+
+function prefetchTeamSetupSurface(): void {
+  void loadTeamWorkbenchContent().then((module) => {
+    module.prefetchTeamSetupSurface();
+  });
+}
 
 export {
   buildMailboxForwardChatPayload,
@@ -1125,7 +1145,7 @@ export function TeamPage(props: TeamPageProps) {
     snapshot,
     teamSelectorFilter,
   });
-  useTeamMemberAgentBackfillEffect({
+  useTeamMemberBackfillEffect({
     token: props.token,
     agents,
     teamSpecMemberIds,
@@ -2202,6 +2222,9 @@ export function TeamPage(props: TeamPageProps) {
     [routeChannelId, routeWorkspaceLens]
   );
   const prefetchWorkspaceLens = useCallback((lens: WorkspaceLens) => {
+    if (isSelectorRoute) {
+      return;
+    }
     if (lens === "channels") {
       prefetchTeamWorkbenchTab("runs");
       prefetchTeamWorkbenchTab("mailbox");
@@ -2217,7 +2240,7 @@ export function TeamPage(props: TeamPageProps) {
     if (lens === "tasks") {
       prefetchTeamWorkbenchTab("runs");
     }
-  }, []);
+  }, [isSelectorRoute]);
   const selectedAgentWorkspaceLiveState = useMemo(
     () =>
       selectedTeamMemberLiveStates.find(
@@ -2380,7 +2403,7 @@ export function TeamPage(props: TeamPageProps) {
     ]
   );
   useEffect(() => {
-    if (!selectedTeam) {
+    if (isSelectorRoute || !selectedTeam) {
       return;
     }
 
@@ -2419,7 +2442,7 @@ export function TeamPage(props: TeamPageProps) {
         window.clearTimeout(timeoutHandle);
       }
     };
-  }, [selectedTeam, selectedTeamHasConfiguredMembers]);
+  }, [isSelectorRoute, selectedTeam, selectedTeamHasConfiguredMembers]);
   const workspaceAdvancedTabItems = (isAgentWorkspace
     ? TEAM_AGENT_ADVANCED_TAB_ITEMS
     : TEAM_UTILITY_ADVANCED_TAB_ITEMS
@@ -2897,7 +2920,7 @@ export function TeamPage(props: TeamPageProps) {
 
   const warningNotice = resolveTeamPageNotice(warning);
   const showSidebarPane = !isSelectorRoute && !teamsSidebarCollapsed;
-  const showWorkbenchPane = !isCompactWorkbench || teamsSidebarCollapsed;
+  const showWorkbenchPane = !isSelectorRoute && (!isCompactWorkbench || teamsSidebarCollapsed);
   const showTeamBootstrapLoading =
     !isSelectorRoute &&
     Boolean(effectiveSelectedTeamId) &&
@@ -3412,7 +3435,9 @@ export function TeamPage(props: TeamPageProps) {
           ) : null}
           {showWorkbenchPane ? (
             <TeamWorkspaceProvider value={teamWorkspaceContext}>
-              <TeamWorkbenchContainer />
+              <Suspense fallback={<TeamWorkbenchRouteFallback />}>
+                <LazyTeamWorkbenchContainer />
+              </Suspense>
             </TeamWorkspaceProvider>
           ) : null}
         </div>

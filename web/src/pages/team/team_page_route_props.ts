@@ -1,12 +1,12 @@
 import type { ComponentProps } from "react";
-import { TeamSidebar } from "../team_sidebar";
+import type { TeamSidebar } from "../team_sidebar";
+import type { TeamRunPanel } from "../team_run_panel";
+import type { TeamPageModals } from "./team_page_modals";
 import type {
   TeamWorkbenchContentProps,
 } from "./team_workbench_content";
-import { TeamWorkbenchContent } from "./team_workbench_content";
-import { TeamWorkspaceHeader } from "./team_workspace_header";
-import { TeamRunPanel } from "../team_run_panel";
-import { TeamPageModals } from "./team_page_modals";
+import type { TeamWorkbenchContent } from "./team_workbench_content";
+import type { TeamWorkspaceHeader } from "./team_workspace_header";
 
 export function buildTeamSidebarProps(
   props: ComponentProps<typeof TeamSidebar>

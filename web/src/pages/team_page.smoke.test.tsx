@@ -308,6 +308,7 @@ describe("TeamPage smoke render", () => {
     expect(markup).toContain("Loading teams...");
     expect(markup).not.toContain("Workspace Flow");
     expect(markup).not.toContain("Mission before staffing");
+    expect(markup).not.toContain("Loading team workspace");
   });
 
   it("keeps the selector in loading state until teams refresh settles", async () => {

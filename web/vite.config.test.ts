@@ -212,8 +212,20 @@ describe("vite chunk grouping", () => {
     expect(resolveChunkGroup("/repo/web/src/pages/team_page.tsx")).toBe(
       "route-teams"
     );
+    expect(resolveChunkGroup("/repo/web/src/pages/team/team_selector_panel.tsx")).toBe(
+      "route-teams"
+    );
     expect(resolveChunkGroup("/repo/web/src/pages/team_member_acp_panel.tsx")).toBe(
       "route-teams-agent-acp"
+    );
+    expect(resolveChunkGroup("/repo/web/src/pages/team/TeamWorkbenchContainer.tsx")).toBe(
+      "route-teams-workbench"
+    );
+    expect(resolveChunkGroup("/repo/web/src/pages/team/team_workbench_content.tsx")).toBe(
+      "route-teams-workbench"
+    );
+    expect(resolveChunkGroup("/repo/web/src/pages/team_conversation_panel.tsx")).toBe(
+      "route-teams-workbench"
     );
   });
 
@@ -229,6 +241,8 @@ describe("vite chunk grouping", () => {
         "assets/route-acp-shared-abc.js",
         "assets/route-acp-tools-abc.js",
         "assets/route-teams-agent-acp-abc.js",
+        "assets/route-teams-workbench-abc.js",
+        "assets/route-teams-abc.js",
         "assets/vendor-mantine-abc.js",
       ])
     ).toEqual([

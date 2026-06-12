@@ -30,7 +30,7 @@ import {
   DEFAULT_CODEX_ACP_MODE,
   normalizeCodexAcpModeId,
 } from "./codex_acp_modes";
-import { useTeamMemberAgentBackfillEffect } from "./pages/team/use_team_member_agent_backfill_effect";
+import { useTeamMemberBackfillEffect } from "./team_member_backfill_effect";
 import { 
   DEFAULT_AGENT_PRESET_ID, 
   getAgentPreset, 
@@ -283,7 +283,7 @@ export function useAppAgents(
     )
   );
 
-  useTeamMemberAgentBackfillEffect({
+  useTeamMemberBackfillEffect({
     token: token ?? "",
     agents,
     teamSpecMemberIds,

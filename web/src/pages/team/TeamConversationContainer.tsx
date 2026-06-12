@@ -5,7 +5,7 @@ import {
   formatTs,
   toPrettyJson,
 } from "./page_helpers";
-import { buildTeamWorkspacePath } from "../team_page";
+import { buildTeamWorkspacePath } from "../../app_route_selection";
 import {
   useTeamConversationContext,
   useTeamTasksContext,

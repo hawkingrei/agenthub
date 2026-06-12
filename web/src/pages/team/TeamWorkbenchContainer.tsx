@@ -17,7 +17,7 @@ import type { StepAction, TeamTab } from "./state";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type { MailboxTemplateKey, TeamMailboxChatActors } from "./mailbox_helpers";
 import type { TeamRunStatusFilter } from "./run_helpers";
-import { buildTeamWorkspacePath } from "../team_page";
+import { buildTeamWorkspacePath } from "../../app_route_selection";
 import { TeamConversationContainer } from "./TeamConversationContainer";
 import { TeamTasksContainer } from "./TeamTasksContainer";
 import { TeamThreadContainer } from "./TeamThreadContainer";

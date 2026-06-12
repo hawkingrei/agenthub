@@ -28,6 +28,8 @@
 - extracted `escapeHtml` into a lightweight helper so route-independent code no longer imports the heavy markdown renderer path
 - moved highlight.js theme CSS out of the entry bundle
 - changed Vite preload filtering so `route-auth`, `route-teams`, and `vendor-markdown` are no longer preloaded from `index.html`
+- split the Team detail workbench into `route-teams-workbench` so the selector/sidebar shell no longer imports the detail body directly
+- moved Team member agent backfill into an app-level helper module so the global agents hook no longer pulls Team route UI code into the entry path
 
 ### Review and CI follow-ups
 
@@ -60,3 +62,8 @@
 - `cd web && npx vitest run src/pages/team_page.helpers.test.ts src/pages/team_sidebar.helpers.test.ts src/components/agent_node_section.test.tsx src/app.route_auth.test.ts`
 - `cd web && npm run test:coverage:core`
 - inspected `web/dist/index.html` to confirm the initial preload set no longer includes `route-auth`, `route-teams`, or `vendor-markdown`
+- `npm --prefix web run test -- vite.config.test.ts src/pages/team/use_team_member_backfill_effect.test.tsx src/pages/team/team_page_route_props.test.ts src/pages/team_page.smoke.test.tsx`
+- `npm --prefix web run test -- vite.config.test.ts src/pages/team_page.smoke.test.tsx`
+- `npm --prefix web run build`
+- `npm --prefix web run lint`
+- inspected `web/dist/index.html` and preview-served `/workspace/teams` HTML to confirm the initial preload set still excludes `route-teams`, `route-teams-workbench`, `route-teams-agent-acp`, and `route-acp-shared`
