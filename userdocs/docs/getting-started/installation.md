@@ -48,6 +48,49 @@ Current release binaries are available for:
 - Linux `x86_64`
 - Linux `aarch64`
 
+## Install Debian Packages
+
+Linux releases also publish Debian packages for Ubuntu/Debian-style hosts:
+
+- `agenthub_<version>_amd64.deb`
+- `agenthub_<version>_arm64.deb`
+
+Download the package that matches your host and install it with `apt`:
+
+```bash
+sudo apt install ./agenthub_<version>_amd64.deb
+```
+
+The Debian package installs:
+
+- `agenthub`
+- `agenthub-acp`
+- `agenthub.service`
+
+On install, the package creates an `agenthub` system user, creates runtime data under
+`/var/lib/agenthub`, enables the service, and attempts to start it.
+
+Check service status:
+
+```bash
+systemctl status agenthub.service
+journalctl -u agenthub.service -f
+```
+
+The service reads configuration from:
+
+```text
+/var/lib/agenthub/.agenthub/config.toml
+```
+
+The default package config listens on `127.0.0.1:8080` and allows workspaces under
+`/var/lib/agenthub/workspaces`. Edit the config and restart the service when you need a different
+listen address or repository root:
+
+```bash
+sudo systemctl restart agenthub.service
+```
+
 ## Build From Source
 
 ### Prerequisites

@@ -1,0 +1,20 @@
+[Unit]
+Description=AgentHub control plane
+Documentation=https://github.com/hawkingrei/agenthub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agenthub
+Group=agenthub
+Environment=HOME=/var/lib/agenthub
+WorkingDirectory=/var/lib/agenthub
+ExecStart=/usr/bin/agenthub
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

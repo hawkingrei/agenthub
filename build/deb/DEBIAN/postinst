@@ -1,0 +1,64 @@
+#!/bin/sh
+set -e
+
+ensure_agenthub_user() {
+  if ! getent group agenthub >/dev/null 2>&1; then
+    addgroup --system agenthub >/dev/null
+  fi
+
+  if ! id -u agenthub >/dev/null 2>&1; then
+    adduser \
+      --system \
+      --home /var/lib/agenthub \
+      --no-create-home \
+      --ingroup agenthub \
+      --disabled-login \
+      --gecos "AgentHub service" \
+      agenthub >/dev/null
+  fi
+}
+
+ensure_agenthub_layout() {
+  install -d -o agenthub -g agenthub -m 0750 /var/lib/agenthub
+  install -d -o agenthub -g agenthub -m 0750 /var/lib/agenthub/.agenthub
+  install -d -o agenthub -g agenthub -m 0750 /var/lib/agenthub/.agenthub/worktrees
+  install -d -o agenthub -g agenthub -m 0750 /var/lib/agenthub/workspaces
+
+  if [ ! -f /var/lib/agenthub/.agenthub/config.toml ]; then
+    cat > /var/lib/agenthub/.agenthub/config.toml <<'CONFIG'
+safe_paths = [
+  "/var/lib/agenthub/workspaces",
+]
+
+[server]
+listen = "127.0.0.1:8080"
+
+[worktree]
+default_root = "/var/lib/agenthub/.agenthub/worktrees"
+
+[message_archive]
+uri = "/var/lib/agenthub/.agenthub/message-archive"
+
+[message_body_store]
+path = "/var/lib/agenthub/.agenthub/message-bodies"
+CONFIG
+    chown agenthub:agenthub /var/lib/agenthub/.agenthub/config.toml
+    chmod 0640 /var/lib/agenthub/.agenthub/config.toml
+  fi
+}
+
+start_agenthub_service() {
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    systemctl enable agenthub.service || true
+    if ! systemctl restart agenthub.service; then
+      echo "warning: agenthub.service could not be started automatically; inspect with 'journalctl -u agenthub.service'" >&2
+    fi
+  fi
+}
+
+ensure_agenthub_user
+ensure_agenthub_layout
+start_agenthub_service
+
+exit 0

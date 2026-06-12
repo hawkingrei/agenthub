@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+
+if [ "$1" = "purge" ]; then
+  echo "agenthub package purged; runtime data under /var/lib/agenthub is preserved" >&2
+fi
+
+exit 0
