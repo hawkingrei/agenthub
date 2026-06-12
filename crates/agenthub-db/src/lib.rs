@@ -1411,6 +1411,45 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             );
         }
     }
+    // Promote the payload fields that are queried via SQL to real columns, so the body can later move
+    // into the tiered (compressed) body store without breaking those queries. payload_json keeps the
+    // fields too for now; the body is moved out in a follow-up.
+    if !sqlite_table_has_column(&pool, "team_conversation_messages", "text").await? {
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_conversation_messages ADD COLUMN text TEXT",
+            "team_conversation_messages.text",
+        )
+        .await;
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_conversation_messages ADD COLUMN kind TEXT",
+            "team_conversation_messages.kind",
+        )
+        .await;
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_conversation_messages ADD COLUMN thread_root_message_id INTEGER",
+            "team_conversation_messages.thread_root_message_id",
+        )
+        .await;
+        if let Err(err) = sqlx::query(
+            r#"
+            UPDATE team_conversation_messages
+            SET text = json_extract(payload_json, '$.text'),
+                kind = json_extract(payload_json, '$.kind'),
+                thread_root_message_id = json_extract(payload_json, '$.thread_root_message_id')
+            "#,
+        )
+        .execute(&pool)
+        .await
+        {
+            tracing::warn!(
+                "db init: failed to backfill team_conversation_messages promoted columns: {}",
+                err
+            );
+        }
+    }
     if !sqlite_table_has_column(&pool, "team_channel_message_replicas", "correlation_id").await? {
         add_column_if_missing(
             &pool,

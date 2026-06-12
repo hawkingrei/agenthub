@@ -391,6 +391,9 @@ pub(super) async fn setup_test_db() -> SqlitePool {
             payload_json TEXT NOT NULL,
             idempotency_key TEXT,
             created_at INTEGER NOT NULL,
+            text TEXT,
+            kind TEXT,
+            thread_root_message_id INTEGER,
             FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
             FOREIGN KEY(task_id) REFERENCES team_tasks(id)
         );

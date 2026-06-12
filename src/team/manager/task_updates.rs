@@ -20,8 +20,8 @@ impl TeamManager {
                 conversation_id,
                 task_id,
                 from_actor_id,
-                json_extract(payload_json, '$.kind') AS kind,
-                json_extract(payload_json, '$.text') AS text,
+                kind,
+                text,
                 created_at
             FROM team_conversation_messages
             WHERE task_id = ?1
