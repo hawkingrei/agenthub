@@ -10,6 +10,8 @@ Use this checklist before and after deploying AgentHub in a shared environment.
 
 - Define explicit `safe_paths` for each team/project root.
 - Validate `worktree.default_root` exists and is writable.
+- For Debian package installs, update `/var/lib/agenthub/.agenthub/config.toml` and grant the
+  `agenthub` service user access to each configured workspace root.
 - Confirm runtime user permissions for repository paths.
 - Confirm Node/Rust build artifacts are reproducible in CI.
 - Confirm rollback plan (previous binary + config snapshot).
@@ -41,10 +43,14 @@ When remote Agent Nodes are enabled:
 
 AgentHub persists runtime data under `~/.agenthub/` by default.
 
+For Debian package installs, the default service sets `HOME=/var/lib/agenthub`, so the persisted
+runtime data is under `/var/lib/agenthub/.agenthub/`.
+
 Minimum backup targets:
 
-- `~/.agenthub/agenthub.db`
-- deployment `config.toml`
+- `~/.agenthub/agenthub.db` for source, Homebrew, and archive installs.
+- `/var/lib/agenthub/.agenthub/agenthub.db` for Debian package installs.
+- deployment `config.toml`.
 
 Recommended cadence:
 

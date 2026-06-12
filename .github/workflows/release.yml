@@ -138,11 +138,21 @@ jobs:
           package_binary "agenthub"
           package_binary "agenthub-acp"
 
+          if [[ "${OS_NAME}" == "linux" ]]; then
+            build/deb/package.sh \
+              --version "${ASSET_VERSION}" \
+              --arch "${ARCH}" \
+              --target "${TARGET}" \
+              --output-dir dist
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
           retention-days: 1
 
   publish_npm:
@@ -358,14 +368,14 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          release_archives=()
-          for archive in dist/*.tar.gz; do
-            if [[ "${archive}" != *-source.tar.gz ]]; then
-              release_archives+=("${archive}")
+          release_assets=()
+          for asset in dist/*.tar.gz dist/*.deb; do
+            if [[ "${asset}" != *-source.tar.gz ]]; then
+              release_assets+=("${asset}")
             fi
           done
-          if (( ${#release_archives[@]} == 0 )); then
-            echo "::error::No binary release archives were produced by the build matrix."
+          if (( ${#release_assets[@]} == 0 )); then
+            echo "::error::No binary release assets were produced by the build matrix."
             exit 1
           fi
 
@@ -373,7 +383,9 @@ jobs:
         shell: bash
         run: |
           cd dist
-          sha256sum ./*.tar.gz | sed 's# \./# #g' > SHA256SUMS.txt
+          shopt -s nullglob
+          assets=(./*.tar.gz ./*.deb)
+          sha256sum "${assets[@]}" | sed 's# \./# #g' > SHA256SUMS.txt
 
       - name: Prepare release body
         id: release_body
@@ -389,12 +401,15 @@ jobs:
               echo
             fi
             echo "### Available assets"
-            find dist -maxdepth 1 -type f \( -name '*.tar.gz' -o -name 'SHA256SUMS.txt' \) -printf '%f\n' | sort | while read -r asset; do
+            find dist -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.deb' -o -name 'SHA256SUMS.txt' \) -printf '%f\n' | sort | while read -r asset; do
               echo "- \`${asset}\`"
             done
             echo
             echo "Each binary archive contains one release binary plus the bundled \`README.md\`"
             echo "and \`LICENSE\` file when present."
+            echo "Linux \`.deb\` packages install \`agenthub\`, \`agenthub-acp\`, and a default"
+            echo "systemd service that runs as the \`agenthub\` user with data under"
+            echo "\`/var/lib/agenthub\`."
             echo
             echo "### Verify checksums"
             echo "\`\`\`bash"

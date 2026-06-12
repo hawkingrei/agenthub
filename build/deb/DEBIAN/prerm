@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "deconfigure" ]; then
+  if [ -d /run/systemd/system ]; then
+    if command -v deb-systemd-invoke >/dev/null 2>&1; then
+      deb-systemd-invoke stop agenthub.service >/dev/null 2>&1 || true
+    elif command -v systemctl >/dev/null 2>&1; then
+      systemctl stop agenthub.service >/dev/null 2>&1 || true
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl disable agenthub.service >/dev/null 2>&1 || true
+    fi
+  fi
+fi
+
+exit 0

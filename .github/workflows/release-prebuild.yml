@@ -122,9 +122,19 @@ jobs:
           package_binary "agenthub"
           package_binary "agenthub-acp"
 
+          if [[ "${OS_NAME}" == "linux" ]]; then
+            build/deb/package.sh \
+              --version "${SAFE_REF}" \
+              --arch "${ARCH}" \
+              --target "${TARGET}" \
+              --output-dir dist
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-prebuild-${{ matrix.target }}
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
           retention-days: 7
