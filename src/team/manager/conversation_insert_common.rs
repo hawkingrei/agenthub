@@ -39,6 +39,13 @@ pub(super) async fn insert_task_conversation_message_with_tx(
         created_at,
     } = input;
 
+    // Promoted columns mirror the queried payload fields (see init_db); payload_json still carries them.
+    let text = redacted_payload.get("text").and_then(Value::as_str);
+    let kind = redacted_payload.get("kind").and_then(Value::as_str);
+    let thread_root_message_id = redacted_payload
+        .get("thread_root_message_id")
+        .and_then(Value::as_i64);
+
     let (message, created) = if let Some(idempotency_key) = idempotency_key.as_deref() {
         match sqlx::query(
             r#"
@@ -52,9 +59,12 @@ pub(super) async fn insert_task_conversation_message_with_tx(
                 group_id,
                 payload_json,
                 idempotency_key,
-                created_at
+                created_at,
+                text,
+                kind,
+                thread_root_message_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
             "#,
         )
         .bind(&conversation.id)
@@ -67,6 +77,9 @@ pub(super) async fn insert_task_conversation_message_with_tx(
         .bind(&payload_json)
         .bind(idempotency_key)
         .bind(created_at)
+        .bind(text)
+        .bind(kind)
+        .bind(thread_root_message_id)
         .execute(&mut **tx)
         .await
         {
@@ -116,9 +129,12 @@ pub(super) async fn insert_task_conversation_message_with_tx(
                 correlation_id,
                 group_id,
                 payload_json,
-                created_at
+                created_at,
+                text,
+                kind,
+                thread_root_message_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             "#,
         )
         .bind(&conversation.id)
@@ -130,6 +146,9 @@ pub(super) async fn insert_task_conversation_message_with_tx(
         .bind(group_id.as_deref())
         .bind(&payload_json)
         .bind(created_at)
+        .bind(text)
+        .bind(kind)
+        .bind(thread_root_message_id)
         .execute(&mut **tx)
         .await?;
         (

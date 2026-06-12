@@ -969,25 +969,8 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         );
     }
 
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_team_conversation_messages_task_route_thread_root_id
-        ON team_conversation_messages(
-            task_id,
-            route,
-            json_extract(payload_json, '$.thread_root_message_id'),
-            id
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to create idx_team_conversation_messages_task_route_thread_root_id: {}",
-            err
-        );
-    }
+    // idx_team_conversation_messages_task_route_thread_root_id is created (on the thread_root_message_id
+    // column) by the column-promotion migration below, once that column exists.
 
     if let Err(err) = sqlx::query(
         r#"
@@ -1411,6 +1394,62 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             );
         }
     }
+    // Promote the payload fields that are queried via SQL to real columns, so the body can later move
+    // into the tiered (compressed) body store without breaking those queries. payload_json keeps the
+    // fields too for now; the body is moved out in a follow-up. Each column is checked independently so
+    // a migration interrupted partway through still completes on the next startup.
+    let mut promoted_any = false;
+    if !sqlite_table_has_column(&pool, "team_conversation_messages", "text").await? {
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_conversation_messages ADD COLUMN text TEXT",
+            "team_conversation_messages.text",
+        )
+        .await;
+        promoted_any = true;
+    }
+    if !sqlite_table_has_column(&pool, "team_conversation_messages", "kind").await? {
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_conversation_messages ADD COLUMN kind TEXT",
+            "team_conversation_messages.kind",
+        )
+        .await;
+        promoted_any = true;
+    }
+    if !sqlite_table_has_column(
+        &pool,
+        "team_conversation_messages",
+        "thread_root_message_id",
+    )
+    .await?
+    {
+        add_column_if_missing(
+            &pool,
+            "ALTER TABLE team_conversation_messages ADD COLUMN thread_root_message_id INTEGER",
+            "team_conversation_messages.thread_root_message_id",
+        )
+        .await;
+        promoted_any = true;
+    }
+    if promoted_any
+        && let Err(err) = sqlx::query(
+            r#"
+            UPDATE team_conversation_messages
+            SET text = json_extract(payload_json, '$.text'),
+                kind = json_extract(payload_json, '$.kind'),
+                thread_root_message_id = json_extract(payload_json, '$.thread_root_message_id')
+            "#,
+        )
+        .execute(&pool)
+        .await
+    {
+        tracing::warn!(
+            "db init: failed to backfill team_conversation_messages promoted columns: {}",
+            err
+        );
+    }
+    migrate_team_conversation_messages_thread_root_index(&pool).await?;
     if !sqlite_table_has_column(&pool, "team_channel_message_replicas", "correlation_id").await? {
         add_column_if_missing(
             &pool,
@@ -2626,6 +2665,40 @@ async fn backfill_team_authority_group_ids(pool: &SqlitePool) -> anyhow::Result<
     .execute(pool)
     .await
     .context("backfill team_runs.group_id from team_definitions")?;
+    Ok(())
+}
+
+/// Ensure the thread-reply lookup index is on the `thread_root_message_id` column, not the old
+/// `json_extract(payload_json, ...)` expression (the column query cannot use an expression index).
+/// Idempotent: it only rebuilds the index when it is missing or still expression-based.
+async fn migrate_team_conversation_messages_thread_root_index(
+    pool: &SqlitePool,
+) -> anyhow::Result<()> {
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' \
+         AND name = 'idx_team_conversation_messages_task_route_thread_root_id'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    let needs_rebuild = existing
+        .as_deref()
+        .map(|sql| sql.contains("json_extract"))
+        .unwrap_or(true);
+    if needs_rebuild {
+        sqlx::query(
+            "DROP INDEX IF EXISTS idx_team_conversation_messages_task_route_thread_root_id",
+        )
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_team_conversation_messages_task_route_thread_root_id
+            ON team_conversation_messages(task_id, route, thread_root_message_id, id)
+            "#,
+        )
+        .execute(pool)
+        .await?;
+    }
     Ok(())
 }
 

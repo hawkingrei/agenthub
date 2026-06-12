@@ -3164,7 +3164,7 @@ async fn query_thread_participant_messages(
         FROM team_conversation_messages
         WHERE task_id = ?1
           AND route = 'team_thread_reply'
-          AND json_extract(payload_json, '$.thread_root_message_id') = ?2
+          AND thread_root_message_id = ?2
         ORDER BY id ASC
         "#,
     )
