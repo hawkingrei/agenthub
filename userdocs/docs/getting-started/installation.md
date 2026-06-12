@@ -17,7 +17,6 @@ brew install linkerdog/homebrew-tap/agenthub
 This installs:
 
 - `agenthub`
-- `agenthub-codex-acp`
 - `agenthub-acp`
 
 To run AgentHub as a background service:
@@ -113,10 +112,11 @@ By default, AgentHub serves the UI at `http://localhost:8080`.
 ### ACP Provider Baseline
 
 The canonical AgentHub ACP adapter binary is `agenthub-acp`. Use `agenthub-acp codex` for Codex
-sessions and `agenthub-acp claude` for Claude sessions. AgentHub still installs
-`agenthub-codex-acp` for existing Codex configurations.
+sessions and `agenthub-acp claude` for Claude sessions. Existing deployments that still launch
+`agenthub-codex-acp` should migrate to `agenthub-acp codex` before relying on current release
+packages.
 
-- Current repository baseline: official Codex `0.137.x`
+- Current repository baseline: official Codex `0.138.x`
 - If you override `codex_acp.binary`, keep the replacement ACP binary protocol-
   compatible with the same Codex generation
 
