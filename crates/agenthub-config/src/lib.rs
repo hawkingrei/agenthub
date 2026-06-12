@@ -284,7 +284,7 @@ impl AppConfig {
         self.codex_acp
             .as_ref()
             .and_then(|c| c.binary.clone())
-            .unwrap_or_else(|| "agenthub-codex-acp".to_string())
+            .unwrap_or_else(|| "agenthub-acp".to_string())
     }
 
     pub fn codex_acp_default_mode(&self) -> Option<String> {
@@ -718,6 +718,25 @@ mod tests {
             config.codex_acp_default_mode().as_deref(),
             Some("full-access")
         );
+    }
+
+    #[test]
+    fn codex_acp_binary_defaults_to_canonical_adapter() {
+        let config = AppConfig::default();
+        assert_eq!(config.codex_acp_binary(), "agenthub-acp");
+    }
+
+    #[test]
+    fn codex_acp_binary_preserves_configured_legacy_adapter() {
+        let config = AppConfig {
+            codex_acp: Some(CodexAcpConfig {
+                binary: Some("agenthub-codex-acp".to_string()),
+                default_mode: None,
+                multi_agent_enabled: None,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.codex_acp_binary(), "agenthub-codex-acp");
     }
 
     #[test]
