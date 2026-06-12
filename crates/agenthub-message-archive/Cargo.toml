@@ -10,7 +10,7 @@ release-lance-fp16 = ["lancedb/fp16kernels"]
 
 [dependencies]
 anyhow = "1"
-arrow-array = "58.3.0"
+arrow-array = "59.0.0"
 arrow-schema = "58.3.0"
 async-trait = "0.1"
 futures = "0.3"
