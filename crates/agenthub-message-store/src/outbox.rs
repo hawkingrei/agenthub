@@ -47,7 +47,7 @@ impl BodyOutbox {
     /// Drain pending bodies into `store`. Each body is written to the store; an outbox row is removed
     /// only when its write succeeds (durable ack). A failed write leaves the row pending for a later
     /// retry, so no body is lost. Returns the number of bodies confirmed in this drain.
-    pub fn drain_into<S: MessageBodyStore>(&mut self, store: &mut S) -> usize {
+    pub fn drain_into<S: MessageBodyStore + ?Sized>(&mut self, store: &S) -> usize {
         let mut confirmed = Vec::new();
         for (id, body) in &self.pending {
             if store.put_body(id, body).is_ok() {

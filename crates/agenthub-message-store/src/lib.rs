@@ -132,7 +132,7 @@ mod tests {
         // One logical message delivered to three actors -> three index rows, one body.
         let authority = AuthorityMessageId::new("auth-fanout");
         let body = b"shared meeting summary body";
-        let mut store = InMemoryBodyStore::new();
+        let store = InMemoryBodyStore::new();
 
         for actor in ["actor-a", "actor-b", "actor-c"] {
             // Each delivery row references the same authority id.
@@ -156,13 +156,13 @@ mod tests {
         let id = AuthorityMessageId::new("auth-drain");
         let body = b"durable body";
         let mut outbox = BodyOutbox::new();
-        let mut store = InMemoryBodyStore::new();
+        let store = InMemoryBodyStore::new();
 
         outbox.stage(&id, body);
         assert_eq!(outbox.pending_len(), 1);
         assert!(!store.contains(&id));
 
-        let confirmed = outbox.drain_into(&mut store);
+        let confirmed = outbox.drain_into(&store);
         assert_eq!(confirmed, 1);
         assert!(outbox.is_empty(), "confirmed bodies leave the outbox");
         assert_eq!(store.get_body(&id).unwrap().as_deref(), Some(&body[..]));
@@ -175,10 +175,10 @@ mod tests {
         let id = AuthorityMessageId::new("auth-replay");
         let body = b"body that must not be lost";
         let mut outbox = BodyOutbox::new();
-        let mut store = FailingBodyStore::new(1); // first write fails
+        let store = FailingBodyStore::new(1); // first write fails
 
         outbox.stage(&id, body);
-        let confirmed = outbox.drain_into(&mut store);
+        let confirmed = outbox.drain_into(&store);
         assert_eq!(confirmed, 0, "the failing write confirms nothing");
         assert!(
             outbox.contains(&id),
@@ -187,7 +187,7 @@ mod tests {
         assert_eq!(store.len(), 0);
 
         // Retry (e.g. background drainer after a crash) succeeds.
-        let confirmed = outbox.drain_into(&mut store);
+        let confirmed = outbox.drain_into(&store);
         assert_eq!(confirmed, 1);
         assert!(outbox.is_empty());
         assert_eq!(store.get_body(&id).unwrap().as_deref(), Some(&body[..]));
