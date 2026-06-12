@@ -107,7 +107,7 @@ Section: admin
 Priority: optional
 Architecture: ${arch}
 Maintainer: AgentHub Maintainers <maintainers@linkerdog.com>
-Depends: libc6, libgcc-s1, libsqlite3-0, zlib1g
+Depends: libc6, libgcc-s1, libsqlite3-0, zlib1g, adduser
 Installed-Size: ${installed_size}
 Homepage: https://github.com/hawkingrei/agenthub
 Description: Single-binary control plane for long-lived AI agents
