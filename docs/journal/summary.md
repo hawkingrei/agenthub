@@ -1,0 +1,152 @@
+# Journal Summary
+
+This file is the index for `docs/journal/`.
+
+Use it to find dated implementation checkpoints, rollout notes, validation evidence, and historical
+decision context without scanning every dated file. Stable contracts still belong in
+`docs/features/`; active remaining work belongs in `docs/todo.md`.
+
+## How To Use This Index
+
+- Search by date when reconstructing a rollout timeline.
+- Search by topic prefix when investigating a subsystem.
+- Start from the canonical feature spec when the question is about current behavior, then use the
+  journal entries for implementation history and validation evidence.
+- Add new entries as `YYYY-MM-DD-topic.md`; keep one topic per file.
+- Prefer updating this summary when many small journals converge into one durable topic.
+
+Useful commands:
+
+```bash
+find docs/journal -maxdepth 1 -type f -name '2026-06-*.md' | sort
+find docs/journal -maxdepth 1 -type f -name '*team-mailbox*.md' | sort
+rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
+```
+
+## Topic Map
+
+| Topic | Canonical Docs | Journal File Patterns |
+| --- | --- | --- |
+| ACP runtime and provider integration | `docs/features/acp-runtime.md` | `*-acp-*.md`, `*-codex-acp-*.md`, `*-claude-acp-*.md` |
+| Team collaboration, channels, and tasks | `docs/features/agents-teams.md`, `docs/features/team-channels-threads.md`, `docs/features/team-execution-vocabulary.md` | `*-team-*.md`, `*-teams-*.md` |
+| Team mailbox and actor runtime | `docs/features/team-mailbox-intake-and-ownership.md`, `docs/features/actor-foundation.md` | `*-team-mailbox-*.md`, `*-actor-*.md` |
+| Workspace memory and continuity | `docs/features/team-workspace-memory-contract.md`, `docs/features/workspace-unified-ia.md` | `*-workspace-*.md`, `*-context-*.md`, `*-memory-*.md` |
+| Frontend, UI, and mobile surfaces | `docs/features/frontend-design.md`, `docs/features/workspace-unified-ia.md` | `*-web-*.md`, `*-frontend-*.md`, `*-mobile-*.md`, `*-ui-*.md` |
+| Agent nodes and distributed execution | `docs/features/agent-nodes.md`, `docs/features/distributed-node-architecture.md` | `*-node-*.md`, `*-distributed-*.md`, `*-p2p-*.md` |
+| Release, packaging, and install paths | `docs/features/npm-binary-distribution.md`, `docs/features/debian-systemd-distribution.md` | `*-release-*.md`, `*-npm-*.md`, `*-debian-*.md`, `*-homebrew-*.md` |
+| CI, Bazel, coverage, and dependencies | `docs/developer-setup.md` | `*-ci-*.md`, `*-bazel-*.md`, `*-codecov-*.md`, `*-dependabot-*.md` |
+| Message archive and metadata | `docs/features/logical-message-metadata-contract.md`, `docs/features/message-archive-lancedb.md` | `*-message-*.md`, `*-metadata-*.md`, `*-lancedb-*.md` |
+| RARA and app integrations | `docs/features/rara-direct-integration.md`, `docs/features/app-linkers.md` | `*-rara-*.md`, `*-app-*.md`, `*-linker-*.md` |
+
+## Monthly Rollups
+
+### 2026-02
+
+Main shape:
+
+- ACP output, chunking, permission, and provider bootstrap foundations.
+- Team A2A, run lifecycle, mailbox, context memory, and shared status groundwork.
+- Bazel, Rust toolchain, proto generation, coverage, and CI baseline setup.
+- Frontend migration toward Mantine, Tailwind, mobile stability, and output rendering hardening.
+
+Start with:
+
+- `2026-02-07-acp-output-cache-and-polling.md`
+- `2026-02-12-a2a-agent-team-phase1.md`
+- `2026-02-15-bazel-native-rules-rust-core.md`
+- `2026-02-20-web-tailwind-ui-phase1-auth-team-sidebar.md`
+- `2026-02-24-team-operating-model-spec.md`
+
+### 2026-03
+
+Main shape:
+
+- Team runtime, actor CLI, inbox/mailbox, shared-thread, and Kanban behavior matured.
+- Internal gRPC, P2P, node, and distributed execution work started to separate runtime boundaries.
+- Team UI shell, workbench layout, route splitting, mobile polish, and permission-review routing were
+  repeatedly hardened.
+- Codex ACP syncs, dependency upgrades, CI regressions, and review follow-ups drove stabilization.
+
+Start with:
+
+- `2026-03-05-team-conversation-event-bus-contract.md`
+- `2026-03-19-team-task-ownership-contract.md`
+- `2026-03-22-actor-runtime-cli-first.md`
+- `2026-03-28-internal-p2p-core-crate.md`
+- `2026-03-31-agents-api-explicit-validation.md`
+
+### 2026-04
+
+Main shape:
+
+- Workspace unified IA, Team page split, runtime context layout, and Notion-density UI direction
+  became the active product surface.
+- Channel/thread backend primitives, thread pane work, task panels, and conversation selection
+  resilience moved Team collaboration toward topic-first navigation.
+- Node join, release assets, OpenSSL/static build behavior, and Homebrew/install docs expanded the
+  distribution path.
+- Context compaction, prompt tail slimming, and memory-index work clarified continuity boundaries.
+
+Start with:
+
+- `2026-04-05-team-prompt-first-principles.md`
+- `2026-04-10-team-workspace-memory-contract.md`
+- `2026-04-18-workspace-unified-ia-spec.md`
+- `2026-04-19-team-channel-thread-backend-primitives.md`
+- `2026-04-26-node-startup-boundary-verification.md`
+
+### 2026-05
+
+Main shape:
+
+- Message metadata, group id projection, channel/thread event correlation, and archive foundations
+  were consolidated.
+- Team task-first, mailbox phase 2/3, inbound envelope normalization, transfer/takeover, and
+  permission-review routing became the main collaboration hardening line.
+- Codex upgrades and prompt operating contract refreshes kept ACP provider behavior current.
+- Release P0 validation, npm publishing, shared primitives, and route cleanup tightened the product
+  delivery path.
+
+Start with:
+
+- `2026-05-04-lancedb-message-archive-phase1.md`
+- `2026-05-06-message-archive-step-lifecycle-run-events.md`
+- `2026-05-20-team-mailbox-phase2-ownership-and-task-links.md`
+- `2026-05-27-team-task-first-p0-verification.md`
+- `2026-05-31-team-mailbox-inbound-envelope-normalization.md`
+
+### 2026-06
+
+Main shape:
+
+- Team node continuity, remote node posture, and RARA team-mode requirements captured the current
+  multi-agent/runtime direction.
+- Codex 136/138, generic Codex ACP entrypoint, Claude ACP support, and ACP TODO closeout updated the
+  provider/runtime surface.
+- Message store foundation, Pyroscope bootstrap, Rust 1.96 baseline, and Debian systemd packaging
+  moved infrastructure and release readiness forward.
+
+Start with:
+
+- `2026-06-02-team-mailbox-phase3-closeout.md`
+- `2026-06-04-team-node-continuity-rollup.md`
+- `2026-06-08-rara-team-modes-requirements.md`
+- `2026-06-10-message-store-foundation-crate.md`
+- `2026-06-13-debian-systemd-release-package.md`
+
+## Compaction Rules
+
+- Keep original dated journals when they contain validation evidence, PR context, or detailed
+  implementation chronology.
+- Compact by promoting stable conclusions into `docs/features/` and linking this summary to the
+  canonical doc.
+- Do not turn this file into a complete file listing; prefer monthly rollups and topic patterns.
+- Remove or rewrite old journal prose only when it is stale, contradictory, and superseded by a
+  canonical feature spec.
+
+## Maintenance
+
+- Keep this file as a navigational index, not a changelog.
+- Prefer topic patterns and canonical-doc pointers over listing every journal file.
+- Update this index when a new major journal category appears or when a canonical feature spec
+  replaces older scattered journal guidance.

@@ -48,6 +48,7 @@ AgentHub is a single-binary control plane for long-lived AI agents.
 
 - Every meaningful change should leave tracked documentation.
 - Stable design belongs in `docs/features/`.
+- Journal navigation belongs in `docs/journal/summary.md`.
 - Implementation checkpoints belong in `docs/journal/`.
 - Follow-up verification belongs in `docs/todo.md`.
 - Use `.agents/skills/agenthub-docs-spec/SKILL.md` when creating or revising canonical feature specs under `docs/features/`.
