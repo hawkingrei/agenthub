@@ -2,7 +2,7 @@ name: Release Prebuild
 
 on:
   push:
-    branches: ["main", "feat/release-rocksdb-targets"]
+    branches: ["main"]
 
 permissions:
   contents: read
