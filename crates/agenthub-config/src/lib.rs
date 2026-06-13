@@ -112,6 +112,10 @@ pub struct MessageArchiveConfig {
 pub struct MessageBodyStoreConfig {
     pub enabled: Option<bool>,
     pub path: Option<String>,
+    /// Whether to backfill existing inline conversation bodies into the store on startup. Default-on;
+    /// set `auto_migrate = false` to only move bodies written from now on (e.g. to run `agenthub
+    /// migrate` manually instead).
+    pub auto_migrate: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -367,6 +371,15 @@ impl AppConfig {
         expand_tilde(path)
     }
 
+    /// Whether to backfill existing inline conversation bodies into the store on startup. Default-on;
+    /// only an explicit `auto_migrate = false` disables it.
+    pub fn message_body_store_auto_migrate(&self) -> bool {
+        self.message_body_store
+            .as_ref()
+            .and_then(|config| config.auto_migrate)
+            .unwrap_or(true)
+    }
+
     pub fn history_event_retention_days(&self) -> Option<u32> {
         let days = self
             .history
@@ -571,9 +584,36 @@ fn detect_env_overrides() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, ServerConfig, ServerRole,
-        WorktreeConfig,
+        AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, MessageBodyStoreConfig,
+        ServerConfig, ServerRole, WorktreeConfig,
     };
+
+    #[test]
+    fn message_body_store_auto_migrate_defaults_on() {
+        assert!(AppConfig::default().message_body_store_auto_migrate());
+        let config = AppConfig {
+            message_body_store: Some(MessageBodyStoreConfig {
+                enabled: Some(true),
+                path: None,
+                auto_migrate: None,
+            }),
+            ..Default::default()
+        };
+        assert!(config.message_body_store_auto_migrate());
+    }
+
+    #[test]
+    fn message_body_store_auto_migrate_can_be_disabled() {
+        let config = AppConfig {
+            message_body_store: Some(MessageBodyStoreConfig {
+                enabled: Some(true),
+                path: None,
+                auto_migrate: Some(false),
+            }),
+            ..Default::default()
+        };
+        assert!(!config.message_body_store_auto_migrate());
+    }
 
     #[test]
     fn server_role_defaults_to_main() {
