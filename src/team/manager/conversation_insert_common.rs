@@ -1,6 +1,10 @@
+use agenthub_message_store::MessageBodyStore;
 use serde_json::Value;
 use sqlx::Sqlite;
 
+use super::conversation_body::{
+    CONVERSATION_BODY_MOVED_SENTINEL, conversation_body_key, rehydrate_conversation_body_in_tx,
+};
 use super::conversation_idempotency::{
     ensure_task_conversation_message_idempotency_compatible,
     fetch_task_conversation_message_by_idempotency,
@@ -25,6 +29,7 @@ pub(super) async fn insert_task_conversation_message_with_tx(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     conversation: &TeamConversationRecord,
     input: TaskConversationInsertInput<'_>,
+    body_store: Option<&dyn MessageBodyStore>,
 ) -> anyhow::Result<(TeamConversationMessageRecord, bool)> {
     let TaskConversationInsertInput {
         task_id,
@@ -45,6 +50,16 @@ pub(super) async fn insert_task_conversation_message_with_tx(
     let thread_root_message_id = redacted_payload
         .get("thread_root_message_id")
         .and_then(Value::as_i64);
+
+    // When a body store is active, the body moves out of SQLite into the store: the row stores the
+    // moved sentinel and the real `payload_json` is staged to the outbox below (keyed by the new row
+    // id). Without a store the body stays inline, exactly as before.
+    let move_body = body_store.is_some();
+    let stored_payload_json: &str = if move_body {
+        CONVERSATION_BODY_MOVED_SENTINEL
+    } else {
+        payload_json.as_str()
+    };
 
     let (message, created) = if let Some(idempotency_key) = idempotency_key.as_deref() {
         match sqlx::query(
@@ -74,7 +89,7 @@ pub(super) async fn insert_task_conversation_message_with_tx(
         .bind(route)
         .bind(&correlation_id)
         .bind(group_id.as_deref())
-        .bind(&payload_json)
+        .bind(stored_payload_json)
         .bind(idempotency_key)
         .bind(created_at)
         .bind(text)
@@ -98,13 +113,17 @@ pub(super) async fn insert_task_conversation_message_with_tx(
                 true,
             ),
             Err(err) if is_task_conversation_message_idempotency_unique_violation(&err) => {
-                let existing = fetch_task_conversation_message_by_idempotency(
-                    tx,
-                    &conversation.id,
-                    from_actor_id,
-                    idempotency_key,
-                )
-                .await?;
+                let (mut existing, existing_moved) =
+                    fetch_task_conversation_message_by_idempotency(
+                        tx,
+                        &conversation.id,
+                        from_actor_id,
+                        idempotency_key,
+                    )
+                    .await?;
+                if existing_moved {
+                    rehydrate_conversation_body_in_tx(tx, body_store, &mut existing).await?;
+                }
                 ensure_task_conversation_message_idempotency_compatible(
                     task_id,
                     from_actor_id,
@@ -144,7 +163,7 @@ pub(super) async fn insert_task_conversation_message_with_tx(
         .bind(route)
         .bind(&correlation_id)
         .bind(group_id.as_deref())
-        .bind(&payload_json)
+        .bind(stored_payload_json)
         .bind(created_at)
         .bind(text)
         .bind(kind)
@@ -166,6 +185,20 @@ pub(super) async fn insert_task_conversation_message_with_tx(
             true,
         )
     };
+
+    // Stage the moved body into the durable outbox inside this same transaction, so the body is
+    // committed atomically with the row that points at it. The background drainer later moves it into
+    // the body store. Only a freshly inserted row owns a new body; an idempotency hit reuses the
+    // existing row (and its already-staged body).
+    if created && move_body {
+        agenthub_db::message_body_outbox::stage_body(
+            tx,
+            &conversation_body_key(message.message_id),
+            payload_json.as_bytes(),
+            created_at,
+        )
+        .await?;
+    }
 
     Ok((message, created))
 }

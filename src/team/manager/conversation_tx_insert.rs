@@ -67,6 +67,7 @@ impl TeamManager {
                 idempotency_key,
                 created_at: now,
             },
+            self.body_store.as_deref(),
         )
         .await?;
 

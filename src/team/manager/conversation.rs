@@ -62,7 +62,12 @@ impl TeamManager {
         let rows = builder.build().fetch_all(&self.db).await?;
         let mut messages = Vec::with_capacity(rows.len());
         for row in rows {
-            messages.push(parse_team_conversation_message_row(&row)?);
+            let (mut message, body_moved) = parse_team_conversation_message_row(&row)?;
+            if body_moved {
+                self.rehydrate_moved_conversation_payload(&mut message)
+                    .await?;
+            }
+            messages.push(message);
         }
         messages.reverse();
         Ok(messages)

@@ -84,22 +84,34 @@ pub(super) fn parse_team_conversation_row(
     })
 }
 
+/// Parse a `team_conversation_messages` row, returning the record alongside whether its body was moved
+/// into the tiered body store. For a moved row the `payload` is a [`Value::Null`] placeholder that the
+/// caller must rehydrate (see `conversation_body`); moved-ness is decided purely by the stored sentinel
+/// string, so a real payload can never be mistaken for a moved body.
 pub(super) fn parse_team_conversation_message_row(
     row: &sqlx::sqlite::SqliteRow,
-) -> anyhow::Result<TeamConversationMessageRecord> {
+) -> anyhow::Result<(TeamConversationMessageRecord, bool)> {
     let payload_json: String = row.get("payload_json");
-    let payload: Value = serde_json::from_str(&payload_json)?;
-    Ok(TeamConversationMessageRecord {
-        message_id: row.get("id"),
-        conversation_id: row.get("conversation_id"),
-        task_id: row.get("task_id"),
-        group_id: row.try_get("group_id").ok().flatten(),
-        from_actor_id: row.get("from_actor_id"),
-        to_actor_id: row.try_get("to_actor_id")?,
-        route: row.get("route"),
-        payload,
-        created_at: row.get("created_at"),
-    })
+    let body_moved = super::conversation_body::conversation_payload_was_moved(&payload_json);
+    let payload: Value = if body_moved {
+        Value::Null
+    } else {
+        serde_json::from_str(&payload_json)?
+    };
+    Ok((
+        TeamConversationMessageRecord {
+            message_id: row.get("id"),
+            conversation_id: row.get("conversation_id"),
+            task_id: row.get("task_id"),
+            group_id: row.try_get("group_id").ok().flatten(),
+            from_actor_id: row.get("from_actor_id"),
+            to_actor_id: row.try_get("to_actor_id")?,
+            route: row.get("route"),
+            payload,
+            created_at: row.get("created_at"),
+        },
+        body_moved,
+    ))
 }
 
 pub(super) fn parse_team_task_note_row(
