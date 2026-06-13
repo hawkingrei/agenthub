@@ -41,6 +41,9 @@ pub use manager::{
     TeamTaskContextPatch, TeamTaskCreateInput, TeamTaskListQuery, TeamTaskNoteCreateInput,
     TeamTaskUpdateWithNoteInput,
 };
+pub(crate) use manager::{
+    count_inline_conversation_bodies, migrate_conversation_bodies_into_store,
+};
 pub(crate) use permission_review::resolve_team_permission_review_target;
 pub use permission_review::{
     TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,

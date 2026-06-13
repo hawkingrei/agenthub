@@ -11,7 +11,7 @@
 //! keep their full inline `payload_json` and are never treated as moved, so both shapes coexist.
 
 use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
-use sqlx::Sqlite;
+use sqlx::{Sqlite, SqlitePool};
 
 use super::TeamManager;
 use crate::team::TeamConversationMessageRecord;
@@ -99,6 +99,120 @@ impl TeamManager {
         record.payload = serde_json::from_slice(&body)?;
         Ok(())
     }
+}
+
+/// Outcome of [`migrate_conversation_bodies_into_store`].
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ConversationBodyMigrationReport {
+    /// Rows whose inline body was moved out of SQLite and staged into the outbox.
+    pub(crate) migrated: u64,
+    /// Bodies durably confirmed in the body store (drained from the outbox).
+    pub(crate) drained: u64,
+}
+
+/// Number of conversation rows whose body is still stored inline (i.e. not yet moved into the store).
+pub(crate) async fn count_inline_conversation_bodies(pool: &SqlitePool) -> anyhow::Result<i64> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM team_conversation_messages WHERE payload_json != ?1",
+    )
+    .bind(CONVERSATION_BODY_MOVED_SENTINEL)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+/// Backfill existing inline conversation bodies into the body store.
+///
+/// Each batch moves rows out of SQLite (staging the body into the durable outbox and replacing the
+/// row's `payload_json` with the moved sentinel, atomically per transaction) and then drains that
+/// batch into the body store. A final drain pass clears any bodies left staged by an earlier
+/// interrupted run. The pass is resumable and idempotent: already-moved rows are skipped, so re-running
+/// after an interruption only processes what remains.
+pub(crate) async fn migrate_conversation_bodies_into_store(
+    pool: &SqlitePool,
+    store: &dyn MessageBodyStore,
+    batch_size: usize,
+    staged_at: i64,
+) -> anyhow::Result<ConversationBodyMigrationReport> {
+    use sqlx::Row as _;
+
+    let batch_size = batch_size.max(1) as i64;
+    // The drain window is deliberately decoupled from the SQLite-tx batch size: `batch_size` bounds how
+    // many rows we rewrite per transaction, but draining must always look at a window wide enough to
+    // step over a sparse body that persistently fails to write. Otherwise, with a tiny batch size, the
+    // oldest stuck body would sit at the head of every drain and block everything behind it.
+    let drain_batch = batch_size.max(256) as usize;
+    // Only touch rows that already exist; rows written concurrently are handled by the write path.
+    let max_id: Option<i64> = sqlx::query_scalar("SELECT MAX(id) FROM team_conversation_messages")
+        .fetch_one(pool)
+        .await?;
+    let Some(max_id) = max_id else {
+        return Ok(ConversationBodyMigrationReport::default());
+    };
+
+    let mut report = ConversationBodyMigrationReport::default();
+    let mut cursor = 0_i64;
+    loop {
+        let rows = sqlx::query(
+            "SELECT id, payload_json FROM team_conversation_messages \
+             WHERE id > ?1 AND id <= ?2 AND payload_json != ?3 \
+             ORDER BY id ASC LIMIT ?4",
+        )
+        .bind(cursor)
+        .bind(max_id)
+        .bind(CONVERSATION_BODY_MOVED_SENTINEL)
+        .bind(batch_size)
+        .fetch_all(pool)
+        .await?;
+        if rows.is_empty() {
+            break;
+        }
+
+        let mut tx = pool.begin().await?;
+        for row in &rows {
+            let id: i64 = row.get("id");
+            let payload_json: String = row.get("payload_json");
+            agenthub_db::message_body_outbox::stage_body(
+                &mut tx,
+                &conversation_body_key(id),
+                payload_json.as_bytes(),
+                staged_at,
+            )
+            .await?;
+            sqlx::query("UPDATE team_conversation_messages SET payload_json = ?1 WHERE id = ?2")
+                .bind(CONVERSATION_BODY_MOVED_SENTINEL)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            cursor = id;
+            report.migrated += 1;
+        }
+        tx.commit().await?;
+
+        // Keep the outbox (which holds a duplicate of each body) bounded as we go.
+        report.drained +=
+            agenthub_db::message_body_outbox::drain_into(pool, store, drain_batch).await? as u64;
+    }
+
+    // Clear anything left staged (e.g. by an earlier interrupted run). Drive the loop off the outbox
+    // count rather than the per-pass drained count: if a body persistently fails to write, a full pass
+    // returns fewer than the window size, which must not stop the loop while other bodies are still
+    // pending (head-of-line blocking). Stop when the outbox is empty, or when a whole pass makes no
+    // progress at all — only genuinely stuck bodies remain, which a later retry / the drainer can pick
+    // up.
+    loop {
+        if agenthub_db::message_body_outbox::pending_count(pool).await? == 0 {
+            break;
+        }
+        let drained =
+            agenthub_db::message_body_outbox::drain_into(pool, store, drain_batch).await?;
+        report.drained += drained as u64;
+        if drained == 0 {
+            break;
+        }
+    }
+
+    Ok(report)
 }
 
 #[cfg(test)]

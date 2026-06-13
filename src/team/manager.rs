@@ -160,6 +160,9 @@ use self::codec_status::{
     team_run_status_to_str, team_step_status_to_str, team_task_priority_to_str,
     team_task_status_to_str,
 };
+pub(crate) use self::conversation_body::{
+    count_inline_conversation_bodies, migrate_conversation_bodies_into_store,
+};
 #[cfg(test)]
 pub(super) use self::conversation_idempotency::task_conversation_payload_correlation_id;
 use self::remote_relay_types::TeamRemoteRelayAdapter;

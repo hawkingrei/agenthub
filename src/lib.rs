@@ -19,6 +19,7 @@ pub use agenthub_db as db;
 mod internal;
 mod linkers;
 pub mod message_body_store;
+mod migrate_cli;
 pub use agenthub_config::path_utils;
 mod push;
 mod sse;

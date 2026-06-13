@@ -8,6 +8,7 @@ pub(crate) enum RootCliCommand {
     Init { args: Vec<String> },
     Doctor { args: Vec<String> },
     Actor { args: Vec<String> },
+    Migrate { args: Vec<String> },
     LegacyActorMcp,
 }
 
@@ -23,6 +24,7 @@ enum AgentHubSubcommand {
     Init(PassthroughArgs),
     Doctor(PassthroughArgs),
     Actor(PassthroughArgs),
+    Migrate(PassthroughArgs),
     #[command(name = "actor-mcp", hide = true)]
     ActorMcp(PassthroughArgs),
 }
@@ -49,6 +51,7 @@ where
         Some(AgentHubSubcommand::Init(args)) => RootCliCommand::Init { args: args.args },
         Some(AgentHubSubcommand::Doctor(args)) => RootCliCommand::Doctor { args: args.args },
         Some(AgentHubSubcommand::Actor(args)) => RootCliCommand::Actor { args: args.args },
+        Some(AgentHubSubcommand::Migrate(args)) => RootCliCommand::Migrate { args: args.args },
         Some(AgentHubSubcommand::ActorMcp(_)) => RootCliCommand::LegacyActorMcp,
     })
 }
@@ -110,6 +113,18 @@ mod tests {
                     "inbox".to_string(),
                     "--help".to_string()
                 ]
+            }
+        );
+    }
+
+    #[test]
+    fn parse_root_preserves_migrate_passthrough_args() {
+        let parsed =
+            parse_root_cli_from(["agenthub", "migrate", "--dry-run"]).expect("parse migrate");
+        assert_eq!(
+            parsed,
+            RootCliCommand::Migrate {
+                args: vec!["--dry-run".to_string()]
             }
         );
     }
