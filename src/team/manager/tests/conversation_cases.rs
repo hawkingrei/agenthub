@@ -727,3 +727,81 @@ async fn conversation_body_stays_inline_without_body_store() {
         .expect("list");
     assert_eq!(messages[0].payload, payload);
 }
+
+#[tokio::test]
+async fn migrate_backfills_inline_conversation_bodies_into_store() {
+    use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
+
+    let db = setup_test_db().await;
+    // Write rows without a store, so the bodies are stored inline (the pre-migration shape).
+    let writer = TeamManager::new(db.clone());
+    let task = body_store_team_and_task(&writer).await;
+
+    let p1 = json!({"type":"chat_message","text":"first inline body"});
+    let p2 = json!({"type":"chat_message","text":"second inline body"});
+    let m1 = writer
+        .append_task_conversation_message(&task.id, "user", None, "group_chat", p1.clone())
+        .await
+        .expect("append 1");
+    let m2 = writer
+        .append_task_conversation_message(&task.id, "user", None, "group_chat", p2.clone())
+        .await
+        .expect("append 2");
+
+    assert_eq!(
+        crate::team::count_inline_conversation_bodies(&db)
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        0
+    );
+
+    // Migrate into a fresh store with batch_size 1 to exercise the batching loop.
+    let store = body_store();
+    let report =
+        crate::team::migrate_conversation_bodies_into_store(&db, store.as_ref(), 1, 1_700_000_000)
+            .await
+            .expect("migrate");
+    assert_eq!(report.migrated, 2);
+    assert_eq!(report.drained, 2);
+
+    // Rows now carry the sentinel, the bodies live in the store, and the outbox is empty.
+    assert_eq!(
+        crate::team::count_inline_conversation_bodies(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(store.contains(&AuthorityMessageId::new(format!("tcm:{}", m1.message_id))));
+    assert!(store.contains(&AuthorityMessageId::new(format!("tcm:{}", m2.message_id))));
+
+    // A reader with the store rehydrates the original payloads.
+    let reader = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    let messages = reader
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list after migrate");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].payload, p1);
+    assert_eq!(messages[1].payload, p2);
+
+    // Re-running the migration is a no-op.
+    let report_again =
+        crate::team::migrate_conversation_bodies_into_store(&db, store.as_ref(), 16, 1_700_000_000)
+            .await
+            .expect("migrate again");
+    assert_eq!(report_again.migrated, 0);
+}

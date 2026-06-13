@@ -290,6 +290,9 @@ pub async fn run() -> anyhow::Result<()> {
         Ok(crate::cli::RootCliCommand::Actor { args }) => {
             return crate::actor_cli::run_from_args(&args).await;
         }
+        Ok(crate::cli::RootCliCommand::Migrate { args }) => {
+            return crate::migrate_cli::run_from_args(&args).await;
+        }
         Ok(crate::cli::RootCliCommand::LegacyActorMcp) => {
             return Err(anyhow::anyhow!(
                 "`agenthub actor-mcp` has been removed. Use `agenthub actor ...` instead."
