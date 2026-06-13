@@ -59,7 +59,14 @@ impl AppState {
         let agent_node_join_bootstrap = Self::build_agent_node_join_bootstrap(&config)?;
 
         Self::run_startup_cleanup(&agents, &teams).await?;
-        Self::spawn_startup_workers(&db, &agents, &teams, &body_store).await?;
+        Self::spawn_startup_workers(
+            &db,
+            &agents,
+            &teams,
+            &body_store,
+            config.message_body_store_auto_migrate(),
+        )
+        .await?;
 
         let default_worktree_root = config.default_worktree_root();
         Ok(Self {

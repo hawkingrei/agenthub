@@ -15,9 +15,13 @@ impl AppState {
         agents: &Arc<AgentManager>,
         teams: &Arc<TeamManager>,
         body_store: &Option<crate::message_body_store::SharedBodyStore>,
+        auto_migrate_conversation_bodies: bool,
     ) -> anyhow::Result<()> {
         if let Some(store) = body_store {
             Self::spawn_message_body_outbox_drainer(db.clone(), store.clone());
+            if auto_migrate_conversation_bodies {
+                Self::spawn_conversation_body_backfill(db.clone(), store.clone());
+            }
         }
         let _mailbox_hint_handle = TeamMailboxUnreadHintWorker::new(teams.clone(), agents.clone())
             .spawn(TeamMailboxUnreadHintWorkerSettings::default());
@@ -32,6 +36,53 @@ impl AppState {
         let _agent_trigger_handle = AgentTimeTriggerWorker::new(trigger_manager, agents.clone())
             .spawn(AgentTimeTriggerWorkerSettings::default());
         Ok(())
+    }
+
+    /// Backfills existing inline conversation bodies into the body store once, in the background, so a
+    /// database that predates the store being enabled is migrated automatically after an upgrade and
+    /// restart. It is safe to run on every startup: it is idempotent and resumable (already-moved rows
+    /// are skipped), and the read path serves both inline and moved rows, so online traffic during the
+    /// backfill is unaffected. Once the database is fully migrated each startup only pays a quick count.
+    fn spawn_conversation_body_backfill(
+        db: SqlitePool,
+        store: crate::message_body_store::SharedBodyStore,
+    ) {
+        const BACKFILL_BATCH: usize = 256;
+        tokio::spawn(async move {
+            match crate::team::count_inline_conversation_bodies(&db).await {
+                Ok(0) => return,
+                Ok(remaining) => {
+                    tracing::info!(
+                        remaining,
+                        "backfilling inline conversation bodies into the body store"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(error = %error, "conversation body backfill: failed to count inline bodies; skipping this startup");
+                    return;
+                }
+            }
+            let staged_at = chrono::Utc::now().timestamp();
+            match crate::team::migrate_conversation_bodies_into_store(
+                &db,
+                store.as_ref(),
+                BACKFILL_BATCH,
+                staged_at,
+            )
+            .await
+            {
+                Ok(report) => {
+                    tracing::info!(
+                        migrated = report.migrated,
+                        confirmed = report.drained,
+                        "conversation body backfill complete"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(error = %error, "conversation body backfill failed; will retry on next startup");
+                }
+            }
+        });
     }
 
     /// Periodically drains the SQLite message-body outbox into the body store, so staged bodies are
