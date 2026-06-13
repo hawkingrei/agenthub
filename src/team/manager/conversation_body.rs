@@ -21,8 +21,9 @@ use crate::team::TeamConversationMessageRecord;
 /// It is intentionally not valid JSON, so it can never collide with a real serialized payload (which
 /// is always valid JSON). Moved-ness is therefore decided by an exact string comparison against this
 /// constant, not by inspecting the parsed payload value, which keeps user-supplied payloads from ever
-/// being mistaken for a moved body.
-pub(super) const CONVERSATION_BODY_MOVED_SENTINEL: &str = "\u{0}agenthub:tcm-body-moved\u{1}";
+/// being mistaken for a moved body. It is kept ASCII (no control characters) so it stays legible in
+/// SQLite browsers / CLIs, which can silently truncate strings containing a NUL byte.
+pub(super) const CONVERSATION_BODY_MOVED_SENTINEL: &str = "::agenthub:tcm-body-moved::";
 
 /// Body-store key for a conversation message's moved body. One copy per logical message (row id).
 pub(super) fn conversation_body_key(message_id: i64) -> AuthorityMessageId {
@@ -122,7 +123,7 @@ mod tests {
         assert!(!conversation_payload_was_moved("{\"text\":\"hi\"}"));
         // A payload that merely mentions the sentinel as data is not treated as moved.
         assert!(!conversation_payload_was_moved(
-            "{\"text\":\"\\u0000agenthub:tcm-body-moved\\u0001\"}"
+            "{\"text\":\"::agenthub:tcm-body-moved::\"}"
         ));
     }
 

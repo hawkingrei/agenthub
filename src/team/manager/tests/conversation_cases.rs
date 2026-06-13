@@ -596,7 +596,7 @@ async fn conversation_body_moves_to_body_store_and_rehydrates_on_read() {
             .fetch_one(&db)
             .await
             .expect("read stored payload");
-    assert_eq!(stored, "\u{0}agenthub:tcm-body-moved\u{1}");
+    assert_eq!(stored, "::agenthub:tcm-body-moved::");
 
     // Promoted columns stay populated so queries keep working without the body.
     let text_col: Option<String> =
@@ -709,7 +709,7 @@ async fn conversation_body_stays_inline_without_body_store() {
             .await
             .expect("read stored payload");
     // Body stays inline; the moved sentinel is never written.
-    assert_ne!(stored, "\u{0}agenthub:tcm-body-moved\u{1}");
+    assert_ne!(stored, "::agenthub:tcm-body-moved::");
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&stored).expect("inline payload is valid json"),
         payload
