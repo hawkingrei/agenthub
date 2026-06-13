@@ -805,3 +805,81 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
             .expect("migrate again");
     assert_eq!(report_again.migrated, 0);
 }
+
+#[tokio::test]
+async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
+    use agenthub_message_store::{
+        AuthorityMessageId, BodyStoreError, InMemoryBodyStore, MessageBodyStore,
+    };
+
+    let db = setup_test_db().await;
+    let writer = TeamManager::new(db.clone());
+    let task = body_store_team_and_task(&writer).await;
+
+    let mut ids = Vec::new();
+    for i in 0..3 {
+        let message = writer
+            .append_task_conversation_message(
+                &task.id,
+                "user",
+                None,
+                "group_chat",
+                json!({"type":"chat_message","text":format!("body {i}")}),
+            )
+            .await
+            .expect("append");
+        ids.push(message.message_id);
+    }
+
+    // A store that always rejects the middle row's body, so it stays stuck in the outbox.
+    struct RejectOneStore {
+        inner: InMemoryBodyStore,
+        reject_key: String,
+    }
+    impl MessageBodyStore for RejectOneStore {
+        fn put_body(&self, id: &AuthorityMessageId, body: &[u8]) -> Result<(), BodyStoreError> {
+            if id.as_str() == self.reject_key {
+                return Err(BodyStoreError::Backend("rejected".into()));
+            }
+            self.inner.put_body(id, body)
+        }
+        fn get_body(&self, id: &AuthorityMessageId) -> Result<Option<Vec<u8>>, BodyStoreError> {
+            self.inner.get_body(id)
+        }
+        fn contains(&self, id: &AuthorityMessageId) -> bool {
+            self.inner.contains(id)
+        }
+        fn len(&self) -> usize {
+            self.inner.len()
+        }
+    }
+    let store = RejectOneStore {
+        inner: InMemoryBodyStore::new(),
+        reject_key: format!("tcm:{}", ids[1]),
+    };
+
+    // batch_size 1: a naive drain keyed off the row batch would let the stuck oldest body block the
+    // rest. The migration must still move every other body into the store and only leave the stuck one.
+    let report = crate::team::migrate_conversation_bodies_into_store(&db, &store, 1, 1_700_000_000)
+        .await
+        .expect("migrate");
+    assert_eq!(report.migrated, 3);
+    assert_eq!(report.drained, 2);
+
+    assert!(store.contains(&AuthorityMessageId::new(format!("tcm:{}", ids[0]))));
+    assert!(!store.contains(&AuthorityMessageId::new(format!("tcm:{}", ids[1]))));
+    assert!(store.contains(&AuthorityMessageId::new(format!("tcm:{}", ids[2]))));
+    // Only the rejected body is still pending; every row left SQLite (all moved to the sentinel).
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        crate::team::count_inline_conversation_bodies(&db)
+            .await
+            .unwrap(),
+        0
+    );
+}

@@ -137,6 +137,11 @@ pub(crate) async fn migrate_conversation_bodies_into_store(
     use sqlx::Row as _;
 
     let batch_size = batch_size.max(1) as i64;
+    // The drain window is deliberately decoupled from the SQLite-tx batch size: `batch_size` bounds how
+    // many rows we rewrite per transaction, but draining must always look at a window wide enough to
+    // step over a sparse body that persistently fails to write. Otherwise, with a tiny batch size, the
+    // oldest stuck body would sit at the head of every drain and block everything behind it.
+    let drain_batch = batch_size.max(256) as usize;
     // Only touch rows that already exist; rows written concurrently are handled by the write path.
     let max_id: Option<i64> = sqlx::query_scalar("SELECT MAX(id) FROM team_conversation_messages")
         .fetch_one(pool)
@@ -184,17 +189,25 @@ pub(crate) async fn migrate_conversation_bodies_into_store(
         }
         tx.commit().await?;
 
-        // Drain this batch so the outbox (which holds a duplicate of each body) stays bounded.
+        // Keep the outbox (which holds a duplicate of each body) bounded as we go.
         report.drained +=
-            agenthub_db::message_body_outbox::drain_into(pool, store, rows.len()).await? as u64;
+            agenthub_db::message_body_outbox::drain_into(pool, store, drain_batch).await? as u64;
     }
 
-    // Clear anything left staged by an earlier interrupted run.
+    // Clear anything left staged (e.g. by an earlier interrupted run). Drive the loop off the outbox
+    // count rather than the per-pass drained count: if a body persistently fails to write, a full pass
+    // returns fewer than the window size, which must not stop the loop while other bodies are still
+    // pending (head-of-line blocking). Stop when the outbox is empty, or when a whole pass makes no
+    // progress at all — only genuinely stuck bodies remain, which a later retry / the drainer can pick
+    // up.
     loop {
+        if agenthub_db::message_body_outbox::pending_count(pool).await? == 0 {
+            break;
+        }
         let drained =
-            agenthub_db::message_body_outbox::drain_into(pool, store, batch_size as usize).await?;
+            agenthub_db::message_body_outbox::drain_into(pool, store, drain_batch).await?;
         report.drained += drained as u64;
-        if (drained as i64) < batch_size {
+        if drained == 0 {
             break;
         }
     }
