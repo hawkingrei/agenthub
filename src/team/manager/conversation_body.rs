@@ -128,11 +128,17 @@ pub(crate) async fn count_inline_conversation_bodies(pool: &SqlitePool) -> anyho
 /// batch into the body store. A final drain pass clears any bodies left staged by an earlier
 /// interrupted run. The pass is resumable and idempotent: already-moved rows are skipped, so re-running
 /// after an interruption only processes what remains.
+///
+/// `inter_batch_delay` paces the loop by sleeping between batches. SQLite allows only one writer, so a
+/// tight loop of write transactions can starve concurrent writers; a non-zero delay yields the write
+/// lock so online traffic makes progress. Pass `Duration::ZERO` for the foreground `agenthub migrate`
+/// command (run it flat-out), and a small delay for the background startup backfill.
 pub(crate) async fn migrate_conversation_bodies_into_store(
     pool: &SqlitePool,
     store: &dyn MessageBodyStore,
     batch_size: usize,
     staged_at: i64,
+    inter_batch_delay: std::time::Duration,
 ) -> anyhow::Result<ConversationBodyMigrationReport> {
     use sqlx::Row as _;
 
@@ -192,6 +198,11 @@ pub(crate) async fn migrate_conversation_bodies_into_store(
         // Keep the outbox (which holds a duplicate of each body) bounded as we go.
         report.drained +=
             agenthub_db::message_body_outbox::drain_into(pool, store, drain_batch).await? as u64;
+
+        // Yield the single SQLite writer between batches so concurrent writes are not starved.
+        if !inter_batch_delay.is_zero() {
+            tokio::time::sleep(inter_batch_delay).await;
+        }
     }
 
     // Clear anything left staged (e.g. by an earlier interrupted run). Drive the loop off the outbox
@@ -209,6 +220,9 @@ pub(crate) async fn migrate_conversation_bodies_into_store(
         report.drained += drained as u64;
         if drained == 0 {
             break;
+        }
+        if !inter_batch_delay.is_zero() {
+            tokio::time::sleep(inter_batch_delay).await;
         }
     }
 

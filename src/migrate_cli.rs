@@ -70,11 +70,13 @@ pub(crate) async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
     };
 
     let staged_at = chrono::Utc::now().timestamp();
+    // Foreground maintenance command: run flat-out, no inter-batch throttle.
     let report = crate::team::migrate_conversation_bodies_into_store(
         &pool,
         store.as_ref(),
         cli.batch_size,
         staged_at,
+        std::time::Duration::ZERO,
     )
     .await?;
 

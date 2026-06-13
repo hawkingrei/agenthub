@@ -763,10 +763,15 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
 
     // Migrate into a fresh store with batch_size 1 to exercise the batching loop.
     let store = body_store();
-    let report =
-        crate::team::migrate_conversation_bodies_into_store(&db, store.as_ref(), 1, 1_700_000_000)
-            .await
-            .expect("migrate");
+    let report = crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        1,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("migrate");
     assert_eq!(report.migrated, 2);
     assert_eq!(report.drained, 2);
 
@@ -799,10 +804,15 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
     assert_eq!(messages[1].payload, p2);
 
     // Re-running the migration is a no-op.
-    let report_again =
-        crate::team::migrate_conversation_bodies_into_store(&db, store.as_ref(), 16, 1_700_000_000)
-            .await
-            .expect("migrate again");
+    let report_again = crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        16,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("migrate again");
     assert_eq!(report_again.migrated, 0);
 }
 
@@ -860,9 +870,15 @@ async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
 
     // batch_size 1: a naive drain keyed off the row batch would let the stuck oldest body block the
     // rest. The migration must still move every other body into the store and only leave the stuck one.
-    let report = crate::team::migrate_conversation_bodies_into_store(&db, &store, 1, 1_700_000_000)
-        .await
-        .expect("migrate");
+    let report = crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        &store,
+        1,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("migrate");
     assert_eq!(report.migrated, 3);
     assert_eq!(report.drained, 2);
 

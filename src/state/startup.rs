@@ -48,6 +48,10 @@ impl AppState {
         store: crate::message_body_store::SharedBodyStore,
     ) {
         const BACKFILL_BATCH: usize = 256;
+        // Pace the background backfill so it yields the single SQLite writer between batches and does
+        // not starve concurrent writes (incoming messages, agent triggers) on startup.
+        const BACKFILL_INTER_BATCH_DELAY: std::time::Duration =
+            std::time::Duration::from_millis(25);
         tokio::spawn(async move {
             match crate::team::count_inline_conversation_bodies(&db).await {
                 Ok(0) => return,
@@ -68,6 +72,7 @@ impl AppState {
                 store.as_ref(),
                 BACKFILL_BATCH,
                 staged_at,
+                BACKFILL_INTER_BATCH_DELAY,
             )
             .await
             {
