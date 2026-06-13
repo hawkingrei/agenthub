@@ -51,11 +51,12 @@ impl AppState {
         let linker_http = crate::linkers::AppLinkerService::default_http_client();
         let event_dbs = agenthub_db::AgentEventDbRouter::with_default_base_dir();
 
-        let (agents, teams, push, auth, acp_permissions) =
-            Self::initialize_services(&config, db.clone(), event_dbs.clone()).await?;
-        let agent_node_join_bootstrap = Self::build_agent_node_join_bootstrap(&config)?;
-
         let body_store = crate::message_body_store::init_body_store(&config);
+
+        let (agents, teams, push, auth, acp_permissions) =
+            Self::initialize_services(&config, db.clone(), event_dbs.clone(), body_store.clone())
+                .await?;
+        let agent_node_join_bootstrap = Self::build_agent_node_join_bootstrap(&config)?;
 
         Self::run_startup_cleanup(&agents, &teams).await?;
         Self::spawn_startup_workers(&db, &agents, &teams, &body_store).await?;

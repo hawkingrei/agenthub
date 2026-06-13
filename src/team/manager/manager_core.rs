@@ -74,10 +74,21 @@ impl TeamManager {
             db,
             event_dbs,
             message_archive,
+            body_store: None,
             conversation_events,
             remote_relay_adapter,
             agents_target_node_id_column,
         }
+    }
+
+    /// Attach the tiered message body store. The read path uses it to rehydrate bodies that have been
+    /// moved out of `payload_json`; `None` keeps bodies inline.
+    pub fn with_body_store(
+        mut self,
+        body_store: Option<crate::message_body_store::SharedBodyStore>,
+    ) -> Self {
+        self.body_store = body_store;
+        self
     }
 
     pub fn subscribe_conversation_events(
