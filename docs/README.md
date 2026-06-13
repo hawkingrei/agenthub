@@ -12,6 +12,8 @@ implementation-facing.
   - [developer-setup.md](developer-setup.md)
 - Architecture index:
   - [architecture-map.md](architecture-map.md)
+- Journal index:
+  - [journal/summary.md](journal/summary.md)
 - Active backlog:
   - [todo.md](todo.md)
 - Feature spec standard:
@@ -30,6 +32,8 @@ implementation-facing.
   - stable domain-oriented engineering specifications
 - `docs/journal/`
   - dated implementation checkpoints and compaction notes
+- `docs/journal/summary.md`
+  - compact journal index and monthly rollout guide
 - `docs/todo.md`
   - active follow-up backlog only
 - `docs/api_naming.md`
