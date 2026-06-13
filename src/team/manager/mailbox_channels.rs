@@ -213,7 +213,7 @@ impl TeamManager {
             WHERE conversation_id = ?1
               AND from_actor_id = ?2
               AND route = 'group_chat'
-              AND trim(COALESCE(json_extract(payload_json, '$.correlation_id'), '')) = ?3
+              AND trim(COALESCE(correlation_id, '')) = ?3
             ORDER BY id DESC
             LIMIT 1
             "#,
@@ -223,10 +223,15 @@ impl TeamManager {
         .bind(correlation_id)
         .fetch_optional(&self.db)
         .await?;
-        row.map(|row| {
-            super::codec_rows::parse_team_conversation_message_row(&row)
-                .map_err(|err| anyhow::anyhow!(err.to_string()))
-        })
-        .transpose()
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let (mut message, body_moved) =
+            super::codec_rows::parse_team_conversation_message_row(&row)?;
+        if body_moved {
+            self.rehydrate_moved_conversation_payload(&mut message)
+                .await?;
+        }
+        Ok(Some(message))
     }
 }

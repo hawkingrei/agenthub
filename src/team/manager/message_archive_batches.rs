@@ -63,7 +63,11 @@ impl TeamManager {
                     created_at: 0,
                     updated_at: 0,
                 };
-                let message = parse_team_conversation_message_row(&row)?;
+                let (mut message, body_moved) = parse_team_conversation_message_row(&row)?;
+                if body_moved {
+                    self.rehydrate_moved_conversation_payload(&mut message)
+                        .await?;
+                }
                 documents.push(team_conversation_message_archive_document(
                     &conversation,
                     &message,

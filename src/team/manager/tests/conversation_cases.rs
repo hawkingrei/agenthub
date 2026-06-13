@@ -541,3 +541,189 @@ async fn append_task_conversation_message_propagates_non_idempotency_insert_fail
         "expected non-idempotency error, got: {err:?}"
     );
 }
+
+fn body_store() -> std::sync::Arc<agenthub_message_store::InMemoryBodyStore> {
+    std::sync::Arc::new(agenthub_message_store::InMemoryBodyStore::new())
+}
+
+async fn body_store_team_and_task(manager: &TeamManager) -> crate::team::TeamTaskRecord {
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "body-store-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"coordinator","members":[{"member_id":"coordinator"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, _conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    task
+}
+
+#[tokio::test]
+async fn conversation_body_moves_to_body_store_and_rehydrates_on_read() {
+    use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
+
+    let db = setup_test_db().await;
+    let store = body_store();
+    let manager = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    let task = body_store_team_and_task(&manager).await;
+
+    let payload =
+        json!({"type":"chat_message","text":"a fairly chatty message body","extra":{"k":"v"}});
+    let message = manager
+        .append_task_conversation_message(&task.id, "user", None, "group_chat", payload.clone())
+        .await
+        .expect("append message");
+    // The returned in-memory record keeps the full payload.
+    assert_eq!(message.payload, payload);
+
+    // SQLite stores the moved sentinel in place of the body.
+    let stored: String =
+        sqlx::query_scalar("SELECT payload_json FROM team_conversation_messages WHERE id = ?1")
+            .bind(message.message_id)
+            .fetch_one(&db)
+            .await
+            .expect("read stored payload");
+    assert_eq!(stored, "::agenthub:tcm-body-moved::");
+
+    // Promoted columns stay populated so queries keep working without the body.
+    let text_col: Option<String> =
+        sqlx::query_scalar("SELECT text FROM team_conversation_messages WHERE id = ?1")
+            .bind(message.message_id)
+            .fetch_one(&db)
+            .await
+            .expect("read text column");
+    assert_eq!(text_col.as_deref(), Some("a fairly chatty message body"));
+
+    // The real body is staged in the durable outbox, not yet in the store.
+    let key = AuthorityMessageId::new(format!("tcm:{}", message.message_id));
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!store.contains(&key));
+
+    // Read path rehydrates from the outbox while the body is still staged.
+    let messages = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list before drain");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].payload, payload);
+
+    // Draining moves the body into the store and clears the outbox.
+    let drained = agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
+        .await
+        .unwrap();
+    assert_eq!(drained, 1);
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(store.contains(&key));
+
+    // Read path now rehydrates from the body store.
+    let messages = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list after drain");
+    assert_eq!(messages[0].payload, payload);
+}
+
+#[tokio::test]
+async fn conversation_idempotency_replay_with_moved_body_is_not_a_false_conflict() {
+    let db = setup_test_db().await;
+    let store = body_store();
+    let manager = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    let task = body_store_team_and_task(&manager).await;
+
+    let payload = json!({"type":"chat_message","text":"idempotent body"});
+    let (first, first_created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            payload.clone(),
+            Some("idem-key-1"),
+        )
+        .await
+        .expect("first append");
+    assert!(first_created);
+
+    // Drain so the existing body lives only in the store: the conflict path must rehydrate from the
+    // store (outbox is empty) before comparing payload fingerprints.
+    agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
+        .await
+        .unwrap();
+
+    let (second, second_created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            payload.clone(),
+            Some("idem-key-1"),
+        )
+        .await
+        .expect("idempotent replay should not error");
+    assert!(!second_created);
+    assert_eq!(second.message_id, first.message_id);
+}
+
+#[tokio::test]
+async fn conversation_body_stays_inline_without_body_store() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let task = body_store_team_and_task(&manager).await;
+
+    let payload = json!({"type":"chat_message","text":"inline body"});
+    let message = manager
+        .append_task_conversation_message(&task.id, "user", None, "group_chat", payload.clone())
+        .await
+        .expect("append message");
+
+    let stored: String =
+        sqlx::query_scalar("SELECT payload_json FROM team_conversation_messages WHERE id = ?1")
+            .bind(message.message_id)
+            .fetch_one(&db)
+            .await
+            .expect("read stored payload");
+    // Body stays inline; the moved sentinel is never written.
+    assert_ne!(stored, "::agenthub:tcm-body-moved::");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&stored).expect("inline payload is valid json"),
+        payload
+    );
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        0
+    );
+
+    let messages = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list");
+    assert_eq!(messages[0].payload, payload);
+}

@@ -12,6 +12,7 @@ mod context_artifact_support;
 mod context_artifacts;
 mod conversation;
 mod conversation_append;
+mod conversation_body;
 mod conversation_idempotency;
 mod conversation_insert_common;
 mod conversation_side_effects;
@@ -181,9 +182,8 @@ pub struct TeamManager {
     db: SqlitePool,
     event_dbs: AgentEventDbRouter,
     message_archive: Option<MessageArchiveStoreRef>,
-    /// Tiered message body store, used by the read path to rehydrate moved-out bodies. Set in
-    /// production via `with_body_store`; the write/read wiring lands in a follow-up.
-    #[allow(dead_code)]
+    /// Tiered message body store. When set, conversation message bodies are moved out of SQLite into
+    /// the store (staged via the outbox) on write and rehydrated on read; `None` keeps bodies inline.
     body_store: Option<crate::message_body_store::SharedBodyStore>,
     conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
     remote_relay_adapter: Arc<TeamRemoteRelayAdapter>,

@@ -41,12 +41,14 @@ fn task_conversation_message_fingerprint(
     super::hex_encode(&hasher.finalize())
 }
 
+/// Returns the matching message and whether its body was moved into the body store (so the caller can
+/// rehydrate before comparing payloads).
 pub(super) async fn fetch_task_conversation_message_by_idempotency(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     conversation_id: &str,
     from_actor_id: &str,
     idempotency_key: &str,
-) -> Result<TeamConversationMessageRecord, sqlx::Error> {
+) -> Result<(TeamConversationMessageRecord, bool), sqlx::Error> {
     let row = sqlx::query(
         r#"
         SELECT

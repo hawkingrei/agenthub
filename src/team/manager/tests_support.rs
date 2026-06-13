@@ -416,6 +416,19 @@ pub(super) async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
+        CREATE TABLE message_body_outbox (
+            authority_message_id TEXT PRIMARY KEY,
+            body BLOB NOT NULL,
+            staged_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create message_body_outbox");
+
+    sqlx::query(
+        r#"
         CREATE TABLE team_actor_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
