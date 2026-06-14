@@ -77,12 +77,16 @@ jobs:
         run: |
           bazel test --test_output=errors --nocache_test_results \
             --runs_per_test="${BODY_STORE_RUNS_PER_TEST}" \
-            --test_filter='team::manager::tests::conversation_cases::' \
+            --test_arg='team::manager::tests::conversation_cases::' \
             //:agenthub_unit_tests
       - name: Body store unit tests (stress)
-        # The store abstraction + durable outbox stage/drain/replay layer.
+        # The store abstraction + durable outbox stage/drain/replay layer. Each test binary takes its
+        # own filter, so the db target is scoped to the outbox tests separately.
         run: |
           bazel test --test_output=errors --nocache_test_results \
             --runs_per_test="${BODY_STORE_RUNS_PER_TEST}" \
-            //crates/agenthub-message-store:agenthub_message_store_tests \
+            //crates/agenthub-message-store:agenthub_message_store_tests
+          bazel test --test_output=errors --nocache_test_results \
+            --runs_per_test="${BODY_STORE_RUNS_PER_TEST}" \
+            --test_arg='message_body_outbox' \
             //crates/agenthub-db:agenthub_db_tests
