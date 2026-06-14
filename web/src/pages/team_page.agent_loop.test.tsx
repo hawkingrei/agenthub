@@ -268,23 +268,23 @@ vi.mock("./team/TeamWorkbenchContainer", async () => {
         return null;
       }
       teamMemberAcpPanelPropsSpy({
-        selectedMemberId: workbench.selectedAgentWorkspaceMemberId,
-        selectedSessionId: workbench.selectedAgentWorkspaceSessionId,
+        selectedMemberId: workbench.header.selectedAgentWorkspaceMemberId,
+        selectedSessionId: workbench.memberConsole.selectedAgentWorkspaceSessionId,
       });
       return (
         <div>
-          {workbench.isAgentWorkspace ? (
-            <button type="button" onClick={workbench.onOpenTeamMemberEditModal}>
+          {workbench.shell.isAgentWorkspace ? (
+            <button type="button" onClick={workbench.header.onOpenTeamMemberEditModal}>
               Open edit profile
             </button>
           ) : null}
-          {workbench.tab === "agent_acp" ? (
+          {workbench.shell.tab === "agent_acp" ? (
             <button
               type="button"
               onClick={() => {
-                workbench.onSendAgentAcpInput(
+                workbench.memberAcp.onSendAgentAcpInput(
                   "hello from acp",
-                  workbench.selectedAgentWorkspaceSessionId ?? ""
+                  workbench.memberConsole.selectedAgentWorkspaceSessionId ?? ""
                 );
               }}
             >

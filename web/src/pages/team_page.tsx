@@ -3063,7 +3063,12 @@ export function TeamPage(props: TeamPageProps) {
   const toggleWorkspaceDetails = useCallback(() => {
     setWorkspaceDetailsOpen((current) => !current);
   }, [setWorkspaceDetailsOpen]);
-  const teamWorkbenchContext = useShallowStableObject<TeamWorkbenchRuntimeContext>({
+  // Each sub-context is individually shallow-stabilized before being assembled into the workbench
+  // context. `useShallowStableObject` only compares one level deep, so nesting raw object literals
+  // directly under the top-level call would make every sub-object a fresh reference on each render and
+  // defeat the memoization for the whole workbench (and its consumers). Stabilizing per group keeps a
+  // sub-context's reference unchanged until one of its own fields changes.
+  const shellContext = useShallowStableObject({
     showTeamBootstrapLoading,
     showTeamUnavailable,
     onBackToSelector: navigateToTeamSelector,
@@ -3072,20 +3077,21 @@ export function TeamPage(props: TeamPageProps) {
     teamSectionCardClassName: TEAM_PANEL_CARD_CLASS,
     panelSecondaryButtonClassName: TEAM_PANEL_SECONDARY_BUTTON_CLASS,
     teamWorkbenchWorkspaceShellClassName,
+    tab,
+    activeWorkspaceLens,
+    developerMode: props.developerMode,
+    busy,
     selectedTeamHasConfiguredMembers,
     selectedTeamDescription: selectedTeam?.description,
     teamMemberForgeLabel,
     teamMemberCopyExistingLabel,
     onOpenTeamMemberForge: openTeamMemberForgeModal,
     onOpenTeamMemberCopyExisting: openCopyExistingAgentModal,
-    tab,
-    selectedTeamRuntimeStatus,
-    selectedTeamRuntimeControlTone,
     showRunContextLoading,
     showNoActiveRunNotice,
-    activeWorkspaceLens,
-    developerMode: props.developerMode,
     onGoToRuns,
+  });
+  const headerContext = useShallowStableObject({
     workspaceEyebrow,
     showDedicatedWorkspaceHeading,
     workspaceTitle,
@@ -3096,6 +3102,8 @@ export function TeamPage(props: TeamPageProps) {
     selectedAgentSpecDraft,
     selectedAgentControlState,
     showWorkspaceRuntimeBadge,
+    selectedTeamRuntimeStatus,
+    selectedTeamRuntimeControlTone,
     workspaceAdvancedTabItems,
     isAdvancedWorkspace,
     showRunActionsInAdvanced,
@@ -3123,6 +3131,8 @@ export function TeamPage(props: TeamPageProps) {
     onStartSelectedTeamAgent,
     onStopSelectedTeamAgent,
     onDeleteSelectedTeamAgent,
+  });
+  const runsContext = useShallowStableObject({
     onDeleteTeam,
     runStatusFilter,
     TEAM_RUN_STATUS_FILTER_OPTIONS,
@@ -3138,31 +3148,22 @@ export function TeamPage(props: TeamPageProps) {
     runsHasMore,
     effectiveSelectedTeamId,
     onLoadMoreRuns,
-    TEAM_EVENT_PREVIEW_LIMIT,
-    selectedMemberDiscoveryCard,
-    selectedMemberDiscoveryCardLoading,
-    onOpenMailboxForMember,
-    selectedMemberId,
-    setSelectedMemberId,
-    eventsAutoRefresh,
-    setEventsAutoRefresh,
-    onRefreshEventsPanel,
-    onLoadOlderEventsPanel,
-    eventsHasMore,
-    mailboxHasActiveRun: Boolean(activeRunForSelectedTeam),
-    mailboxEmptyTitle: isAgentWorkspace ? selectedAgentLabel : "Execution Mailbox",
-    mailboxEmptyBody: isAgentWorkspace
-      ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
-      : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations.",
+  });
+  const overviewContext = useShallowStableObject({
     snapshot,
+    snapshotLoading,
+    onRefreshOverviewSnapshot,
     mailboxDisplayNameByActorId,
-    busy,
+  });
+  const memberConsoleContext = useShallowStableObject({
     selectedAgentWorkspaceSessionId,
     memberEvents,
     memberEventsLoading,
     memberEventsHasMore,
     onLoadOlderMemberConsole,
     onRefreshMemberConsole,
+  });
+  const debugRunContext = useShallowStableObject({
     teamDebugTag,
     setTeamDebugTag,
     runContextId,
@@ -3205,6 +3206,8 @@ export function TeamPage(props: TeamPageProps) {
     stepResumePayload,
     onStepResumePayloadChange: setStepResumePayload,
     onApplyStepAction,
+  });
+  const conversationContext = useShallowStableObject({
     unreadByMemberId,
     chatActors,
     chatStickToBottom,
@@ -3222,6 +3225,10 @@ export function TeamPage(props: TeamPageProps) {
     onApplyMessageTemplate,
     onSendMessage,
     onRefreshInbox,
+    chatDraft,
+    onChatDraftChange: setChatDraft,
+  });
+  const memberAcpContext = useShallowStableObject({
     selectedAgentWorkspaceSnapshot,
     selectedMemberSnapshot,
     selectedAgentWorkspaceRuntimeMember,
@@ -3233,13 +3240,26 @@ export function TeamPage(props: TeamPageProps) {
     onSetTeamMemberAcpModel,
     onSetTeamMemberAcpConfig,
     onForceNewTeamMemberSession,
+    memberTargetNodeById,
+    selectedMemberId,
+    setSelectedMemberId,
+    selectedMemberDiscoveryCard,
+    selectedMemberDiscoveryCardLoading,
+    onOpenMailboxForMember,
+  });
+  const eventsContext = useShallowStableObject({
     eventsLoading,
     oldestEventId,
     displayedRunEvents,
     previewMode,
-    snapshotLoading,
-    onRefreshOverviewSnapshot,
-    memberTargetNodeById,
+    eventsAutoRefresh,
+    setEventsAutoRefresh,
+    onRefreshEventsPanel,
+    onLoadOlderEventsPanel,
+    eventsHasMore,
+    TEAM_EVENT_PREVIEW_LIMIT,
+  });
+  const mailboxDebugContext = useShallowStableObject({
     msgFromActorId,
     onMsgFromActorIdChange: setMsgFromActorId,
     msgToActorId,
@@ -3263,8 +3283,23 @@ export function TeamPage(props: TeamPageProps) {
     onInboxAfterIdChange: setInboxAfterId,
     inboxIncludeDelivered,
     onInboxIncludeDeliveredChange: setInboxIncludeDelivered,
-    chatDraft,
-    onChatDraftChange: setChatDraft,
+    mailboxHasActiveRun: Boolean(activeRunForSelectedTeam),
+    mailboxEmptyTitle: isAgentWorkspace ? selectedAgentLabel : "Execution Mailbox",
+    mailboxEmptyBody: isAgentWorkspace
+      ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
+      : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations.",
+  });
+  const teamWorkbenchContext = useShallowStableObject<TeamWorkbenchRuntimeContext>({
+    shell: shellContext,
+    header: headerContext,
+    runs: runsContext,
+    overview: overviewContext,
+    memberConsole: memberConsoleContext,
+    debugRun: debugRunContext,
+    conversation: conversationContext,
+    memberAcp: memberAcpContext,
+    events: eventsContext,
+    mailboxDebug: mailboxDebugContext,
   });
   const teamWorkspaceContext = useShallowStableObject<TeamWorkspaceContextValue>({
     workbench: teamWorkbenchContext,
