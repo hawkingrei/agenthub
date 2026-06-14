@@ -853,18 +853,31 @@ impl AgentManager {
                         err
                     );
                 }
-                if let Some(level) = agent.thinking_level.as_deref()
-                    && let Some(effort) = codex_reasoning_effort_for_thinking_level(level)
-                    && let Err(err) = handle
-                        .set_config("reasoning_effort".to_string(), effort.to_string())
-                        .await
-                {
-                    tracing::warn!(
-                        "set acp reasoning effort failed: agent_id={}, level={}, error={}",
-                        agent.id,
-                        level,
-                        err
-                    );
+                if let Some(level) = agent.thinking_level.as_deref() {
+                    match codex_reasoning_effort_for_thinking_level(level) {
+                        Some(effort) => {
+                            if let Err(err) = handle
+                                .set_config("reasoning_effort".to_string(), effort.to_string())
+                                .await
+                            {
+                                tracing::warn!(
+                                    "set acp reasoning effort failed: agent_id={}, level={}, error={}",
+                                    agent.id,
+                                    level,
+                                    err
+                                );
+                            }
+                        }
+                        None => {
+                            // Phase 1 only persists low|medium|high|max, so an unmapped level means
+                            // manual or stale data; surface it rather than silently using the default.
+                            tracing::warn!(
+                                "unmapped thinking level for codex reasoning effort, leaving provider default: agent_id={}, level={}",
+                                agent.id,
+                                level
+                            );
+                        }
+                    }
                 }
             }
             if let Some(config) = normalize_agent_loop_config(
