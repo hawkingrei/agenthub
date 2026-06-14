@@ -815,4 +815,64 @@ mod tests {
             Some("keep-me".to_string())
         );
     }
+
+    #[tokio::test]
+    async fn remote_managed_upsert_update_writes_runtime_profile_on_full_schema() {
+        let caps = AgentSchemaCaps {
+            has_source_column: true,
+            has_target_node_id_column: true,
+            has_codex_acp_default_mode_column: true,
+            has_runtime_model_column: true,
+            has_thinking_level_column: true,
+        };
+        let db = create_test_db().await;
+        create_agents_table(&db, caps).await;
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, status, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            "#,
+        )
+        .bind("agent-1")
+        .bind("old-name")
+        .bind("/old/workdir")
+        .bind("old-command")
+        .bind("[]")
+        .bind("use_existing")
+        .bind("running")
+        .bind(100)
+        .bind(100)
+        .execute(&db)
+        .await
+        .expect("seed row with null profile");
+
+        let config = build_remote_managed_config();
+        let args_json = serde_json::to_string(&config.args).expect("serialize args");
+        upsert_remote_managed_agent_record(
+            &db,
+            caps,
+            RemoteManagedAgentUpsert {
+                agent_id: "agent-1",
+                config: &config,
+                workdir: "/srv/agent-1",
+                args_json: &args_json,
+                worktree_repo: Some("/srv/repo"),
+                source: "manual",
+                exists: true,
+                now: 456,
+            },
+        )
+        .await
+        .expect("update remote managed agent");
+
+        // The update path writes the runtime profile overrides into the existing row.
+        let (model, level): (Option<String>, Option<String>) =
+            sqlx::query_as("SELECT runtime_model, thinking_level FROM agents WHERE id = 'agent-1'")
+                .fetch_one(&db)
+                .await
+                .expect("load updated agent profile");
+        assert_eq!(model.as_deref(), Some("gpt-5.4-codex"));
+        assert_eq!(level.as_deref(), Some("high"));
+    }
 }
