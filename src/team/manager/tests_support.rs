@@ -662,6 +662,118 @@ pub(super) async fn setup_test_db() -> SqlitePool {
     pool
 }
 
+/// A file-backed, WAL-mode, multi-connection SQLite pool for concurrency/race tests. The shared
+/// `:memory:` pool used elsewhere is single-connection and serializes everything, which cannot exercise
+/// real interleavings between the write path, the outbox drainer, and the read path. This applies only
+/// the tables the conversation body paths touch (create team/task, append, list, drain, migrate).
+///
+/// Returns the pool and the temp directory holding the database; the caller removes the directory when
+/// the test finishes.
+pub(super) async fn setup_concurrent_conversation_db() -> (SqlitePool, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!("agenthub-race-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let options = SqliteConnectOptions::new()
+        .filename(dir.join("race.db"))
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(20));
+    let pool = SqlitePoolOptions::new()
+        .max_connections(8)
+        .connect_with(options)
+        .await
+        .expect("connect sqlite");
+
+    for (stmt, label) in [
+        (
+            r#"CREATE TABLE team_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                spec_json TEXT NOT NULL,
+                owner_user_id TEXT,
+                group_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );"#,
+            "team_definitions",
+        ),
+        (
+            r#"CREATE TABLE team_tasks (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                group_id TEXT,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL,
+                priority TEXT NOT NULL DEFAULT 'medium',
+                created_by_actor_id TEXT NOT NULL,
+                assigned_member_id TEXT,
+                context_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(team_id) REFERENCES team_definitions(id)
+            );"#,
+            "team_tasks",
+        ),
+        (
+            r#"CREATE TABLE team_conversations (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                task_id TEXT NOT NULL UNIQUE,
+                mode TEXT NOT NULL,
+                topic TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+                FOREIGN KEY(task_id) REFERENCES team_tasks(id)
+            );"#,
+            "team_conversations",
+        ),
+        (
+            r#"CREATE TABLE team_conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                correlation_id TEXT NOT NULL DEFAULT '',
+                group_id TEXT,
+                payload_json TEXT NOT NULL,
+                idempotency_key TEXT,
+                created_at INTEGER NOT NULL,
+                text TEXT,
+                kind TEXT,
+                thread_root_message_id INTEGER,
+                FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
+                FOREIGN KEY(task_id) REFERENCES team_tasks(id)
+            );"#,
+            "team_conversation_messages",
+        ),
+        (
+            r#"CREATE UNIQUE INDEX idx_team_conversation_messages_idempotency
+                ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
+                WHERE idempotency_key IS NOT NULL;"#,
+            "team_conversation_messages idempotency index",
+        ),
+        (
+            r#"CREATE TABLE message_body_outbox (
+                authority_message_id TEXT PRIMARY KEY,
+                body BLOB NOT NULL,
+                staged_at INTEGER NOT NULL
+            );"#,
+            "message_body_outbox",
+        ),
+    ] {
+        sqlx::query(stmt)
+            .execute(&pool)
+            .await
+            .unwrap_or_else(|err| panic!("create {label}: {err}"));
+    }
+
+    (pool, dir)
+}
+
 pub(super) fn task_attempt_number(task: &crate::team::TeamTaskRecord) -> Option<i64> {
     task.context
         .get("execution")

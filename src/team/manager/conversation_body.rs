@@ -37,6 +37,13 @@ pub(super) fn conversation_payload_was_moved(payload_json: &str) -> bool {
 
 /// Load a moved conversation body, preferring the drained body store and falling back to the durable
 /// outbox (for bodies staged but not yet drained). Returns `None` only if the body is in neither.
+///
+/// The lookup order is store → outbox → store. The second store check is what makes this race-free
+/// against a concurrent drainer: the drainer writes the body into the store and only *then* deletes its
+/// outbox row, so if the body is missing from the store on the first check and also missing from the
+/// outbox, the drainer must have moved it between the two checks — and an absent outbox row means the
+/// store write already completed. Without the re-check, a read interleaved with a drain could see the
+/// body in neither place and spuriously fail.
 async fn load_moved_conversation_body<'a, E>(
     body_store: Option<&dyn MessageBodyStore>,
     outbox_executor: E,
@@ -45,19 +52,41 @@ async fn load_moved_conversation_body<'a, E>(
 where
     E: sqlx::Executor<'a, Database = Sqlite>,
 {
-    if let Some(store) = body_store
-        && let Some(body) = store
+    let get_from_store = |store: &dyn MessageBodyStore| {
+        store
             .get_body(key)
-            .map_err(|err| anyhow::anyhow!(err.to_string()))?
+            .map_err(|err| anyhow::anyhow!(err.to_string()))
+    };
+
+    // Steady state: the body has been drained into the store. Check it first so a read does not pay for
+    // an outbox query once the body has settled.
+    if let Some(store) = body_store
+        && let Some(body) = get_from_store(store)?
     {
         return Ok(Some(body));
     }
-    let body: Option<Vec<u8>> =
-        sqlx::query_scalar("SELECT body FROM message_body_outbox WHERE authority_message_id = ?1")
-            .bind(key.as_str())
-            .fetch_optional(outbox_executor)
-            .await?;
-    Ok(body)
+
+    // Not (yet) in the store: it should still be staged in the durable outbox.
+    if let Some(body) = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT body FROM message_body_outbox WHERE authority_message_id = ?1",
+    )
+    .bind(key.as_str())
+    .fetch_optional(outbox_executor)
+    .await?
+    {
+        return Ok(Some(body));
+    }
+
+    // Missing from both the first store check and the outbox: a concurrent drainer may have moved the
+    // body into the store after that first check and before the outbox check. Re-check the store to
+    // close that window (the drainer writes the store before deleting the outbox row).
+    if let Some(store) = body_store
+        && let Some(body) = get_from_store(store)?
+    {
+        return Ok(Some(body));
+    }
+
+    Ok(None)
 }
 
 /// Rehydrate a moved conversation body in place, using `tx` for the outbox fallback. For the insert
