@@ -36,7 +36,7 @@ tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev 
 
 [package]
 name = "agenthub"
-version = "0.1.0"
+version = "0.0.10"
 edition = "2024"
 license = "Apache-2.0"
 

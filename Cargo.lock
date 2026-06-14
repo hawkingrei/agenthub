@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agent-client-protocol",
  "agenthub-acp",
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-acp"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agent-client-protocol",
  "agenthub-acp-core",
@@ -441,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-acp-adapter"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-codex-acp",
  "anyhow",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-acp-core"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agent-client-protocol",
  "serde",
@@ -463,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-agent-domain"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "anyhow",
  "serde",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-agent-event-codec"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-agent-domain",
  "agenthub-db",
@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-auth-domain"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "anyhow",
  "argon2",
@@ -494,7 +494,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-auth-passkeys"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-auth-store"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-auth-domain",
  "anyhow",
@@ -561,7 +561,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-config"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "anyhow",
  "serde",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-db"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-config",
  "agenthub-message-store",
@@ -586,7 +586,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-diagnostics"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-agent-domain",
  "agenthub-agent-event-codec",
@@ -601,7 +601,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-doctor-cli"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-diagnostics",
  "agenthub-managed-skills",
@@ -613,7 +613,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-internal-p2p"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-team-actor",
  "anyhow",
@@ -626,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-internal-tls"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-linkers"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-db",
  "anyhow",
@@ -655,7 +655,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-logging"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -667,14 +667,14 @@ dependencies = [
 
 [[package]]
 name = "agenthub-managed-skills"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "anyhow",
 ]
 
 [[package]]
 name = "agenthub-message-archive"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -690,7 +690,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-message-store"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "rocksdb",
  "serde",
@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-push"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "agenthub-config",
  "anyhow",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-pyroscope"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "pyroscope",
  "tracing",
@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-team-actor"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "serde",
@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "agenthub-team-domain"
-version = "0.1.0"
+version = "0.0.10"
 dependencies = [
  "serde",
  "serde_json",
@@ -748,11 +748,11 @@ dependencies = [
 
 [[package]]
 name = "agenthub-team-prompts"
-version = "0.1.0"
+version = "0.0.10"
 
 [[package]]
 name = "agenthub-text"
-version = "0.1.0"
+version = "0.0.10"
 
 [[package]]
 name = "ahash"
