@@ -180,24 +180,67 @@ fn should_use_configured_codex_binary(codex_acp_binary: &str, command: &str) -> 
 pub(super) fn default_env_for_acp_provider(
     provider: Option<AcpProviderSpec>,
     codex_acp_multi_agent_enabled: bool,
+    runtime_model: Option<&str>,
+    thinking_level: Option<&str>,
 ) -> Vec<(String, String)> {
-    if provider.map(|spec| spec.id) != Some(ACP_PROVIDER_CODEX) {
+    let Some(spec) = provider else {
         return Vec::new();
-    }
-
-    let mut env = vec![(
-        AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV.to_string(),
-        if codex_acp_multi_agent_enabled {
-            "1"
-        } else {
-            "0"
+    };
+    match spec.id {
+        ACP_PROVIDER_CODEX => {
+            let mut env = vec![(
+                AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV.to_string(),
+                if codex_acp_multi_agent_enabled {
+                    "1"
+                } else {
+                    "0"
+                }
+                .to_string(),
+            )];
+            if std::env::var_os("RUST_BACKTRACE").is_none() {
+                env.push(("RUST_BACKTRACE".to_string(), "1".to_string()));
+            }
+            env
         }
-        .to_string(),
-    )];
-    if std::env::var_os("RUST_BACKTRACE").is_none() {
-        env.push(("RUST_BACKTRACE".to_string(), "1".to_string()));
+        // Claude has no runtime session-config for model/thinking, so the runtime profile is applied as
+        // startup env. Changing it later requires a new session/restart to take effect.
+        ACP_PROVIDER_CLAUDE => claude_runtime_profile_env(runtime_model, thinking_level),
+        _ => Vec::new(),
+    }
+}
+
+/// Build the Claude spawn env for the agent runtime profile: `ANTHROPIC_MODEL` for the model override
+/// and `MAX_THINKING_TOKENS` for the (mapped) thinking level. Unset fields are omitted so the Claude
+/// default stays authoritative.
+fn claude_runtime_profile_env(
+    runtime_model: Option<&str>,
+    thinking_level: Option<&str>,
+) -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    if let Some(model) = runtime_model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+    {
+        env.push(("ANTHROPIC_MODEL".to_string(), model.to_string()));
+    }
+    if let Some(level) = thinking_level
+        && let Some(tokens) = claude_max_thinking_tokens_for_thinking_level(level)
+    {
+        env.push(("MAX_THINKING_TOKENS".to_string(), tokens.to_string()));
     }
     env
+}
+
+/// Map the provider-neutral thinking level to Claude's `MAX_THINKING_TOKENS` budget (typical upstream
+/// values). An unrecognized level yields `None` (the env var is omitted and the Claude default applies).
+pub(super) fn claude_max_thinking_tokens_for_thinking_level(level: &str) -> Option<&'static str> {
+    match level.trim().to_ascii_lowercase().as_str() {
+        "low" => Some("4096"),
+        "medium" => Some("8000"),
+        "high" => Some("16000"),
+        "max" => Some("20000"),
+        _ => None,
+    }
 }
 
 fn acp_provider_for_command_with_binary(
@@ -238,8 +281,9 @@ mod tests {
 
     use super::{
         ACP_PROVIDER_CODEX, AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, AcpProviderSpec,
-        acp_provider_spec_for_agent_with_binary, codex_reasoning_effort_for_thinking_level,
-        default_env_for_acp_provider, should_use_configured_codex_binary,
+        acp_provider_spec_for_agent_with_binary, claude_max_thinking_tokens_for_thinking_level,
+        codex_reasoning_effort_for_thinking_level, default_env_for_acp_provider,
+        should_use_configured_codex_binary,
     };
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -299,7 +343,7 @@ mod tests {
         unsafe {
             std::env::remove_var("RUST_BACKTRACE");
         }
-        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX), true);
+        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX), true, None, None);
         assert_eq!(
             env,
             vec![
@@ -320,7 +364,7 @@ mod tests {
             &["--acp".to_string()],
         );
         assert_ne!(provider.map(|spec| spec.id), Some(ACP_PROVIDER_CODEX));
-        assert!(default_env_for_acp_provider(provider, true).is_empty());
+        assert!(default_env_for_acp_provider(provider, true, None, None).is_empty());
     }
 
     #[test]
@@ -350,12 +394,107 @@ mod tests {
         unsafe {
             std::env::set_var("RUST_BACKTRACE", "full");
         }
-        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX), false);
+        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX), false, None, None);
         assert_eq!(
             env,
             vec![(
                 AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV.to_string(),
                 "0".to_string()
+            )]
+        );
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var("RUST_BACKTRACE");
+        }
+    }
+
+    #[test]
+    fn claude_max_thinking_tokens_maps_thinking_levels() {
+        assert_eq!(
+            claude_max_thinking_tokens_for_thinking_level("low"),
+            Some("4096")
+        );
+        assert_eq!(
+            claude_max_thinking_tokens_for_thinking_level("medium"),
+            Some("8000")
+        );
+        assert_eq!(
+            claude_max_thinking_tokens_for_thinking_level("high"),
+            Some("16000")
+        );
+        assert_eq!(
+            claude_max_thinking_tokens_for_thinking_level(" MAX "),
+            Some("20000")
+        );
+        assert_eq!(claude_max_thinking_tokens_for_thinking_level("turbo"), None);
+    }
+
+    #[test]
+    fn claude_runtime_profile_injects_model_and_thinking_env() {
+        let env = default_env_for_acp_provider(
+            Some(AcpProviderSpec::CLAUDE),
+            true,
+            Some("claude-opus-4-8"),
+            Some("high"),
+        );
+        assert_eq!(
+            env,
+            vec![
+                ("ANTHROPIC_MODEL".to_string(), "claude-opus-4-8".to_string()),
+                ("MAX_THINKING_TOKENS".to_string(), "16000".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn claude_runtime_profile_omits_unset_fields() {
+        // No profile -> no env (Claude defaults stay authoritative).
+        assert!(
+            default_env_for_acp_provider(Some(AcpProviderSpec::CLAUDE), true, None, None)
+                .is_empty()
+        );
+        // Blank model is treated as unset; an unknown level is dropped.
+        assert!(
+            default_env_for_acp_provider(
+                Some(AcpProviderSpec::CLAUDE),
+                true,
+                Some("   "),
+                Some("turbo"),
+            )
+            .is_empty()
+        );
+        // Only the model set.
+        assert_eq!(
+            default_env_for_acp_provider(
+                Some(AcpProviderSpec::CLAUDE),
+                true,
+                Some("claude-opus-4-8"),
+                None,
+            ),
+            vec![("ANTHROPIC_MODEL".to_string(), "claude-opus-4-8".to_string())]
+        );
+    }
+
+    #[test]
+    fn codex_env_ignores_runtime_profile_fields() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::set_var("RUST_BACKTRACE", "full");
+        }
+        // Codex carries its profile via session config, not env, so the env builder ignores the
+        // profile args and just emits the Codex multi-agent flag.
+        let env = default_env_for_acp_provider(
+            Some(AcpProviderSpec::CODEX),
+            true,
+            Some("gpt-5.4-codex"),
+            Some("high"),
+        );
+        assert_eq!(
+            env,
+            vec![(
+                AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV.to_string(),
+                "1".to_string()
             )]
         );
         // SAFETY: tests serialize environment mutation and restore state before exit.

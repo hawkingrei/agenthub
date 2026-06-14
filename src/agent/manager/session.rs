@@ -571,6 +571,8 @@ impl AgentManager {
             extra_env: default_env_for_acp_provider(
                 acp_provider,
                 self.codex_acp_multi_agent_enabled,
+                agent.runtime_model.as_deref(),
+                agent.thinking_level.as_deref(),
             ),
         };
         let local_execution = match self
