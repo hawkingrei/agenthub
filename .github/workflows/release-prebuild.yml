@@ -23,17 +23,17 @@ jobs:
             os: ubuntu-22.04
             arch: amd64
             cross: true
-            agenthub_features: release-vendored-openssl,release-lance-fp16
+            agenthub_features: release-vendored-openssl,release-lance-fp16,rocksdb
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04
             arch: arm64
             cross: true
-            agenthub_features: release-vendored-openssl
+            agenthub_features: release-vendored-openssl,rocksdb
           - target: aarch64-apple-darwin
             os: macos-14
             arch: arm64
             cross: false
-            agenthub_features: ""
+            agenthub_features: rocksdb
 
     steps:
       - name: Checkout

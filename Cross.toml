@@ -2,17 +2,25 @@
 [target.x86_64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:edge"
 pre-build = [
-    "apt-get update && apt-get install --assume-yes --no-install-recommends ca-certificates gnupg pkg-config curl unzip zlib1g-dev:$CROSS_DEB_ARCH libsqlite3-dev:$CROSS_DEB_ARCH libcap-dev:$CROSS_DEB_ARCH && mkdir -p /etc/apt/keyrings && curl --fail --location 'https://apt.llvm.org/llvm-snapshot.gpg.key' | gpg --dearmor --yes --output /etc/apt/keyrings/llvm.gpg && echo 'deb [signed-by=/etc/apt/keyrings/llvm.gpg] https://apt.llvm.org/focal/ llvm-toolchain-focal-15 main' > /etc/apt/sources.list.d/llvm.list && apt-get update && apt-get install --assume-yes --no-install-recommends clang-15 lld-15 && apt-get clean && rm -rf /var/lib/apt/lists/*",
+    # clang-15 is the C/C++ compiler (Lance fp16 kernels need Clang 15+); libclang-15-dev provides the
+    # shared library that librocksdb-sys' bindgen-runtime loads to generate the RocksDB bindings.
+    "apt-get update && apt-get install --assume-yes --no-install-recommends ca-certificates gnupg pkg-config curl unzip zlib1g-dev:$CROSS_DEB_ARCH libsqlite3-dev:$CROSS_DEB_ARCH libcap-dev:$CROSS_DEB_ARCH && mkdir -p /etc/apt/keyrings && curl --fail --location 'https://apt.llvm.org/llvm-snapshot.gpg.key' | gpg --dearmor --yes --output /etc/apt/keyrings/llvm.gpg && echo 'deb [signed-by=/etc/apt/keyrings/llvm.gpg] https://apt.llvm.org/focal/ llvm-toolchain-focal-15 main' > /etc/apt/sources.list.d/llvm.list && apt-get update && apt-get install --assume-yes --no-install-recommends clang-15 lld-15 libclang-15-dev && apt-get clean && rm -rf /var/lib/apt/lists/*",
     "update-alternatives --install /usr/bin/gcc gcc /usr/bin/clang-15 100 && update-alternatives --install /usr/bin/g++ g++ /usr/bin/clang++-15 100 && update-alternatives --install /usr/bin/cc cc /usr/bin/clang-15 100 && update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-15 100 && update-alternatives --install /usr/bin/ld ld /usr/bin/ld.lld-15 100 && cc --version",
     "curl --fail --location --output /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v27.1/protoc-27.1-linux-x86_64.zip && rm -rf /opt/protoc-27.1 && mkdir -p /opt/protoc-27.1 && unzip -q /tmp/protoc.zip -d /opt/protoc-27.1 && ln -sf /opt/protoc-27.1/bin/protoc /usr/local/bin/protoc && protoc --version",
 ]
 
 env.passthrough = ["OPENSSL_STATIC=1"]
 
+# The default cross image for this target is Ubuntu Xenial, whose distro libclang (3.8) is far too old
+# for librocksdb-sys' bindgen (clang-sys needs clang_getTranslationUnitTargetInfo). Use the Focal-based
+# :edge image (same family as the x86_64 target) and install a modern libclang from apt.llvm.org. The
+# C/C++ for the aarch64 target is still compiled by the image's aarch64 g++; libclang is host-only, for
+# bindgen, which runs on the build host.
 [target.aarch64-unknown-linux-gnu]
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:edge"
 pre-build = [
     "dpkg --add-architecture $CROSS_DEB_ARCH",
-    "apt-get update && apt-get install --assume-yes pkg-config curl unzip zlib1g-dev:$CROSS_DEB_ARCH libsqlite3-dev:$CROSS_DEB_ARCH libcap-dev:$CROSS_DEB_ARCH",
+    "apt-get update && apt-get install --assume-yes --no-install-recommends ca-certificates gnupg pkg-config curl unzip zlib1g-dev:$CROSS_DEB_ARCH libsqlite3-dev:$CROSS_DEB_ARCH libcap-dev:$CROSS_DEB_ARCH && mkdir -p /etc/apt/keyrings && curl --fail --location 'https://apt.llvm.org/llvm-snapshot.gpg.key' | gpg --dearmor --yes --output /etc/apt/keyrings/llvm.gpg && echo 'deb [signed-by=/etc/apt/keyrings/llvm.gpg] https://apt.llvm.org/focal/ llvm-toolchain-focal-15 main' > /etc/apt/sources.list.d/llvm.list && apt-get update && apt-get install --assume-yes --no-install-recommends clang-15 libclang-15-dev && apt-get clean && rm -rf /var/lib/apt/lists/*",
     "curl --fail --location --output /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v27.1/protoc-27.1-linux-x86_64.zip && rm -rf /opt/protoc-27.1 && mkdir -p /opt/protoc-27.1 && unzip -q /tmp/protoc.zip -d /opt/protoc-27.1 && ln -sf /opt/protoc-27.1/bin/protoc /usr/local/bin/protoc && protoc --version",
 ]
 env.passthrough = ["OPENSSL_STATIC=1"]
