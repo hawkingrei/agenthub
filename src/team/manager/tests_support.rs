@@ -792,3 +792,125 @@ fn team_run_status_from_str_handles_submitted_and_unknown_values() {
         TeamRunStatus::Submitted
     );
 }
+
+/// A configurable fault-injecting [`MessageBodyStore`] for failure/race tests. It wraps an in-memory
+/// store and can fail or corrupt individual operations on demand. Every knob is reconfigurable at
+/// runtime (e.g. let a write succeed, then make later reads fail), and call counts are observable so
+/// tests can assert exactly how the read/write paths exercised the store.
+#[derive(Default)]
+pub(super) struct FaultInjectingBodyStore {
+    inner: agenthub_message_store::InMemoryBodyStore,
+    faults: std::sync::Mutex<FaultInjectionState>,
+}
+
+#[derive(Default)]
+struct FaultInjectionState {
+    /// Fail (and consume) the next N `put_body` calls.
+    fail_next_puts: usize,
+    /// Persistently fail `put_body` for these authority ids.
+    reject_put_keys: std::collections::HashSet<String>,
+    /// Fail (and consume) the next N `get_body` calls.
+    fail_next_gets: usize,
+    /// Return non-JSON garbage from `get_body` for these authority ids (simulating corruption).
+    corrupt_get_keys: std::collections::HashSet<String>,
+    put_calls: usize,
+    get_calls: usize,
+}
+
+impl FaultInjectingBodyStore {
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) fn fail_next_puts(&self, n: usize) {
+        self.faults
+            .lock()
+            .expect("fault state poisoned")
+            .fail_next_puts = n;
+    }
+
+    pub(super) fn reject_put_key(&self, key: impl Into<String>) {
+        self.faults
+            .lock()
+            .expect("fault state poisoned")
+            .reject_put_keys
+            .insert(key.into());
+    }
+
+    pub(super) fn fail_next_gets(&self, n: usize) {
+        self.faults
+            .lock()
+            .expect("fault state poisoned")
+            .fail_next_gets = n;
+    }
+
+    pub(super) fn corrupt_get_key(&self, key: impl Into<String>) {
+        self.faults
+            .lock()
+            .expect("fault state poisoned")
+            .corrupt_get_keys
+            .insert(key.into());
+    }
+
+    pub(super) fn put_calls(&self) -> usize {
+        self.faults.lock().expect("fault state poisoned").put_calls
+    }
+
+    pub(super) fn get_calls(&self) -> usize {
+        self.faults.lock().expect("fault state poisoned").get_calls
+    }
+}
+
+impl agenthub_message_store::MessageBodyStore for FaultInjectingBodyStore {
+    fn put_body(
+        &self,
+        id: &agenthub_message_store::AuthorityMessageId,
+        body: &[u8],
+    ) -> Result<(), agenthub_message_store::BodyStoreError> {
+        {
+            let mut faults = self.faults.lock().expect("fault state poisoned");
+            faults.put_calls += 1;
+            if faults.reject_put_keys.contains(id.as_str()) {
+                return Err(agenthub_message_store::BodyStoreError::Backend(format!(
+                    "injected persistent put failure for {}",
+                    id.as_str()
+                )));
+            }
+            if faults.fail_next_puts > 0 {
+                faults.fail_next_puts -= 1;
+                return Err(agenthub_message_store::BodyStoreError::Backend(
+                    "injected transient put failure".into(),
+                ));
+            }
+        }
+        self.inner.put_body(id, body)
+    }
+
+    fn get_body(
+        &self,
+        id: &agenthub_message_store::AuthorityMessageId,
+    ) -> Result<Option<Vec<u8>>, agenthub_message_store::BodyStoreError> {
+        {
+            let mut faults = self.faults.lock().expect("fault state poisoned");
+            faults.get_calls += 1;
+            if faults.fail_next_gets > 0 {
+                faults.fail_next_gets -= 1;
+                return Err(agenthub_message_store::BodyStoreError::Backend(
+                    "injected get failure".into(),
+                ));
+            }
+            if faults.corrupt_get_keys.contains(id.as_str()) {
+                return Ok(Some(b"<<corrupt-not-json>>".to_vec()));
+            }
+        }
+        self.inner.get_body(id)
+    }
+
+    fn contains(&self, id: &agenthub_message_store::AuthorityMessageId) -> bool {
+        self.inner.contains(id)
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}

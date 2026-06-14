@@ -1,0 +1,88 @@
+name: Body Store Tests
+
+# Dedicated, Bazel-run stress job for the tiered message-body store (write/read move, outbox
+# drain/replay, migrate, and fault-injection cases). It reruns the body-store tests many times
+# (`--runs_per_test`) with result caching disabled so flakiness and races surface here rather than in
+# the regular single-run Bazel job. Scoped by `paths` so it only runs when the body-store code or its
+# tests change.
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "src/message_body_store.rs"
+      - "src/state/startup.rs"
+      - "src/team/manager/conversation_body.rs"
+      - "src/team/manager/conversation_insert_common.rs"
+      - "src/team/manager/conversation_append.rs"
+      - "src/team/manager/conversation_tx_insert.rs"
+      - "src/team/manager/tests_support.rs"
+      - "src/team/manager/tests/conversation_cases.rs"
+      - "crates/agenthub-message-store/**"
+      - "crates/agenthub-db/src/message_body_outbox.rs"
+      - ".github/workflows/body-store-tests.yml"
+  pull_request:
+    paths:
+      - "src/message_body_store.rs"
+      - "src/state/startup.rs"
+      - "src/team/manager/conversation_body.rs"
+      - "src/team/manager/conversation_insert_common.rs"
+      - "src/team/manager/conversation_append.rs"
+      - "src/team/manager/conversation_tx_insert.rs"
+      - "src/team/manager/tests_support.rs"
+      - "src/team/manager/tests/conversation_cases.rs"
+      - "crates/agenthub-message-store/**"
+      - "crates/agenthub-db/src/message_body_outbox.rs"
+      - ".github/workflows/body-store-tests.yml"
+
+env:
+  # Rerun each test action this many times (cache disabled) to shake out flakiness / races.
+  BODY_STORE_RUNS_PER_TEST: "25"
+
+jobs:
+  body_store_tests:
+    name: Body Store Tests (Bazel)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Free disk space
+        # The GitHub-hosted runner ships ~14 GB free, which the Bazel build plus the repository-contents
+        # cache can exhaust ("No space left on device"). Drop large preinstalled toolchains we do not use.
+        run: |
+          echo "Disk before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /usr/local/share/boost || true
+          if [ -n "${AGENT_TOOLSDIRECTORY:-}" ]; then sudo rm -rf "${AGENT_TOOLSDIRECTORY}" || true; fi
+          sudo docker image prune --all --force || true
+          echo "Disk after:"; df -h /
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld protobuf-compiler
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          profile: minimal
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          external-cache: false
+          disk-cache: bazel-body-store-tests
+      - name: Build runtime prereqs for root tests
+        run: bazel build //:agenthub
+      - name: Body store integration tests (stress)
+        # The conversation_cases suite holds the body-store write/read move, outbox-tier and store-tier
+        # rehydration, idempotency-with-moved-body, migrate, and fault-injection cases.
+        run: |
+          bazel test --test_output=errors --nocache_test_results \
+            --runs_per_test="${BODY_STORE_RUNS_PER_TEST}" \
+            --test_filter='team::manager::tests::conversation_cases::' \
+            //:agenthub_unit_tests
+      - name: Body store unit tests (stress)
+        # The store abstraction + durable outbox stage/drain/replay layer.
+        run: |
+          bazel test --test_output=errors --nocache_test_results \
+            --runs_per_test="${BODY_STORE_RUNS_PER_TEST}" \
+            //crates/agenthub-message-store:agenthub_message_store_tests \
+            //crates/agenthub-db:agenthub_db_tests

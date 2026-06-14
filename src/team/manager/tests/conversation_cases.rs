@@ -818,9 +818,7 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
 
 #[tokio::test]
 async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
-    use agenthub_message_store::{
-        AuthorityMessageId, BodyStoreError, InMemoryBodyStore, MessageBodyStore,
-    };
+    use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
 
     let db = setup_test_db().await;
     let writer = TeamManager::new(db.clone());
@@ -841,32 +839,9 @@ async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
         ids.push(message.message_id);
     }
 
-    // A store that always rejects the middle row's body, so it stays stuck in the outbox.
-    struct RejectOneStore {
-        inner: InMemoryBodyStore,
-        reject_key: String,
-    }
-    impl MessageBodyStore for RejectOneStore {
-        fn put_body(&self, id: &AuthorityMessageId, body: &[u8]) -> Result<(), BodyStoreError> {
-            if id.as_str() == self.reject_key {
-                return Err(BodyStoreError::Backend("rejected".into()));
-            }
-            self.inner.put_body(id, body)
-        }
-        fn get_body(&self, id: &AuthorityMessageId) -> Result<Option<Vec<u8>>, BodyStoreError> {
-            self.inner.get_body(id)
-        }
-        fn contains(&self, id: &AuthorityMessageId) -> bool {
-            self.inner.contains(id)
-        }
-        fn len(&self) -> usize {
-            self.inner.len()
-        }
-    }
-    let store = RejectOneStore {
-        inner: InMemoryBodyStore::new(),
-        reject_key: format!("tcm:{}", ids[1]),
-    };
+    // Persistently reject the middle row's body, so it stays stuck in the outbox.
+    let store = FaultInjectingBodyStore::new();
+    store.reject_put_key(format!("tcm:{}", ids[1]));
 
     // batch_size 1: a naive drain keyed off the row batch would let the stuck oldest body block the
     // rest. The migration must still move every other body into the store and only leave the stuck one.
@@ -897,5 +872,141 @@ async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
             .await
             .unwrap(),
         0
+    );
+}
+
+#[tokio::test]
+async fn drain_retries_after_transient_put_failure_without_losing_body() {
+    use std::sync::Arc;
+
+    let db = setup_test_db().await;
+    let store = Arc::new(FaultInjectingBodyStore::new());
+    let manager = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    let task = body_store_team_and_task(&manager).await;
+
+    let payload = json!({"type":"chat_message","text":"resilient body"});
+    let message = manager
+        .append_task_conversation_message(&task.id, "user", None, "group_chat", payload.clone())
+        .await
+        .expect("append");
+
+    // The first drain's store write fails: nothing is confirmed and the body stays in the outbox.
+    store.fail_next_puts(1);
+    let drained = agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
+        .await
+        .unwrap();
+    assert_eq!(drained, 0);
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        1
+    );
+
+    // The read path still rehydrates from the durable outbox while the store does not have the body.
+    let messages = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list during store outage");
+    assert_eq!(messages[0].payload, payload);
+
+    // A later drain (e.g. the background drainer retrying) succeeds and clears the outbox.
+    let drained = agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
+        .await
+        .unwrap();
+    assert_eq!(drained, 1);
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        0
+    );
+
+    let messages = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list after recovery");
+    assert_eq!(messages[0].payload, payload);
+    assert_eq!(message.payload, payload);
+    // One failed write plus one successful retry — the body was re-attempted, not dropped.
+    assert_eq!(store.put_calls(), 2);
+}
+
+#[tokio::test]
+async fn read_surfaces_body_store_get_failure_instead_of_an_empty_payload() {
+    use std::sync::Arc;
+
+    let db = setup_test_db().await;
+    let store = Arc::new(FaultInjectingBodyStore::new());
+    let manager = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    let task = body_store_team_and_task(&manager).await;
+
+    manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"body behind a flaky store"}),
+        )
+        .await
+        .expect("append");
+    // Drain so the body lives only in the store (no outbox fallback left).
+    agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
+        .await
+        .unwrap();
+
+    // A failing get must surface as an error, never as a silent empty/placeholder payload.
+    store.fail_next_gets(1);
+    let result = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await;
+    assert!(
+        result.is_err(),
+        "a body-store read failure must propagate, got {result:?}"
+    );
+    assert!(
+        store.get_calls() >= 1,
+        "the read path must have queried the store"
+    );
+}
+
+#[tokio::test]
+async fn read_surfaces_corrupt_body_instead_of_a_garbage_payload() {
+    use std::sync::Arc;
+
+    let db = setup_test_db().await;
+    let store = Arc::new(FaultInjectingBodyStore::new());
+    let manager = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    let task = body_store_team_and_task(&manager).await;
+
+    let message = manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"body that gets corrupted at rest"}),
+        )
+        .await
+        .expect("append");
+    agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
+        .await
+        .unwrap();
+
+    // The store returns non-JSON bytes: rehydration must fail loudly rather than hand back a bad value.
+    store.corrupt_get_key(format!("tcm:{}", message.message_id));
+    let result = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await;
+    assert!(
+        result.is_err(),
+        "a corrupt stored body must fail rehydration, got {result:?}"
     );
 }
