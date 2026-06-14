@@ -68,8 +68,7 @@ const LazyTeamOverviewProfilePanel = React.lazy(async () => {
   return { default: module.TeamOverviewPanel };
 });
 
-export type TeamWorkbenchRuntimeContext = {
-  // Shell & Layout
+export type TeamWorkbenchShellContext = {
   showTeamBootstrapLoading: boolean;
   showTeamUnavailable: boolean;
   onBackToSelector: () => void;
@@ -82,8 +81,18 @@ export type TeamWorkbenchRuntimeContext = {
   activeWorkspaceLens: WorkspaceLens;
   developerMode: boolean;
   busy: string | null;
+  selectedTeamHasConfiguredMembers: boolean;
+  selectedTeamDescription: string | null | undefined;
+  teamMemberForgeLabel: string;
+  teamMemberCopyExistingLabel: string;
+  onOpenTeamMemberForge: () => void;
+  onOpenTeamMemberCopyExisting: () => void;
+  showRunContextLoading: boolean;
+  showNoActiveRunNotice: boolean;
+  onGoToRuns: () => void;
+};
 
-  // Header Inputs
+export type TeamWorkbenchHeaderContext = {
   workspaceEyebrow: string | null;
   showDedicatedWorkspaceHeading: boolean;
   workspaceTitle: string;
@@ -125,8 +134,9 @@ export type TeamWorkbenchRuntimeContext = {
   onStartSelectedTeamAgent: () => void;
   onStopSelectedTeamAgent: () => void;
   onDeleteSelectedTeamAgent: () => void;
+};
 
-  // Runs Panel Inputs
+export type TeamWorkbenchRunsContext = {
   onDeleteTeam: () => void;
   runStatusFilter: TeamRunStatusFilter;
   TEAM_RUN_STATUS_FILTER_OPTIONS: TeamRunsPanelProps["runStatusFilterOptions"];
@@ -142,18 +152,25 @@ export type TeamWorkbenchRuntimeContext = {
   runsHasMore: boolean;
   effectiveSelectedTeamId: string | null;
   onLoadMoreRuns: () => void;
+};
 
-  // Workbench Body Logic Props
+export type TeamWorkbenchOverviewContext = {
   snapshot: TeamRunSnapshotRecord | null;
   snapshotLoading: boolean;
   onRefreshOverviewSnapshot: () => void;
   mailboxDisplayNameByActorId: Record<string, string>;
+};
+
+export type TeamWorkbenchMemberConsoleContext = {
   selectedAgentWorkspaceSessionId: string | null;
   memberEvents: AgentEvent[];
   memberEventsLoading: boolean;
   memberEventsHasMore: boolean;
   onLoadOlderMemberConsole: () => void;
   onRefreshMemberConsole: () => void;
+};
+
+export type TeamWorkbenchDebugRunContext = {
   teamDebugTag: TeamDebugTag;
   setTeamDebugTag: (tag: TeamDebugTag) => void;
   runContextId: string;
@@ -196,6 +213,9 @@ export type TeamWorkbenchRuntimeContext = {
   stepResumePayload: string;
   onStepResumePayloadChange: (payload: string) => void;
   onApplyStepAction: () => void;
+};
+
+export type TeamWorkbenchConversationContext = {
   unreadByMemberId: Record<string, number>;
   chatActors: TeamMailboxChatActors;
   chatStickToBottom: boolean;
@@ -216,6 +236,11 @@ export type TeamWorkbenchRuntimeContext = {
   onApplyMessageTemplate: () => void;
   onSendMessage: () => void;
   onRefreshInbox: () => void;
+  chatDraft: string;
+  onChatDraftChange: (val: string) => void;
+};
+
+export type TeamWorkbenchMemberAcpContext = {
   selectedAgentWorkspaceSnapshot: TeamMemberSnapshot | null;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   selectedAgentWorkspaceRuntimeMember: {
@@ -231,11 +256,28 @@ export type TeamWorkbenchRuntimeContext = {
   onSetTeamMemberAcpModel: (model: string) => void;
   onSetTeamMemberAcpConfig: (configId: string, value: string) => void;
   onForceNewTeamMemberSession: () => void;
+  memberTargetNodeById: Record<string, string | null>;
+  selectedMemberId: string;
+  setSelectedMemberId: React.Dispatch<React.SetStateAction<string>>;
+  selectedMemberDiscoveryCard: AgentDiscoveryCardRecord | null;
+  selectedMemberDiscoveryCardLoading: boolean;
+  onOpenMailboxForMember: (id: string) => void;
+};
+
+export type TeamWorkbenchEventsContext = {
   eventsLoading: boolean;
   oldestEventId: number | null;
   displayedRunEvents: TeamRunEventRecord[];
   previewMode: boolean;
-  memberTargetNodeById: Record<string, string | null>;
+  eventsAutoRefresh: boolean;
+  setEventsAutoRefresh: (val: boolean) => void;
+  onRefreshEventsPanel: () => void;
+  onLoadOlderEventsPanel: () => void;
+  eventsHasMore: boolean;
+  TEAM_EVENT_PREVIEW_LIMIT: number;
+};
+
+export type TeamWorkbenchMailboxDebugContext = {
   msgFromActorId: string;
   onMsgFromActorIdChange: (id: string) => void;
   msgToActorId: string;
@@ -259,33 +301,22 @@ export type TeamWorkbenchRuntimeContext = {
   onInboxAfterIdChange: (val: string) => void;
   inboxIncludeDelivered: boolean;
   onInboxIncludeDeliveredChange: (val: boolean) => void;
-  chatDraft: string;
-  onChatDraftChange: (val: string) => void;
-
-  // Additional props
-  selectedTeamHasConfiguredMembers: boolean;
-  selectedTeamDescription: string | null | undefined;
-  teamMemberForgeLabel: string;
-  teamMemberCopyExistingLabel: string;
-  onOpenTeamMemberForge: () => void;
-  onOpenTeamMemberCopyExisting: () => void;
-  showRunContextLoading: boolean;
-  showNoActiveRunNotice: boolean;
-  onGoToRuns: () => void;
-  selectedMemberId: string;
-  setSelectedMemberId: React.Dispatch<React.SetStateAction<string>>;
   mailboxHasActiveRun: boolean;
   mailboxEmptyTitle: string;
   mailboxEmptyBody: string;
-  eventsAutoRefresh: boolean;
-  setEventsAutoRefresh: (val: boolean) => void;
-  onRefreshEventsPanel: () => void;
-  onLoadOlderEventsPanel: () => void;
-  eventsHasMore: boolean;
-  TEAM_EVENT_PREVIEW_LIMIT: number;
-  selectedMemberDiscoveryCard: AgentDiscoveryCardRecord | null;
-  selectedMemberDiscoveryCardLoading: boolean;
-  onOpenMailboxForMember: (id: string) => void;
+};
+
+export type TeamWorkbenchRuntimeContext = {
+  shell: TeamWorkbenchShellContext;
+  header: TeamWorkbenchHeaderContext;
+  runs: TeamWorkbenchRunsContext;
+  overview: TeamWorkbenchOverviewContext;
+  memberConsole: TeamWorkbenchMemberConsoleContext;
+  debugRun: TeamWorkbenchDebugRunContext;
+  conversation: TeamWorkbenchConversationContext;
+  memberAcp: TeamWorkbenchMemberAcpContext;
+  events: TeamWorkbenchEventsContext;
+  mailboxDebug: TeamWorkbenchMailboxDebugContext;
 };
 
 export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer() {
@@ -300,6 +331,18 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     throw new Error("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
   }
   const {
+    shell,
+    header,
+    runs,
+    overview,
+    memberConsole,
+    debugRun,
+    conversation,
+    memberAcp,
+    events,
+    mailboxDebug,
+  } = props;
+  const {
     showTeamBootstrapLoading,
     showTeamUnavailable,
     onBackToSelector,
@@ -312,6 +355,17 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     activeWorkspaceLens,
     developerMode,
     busy,
+    selectedTeamHasConfiguredMembers,
+    selectedTeamDescription,
+    teamMemberForgeLabel,
+    teamMemberCopyExistingLabel,
+    onOpenTeamMemberForge,
+    onOpenTeamMemberCopyExisting,
+    showRunContextLoading,
+    showNoActiveRunNotice,
+    onGoToRuns,
+  } = shell;
+  const {
     workspaceEyebrow,
     showDedicatedWorkspaceHeading,
     workspaceTitle,
@@ -351,6 +405,8 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     onStartSelectedTeamAgent,
     onStopSelectedTeamAgent,
     onDeleteSelectedTeamAgent,
+  } = header;
+  const {
     onDeleteTeam,
     runStatusFilter,
     TEAM_RUN_STATUS_FILTER_OPTIONS,
@@ -366,16 +422,22 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     runsHasMore,
     effectiveSelectedTeamId,
     onLoadMoreRuns,
+  } = runs;
+  const {
     snapshot,
     snapshotLoading,
     onRefreshOverviewSnapshot,
     mailboxDisplayNameByActorId,
+  } = overview;
+  const {
     selectedAgentWorkspaceSessionId,
     memberEvents,
     memberEventsLoading,
     memberEventsHasMore,
     onLoadOlderMemberConsole,
     onRefreshMemberConsole,
+  } = memberConsole;
+  const {
     teamDebugTag,
     setTeamDebugTag,
     runContextId,
@@ -418,6 +480,8 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     stepResumePayload,
     onStepResumePayloadChange,
     onApplyStepAction,
+  } = debugRun;
+  const {
     unreadByMemberId,
     chatActors,
     chatStickToBottom,
@@ -435,6 +499,10 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     onApplyMessageTemplate,
     onSendMessage,
     onRefreshInbox,
+    chatDraft,
+    onChatDraftChange,
+  } = conversation;
+  const {
     selectedAgentWorkspaceSnapshot,
     selectedMemberSnapshot,
     selectedAgentWorkspaceRuntimeMember,
@@ -446,11 +514,26 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     onSetTeamMemberAcpModel,
     onSetTeamMemberAcpConfig,
     onForceNewTeamMemberSession,
+    memberTargetNodeById,
+    selectedMemberId,
+    setSelectedMemberId,
+    selectedMemberDiscoveryCard,
+    selectedMemberDiscoveryCardLoading,
+    onOpenMailboxForMember,
+  } = memberAcp;
+  const {
     eventsLoading,
     oldestEventId,
     displayedRunEvents,
     previewMode,
-    memberTargetNodeById,
+    eventsAutoRefresh,
+    setEventsAutoRefresh,
+    onRefreshEventsPanel,
+    onLoadOlderEventsPanel,
+    eventsHasMore,
+    TEAM_EVENT_PREVIEW_LIMIT,
+  } = events;
+  const {
     msgFromActorId,
     onMsgFromActorIdChange,
     msgToActorId,
@@ -474,32 +557,10 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     onInboxAfterIdChange,
     inboxIncludeDelivered,
     onInboxIncludeDeliveredChange,
-    chatDraft,
-    onChatDraftChange,
-    selectedTeamHasConfiguredMembers,
-    selectedTeamDescription,
-    teamMemberForgeLabel,
-    teamMemberCopyExistingLabel,
-    onOpenTeamMemberForge,
-    onOpenTeamMemberCopyExisting,
-    showRunContextLoading,
-    showNoActiveRunNotice,
-    onGoToRuns,
-    selectedMemberId,
-    setSelectedMemberId,
     mailboxHasActiveRun,
     mailboxEmptyTitle,
     mailboxEmptyBody,
-    eventsAutoRefresh,
-    setEventsAutoRefresh,
-    onRefreshEventsPanel,
-    onLoadOlderEventsPanel,
-    eventsHasMore,
-    TEAM_EVENT_PREVIEW_LIMIT,
-    selectedMemberDiscoveryCard,
-    selectedMemberDiscoveryCardLoading,
-    onOpenMailboxForMember,
-  } = props;
+  } = mailboxDebug;
 
   const workspaceHeaderProps = useMemo(
     () =>
