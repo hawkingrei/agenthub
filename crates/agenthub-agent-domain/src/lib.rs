@@ -16,6 +16,11 @@ pub struct AgentConfig {
     pub worktree_ref: Option<String>,
     pub code_mode: bool,
     pub codex_acp_default_mode: Option<String>,
+    /// Operator-set runtime profile overrides (Agent Runtime Profiles). Provider-neutral; the effective
+    /// provider is derived from `command`/`args`, so it is not stored here. `None` means use the
+    /// adapter/provider default for that field.
+    pub runtime_model: Option<String>,
+    pub thinking_level: Option<String>,
     pub agent_loop_enabled: bool,
     pub agent_loop_idle_seconds: Option<i64>,
     pub agent_loop_prompt: Option<String>,
@@ -34,6 +39,11 @@ pub struct AgentRecord {
     pub worktree_ref: Option<String>,
     pub code_mode: bool,
     pub codex_acp_default_mode: Option<String>,
+    /// Operator-set runtime profile overrides (Agent Runtime Profiles). Provider-neutral; the effective
+    /// provider is derived from `command`/`args`, so it is not stored here. `None` means use the
+    /// adapter/provider default for that field.
+    pub runtime_model: Option<String>,
+    pub thinking_level: Option<String>,
     pub agent_loop_enabled: bool,
     pub agent_loop_idle_seconds: Option<i64>,
     pub agent_loop_prompt: Option<String>,

@@ -544,6 +544,36 @@ pub fn normalize_optional_codex_acp_mode_id(mode_id: Option<&str>) -> Option<Str
         .map(normalize_codex_acp_mode_id)
 }
 
+/// Provider-neutral thinking levels for the Agent Runtime Profiles feature, ordered low → high.
+pub const AGENT_THINKING_LEVELS: [&str; 4] = ["low", "medium", "high", "max"];
+
+/// Normalize an operator-provided runtime model override: trim, and treat blank as unset. Unknown model
+/// names are intentionally allowed — provider availability drifts independently of AgentHub releases.
+pub fn normalize_optional_runtime_model(model: Option<&str>) -> Option<String> {
+    model
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+/// Normalize a runtime thinking level: trim, lowercase, and keep only the constrained enum
+/// (`low|medium|high|max`). Blank is unset; an unrecognized value yields `None` so callers can reject
+/// it. Stored provider-neutrally — the launch translation maps it to provider-specific options.
+pub fn normalize_optional_thinking_level(level: Option<&str>) -> Option<String> {
+    let normalized = level.map(str::trim).filter(|value| !value.is_empty())?;
+    let lowered = normalized.to_ascii_lowercase();
+    AGENT_THINKING_LEVELS
+        .iter()
+        .find(|candidate| **candidate == lowered)
+        .map(|candidate| (*candidate).to_string())
+}
+
+/// Whether a thinking level string is a recognized enum value (ignoring case/whitespace). Used by the
+/// API layer to reject invalid input rather than silently dropping it.
+pub fn is_valid_thinking_level(level: &str) -> bool {
+    normalize_optional_thinking_level(Some(level)).is_some()
+}
+
 fn detect_env_overrides() -> Vec<String> {
     let keys = [
         "AGENTHUB_LISTEN",
@@ -860,6 +890,45 @@ mod tests {
             super::normalize_optional_codex_acp_mode_id(Some(" auto ")).as_deref(),
             Some("auto")
         );
+    }
+
+    #[test]
+    fn normalize_optional_runtime_model_trims_and_drops_blank() {
+        assert_eq!(super::normalize_optional_runtime_model(None), None);
+        assert_eq!(super::normalize_optional_runtime_model(Some("   ")), None);
+        assert_eq!(
+            super::normalize_optional_runtime_model(Some("  gpt-5.4-codex  ")).as_deref(),
+            Some("gpt-5.4-codex")
+        );
+        // Unknown model names are allowed: provider availability drifts independently.
+        assert_eq!(
+            super::normalize_optional_runtime_model(Some("some-future-model")).as_deref(),
+            Some("some-future-model")
+        );
+    }
+
+    #[test]
+    fn normalize_optional_thinking_level_keeps_only_the_enum() {
+        assert_eq!(super::normalize_optional_thinking_level(None), None);
+        assert_eq!(super::normalize_optional_thinking_level(Some(" ")), None);
+        for level in ["low", "medium", "high", "max"] {
+            assert_eq!(
+                super::normalize_optional_thinking_level(Some(level)).as_deref(),
+                Some(level)
+            );
+        }
+        // Case-insensitive + trimmed.
+        assert_eq!(
+            super::normalize_optional_thinking_level(Some("  HIGH ")).as_deref(),
+            Some("high")
+        );
+        // Unrecognized values are rejected (None) so the API layer can surface an error.
+        assert_eq!(
+            super::normalize_optional_thinking_level(Some("ultra")),
+            None
+        );
+        assert!(super::is_valid_thinking_level("Max"));
+        assert!(!super::is_valid_thinking_level("turbo"));
     }
 
     #[test]

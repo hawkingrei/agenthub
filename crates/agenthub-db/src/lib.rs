@@ -287,6 +287,8 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             worktree_ref TEXT,
             code_mode INTEGER NOT NULL DEFAULT 0,
             codex_acp_default_mode TEXT,
+            runtime_model TEXT,
+            thinking_level TEXT,
             agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
             agent_loop_idle_seconds INTEGER,
             agent_loop_prompt TEXT,
@@ -1258,6 +1260,18 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         &pool,
         "ALTER TABLE agents ADD COLUMN codex_acp_default_mode TEXT",
         "agents.codex_acp_default_mode",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN runtime_model TEXT",
+        "agents.runtime_model",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN thinking_level TEXT",
+        "agents.thinking_level",
     )
     .await;
     add_column_if_missing(
@@ -3253,6 +3267,116 @@ mod tests {
             index_names.iter().any(|name| name == "idx_agent_events_ts"),
             "expected idx_agent_events_ts after migration, got {index_names:?}"
         );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_agent_runtime_profile_columns_to_legacy_agents() {
+        let dir = unique_temp_dir("db-migrate-agent-runtime-profile");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        // A legacy `agents` table that predates the runtime profile columns.
+        sqlx::query(
+            r#"
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                workdir TEXT NOT NULL,
+                command TEXT NOT NULL,
+                args TEXT NOT NULL,
+                worktree_mode TEXT NOT NULL,
+                worktree_repo TEXT,
+                worktree_ref TEXT,
+                code_mode INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'manual',
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy agents");
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+        )
+        .bind("agent-legacy")
+        .bind("legacy-agent")
+        .bind("/tmp")
+        .bind("echo")
+        .bind("[]")
+        .bind("reuse_worktree")
+        .bind(None::<String>)
+        .bind(None::<String>)
+        .bind(0_i64)
+        .bind("manual")
+        .bind("running")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert legacy agent");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with migration");
+
+        // The migration adds both runtime profile columns.
+        let columns: Vec<String> =
+            sqlx::query_scalar("SELECT name FROM pragma_table_info('agents')")
+                .fetch_all(&pool)
+                .await
+                .expect("read agents columns");
+        assert!(
+            columns.iter().any(|name| name == "runtime_model"),
+            "expected runtime_model column after migration, got {columns:?}"
+        );
+        assert!(
+            columns.iter().any(|name| name == "thinking_level"),
+            "expected thinking_level column after migration, got {columns:?}"
+        );
+
+        // The legacy row is preserved with NULL profile fields, and the columns are writable.
+        let (model, level): (Option<String>, Option<String>) = sqlx::query_as(
+            "SELECT runtime_model, thinking_level FROM agents WHERE id = 'agent-legacy'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read migrated agent");
+        assert_eq!(model, None);
+        assert_eq!(level, None);
+
+        sqlx::query(
+            "UPDATE agents SET runtime_model = ?1, thinking_level = ?2 WHERE id = 'agent-legacy'",
+        )
+        .bind("gpt-5.4-codex")
+        .bind("high")
+        .execute(&pool)
+        .await
+        .expect("write runtime profile to migrated row");
+        let (model, level): (Option<String>, Option<String>) = sqlx::query_as(
+            "SELECT runtime_model, thinking_level FROM agents WHERE id = 'agent-legacy'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("re-read migrated agent");
+        assert_eq!(model.as_deref(), Some("gpt-5.4-codex"));
+        assert_eq!(level.as_deref(), Some("high"));
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);
