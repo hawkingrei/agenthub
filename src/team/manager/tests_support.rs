@@ -890,7 +890,7 @@ impl agenthub_message_store::MessageBodyStore for FaultInjectingBodyStore {
         &self,
         id: &agenthub_message_store::AuthorityMessageId,
     ) -> Result<Option<Vec<u8>>, agenthub_message_store::BodyStoreError> {
-        {
+        let is_corrupt = {
             let mut faults = self.faults.lock().expect("fault state poisoned");
             faults.get_calls += 1;
             if faults.fail_next_gets > 0 {
@@ -899,11 +899,15 @@ impl agenthub_message_store::MessageBodyStore for FaultInjectingBodyStore {
                     "injected get failure".into(),
                 ));
             }
-            if faults.corrupt_get_keys.contains(id.as_str()) {
-                return Ok(Some(b"<<corrupt-not-json>>".to_vec()));
-            }
+            faults.corrupt_get_keys.contains(id.as_str())
+        };
+        // Only corrupt a body that actually exists, so "corruption at rest" stays consistent with
+        // `contains` and never fabricates a body for an absent key.
+        let body = self.inner.get_body(id)?;
+        if is_corrupt && body.is_some() {
+            return Ok(Some(b"<<corrupt-not-json>>".to_vec()));
         }
-        self.inner.get_body(id)
+        Ok(body)
     }
 
     fn contains(&self, id: &agenthub_message_store::AuthorityMessageId) -> bool {
