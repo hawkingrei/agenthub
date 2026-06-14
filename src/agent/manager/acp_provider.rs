@@ -55,6 +55,27 @@ impl AcpProviderSpec {
             AcpDefaultModeBehavior::ApplyWhenConfigured
         )
     }
+
+    /// Whether this provider applies the agent runtime profile (model + thinking level) at runtime via
+    /// ACP session config options (`set_model` / `set_config("reasoning_effort", ...)`). Only Codex
+    /// exposes these runtime config handlers today; Claude takes the profile as spawn env instead, and
+    /// Gemini/Kimi do not support per-agent runtime profiles.
+    pub(super) fn applies_runtime_profile_via_session_config(self) -> bool {
+        self.id == ACP_PROVIDER_CODEX
+    }
+}
+
+/// Map the provider-neutral thinking level to the Codex `reasoning_effort` config value. Codex tops out
+/// at `high`, so `max` maps to `high`; an unrecognized level yields `None` (caller skips the option and
+/// the provider default applies).
+pub(super) fn codex_reasoning_effort_for_thinking_level(level: &str) -> Option<&'static str> {
+    match level.trim().to_ascii_lowercase().as_str() {
+        "low" => Some("low"),
+        "medium" => Some("medium"),
+        "high" => Some("high"),
+        "max" => Some("high"),
+        _ => None,
+    }
 }
 
 impl AgentManager {
@@ -217,14 +238,58 @@ mod tests {
 
     use super::{
         ACP_PROVIDER_CODEX, AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, AcpProviderSpec,
-        acp_provider_spec_for_agent_with_binary, default_env_for_acp_provider,
-        should_use_configured_codex_binary,
+        acp_provider_spec_for_agent_with_binary, codex_reasoning_effort_for_thinking_level,
+        default_env_for_acp_provider, should_use_configured_codex_binary,
     };
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn lock_env() -> MutexGuard<'static, ()> {
         ENV_LOCK.lock().expect("lock env")
+    }
+
+    #[test]
+    fn only_codex_applies_runtime_profile_via_session_config() {
+        assert!(AcpProviderSpec::CODEX.applies_runtime_profile_via_session_config());
+        for spec in [
+            AcpProviderSpec::CLAUDE,
+            AcpProviderSpec::GEMINI,
+            AcpProviderSpec::KIMI,
+        ] {
+            assert!(
+                !spec.applies_runtime_profile_via_session_config(),
+                "provider {} must not use session-config runtime profile",
+                spec.id
+            );
+        }
+    }
+
+    #[test]
+    fn codex_reasoning_effort_maps_thinking_levels() {
+        assert_eq!(
+            codex_reasoning_effort_for_thinking_level("low"),
+            Some("low")
+        );
+        assert_eq!(
+            codex_reasoning_effort_for_thinking_level("medium"),
+            Some("medium")
+        );
+        assert_eq!(
+            codex_reasoning_effort_for_thinking_level("high"),
+            Some("high")
+        );
+        // Codex tops out at high, so max maps to high.
+        assert_eq!(
+            codex_reasoning_effort_for_thinking_level("max"),
+            Some("high")
+        );
+        // Case-insensitive + trimmed.
+        assert_eq!(
+            codex_reasoning_effort_for_thinking_level(" MAX "),
+            Some("high")
+        );
+        // Unknown levels are skipped (provider default applies).
+        assert_eq!(codex_reasoning_effort_for_thinking_level("turbo"), None);
     }
 
     #[test]

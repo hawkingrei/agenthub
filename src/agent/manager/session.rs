@@ -7,7 +7,8 @@ use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
 use super::acp_provider::{
-    ACP_PROVIDER_CODEX, AcpDefaultModeBehavior, AcpProviderSpec, default_env_for_acp_provider,
+    ACP_PROVIDER_CODEX, AcpDefaultModeBehavior, AcpProviderSpec,
+    codex_reasoning_effort_for_thinking_level, default_env_for_acp_provider,
 };
 use super::executor::LocalExecutionRequest;
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
@@ -836,6 +837,48 @@ impl AgentManager {
                     provider.id,
                     agent.id
                 );
+            }
+            // Apply the agent runtime profile (model + thinking level) for providers that accept it as
+            // ACP session config — currently Codex. Unset fields are skipped so the provider default
+            // stays authoritative; failures are logged but never abort the launch. Claude takes the
+            // profile as spawn env instead (handled where the launch environment is built).
+            if provider.applies_runtime_profile_via_session_config() {
+                if let Some(model) = agent.runtime_model.as_deref()
+                    && let Err(err) = handle.set_model(model.to_string()).await
+                {
+                    tracing::warn!(
+                        "set acp runtime model failed: agent_id={}, model={}, error={}",
+                        agent.id,
+                        model,
+                        err
+                    );
+                }
+                if let Some(level) = agent.thinking_level.as_deref() {
+                    match codex_reasoning_effort_for_thinking_level(level) {
+                        Some(effort) => {
+                            if let Err(err) = handle
+                                .set_config("reasoning_effort".to_string(), effort.to_string())
+                                .await
+                            {
+                                tracing::warn!(
+                                    "set acp reasoning effort failed: agent_id={}, level={}, error={}",
+                                    agent.id,
+                                    level,
+                                    err
+                                );
+                            }
+                        }
+                        None => {
+                            // Phase 1 only persists low|medium|high|max, so an unmapped level means
+                            // manual or stale data; surface it rather than silently using the default.
+                            tracing::warn!(
+                                "unmapped thinking level for codex reasoning effort, leaving provider default: agent_id={}, level={}",
+                                agent.id,
+                                level
+                            );
+                        }
+                    }
+                }
             }
             if let Some(config) = normalize_agent_loop_config(
                 agent.agent_loop_enabled,
