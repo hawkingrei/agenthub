@@ -1016,10 +1016,25 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
     use agenthub_message_store::{InMemoryBodyStore, MessageBodyStore};
     use std::collections::HashSet;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     // A real file-backed WAL pool so the write path, the outbox drainer, and the read path actually
     // interleave (the shared :memory: pool serializes everything).
     let (db, dir) = setup_concurrent_conversation_db().await;
+
+    // Remove the temp database directory even if the test panics. Cleanup is spawned so the blocking
+    // filesystem work stays off the async drop path.
+    struct CleanupGuard(std::path::PathBuf);
+    impl Drop for CleanupGuard {
+        fn drop(&mut self) {
+            let path = std::mem::take(&mut self.0);
+            tokio::spawn(async move {
+                let _ = tokio::fs::remove_dir_all(path).await;
+            });
+        }
+    }
+    let _cleanup = CleanupGuard(dir);
+
     let store = Arc::new(InMemoryBodyStore::new());
     let manager = Arc::new(TeamManager::new(db.clone()).with_body_store(Some(
         store.clone() as crate::message_body_store::SharedBodyStore
@@ -1048,6 +1063,10 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
 
     const MESSAGE_COUNT: usize = 40;
 
+    // The drainer and readers run for the whole duration of the appends (driven by this flag) rather
+    // than a fixed iteration count that might finish before the writes do.
+    let appenders_done = Arc::new(AtomicBool::new(false));
+
     // Appenders write concurrently: each stages its body to the outbox and slims the row to the sentinel.
     let mut appenders = Vec::new();
     for i in 0..MESSAGE_COUNT {
@@ -1067,12 +1086,14 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
         }));
     }
 
-    // A drainer moves staged bodies into the store concurrently with the writes.
+    // A drainer moves staged bodies into the store concurrently with the writes, exercising the
+    // store↔outbox handoff the read path must tolerate.
     let drainer = {
         let db = db.clone();
         let store = store.clone();
+        let appenders_done = appenders_done.clone();
         tokio::spawn(async move {
-            for _ in 0..400 {
+            while !appenders_done.load(Ordering::Relaxed) {
                 agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 8)
                     .await
                     .expect("drain");
@@ -1084,13 +1105,14 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
     // Readers continuously list while writes/drains race. The invariant: a moved row must ALWAYS
     // rehydrate to its real object payload — never the null/sentinel placeholder and never an error —
     // because the body is staged atomically with the sentinel and only leaves the outbox after the
-    // store write succeeds, so it is always in the store or the outbox.
+    // store write succeeds (the read path re-checks the store to stay race-free against the drainer).
     let mut readers = Vec::new();
     for _ in 0..3 {
         let manager = manager.clone();
         let task_id = task_id.clone();
+        let appenders_done = appenders_done.clone();
         readers.push(tokio::spawn(async move {
-            for _ in 0..80 {
+            while !appenders_done.load(Ordering::Relaxed) {
                 let messages = manager
                     .list_task_conversation_messages(&task_id, 100, None)
                     .await
@@ -1114,6 +1136,7 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
     for appender in appenders {
         appender.await.expect("appender task");
     }
+    appenders_done.store(true, Ordering::Relaxed);
     drainer.await.expect("drainer task");
     for reader in readers {
         reader.await.expect("reader task");
@@ -1153,6 +1176,4 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
         0
     );
     assert_eq!(store.len(), MESSAGE_COUNT);
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
