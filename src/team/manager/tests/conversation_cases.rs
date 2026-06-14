@@ -1010,3 +1010,149 @@ async fn read_surfaces_corrupt_body_instead_of_a_garbage_payload() {
         "a corrupt stored body must fail rehydration, got {result:?}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
+    use agenthub_message_store::{InMemoryBodyStore, MessageBodyStore};
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    // A real file-backed WAL pool so the write path, the outbox drainer, and the read path actually
+    // interleave (the shared :memory: pool serializes everything).
+    let (db, dir) = setup_concurrent_conversation_db().await;
+    let store = Arc::new(InMemoryBodyStore::new());
+    let manager = Arc::new(TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    )));
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "race-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"coordinator","members":[{"member_id":"coordinator"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, _conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let task_id = task.id;
+
+    const MESSAGE_COUNT: usize = 40;
+
+    // Appenders write concurrently: each stages its body to the outbox and slims the row to the sentinel.
+    let mut appenders = Vec::new();
+    for i in 0..MESSAGE_COUNT {
+        let manager = manager.clone();
+        let task_id = task_id.clone();
+        appenders.push(tokio::spawn(async move {
+            manager
+                .append_task_conversation_message(
+                    &task_id,
+                    "user",
+                    None,
+                    "group_chat",
+                    json!({"type":"chat_message","seq":i,"text":format!("message {i}")}),
+                )
+                .await
+                .expect("append");
+        }));
+    }
+
+    // A drainer moves staged bodies into the store concurrently with the writes.
+    let drainer = {
+        let db = db.clone();
+        let store = store.clone();
+        tokio::spawn(async move {
+            for _ in 0..400 {
+                agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 8)
+                    .await
+                    .expect("drain");
+                tokio::task::yield_now().await;
+            }
+        })
+    };
+
+    // Readers continuously list while writes/drains race. The invariant: a moved row must ALWAYS
+    // rehydrate to its real object payload — never the null/sentinel placeholder and never an error —
+    // because the body is staged atomically with the sentinel and only leaves the outbox after the
+    // store write succeeds, so it is always in the store or the outbox.
+    let mut readers = Vec::new();
+    for _ in 0..3 {
+        let manager = manager.clone();
+        let task_id = task_id.clone();
+        readers.push(tokio::spawn(async move {
+            for _ in 0..80 {
+                let messages = manager
+                    .list_task_conversation_messages(&task_id, 100, None)
+                    .await
+                    .expect("list must not error mid-race");
+                for message in &messages {
+                    assert!(
+                        message
+                            .payload
+                            .get("seq")
+                            .and_then(serde_json::Value::as_u64)
+                            .is_some(),
+                        "a moved body must rehydrate to its real payload, got {:?}",
+                        message.payload
+                    );
+                }
+                tokio::task::yield_now().await;
+            }
+        }));
+    }
+
+    for appender in appenders {
+        appender.await.expect("appender task");
+    }
+    drainer.await.expect("drainer task");
+    for reader in readers {
+        reader.await.expect("reader task");
+    }
+
+    // Drain whatever is left, then assert the final state is fully consistent: every message is present
+    // exactly once with its real body, the outbox is empty, and the store holds one body per message.
+    loop {
+        let drained = agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
+            .await
+            .expect("final drain");
+        if drained == 0 {
+            break;
+        }
+    }
+
+    let messages = manager
+        .list_task_conversation_messages(&task_id, 200, None)
+        .await
+        .expect("final list");
+    assert_eq!(messages.len(), MESSAGE_COUNT);
+    let mut seqs = HashSet::new();
+    for message in &messages {
+        let seq = message
+            .payload
+            .get("seq")
+            .and_then(serde_json::Value::as_u64)
+            .expect("rehydrated payload keeps seq");
+        assert_eq!(message.payload["text"], json!(format!("message {seq}")));
+        seqs.insert(seq);
+    }
+    assert_eq!(seqs.len(), MESSAGE_COUNT, "every distinct message survived");
+    assert_eq!(
+        agenthub_db::message_body_outbox::pending_count(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(store.len(), MESSAGE_COUNT);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
