@@ -558,6 +558,8 @@ fn build_agent_record_for_policy(
         worktree_ref: None,
         code_mode: true,
         codex_acp_default_mode: None,
+        runtime_model: None,
+        thinking_level: None,
         agent_loop_enabled: false,
         agent_loop_idle_seconds: None,
         agent_loop_prompt: None,

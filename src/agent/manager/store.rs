@@ -1,6 +1,9 @@
 use sqlx::{AssertSqlSafe, QueryBuilder, Row, Sqlite, SqlitePool, sqlite::SqliteRow};
 
-use agenthub_config::normalize_optional_codex_acp_mode_id;
+use agenthub_config::{
+    normalize_optional_codex_acp_mode_id, normalize_optional_runtime_model,
+    normalize_optional_thinking_level,
+};
 
 use super::codec::{status_from_str, worktree_mode_from_opt};
 use super::codec::{status_to_str, worktree_mode_to_str};
@@ -12,6 +15,8 @@ pub(super) struct AgentSchemaCaps {
     pub(super) has_source_column: bool,
     pub(super) has_target_node_id_column: bool,
     pub(super) has_codex_acp_default_mode_column: bool,
+    pub(super) has_runtime_model_column: bool,
+    pub(super) has_thinking_level_column: bool,
 }
 
 impl AgentSchemaCaps {
@@ -20,12 +25,16 @@ impl AgentSchemaCaps {
             has_source_column: false,
             has_target_node_id_column: false,
             has_codex_acp_default_mode_column: false,
+            has_runtime_model_column: false,
+            has_thinking_level_column: false,
         };
         for column in columns {
             match column {
                 "source" => caps.has_source_column = true,
                 "target_node_id" => caps.has_target_node_id_column = true,
                 "codex_acp_default_mode" => caps.has_codex_acp_default_mode_column = true,
+                "runtime_model" => caps.has_runtime_model_column = true,
+                "thinking_level" => caps.has_thinking_level_column = true,
                 _ => {}
             }
         }
@@ -75,6 +84,12 @@ fn agent_select_columns(caps: AgentSchemaCaps) -> String {
     }
     if caps.has_codex_acp_default_mode_column {
         columns.push("codex_acp_default_mode");
+    }
+    if caps.has_runtime_model_column {
+        columns.push("runtime_model");
+    }
+    if caps.has_thinking_level_column {
+        columns.push("thinking_level");
     }
     columns.extend([
         "agent_loop_enabled",
@@ -142,6 +157,18 @@ pub(super) fn decode_agent_record(row: &SqliteRow) -> anyhow::Result<AgentRecord
                 .flatten()
                 .as_deref(),
         ),
+        runtime_model: normalize_optional_runtime_model(
+            row.try_get::<Option<String>, _>("runtime_model")
+                .ok()
+                .flatten()
+                .as_deref(),
+        ),
+        thinking_level: normalize_optional_thinking_level(
+            row.try_get::<Option<String>, _>("thinking_level")
+                .ok()
+                .flatten()
+                .as_deref(),
+        ),
         agent_loop_enabled: agent_loop_enabled != 0,
         agent_loop_idle_seconds: row.try_get("agent_loop_idle_seconds").ok(),
         agent_loop_prompt: row.try_get("agent_loop_prompt").ok(),
@@ -189,6 +216,12 @@ pub(super) async fn insert_agent_record(
     if caps.has_codex_acp_default_mode_column {
         push_insert_column(&mut builder, &mut first, "codex_acp_default_mode");
     }
+    if caps.has_runtime_model_column {
+        push_insert_column(&mut builder, &mut first, "runtime_model");
+    }
+    if caps.has_thinking_level_column {
+        push_insert_column(&mut builder, &mut first, "thinking_level");
+    }
     push_insert_column(&mut builder, &mut first, "agent_loop_enabled");
     push_insert_column(&mut builder, &mut first, "agent_loop_idle_seconds");
     push_insert_column(&mut builder, &mut first, "agent_loop_prompt");
@@ -230,6 +263,20 @@ pub(super) async fn insert_agent_record(
             &mut builder,
             &mut first,
             normalize_optional_codex_acp_mode_id(record.config.codex_acp_default_mode.as_deref()),
+        );
+    }
+    if caps.has_runtime_model_column {
+        push_bound_value(
+            &mut builder,
+            &mut first,
+            normalize_optional_runtime_model(record.config.runtime_model.as_deref()),
+        );
+    }
+    if caps.has_thinking_level_column {
+        push_bound_value(
+            &mut builder,
+            &mut first,
+            normalize_optional_thinking_level(record.config.thinking_level.as_deref()),
         );
     }
     push_bound_value(
@@ -285,6 +332,8 @@ struct RemoteManagedAgentPersisted<'a> {
     worktree_ref: Option<&'a str>,
     code_mode: i64,
     codex_acp_default_mode: Option<String>,
+    runtime_model: Option<String>,
+    thinking_level: Option<String>,
     source: &'a str,
     now: i64,
 }
@@ -303,6 +352,10 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
             code_mode: if record.config.code_mode { 1 } else { 0 },
             codex_acp_default_mode: normalize_optional_codex_acp_mode_id(
                 record.config.codex_acp_default_mode.as_deref(),
+            ),
+            runtime_model: normalize_optional_runtime_model(record.config.runtime_model.as_deref()),
+            thinking_level: normalize_optional_thinking_level(
+                record.config.thinking_level.as_deref(),
             ),
             source: record.source,
             now: record.now,
@@ -325,6 +378,12 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
         push_insert_column(builder, &mut first, "code_mode");
         if caps.has_codex_acp_default_mode_column {
             push_insert_column(builder, &mut first, "codex_acp_default_mode");
+        }
+        if caps.has_runtime_model_column {
+            push_insert_column(builder, &mut first, "runtime_model");
+        }
+        if caps.has_thinking_level_column {
+            push_insert_column(builder, &mut first, "thinking_level");
         }
         if caps.has_source_column {
             push_insert_column(builder, &mut first, "source");
@@ -350,6 +409,12 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
         push_bound_value(builder, &mut first, self.code_mode);
         if caps.has_codex_acp_default_mode_column {
             push_bound_value(builder, &mut first, self.codex_acp_default_mode.as_deref());
+        }
+        if caps.has_runtime_model_column {
+            push_bound_value(builder, &mut first, self.runtime_model.as_deref());
+        }
+        if caps.has_thinking_level_column {
+            push_bound_value(builder, &mut first, self.thinking_level.as_deref());
         }
         if caps.has_source_column {
             push_bound_value(builder, &mut first, self.source);
@@ -382,6 +447,22 @@ impl<'a> RemoteManagedAgentPersisted<'a> {
                 &mut first,
                 "codex_acp_default_mode",
                 self.codex_acp_default_mode.as_deref(),
+            );
+        }
+        if caps.has_runtime_model_column {
+            push_assignment(
+                builder,
+                &mut first,
+                "runtime_model",
+                self.runtime_model.as_deref(),
+            );
+        }
+        if caps.has_thinking_level_column {
+            push_assignment(
+                builder,
+                &mut first,
+                "thinking_level",
+                self.thinking_level.as_deref(),
             );
         }
         if caps.has_source_column {
@@ -522,6 +603,12 @@ mod tests {
         if caps.has_codex_acp_default_mode_column {
             builder.push_str("codex_acp_default_mode TEXT,\n");
         }
+        if caps.has_runtime_model_column {
+            builder.push_str("runtime_model TEXT,\n");
+        }
+        if caps.has_thinking_level_column {
+            builder.push_str("thinking_level TEXT,\n");
+        }
         builder.push_str(
             r#"
                 agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
@@ -558,6 +645,8 @@ mod tests {
             worktree_ref: Some("HEAD".to_string()),
             code_mode: true,
             codex_acp_default_mode: Some("yolo".to_string()),
+            runtime_model: Some("gpt-5.4-codex".to_string()),
+            thinking_level: Some("high".to_string()),
             agent_loop_enabled: true,
             agent_loop_idle_seconds: Some(900),
             agent_loop_prompt: Some("follow up".to_string()),
@@ -570,6 +659,8 @@ mod tests {
             has_source_column: true,
             has_target_node_id_column: true,
             has_codex_acp_default_mode_column: true,
+            has_runtime_model_column: true,
+            has_thinking_level_column: true,
         };
         let db = create_test_db().await;
         create_agents_table(&db, caps).await;
@@ -614,6 +705,14 @@ mod tests {
         );
         assert_eq!(row.get::<i64, _>("code_mode"), 1);
         assert_eq!(
+            row.get::<Option<String>, _>("runtime_model"),
+            Some("gpt-5.4-codex".to_string())
+        );
+        assert_eq!(
+            row.get::<Option<String>, _>("thinking_level"),
+            Some("high".to_string())
+        );
+        assert_eq!(
             row.get::<Option<String>, _>("codex_acp_default_mode"),
             Some("full-access".to_string())
         );
@@ -632,6 +731,8 @@ mod tests {
             has_source_column: false,
             has_target_node_id_column: false,
             has_codex_acp_default_mode_column: false,
+            has_runtime_model_column: false,
+            has_thinking_level_column: false,
         };
         let db = create_test_db().await;
         create_agents_table(&db, caps).await;

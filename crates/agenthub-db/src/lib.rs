@@ -287,6 +287,8 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             worktree_ref TEXT,
             code_mode INTEGER NOT NULL DEFAULT 0,
             codex_acp_default_mode TEXT,
+            runtime_model TEXT,
+            thinking_level TEXT,
             agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
             agent_loop_idle_seconds INTEGER,
             agent_loop_prompt TEXT,
@@ -1258,6 +1260,18 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         &pool,
         "ALTER TABLE agents ADD COLUMN codex_acp_default_mode TEXT",
         "agents.codex_acp_default_mode",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN runtime_model TEXT",
+        "agents.runtime_model",
+    )
+    .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE agents ADD COLUMN thinking_level TEXT",
+        "agents.thinking_level",
     )
     .await;
     add_column_if_missing(
