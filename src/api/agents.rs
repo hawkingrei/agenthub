@@ -9,7 +9,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use agenthub_config::normalize_optional_codex_acp_mode_id;
+use agenthub_config::{
+    normalize_optional_codex_acp_mode_id, normalize_optional_runtime_model,
+    normalize_optional_thinking_level,
+};
 
 use crate::acp::{
     AcpActorSkillContext, AcpPermissionRecord, AcpPermissionRespondResult, DEFAULT_ACTOR_CHANNEL,
@@ -42,6 +45,8 @@ pub struct CreateAgentRequest {
     pub worktree_ref: Option<String>,
     pub code_mode: Option<bool>,
     pub codex_acp_default_mode: Option<String>,
+    pub runtime_model: Option<String>,
+    pub thinking_level: Option<String>,
     pub agent_loop_enabled: Option<bool>,
     pub agent_loop_idle_seconds: Option<i64>,
     pub agent_loop_prompt: Option<String>,
@@ -76,6 +81,8 @@ pub struct AgentDiscoveryRuntime {
     pub acp_provider: Option<String>,
     pub code_mode: bool,
     pub codex_acp_default_mode: Option<String>,
+    pub runtime_model: Option<String>,
+    pub thinking_level: Option<String>,
     pub agent_loop_enabled: bool,
     pub agent_loop_idle_seconds: Option<i64>,
     pub target_node_id: Option<String>,
@@ -120,6 +127,12 @@ pub struct SetAgentLoopRequest {
 #[derive(Debug, serde::Deserialize)]
 pub struct SetCodexAcpDefaultModeRequest {
     pub mode_id: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetRuntimeProfileRequest {
+    pub runtime_model: Option<String>,
+    pub thinking_level: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -199,6 +212,7 @@ pub fn router(state: AppState) -> Router {
             "/{id}/codex_acp_default_mode",
             post(set_codex_acp_default_mode),
         )
+        .route("/{id}/runtime_profile", post(set_runtime_profile))
         .route("/{id}/agent_loop", post(set_agent_loop))
         .route("/{id}/acp/session/clear", post(clear_acp_session))
         .route("/{id}/acp/mode", post(set_acp_mode))
@@ -246,6 +260,8 @@ async fn create_agent(
         worktree_ref,
         code_mode,
         codex_acp_default_mode,
+        runtime_model,
+        thinking_level,
         agent_loop_enabled,
         agent_loop_idle_seconds,
         agent_loop_prompt,
@@ -257,6 +273,11 @@ async fn create_agent(
     let worktree_ref = normalize_optional_request_field("worktree_ref", worktree_ref)?;
     let codex_acp_default_mode =
         normalize_codex_acp_default_mode_request(codex_acp_default_mode.as_deref())?;
+    let (runtime_model, thinking_level) = normalize_runtime_profile_request(
+        state.agents.acp_provider_for_agent(&command, &args),
+        runtime_model.as_deref(),
+        thinking_level.as_deref(),
+    )?;
     let agent_loop_enabled = agent_loop_enabled.unwrap_or(false);
     let agent_loop_prompt =
         normalize_optional_request_field("agent_loop.prompt", agent_loop_prompt)?;
@@ -295,10 +316,8 @@ async fn create_agent(
         worktree_ref,
         code_mode: code_mode.unwrap_or(true),
         codex_acp_default_mode,
-        // Wired from the create/update request and validated in a later phase; persisted as `None` for
-        // now so the column round-trips at the store layer without an API surface yet.
-        runtime_model: None,
-        thinking_level: None,
+        runtime_model,
+        thinking_level,
         agent_loop_enabled,
         agent_loop_idle_seconds,
         agent_loop_prompt,
@@ -570,6 +589,33 @@ async fn set_codex_acp_default_mode(
     Ok(ok_response())
 }
 
+async fn set_runtime_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<SetRuntimeProfileRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    let agent = state.agents.get_agent(&agent_id).await?;
+    let provider = state
+        .agents
+        .acp_provider_for_agent(&agent.command, &agent.args);
+    let (runtime_model, thinking_level) = normalize_runtime_profile_request(
+        provider,
+        payload.runtime_model.as_deref(),
+        payload.thinking_level.as_deref(),
+    )?;
+    state
+        .agents
+        .set_runtime_profile(
+            &agent_id,
+            runtime_model.as_deref(),
+            thinking_level.as_deref(),
+        )
+        .await?;
+    Ok(ok_response())
+}
+
 async fn set_agent_loop(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -812,6 +858,35 @@ fn normalize_codex_acp_default_mode_request(
     Ok(normalized)
 }
 
+/// Normalize and validate the runtime profile fields from a create/update request, and gate them to
+/// providers that support runtime profiles. `runtime_model` accepts any non-blank string (unknown
+/// model names are allowed); `thinking_level` must be one of `low|medium|high|max`. A profile may only
+/// be set when the agent's derived ACP provider is Codex or Claude — Gemini/Kimi and non-ACP agents are
+/// rejected. Returns the normalized `(runtime_model, thinking_level)`.
+fn normalize_runtime_profile_request(
+    provider: Option<&str>,
+    runtime_model: Option<&str>,
+    thinking_level: Option<&str>,
+) -> Result<(Option<String>, Option<String>), ApiError> {
+    let model = normalize_optional_runtime_model(runtime_model);
+    let level =
+        match thinking_level
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            None => None,
+            Some(value) => Some(normalize_optional_thinking_level(Some(value)).ok_or_else(
+                || ApiError::bad_request("thinking_level must be one of low, medium, high, or max"),
+            )?),
+        };
+    if (model.is_some() || level.is_some()) && !matches!(provider, Some("codex") | Some("claude")) {
+        return Err(ApiError::bad_request(
+            "runtime_model and thinking_level require a Codex or Claude ACP agent",
+        ));
+    }
+    Ok((model, level))
+}
+
 fn validate_create_agent_loop_config(
     enabled: bool,
     idle_seconds: Option<i64>,
@@ -995,6 +1070,8 @@ fn build_agent_discovery_card(
             acp_provider: acp_provider.map(str::to_string),
             code_mode: agent.code_mode,
             codex_acp_default_mode: agent.codex_acp_default_mode.clone(),
+            runtime_model: agent.runtime_model.clone(),
+            thinking_level: agent.thinking_level.clone(),
             agent_loop_enabled: agent.agent_loop_enabled,
             agent_loop_idle_seconds: agent.agent_loop_idle_seconds,
             target_node_id: agent.target_node_id.clone(),
@@ -1539,6 +1616,8 @@ mod tests {
                 worktree_ref TEXT,
                 code_mode INTEGER NOT NULL DEFAULT 0,
                 codex_acp_default_mode TEXT,
+                runtime_model TEXT,
+                thinking_level TEXT,
                 agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
                 agent_loop_idle_seconds INTEGER,
                 agent_loop_prompt TEXT,
@@ -2410,6 +2489,179 @@ mod tests {
             row.get::<Option<String>, _>("codex_acp_default_mode")
                 .as_deref(),
             Some("full-access")
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_persists_runtime_profile_for_codex() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind("/tmp/runtime-profile-agent")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "runtime-profile-agent",
+                    "workdir": "/tmp/runtime-profile-agent",
+                    "command": "agenthub-codex-acp",
+                    "args": [],
+                    "runtime_model": "gpt-5.4-codex",
+                    "thinking_level": "HIGH"
+                })),
+            ))
+            .await
+            .expect("create runtime profile agent");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        let agent_id = body["id"].as_str().expect("agent id");
+        let row = sqlx::query("SELECT runtime_model, thinking_level FROM agents WHERE id = ?1")
+            .bind(agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load created agent row");
+        assert_eq!(
+            row.get::<Option<String>, _>("runtime_model").as_deref(),
+            Some("gpt-5.4-codex")
+        );
+        assert_eq!(
+            row.get::<Option<String>, _>("thinking_level").as_deref(),
+            Some("high")
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_invalid_thinking_level() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind("/tmp/bad-thinking-agent")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "bad-thinking-agent",
+                    "workdir": "/tmp/bad-thinking-agent",
+                    "command": "agenthub-codex-acp",
+                    "args": [],
+                    "thinking_level": "ultra"
+                })),
+            ))
+            .await
+            .expect("create bad thinking agent");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_runtime_profile_for_non_acp_provider() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind("/tmp/non-acp-profile-agent")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "non-acp-profile-agent",
+                    "workdir": "/tmp/non-acp-profile-agent",
+                    "command": "bash",
+                    "args": [],
+                    "runtime_model": "gpt-5.4-codex"
+                })),
+            ))
+            .await
+            .expect("create non-acp profile agent");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn set_runtime_profile_route_updates_agent_config() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind("/tmp/set-runtime-profile-agent")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let create_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "set-runtime-profile-agent",
+                    "workdir": "/tmp/set-runtime-profile-agent",
+                    "command": "agenthub-codex-acp",
+                    "args": []
+                })),
+            ))
+            .await
+            .expect("create agent");
+        assert_eq!(create_response.status(), StatusCode::OK);
+        let create_body = decode_json_body(create_response).await;
+        let agent_id = create_body["id"].as_str().expect("agent id").to_string();
+
+        let update_response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/runtime_profile"),
+                Some(&token),
+                Some(json!({
+                    "runtime_model": "gpt-5.4-codex",
+                    "thinking_level": "medium"
+                })),
+            ))
+            .await
+            .expect("set runtime profile");
+        assert_eq!(update_response.status(), StatusCode::OK);
+
+        let row = sqlx::query("SELECT runtime_model, thinking_level FROM agents WHERE id = ?1")
+            .bind(&agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load updated agent row");
+        assert_eq!(
+            row.get::<Option<String>, _>("runtime_model").as_deref(),
+            Some("gpt-5.4-codex")
+        );
+        assert_eq!(
+            row.get::<Option<String>, _>("thinking_level").as_deref(),
+            Some("medium")
         );
     }
 

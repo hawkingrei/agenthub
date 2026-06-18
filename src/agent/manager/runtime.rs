@@ -371,6 +371,37 @@ impl AgentManager {
         Ok(())
     }
 
+    /// Persist the operator runtime-profile overrides (`runtime_model`, `thinking_level`). Both are
+    /// stored verbatim as already-normalized values; the effective provider is derived from the agent's
+    /// command/args at launch and is never persisted. Passing `None` clears the corresponding override.
+    #[tracing::instrument(
+        skip(self),
+        fields(agent_id = %agent_id, runtime_model = ?runtime_model, thinking_level = ?thinking_level),
+        err
+    )]
+    pub async fn set_runtime_profile(
+        &self,
+        agent_id: &str,
+        runtime_model: Option<&str>,
+        thinking_level: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE agents
+            SET runtime_model = ?1, thinking_level = ?2, updated_at = ?3
+            WHERE id = ?4
+            "#,
+        )
+        .bind(runtime_model)
+        .bind(thinking_level)
+        .bind(now)
+        .bind(agent_id)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
     #[tracing::instrument(
         skip(self, prompt),
         fields(agent_id = %agent_id, enabled = enabled, idle_seconds = ?idle_seconds),
