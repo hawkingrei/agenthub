@@ -1310,6 +1310,7 @@ impl PromptState {
             | EventMsg::CollabResumeEnd(..)
             | EventMsg::CollabCloseBegin(..)
             | EventMsg::CollabCloseEnd(..)
+            | EventMsg::SubAgentActivity(..)
             | EventMsg::PlanDelta(..) => {}
             EventMsg::GuardianAssessment(..) => {}
         }
@@ -2241,6 +2242,7 @@ impl PromptState {
             call_id,
             turn_id,
             questions,
+            auto_resolution_ms: _,
         } = event;
         let tool_call_id = ToolCallId::new(format!("request-user-input:{call_id}"));
         let raw_input = serde_json::to_value(&questions)
@@ -3422,7 +3424,6 @@ impl<A: Auth> ThreadActor<A> {
                         final_output_json_schema: None,
                         responsesapi_client_metadata: None,
                         additional_context: Default::default(),
-                        environments: None,
                         thread_settings: ThreadSettingsOverrides::default(),
                     }
                 }
@@ -3476,7 +3477,6 @@ impl<A: Auth> ThreadActor<A> {
                         final_output_json_schema: None,
                         responsesapi_client_metadata: None,
                         additional_context: Default::default(),
-                        environments: None,
                         thread_settings: ThreadSettingsOverrides::default(),
                     }
                 }
@@ -3487,7 +3487,6 @@ impl<A: Auth> ThreadActor<A> {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 additional_context: Default::default(),
-                environments: None,
                 thread_settings: ThreadSettingsOverrides::default(),
             }
         }
@@ -3849,7 +3848,9 @@ impl<A: Auth> ThreadActor<A> {
                     )
                     .await;
             }
-            ResponseItem::FunctionCallOutput { call_id, output } => {
+            ResponseItem::FunctionCallOutput {
+                call_id, output, ..
+            } => {
                 self.client
                     .send_tool_call_completed(call_id.clone(), serde_json::to_value(output).ok())
                     .await;
@@ -4908,7 +4909,6 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 additional_context: Default::default(),
-                environments: None,
                 thread_settings: ThreadSettingsOverrides::default(),
             }],
             "ops don't match {ops:?}"
@@ -5186,7 +5186,6 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 additional_context: Default::default(),
-                environments: None,
                 thread_settings: ThreadSettingsOverrides::default(),
             }],
             "ops don't match {ops:?}"
@@ -5563,6 +5562,7 @@ mod tests {
                         is_secret: false,
                         options: None,
                     }],
+                    auto_resolution_ms: None,
                 }));
                 tokio::task::yield_now().await;
 
