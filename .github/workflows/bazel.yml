@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Free disk space
         # The GitHub-hosted runner ships ~14 GB free, which the instrumented Bazel
         # build plus the repository-contents cache can exhaust ("No space left on
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Free disk space
         # The GitHub-hosted runner ships ~14 GB free, which the instrumented Bazel
         # build plus the repository-contents cache can exhaust ("No space left on
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Free disk space
         # The GitHub-hosted runner ships ~14 GB free, which the instrumented Bazel
         # build plus the repository-contents cache can exhaust ("No space left on
@@ -158,7 +158,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Free disk space
         # The GitHub-hosted runner ships ~14 GB free, which the instrumented Bazel
         # build plus the repository-contents cache can exhaust ("No space left on
