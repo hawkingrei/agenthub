@@ -972,7 +972,11 @@ impl AppServerCodexThread {
                                     .map(codex_app_server_protocol::NetworkPolicyAmendment::into_core)
                                     .collect()
                             }),
-                        additional_permissions: params.additional_permissions.map(Into::into),
+                        additional_permissions: params
+                            .additional_permissions
+                            .map(codex_protocol::models::AdditionalPermissionProfile::try_from)
+                            .transpose()
+                            .map_err(|err| CodexErr::Fatal(err.to_string()))?,
                         available_decisions: params.available_decisions.map(|items| {
                             items
                                 .into_iter()
@@ -1017,7 +1021,7 @@ impl AppServerCodexThread {
                     id: submission_id,
                     msg: EventMsg::RequestPermissions(permissions_request_event_from_params(
                         params,
-                    )),
+                    )?),
                 }))
             }
             ServerRequest::McpServerElicitationRequest { request_id, params } => {
@@ -1102,6 +1106,7 @@ impl AppServerCodexThread {
         match notification {
             ServerNotification::ThreadNameUpdated(_)
             | ServerNotification::ThreadSettingsUpdated(_)
+            | ServerNotification::ThreadDeleted(_)
             | ServerNotification::TurnModerationMetadata(_) => Ok(None),
             ServerNotification::FileChangePatchUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
@@ -1846,7 +1851,9 @@ impl CodexThreadImpl for AppServerCodexThread {
             Op::Shutdown => self.shutdown_thread().await,
             Op::ThreadSettings { thread_settings } => {
                 self.override_turn_context(OverrideTurnContextArgs {
-                    cwd: thread_settings.cwd.map(|cwd| cwd.to_path_buf()),
+                    cwd: thread_settings
+                        .environments
+                        .map(|environments| environments.legacy_fallback_cwd.to_path_buf()),
                     workspace_roots: thread_settings.workspace_roots,
                     profile_workspace_roots: thread_settings.profile_workspace_roots,
                     approval_policy: thread_settings.approval_policy,
@@ -2020,6 +2027,7 @@ fn app_server_request_user_input_to_core(
             .into_iter()
             .map(app_server_request_user_input_question_to_core)
             .collect(),
+        auto_resolution_ms: params.auto_resolution_ms,
     }
 }
 
@@ -2812,19 +2820,17 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
 
 fn permissions_request_event_from_params(
     params: codex_app_server_protocol::PermissionsRequestApprovalParams,
-) -> RequestPermissionsEvent {
-    RequestPermissionsEvent {
+) -> Result<RequestPermissionsEvent, CodexErr> {
+    Ok(RequestPermissionsEvent {
         call_id: params.item_id,
         turn_id: params.turn_id,
         environment_id: params.environment_id,
         started_at_ms: params.started_at_ms,
         reason: params.reason,
-        permissions: RequestPermissionProfile {
-            network: params.permissions.network.map(Into::into),
-            file_system: params.permissions.file_system.map(Into::into),
-        },
+        permissions: RequestPermissionProfile::try_from(params.permissions)
+            .map_err(|err| CodexErr::Fatal(err.to_string()))?,
         cwd: Some(params.cwd),
-    }
+    })
 }
 
 fn file_change_patch_updated_to_core(
@@ -3225,6 +3231,7 @@ mod tests {
                 thread_id: "thread-1".to_string(),
                 turn_id: "turn-1".to_string(),
                 item_id: "item-1".to_string(),
+                auto_resolution_ms: None,
                 questions: vec![codex_app_server_protocol::ToolRequestUserInputQuestion {
                     id: "question-1".to_string(),
                     header: "Clarify".to_string(),
@@ -3292,7 +3299,8 @@ mod tests {
                     file_system: None,
                 },
             },
-        );
+        )
+        .expect("valid permissions request event");
 
         assert_eq!(event.call_id, "call-1");
         assert_eq!(event.turn_id, "turn-1");
@@ -3480,6 +3488,7 @@ mod tests {
             call_id: "call-1".to_string(),
             name: "apply_patch".to_string(),
             input: "*** Begin Patch".to_string(),
+            metadata: None,
         };
         record_raw_response_item(&mut state, "turn-1", &call);
 
@@ -3489,6 +3498,7 @@ mod tests {
             call_id: "call-1".to_string(),
             name: Some("apply_patch".to_string()),
             output: codex_protocol::models::FunctionCallOutputPayload::from_text("ok".to_string()),
+            metadata: None,
         };
         record_raw_response_item(&mut state, "turn-1", &output);
 
@@ -3504,6 +3514,7 @@ mod tests {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "function-call-1".to_string(),
+            metadata: None,
         };
 
         record_raw_response_item(&mut state, "turn-1", &item);
@@ -3551,7 +3562,6 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 additional_context: Default::default(),
-                environments: None,
                 thread_settings: Default::default(),
             },
         )
@@ -3625,7 +3635,6 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 additional_context: Default::default(),
-                environments: None,
                 thread_settings: Default::default(),
             },
         )
@@ -3648,7 +3657,6 @@ mod tests {
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
                 additional_context: Default::default(),
-                environments: None,
                 thread_settings: Default::default(),
             },
         )

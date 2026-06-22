@@ -11,12 +11,15 @@ use agent_client_protocol::schema::{
     SetSessionModeRequest, SetSessionModeResponse,
 };
 use codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID;
-use codex_config::types::{McpServerConfig, McpServerTransportConfig};
+use codex_config::types::{AuthKeyringBackendKind, McpServerConfig, McpServerTransportConfig};
 use codex_core::{
     RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey, config::Config,
     find_thread_path_by_id_str, parse_cursor, thread_store_from_config,
 };
-use codex_extension_api::empty_extension_registry;
+use codex_extension_api::{
+    LoadUserInstructionsFuture, LoadedUserInstructions, UserInstructionsProvider,
+    empty_extension_registry,
+};
 use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_env};
 use codex_login::{
     AuthManager, CLIENT_ID, CODEX_API_KEY_ENV_VAR, CodexAuth, OPENAI_API_KEY_ENV_VAR,
@@ -64,6 +67,14 @@ const SESSION_LIST_PAGE_SIZE: usize = 25;
 const SESSION_TITLE_MAX_GRAPHEMES: usize = 120;
 const REPAIRED_ROLLOUT_TIMESTAMP: &str = "1970-01-01T00:00:00.000Z";
 
+struct EmptyUserInstructionsProvider;
+
+impl UserInstructionsProvider for EmptyUserInstructionsProvider {
+    fn load_user_instructions(&self) -> LoadUserInstructionsFuture<'_> {
+        Box::pin(std::future::ready(LoadedUserInstructions::default()))
+    }
+}
+
 impl CodexAgent {
     /// Create a new `CodexAgent` with the given configuration
     pub async fn new(config: Config) -> Result<Self, Error> {
@@ -72,6 +83,7 @@ impl CodexAgent {
             false,
             config.cli_auth_credentials_store_mode,
             Some(config.chatgpt_base_url.clone()),
+            AuthKeyringBackendKind::default(),
         )
         .await;
 
@@ -84,6 +96,7 @@ impl CodexAgent {
             SessionSource::Unknown,
             build_environment_manager(&config).await?,
             empty_extension_registry(),
+            Arc::new(EmptyUserInstructionsProvider),
             None,
             thread_store_from_config(&config, None),
             None,
@@ -322,6 +335,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairS
                     ResponseItem::FunctionCallOutput {
                         call_id: call_id.clone(),
                         output: aborted_call_output(),
+                        metadata: None,
                     },
                 ));
             }
@@ -335,6 +349,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairS
                         call_id: call_id.clone(),
                         name: None,
                         output: aborted_call_output(),
+                        metadata: None,
                     },
                 ));
             }
@@ -348,6 +363,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairS
                     ResponseItem::FunctionCallOutput {
                         call_id: call_id.clone(),
                         output: aborted_call_output(),
+                        metadata: None,
                     },
                 ));
             }
@@ -395,10 +411,18 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
     let mut retained = Vec::with_capacity(items.len());
     for item in std::mem::take(items) {
         match item {
-            RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput { call_id, output }) => {
+            RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                call_id,
+                output,
+                metadata,
+            }) => {
                 if function_call_ids.contains(&call_id) || local_shell_call_ids.contains(&call_id) {
                     retained.push(RolloutItem::ResponseItem(
-                        ResponseItem::FunctionCallOutput { call_id, output },
+                        ResponseItem::FunctionCallOutput {
+                            call_id,
+                            output,
+                            metadata,
+                        },
                     ));
                 } else {
                     repaired.dropped_orphan_function_call_outputs += 1;
@@ -407,6 +431,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
             RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
                 call_id,
                 output,
+                metadata,
                 ..
             }) => {
                 if custom_tool_call_ids.contains(&call_id) {
@@ -415,6 +440,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                             call_id,
                             name: None,
                             output,
+                            metadata,
                         },
                     ));
                 } else {
@@ -462,6 +488,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                     RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
                         call_id: call_id.clone(),
                         output: aborted_call_output(),
+                        metadata: None,
                     }),
                 ));
             }
@@ -475,6 +502,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                         call_id: call_id.clone(),
                         name: None,
                         output: aborted_call_output(),
+                        metadata: None,
                     }),
                 ));
             }
@@ -488,6 +516,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                     RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
                         call_id: call_id.clone(),
                         output: aborted_call_output(),
+                        metadata: None,
                     }),
                 ));
             }
@@ -636,6 +665,7 @@ impl CodexAgent {
                     CLIENT_ID.to_string(),
                     None,
                     self.config.cli_auth_credentials_store_mode,
+                    AuthKeyringBackendKind::default(),
                 );
 
                 let server =
@@ -654,6 +684,7 @@ impl CodexAgent {
                     &self.config.codex_home,
                     &api_key,
                     self.config.cli_auth_credentials_store_mode,
+                    AuthKeyringBackendKind::default(),
                 )
                 .map_err(Error::into_internal_error)?;
             }
@@ -665,6 +696,7 @@ impl CodexAgent {
                     &self.config.codex_home,
                     &api_key,
                     self.config.cli_auth_credentials_store_mode,
+                    AuthKeyringBackendKind::default(),
                 )
                 .map_err(Error::into_internal_error)?;
             }
@@ -1048,6 +1080,7 @@ mod tests {
                 call_id: "call-1".to_string(),
                 name: "actor_send".to_string(),
                 input: "{}".to_string(),
+                metadata: None,
             })],
             rollout_path: Some(PathBuf::from("/tmp/rollout.jsonl")),
         });
@@ -1095,6 +1128,7 @@ mod tests {
                     call_id: "call-persist".to_string(),
                     name: "actor_send".to_string(),
                     input: "{}".to_string(),
+                    metadata: None,
                 }),
             ],
             rollout_path: Some(rollout_path.clone()),
@@ -1141,6 +1175,7 @@ mod tests {
                 call_id: "missing".to_string(),
                 name: None,
                 output: FunctionCallOutputPayload::from_text("ok".to_string()),
+                metadata: None,
             },
             ResponseItem::CustomToolCall {
                 id: None,
@@ -1148,6 +1183,7 @@ mod tests {
                 call_id: "call-2".to_string(),
                 name: "actor_ack".to_string(),
                 input: "{}".to_string(),
+                metadata: None,
             },
         ];
 
@@ -1176,6 +1212,7 @@ mod tests {
                 id: None,
                 call_id: Some("shell-1".to_string()),
                 status: LocalShellStatus::Completed,
+                metadata: None,
                 action: LocalShellAction::Exec(LocalShellExecAction {
                     command: vec!["echo".to_string(), "hi".to_string()],
                     timeout_ms: None,
@@ -1184,6 +1221,7 @@ mod tests {
                     user: None,
                 }),
             }]),
+            window_id: None,
         })]);
 
         let (repaired, repaired_stats) = repair_initial_history(history);
@@ -1204,7 +1242,9 @@ mod tests {
             .expect("replacement history");
         assert!(matches!(
             &replacement_history[1],
-            ResponseItem::FunctionCallOutput { call_id, output }
+            ResponseItem::FunctionCallOutput {
+                call_id, output, ..
+            }
                 if call_id == "shell-1" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
         ));
     }
