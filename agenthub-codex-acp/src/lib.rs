@@ -1,5 +1,11 @@
 //! Codex ACP - An Agent Client Protocol implementation for Codex.
 #![deny(clippy::print_stdout, clippy::print_stderr)]
+// `CodexErr` (upstream `codex_protocol::error::CodexErr`) grew past clippy's
+// default large-error threshold (128 bytes) as of codex `rust-v0.141`, and it is
+// the `Err` type of ~26 `Result<_, CodexErr>` functions across this Codex wrapper
+// crate. We can't shrink an upstream type, and boxing every site is out of scope
+// for a dependency bump; allow the lint crate-wide for this wrapper.
+#![allow(clippy::result_large_err)]
 
 use agent_client_protocol::schema::{
     AuthenticateRequest, CancelNotification, CloseSessionRequest, InitializeRequest,
