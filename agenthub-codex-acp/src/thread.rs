@@ -1284,6 +1284,9 @@ impl PromptState {
 
             // Ignore these events
             EventMsg::TurnModerationMetadata(..)
+            // Informational: backend is waiting on a safety review before
+            // streaming more output. No user-facing action in the ACP adapter.
+            | EventMsg::SafetyBuffering(..)
             |
             EventMsg::ImageGenerationBegin(..)
             | EventMsg::ImageGenerationEnd(..)
@@ -1329,6 +1332,7 @@ impl PromptState {
         } = event;
         let request_kind = match &request {
             ElicitationRequest::Form { .. } => "form",
+            ElicitationRequest::OpenAiForm { .. } => "openai/form",
             ElicitationRequest::Url { .. } => "url",
         };
 
@@ -1655,6 +1659,7 @@ impl PromptState {
             call_id,
             command,
             turn_id,
+            environment_id: _,
             started_at_ms: _,
             cwd,
             reason,
@@ -1813,7 +1818,7 @@ impl PromptState {
             locations,
             terminal_output,
             kind,
-        } = parse_command_tool_call(parsed_cmd, &cwd);
+        } = parse_command_tool_call(parsed_cmd, &cwd.to_path_buf());
 
         let active_command = ActiveCommand {
             tool_call_id: tool_call_id.clone(),
@@ -5787,7 +5792,7 @@ mod tests {
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "a".into()],
-                            cwd: cwd.clone(),
+                            cwd: cwd.clone().into(),
                             parsed_cmd: vec![ParsedCommand::Unknown {
                                 cmd: "echo a".into(),
                             }],
@@ -5800,7 +5805,7 @@ mod tests {
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "b".into()],
-                            cwd: cwd.clone(),
+                            cwd: cwd.clone().into(),
                             parsed_cmd: vec![ParsedCommand::Unknown {
                                 cmd: "echo b".into(),
                             }],
@@ -5813,7 +5818,7 @@ mod tests {
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "a".into()],
-                            cwd: cwd.clone(),
+                            cwd: cwd.clone().into(),
                             parsed_cmd: vec![],
                             source: Default::default(),
                             interaction_input: None,
@@ -5831,7 +5836,7 @@ mod tests {
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "b".into()],
-                            cwd: cwd.clone(),
+                            cwd: cwd.clone().into(),
                             parsed_cmd: vec![],
                             source: Default::default(),
                             interaction_input: None,
@@ -5860,7 +5865,7 @@ mod tests {
                                     process_id: None,
                                     turn_id: id.to_string(),
                                     command: vec!["sleep".into(), "999".into()],
-                                    cwd: current_dir_abs().unwrap(),
+                                    cwd: current_dir_abs().unwrap().into(),
                                     parsed_cmd: vec![ParsedCommand::Unknown {
                                         cmd: "sleep 999".into(),
                                     }],
@@ -5877,6 +5882,7 @@ mod tests {
                                 msg: EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                                     call_id: "call-id".to_string(),
                                     approval_id: Some("approval-id".to_string()),
+                                    environment_id: None,
                                     turn_id: id.to_string(),
                                     started_at_ms: 0,
                                     command: vec!["echo".to_string(), "hi".to_string()],
@@ -6302,6 +6308,7 @@ mod tests {
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
+                            environment_id: None,
                             turn_id: "turn-id".to_string(),
                             started_at_ms: 0,
                             command: vec!["echo".to_string(), "hi".to_string()],
@@ -6389,6 +6396,7 @@ mod tests {
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
+                            environment_id: None,
                             turn_id: "turn-id".to_string(),
                             started_at_ms: 0,
                             command: vec!["echo".to_string(), "hi".to_string()],
@@ -6716,6 +6724,7 @@ mod tests {
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
+                            environment_id: None,
                             turn_id: "turn-id".to_string(),
                             started_at_ms: 0,
                             command: vec![
@@ -6797,6 +6806,7 @@ mod tests {
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
+                            environment_id: None,
                             turn_id: "turn-id".to_string(),
                             started_at_ms: 0,
                             command: vec![
@@ -7058,6 +7068,7 @@ mod tests {
                         EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
                             approval_id: Some("approval-id".to_string()),
+                            environment_id: None,
                             turn_id: "turn-id".to_string(),
                             started_at_ms: 0,
                             command: vec!["echo".to_string(), "hi".to_string()],
@@ -7290,7 +7301,9 @@ mod tests {
                         EventMsg::McpToolCallBegin(McpToolCallBeginEvent {
                             call_id: "call-1".to_string(),
                             invocation: invocation.clone(),
+                            connector_id: None,
                             mcp_app_resource_uri: Some(resource_uri.clone()),
+                            link_id: None,
                             plugin_id: None,
                         }),
                     )
@@ -7302,7 +7315,9 @@ mod tests {
                         EventMsg::McpToolCallEnd(McpToolCallEndEvent {
                             call_id: "call-1".to_string(),
                             invocation,
+                            connector_id: None,
                             mcp_app_resource_uri: Some(resource_uri.clone()),
+                            link_id: None,
                             plugin_id: None,
                             duration: Duration::from_millis(5),
                             result: Ok(CallToolResult {
@@ -7526,7 +7541,8 @@ mod tests {
                             command: vec!["cargo".to_string(), "test".to_string()],
                             cwd: AbsolutePathBuf::from_absolute_path(
                                 std::env::current_dir()?.join("."),
-                            )?,
+                            )?
+                            .into(),
                             parsed_cmd: vec![],
                             source: Default::default(),
                             interaction_input: None,
@@ -7632,7 +7648,8 @@ mod tests {
                             command: vec!["cargo".to_string(), "test".to_string()],
                             cwd: AbsolutePathBuf::from_absolute_path(
                                 std::env::current_dir()?.join("."),
-                            )?,
+                            )?
+                            .into(),
                             parsed_cmd: vec![],
                             source: Default::default(),
                             interaction_input: None,

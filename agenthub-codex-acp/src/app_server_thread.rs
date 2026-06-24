@@ -954,9 +954,24 @@ impl AppServerCodexThread {
                         call_id: params.item_id,
                         approval_id: params.approval_id,
                         turn_id: params.turn_id,
+                        environment_id: params.environment_id,
                         started_at_ms: params.started_at_ms,
                         command: command_vec.clone(),
-                        cwd: params.cwd.unwrap_or_else(|| state.config.cwd.clone()),
+                        cwd: params
+                            .cwd
+                            .and_then(|cwd| {
+                                match codex_utils_absolute_path::AbsolutePathBuf::try_from(cwd) {
+                                    Ok(path) => Some(path),
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            ?err,
+                                            "exec-approval cwd is not an absolute path; falling back to configured cwd"
+                                        );
+                                        None
+                                    }
+                                }
+                            })
+                            .unwrap_or_else(|| state.config.cwd.clone()),
                         reason: params.reason,
                         network_approval_context: params
                             .network_approval_context
@@ -1043,6 +1058,15 @@ impl AppServerCodexThread {
                         requested_schema: serde_json::to_value(requested_schema)
                             .map_err(|err| CodexErr::Fatal(err.to_string()))?,
                     },
+                    codex_app_server_protocol::McpServerElicitationRequest::OpenAiForm {
+                        meta,
+                        message,
+                        requested_schema,
+                    } => ElicitationRequest::OpenAiForm {
+                        meta,
+                        message,
+                        requested_schema,
+                    },
                     codex_app_server_protocol::McpServerElicitationRequest::Url {
                         meta,
                         message,
@@ -1095,7 +1119,10 @@ impl AppServerCodexThread {
             }
             ServerRequest::ChatgptAuthTokensRefresh { .. }
             | ServerRequest::ApplyPatchApproval { .. }
-            | ServerRequest::ExecCommandApproval { .. } => Ok(None),
+            | ServerRequest::ExecCommandApproval { .. }
+            // The ACP adapter does not provide an external current-time source,
+            // so there is no core event to translate this request into.
+            | ServerRequest::CurrentTimeRead { .. } => Ok(None),
         }
     }
 
@@ -1331,6 +1358,17 @@ impl AppServerCodexThread {
                         },
                     ) => {
                         let command_vec = shell_command_vec(&command);
+                        // The app-server reports cwd as a `LegacyAppPathString`, but the
+                        // core exec events now require a `PathUri`. Fall back to the
+                        // agent's configured cwd if the legacy string cannot be parsed.
+                        let fallback_cwd = self.state.lock().await.config.cwd.clone();
+                        let cwd = cwd.try_into().unwrap_or_else(|err| {
+                            tracing::warn!(
+                                ?err,
+                                "legacy exec cwd is not a parseable path; falling back to configured cwd"
+                            );
+                            fallback_cwd.into()
+                        });
                         Some(Event {
                             id,
                             msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
@@ -1365,7 +1403,9 @@ impl AppServerCodexThread {
                                 tool,
                                 arguments: Some(arguments),
                             },
+                            connector_id: None,
                             mcp_app_resource_uri,
+                            link_id: None,
                             plugin_id: None,
                         }),
                     }),
@@ -1509,6 +1549,17 @@ impl AppServerCodexThread {
                         },
                     ) => {
                         let command_vec = shell_command_vec(&command);
+                        // The app-server reports cwd as a `LegacyAppPathString`, but the
+                        // core exec events now require a `PathUri`. Fall back to the
+                        // agent's configured cwd if the legacy string cannot be parsed.
+                        let fallback_cwd = self.state.lock().await.config.cwd.clone();
+                        let cwd = cwd.try_into().unwrap_or_else(|err| {
+                            tracing::warn!(
+                                ?err,
+                                "legacy exec cwd is not a parseable path; falling back to configured cwd"
+                            );
+                            fallback_cwd.into()
+                        });
                         Some(Event {
                             id,
                             msg: EventMsg::ExecCommandEnd(ExecCommandEndEvent {
@@ -1597,7 +1648,9 @@ impl AppServerCodexThread {
                                     tool,
                                     arguments: Some(arguments),
                                 },
+                                connector_id: None,
                                 mcp_app_resource_uri,
+                                link_id: None,
                                 plugin_id: None,
                                 duration: duration_ms
                                     .and_then(|ms| u64::try_from(ms).ok())
@@ -1808,6 +1861,8 @@ impl AppServerCodexThread {
             | ServerNotification::AccountRateLimitsUpdated(_)
             | ServerNotification::AppListUpdated(_)
             | ServerNotification::ExternalAgentConfigImportCompleted(_)
+            | ServerNotification::ExternalAgentConfigImportProgress(_)
+            | ServerNotification::ModelSafetyBufferingUpdated(_)
             | ServerNotification::ThreadGoalUpdated(_)
             | ServerNotification::ThreadGoalCleared(_)
             | ServerNotification::RemoteControlStatusChanged(_)
@@ -2299,6 +2354,7 @@ fn prepare_submission_start(
                     collaboration_mode: None,
                     environments: None,
                     permissions: None,
+                    multi_agent_mode: None,
                 }),
             }))
         }
@@ -2811,6 +2867,9 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         client_name: ACP_CLIENT_NAME.to_string(),
         client_version: env!("CARGO_PKG_VERSION").to_string(),
         experimental_api: true,
+        // We do not handle `openai/form` elicitation requests in the ACP
+        // adapter, so do not advertise support for them.
+        mcp_server_openai_form_elicitation: false,
         opt_out_notification_methods: Vec::new(),
         channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
     })
@@ -3488,17 +3547,18 @@ mod tests {
             call_id: "call-1".to_string(),
             name: "apply_patch".to_string(),
             input: "*** Begin Patch".to_string(),
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         };
         record_raw_response_item(&mut state, "turn-1", &call);
 
         assert!(state.pending_custom_tool_calls.contains("call-1"));
 
         let output = ResponseItem::CustomToolCallOutput {
+            id: None,
             call_id: "call-1".to_string(),
             name: Some("apply_patch".to_string()),
             output: codex_protocol::models::FunctionCallOutputPayload::from_text("ok".to_string()),
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         };
         record_raw_response_item(&mut state, "turn-1", &output);
 
@@ -3514,7 +3574,7 @@ mod tests {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "function-call-1".to_string(),
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         };
 
         record_raw_response_item(&mut state, "turn-1", &item);
