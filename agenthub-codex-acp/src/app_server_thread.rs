@@ -960,7 +960,16 @@ impl AppServerCodexThread {
                         cwd: params
                             .cwd
                             .and_then(|cwd| {
-                                codex_utils_absolute_path::AbsolutePathBuf::try_from(cwd).ok()
+                                match codex_utils_absolute_path::AbsolutePathBuf::try_from(cwd) {
+                                    Ok(path) => Some(path),
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            ?err,
+                                            "exec-approval cwd is not an absolute path; falling back to configured cwd"
+                                        );
+                                        None
+                                    }
+                                }
                             })
                             .unwrap_or_else(|| state.config.cwd.clone()),
                         reason: params.reason,
@@ -1353,7 +1362,13 @@ impl AppServerCodexThread {
                         // core exec events now require a `PathUri`. Fall back to the
                         // agent's configured cwd if the legacy string cannot be parsed.
                         let fallback_cwd = self.state.lock().await.config.cwd.clone();
-                        let cwd = cwd.try_into().unwrap_or_else(|_| fallback_cwd.into());
+                        let cwd = cwd.try_into().unwrap_or_else(|err| {
+                            tracing::warn!(
+                                ?err,
+                                "legacy exec cwd is not a parseable path; falling back to configured cwd"
+                            );
+                            fallback_cwd.into()
+                        });
                         Some(Event {
                             id,
                             msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
@@ -1538,7 +1553,13 @@ impl AppServerCodexThread {
                         // core exec events now require a `PathUri`. Fall back to the
                         // agent's configured cwd if the legacy string cannot be parsed.
                         let fallback_cwd = self.state.lock().await.config.cwd.clone();
-                        let cwd = cwd.try_into().unwrap_or_else(|_| fallback_cwd.into());
+                        let cwd = cwd.try_into().unwrap_or_else(|err| {
+                            tracing::warn!(
+                                ?err,
+                                "legacy exec cwd is not a parseable path; falling back to configured cwd"
+                            );
+                            fallback_cwd.into()
+                        });
                         Some(Event {
                             id,
                             msg: EventMsg::ExecCommandEnd(ExecCommandEndEvent {
