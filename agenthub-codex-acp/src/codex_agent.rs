@@ -82,8 +82,10 @@ impl CodexAgent {
             config.codex_home.to_path_buf(),
             false,
             config.cli_auth_credentials_store_mode,
+            config.forced_chatgpt_workspace_id.clone(),
             Some(config.chatgpt_base_url.clone()),
             AuthKeyringBackendKind::default(),
+            config.auth_route_config(),
         )
         .await;
 
@@ -101,6 +103,7 @@ impl CodexAgent {
             thread_store_from_config(&config, None),
             None,
             "agenthub-codex-acp".to_string(),
+            None,
             None,
         );
         Ok(Self {
@@ -333,9 +336,10 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairS
                 synthetic_outputs.push((
                     idx,
                     ResponseItem::FunctionCallOutput {
+                        id: None,
                         call_id: call_id.clone(),
                         output: aborted_call_output(),
-                        metadata: None,
+                        internal_chat_message_metadata_passthrough: None,
                     },
                 ));
             }
@@ -346,10 +350,11 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairS
                 synthetic_outputs.push((
                     idx,
                     ResponseItem::CustomToolCallOutput {
+                        id: None,
                         call_id: call_id.clone(),
                         name: None,
                         output: aborted_call_output(),
-                        metadata: None,
+                        internal_chat_message_metadata_passthrough: None,
                     },
                 ));
             }
@@ -361,9 +366,10 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairS
                 synthetic_outputs.push((
                     idx,
                     ResponseItem::FunctionCallOutput {
+                        id: None,
                         call_id: call_id.clone(),
                         output: aborted_call_output(),
-                        metadata: None,
+                        internal_chat_message_metadata_passthrough: None,
                     },
                 ));
             }
@@ -412,16 +418,18 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
     for item in std::mem::take(items) {
         match item {
             RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                id,
                 call_id,
                 output,
-                metadata,
+                internal_chat_message_metadata_passthrough,
             }) => {
                 if function_call_ids.contains(&call_id) || local_shell_call_ids.contains(&call_id) {
                     retained.push(RolloutItem::ResponseItem(
                         ResponseItem::FunctionCallOutput {
+                            id,
                             call_id,
                             output,
-                            metadata,
+                            internal_chat_message_metadata_passthrough,
                         },
                     ));
                 } else {
@@ -429,18 +437,20 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                 }
             }
             RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
+                id,
                 call_id,
+                name,
                 output,
-                metadata,
-                ..
+                internal_chat_message_metadata_passthrough,
             }) => {
                 if custom_tool_call_ids.contains(&call_id) {
                     retained.push(RolloutItem::ResponseItem(
                         ResponseItem::CustomToolCallOutput {
+                            id,
                             call_id,
-                            name: None,
+                            name,
                             output,
-                            metadata,
+                            internal_chat_message_metadata_passthrough,
                         },
                     ));
                 } else {
@@ -486,9 +496,10 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                 synthetic_outputs.push((
                     idx,
                     RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                        id: None,
                         call_id: call_id.clone(),
                         output: aborted_call_output(),
-                        metadata: None,
+                        internal_chat_message_metadata_passthrough: None,
                     }),
                 ));
             }
@@ -499,10 +510,11 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                 synthetic_outputs.push((
                     idx,
                     RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
+                        id: None,
                         call_id: call_id.clone(),
                         name: None,
                         output: aborted_call_output(),
-                        metadata: None,
+                        internal_chat_message_metadata_passthrough: None,
                     }),
                 ));
             }
@@ -514,9 +526,10 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                 synthetic_outputs.push((
                     idx,
                     RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                        id: None,
                         call_id: call_id.clone(),
                         output: aborted_call_output(),
-                        metadata: None,
+                        internal_chat_message_metadata_passthrough: None,
                     }),
                 ));
             }
@@ -666,6 +679,7 @@ impl CodexAgent {
                     None,
                     self.config.cli_auth_credentials_store_mode,
                     AuthKeyringBackendKind::default(),
+                    self.config.auth_route_config(),
                 );
 
                 let server =
@@ -1080,7 +1094,7 @@ mod tests {
                 call_id: "call-1".to_string(),
                 name: "actor_send".to_string(),
                 input: "{}".to_string(),
-                metadata: None,
+                internal_chat_message_metadata_passthrough: None,
             })],
             rollout_path: Some(PathBuf::from("/tmp/rollout.jsonl")),
         });
@@ -1128,7 +1142,7 @@ mod tests {
                     call_id: "call-persist".to_string(),
                     name: "actor_send".to_string(),
                     input: "{}".to_string(),
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 }),
             ],
             rollout_path: Some(rollout_path.clone()),
@@ -1172,10 +1186,11 @@ mod tests {
     fn repair_response_item_history_drops_orphan_outputs() {
         let mut history = vec![
             ResponseItem::CustomToolCallOutput {
+                id: None,
                 call_id: "missing".to_string(),
                 name: None,
                 output: FunctionCallOutputPayload::from_text("ok".to_string()),
-                metadata: None,
+                internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::CustomToolCall {
                 id: None,
@@ -1183,7 +1198,7 @@ mod tests {
                 call_id: "call-2".to_string(),
                 name: "actor_ack".to_string(),
                 input: "{}".to_string(),
-                metadata: None,
+                internal_chat_message_metadata_passthrough: None,
             },
         ];
 
@@ -1212,7 +1227,7 @@ mod tests {
                 id: None,
                 call_id: Some("shell-1".to_string()),
                 status: LocalShellStatus::Completed,
-                metadata: None,
+                internal_chat_message_metadata_passthrough: None,
                 action: LocalShellAction::Exec(LocalShellExecAction {
                     command: vec!["echo".to_string(), "hi".to_string()],
                     timeout_ms: None,
@@ -1221,6 +1236,9 @@ mod tests {
                     user: None,
                 }),
             }]),
+            window_number: None,
+            first_window_id: None,
+            previous_window_id: None,
             window_id: None,
         })]);
 
