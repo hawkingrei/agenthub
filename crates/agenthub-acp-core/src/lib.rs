@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     ContentBlock, EnvVariable, HttpHeader, McpCapabilities, McpServer, McpServerHttp,
     McpServerStdio, TextContent,
 };

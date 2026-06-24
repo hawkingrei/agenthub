@@ -789,13 +789,13 @@ async fn respond_permission(
         ));
     }
     let outcome = if let Some(option_id) = payload.option_id.as_ref() {
-        agent_client_protocol::schema::RequestPermissionOutcome::Selected(
-            agent_client_protocol::schema::SelectedPermissionOutcome::new(option_id.clone()),
+        agent_client_protocol::schema::v1::RequestPermissionOutcome::Selected(
+            agent_client_protocol::schema::v1::SelectedPermissionOutcome::new(option_id.clone()),
         )
     } else {
         match payload.outcome.as_deref() {
             Some("cancelled") | None => {
-                agent_client_protocol::schema::RequestPermissionOutcome::Cancelled
+                agent_client_protocol::schema::v1::RequestPermissionOutcome::Cancelled
             }
             Some(_other) => {
                 return Err(ApiError::bad_request(

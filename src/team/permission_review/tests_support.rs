@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::state::AppState;
 use crate::team::mailbox_hint::{RunningActorRuntime, TeamMailboxHintAgentNudger};
 use crate::team::{TeamDefinitionConfig, TeamDefinitionRecord};
-use agent_client_protocol::schema::PermissionOptionKind;
+use agent_client_protocol::schema::v1::PermissionOptionKind;
 use agenthub_acp::{AcpPermissionOption, AcpPermissionReviewRequest, AcpPermissionRoutingMetadata};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;

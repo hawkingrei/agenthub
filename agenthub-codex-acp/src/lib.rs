@@ -7,7 +7,7 @@
 // for a dependency bump; allow the lint crate-wide for this wrapper.
 #![allow(clippy::result_large_err)]
 
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     AuthenticateRequest, CancelNotification, CloseSessionRequest, InitializeRequest,
     ListSessionsRequest, LoadSessionRequest, NewSessionRequest, PromptRequest,
     SetSessionConfigOptionRequest, SetSessionModeRequest,

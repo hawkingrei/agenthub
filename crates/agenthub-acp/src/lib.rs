@@ -14,14 +14,17 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     CancelNotification, ClientCapabilities, ContentBlock, ContentChunk, Implementation,
     InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, PermissionOption,
-    PermissionOptionKind, PromptRequest, ProtocolVersion, RequestPermissionOutcome,
+    PermissionOptionKind, PromptRequest, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
     SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
     TextContent, ToolCall, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
 };
+// `ProtocolVersion` is version-agnostic in 0.15 — it lives at the schema root, not
+// under the versioned `schema::v1` module.
+use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{Agent, ConnectionTo, Error as AcpError, ErrorCode as AcpErrorCode};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -2653,7 +2656,7 @@ mod tests {
         load_workdir_skills, permission_outcome_allows, permission_review_failure_outcome,
         remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
-    use agent_client_protocol::schema::{
+    use agent_client_protocol::schema::v1::{
         ContentBlock, McpServer, PermissionOption, PermissionOptionKind, RequestPermissionOutcome,
         SelectedPermissionOutcome,
     };

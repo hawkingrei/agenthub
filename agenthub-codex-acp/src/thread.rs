@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ClientCapabilities,
     ConfigOptionUpdate, Content, ContentBlock, ContentChunk, Diff, EmbeddedResource,
     EmbeddedResourceResource, LoadSessionResponse, Meta, PermissionOption, PermissionOptionKind,
@@ -4644,7 +4644,7 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use agent_client_protocol::schema::{
+    use agent_client_protocol::schema::v1::{
         RequestPermissionResponse, SessionConfigKind, SessionConfigSelectOptions, TextContent,
     };
     use agenthub_managed_skills::{
