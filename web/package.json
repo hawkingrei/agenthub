@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.8",
-    "@mantine/core": "9.3.2",
+    "@mantine/core": "9.4.0",
     "@mantine/hooks": "9.4.0",
     "bootstrap-icons": "^1.11.3",
     "highlight.js": "^11.11.1",
