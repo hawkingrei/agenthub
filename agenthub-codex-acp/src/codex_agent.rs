@@ -6,9 +6,9 @@ use agent_client_protocol::schema::v1::{
     InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
     LoadSessionResponse, McpCapabilities, McpServer, McpServerHttp, McpServerStdio,
     NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest, PromptResponse,
-    SessionCapabilities, SessionCloseCapabilities, SessionId, SessionInfo,
-    SessionListCapabilities, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
-    SetSessionModeRequest, SetSessionModeResponse,
+    SessionCapabilities, SessionCloseCapabilities, SessionId, SessionInfo, SessionListCapabilities,
+    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
+    SetSessionModeResponse,
 };
 // `ProtocolVersion` is version-agnostic in 0.15 (schema root, not `schema::v1`).
 use agent_client_protocol::schema::ProtocolVersion;
