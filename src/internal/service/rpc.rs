@@ -1081,15 +1081,15 @@ impl TeamInternalControl for TeamInternalControlService {
             ));
         }
         let outcome = if let Some(selected_option_id) = option_id.as_ref() {
-            agent_client_protocol::schema::RequestPermissionOutcome::Selected(
-                agent_client_protocol::schema::SelectedPermissionOutcome::new(
+            agent_client_protocol::schema::v1::RequestPermissionOutcome::Selected(
+                agent_client_protocol::schema::v1::SelectedPermissionOutcome::new(
                     selected_option_id.clone(),
                 ),
             )
         } else {
             match requested_outcome {
                 Some("cancelled") | None => {
-                    agent_client_protocol::schema::RequestPermissionOutcome::Cancelled
+                    agent_client_protocol::schema::v1::RequestPermissionOutcome::Cancelled
                 }
                 Some(other) => {
                     return Err(Status::invalid_argument(format!(

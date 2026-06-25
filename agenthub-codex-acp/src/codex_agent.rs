@@ -1,15 +1,17 @@
 use agent_client_protocol::Error;
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     AgentCapabilities, AuthEnvVar, AuthMethod, AuthMethodAgent, AuthMethodEnvVar, AuthMethodId,
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ClientCapabilities,
     CloseSessionRequest, CloseSessionResponse, Implementation, InitializeRequest,
     InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
     LoadSessionResponse, McpCapabilities, McpServer, McpServerHttp, McpServerStdio,
     NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest, PromptResponse,
-    ProtocolVersion, SessionCapabilities, SessionCloseCapabilities, SessionId, SessionInfo,
-    SessionListCapabilities, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
-    SetSessionModeRequest, SetSessionModeResponse,
+    SessionCapabilities, SessionCloseCapabilities, SessionId, SessionInfo, SessionListCapabilities,
+    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
+    SetSessionModeResponse,
 };
+// `ProtocolVersion` is version-agnostic in 0.15 (schema root, not `schema::v1`).
+use agent_client_protocol::schema::ProtocolVersion;
 use codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID;
 use codex_config::types::{AuthKeyringBackendKind, McpServerConfig, McpServerTransportConfig};
 use codex_core::{
@@ -971,7 +973,7 @@ mod tests {
         HistoryRepairStats, codex_mcp_server_config, persist_repaired_initial_history,
         repair_initial_history, repair_response_item_history,
     };
-    use agent_client_protocol::schema::{
+    use agent_client_protocol::schema::v1::{
         EnvVariable, HttpHeader, McpServer, McpServerHttp, McpServerSse, McpServerStdio,
     };
     use codex_config::types::McpServerTransportConfig;

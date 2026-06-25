@@ -22,7 +22,7 @@ use crate::acp::{
 };
 use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentStatus, OutputStream};
-use agent_client_protocol::schema::Implementation;
+use agent_client_protocol::schema::v1::Implementation;
 
 const RESUMED_ACP_SESSION_GRACE_PERIOD: Duration = Duration::from_secs(2);
 const RESUMED_ACP_SESSION_POLL_INTERVAL: Duration = Duration::from_millis(100);
