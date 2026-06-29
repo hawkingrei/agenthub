@@ -44,7 +44,7 @@
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
-    "postcss": "^8.5.15",
+    "postcss": "^8.5.16",
     "tailwindcss": "^4.2.4",
     "typescript": "6.0.3",
     "vite": "^8.1.0",
