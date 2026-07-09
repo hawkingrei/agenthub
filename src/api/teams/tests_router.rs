@@ -411,6 +411,37 @@ async fn teams_router_http_contract() {
         created_from_message["task"]["context"]["token"],
         Value::from("[redacted]")
     );
+    let create_from_message_null_context_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels/review/messages/{source_message_id}/tasks"),
+            Some(&token),
+            Some(json!({
+                "title": "task from null context",
+                "context": null
+            })),
+        ))
+        .await
+        .expect("create task from channel message with null context via router");
+    assert_eq!(
+        create_from_message_null_context_resp.status(),
+        StatusCode::OK
+    );
+    let created_from_message_null_context =
+        decode_json_body(create_from_message_null_context_resp).await;
+    assert_eq!(
+        created_from_message_null_context["task"]["title"],
+        Value::from("task from null context")
+    );
+    assert_eq!(
+        created_from_message_null_context["task"]["context"]["bootstrap_kind"],
+        Value::from("channel_message_task")
+    );
+    assert_eq!(
+        created_from_message_null_context["task"]["context"]["source"]["message_id"],
+        Value::from(source_message_id)
+    );
 
     let send_task_message_resp = app
         .clone()

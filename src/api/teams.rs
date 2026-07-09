@@ -968,12 +968,12 @@ async fn create_team_task_from_channel_message(
         normalize_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
     let mut context = match payload.context {
         Some(Value::Object(map)) => map,
+        None | Some(Value::Null) => Map::new(),
         Some(_) => {
             return Err(ApiError::bad_request(
                 "context must be a JSON object when provided",
             ));
         }
-        None => Map::new(),
     };
     context.insert(
         "bootstrap_kind".to_string(),
