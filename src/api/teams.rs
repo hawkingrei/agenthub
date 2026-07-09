@@ -40,9 +40,10 @@ use crate::team::{
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamReplyObligationRecord, TeamRunEventRecord,
     TeamRunRecord, TeamRunStatus, TeamRuntimeRecord, TeamStepRecord, TeamStepStatus,
-    TeamTaskExecutionPlan, TeamTaskNoteRecord, TeamTaskPriority, TeamTaskRecord,
-    TeamTaskStepExecutionSpec, TeamThreadReplyRecord, dispatch_actor_mailbox_immediate_hint,
-    effective_team_member_skills, ensure_team_runtime_started, force_team_member_new_session,
+    TeamTaskCreateInput, TeamTaskExecutionPlan, TeamTaskNoteRecord, TeamTaskPriority,
+    TeamTaskRecord, TeamTaskStepExecutionSpec, TeamThreadReplyRecord,
+    dispatch_actor_mailbox_immediate_hint, effective_team_member_skills,
+    ensure_team_runtime_started, force_team_member_new_session,
     normalize_optional_idempotency_key_input, parse_task_execution_plan,
     plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
@@ -169,6 +170,15 @@ pub struct CreateTeamTaskRequest {
     pub context: Option<Value>,
     pub conversation_mode: Option<String>,
     pub topic: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTeamTaskFromChannelMessageRequest {
+    pub title: Option<String>,
+    pub priority: Option<String>,
+    pub assigned_member_id: Option<String>,
+    pub created_by_actor_id: Option<String>,
+    pub context: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -516,6 +526,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/{id}/channels/{channel_id}/threads/{root_message_id}/replies",
             post(reply_team_thread),
+        )
+        .route(
+            "/{id}/channels/{channel_id}/messages/{message_id}/tasks",
+            post(create_team_task_from_channel_message),
         )
         .route(
             "/{id}/channels",
@@ -903,6 +917,103 @@ async fn list_team_tasks(
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(tasks))
+}
+
+async fn create_team_task_from_channel_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, channel_id, message_id)): Path<(String, String, i64)>,
+    Json(payload): Json<CreateTeamTaskFromChannelMessageRequest>,
+) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
+    if message_id <= 0 {
+        return Err(ApiError::bad_request("message_id must be positive"));
+    }
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let channel_id = channel_id.trim().to_lowercase();
+    if channel_id.is_empty() {
+        return Err(ApiError::bad_request("channel_id is required"));
+    }
+    let source_message = state
+        .teams
+        .get_channel_conversation_message(&team_id, &channel_id, message_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "channel message not found"))?;
+    if source_message.route == "team_thread_reply" {
+        return Err(ApiError::bad_request(
+            "thread replies cannot be converted into tasks directly; convert the root channel message",
+        ));
+    }
+
+    let source_excerpt = summarize_task_source_message(&source_message.payload);
+    let title = payload
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| source_excerpt.clone());
+    if title.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "title is required when the source message has no readable text",
+        ));
+    }
+    let priority = normalize_task_priority(payload.priority.as_deref())?;
+    let assigned_member_id = payload
+        .assigned_member_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let created_by_actor_id =
+        normalize_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
+    let mut context = match payload.context {
+        Some(Value::Object(map)) => map,
+        None | Some(Value::Null) => Map::new(),
+        Some(_) => {
+            return Err(ApiError::bad_request(
+                "context must be a JSON object when provided",
+            ));
+        }
+    };
+    context.insert(
+        "bootstrap_kind".to_string(),
+        Value::String("channel_message_task".to_string()),
+    );
+    context.insert(
+        "source".to_string(),
+        serde_json::json!({
+            "kind": "team_channel_message",
+            "team_id": team_id,
+            "channel_id": channel_id,
+            "conversation_id": source_message.conversation_id,
+            "task_id": source_message.task_id,
+            "message_id": source_message.message_id,
+            "from_actor_id": source_message.from_actor_id,
+            "created_at": source_message.created_at,
+            "excerpt": source_excerpt,
+        }),
+    );
+
+    let (task, conversation) = state
+        .teams
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &team_id,
+            title: title.trim(),
+            created_by_actor_id: &created_by_actor_id,
+            priority,
+            assigned_member_id,
+            context: Value::Object(context),
+            conversation_mode: "group_chat",
+            topic: Some(&channel_id),
+        })
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(TeamTaskDetailResponse {
+        task,
+        conversation,
+        latest_run: None,
+        notes: Vec::new(),
+    }))
 }
 
 async fn list_team_channels(
@@ -2701,7 +2812,6 @@ fn normalize_task_actor_id(
     Ok(trimmed.to_string())
 }
 
-#[cfg(test)]
 fn normalize_task_created_by_actor_id(
     value: Option<&str>,
     user: &UserRecord,
@@ -2710,6 +2820,41 @@ fn normalize_task_created_by_actor_id(
         return Ok(canonical_user_actor_id(user));
     };
     normalize_task_actor_id(raw, "created_by_actor_id", user)
+}
+
+fn normalize_task_priority(value: Option<&str>) -> Result<TeamTaskPriority, ApiError> {
+    let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(TeamTaskPriority::default());
+    };
+    raw.parse::<TeamTaskPriority>().map_err(|_| {
+        ApiError::bad_request("invalid task priority; expected one of: critical, high, medium, low")
+    })
+}
+
+fn summarize_task_source_message(payload: &Value) -> String {
+    let raw = payload
+        .get("text")
+        .and_then(Value::as_str)
+        .or_else(|| payload.as_str())
+        .unwrap_or("")
+        .trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    summarize_text(raw, TEAM_MESSAGE_SUMMARY_MAX_CHARS)
+}
+
+fn summarize_text(raw: &str, max_chars: usize) -> String {
+    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= max_chars {
+        return normalized;
+    }
+    let mut summary = normalized
+        .chars()
+        .take(max_chars.saturating_sub(3))
+        .collect::<String>();
+    summary.push_str("...");
+    summary
 }
 
 struct TaskMessageCorrelationSeed<'a> {

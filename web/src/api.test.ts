@@ -211,6 +211,37 @@ describe("api request headers", () => {
     expect(url).toContain("priority=critical");
   });
 
+  it("creates a task from a channel message through the narrow channel route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ task: { id: "task-1" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.createTeamTaskFromChannelMessage(
+      "token-1",
+      "team/1",
+      "review lane",
+      42,
+      {
+        priority: "high",
+        context: { source: "test" },
+      }
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "/api/teams/team%2F1/channels/review%20lane/messages/42/tasks"
+    );
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({ priority: "high", context: { source: "test" } })
+    );
+  });
+
   it("builds the team run-context SSE URL with encoded dynamic segments", () => {
     expect(
       buildTeamRunContextSseUrl(

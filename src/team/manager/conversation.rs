@@ -1,5 +1,6 @@
 use sqlx::{QueryBuilder, Sqlite};
 
+use super::TEAM_CHANNEL_BOOTSTRAP_KIND;
 use super::TeamManager;
 use super::codec_rows::{parse_team_conversation_message_row, parse_team_conversation_row};
 use crate::team::{TeamConversationMessageRecord, TeamConversationRecord};
@@ -71,5 +72,45 @@ impl TeamManager {
         }
         messages.reverse();
         Ok(messages)
+    }
+
+    pub async fn get_channel_conversation_message(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+        message_id: i64,
+    ) -> anyhow::Result<TeamConversationMessageRecord> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                m.id,
+                m.conversation_id,
+                m.task_id,
+                m.group_id,
+                m.from_actor_id,
+                m.to_actor_id,
+                m.route,
+                m.payload_json,
+                m.created_at
+            FROM team_conversation_messages AS m
+            INNER JOIN team_tasks AS t ON t.id = m.task_id
+            WHERE m.id = ?1
+              AND t.team_id = ?2
+              AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = ?3
+              AND lower(trim(COALESCE(json_extract(t.context_json, '$.channel_id'), ''))) = ?4
+            "#,
+        )
+        .bind(message_id)
+        .bind(team_id)
+        .bind(TEAM_CHANNEL_BOOTSTRAP_KIND)
+        .bind(channel_id.trim().to_lowercase())
+        .fetch_one(&self.db)
+        .await?;
+        let (mut message, body_moved) = parse_team_conversation_message_row(&row)?;
+        if body_moved {
+            self.rehydrate_moved_conversation_payload(&mut message)
+                .await?;
+        }
+        Ok(message)
     }
 }
