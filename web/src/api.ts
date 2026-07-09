@@ -352,6 +352,14 @@ export type TeamTaskRecord = {
   updated_at: number;
 };
 
+export type CreateTeamTaskFromChannelMessagePayload = {
+  title?: string | null;
+  priority?: TeamTaskPriority | null;
+  assigned_member_id?: string | null;
+  created_by_actor_id?: string | null;
+  context?: unknown;
+};
+
 export type TeamConversationRecord = {
   id: string;
   team_id: string;
@@ -1012,6 +1020,21 @@ export const api = {
       token
     );
   },
+  createTeamTaskFromChannelMessage: (
+    token: string,
+    teamId: string,
+    channelId: string,
+    messageId: number,
+    payload: CreateTeamTaskFromChannelMessagePayload
+  ) =>
+    apiFetch<TeamTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/channels/${encodePathSegment(channelId)}/messages/${messageId}/tasks`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
   getTeamTask: (token: string, teamId: string, taskId: string) =>
     apiFetch<TeamTaskDetailResponse>(
       `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}`,
