@@ -13,7 +13,7 @@ import {
   DEFAULT_AGENT_PRESET_ID,
   formatAgentModelLabel,
   getAgentPreset,
-  resolveAcpProvider,
+  resolveAcpProviderForAgent,
   type AgentPresetId,
 } from "../../agent_presets";
 import {
@@ -457,6 +457,8 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         preset.provider === "codex"
           ? normalizeCodexAcpModeId(forgeAgentCodexAcpDefaultMode)
           : null;
+      const supportsRuntimeProfile =
+        preset.provider === "codex" || preset.provider === "claude";
       const created = await api.createAgent(token, {
         name,
         workdir: workdirPayload,
@@ -468,6 +470,12 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         worktree_ref: effectiveWorktreeRef || null,
         code_mode: forgeAgentCodeMode,
         codex_acp_default_mode: codexAcpDefaultMode,
+        runtime_model: supportsRuntimeProfile
+          ? teamMemberDraft.runtime_model.trim() || null
+          : null,
+        thinking_level: supportsRuntimeProfile
+          ? teamMemberDraft.thinking_level.trim() || null
+          : null,
       });
       createdAgentId = created.id;
       const nextSpec = appendTeamMemberToSpec(
@@ -565,16 +573,18 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       agent_loop_idle_seconds: "",
       agent_loop_prompt: "",
       codex_acp_default_mode:
-        resolveAcpProvider(sourceAgent.command) === "codex"
+        resolveAcpProviderForAgent(sourceAgent.command, sourceAgent.args) === "codex"
           ? normalizeCodexAcpModeId(sourceAgent.codex_acp_default_mode)
           : DEFAULT_CODEX_ACP_MODE,
+      runtime_model: sourceAgent.runtime_model ?? "",
+      thinking_level: sourceAgent.thinking_level ?? "",
     };
 
     const copiedWorktreeMode = role === "coordinator" ? "use_existing" : sourceAgent.worktree_mode;
     const copiedWorktreeRepo = role === "coordinator" ? null : sourceAgent.worktree_repo ?? null;
     const copiedWorktreeRef = role === "coordinator" ? null : sourceAgent.worktree_ref ?? null;
     const copiedCodexAcpDefaultMode =
-      resolveAcpProvider(sourceAgent.command) === "codex"
+      resolveAcpProviderForAgent(sourceAgent.command, sourceAgent.args) === "codex"
         ? normalizeCodexAcpModeId(sourceAgent.codex_acp_default_mode)
         : null;
 
@@ -595,6 +605,12 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         worktree_ref: copiedWorktreeRef,
         code_mode: sourceAgent.code_mode,
         codex_acp_default_mode: copiedCodexAcpDefaultMode,
+        ...(sourceAgent.runtime_model != null || sourceAgent.thinking_level != null
+          ? {
+              runtime_model: sourceAgent.runtime_model ?? null,
+              thinking_level: sourceAgent.thinking_level ?? null,
+            }
+          : {}),
       });
       createdAgentId = created.id;
       const updated = await api.updateTeamSpec(token, selectedTeam.id, {
@@ -713,7 +729,10 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       }
       if (
         selectedAgentWorkspaceAgent &&
-        resolveAcpProvider(selectedAgentWorkspaceAgent.command) === "codex"
+        resolveAcpProviderForAgent(
+          selectedAgentWorkspaceAgent.command,
+          selectedAgentWorkspaceAgent.args
+        ) === "codex"
       ) {
         const codexMode = normalizeCodexAcpModeId(
           teamMemberEditDraft.codex_acp_default_mode
@@ -747,6 +766,47 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         } catch (codexModeErr) {
           setWarning(
             `Codex permission settings were not applied: ${parseErrorMessage(codexModeErr)}`
+          );
+        }
+      }
+      if (
+        selectedAgentWorkspaceAgent &&
+        ["codex", "claude"].includes(
+          resolveAcpProviderForAgent(
+            selectedAgentWorkspaceAgent.command,
+            selectedAgentWorkspaceAgent.args
+          ) ?? ""
+        )
+      ) {
+        const runtimeProfile = {
+          runtime_model: teamMemberEditDraft.runtime_model.trim() || null,
+          thinking_level: teamMemberEditDraft.thinking_level.trim() || null,
+        };
+        try {
+          await api.setAgentRuntimeProfile(
+            token,
+            teamMemberEditDraft.member_id,
+            runtimeProfile
+          );
+          setAgents((prev) =>
+            prev.map((agent) =>
+              agent.id === teamMemberEditDraft.member_id
+                ? { ...agent, ...runtimeProfile }
+                : agent
+            )
+          );
+          setTeamMemberAgentsById((prev) => {
+            const existingAgent = prev[teamMemberEditDraft.member_id];
+            return {
+              ...prev,
+              [teamMemberEditDraft.member_id]: existingAgent
+                ? { ...existingAgent, ...runtimeProfile }
+                : existingAgent,
+            };
+          });
+        } catch (runtimeProfileErr) {
+          setWarning(
+            `Runtime profile settings were not applied: ${parseErrorMessage(runtimeProfileErr)}`
           );
         }
       }

@@ -16,6 +16,8 @@ export type E2eAgentRecord = {
   worktree_repo?: string | null;
   worktree_ref?: string | null;
   code_mode: boolean;
+  runtime_model?: string | null;
+  thinking_level?: string | null;
   status: string;
   created_at: number;
   updated_at: number;
@@ -49,6 +51,7 @@ export type TeamSpecMember = {
   description?: string;
   model?: string;
   skills?: string[];
+  runtime?: Record<string, unknown>;
 };
 
 export type TeamSpecStep = {
@@ -554,6 +557,8 @@ export async function mockTeamPageApis(
         command: string;
         args?: string[];
         code_mode?: boolean;
+        runtime_model?: string | null;
+        thinking_level?: string | null;
       };
       const created: E2eAgentRecord = {
         id: `agent-forge-${agents.length + 1}`,
@@ -565,6 +570,8 @@ export async function mockTeamPageApis(
         worktree_repo: null,
         worktree_ref: null,
         code_mode: payload.code_mode ?? true,
+        runtime_model: payload.runtime_model ?? null,
+        thinking_level: payload.thinking_level ?? null,
         status: "idle",
         created_at: now,
         updated_at: now,

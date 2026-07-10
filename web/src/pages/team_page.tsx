@@ -22,6 +22,7 @@ import {
   TeamStepRecord,
 } from "../api";
 import { AGENT_NOT_RUNNING_ERROR, isAgentActiveStatus } from "../agent_ws";
+import { resolveAcpProviderForAgent } from "../agent_presets";
 import {
   getNavigatorOnline,
   sanitizeErrorBannerMessage,
@@ -2966,6 +2967,10 @@ export function TeamPage(props: TeamPageProps) {
         setAgentPresetId: setForgeAgentPresetId,
         codexAcpDefaultMode: forgeAgentCodexAcpDefaultMode,
         setCodexAcpDefaultMode: setForgeAgentCodexAcpDefaultMode,
+        runtimeModel: teamMemberDraft?.runtime_model ?? "",
+        setRuntimeModel: (runtime_model) => patchTeamMemberDraft({ runtime_model }),
+        thinkingLevel: teamMemberDraft?.thinking_level ?? "",
+        setThinkingLevel: (thinking_level) => patchTeamMemberDraft({ thinking_level }),
         worktreeMode: forgeAgentWorktreeMode,
         setWorktreeMode: handleForgeWorktreeModeChange,
         worktreeRepo: forgeAgentWorktreeRepo,
@@ -2999,6 +3004,7 @@ export function TeamPage(props: TeamPageProps) {
       handleForgeWorktreeModeChange,
       closeTeamMemberForgeModal,
       onCreateForgeAgent,
+      patchTeamMemberDraft,
       setForgeAgentCodeMode,
       setForgeAgentName,
       setForgeAgentPresetId,
@@ -3006,6 +3012,8 @@ export function TeamPage(props: TeamPageProps) {
       setForgeAgentWorkdir,
       setForgeAgentWorktreeRef,
       setForgeAgentWorktreeRepo,
+      teamMemberDraft?.runtime_model,
+      teamMemberDraft?.thinking_level,
       teamMemberDraft?.role,
     ]
   );
@@ -3036,6 +3044,14 @@ export function TeamPage(props: TeamPageProps) {
     patchTeamMemberEditDraft,
     closeTeamMemberEditModal,
     onSaveTeamMemberProfile,
+    selectedAgentSupportsRuntimeProfile:
+        selectedAgentWorkspaceAgent != null &&
+        ["codex", "claude"].includes(
+        resolveAcpProviderForAgent(
+          selectedAgentWorkspaceAgent.command,
+          selectedAgentWorkspaceAgent.args
+        ) ?? ""
+      ),
     createChrome: modalChrome,
     forgeChrome: modalChrome,
     editChrome: modalChrome,

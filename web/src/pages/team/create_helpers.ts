@@ -31,6 +31,8 @@ export type TeamMemberProfileDraft = {
   agent_loop_idle_seconds: string;
   agent_loop_prompt: string;
   codex_acp_default_mode: string;
+  runtime_model: string;
+  thinking_level: string;
 };
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -238,6 +240,14 @@ function readRuntimeCodexAcpDefaultMode(member: Record<string, unknown>): string
   return normalizeCodexAcpModeId(typeof value === "string" ? value : null);
 }
 
+function readRuntimeProfileField(
+  member: Record<string, unknown>,
+  field: "runtime_model" | "thinking_level"
+): string {
+  const value = readRuntimeRecord(member)?.[field];
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function buildTeamMemberDraftFromSpec(
   spec: unknown,
   memberId: string,
@@ -284,6 +294,9 @@ export function buildTeamMemberDraftFromSpec(
     codex_acp_default_mode: normalizeCodexAcpModeId(
       agent?.codex_acp_default_mode ?? readRuntimeCodexAcpDefaultMode(member)
     ),
+    runtime_model: agent?.runtime_model?.trim() || readRuntimeProfileField(member, "runtime_model"),
+    thinking_level:
+      agent?.thinking_level?.trim() || readRuntimeProfileField(member, "thinking_level"),
   };
 }
 
@@ -334,6 +347,8 @@ export function updateTeamMemberProfileInSpec(
       agent_loop_idle_seconds: normalizedLoopIdleSeconds,
       agent_loop_prompt: draft.agent_loop_prompt.trim() || undefined,
       codex_acp_default_mode: normalizeCodexAcpModeId(draft.codex_acp_default_mode),
+      runtime_model: draft.runtime_model.trim() || undefined,
+      thinking_level: draft.thinking_level.trim() || undefined,
     },
   };
   nextSpec.members = existingMembers;
@@ -353,6 +368,12 @@ function buildMemberRuntimeHint(agent: AgentRecord | undefined): Record<string, 
     worktree_ref: agent.worktree_ref ?? null,
     code_mode: agent.code_mode,
     codex_acp_default_mode: normalizeCodexAcpModeId(agent.codex_acp_default_mode),
+    ...(agent.runtime_model?.trim()
+      ? { runtime_model: agent.runtime_model.trim() }
+      : {}),
+    ...(agent.thinking_level?.trim()
+      ? { thinking_level: agent.thinking_level.trim() }
+      : {}),
     agent_loop_enabled: agent.agent_loop_enabled ?? false,
     agent_loop_idle_seconds: agent.agent_loop_idle_seconds ?? null,
     agent_loop_prompt: agent.agent_loop_prompt ?? null,

@@ -18,6 +18,7 @@ vi.mock("../../api", async () => {
       createAgent: vi.fn(),
       deleteAgent: vi.fn(),
       setAgentCodexAcpDefaultMode: vi.fn(),
+      setAgentRuntimeProfile: vi.fn(),
       setAgentLoop: vi.fn(),
       updateTeamSpec: vi.fn(),
       getTeamRuntime: vi.fn(),
@@ -466,6 +467,8 @@ describe("useTeamManagementActions", () => {
         agent_loop_idle_seconds: "90",
         agent_loop_prompt: "",
         codex_acp_default_mode: "full-access",
+        runtime_model: "",
+        thinking_level: "",
       } satisfies TeamMemberProfileDraft,
       forgeAgentName: "Forge Worker",
       forgeAgentWorkdir: "/tmp/worktrees/forge-worker",
@@ -509,6 +512,7 @@ describe("useTeamManagementActions", () => {
     } as never);
     mockedApi.setAgentLoop.mockResolvedValueOnce({ status: "ok" } as never);
     mockedApi.setAgentCodexAcpDefaultMode.mockResolvedValueOnce({ status: "ok" } as never);
+    mockedApi.setAgentRuntimeProfile.mockResolvedValueOnce({ status: "ok" } as never);
 
     const params = createParams({
       selectedTeam: {
@@ -553,6 +557,8 @@ describe("useTeamManagementActions", () => {
         agent_loop_idle_seconds: "",
         agent_loop_prompt: "",
         codex_acp_default_mode: "yolo",
+        runtime_model: "gpt-5",
+        thinking_level: "high",
       },
     });
     const mounted = await mountHook(params);
@@ -566,6 +572,10 @@ describe("useTeamManagementActions", () => {
         "worker-1",
         "full-access"
       );
+      expect(mockedApi.setAgentRuntimeProfile).toHaveBeenCalledWith("token-1", "worker-1", {
+        runtime_model: "gpt-5",
+        thinking_level: "high",
+      });
       expect(mockedApi.updateTeamSpec).toHaveBeenCalledWith(
         "token-1",
         "team-1",
@@ -576,6 +586,8 @@ describe("useTeamManagementActions", () => {
                 member_id: "worker-1",
                 runtime: expect.objectContaining({
                   codex_acp_default_mode: "full-access",
+                  runtime_model: "gpt-5",
+                  thinking_level: "high",
                 }),
               }),
             ]),

@@ -2,7 +2,10 @@ import { Box } from "@mantine/core";
 import React from "react";
 import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
-import { formatAgentModelLabel, resolveAcpProvider } from "../agent_presets";
+import {
+  formatAgentModelLabel,
+  resolveAcpProviderForAgent,
+} from "../agent_presets";
 import {
   CODEX_ACP_MODE_OPTIONS,
   formatCodexAcpModeLabel,
@@ -93,6 +96,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
     const parts = [isAgentActiveStatus(agent.status) ? "online" : agent.status];
     if (modelLabel) {
       parts.push(modelLabel);
+    }
+    if (agent.thinking_level?.trim()) {
+      parts.push(agent.thinking_level.trim());
     }
     if (agent.target_node_id) {
       parts.push(agent.target_node_id);
@@ -185,11 +191,11 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                   const pendingPermissionCount =
                     pendingPermissionCounts[agent.id] ?? 0;
                   const pendingPermissionLabel = `${pendingPermissionCount} pending permission${pendingPermissionCount > 1 ? "s" : ""} for ${agent.name}`;
-                  const modelLabel = formatAgentModelLabel(
-                    agent.command,
-                    agent.args
-                  );
-                  const isCodexAgent = resolveAcpProvider(agent.command) === "codex";
+                  const modelLabel =
+                    agent.runtime_model?.trim() ||
+                    formatAgentModelLabel(agent.command, agent.args);
+                  const isCodexAgent =
+                    resolveAcpProviderForAgent(agent.command, agent.args) === "codex";
                   const codexMode = normalizeCodexAcpModeId(
                     agent.codex_acp_default_mode
                   );
@@ -222,7 +228,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           onSelectAgent(agent.id);
                         }
                       }}
-                      title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}\nNode: ${agent.target_node_id ?? "main"}`}
+                      title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nRuntime model: ${agent.runtime_model ?? "provider default"}\nThinking level: ${agent.thinking_level ?? "provider default"}\nCode mode: ${agent.code_mode ? "on" : "off"}\nNode: ${agent.target_node_id ?? "main"}`}
                     >
                       <Box className={AGENTS_WORKBENCH_ROW_HEAD_CLASS}>
                         <Box className={AGENTS_WORKBENCH_ROW_TITLE_CLASS}>

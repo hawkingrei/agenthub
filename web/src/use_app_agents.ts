@@ -69,6 +69,8 @@ export function useAppAgents(
   const [defaultWorktreeRoot, setDefaultWorktreeRoot] = useState(DEFAULT_WORKTREE_ROOT);
   const [agentPresetId, setAgentPresetId] = useState<AgentPresetId>(DEFAULT_AGENT_PRESET_ID);
   const [codexAcpDefaultMode, setCodexAcpDefaultMode] = useState(DEFAULT_CODEX_ACP_MODE);
+  const [runtimeModel, setRuntimeModel] = useState("");
+  const [thinkingLevel, setThinkingLevel] = useState("");
   const [worktreeMode, setWorktreeMode] = useState<"use_existing" | "create_worktree" | "reuse_worktree">("use_existing");
   const [worktreeRepo, setWorktreeRepo] = useState("");
   const [worktreeRef, setWorktreeRef] = useState("");
@@ -225,6 +227,8 @@ export function useAppAgents(
       setAgentName("");
       setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
       setCodexAcpDefaultMode(DEFAULT_CODEX_ACP_MODE);
+      setRuntimeModel("");
+      setThinkingLevel("");
       setWorktreeMode("use_existing");
       setWorktreeRepo("");
       setWorktreeRef("");
@@ -368,6 +372,8 @@ export function useAppAgents(
     );
     selectedTargetNodeDefaultWorktreeRootRef.current = mainDefaultRoot;
     setTargetNodeId("main");
+    setRuntimeModel("");
+    setThinkingLevel("");
     setShowCreateAgent(true);
     void refreshAgentNodes({ silent: true });
     void refreshAgentNodeJoinBootstrap({ silent: true });
@@ -517,6 +523,8 @@ export function useAppAgents(
         preset.provider === "codex"
           ? normalizeCodexAcpModeId(codexAcpDefaultMode)
           : null;
+      const supportsRuntimeProfile =
+        preset.provider === "codex" || preset.provider === "claude";
       if (!workdirPayload && worktreeMode !== "create_worktree") {
         setError("workdir is required");
         return;
@@ -536,12 +544,16 @@ export function useAppAgents(
         worktree_ref: worktreeRef.trim() || null,
         code_mode: codeMode,
         codex_acp_default_mode: defaultMode,
+        runtime_model: supportsRuntimeProfile ? runtimeModel.trim() || null : null,
+        thinking_level: supportsRuntimeProfile ? thinkingLevel.trim() || null : null,
         target_node_id: normalizedTargetNodeId,
       });
       setAgents((prev) => [agent, ...prev]);
       setShowCreateAgent(false);
       setAgentName("");
       setCodexAcpDefaultMode(DEFAULT_CODEX_ACP_MODE);
+      setRuntimeModel("");
+      setThinkingLevel("");
       setAgentWorkdir(
         resolveWorkdirForModeChange(
           "",
@@ -576,6 +588,8 @@ export function useAppAgents(
     worktreeRef,
     codeMode,
     codexAcpDefaultMode,
+    runtimeModel,
+    thinkingLevel,
   ]);
 
   const onStartAgent = useCallback(async (id: string) => {
@@ -694,6 +708,10 @@ export function useAppAgents(
     setAgentPresetId,
     codexAcpDefaultMode,
     setCodexAcpDefaultMode,
+    runtimeModel,
+    setRuntimeModel,
+    thinkingLevel,
+    setThinkingLevel,
     worktreeMode,
     setWorktreeMode: handleWorktreeModeChange,
     worktreeRepo,

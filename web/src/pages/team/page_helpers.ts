@@ -543,7 +543,8 @@ function trimNewestByNumericId<T>(
 }
 
 export function buildAgentLabel(agent: AgentRecord): string {
-  const model = formatAgentModelLabel(agent.command, agent.args) ?? "Unknown";
+  const model =
+    agent.runtime_model?.trim() || formatAgentModelLabel(agent.command, agent.args) || "Unknown";
   return `${agent.name} · ${model} · ${agent.id.slice(0, 8)}`;
 }
 

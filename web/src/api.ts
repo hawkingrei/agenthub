@@ -28,6 +28,8 @@ export type AgentConfig = {
   worktree_ref?: string | null;
   code_mode: boolean;
   codex_acp_default_mode?: string | null;
+  runtime_model?: string | null;
+  thinking_level?: string | null;
   agent_loop_enabled?: boolean;
   agent_loop_idle_seconds?: number | null;
   agent_loop_prompt?: string | null;
@@ -45,6 +47,8 @@ export type AgentRecord = {
   worktree_ref?: string | null;
   code_mode: boolean;
   codex_acp_default_mode?: string | null;
+  runtime_model?: string | null;
+  thinking_level?: string | null;
   agent_loop_enabled?: boolean;
   agent_loop_idle_seconds?: number | null;
   agent_loop_prompt?: string | null;
@@ -77,6 +81,8 @@ export type AgentDiscoveryRuntimeRecord = {
   acp_provider?: string | null;
   code_mode: boolean;
   codex_acp_default_mode?: string | null;
+  runtime_model?: string | null;
+  thinking_level?: string | null;
   agent_loop_enabled?: boolean;
   agent_loop_idle_seconds?: number | null;
   target_node_id?: string | null;
@@ -1434,6 +1440,15 @@ export const api = {
         body: JSON.stringify({ mode_id }),
       }
     ),
+  setAgentRuntimeProfile: (
+    token: string,
+    id: string,
+    payload: { runtime_model?: string | null; thinking_level?: string | null }
+  ) =>
+    apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/runtime_profile`, token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   setAgentLoop: (
     token: string,
     id: string,
