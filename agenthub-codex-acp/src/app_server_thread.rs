@@ -39,11 +39,11 @@ use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs};
 use codex_protocol::protocol::{
     AgentMessageContentDeltaEvent, AgentMessageEvent, ContextCompactedEvent,
-    DeprecationNoticeEvent, ErrorEvent, Event, EventMsg, ExecCommandBeginEvent,
-    ExecCommandEndEvent, ExecCommandOutputDeltaEvent, ExecCommandSource, ExecCommandStatus,
-    ExitedReviewModeEvent, FileChange, McpInvocation, McpToolCallBeginEvent, McpToolCallEndEvent,
-    ModelRerouteEvent, Op, PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus,
-    ReviewDecision, ReviewOutputEvent, ReviewRequest, ReviewTarget, StreamErrorEvent,
+    DeprecationNoticeEvent, EnteredReviewModeEvent, ErrorEvent, Event, EventMsg,
+    ExecCommandBeginEvent, ExecCommandEndEvent, ExecCommandOutputDeltaEvent, ExecCommandSource,
+    ExecCommandStatus, ExitedReviewModeEvent, FileChange, McpInvocation, McpToolCallBeginEvent,
+    McpToolCallEndEvent, ModelRerouteEvent, Op, PatchApplyBeginEvent, PatchApplyEndEvent,
+    PatchApplyStatus, ReviewDecision, ReviewOutputEvent, ReviewTarget, StreamErrorEvent,
     TerminalInteractionEvent, TokenCountEvent, TokenUsage, TokenUsageInfo, TurnAbortReason,
     TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, ViewImageToolCallEvent, WarningEvent,
     WebSearchBeginEvent, WebSearchEndEvent,
@@ -1391,24 +1391,50 @@ impl AppServerCodexThread {
                             server,
                             tool,
                             arguments,
+                            app_context,
                             mcp_app_resource_uri,
+                            plugin_id,
                             ..
                         },
-                    ) => Some(Event {
-                        id,
-                        msg: EventMsg::McpToolCallBegin(McpToolCallBeginEvent {
-                            call_id,
-                            invocation: McpInvocation {
-                                server,
-                                tool,
-                                arguments: Some(arguments),
-                            },
-                            connector_id: None,
-                            mcp_app_resource_uri,
-                            link_id: None,
-                            plugin_id: None,
-                        }),
-                    }),
+                    ) => {
+                        let (
+                            connector_id,
+                            link_id,
+                            resource_uri,
+                            app_name,
+                            template_id,
+                            action_name,
+                        ) = app_context
+                            .map(|context| {
+                                (
+                                    Some(context.connector_id),
+                                    context.link_id,
+                                    context.resource_uri,
+                                    context.app_name,
+                                    context.template_id,
+                                    context.action_name,
+                                )
+                            })
+                            .unwrap_or_default();
+                        Some(Event {
+                            id,
+                            msg: EventMsg::McpToolCallBegin(McpToolCallBeginEvent {
+                                call_id,
+                                invocation: McpInvocation {
+                                    server,
+                                    tool,
+                                    arguments: Some(arguments),
+                                },
+                                connector_id,
+                                mcp_app_resource_uri: resource_uri.or(mcp_app_resource_uri),
+                                link_id,
+                                app_name,
+                                template_id,
+                                action_name,
+                                plugin_id,
+                            }),
+                        })
+                    }
                     (
                         Some(id),
                         codex_app_server_protocol::ThreadItem::DynamicToolCall {
@@ -1451,17 +1477,16 @@ impl AppServerCodexThread {
                             }),
                         })
                     }
-                    (
-                        Some(id),
-                        codex_app_server_protocol::ThreadItem::WebSearch { id: call_id, .. },
-                    ) => Some(Event {
-                        id,
-                        msg: EventMsg::WebSearchBegin(WebSearchBeginEvent { call_id }),
-                    }),
+                    (Some(id), codex_app_server_protocol::ThreadItem::WebSearch(item)) => {
+                        Some(Event {
+                            id,
+                            msg: EventMsg::WebSearchBegin(WebSearchBeginEvent { call_id: item.id }),
+                        })
+                    }
                     (
                         Some(id),
                         codex_app_server_protocol::ThreadItem::ImageView { id: call_id, path },
-                    ) => Some(Event {
+                    ) => path.to_inferred_path_uri().map(|path| Event {
                         id,
                         msg: EventMsg::ViewImageToolCall(ViewImageToolCallEvent { call_id, path }),
                     }),
@@ -1617,13 +1642,34 @@ impl AppServerCodexThread {
                             server,
                             tool,
                             arguments,
+                            app_context,
                             mcp_app_resource_uri,
+                            plugin_id,
                             result,
                             error,
                             duration_ms,
                             ..
                         },
                     ) => {
+                        let (
+                            connector_id,
+                            link_id,
+                            resource_uri,
+                            app_name,
+                            template_id,
+                            action_name,
+                        ) = app_context
+                            .map(|context| {
+                                (
+                                    Some(context.connector_id),
+                                    context.link_id,
+                                    context.resource_uri,
+                                    context.app_name,
+                                    context.template_id,
+                                    context.action_name,
+                                )
+                            })
+                            .unwrap_or_default();
                         let result = match (result, error) {
                             (Some(result), None) => Ok(CallToolResult {
                                 content: result.content,
@@ -1648,10 +1694,13 @@ impl AppServerCodexThread {
                                     tool,
                                     arguments: Some(arguments),
                                 },
-                                connector_id: None,
-                                mcp_app_resource_uri,
-                                link_id: None,
-                                plugin_id: None,
+                                connector_id,
+                                mcp_app_resource_uri: resource_uri.or(mcp_app_resource_uri),
+                                link_id,
+                                app_name,
+                                template_id,
+                                action_name,
+                                plugin_id,
                                 duration: duration_ms
                                     .and_then(|ms| u64::try_from(ms).ok())
                                     .map(Duration::from_millis)
@@ -1695,23 +1744,19 @@ impl AppServerCodexThread {
                             },
                         ),
                     }),
-                    (
-                        Some(id),
-                        codex_app_server_protocol::ThreadItem::WebSearch {
-                            id: call_id,
-                            query,
-                            action,
-                        },
-                    ) => Some(Event {
-                        id,
-                        msg: EventMsg::WebSearchEnd(WebSearchEndEvent {
-                            call_id,
-                            query,
-                            action: action
-                                .map(app_server_web_search_action_to_core)
-                                .unwrap_or(codex_protocol::models::WebSearchAction::Other),
-                        }),
-                    }),
+                    (Some(id), codex_app_server_protocol::ThreadItem::WebSearch(item)) => {
+                        Some(Event {
+                            id,
+                            msg: EventMsg::WebSearchEnd(WebSearchEndEvent {
+                                call_id: item.id,
+                                query: item.query,
+                                action: item
+                                    .action
+                                    .map(app_server_web_search_action_to_core)
+                                    .unwrap_or(codex_protocol::models::WebSearchAction::Other),
+                            }),
+                        })
+                    }
                     (Some(id), codex_app_server_protocol::ThreadItem::ContextCompaction { .. }) => {
                         Some(Event {
                             id,
@@ -2128,17 +2173,21 @@ fn request_user_input_response_to_app_server(
     }
 }
 
-fn app_server_entered_review_mode_to_core(review: String) -> ReviewRequest {
-    ReviewRequest {
+fn app_server_entered_review_mode_to_core(review: String) -> EnteredReviewModeEvent {
+    EnteredReviewModeEvent {
         target: ReviewTarget::Custom {
             instructions: review.clone(),
         },
         user_facing_hint: Some(review),
+        turn_id: None,
+        item_id: None,
     }
 }
 
 fn app_server_exited_review_mode_to_core(review: String) -> ExitedReviewModeEvent {
     ExitedReviewModeEvent {
+        turn_id: None,
+        item_id: None,
         review_output: Some(ReviewOutputEvent {
             findings: Vec::new(),
             overall_correctness: String::new(),
@@ -3015,7 +3064,7 @@ fn config_request_overrides_from_config(
         .config_layer_stack
         .get_active_user_layer()
         .and_then(|layer| match &layer.name {
-            codex_app_server_protocol::ConfigLayerSource::User {
+            codex_config::ConfigLayerSource::User {
                 profile: Some(profile),
                 ..
             } => Some(profile),
@@ -3047,6 +3096,7 @@ fn server_request_id_to_mcp_request_id(request_id: &RequestId) -> McpRequestId {
 mod tests {
     use super::*;
     use codex_core::config::ConfigBuilder;
+    use codex_protocol::protocol::ReviewRequest;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use std::fs;
     use uuid::Uuid;
@@ -3546,6 +3596,7 @@ mod tests {
             status: None,
             call_id: "call-1".to_string(),
             name: "apply_patch".to_string(),
+            namespace: None,
             input: "*** Begin Patch".to_string(),
             internal_chat_message_metadata_passthrough: None,
         };
