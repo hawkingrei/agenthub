@@ -209,7 +209,11 @@ fn codex_mcp_server_config(cwd: &Path, mcp_server: McpServer) -> Option<(String,
                     Some(env.into_iter().map(|env| (env.name, env.value)).collect())
                 },
                 env_vars: vec![],
-                cwd: Some(cwd.to_path_buf()),
+                cwd: Some(
+                    codex_utils_absolute_path::AbsolutePathBuf::try_from(cwd)
+                        .expect("ACP session roots are absolute")
+                        .into(),
+                ),
             },
         ),
         // Codex does not support ACP SSE MCP servers.
@@ -220,6 +224,7 @@ fn codex_mcp_server_config(cwd: &Path, mcp_server: McpServer) -> Option<(String,
         sanitize_codex_mcp_server_name(&name),
         McpServerConfig {
             transport,
+            auth: Default::default(),
             environment_id: DEFAULT_MCP_SERVER_ENVIRONMENT_ID.to_string(),
             required: false,
             enabled: true,
@@ -558,7 +563,7 @@ fn repair_initial_history(history: InitialHistory) -> (InitialHistory, HistoryRe
             mut history,
             rollout_path,
         }) => {
-            let repaired = repair_rollout_items(&mut history);
+            let repaired = repair_rollout_items(Arc::make_mut(&mut history));
             (
                 InitialHistory::Resumed(ResumedHistory {
                     conversation_id,
@@ -581,7 +586,7 @@ async fn persist_repaired_initial_history(
     for item in history.get_rollout_items() {
         let line = RolloutLine {
             timestamp: timestamp.clone(),
-            item,
+            item: item.clone(),
         };
         let serialized = serde_json::to_string(&line).map_err(|err| {
             std::io::Error::other(format!("failed to serialize repaired rollout line: {err}"))
@@ -598,10 +603,10 @@ async fn persist_repaired_initial_history(
 fn repaired_rollout_timestamp(history: &InitialHistory) -> String {
     history
         .get_rollout_items()
-        .into_iter()
+        .iter()
         .find_map(|item| match item {
             RolloutItem::SessionMeta(meta_line) if !meta_line.meta.timestamp.is_empty() => {
-                Some(meta_line.meta.timestamp)
+                Some(meta_line.meta.timestamp.clone())
             }
             _ => None,
         })
@@ -748,7 +753,7 @@ impl CodexAgent {
             session_id.clone(),
             thread_impl,
             self.auth_manager.clone(),
-            adapt_models_manager(self.thread_manager.get_models_manager()),
+            adapt_models_manager(self.thread_manager.get_models_manager(), config.clone()),
             self.client_capabilities.clone(),
             config.clone(),
         ));
@@ -815,12 +820,12 @@ impl CodexAgent {
             session_id.clone(),
             thread_impl,
             self.auth_manager.clone(),
-            adapt_models_manager(self.thread_manager.get_models_manager()),
+            adapt_models_manager(self.thread_manager.get_models_manager(), config.clone()),
             self.client_capabilities.clone(),
             config.clone(),
         ));
 
-        thread.replay_history(rollout_items).await?;
+        thread.replay_history(rollout_items.to_vec()).await?;
 
         let load = thread.load().await?;
 
@@ -990,7 +995,7 @@ mod tests {
             SessionMetaLine, SessionSource,
         },
     };
-    use std::{collections::HashMap, path::PathBuf};
+    use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
     #[tokio::test]
     async fn codex_agent_new_initializes_thread_manager() {
@@ -1071,7 +1076,10 @@ mod tests {
             env.expect("env"),
             HashMap::from([("AGENTHUB_TEST".to_string(), "1".to_string())])
         );
-        assert_eq!(config_cwd, Some(cwd));
+        assert_eq!(
+            config_cwd.as_ref().map(|path| path.as_str()),
+            Some(cwd.to_str().expect("test cwd is valid UTF-8"))
+        );
     }
 
     #[test]
@@ -1090,14 +1098,17 @@ mod tests {
         let thread_id = ThreadId::new();
         let history = InitialHistory::Resumed(ResumedHistory {
             conversation_id: thread_id,
-            history: vec![RolloutItem::ResponseItem(ResponseItem::CustomToolCall {
-                id: None,
-                status: Some("completed".to_string()),
-                call_id: "call-1".to_string(),
-                name: "actor_send".to_string(),
-                input: "{}".to_string(),
-                internal_chat_message_metadata_passthrough: None,
-            })],
+            history: Arc::new(vec![RolloutItem::ResponseItem(
+                ResponseItem::CustomToolCall {
+                    id: None,
+                    status: Some("completed".to_string()),
+                    call_id: "call-1".to_string(),
+                    name: "actor_send".to_string(),
+                    namespace: None,
+                    input: "{}".to_string(),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            )]),
             rollout_path: Some(PathBuf::from("/tmp/rollout.jsonl")),
         });
 
@@ -1125,7 +1136,7 @@ mod tests {
         let thread_id = ThreadId::new();
         let history = InitialHistory::Resumed(ResumedHistory {
             conversation_id: thread_id,
-            history: vec![
+            history: Arc::new(vec![
                 RolloutItem::SessionMeta(SessionMetaLine {
                     meta: SessionMeta {
                         id: thread_id,
@@ -1143,10 +1154,11 @@ mod tests {
                     status: Some("completed".to_string()),
                     call_id: "call-persist".to_string(),
                     name: "actor_send".to_string(),
+                    namespace: None,
                     input: "{}".to_string(),
                     internal_chat_message_metadata_passthrough: None,
                 }),
-            ],
+            ]),
             rollout_path: Some(rollout_path.clone()),
         });
 
@@ -1199,6 +1211,7 @@ mod tests {
                 status: Some("completed".to_string()),
                 call_id: "call-2".to_string(),
                 name: "actor_ack".to_string(),
+                namespace: None,
                 input: "{}".to_string(),
                 internal_chat_message_metadata_passthrough: None,
             },

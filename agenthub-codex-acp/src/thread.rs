@@ -23,7 +23,6 @@ use codex_apply_patch::parse_patch;
 use codex_core::{
     CodexThread,
     config::{Config, set_project_trust_level},
-    review_format::format_review_findings_block,
     review_prompts::user_facing_hint,
 };
 use codex_login::AuthManager;
@@ -62,6 +61,7 @@ use codex_protocol::{
         RequestUserInputAnswer, RequestUserInputEvent, RequestUserInputQuestion,
         RequestUserInputResponse,
     },
+    review_format::format_review_findings_block,
     user_input::UserInput,
 };
 use codex_shell_command::parse_command::parse_command;
@@ -135,36 +135,43 @@ pub trait ModelsManagerImpl {
     async fn list_models(&self) -> Vec<ModelPreset>;
 }
 
-#[async_trait::async_trait]
-impl<T: ModelsManager + ?Sized> ModelsManagerImpl for T {
-    async fn get_model(&self, model_id: &Option<String>) -> String {
-        self.get_default_model(model_id, RefreshStrategy::OnlineIfUncached)
-            .await
-    }
-
-    async fn list_models(&self) -> Vec<ModelPreset> {
-        self.list_models(RefreshStrategy::OnlineIfUncached).await
-    }
-}
-
 #[derive(Debug)]
-struct SharedModelsManagerAdapter(Arc<dyn ModelsManager>);
+struct SharedModelsManagerAdapter {
+    models_manager: Arc<dyn ModelsManager>,
+    config: Config,
+}
 
 #[async_trait::async_trait]
 impl ModelsManagerImpl for SharedModelsManagerAdapter {
     async fn get_model(&self, model_id: &Option<String>) -> String {
-        self.0
-            .get_default_model(model_id, RefreshStrategy::OnlineIfUncached)
+        self.models_manager
+            .get_default_model(
+                model_id,
+                false,
+                RefreshStrategy::OnlineIfUncached,
+                self.config.http_client_factory(),
+            )
             .await
     }
 
     async fn list_models(&self) -> Vec<ModelPreset> {
-        self.0.list_models(RefreshStrategy::OnlineIfUncached).await
+        self.models_manager
+            .list_models(
+                RefreshStrategy::OnlineIfUncached,
+                self.config.http_client_factory(),
+            )
+            .await
     }
 }
 
-pub fn adapt_models_manager(models_manager: Arc<dyn ModelsManager>) -> Arc<dyn ModelsManagerImpl> {
-    Arc::new(SharedModelsManagerAdapter(models_manager))
+pub fn adapt_models_manager(
+    models_manager: Arc<dyn ModelsManager>,
+    config: Config,
+) -> Arc<dyn ModelsManagerImpl> {
+    Arc::new(SharedModelsManagerAdapter {
+        models_manager,
+        config,
+    })
 }
 
 #[async_trait::async_trait]
@@ -1194,6 +1201,7 @@ impl PromptState {
             }
             EventMsg::ViewImageToolCall(ViewImageToolCallEvent { call_id, path }) => {
                 info!("ViewImageToolCallEvent received");
+                let path = path.to_path_buf();
                 let display_path = path.display().to_string();
                 client
                     .send_notification(
@@ -1363,7 +1371,7 @@ impl PromptState {
         client: &SessionClient,
         event: ExitedReviewModeEvent,
     ) -> Result<(), Error> {
-        let ExitedReviewModeEvent { review_output } = event;
+        let ExitedReviewModeEvent { review_output, .. } = event;
         let Some(ReviewOutputEvent {
             findings,
             overall_correctness: _,
@@ -4652,7 +4660,7 @@ mod tests {
     };
     use codex_core::test_support::all_model_presets;
     use codex_protocol::config_types::ModeKind;
-    use codex_protocol::protocol::ModelVerificationEvent;
+    use codex_protocol::protocol::{EnteredReviewModeEvent, ModelVerificationEvent};
     use codex_utils_absolute_path::AbsolutePathBuf;
     use tokio::{
         sync::{Mutex, Notify, mpsc::UnboundedSender},
@@ -6022,7 +6030,12 @@ mod tests {
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::EnteredReviewMode(review_request.clone()),
+                            msg: EventMsg::EnteredReviewMode(EnteredReviewModeEvent {
+                                target: review_request.target.clone(),
+                                user_facing_hint: review_request.user_facing_hint.clone(),
+                                turn_id: None,
+                                item_id: None,
+                            }),
                         })
                         .unwrap();
                     self.op_tx
@@ -6030,6 +6043,8 @@ mod tests {
                             id: submission_id.clone(),
 
                             msg: EventMsg::ExitedReviewMode(ExitedReviewModeEvent {
+                                turn_id: None,
+                                item_id: None,
                                 review_output: Some(ReviewOutputEvent {
                                     findings: vec![],
                                     overall_correctness: String::new(),
@@ -7304,6 +7319,9 @@ mod tests {
                             connector_id: None,
                             mcp_app_resource_uri: Some(resource_uri.clone()),
                             link_id: None,
+                            app_name: None,
+                            template_id: None,
+                            action_name: None,
                             plugin_id: None,
                         }),
                     )
@@ -7318,6 +7336,9 @@ mod tests {
                             connector_id: None,
                             mcp_app_resource_uri: Some(resource_uri.clone()),
                             link_id: None,
+                            app_name: None,
+                            template_id: None,
+                            action_name: None,
                             plugin_id: None,
                             duration: Duration::from_millis(5),
                             result: Ok(CallToolResult {
