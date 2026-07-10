@@ -34,10 +34,10 @@ test("creates a Codex agent with an explicit runtime profile", async ({ page }) 
   await page.goto("/workspace", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Create Agent" }).click();
 
-  const dialog = page.getByRole("dialog").last();
+  const dialog = page.locator("[role='dialog']").filter({ hasText: "Runtime model" }).last();
   await expect(dialog.getByLabel("Runtime model")).toBeVisible();
   await expect(dialog.getByLabel("Thinking level")).toBeVisible();
-  await dialog.getByLabel("Name").fill("Runtime Profile Agent");
+  await dialog.getByPlaceholder("e.g. Alice").fill("Runtime Profile Agent");
   await dialog.getByLabel("Workspace path").fill("/workspace/runtime-profile-agent");
   await dialog.getByLabel("Runtime model").fill("gpt-5");
   await dialog.getByLabel("Thinking level").click();

@@ -233,7 +233,9 @@ export async function createTeamMemberFromModal(
   }
   if (options.thinkingLevel) {
     await dialog.getByLabel("Thinking level").click();
-    await page.getByRole("option", { name: options.thinkingLevel, exact: true }).click();
+    const thinkingLevelLabel =
+      options.thinkingLevel.slice(0, 1).toUpperCase() + options.thinkingLevel.slice(1);
+    await page.getByRole("option", { name: thinkingLevelLabel, exact: true }).click();
   }
   await dialog.getByLabel(TEAM_MEMBER_WORKSPACE_LABEL_PATTERN).fill(options.workdir);
   await dialog
