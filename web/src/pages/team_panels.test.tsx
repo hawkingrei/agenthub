@@ -3884,6 +3884,7 @@ describe("team panels interactions", () => {
             onClose={() => setEditDraft(null)}
             onSave={vi.fn()}
             chrome={modalChrome}
+            supportsRuntimeProfile={false}
           />
         </>
       );

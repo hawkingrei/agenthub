@@ -52,6 +52,10 @@ export type CreateAgentModalProps = {
   setAgentPresetId: (value: AgentPresetId) => void;
   codexAcpDefaultMode?: string;
   setCodexAcpDefaultMode?: (value: string) => void;
+  runtimeModel?: string;
+  setRuntimeModel?: (value: string) => void;
+  thinkingLevel?: string;
+  setThinkingLevel?: (value: string) => void;
   worktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
   setWorktreeMode: (
     value: "use_existing" | "create_worktree" | "reuse_worktree"
@@ -76,6 +80,12 @@ const worktreeOptions = [
   { value: "use_existing", label: "Use existing workdir" },
   { value: "create_worktree", label: "Create git worktree" },
   { value: "reuse_worktree", label: "Reuse git worktree" },
+];
+export const THINKING_LEVEL_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "max", label: "Max" },
 ];
 const TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS =
   "!border !border-ui-border-emphasis !bg-brand-primary !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-brand-primary-hover";
@@ -144,6 +154,10 @@ export function CreateAgentModal({
   setAgentPresetId,
   codexAcpDefaultMode = DEFAULT_CODEX_ACP_MODE,
   setCodexAcpDefaultMode,
+  runtimeModel = "",
+  setRuntimeModel,
+  thinkingLevel = "",
+  setThinkingLevel,
   worktreeMode,
   setWorktreeMode,
   worktreeRepo,
@@ -171,6 +185,8 @@ export function CreateAgentModal({
   const preset = getAgentPreset(agentPresetId);
   const commandSummary = formatAgentCommand(preset);
   const isCodexPreset = preset.provider === "codex";
+  const supportsRuntimeProfile =
+    preset.provider === "codex" || preset.provider === "claude";
   const normalizedCodexAcpDefaultMode =
     normalizeCodexAcpModeId(codexAcpDefaultMode);
   const isCreateWorktreeMode = worktreeMode === "create_worktree";
@@ -237,7 +253,13 @@ export function CreateAgentModal({
             value={agentPresetId}
             data={presetOptions}
             onChange={(event) => {
-              setAgentPresetId(resolveCreateAgentPresetId(event.currentTarget.value));
+              const nextPresetId = resolveCreateAgentPresetId(event.currentTarget.value);
+              setAgentPresetId(nextPresetId);
+              const nextPreset = getAgentPreset(nextPresetId);
+              if (nextPreset.provider !== "codex" && nextPreset.provider !== "claude") {
+                setRuntimeModel?.("");
+                setThinkingLevel?.("");
+              }
             }}
           />
           {isCodexPreset ? (
@@ -253,6 +275,26 @@ export function CreateAgentModal({
                 );
               }}
             />
+          ) : null}
+          {supportsRuntimeProfile ? (
+            <>
+              <TextInput
+                label="Runtime model"
+                description="Optional. Leave blank to use the provider default."
+                placeholder={isCodexPreset ? "gpt-5" : "claude-sonnet"}
+                value={runtimeModel}
+                onChange={(event) => setRuntimeModel?.(event.currentTarget.value)}
+              />
+              <Select
+                label="Thinking level"
+                description="Applied when the next session starts."
+                placeholder="Provider default"
+                value={thinkingLevel || null}
+                data={THINKING_LEVEL_OPTIONS}
+                clearable
+                onChange={(value) => setThinkingLevel?.(value ?? "")}
+              />
+            </>
           ) : null}
           {showWorkdirInput ? (
             <TextInput

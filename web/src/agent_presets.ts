@@ -101,13 +101,11 @@ export function formatAgentCommand(preset: AgentPreset): string {
 }
 
 export function resolveAcpProvider(command: string): string | null {
-  const tokens = commandTokens(command);
-  const name = commandBinaryNameFromToken(tokens[0] ?? "");
-  if (!name) return null;
-  if (name === "agenthub-acp") {
-    return resolveAgenthubAcpProvider(tokens.slice(1));
-  }
-  return COMMAND_PROVIDER_MAP.get(name) ?? null;
+  return resolveAcpProviderForAgent(command, []);
+}
+
+export function resolveAcpProviderForAgent(command: string, args: string[]): string | null {
+  return resolveAcpProviderFromCommandAndArgs(command, args);
 }
 
 export function formatAgentModelLabel(

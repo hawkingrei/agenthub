@@ -94,6 +94,13 @@ describe("CreateAgentModal", () => {
     expect(html).toContain("Chat");
   });
 
+  it("shows runtime profile controls only for Codex and Claude presets", () => {
+    expect(renderModal()).toContain("Runtime model");
+    expect(renderModal()).toContain("Thinking level");
+    expect(renderModal({ agentPresetId: "claude" })).toContain("Runtime model");
+    expect(renderModal({ agentPresetId: "gemini" })).not.toContain("Runtime model");
+  });
+
   it("can hide the command summary strip", () => {
     const html = renderModal({ showCommandSummary: false });
     expect(html).not.toContain("Command");

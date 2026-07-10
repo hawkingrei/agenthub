@@ -10,6 +10,7 @@ import {
 } from "../../codex_acp_modes";
 import {
   CreateAgentModal,
+  THINKING_LEVEL_OPTIONS,
   type CreateAgentModalProps,
 } from "../../components/create_agent_modal";
 import {
@@ -196,6 +197,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
   onClose,
   onSave,
   chrome,
+  supportsRuntimeProfile,
 }: {
   open: boolean;
   busy: string | null;
@@ -205,6 +207,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
   onClose: () => void;
   onSave: () => void;
   chrome: TeamModalChrome;
+  supportsRuntimeProfile: boolean;
 }) {
   if (!open || !draft) {
     return null;
@@ -268,6 +271,30 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                 onPatchDraft({ description: event.currentTarget.value })
               }
             />
+            {supportsRuntimeProfile ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <TextInput
+                  radius="md"
+                  label="Runtime model"
+                  description="Optional. Leave blank to use the provider default."
+                  placeholder="Provider default"
+                  value={draft.runtime_model}
+                  onChange={(event) =>
+                    onPatchDraft({ runtime_model: event.currentTarget.value })
+                  }
+                />
+                <Select
+                  radius="md"
+                  label="Thinking level"
+                  description="Applies to future sessions."
+                  placeholder="Provider default"
+                  value={draft.thinking_level || null}
+                  data={THINKING_LEVEL_OPTIONS}
+                  clearable
+                  onChange={(value) => onPatchDraft({ thinking_level: value ?? "" })}
+                />
+              </div>
+            ) : null}
             <TextInput
               className="mt-3"
               radius="md"

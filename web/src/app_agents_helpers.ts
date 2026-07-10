@@ -98,6 +98,8 @@ function isSameAgentRecord(a: AgentRecord, b: AgentRecord): boolean {
     (a.worktree_ref ?? null) === (b.worktree_ref ?? null) &&
     a.code_mode === b.code_mode &&
     (a.codex_acp_default_mode ?? null) === (b.codex_acp_default_mode ?? null) &&
+    (a.runtime_model ?? null) === (b.runtime_model ?? null) &&
+    (a.thinking_level ?? null) === (b.thinking_level ?? null) &&
     (a.agent_loop_enabled ?? null) === (b.agent_loop_enabled ?? null) &&
     (a.agent_loop_idle_seconds ?? null) === (b.agent_loop_idle_seconds ?? null) &&
     (a.agent_loop_prompt ?? null) === (b.agent_loop_prompt ?? null) &&

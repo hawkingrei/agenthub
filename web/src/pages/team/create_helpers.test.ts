@@ -72,6 +72,8 @@ function buildProfileDraft(
     agent_loop_idle_seconds: "",
     agent_loop_prompt: "",
     codex_acp_default_mode: "full-access",
+    runtime_model: "",
+    thinking_level: "",
     ...overrides,
   };
 }
@@ -462,6 +464,8 @@ describe("team create helpers", () => {
       agent_loop_idle_seconds: "900",
       agent_loop_prompt: "Resume review synthesis after silence.",
       codex_acp_default_mode: "full-access",
+      runtime_model: "gpt-5",
+      thinking_level: "high",
     }) as { members: Array<Record<string, unknown>> };
     expect(updated.members).toHaveLength(1);
     expect(updated.members[0]).toMatchObject({
@@ -481,6 +485,8 @@ describe("team create helpers", () => {
       worktree_ref: null,
       code_mode: true,
       codex_acp_default_mode: "full-access",
+      runtime_model: "gpt-5",
+      thinking_level: "high",
       agent_loop_enabled: true,
       agent_loop_idle_seconds: 900,
       agent_loop_prompt: "Resume review synthesis after silence.",
@@ -511,6 +517,8 @@ describe("team create helpers", () => {
       agent_loop_idle_seconds: "900abc",
       agent_loop_prompt: "Resume review synthesis after silence.",
       codex_acp_default_mode: "full-access",
+      runtime_model: "",
+      thinking_level: "",
     }) as { members: Array<Record<string, unknown>> };
 
     expect(updated.members[0]?.runtime).toEqual({
@@ -522,6 +530,8 @@ describe("team create helpers", () => {
       worktree_ref: null,
       code_mode: true,
       codex_acp_default_mode: "full-access",
+      runtime_model: undefined,
+      thinking_level: undefined,
       agent_loop_enabled: true,
       agent_loop_idle_seconds: undefined,
       agent_loop_prompt: "Resume review synthesis after silence.",
@@ -552,6 +562,8 @@ describe("team create helpers", () => {
       agent_loop_idle_seconds: "9",
       agent_loop_prompt: "Resume review synthesis after silence.",
       codex_acp_default_mode: "full-access",
+      runtime_model: "",
+      thinking_level: "",
     }) as { members: Array<Record<string, unknown>> };
 
     expect(updated.members[0]?.runtime).toEqual({
@@ -563,6 +575,8 @@ describe("team create helpers", () => {
       worktree_ref: null,
       code_mode: true,
       codex_acp_default_mode: "full-access",
+      runtime_model: undefined,
+      thinking_level: undefined,
       agent_loop_enabled: true,
       agent_loop_idle_seconds: undefined,
       agent_loop_prompt: "Resume review synthesis after silence.",

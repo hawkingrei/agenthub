@@ -37,6 +37,7 @@ export type TeamPageModalsProps = {
   patchTeamMemberEditDraft: (patch: Partial<TeamMemberProfileDraft>) => void;
   closeTeamMemberEditModal: () => void;
   onSaveTeamMemberProfile: () => void;
+  selectedAgentSupportsRuntimeProfile: boolean;
   createChrome: TeamModalChrome;
   forgeChrome: TeamModalChrome;
   editChrome: TeamModalChrome;
@@ -68,6 +69,7 @@ export const TeamPageModals = React.memo(function TeamPageModals({
   patchTeamMemberEditDraft,
   closeTeamMemberEditModal,
   onSaveTeamMemberProfile,
+  selectedAgentSupportsRuntimeProfile,
   createChrome,
   forgeChrome,
   editChrome,
@@ -115,6 +117,7 @@ export const TeamPageModals = React.memo(function TeamPageModals({
         onClose={closeTeamMemberEditModal}
         onSave={onSaveTeamMemberProfile}
         chrome={editChrome}
+        supportsRuntimeProfile={selectedAgentSupportsRuntimeProfile}
       />
     </>
   );

@@ -4,6 +4,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../components/create_agent_modal", () => ({
+  THINKING_LEVEL_OPTIONS: [
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "max", label: "Max" },
+  ],
   CreateAgentModal: ({
     title,
     children,
@@ -104,11 +110,14 @@ describe("Team management modals", () => {
             agent_loop_idle_seconds: "900",
             agent_loop_prompt: "Resume by checking inbox.",
             codex_acp_default_mode: "full-access",
+            runtime_model: "gpt-5",
+            thinking_level: "high",
           }}
           onPatchDraft={vi.fn()}
           onClose={vi.fn()}
           onSave={vi.fn()}
           chrome={chrome}
+          supportsRuntimeProfile
         />
       </MantineProvider>
     );
@@ -141,6 +150,8 @@ describe("Team management modals", () => {
             agent_loop_idle_seconds: "",
             agent_loop_prompt: "",
             codex_acp_default_mode: "full-access",
+            runtime_model: "",
+            thinking_level: "",
           }}
           roleProfile={{
             profileLabel: "Coordinator Profile",
@@ -220,6 +231,8 @@ describe("Team management modals", () => {
             agent_loop_idle_seconds: "",
             agent_loop_prompt: "",
             codex_acp_default_mode: "full-access",
+            runtime_model: "",
+            thinking_level: "",
           }}
           roleProfile={{
             profileLabel: "Worker Profile",

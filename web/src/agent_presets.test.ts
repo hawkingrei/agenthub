@@ -7,6 +7,7 @@ import {
   isAgentPresetId,
   listAgentPresets,
   resolveAcpProvider,
+  resolveAcpProviderForAgent,
 } from "./agent_presets";
 
 describe("agent presets", () => {
@@ -60,6 +61,11 @@ describe("agent presets", () => {
     expect(resolveAcpProvider("/opt/bin/gemini --model gemini-1.5-pro"))
       .toBe("gemini");
     expect(resolveAcpProvider("unknown")).toBe(null);
+  });
+
+  it("resolves ACP providers split between command and args", () => {
+    expect(resolveAcpProviderForAgent("agenthub-acp", ["codex"])).toBe("codex");
+    expect(resolveAcpProviderForAgent("agenthub-acp", ["claude"])).toBe("claude");
   });
 
   it("formats agent model label from args or provider", () => {

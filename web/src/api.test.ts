@@ -911,6 +911,16 @@ describe("api request headers", () => {
       },
       {
         call: () =>
+          api.setAgentRuntimeProfile(token, agentId, {
+            runtime_model: "gpt-5",
+            thinking_level: "high",
+          }),
+        url: "/api/agents/agent%2Fone/runtime_profile",
+        method: "POST",
+        body: { runtime_model: "gpt-5", thinking_level: "high" },
+      },
+      {
+        call: () =>
           api.setAgentLoop(token, agentId, {
             enabled: true,
             idle_seconds: 30,
