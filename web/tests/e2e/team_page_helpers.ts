@@ -154,6 +154,8 @@ export async function createTeamMemberFromModal(
     teamName?: string;
     workdir: string;
     model?: string;
+    runtimeModel?: string;
+    thinkingLevel?: "low" | "medium" | "high" | "max";
     identity?: string;
   }
 ): Promise<void> {
@@ -225,6 +227,13 @@ export async function createTeamMemberFromModal(
   }
   if (options.model && options.model !== "codex") {
     await dialog.getByLabel(TEAM_MEMBER_RUNTIME_LABEL_PATTERN).selectOption(options.model);
+  }
+  if (options.runtimeModel) {
+    await dialog.getByLabel("Runtime model").fill(options.runtimeModel);
+  }
+  if (options.thinkingLevel) {
+    await dialog.getByLabel("Thinking level").click();
+    await page.getByRole("option", { name: options.thinkingLevel, exact: true }).click();
   }
   await dialog.getByLabel(TEAM_MEMBER_WORKSPACE_LABEL_PATTERN).fill(options.workdir);
   await dialog

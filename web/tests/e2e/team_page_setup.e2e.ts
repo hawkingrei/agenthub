@@ -97,6 +97,8 @@ test("team member setup adds the first agent and appends more agents through spe
     teamName,
     workdir: "/workspace/member-setup-coordinator",
     model: "codex",
+    runtimeModel: "gpt-5",
+    thinkingLevel: "high",
     identity: "Principal planner and reviewer",
   });
   await openTeamFromSelector(page, teamName);
@@ -119,6 +121,10 @@ test("team member setup adds the first agent and appends more agents through spe
   ]);
   const [coordinatorMember, workerMember] = updates[1]?.payload.spec.members ?? [];
   expect(coordinatorMember?.model).toBe("codex");
+  expect(coordinatorMember?.runtime).toMatchObject({
+    runtime_model: "gpt-5",
+    thinking_level: "high",
+  });
   expect(coordinatorMember?.skills).toBeUndefined();
   expect(workerMember?.model).toBe("gemini");
   expect(workerMember?.skills).toBeUndefined();
