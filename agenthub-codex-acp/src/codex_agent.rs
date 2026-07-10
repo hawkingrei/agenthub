@@ -209,11 +209,9 @@ fn codex_mcp_server_config(cwd: &Path, mcp_server: McpServer) -> Option<(String,
                     Some(env.into_iter().map(|env| (env.name, env.value)).collect())
                 },
                 env_vars: vec![],
-                cwd: Some(
-                    codex_utils_absolute_path::AbsolutePathBuf::try_from(cwd)
-                        .expect("ACP session roots are absolute")
-                        .into(),
-                ),
+                cwd: codex_utils_absolute_path::AbsolutePathBuf::try_from(cwd)
+                    .ok()
+                    .map(Into::into),
             },
         ),
         // Codex does not support ACP SSE MCP servers.
@@ -995,7 +993,11 @@ mod tests {
             SessionMetaLine, SessionSource,
         },
     };
-    use std::{collections::HashMap, path::PathBuf, sync::Arc};
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
 
     #[tokio::test]
     async fn codex_agent_new_initializes_thread_manager() {
@@ -1091,6 +1093,29 @@ mod tests {
         );
 
         assert!(config.is_none());
+    }
+
+    #[test]
+    fn codex_mcp_stdio_servers_resolve_relative_cwd() {
+        let (_, config) = codex_mcp_server_config(
+            Path::new("relative-workspace"),
+            McpServer::Stdio(McpServerStdio::new("Mailbox Bridge", "agenthub")),
+        )
+        .expect("stdio mcp server should be supported");
+
+        let McpServerTransportConfig::Stdio { cwd, .. } = config.transport else {
+            panic!("expected stdio transport");
+        };
+        assert_eq!(
+            cwd.as_ref().map(|path| path.as_str()),
+            Some(
+                std::env::current_dir()
+                    .expect("read current directory")
+                    .join("relative-workspace")
+                    .to_str()
+                    .expect("test cwd is valid UTF-8")
+            )
+        );
     }
 
     #[test]
