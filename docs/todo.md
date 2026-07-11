@@ -22,7 +22,6 @@ Stable contracts:
 Matrix to keep current on `agenthub.hawkingrei.com` and in PR browser evidence:
 
 - [ ] `P1` Conversation and composer polish: message rows keep the wider Slock-style content lane, human/agent bubbles stay neutral, thread pane reads like the same chat system as the center lane, and channel/thread/ACP composers share one lightweight input language. Existing notes: [journal/2026-04-24-team-conversation-slock-polish.md](journal/2026-04-24-team-conversation-slock-polish.md).
-- [ ] `P1` Agents workbench lazy-split LCP: deployed `agents` route should ship a small primary shell chunk while OutputBody/InputDock/ACP workbench code loads lazily; evaluate `AcpDebug` as a follow-up split if it still dominates. Existing notes: [journal/2026-04-06-agents-lcp-workbench-split.md](journal/2026-04-06-agents-lcp-workbench-split.md).
 - [ ] `P2` PWA installability: deployed manifest/service-worker remain installable without stale shell caching; HTML shell routes, `sw.js`, and `manifest.webmanifest` stay `no-cache`, while `/assets/*` remains immutable. Existing notes: [journal/2026-04-03-pwa-install-and-team-permission-card-collapse.md](journal/2026-04-03-pwa-install-and-team-permission-card-collapse.md).
 
 ## Team Workspace Architecture
