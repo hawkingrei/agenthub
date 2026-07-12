@@ -87,6 +87,15 @@ export const THINKING_LEVEL_OPTIONS = [
   { value: "high", label: "High" },
   { value: "max", label: "Max" },
 ];
+export const CODEX_RUNTIME_MODEL_OPTIONS = [
+  { value: "gpt-5.6-sol", label: "GPT-5.6-Sol" },
+  { value: "gpt-5.6-terra", label: "GPT-5.6-Terra" },
+  { value: "gpt-5.6-luna", label: "GPT-5.6-Luna" },
+  { value: "gpt-5.5", label: "GPT-5.5" },
+  { value: "gpt-5.4", label: "GPT-5.4" },
+  { value: "gpt-5.4-mini", label: "GPT-5.4-Mini" },
+  { value: "gpt-5.2", label: "GPT-5.2" },
+];
 const TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS =
   "!border !border-ui-border-emphasis !bg-brand-primary !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-brand-primary-hover";
 const TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS =
@@ -278,13 +287,26 @@ export function CreateAgentModal({
           ) : null}
           {supportsRuntimeProfile ? (
             <>
-              <TextInput
-                label="Runtime model"
-                description="Optional. Leave blank to use the provider default."
-                placeholder={isCodexPreset ? "gpt-5" : "claude-sonnet"}
-                value={runtimeModel}
-                onChange={(event) => setRuntimeModel?.(event.currentTarget.value)}
-              />
+              {isCodexPreset ? (
+                <Select
+                  label="Runtime model"
+                  description="Optional. Leave blank to use the provider default."
+                  placeholder="Provider default"
+                  value={runtimeModel || null}
+                  data={CODEX_RUNTIME_MODEL_OPTIONS}
+                  searchable
+                  clearable
+                  onChange={(value) => setRuntimeModel?.(value ?? "")}
+                />
+              ) : (
+                <TextInput
+                  label="Runtime model"
+                  description="Optional. Leave blank to use the provider default."
+                  placeholder="claude-sonnet"
+                  value={runtimeModel}
+                  onChange={(event) => setRuntimeModel?.(event.currentTarget.value)}
+                />
+              )}
               <Select
                 label="Thinking level"
                 description="Applied when the next session starts."
