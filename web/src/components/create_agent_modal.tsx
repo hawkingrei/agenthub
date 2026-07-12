@@ -96,6 +96,21 @@ export const CODEX_RUNTIME_MODEL_OPTIONS = [
   { value: "gpt-5.4-mini", label: "GPT-5.4-Mini" },
   { value: "gpt-5.2", label: "GPT-5.2" },
 ];
+
+export function listCodexRuntimeModelOptions(runtimeModel: string) {
+  const customModel = runtimeModel.trim();
+  if (
+    !customModel ||
+    CODEX_RUNTIME_MODEL_OPTIONS.some((option) => option.value === customModel)
+  ) {
+    return CODEX_RUNTIME_MODEL_OPTIONS;
+  }
+
+  return [
+    ...CODEX_RUNTIME_MODEL_OPTIONS,
+    { value: customModel, label: customModel },
+  ];
+}
 const TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS =
   "!border !border-ui-border-emphasis !bg-brand-primary !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-brand-primary-hover";
 const TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS =
@@ -293,7 +308,7 @@ export function CreateAgentModal({
                   description="Optional. Leave blank to use the provider default."
                   placeholder="Provider default"
                   value={runtimeModel || null}
-                  data={CODEX_RUNTIME_MODEL_OPTIONS}
+                  data={listCodexRuntimeModelOptions(runtimeModel)}
                   searchable
                   clearable
                   onChange={(value) => setRuntimeModel?.(value ?? "")}

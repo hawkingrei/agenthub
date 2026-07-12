@@ -39,7 +39,8 @@ test("creates a Codex agent with an explicit runtime profile", async ({ page }) 
   await expect(dialog.getByLabel("Thinking level")).toBeVisible();
   await dialog.getByPlaceholder("e.g. Alice").fill("Runtime Profile Agent");
   await dialog.getByLabel("Workspace path").fill("/workspace/runtime-profile-agent");
-  await dialog.getByLabel("Runtime model").fill("gpt-5");
+  await dialog.getByLabel("Runtime model").click();
+  await page.getByRole("option", { name: "GPT-5.5", exact: true }).click();
   await dialog.getByLabel("Thinking level").click();
   await page.getByRole("option", { name: "High", exact: true }).click();
   await dialog.getByRole("button", { name: "Create Agent", exact: true }).click();
@@ -47,7 +48,7 @@ test("creates a Codex agent with an explicit runtime profile", async ({ page }) 
   await expect(dialog).toBeHidden();
   expect(fixture.agents.at(-1)).toMatchObject({
     name: "Runtime Profile Agent",
-    runtime_model: "gpt-5",
+    runtime_model: "gpt-5.5",
     thinking_level: "high",
   });
 });

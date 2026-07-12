@@ -4,6 +4,7 @@ import { MantineProvider } from "@mantine/core";
 import {
   CreateAgentModal,
   CODEX_RUNTIME_MODEL_OPTIONS,
+  listCodexRuntimeModelOptions,
   type CreateAgentModalProps,
   resolveCreateAgentPresetId,
   resolveCreateAgentWorktreeMode,
@@ -115,6 +116,16 @@ describe("CreateAgentModal", () => {
       { value: "gpt-5.4", label: "GPT-5.4" },
       { value: "gpt-5.4-mini", label: "GPT-5.4-Mini" },
       { value: "gpt-5.2", label: "GPT-5.2" },
+    ]);
+  });
+
+  it("preserves a custom Codex runtime model in the selector", () => {
+    expect(listCodexRuntimeModelOptions("gpt-5.5")).toEqual(
+      CODEX_RUNTIME_MODEL_OPTIONS
+    );
+    expect(listCodexRuntimeModelOptions("custom-codex-model")).toEqual([
+      ...CODEX_RUNTIME_MODEL_OPTIONS,
+      { value: "custom-codex-model", label: "custom-codex-model" },
     ]);
   });
 
