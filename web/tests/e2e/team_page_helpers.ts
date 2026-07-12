@@ -229,7 +229,16 @@ export async function createTeamMemberFromModal(
     await dialog.getByLabel(TEAM_MEMBER_RUNTIME_LABEL_PATTERN).selectOption(options.model);
   }
   if (options.runtimeModel) {
-    await dialog.getByLabel("Runtime model").fill(options.runtimeModel);
+    const runtimeModel = dialog.getByLabel("Runtime model");
+    if (options.model === "codex") {
+      await runtimeModel.click();
+      await runtimeModel.fill(options.runtimeModel);
+      await page
+        .getByRole("option", { name: new RegExp(options.runtimeModel, "i") })
+        .click();
+    } else {
+      await runtimeModel.fill(options.runtimeModel);
+    }
   }
   if (options.thinkingLevel) {
     await dialog.getByLabel("Thinking level").click();
