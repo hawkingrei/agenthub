@@ -233,7 +233,9 @@ export async function createTeamMemberFromModal(
     if (options.model === "codex") {
       await runtimeModel.click();
       await runtimeModel.fill(options.runtimeModel);
-      await runtimeModel.press("Enter");
+      await page
+        .getByRole("option", { name: new RegExp(options.runtimeModel, "i") })
+        .click();
     } else {
       await runtimeModel.fill(options.runtimeModel);
     }
