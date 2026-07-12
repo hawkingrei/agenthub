@@ -12,6 +12,8 @@ type ModalHarnessProps = {
   worktreeMode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktreeError: string | null;
   agentName?: string;
+  runtimeModel?: string;
+  setRuntimeModel?: (value: string) => void;
 };
 
 function renderHarness(root: Root, props: ModalHarnessProps) {
@@ -25,6 +27,8 @@ function renderHarness(root: Root, props: ModalHarnessProps) {
           setAgentWorkdir={() => {}}
           agentPresetId="codex"
           setAgentPresetId={() => {}}
+          runtimeModel={props.runtimeModel}
+          setRuntimeModel={props.setRuntimeModel}
           worktreeMode={props.worktreeMode}
           setWorktreeMode={() => {}}
           worktreeRepo=""
@@ -125,5 +129,34 @@ describe("CreateAgentModal interactions", () => {
     });
     expect(container.textContent).toContain("Show Advanced workspace options");
     expect(container.textContent).not.toContain("Repository path");
+  });
+
+  it("updates the Codex runtime model selection", () => {
+    const setRuntimeModel = vi.fn();
+    renderHarness(root, {
+      worktreeMode: "use_existing",
+      worktreeError: null,
+      setRuntimeModel,
+    });
+
+    const runtimeModelLabel = Array.from(container.querySelectorAll("label")).find(
+      (label) => label.textContent === "Runtime model"
+    );
+    const runtimeModel = document.getElementById(
+      runtimeModelLabel?.htmlFor ?? ""
+    ) as HTMLInputElement | null;
+    expect(runtimeModel).not.toBeNull();
+
+    act(() => {
+      runtimeModel?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const modelOption = Array.from(document.querySelectorAll('[role="option"]')).find(
+      (node) => node.textContent === "GPT-5.5"
+    );
+    expect(modelOption).toBeDefined();
+    act(() => {
+      modelOption?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(setRuntimeModel).toHaveBeenLastCalledWith("gpt-5.5");
   });
 });
