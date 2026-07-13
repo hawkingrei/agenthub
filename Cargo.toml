@@ -74,7 +74,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Pin problematic transitive dependencies
 icu_calendar = "=2.2.1"
 icu_decimal = "=2.2.0"
-superboring = "=0.1.11"
+superboring = "=0.1.12"
 
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 web-push = "0.11"
