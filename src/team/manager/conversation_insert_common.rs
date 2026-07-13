@@ -2,7 +2,9 @@ use agenthub_message_store::MessageBodyStore;
 use serde_json::Value;
 use sqlx::Sqlite;
 
-use super::conversation_body::{conversation_body_key, rehydrate_conversation_body_in_tx};
+use super::conversation_body::{
+    conversation_body_key, record_conversation_body_write, rehydrate_conversation_body_in_tx,
+};
 use super::conversation_idempotency::{
     ensure_task_conversation_message_idempotency_compatible,
     fetch_task_conversation_message_by_idempotency,
@@ -188,6 +190,9 @@ pub(super) async fn insert_task_conversation_message_with_tx(
             created_at,
         )
         .await?;
+    }
+    if created {
+        record_conversation_body_write(tx, message.message_id, stage_body).await?;
     }
 
     Ok((message, created))

@@ -821,6 +821,98 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
 }
 
 #[tokio::test]
+async fn completed_backfill_skips_dual_writes_and_recovers_later_sqlite_only_writes() {
+    use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
+
+    let db = setup_test_db().await;
+    let sqlite_writer = TeamManager::new(db.clone());
+    let task = body_store_team_and_task(&sqlite_writer).await;
+    sqlite_writer
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"historical body"}),
+        )
+        .await
+        .expect("append historical body");
+
+    let store = body_store();
+    crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        16,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("complete historical backfill");
+
+    let dual_writer = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    dual_writer
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"already dual-written"}),
+        )
+        .await
+        .expect("append dual-written body");
+    assert_eq!(
+        crate::team::count_pending_conversation_body_migration(&db)
+            .await
+            .unwrap(),
+        0,
+        "a completed backfill must not re-stage later dual-written messages"
+    );
+    let report = crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        16,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("skip already dual-written body");
+    assert_eq!(report.staged, 0);
+
+    let sqlite_only = sqlite_writer
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"written while store disabled"}),
+        )
+        .await
+        .expect("append SQLite-only body");
+    assert_eq!(
+        crate::team::count_pending_conversation_body_migration(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    let report = crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        16,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("recover SQLite-only body");
+    assert_eq!(report.staged, 1);
+    assert!(store.contains(&AuthorityMessageId::new(format!(
+        "tcm:{}",
+        sqlite_only.message_id
+    ))));
+}
+
+#[tokio::test]
 async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
     use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
 

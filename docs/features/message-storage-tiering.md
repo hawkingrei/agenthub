@@ -356,6 +356,8 @@ it must not authorize or redefine message authority.
 - The first implementation is opt-in with `message_body_store.enabled = true`. A durable SQLite
   checkpoint records the staged `team_conversation_messages` prefix. Earlier sentinel rows are repaired
   only after their body is found in `cf_body` or the outbox, so enabling Phase 1 never discards a body.
+  A completed backfill does not re-stage later dual-written rows, while a later SQLite-only write makes
+  the next enabled run resume from that exact message boundary.
 - Backfill must be idempotent, resumable by prefix scope, and must never overwrite a newer live write.
 - Rebuild must be safe to interrupt.
 - Rollback before Phase 2 is disabling the RocksDB backend and reading the body from SQLite; no data is

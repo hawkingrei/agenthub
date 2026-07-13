@@ -693,6 +693,18 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE message_body_backfill_checkpoint (
+            scope TEXT PRIMARY KEY,
+            last_message_id INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create message_body_backfill_checkpoint");
+
+    sqlx::query(
+        r#"
         CREATE UNIQUE INDEX idx_team_conversation_messages_idempotency
         ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
         WHERE idempotency_key IS NOT NULL;

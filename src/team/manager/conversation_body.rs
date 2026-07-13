@@ -136,6 +136,33 @@ pub(crate) struct ConversationBodyMigrationReport {
 }
 
 const CONVERSATION_BODY_BACKFILL_SCOPE: &str = "team_conversation_messages";
+const CONVERSATION_BODY_BACKFILL_COMPLETE: i64 = i64::MAX;
+
+/// Record the first write after a completed historical backfill.
+///
+/// A dual-written message is already present in the outbox, so its id becomes the new safe prefix.
+/// A SQLite-only message needs later backfill, so its id is intentionally excluded from that prefix.
+pub(super) async fn record_conversation_body_write(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    message_id: i64,
+    body_store_active: bool,
+) -> anyhow::Result<()> {
+    let safe_prefix = if body_store_active {
+        message_id
+    } else {
+        message_id.saturating_sub(1)
+    };
+    sqlx::query(
+        "UPDATE message_body_backfill_checkpoint SET last_message_id = ?1 \
+         WHERE scope = ?2 AND last_message_id = ?3",
+    )
+    .bind(safe_prefix)
+    .bind(CONVERSATION_BODY_BACKFILL_SCOPE)
+    .bind(CONVERSATION_BODY_BACKFILL_COMPLETE)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
 
 /// Number of rows that still need either legacy restoration or Phase 1 outbox staging.
 pub(crate) async fn count_pending_conversation_body_migration(
@@ -184,10 +211,6 @@ pub(crate) async fn migrate_conversation_bodies_into_store(
     let max_id: Option<i64> = sqlx::query_scalar("SELECT MAX(id) FROM team_conversation_messages")
         .fetch_one(pool)
         .await?;
-    let Some(max_id) = max_id else {
-        return Ok(ConversationBodyMigrationReport::default());
-    };
-
     let mut report = ConversationBodyMigrationReport::default();
     loop {
         let ids = sqlx::query_scalar::<_, i64>(
@@ -230,54 +253,65 @@ pub(crate) async fn migrate_conversation_bodies_into_store(
     .bind(CONVERSATION_BODY_BACKFILL_SCOPE)
     .fetch_one(pool)
     .await?;
-    loop {
-        let rows = sqlx::query(
-            "SELECT id, payload_json FROM team_conversation_messages \
+    if let Some(max_id) = max_id {
+        loop {
+            let rows = sqlx::query(
+                "SELECT id, payload_json FROM team_conversation_messages \
              WHERE id > ?1 AND id <= ?2 \
              ORDER BY id ASC LIMIT ?3",
-        )
-        .bind(cursor)
-        .bind(max_id)
-        .bind(batch_size)
-        .fetch_all(pool)
-        .await?;
-        if rows.is_empty() {
-            break;
-        }
-
-        let mut tx = pool.begin().await?;
-        for row in &rows {
-            let id: i64 = row.get("id");
-            let payload_json: String = row.get("payload_json");
-            agenthub_db::message_body_outbox::stage_body(
-                &mut tx,
-                &conversation_body_key(id),
-                payload_json.as_bytes(),
-                staged_at,
             )
+            .bind(cursor)
+            .bind(max_id)
+            .bind(batch_size)
+            .fetch_all(pool)
             .await?;
-            cursor = id;
-            report.staged += 1;
-        }
-        sqlx::query(
-            "INSERT INTO message_body_backfill_checkpoint (scope, last_message_id) VALUES (?1, ?2) \
-             ON CONFLICT(scope) DO UPDATE SET last_message_id = excluded.last_message_id",
-        )
-        .bind(CONVERSATION_BODY_BACKFILL_SCOPE)
-        .bind(cursor)
-        .execute(&mut *tx)
-        .await?;
-        tx.commit().await?;
+            if rows.is_empty() {
+                break;
+            }
 
-        // Keep the outbox (which holds a duplicate of each body) bounded as we go.
-        report.drained +=
-            agenthub_db::message_body_outbox::drain_into(pool, store, drain_batch).await? as u64;
+            let mut tx = pool.begin().await?;
+            for row in &rows {
+                let id: i64 = row.get("id");
+                let payload_json: String = row.get("payload_json");
+                agenthub_db::message_body_outbox::stage_body(
+                    &mut tx,
+                    &conversation_body_key(id),
+                    payload_json.as_bytes(),
+                    staged_at,
+                )
+                .await?;
+                cursor = id;
+                report.staged += 1;
+            }
+            sqlx::query(
+                "INSERT INTO message_body_backfill_checkpoint (scope, last_message_id) VALUES (?1, ?2) \
+                 ON CONFLICT(scope) DO UPDATE SET last_message_id = excluded.last_message_id",
+            )
+            .bind(CONVERSATION_BODY_BACKFILL_SCOPE)
+            .bind(cursor)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
 
-        // Yield the single SQLite writer between batches so concurrent writes are not starved.
-        if !inter_batch_delay.is_zero() {
-            tokio::time::sleep(inter_batch_delay).await;
+            // Keep the outbox (which holds a duplicate of each body) bounded as we go.
+            report.drained += agenthub_db::message_body_outbox::drain_into(pool, store, drain_batch)
+                .await? as u64;
+
+            // Yield the single SQLite writer between batches so concurrent writes are not starved.
+            if !inter_batch_delay.is_zero() {
+                tokio::time::sleep(inter_batch_delay).await;
+            }
         }
     }
+
+    sqlx::query(
+        "INSERT INTO message_body_backfill_checkpoint (scope, last_message_id) VALUES (?1, ?2) \
+         ON CONFLICT(scope) DO UPDATE SET last_message_id = excluded.last_message_id",
+    )
+    .bind(CONVERSATION_BODY_BACKFILL_SCOPE)
+    .bind(CONVERSATION_BODY_BACKFILL_COMPLETE)
+    .execute(pool)
+    .await?;
 
     // Clear anything left staged (e.g. by an earlier interrupted run). Drive the loop off the outbox
     // count rather than the per-pass drained count: if a body persistently fails to write, a full pass
