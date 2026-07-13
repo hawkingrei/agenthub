@@ -39,13 +39,12 @@ Stable contracts:
 - [features/team-execution-vocabulary.md](features/team-execution-vocabulary.md)
 - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
 
-- [ ] `P1` Implement per-agent runtime profiles for ACP-backed agents: persist provider/model/thinking-level settings per agent, expose them in create/edit and Team member flows, and map the first supported profiles to Codex and Claude Code adapters without taking over provider credentials or live model catalogs. Stable contract: [features/agent-runtime-profiles.md](features/agent-runtime-profiles.md).
 - [ ] `P1` Verify remote Team direct-mailbox routing on real multi-node teams: after the local API regression and routing fix in [journal/2026-05-26-team-remote-direct-mailbox-routing.md](journal/2026-05-26-team-remote-direct-mailbox-routing.md), confirm direct single-member delivery still preserves mention metadata plus summary/`detail_ref` payloads when the recipient agent is remote and transport falls back to p2p relay in a real multi-node rollout. Existing notes: [journal/2026-03-26-team-direct-mailbox-summary-first.md](journal/2026-03-26-team-direct-mailbox-summary-first.md).
 - [ ] `P2` Verify Team agent self-maintenance and deferred follow-up flows: `profile_patch_proposal`, `agent_time_trigger_*`, and operator-controlled `agent_loop` should behave consistently without blocking normal task progress.
 
 ## Message Storage
 
-- [ ] `P1` Implement message-body compression via RocksDB, per [features/message-storage-tiering.md](features/message-storage-tiering.md). Move message bodies out of SQLite authority rows into a RocksDB `cf_body` column family compressed by SST block compression (plain zstd + bottommost zstd; trained dictionary deferred), keep a body-free RocksDB delivery index, and stage migration as dual-body write + backfill (Phase 1) then drop the SQLite body column (Phase 2). Goal is shrinking at-rest chat/message storage; SQLite stays metadata authority, LanceDB stays the (eventually-consistent) search layer. First PR boundary: opt-in RocksDB backend behind a feature flag with `cf_body` round-trip + compression-ratio tests on a real chat corpus, before any SQLite body drop.
+- [ ] `P1` Implement the RocksDB `cf_index` delivery projection and its authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). The opt-in Phase 1 `cf_body` dual-write/backfill is complete; keep normal reads on SQLite until ordered index reads, integrity checks, and backup validation are in place. Do not drop SQLite bodies before the Phase 2 rollout decision.
 
 ## Observability, CI, And Docs
 

@@ -3,7 +3,8 @@
 //! The durable SQLite outbox lives in `agenthub-db` (`message_body_outbox`). The RocksDB-backed body
 //! store that staged bodies drain into is only compiled when the binary is built with the `rocksdb`
 //! feature, which is enabled per release target so the native `librocksdb-sys` build does not affect
-//! the default or Bazel builds. The write-path body/metadata split is added in a follow-up.
+//! the default or Bazel builds. Phase 1 keeps SQLite as the compatibility copy and dual-writes bodies
+//! through the durable outbox.
 
 use std::sync::Arc;
 
@@ -14,9 +15,9 @@ pub type SharedBodyStore = Arc<dyn MessageBodyStore>;
 
 /// Construct the message body store from config, if it is enabled and compiled in.
 ///
-/// The store is a default capability: it is on unless `message_body_store.enabled = false`. It can
-/// only actually be constructed when the binary is built with the `rocksdb` feature; otherwise this
-/// logs and returns `None` so the binary still runs (without compression).
+/// The store is opt-in through `message_body_store.enabled = true`. It can only actually be
+/// constructed when the binary is built with the `rocksdb` feature; otherwise this logs and returns
+/// `None` so the binary still runs (without compression).
 pub fn init_body_store(config: &agenthub_config::AppConfig) -> Option<SharedBodyStore> {
     if !config.message_body_store_enabled() {
         tracing::info!("message body store disabled by config");

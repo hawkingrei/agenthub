@@ -42,7 +42,7 @@ pub use manager::{
     TeamTaskUpdateWithNoteInput,
 };
 pub(crate) use manager::{
-    count_inline_conversation_bodies, migrate_conversation_bodies_into_store,
+    count_pending_conversation_body_migration, migrate_conversation_bodies_into_store,
 };
 pub(crate) use permission_review::resolve_team_permission_review_target;
 pub use permission_review::{

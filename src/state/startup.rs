@@ -38,11 +38,9 @@ impl AppState {
         Ok(())
     }
 
-    /// Backfills existing inline conversation bodies into the body store once, in the background, so a
-    /// database that predates the store being enabled is migrated automatically after an upgrade and
-    /// restart. It is safe to run on every startup: it is idempotent and resumable (already-moved rows
-    /// are skipped), and the read path serves both inline and moved rows, so online traffic during the
-    /// backfill is unaffected. Once the database is fully migrated each startup only pays a quick count.
+    /// Stages existing SQLite compatibility bodies into the body store in the background. The durable
+    /// checkpoint makes this resumable, while SQLite remains readable throughout Phase 1. It also
+    /// repairs any sentinel rows left by the earlier move-out implementation before proceeding.
     fn spawn_conversation_body_backfill(
         db: SqlitePool,
         store: crate::message_body_store::SharedBodyStore,
@@ -53,16 +51,16 @@ impl AppState {
         const BACKFILL_INTER_BATCH_DELAY: std::time::Duration =
             std::time::Duration::from_millis(25);
         tokio::spawn(async move {
-            match crate::team::count_inline_conversation_bodies(&db).await {
+            match crate::team::count_pending_conversation_body_migration(&db).await {
                 Ok(0) => return,
                 Ok(remaining) => {
                     tracing::info!(
                         remaining,
-                        "backfilling inline conversation bodies into the body store"
+                        "staging SQLite conversation bodies into the body store"
                     );
                 }
                 Err(error) => {
-                    tracing::warn!(error = %error, "conversation body backfill: failed to count inline bodies; skipping this startup");
+                    tracing::warn!(error = %error, "conversation body backfill: failed to count pending rows; skipping this startup");
                     return;
                 }
             }
@@ -78,7 +76,8 @@ impl AppState {
             {
                 Ok(report) => {
                     tracing::info!(
-                        migrated = report.migrated,
+                        restored = report.restored,
+                        staged = report.staged,
                         confirmed = report.drained,
                         "conversation body backfill complete"
                     );

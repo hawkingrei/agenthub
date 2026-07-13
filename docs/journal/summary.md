@@ -134,6 +134,17 @@ Start with:
 - `2026-06-10-message-store-foundation-crate.md`
 - `2026-06-13-debian-systemd-release-package.md`
 
+### 2026-07
+
+Main shape:
+
+- Phase 1 message-body storage now keeps SQLite compatibility bodies while asynchronously staging
+  compressed RocksDB copies through a durable outbox and checkpointed backfill.
+
+Start with:
+
+- `2026-07-13-message-body-store-phase1-dual-write.md`
+
 ## Compaction Rules
 
 - Keep original dated journals when they contain validation evidence, PR context, or detailed

@@ -161,7 +161,7 @@ use self::codec_status::{
     team_task_status_to_str,
 };
 pub(crate) use self::conversation_body::{
-    count_inline_conversation_bodies, migrate_conversation_bodies_into_store,
+    count_pending_conversation_body_migration, migrate_conversation_bodies_into_store,
 };
 #[cfg(test)]
 pub(super) use self::conversation_idempotency::task_conversation_payload_correlation_id;
@@ -185,8 +185,9 @@ pub struct TeamManager {
     db: SqlitePool,
     event_dbs: AgentEventDbRouter,
     message_archive: Option<MessageArchiveStoreRef>,
-    /// Tiered message body store. When set, conversation message bodies are moved out of SQLite into
-    /// the store (staged via the outbox) on write and rehydrated on read; `None` keeps bodies inline.
+    /// Tiered message body store. When set, conversation bodies are dual-written through the durable
+    /// outbox while SQLite remains the Phase 1 compatibility source of truth. Legacy sentinel rows
+    /// are still rehydrated until the migration restores them.
     body_store: Option<crate::message_body_store::SharedBodyStore>,
     conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
     remote_relay_adapter: Arc<TeamRemoteRelayAdapter>,

@@ -106,15 +106,14 @@ pub struct MessageArchiveConfig {
     pub message_table: Option<String>,
 }
 
-/// Tiered message body store (compresses message bodies into RocksDB). Default-on when the binary is
-/// built with the `rocksdb` feature; `enabled = false` turns it off.
+/// Tiered message body store (compresses message bodies into RocksDB). It is opt-in: set
+/// `enabled = true` after building with the `rocksdb` feature.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MessageBodyStoreConfig {
     pub enabled: Option<bool>,
     pub path: Option<String>,
-    /// Whether to backfill existing inline conversation bodies into the store on startup. Default-on;
-    /// set `auto_migrate = false` to only move bodies written from now on (e.g. to run `agenthub
-    /// migrate` manually instead).
+    /// Whether to backfill existing SQLite compatibility bodies into the store on startup. Default-on
+    /// once the store itself is enabled; set `auto_migrate = false` to use `agenthub migrate`.
     pub auto_migrate: Option<bool>,
 }
 
@@ -349,14 +348,13 @@ impl AppConfig {
             .to_string()
     }
 
-    /// Whether the tiered message body store is enabled. Default-on (a default capability); only an
-    /// explicit `enabled = false` turns it off. The build must also include the `rocksdb` feature for
-    /// the store to actually be constructed.
+    /// Whether the tiered message body store is enabled. It is opt-in, and the build must include the
+    /// `rocksdb` feature for the store to actually be constructed.
     pub fn message_body_store_enabled(&self) -> bool {
         self.message_body_store
             .as_ref()
             .and_then(|config| config.enabled)
-            .unwrap_or(true)
+            .unwrap_or(false)
     }
 
     /// Filesystem path for the message body store. Defaults next to the other agenthub data.
@@ -371,8 +369,8 @@ impl AppConfig {
         expand_tilde(path)
     }
 
-    /// Whether to backfill existing inline conversation bodies into the store on startup. Default-on;
-    /// only an explicit `auto_migrate = false` disables it.
+    /// Whether to backfill existing SQLite compatibility bodies into the store on startup. Default-on
+    /// once the store is enabled; only an explicit `auto_migrate = false` disables it.
     pub fn message_body_store_auto_migrate(&self) -> bool {
         self.message_body_store
             .as_ref()
@@ -617,6 +615,20 @@ mod tests {
         AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, MessageBodyStoreConfig,
         ServerConfig, ServerRole, WorktreeConfig,
     };
+
+    #[test]
+    fn message_body_store_is_opt_in() {
+        assert!(!AppConfig::default().message_body_store_enabled());
+        let config = AppConfig {
+            message_body_store: Some(MessageBodyStoreConfig {
+                enabled: Some(true),
+                path: None,
+                auto_migrate: None,
+            }),
+            ..Default::default()
+        };
+        assert!(config.message_body_store_enabled());
+    }
 
     #[test]
     fn message_body_store_auto_migrate_defaults_on() {

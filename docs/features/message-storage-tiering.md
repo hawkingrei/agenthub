@@ -207,7 +207,8 @@ Failure handling:
   process crashes between the authority commit and the `cf_body` ack.
 
 During Phase 1 the legacy SQLite body column also still holds the body, so the outbox is effectively
-redundant; from Phase 2 onward the outbox is the only non-RocksDB durable home for an unconfirmed body.
+redundant; normal conversation reads use that SQLite compatibility copy rather than `cf_body`. From
+Phase 2 onward the outbox is the only non-RocksDB durable home for an unconfirmed body.
 
 For flows where LanceDB append happens asynchronously, the index may store a pending
 `archive_document_id` state, but it must preserve enough authority metadata for a later repair job to
@@ -230,8 +231,8 @@ Search APIs continue to use LanceDB. Search results may optionally hydrate deliv
 index when the UI needs unread/ack/cursor hints, but search ranking and body matching stay in the
 archive layer.
 
-SQLite remains the fallback path for both index and body until the RocksDB backend has been built and
-validated and the SQLite body column has been dropped.
+SQLite remains the body read path throughout Phase 1. RocksDB ordered-index reads and body hydration
+remain future work until the backend has been validated and the SQLite body column can be dropped.
 
 ### 7) Rebuild And Repair
 
@@ -345,13 +346,16 @@ it must not authorize or redefine message authority.
 
 - Migration is staged and non-destructive:
   - Phase 1 (canonical write becomes dual-body): new writes put the body into both SQLite (compat) and
-    `cf_body`, with the SQLite body outbox staged in the authority transaction; reads can be switched
-    to RocksDB behind the flag; historical bodies are backfilled into `cf_body` by idempotent,
-    resumable, prefix-scoped jobs.
+    `cf_body`, with the SQLite body outbox staged in the authority transaction; normal reads remain on
+    SQLite; historical bodies are backfilled into `cf_body` by idempotent, resumable, prefix-scoped
+    jobs.
   - Phase 2 (canonical): once `cf_body` is validated and included in backups, the SQLite body column is
     dropped; SQLite becomes metadata-only and the `message_body_outbox` becomes the only non-RocksDB
     durable home for a not-yet-confirmed body.
 - Historical SQLite rows remain readable during Phase 1.
+- The first implementation is opt-in with `message_body_store.enabled = true`. A durable SQLite
+  checkpoint records the staged `team_conversation_messages` prefix. Earlier sentinel rows are repaired
+  only after their body is found in `cf_body` or the outbox, so enabling Phase 1 never discards a body.
 - Backfill must be idempotent, resumable by prefix scope, and must never overwrite a newer live write.
 - Rebuild must be safe to interrupt.
 - Rollback before Phase 2 is disabling the RocksDB backend and reading the body from SQLite; no data is

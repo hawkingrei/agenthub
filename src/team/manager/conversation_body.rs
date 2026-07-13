@@ -1,14 +1,8 @@
 //! Tiered-body support for `team_conversation_messages`.
 //!
-//! When the message body store is active, a conversation message's `payload_json` is moved out of the
-//! SQLite row into the body store (keyed by the row's authority id) so the larger chat body lives in
-//! the compressed RocksDB store rather than inline in SQLite. The SQLite row keeps the queried
-//! metadata columns (see `init_db`) and stores [`CONVERSATION_BODY_MOVED_SENTINEL`] in place of the
-//! body. The read path rehydrates the real payload from the body store, falling back to the durable
-//! outbox for bodies that have been staged but not yet drained.
-//!
-//! Rows written without an active store (older rows, or platforms built without the `rocksdb` feature)
-//! keep their full inline `payload_json` and are never treated as moved, so both shapes coexist.
+//! Phase 1 keeps every new `payload_json` in SQLite and stages a duplicate into the durable outbox for
+//! compressed RocksDB storage. The sentinel and rehydration path remain only to repair rows written by
+//! the earlier move-out implementation; new writes must never create a sentinel row.
 
 use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
 use sqlx::{Sqlite, SqlitePool};
@@ -16,7 +10,7 @@ use sqlx::{Sqlite, SqlitePool};
 use super::TeamManager;
 use crate::team::TeamConversationMessageRecord;
 
-/// Sentinel stored in `payload_json` when a conversation body has been moved into the body store.
+/// Legacy sentinel stored by the pre-Phase-1 move-out implementation.
 ///
 /// It is intentionally not valid JSON, so it can never collide with a real serialized payload (which
 /// is always valid JSON). Moved-ness is therefore decided by an exact string comparison against this
@@ -25,12 +19,12 @@ use crate::team::TeamConversationMessageRecord;
 /// SQLite browsers / CLIs, which can silently truncate strings containing a NUL byte.
 pub(super) const CONVERSATION_BODY_MOVED_SENTINEL: &str = "::agenthub:tcm-body-moved::";
 
-/// Body-store key for a conversation message's moved body. One copy per logical message (row id).
+/// Body-store key for a conversation message body. One copy per logical message (row id).
 pub(super) fn conversation_body_key(message_id: i64) -> AuthorityMessageId {
     AuthorityMessageId::new(format!("tcm:{message_id}"))
 }
 
-/// Whether a stored `payload_json` indicates the body was moved into the body store.
+/// Whether a stored `payload_json` is a legacy moved-body marker.
 pub(super) fn conversation_payload_was_moved(payload_json: &str) -> bool {
     payload_json == CONVERSATION_BODY_MOVED_SENTINEL
 }
@@ -133,30 +127,39 @@ impl TeamManager {
 /// Outcome of [`migrate_conversation_bodies_into_store`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ConversationBodyMigrationReport {
-    /// Rows whose inline body was moved out of SQLite and staged into the outbox.
-    pub(crate) migrated: u64,
+    /// Legacy sentinel rows restored to their inline SQLite compatibility body.
+    pub(crate) restored: u64,
+    /// SQLite compatibility bodies staged to the outbox for the compressed store.
+    pub(crate) staged: u64,
     /// Bodies durably confirmed in the body store (drained from the outbox).
     pub(crate) drained: u64,
 }
 
-/// Number of conversation rows whose body is still stored inline (i.e. not yet moved into the store).
-pub(crate) async fn count_inline_conversation_bodies(pool: &SqlitePool) -> anyhow::Result<i64> {
+const CONVERSATION_BODY_BACKFILL_SCOPE: &str = "team_conversation_messages";
+
+/// Number of rows that still need either legacy restoration or Phase 1 outbox staging.
+pub(crate) async fn count_pending_conversation_body_migration(
+    pool: &SqlitePool,
+) -> anyhow::Result<i64> {
     let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM team_conversation_messages WHERE payload_json != ?1",
+        "SELECT COUNT(*) FROM team_conversation_messages \
+         WHERE payload_json = ?1 OR id > COALESCE((\
+             SELECT last_message_id FROM message_body_backfill_checkpoint WHERE scope = ?2\
+         ), 0)",
     )
     .bind(CONVERSATION_BODY_MOVED_SENTINEL)
+    .bind(CONVERSATION_BODY_BACKFILL_SCOPE)
     .fetch_one(pool)
     .await?;
     Ok(count)
 }
 
-/// Backfill existing inline conversation bodies into the body store.
+/// Restore historical sentinel rows, then backfill SQLite compatibility bodies into the body store.
 ///
-/// Each batch moves rows out of SQLite (staging the body into the durable outbox and replacing the
-/// row's `payload_json` with the moved sentinel, atomically per transaction) and then drains that
-/// batch into the body store. A final drain pass clears any bodies left staged by an earlier
-/// interrupted run. The pass is resumable and idempotent: already-moved rows are skipped, so re-running
-/// after an interruption only processes what remains.
+/// Each historical row is staged to the durable outbox in the same transaction as the checkpoint
+/// advance, while its SQLite body remains unchanged. A final drain pass clears any bodies left staged
+/// by an earlier interrupted run. The pass is resumable and idempotent: restarting continues from the
+/// committed prefix, and legacy sentinel rows are restored only after their original body is available.
 ///
 /// `inter_batch_delay` paces the loop by sleeping between batches. SQLite allows only one writer, so a
 /// tight loop of write transactions can starve concurrent writers; a non-zero delay yields the write
@@ -186,16 +189,55 @@ pub(crate) async fn migrate_conversation_bodies_into_store(
     };
 
     let mut report = ConversationBodyMigrationReport::default();
-    let mut cursor = 0_i64;
+    loop {
+        let ids = sqlx::query_scalar::<_, i64>(
+            "SELECT id FROM team_conversation_messages WHERE payload_json = ?1 ORDER BY id ASC LIMIT ?2",
+        )
+        .bind(CONVERSATION_BODY_MOVED_SENTINEL)
+        .bind(batch_size)
+        .fetch_all(pool)
+        .await?;
+        if ids.is_empty() {
+            break;
+        }
+
+        for id in ids {
+            let key = conversation_body_key(id);
+            let body = load_moved_conversation_body(Some(store), pool, &key)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!(
+                    "conversation message {id} is marked moved but its body is missing from the store and outbox"
+                ))?;
+            let payload_json = String::from_utf8(body).map_err(|error| {
+                anyhow::anyhow!("conversation message {id} has a non-UTF-8 legacy body: {error}")
+            })?;
+            let restored = sqlx::query(
+                "UPDATE team_conversation_messages SET payload_json = ?1 WHERE id = ?2 AND payload_json = ?3",
+            )
+            .bind(payload_json)
+            .bind(id)
+            .bind(CONVERSATION_BODY_MOVED_SENTINEL)
+            .execute(pool)
+            .await?
+            .rows_affected();
+            report.restored += restored;
+        }
+    }
+
+    let mut cursor: i64 = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT last_message_id FROM message_body_backfill_checkpoint WHERE scope = ?1), 0)",
+    )
+    .bind(CONVERSATION_BODY_BACKFILL_SCOPE)
+    .fetch_one(pool)
+    .await?;
     loop {
         let rows = sqlx::query(
             "SELECT id, payload_json FROM team_conversation_messages \
-             WHERE id > ?1 AND id <= ?2 AND payload_json != ?3 \
-             ORDER BY id ASC LIMIT ?4",
+             WHERE id > ?1 AND id <= ?2 \
+             ORDER BY id ASC LIMIT ?3",
         )
         .bind(cursor)
         .bind(max_id)
-        .bind(CONVERSATION_BODY_MOVED_SENTINEL)
         .bind(batch_size)
         .fetch_all(pool)
         .await?;
@@ -214,14 +256,17 @@ pub(crate) async fn migrate_conversation_bodies_into_store(
                 staged_at,
             )
             .await?;
-            sqlx::query("UPDATE team_conversation_messages SET payload_json = ?1 WHERE id = ?2")
-                .bind(CONVERSATION_BODY_MOVED_SENTINEL)
-                .bind(id)
-                .execute(&mut *tx)
-                .await?;
             cursor = id;
-            report.migrated += 1;
+            report.staged += 1;
         }
+        sqlx::query(
+            "INSERT INTO message_body_backfill_checkpoint (scope, last_message_id) VALUES (?1, ?2) \
+             ON CONFLICT(scope) DO UPDATE SET last_message_id = excluded.last_message_id",
+        )
+        .bind(CONVERSATION_BODY_BACKFILL_SCOPE)
+        .bind(cursor)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
 
         // Keep the outbox (which holds a duplicate of each body) bounded as we go.
