@@ -6921,7 +6921,13 @@ async fn team_task_api_enforces_team_owner_access_for_existing_tasks() {
 
 #[tokio::test]
 async fn team_task_messages_api_supports_route_and_redaction() {
-    let state = build_test_state().await;
+    use agenthub_message_store::InMemoryBodyStore;
+
+    let body_store = std::sync::Arc::new(InMemoryBodyStore::new());
+    let state = build_test_state_with_body_store(
+        body_store as crate::message_body_store::SharedBodyStore,
+    )
+    .await;
     let headers = auth_headers(&state).await;
 
     let Json(team) = create_team(
@@ -7048,6 +7054,31 @@ async fn team_task_messages_api_supports_route_and_redaction() {
     );
     assert_eq!(message.payload["authorization"], json!("[redacted]"));
     assert_eq!(message.payload["nested"]["api_key"], json!("[redacted]"));
+
+    // Protected object: a routed task message must retain its SQLite compatibility body and stage the
+    // same normalized payload in the durable outbox before the API reports success.
+    let sqlite_payload: String = sqlx::query_scalar(
+        "SELECT payload_json FROM team_conversation_messages WHERE id = ?1",
+    )
+    .bind(message.message_id)
+    .fetch_one(&state.db)
+    .await
+    .expect("load routed message SQLite payload");
+    assert_eq!(
+        serde_json::from_str::<Value>(&sqlite_payload).expect("SQLite payload is valid JSON"),
+        message.payload
+    );
+    let staged_body: Vec<u8> = sqlx::query_scalar(
+        "SELECT body FROM message_body_outbox WHERE authority_message_id = ?1",
+    )
+    .bind(format!("tcm:{}", message.message_id))
+    .fetch_one(&state.db)
+    .await
+    .expect("load routed message durable outbox body");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&staged_body).expect("outbox body is valid JSON"),
+        message.payload
+    );
 
     let Json(to_coordinator_message) = send_team_task_message(
         State(state.clone()),

@@ -204,25 +204,31 @@ fn long_lived_test_agent_args() -> String {
 }
 
 pub(crate) async fn build_test_state() -> AppState {
-    build_test_state_with_db_source_and_archive(None, true, true, None).await
+    build_test_state_with_db_source_and_archive(None, true, true, None, None).await
 }
 
 pub(crate) async fn build_test_state_without_seeded_team_member_agents() -> AppState {
-    build_test_state_with_db_source_and_archive(None, true, false, None).await
+    build_test_state_with_db_source_and_archive(None, true, false, None, None).await
 }
 
 pub(crate) async fn build_test_state_with_db_path(path: &StdPath) -> AppState {
-    build_test_state_with_db_source_and_archive(Some(path), true, true, None).await
+    build_test_state_with_db_source_and_archive(Some(path), true, true, None, None).await
 }
 
 pub(crate) async fn reopen_test_state_with_db_path(path: &StdPath) -> AppState {
-    build_test_state_with_db_source_and_archive(Some(path), false, false, None).await
+    build_test_state_with_db_source_and_archive(Some(path), false, false, None, None).await
 }
 
 pub(crate) async fn build_test_state_with_message_archive(
     archive: Arc<dyn MessageArchiveStore>,
 ) -> AppState {
-    build_test_state_with_db_source_and_archive(None, true, false, Some(archive)).await
+    build_test_state_with_db_source_and_archive(None, true, false, Some(archive), None).await
+}
+
+pub(crate) async fn build_test_state_with_body_store(
+    body_store: crate::message_body_store::SharedBodyStore,
+) -> AppState {
+    build_test_state_with_db_source_and_archive(None, true, true, None, Some(body_store)).await
 }
 
 async fn build_test_state_with_db_source_and_archive(
@@ -230,6 +236,7 @@ async fn build_test_state_with_db_source_and_archive(
     initialize_schema: bool,
     seed_default_agents: bool,
     message_archive: Option<Arc<dyn MessageArchiveStore>>,
+    body_store: Option<crate::message_body_store::SharedBodyStore>,
 ) -> AppState {
     let db = match path {
         Some(path) => create_test_db_at(path).await,
@@ -277,11 +284,10 @@ async fn build_test_state_with_db_source_and_archive(
         permissions.clone(),
         auth.clone(),
     ));
-    let teams = Arc::new(TeamManager::new_with_event_dbs_and_message_archive(
-        db.clone(),
-        event_dbs,
-        message_archive,
-    ));
+    let teams = Arc::new(
+        TeamManager::new_with_event_dbs_and_message_archive(db.clone(), event_dbs, message_archive)
+            .with_body_store(body_store.clone()),
+    );
     let state = AppState {
         db,
         linker_http: crate::linkers::AppLinkerService::default_http_client(),
@@ -292,7 +298,7 @@ async fn build_test_state_with_db_source_and_archive(
         acp_permissions: permissions,
         agent_node_join_bootstrap: crate::agent::AgentNodeJoinBootstrapInfo::disabled(),
         default_worktree_root: config.default_worktree_root(),
-        body_store: None,
+        body_store,
     };
     if seed_default_agents {
         seed_default_team_member_agents(&state).await;
@@ -690,6 +696,29 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_conversation_messages");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE message_body_outbox (
+            authority_message_id TEXT PRIMARY KEY,
+            body BLOB NOT NULL,
+            staged_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create message_body_outbox");
+
+    sqlx::query(
+        r#"
+        CREATE INDEX idx_message_body_outbox_staged_at
+        ON message_body_outbox(staged_at);
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create message_body_outbox staged_at index");
 
     sqlx::query(
         r#"

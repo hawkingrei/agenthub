@@ -402,6 +402,8 @@ it must not authorize or redefine message authority.
   - backfill is idempotent and never clobbers a newer live write;
   - Phase 2 drop leaves single-message reads correct from `cf_body`;
   - rollback before Phase 2 reads the body from SQLite without data loss.
+  - fixtures include every authority table, durable outbox, and checkpoint touched by the exercised
+    path, following [test-regression-guardrails.md](test-regression-guardrails.md).
 - Distributed tests:
   - node-local cache preserves `source_node_id`, `target_node_id`, and `idempotency_key`;
   - rebuilding a node-local index from main authority rows plus body restores the same delivery window.
