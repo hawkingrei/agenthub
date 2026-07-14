@@ -21,7 +21,7 @@ default = []
 release-vendored-openssl = ["dep:openssl"]
 
 [dependencies]
-agent-client-protocol = { version = "=1.0.0", features = ["unstable"] }
+agent-client-protocol = { version = "=1.2.0", features = ["unstable"] }
 agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
