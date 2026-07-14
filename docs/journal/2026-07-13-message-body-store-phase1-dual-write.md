@@ -24,6 +24,10 @@ outbox row only after acknowledgement.
 - Focused conversation tests cover dual writes, outbox retry, checkpointed idempotent backfill,
   legacy-sentinel restoration, store outage/corruption isolation for Phase 1 reads, and concurrent
   append/drain/read behavior.
+- The task-message API route test enables the in-memory body store and asserts that its normalized
+  payload remains in SQLite while the same bytes are staged in `message_body_outbox` before success is
+  returned. Its test fixture creates the outbox table, its `staged_at` index, and the backfill
+  checkpoint so the exercised schema cannot silently omit a Phase 1 durable object.
 - `cargo fmt --check` was run after the changes.
 
 ## Follow-Up

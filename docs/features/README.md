@@ -82,6 +82,7 @@ When older journals are superseded:
 - `docs/features/logical-message-metadata-contract.md`
 - `docs/features/message-archive-lancedb.md`
 - `docs/features/message-storage-tiering.md`
+- `docs/features/test-regression-guardrails.md`
 - `docs/features/app-linkers.md`
 - `docs/features/slock-oauth-linkers.md`
 
