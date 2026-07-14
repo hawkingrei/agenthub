@@ -1,10 +1,8 @@
 //! `agenthub migrate` — one-shot maintenance commands.
 //!
-//! Currently this backfills existing `team_conversation_messages` bodies into the tiered message body
-//! store: rows written before the store was enabled keep their body inline in SQLite, and this command
-//! moves them into the store (staging through the durable outbox, exactly like the write path) so the
-//! larger chat bodies live in the compressed store. It is safe to re-run: already-moved rows are
-//! skipped.
+//! Currently this stages existing `team_conversation_messages` bodies into the tiered message body
+//! store while retaining the SQLite compatibility copy. It also restores any legacy sentinel rows
+//! written by the earlier move-out implementation. It is safe to re-run from its durable checkpoint.
 
 use clap::{CommandFactory, Parser, error::ErrorKind};
 
@@ -16,10 +14,10 @@ use clap::{CommandFactory, Parser, error::ErrorKind};
     disable_help_subcommand = true
 )]
 struct MigrateCli {
-    /// Number of rows to move per transaction.
+    /// Number of rows to stage per transaction.
     #[arg(long, value_name = "N", default_value_t = 500)]
     batch_size: usize,
-    /// Report how many rows would be moved without changing anything.
+    /// Report how many rows need restoration or staging without changing anything.
     #[arg(long)]
     dry_run: bool,
 }
@@ -48,16 +46,16 @@ pub(crate) async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
     let (config, _info) = agenthub_config::AppConfig::load_with_info()?;
     let pool = agenthub_db::init_db().await?;
 
-    let remaining = crate::team::count_inline_conversation_bodies(&pool).await?;
+    let remaining = crate::team::count_pending_conversation_body_migration(&pool).await?;
     if cli.dry_run {
         println!(
-            "[dry-run] {remaining} conversation message body/bodies would be moved into the body store"
+            "[dry-run] {remaining} conversation message body/bodies would be restored or staged"
         );
         return Ok(());
     }
 
     if remaining == 0 {
-        println!("no inline conversation message bodies to migrate");
+        println!("no conversation message bodies need restoration or staging");
         return Ok(());
     }
 
@@ -81,8 +79,8 @@ pub(crate) async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
     .await?;
 
     println!(
-        "migrated {} conversation message body/bodies into the body store ({} confirmed in the store)",
-        report.migrated, report.drained
+        "restored {} and staged {} conversation message body/bodies ({} confirmed in the body store)",
+        report.restored, report.staged, report.drained
     );
     Ok(())
 }

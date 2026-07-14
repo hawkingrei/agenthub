@@ -570,7 +570,7 @@ async fn body_store_team_and_task(manager: &TeamManager) -> crate::team::TeamTas
 }
 
 #[tokio::test]
-async fn conversation_body_moves_to_body_store_and_rehydrates_on_read() {
+async fn conversation_body_dual_writes_to_store_while_retaining_sqlite_payload() {
     use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
 
     let db = setup_test_db().await;
@@ -589,14 +589,17 @@ async fn conversation_body_moves_to_body_store_and_rehydrates_on_read() {
     // The returned in-memory record keeps the full payload.
     assert_eq!(message.payload, payload);
 
-    // SQLite stores the moved sentinel in place of the body.
+    // Phase 1 retains the full authoritative compatibility body in SQLite.
     let stored: String =
         sqlx::query_scalar("SELECT payload_json FROM team_conversation_messages WHERE id = ?1")
             .bind(message.message_id)
             .fetch_one(&db)
             .await
             .expect("read stored payload");
-    assert_eq!(stored, "::agenthub:tcm-body-moved::");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&stored).expect("stored payload is valid json"),
+        payload
+    );
 
     // Promoted columns stay populated so queries keep working without the body.
     let text_col: Option<String> =
@@ -617,7 +620,7 @@ async fn conversation_body_moves_to_body_store_and_rehydrates_on_read() {
     );
     assert!(!store.contains(&key));
 
-    // Read path rehydrates from the outbox while the body is still staged.
+    // Reads remain available from SQLite while the body is staged.
     let messages = manager
         .list_task_conversation_messages(&task.id, 50, None)
         .await
@@ -625,7 +628,7 @@ async fn conversation_body_moves_to_body_store_and_rehydrates_on_read() {
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].payload, payload);
 
-    // Draining moves the body into the store and clears the outbox.
+    // Draining writes the duplicate body into the store and clears the outbox.
     let drained = agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
         .await
         .unwrap();
@@ -638,7 +641,7 @@ async fn conversation_body_moves_to_body_store_and_rehydrates_on_read() {
     );
     assert!(store.contains(&key));
 
-    // Read path now rehydrates from the body store.
+    // The SQLite read remains unchanged after asynchronous compression.
     let messages = manager
         .list_task_conversation_messages(&task.id, 50, None)
         .await
@@ -647,7 +650,7 @@ async fn conversation_body_moves_to_body_store_and_rehydrates_on_read() {
 }
 
 #[tokio::test]
-async fn conversation_idempotency_replay_with_moved_body_is_not_a_false_conflict() {
+async fn conversation_idempotency_replay_with_dual_written_body_is_not_a_false_conflict() {
     let db = setup_test_db().await;
     let store = body_store();
     let manager = TeamManager::new(db.clone()).with_body_store(Some(
@@ -669,8 +672,7 @@ async fn conversation_idempotency_replay_with_moved_body_is_not_a_false_conflict
         .expect("first append");
     assert!(first_created);
 
-    // Drain so the existing body lives only in the store: the conflict path must rehydrate from the
-    // store (outbox is empty) before comparing payload fingerprints.
+    // Drain the duplicate body before replaying the idempotent write.
     agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
         .await
         .unwrap();
@@ -708,7 +710,7 @@ async fn conversation_body_stays_inline_without_body_store() {
             .fetch_one(&db)
             .await
             .expect("read stored payload");
-    // Body stays inline; the moved sentinel is never written.
+    // Body stays inline; the legacy sentinel is never written.
     assert_ne!(stored, "::agenthub:tcm-body-moved::");
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&stored).expect("inline payload is valid json"),
@@ -749,7 +751,7 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
         .expect("append 2");
 
     assert_eq!(
-        crate::team::count_inline_conversation_bodies(&db)
+        crate::team::count_pending_conversation_body_migration(&db)
             .await
             .unwrap(),
         2
@@ -772,12 +774,13 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
     )
     .await
     .expect("migrate");
-    assert_eq!(report.migrated, 2);
+    assert_eq!(report.restored, 0);
+    assert_eq!(report.staged, 2);
     assert_eq!(report.drained, 2);
 
-    // Rows now carry the sentinel, the bodies live in the store, and the outbox is empty.
+    // SQLite retains the bodies, the compressed copies live in the store, and the outbox is empty.
     assert_eq!(
-        crate::team::count_inline_conversation_bodies(&db)
+        crate::team::count_pending_conversation_body_migration(&db)
             .await
             .unwrap(),
         0
@@ -791,7 +794,7 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
     assert!(store.contains(&AuthorityMessageId::new(format!("tcm:{}", m1.message_id))));
     assert!(store.contains(&AuthorityMessageId::new(format!("tcm:{}", m2.message_id))));
 
-    // A reader with the store rehydrates the original payloads.
+    // A reader with the store sees the original SQLite payloads.
     let reader = TeamManager::new(db.clone()).with_body_store(Some(
         store.clone() as crate::message_body_store::SharedBodyStore
     ));
@@ -813,7 +816,100 @@ async fn migrate_backfills_inline_conversation_bodies_into_store() {
     )
     .await
     .expect("migrate again");
-    assert_eq!(report_again.migrated, 0);
+    assert_eq!(report_again.restored, 0);
+    assert_eq!(report_again.staged, 0);
+}
+
+#[tokio::test]
+async fn completed_backfill_skips_dual_writes_and_recovers_later_sqlite_only_writes() {
+    use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
+
+    let db = setup_test_db().await;
+    let sqlite_writer = TeamManager::new(db.clone());
+    let task = body_store_team_and_task(&sqlite_writer).await;
+    sqlite_writer
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"historical body"}),
+        )
+        .await
+        .expect("append historical body");
+
+    let store = body_store();
+    crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        16,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("complete historical backfill");
+
+    let dual_writer = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    dual_writer
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"already dual-written"}),
+        )
+        .await
+        .expect("append dual-written body");
+    assert_eq!(
+        crate::team::count_pending_conversation_body_migration(&db)
+            .await
+            .unwrap(),
+        0,
+        "a completed backfill must not re-stage later dual-written messages"
+    );
+    let report = crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        16,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("skip already dual-written body");
+    assert_eq!(report.staged, 0);
+
+    let sqlite_only = sqlite_writer
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"written while store disabled"}),
+        )
+        .await
+        .expect("append SQLite-only body");
+    assert_eq!(
+        crate::team::count_pending_conversation_body_migration(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    let report = crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        16,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("recover SQLite-only body");
+    assert_eq!(report.staged, 1);
+    assert!(store.contains(&AuthorityMessageId::new(format!(
+        "tcm:{}",
+        sqlite_only.message_id
+    ))));
 }
 
 #[tokio::test]
@@ -844,7 +940,7 @@ async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
     store.reject_put_key(format!("tcm:{}", ids[1]));
 
     // batch_size 1: a naive drain keyed off the row batch would let the stuck oldest body block the
-    // rest. The migration must still move every other body into the store and only leave the stuck one.
+    // rest. The migration must still stage every other body into the store and only leave the stuck one.
     let report = crate::team::migrate_conversation_bodies_into_store(
         &db,
         &store,
@@ -854,13 +950,13 @@ async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
     )
     .await
     .expect("migrate");
-    assert_eq!(report.migrated, 3);
+    assert_eq!(report.staged, 3);
     assert_eq!(report.drained, 2);
 
     assert!(store.contains(&AuthorityMessageId::new(format!("tcm:{}", ids[0]))));
     assert!(!store.contains(&AuthorityMessageId::new(format!("tcm:{}", ids[1]))));
     assert!(store.contains(&AuthorityMessageId::new(format!("tcm:{}", ids[2]))));
-    // Only the rejected body is still pending; every row left SQLite (all moved to the sentinel).
+    // Only the rejected body is still pending; every compatibility body remains in SQLite.
     assert_eq!(
         agenthub_db::message_body_outbox::pending_count(&db)
             .await
@@ -868,7 +964,7 @@ async fn migrate_does_not_head_of_line_block_on_a_persistently_failing_body() {
         1
     );
     assert_eq!(
-        crate::team::count_inline_conversation_bodies(&db)
+        crate::team::count_pending_conversation_body_migration(&db)
             .await
             .unwrap(),
         0
@@ -905,7 +1001,7 @@ async fn drain_retries_after_transient_put_failure_without_losing_body() {
         1
     );
 
-    // The read path still rehydrates from the durable outbox while the store does not have the body.
+    // The Phase 1 read path remains available from SQLite while the store does not have the body.
     let messages = manager
         .list_task_conversation_messages(&task.id, 50, None)
         .await
@@ -935,7 +1031,7 @@ async fn drain_retries_after_transient_put_failure_without_losing_body() {
 }
 
 #[tokio::test]
-async fn read_surfaces_body_store_get_failure_instead_of_an_empty_payload() {
+async fn phase_one_reads_do_not_depend_on_body_store_gets() {
     use std::sync::Arc;
 
     let db = setup_test_db().await;
@@ -945,38 +1041,34 @@ async fn read_surfaces_body_store_get_failure_instead_of_an_empty_payload() {
     ));
     let task = body_store_team_and_task(&manager).await;
 
+    let payload = json!({"type":"chat_message","text":"body behind a flaky store"});
     manager
-        .append_task_conversation_message(
-            &task.id,
-            "user",
-            None,
-            "group_chat",
-            json!({"type":"chat_message","text":"body behind a flaky store"}),
-        )
+        .append_task_conversation_message(&task.id, "user", None, "group_chat", payload.clone())
         .await
         .expect("append");
-    // Drain so the body lives only in the store (no outbox fallback left).
+    // Drain the duplicate body, then make a future store read fail.
     agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
         .await
         .unwrap();
 
-    // A failing get must surface as an error, never as a silent empty/placeholder payload.
+    // SQLite remains the Phase 1 source of truth, so a body-store outage cannot affect a read.
     store.fail_next_gets(1);
     let result = manager
         .list_task_conversation_messages(&task.id, 50, None)
         .await;
-    assert!(
-        result.is_err(),
-        "a body-store read failure must propagate, got {result:?}"
+    assert_eq!(
+        result.expect("SQLite compatibility read")[0].payload,
+        payload
     );
-    assert!(
-        store.get_calls() >= 1,
-        "the read path must have queried the store"
+    assert_eq!(
+        store.get_calls(),
+        0,
+        "normal Phase 1 reads do not query the store"
     );
 }
 
 #[tokio::test]
-async fn read_surfaces_corrupt_body_instead_of_a_garbage_payload() {
+async fn phase_one_reads_ignore_a_corrupt_compressed_copy() {
     use std::sync::Arc;
 
     let db = setup_test_db().await;
@@ -1000,19 +1092,71 @@ async fn read_surfaces_corrupt_body_instead_of_a_garbage_payload() {
         .await
         .unwrap();
 
-    // The store returns non-JSON bytes: rehydration must fail loudly rather than hand back a bad value.
+    // A corrupt compressed copy cannot affect the retained SQLite compatibility body.
     store.corrupt_get_key(format!("tcm:{}", message.message_id));
     let result = manager
         .list_task_conversation_messages(&task.id, 50, None)
         .await;
     assert!(
-        result.is_err(),
-        "a corrupt stored body must fail rehydration, got {result:?}"
+        result.is_ok(),
+        "SQLite compatibility read must succeed: {result:?}"
     );
 }
 
+#[tokio::test]
+async fn migrate_restores_legacy_sentinel_before_dual_write_backfill() {
+    use agenthub_message_store::{AuthorityMessageId, MessageBodyStore};
+
+    let db = setup_test_db().await;
+    let store = body_store();
+    let manager = TeamManager::new(db.clone()).with_body_store(Some(
+        store.clone() as crate::message_body_store::SharedBodyStore
+    ));
+    let task = body_store_team_and_task(&manager).await;
+    let payload = json!({"type":"chat_message","text":"legacy sentinel body"});
+    let message = manager
+        .append_task_conversation_message(&task.id, "user", None, "group_chat", payload.clone())
+        .await
+        .expect("append");
+    agenthub_db::message_body_outbox::drain_into(&db, store.as_ref(), 64)
+        .await
+        .expect("drain");
+    sqlx::query("UPDATE team_conversation_messages SET payload_json = ?1 WHERE id = ?2")
+        .bind("::agenthub:tcm-body-moved::")
+        .bind(message.message_id)
+        .execute(&db)
+        .await
+        .expect("simulate legacy row");
+
+    let report = crate::team::migrate_conversation_bodies_into_store(
+        &db,
+        store.as_ref(),
+        16,
+        1_700_000_000,
+        std::time::Duration::ZERO,
+    )
+    .await
+    .expect("restore and backfill");
+    assert_eq!(report.restored, 1);
+    assert_eq!(report.staged, 1);
+    let stored: String =
+        sqlx::query_scalar("SELECT payload_json FROM team_conversation_messages WHERE id = ?1")
+            .bind(message.message_id)
+            .fetch_one(&db)
+            .await
+            .expect("read restored payload");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&stored).unwrap(),
+        payload
+    );
+    assert!(store.contains(&AuthorityMessageId::new(format!(
+        "tcm:{}",
+        message.message_id
+    ))));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
+async fn concurrent_append_drain_and_read_keep_sqlite_compatibility_bodies() {
     use agenthub_message_store::{InMemoryBodyStore, MessageBodyStore};
     use std::collections::HashSet;
     use std::sync::Arc;
@@ -1067,7 +1211,7 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
     // than a fixed iteration count that might finish before the writes do.
     let appenders_done = Arc::new(AtomicBool::new(false));
 
-    // Appenders write concurrently: each stages its body to the outbox and slims the row to the sentinel.
+    // Appenders write concurrently: each retains its SQLite body and stages a compressed copy.
     let mut appenders = Vec::new();
     for i in 0..MESSAGE_COUNT {
         let manager = manager.clone();
@@ -1102,10 +1246,8 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
         })
     };
 
-    // Readers continuously list while writes/drains race. The invariant: a moved row must ALWAYS
-    // rehydrate to its real object payload — never the null/sentinel placeholder and never an error —
-    // because the body is staged atomically with the sentinel and only leaves the outbox after the
-    // store write succeeds (the read path re-checks the store to stay race-free against the drainer).
+    // Readers continuously list while writes/drains race. The retained SQLite body must always be a
+    // real object payload; asynchronous store writes must never surface a placeholder or read error.
     let mut readers = Vec::new();
     for _ in 0..3 {
         let manager = manager.clone();
@@ -1124,7 +1266,7 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
                             .get("seq")
                             .and_then(serde_json::Value::as_u64)
                             .is_some(),
-                        "a moved body must rehydrate to its real payload, got {:?}",
+                        "a SQLite compatibility body must retain its real payload, got {:?}",
                         message.payload
                     );
                 }
@@ -1164,7 +1306,7 @@ async fn concurrent_append_drain_and_read_never_lose_or_expose_a_moved_body() {
             .payload
             .get("seq")
             .and_then(serde_json::Value::as_u64)
-            .expect("rehydrated payload keeps seq");
+            .expect("SQLite compatibility payload keeps seq");
         assert_eq!(message.payload["text"], json!(format!("message {seq}")));
         seqs.insert(seq);
     }

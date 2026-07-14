@@ -429,6 +429,18 @@ pub(super) async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
+        CREATE TABLE message_body_backfill_checkpoint (
+            scope TEXT PRIMARY KEY,
+            last_message_id INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create message_body_backfill_checkpoint");
+
+    sqlx::query(
+        r#"
         CREATE TABLE team_actor_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
@@ -763,6 +775,13 @@ pub(super) async fn setup_concurrent_conversation_db() -> (SqlitePool, std::path
                 staged_at INTEGER NOT NULL
             );"#,
             "message_body_outbox",
+        ),
+        (
+            r#"CREATE TABLE message_body_backfill_checkpoint (
+                scope TEXT PRIMARY KEY,
+                last_message_id INTEGER NOT NULL
+            );"#,
+            "message_body_backfill_checkpoint",
         ),
     ] {
         sqlx::query(stmt)

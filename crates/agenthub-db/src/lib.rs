@@ -1631,6 +1631,20 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    // The Phase 1 dual-write backfill advances this durable prefix only after the matching outbox
+    // rows have been committed. It lets a restart resume historical staging without replacing the
+    // SQLite compatibility body with a sentinel.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS message_body_backfill_checkpoint (
+            scope TEXT PRIMARY KEY,
+            last_message_id INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
     Ok(pool)
 }
 
