@@ -6924,10 +6924,7 @@ async fn team_task_messages_api_supports_route_and_redaction() {
     use agenthub_message_store::InMemoryBodyStore;
 
     let body_store = std::sync::Arc::new(InMemoryBodyStore::new());
-    let state = build_test_state_with_body_store(
-        body_store as crate::message_body_store::SharedBodyStore,
-    )
-    .await;
+    let state = build_test_state_with_body_store(body_store).await;
     let headers = auth_headers(&state).await;
 
     let Json(team) = create_team(
