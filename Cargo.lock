@@ -456,6 +456,7 @@ name = "agenthub-acp-core"
 version = "0.0.10"
 dependencies = [
  "agent-client-protocol",
+ "anyhow",
  "serde",
  "serde_json",
  "tracing",

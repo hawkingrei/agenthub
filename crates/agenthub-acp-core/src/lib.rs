@@ -1,3 +1,5 @@
+pub mod nowledge_mem;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 

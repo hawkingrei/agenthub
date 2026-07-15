@@ -54,6 +54,8 @@ workflow or runtime rules.
   - [features/actor-foundation.md](features/actor-foundation.md)
 - ACP and runtime rendering:
   - [features/acp-runtime.md](features/acp-runtime.md)
+- Nowledge Mem local MCP adapter:
+  - [features/nowledge-mem-mcp-proxy.md](features/nowledge-mem-mcp-proxy.md)
 - Team channels, conversation, and threads:
   - [features/team-channels-threads.md](features/team-channels-threads.md)
   - [features/team-conversation-event-bus.md](features/team-conversation-event-bus.md)
