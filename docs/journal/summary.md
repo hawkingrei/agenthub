@@ -142,11 +142,14 @@ Main shape:
   compressed RocksDB copies through a durable outbox and checkpointed backfill.
 - Agent workflow organization now defines project-owned SOP, skill, checklist, testing, and
   observability workflow contracts without copying another project's process taxonomy.
+- Team system prompt organization now defines prompt layers, pointer-first runtime tails,
+  skill/checklist entry points, and tool-neutral durable knowledge boundaries.
 
 Start with:
 
 - `2026-07-13-message-body-store-phase1-dual-write.md`
 - `2026-07-15-agent-operating-workflows.md`
+- `2026-07-15-team-system-prompt-contract.md`
 
 ## Compaction Rules
 

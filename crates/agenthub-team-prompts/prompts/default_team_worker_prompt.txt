@@ -36,8 +36,7 @@ Workspace policy:
 - Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `actor team-members` for current execution decisions.
 - Load `team-task-governance` whenever you need the canonical contract for task note content, ownership gaps, priority intent, or task context.
 - Load `team-task-lifecycle` whenever you need canonical Team task state guidance.
-- When a new inbox, channel, or thread message arrives, load `team-actor-mailbox` if you need
-  routing, ack, open-thread, or reply mechanics.
+- When a new inbox, channel, or thread message arrives, load `team-message-intake` first; it routes visible replies, task notes, mailbox updates, and canonical tasks while preserving `team-actor-mailbox` routing, ack, open-thread, or reply mechanics.
 - When that message changes what the coordinator should record in canonical task notes, ownership,
   priority, or task context, load `team-task-governance` before responding.
 - When that message implies review/state guidance that should change the canonical Team task, load

@@ -25,6 +25,19 @@ mod tests {
         assert!(prompt.contains("in_review"));
     }
 
+    fn verify_system_prompt_layer_contract(prompt: &str) {
+        assert!(prompt.contains("allowed-action gate"));
+        assert!(prompt.contains(".cache/context/state.md"));
+        assert!(prompt.contains(".cache/context/run/<run_id>/..."));
+        assert!(prompt.contains("detail_ref"));
+        assert!(prompt.contains("team-agents-index"));
+        assert!(prompt.contains("skills/team/TEAM_AGENTS.md"));
+        assert!(prompt.contains("volatile"));
+        assert!(prompt.contains("team-message-intake"));
+        assert!(!prompt.contains("team-prompt-change-review"));
+        assert!(!prompt.contains("Knowledge"));
+    }
+
     fn line_count(prompt: &str) -> usize {
         prompt.lines().count()
     }
@@ -219,6 +232,28 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agenthub actor team-thread-reply"));
         assert!(
             DEFAULT_TEAM_WORKER_PROMPT.contains("answer directly in the relevant Team channel")
+        );
+    }
+
+    #[test]
+    fn prompt_templates_expose_system_prompt_layers() {
+        verify_system_prompt_layer_contract(DEFAULT_TEAM_COORDINATOR_PROMPT);
+        verify_system_prompt_layer_contract(DEFAULT_TEAM_WORKER_PROMPT);
+
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Team Coordinator"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("coordinator_task_assignment"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("clarification_request"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("does not need `.agenthubmemory/`"));
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT
+                .contains("visible reply lands back in the original human conversation")
+        );
+
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Worker"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("worker_status"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".agenthubmemory/TODO.md"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT.contains("answer directly on the original visible surface")
         );
     }
 
