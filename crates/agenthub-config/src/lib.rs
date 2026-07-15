@@ -1,7 +1,7 @@
 pub mod path_utils;
 
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use path_utils::expand_tilde;
 
@@ -25,6 +25,7 @@ pub struct AppConfig {
     pub proxy: Option<ProxyConfig>,
     pub worktree: Option<WorktreeConfig>,
     pub codex_acp: Option<CodexAcpConfig>,
+    pub nowledge_mem: Option<NowledgeMemConfig>,
     pub history: Option<HistoryConfig>,
     pub message_archive: Option<MessageArchiveConfig>,
     pub message_body_store: Option<MessageBodyStoreConfig>,
@@ -86,6 +87,20 @@ pub struct CodexAcpConfig {
     pub multi_agent_enabled: Option<bool>,
 }
 
+/// Secret-free connection profiles for the local Team Context Lens adapter.
+/// `credential_env` is an environment-variable reference, never a credential.
+#[derive(Debug, Clone, Deserialize)]
+pub struct NowledgeMemConfig {
+    pub profiles: Option<HashMap<String, NowledgeMemProfileConfig>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NowledgeMemProfileConfig {
+    pub endpoint: String,
+    pub credential_env: String,
+    pub tool_set: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PushConfig {
     pub subject: Option<String>,
@@ -145,6 +160,19 @@ pub struct InternalGrpcBootstrapConfig {
 }
 
 impl AppConfig {
+    pub fn nowledge_mem_profile(&self, name: &str) -> anyhow::Result<NowledgeMemProfileConfig> {
+        let name = name.trim();
+        if name.is_empty() {
+            anyhow::bail!("Nowledge Mem profile name is required");
+        }
+        self.nowledge_mem
+            .as_ref()
+            .and_then(|config| config.profiles.as_ref())
+            .and_then(|profiles| profiles.get(name))
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Nowledge Mem profile {name:?} is not configured"))
+    }
+
     pub fn load_with_info() -> anyhow::Result<(Self, ConfigLoadInfo)> {
         let path = config_path();
         let file_exists = path.exists();
@@ -613,7 +641,7 @@ fn detect_env_overrides() -> Vec<String> {
 mod tests {
     use super::{
         AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, MessageBodyStoreConfig,
-        ServerConfig, ServerRole, WorktreeConfig,
+        NowledgeMemConfig, NowledgeMemProfileConfig, ServerConfig, ServerRole, WorktreeConfig,
     };
 
     #[test]
@@ -628,6 +656,29 @@ mod tests {
             ..Default::default()
         };
         assert!(config.message_body_store_enabled());
+    }
+
+    #[test]
+    fn nowledge_mem_profile_returns_secret_free_reference() {
+        let config = AppConfig {
+            nowledge_mem: Some(NowledgeMemConfig {
+                profiles: Some(std::collections::HashMap::from([(
+                    "team".to_string(),
+                    NowledgeMemProfileConfig {
+                        endpoint: "https://mem.example.test/mcp".to_string(),
+                        credential_env: "NOWLEDGE_MEM_TEAM_KEY".to_string(),
+                        tool_set: Some("external-agent".to_string()),
+                    },
+                )])),
+            }),
+            ..Default::default()
+        };
+
+        let profile = config
+            .nowledge_mem_profile("team")
+            .expect("configured profile");
+        assert_eq!(profile.credential_env, "NOWLEDGE_MEM_TEAM_KEY");
+        assert!(config.nowledge_mem_profile("missing").is_err());
     }
 
     #[test]
