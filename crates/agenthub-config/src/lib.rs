@@ -92,13 +92,28 @@ pub struct CodexAcpConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct NowledgeMemConfig {
     pub profiles: Option<HashMap<String, NowledgeMemProfileConfig>>,
+    pub team_bindings: Option<HashMap<String, NowledgeMemTeamBindingConfig>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct NowledgeMemProfileConfig {
     pub endpoint: String,
     pub credential_env: String,
     pub tool_set: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NowledgeMemTeamBindingConfig {
+    pub profile: String,
+    pub space_id: String,
+    pub actor_profiles: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedNowledgeMemBinding {
+    pub profile_name: String,
+    pub profile: NowledgeMemProfileConfig,
+    pub space_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -171,6 +186,38 @@ impl AppConfig {
             .and_then(|profiles| profiles.get(name))
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Nowledge Mem profile {name:?} is not configured"))
+    }
+
+    pub fn resolve_nowledge_mem_binding(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+    ) -> anyhow::Result<ResolvedNowledgeMemBinding> {
+        let team_id = team_id.trim();
+        let binding = self
+            .nowledge_mem
+            .as_ref()
+            .and_then(|config| config.team_bindings.as_ref())
+            .and_then(|bindings| bindings.get(team_id))
+            .ok_or_else(|| {
+                anyhow::anyhow!("Nowledge Mem binding for team {team_id:?} is not configured")
+            })?;
+        let profile_name = binding
+            .actor_profiles
+            .as_ref()
+            .and_then(|profiles| profiles.get(actor_id.trim()))
+            .unwrap_or(&binding.profile)
+            .trim()
+            .to_string();
+        let space_id = binding.space_id.trim().to_string();
+        if space_id.is_empty() {
+            anyhow::bail!("Nowledge Mem binding for team {team_id:?} has no space_id");
+        }
+        Ok(ResolvedNowledgeMemBinding {
+            profile: self.nowledge_mem_profile(&profile_name)?,
+            profile_name,
+            space_id,
+        })
     }
 
     pub fn load_with_info() -> anyhow::Result<(Self, ConfigLoadInfo)> {
@@ -670,6 +717,7 @@ mod tests {
                         tool_set: Some("external-agent".to_string()),
                     },
                 )])),
+                team_bindings: None,
             }),
             ..Default::default()
         };
