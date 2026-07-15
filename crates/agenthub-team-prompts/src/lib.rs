@@ -35,7 +35,7 @@ mod tests {
         assert!(prompt.contains("volatile"));
         assert!(prompt.contains("team-message-intake"));
         assert!(!prompt.contains("team-prompt-change-review"));
-        assert!(!prompt.contains("Nowledge"));
+        assert!(!prompt.contains("Knowledge"));
     }
 
     fn line_count(prompt: &str) -> usize {
