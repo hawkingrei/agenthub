@@ -140,10 +140,13 @@ Main shape:
 
 - Phase 1 message-body storage now keeps SQLite compatibility bodies while asynchronously staging
   compressed RocksDB copies through a durable outbox and checkpointed backfill.
+- Agent workflow organization now defines project-owned SOP, skill, checklist, testing, and
+  observability workflow contracts without copying another project's process taxonomy.
 
 Start with:
 
 - `2026-07-13-message-body-store-phase1-dual-write.md`
+- `2026-07-15-agent-operating-workflows.md`
 
 ## Compaction Rules
 

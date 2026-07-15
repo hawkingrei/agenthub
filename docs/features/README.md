@@ -65,24 +65,37 @@ When older journals are superseded:
 
 ## Current Canonical Specs
 
+Categories are maintained in
+[`agent-operating-workflows.md`](agent-operating-workflows.md#2-feature-spec-categories). Use them
+when adding or compacting specs so this directory stays navigable.
+
 - `docs/features/frontend-design.md`
 - `docs/features/agent-nodes.md`
+- `docs/features/acp-runtime.md`
 - `docs/features/agents-teams.md`
+- `docs/features/agent-runtime-profiles.md`
 - `docs/features/team-channels-threads.md`
 - `docs/features/team-create-flow.md`
 - `docs/features/team-agent-adoption.md`
+- `docs/features/team-execution-vocabulary.md`
 - `docs/features/teams-collaboration-playbook.md`
 - `docs/features/actor-foundation.md`
 - `docs/features/team-mailbox-intake-and-ownership.md`
 - `docs/features/team-conversation-event-bus.md`
 - `docs/features/backend-runtime-logic.md`
+- `docs/features/runtime-diagnostics.md`
 - `docs/features/rara-direct-integration.md`
 - `docs/features/distributed-node-architecture.md`
 - `docs/features/distributed-node-registry-and-gossip.md`
+- `docs/features/workspace-unified-ia.md`
 - `docs/features/logical-message-metadata-contract.md`
 - `docs/features/message-archive-lancedb.md`
 - `docs/features/message-storage-tiering.md`
+- `docs/features/agent-operating-workflows.md`
 - `docs/features/test-regression-guardrails.md`
+- `docs/features/pyroscope-profiling.md`
+- `docs/features/npm-binary-distribution.md`
+- `docs/features/debian-systemd-distribution.md`
 - `docs/features/app-linkers.md`
 - `docs/features/slock-oauth-linkers.md`
 

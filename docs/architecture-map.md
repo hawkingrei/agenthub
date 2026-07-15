@@ -26,6 +26,8 @@ or rollout shape.
   - [features/distributed-node-architecture.md](features/distributed-node-architecture.md)
 - Context, memory, and long-running continuity:
   - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
+- Agent workflow organization:
+  - [features/agent-operating-workflows.md](features/agent-operating-workflows.md)
 
 ## By Question
 
@@ -58,6 +60,13 @@ or rollout shape.
 ### How is long-running memory and context handled?
 
 - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
+
+### How are SOPs, skills, checklists, testing, and observability workflows organized?
+
+- [features/agent-operating-workflows.md](features/agent-operating-workflows.md)
+- [features/test-regression-guardrails.md](features/test-regression-guardrails.md)
+- [features/runtime-diagnostics.md](features/runtime-diagnostics.md)
+- [features/pyroscope-profiling.md](features/pyroscope-profiling.md)
 
 ## Related Contributor Docs
 

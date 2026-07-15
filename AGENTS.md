@@ -54,3 +54,19 @@ AgentHub is a single-binary control plane for long-lived AI agents.
 - Use `.agents/skills/agenthub-docs-spec/SKILL.md` when creating or revising canonical feature specs under `docs/features/`.
 - Use `.agents/skills/agenthub-docs-journal/SKILL.md` when creating or revising dated rollout notes under `docs/journal/`.
 - Frontend changes should use Chrome DevTools MCP for before/after validation.
+
+## 7. Prompt And Knowledge Organization
+
+- Keep root agent instructions short: product intent, hard engineering rules, and links to canonical
+  entry points only.
+- Store long-lived agent knowledge in an external, searchable memory or knowledge system instead of
+  expanding repository prompts or duplicating large manuals in this repo.
+- Use repository docs for stable, reviewable contracts only: feature specs for product/runtime/API
+  behavior, journals for dated implementation evidence, and TODO for active follow-up work.
+- Use `docs/features/agent-operating-workflows.md` as the canonical contract for SOP, skill,
+  checklist, testing, and observability workflow organization.
+- Keep runtime prompt templates bounded. They should carry role, task, allowed-action, and compact
+  blocker state, then point to durable memory or artifacts for detail.
+- When a repeated workflow becomes operationally important, encode it as a project-owned SOP, skill,
+  or checklist with triggers, inputs, expected evidence, and validation rather than adding prose to
+  every prompt.
