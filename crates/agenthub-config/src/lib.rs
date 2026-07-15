@@ -703,7 +703,8 @@ fn detect_env_overrides() -> Vec<String> {
 mod tests {
     use super::{
         AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, MessageBodyStoreConfig,
-        NowledgeMemConfig, NowledgeMemProfileConfig, ServerConfig, ServerRole, WorktreeConfig,
+        NowledgeMemConfig, NowledgeMemProfileConfig, NowledgeMemTeamBindingConfig, ServerConfig,
+        ServerRole, WorktreeConfig,
     };
 
     #[test]
@@ -743,6 +744,63 @@ mod tests {
         assert_eq!(profile.credential_env, "NOWLEDGE_MEM_TEAM_KEY");
         assert!(config.nowledge_mem_profile("missing").is_err());
         assert!(config.nowledge_mem_profile(" ").is_err());
+    }
+
+    #[test]
+    fn resolve_nowledge_mem_binding_uses_actor_override_without_expanding_scope() {
+        let config = AppConfig {
+            nowledge_mem: Some(NowledgeMemConfig {
+                profiles: Some(std::collections::HashMap::from([
+                    (
+                        "team".to_string(),
+                        NowledgeMemProfileConfig {
+                            endpoint: "https://mem.example.test/mcp".to_string(),
+                            credential_env: "NOWLEDGE_MEM_TEAM_KEY".to_string(),
+                            tool_set: Some("external-agent".to_string()),
+                        },
+                    ),
+                    (
+                        "worker".to_string(),
+                        NowledgeMemProfileConfig {
+                            endpoint: "https://mem.example.test/mcp".to_string(),
+                            credential_env: "NOWLEDGE_MEM_WORKER_KEY".to_string(),
+                            tool_set: Some("external-agent".to_string()),
+                        },
+                    ),
+                ])),
+                team_bindings: Some(std::collections::HashMap::from([(
+                    "team-1".to_string(),
+                    NowledgeMemTeamBindingConfig {
+                        profile: "team".to_string(),
+                        space_id: "space-1".to_string(),
+                        actor_profiles: Some(std::collections::HashMap::from([(
+                            "worker-1".to_string(),
+                            "worker".to_string(),
+                        )])),
+                    },
+                )])),
+            }),
+            ..Default::default()
+        };
+
+        let worker = config
+            .resolve_nowledge_mem_binding("team-1", "worker-1")
+            .expect("worker binding");
+        assert_eq!(worker.profile_name, "worker");
+        assert_eq!(worker.profile.credential_env, "NOWLEDGE_MEM_WORKER_KEY");
+        assert_eq!(worker.space_id, "space-1");
+
+        let team_default = config
+            .resolve_nowledge_mem_binding("team-1", "worker-2")
+            .expect("team default binding");
+        assert_eq!(team_default.profile_name, "team");
+        assert_eq!(team_default.space_id, "space-1");
+        assert!(
+            config
+                .resolve_nowledge_mem_binding(" ", "worker-1")
+                .is_err()
+        );
+        assert!(config.resolve_nowledge_mem_binding("team-1", " ").is_err());
     }
 
     #[test]
