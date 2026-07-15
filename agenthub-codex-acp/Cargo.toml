@@ -38,7 +38,7 @@ codex-features = { git = "https://github.com/openai/codex", tag = "rust-v0.144.1
 codex-feedback = { git = "https://github.com/openai/codex", tag = "rust-v0.144.1" }
 codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.144.1" }
 codex-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.144.1" }
-codex-login = { git = "https://github.com/openai/codex", tag = "rust-v0.144.1" }
+codex-login = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
 codex-models-manager = { git = "https://github.com/openai/codex", tag = "rust-v0.144.1" }
 codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.144.1" }
 codex-utils-approval-presets = { git = "https://github.com/openai/codex", tag = "rust-v0.144.1" }
