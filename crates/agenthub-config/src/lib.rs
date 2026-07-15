@@ -180,12 +180,20 @@ impl AppConfig {
         if name.is_empty() {
             anyhow::bail!("Nowledge Mem profile name is required");
         }
-        self.nowledge_mem
+        let profile = self
+            .nowledge_mem
             .as_ref()
             .and_then(|config| config.profiles.as_ref())
             .and_then(|profiles| profiles.get(name))
             .cloned()
-            .ok_or_else(|| anyhow::anyhow!("Nowledge Mem profile {name:?} is not configured"))
+            .ok_or_else(|| anyhow::anyhow!("Nowledge Mem profile {name:?} is not configured"))?;
+        if profile.endpoint.trim().is_empty() {
+            anyhow::bail!("Nowledge Mem profile {name:?} has an empty endpoint");
+        }
+        if profile.credential_env.trim().is_empty() {
+            anyhow::bail!("Nowledge Mem profile {name:?} has an empty credential_env");
+        }
+        Ok(profile)
     }
 
     pub fn resolve_nowledge_mem_binding(
@@ -194,6 +202,13 @@ impl AppConfig {
         actor_id: &str,
     ) -> anyhow::Result<ResolvedNowledgeMemBinding> {
         let team_id = team_id.trim();
+        if team_id.is_empty() {
+            anyhow::bail!("team_id is required");
+        }
+        let actor_id = actor_id.trim();
+        if actor_id.is_empty() {
+            anyhow::bail!("actor_id is required");
+        }
         let binding = self
             .nowledge_mem
             .as_ref()
@@ -205,7 +220,7 @@ impl AppConfig {
         let profile_name = binding
             .actor_profiles
             .as_ref()
-            .and_then(|profiles| profiles.get(actor_id.trim()))
+            .and_then(|profiles| profiles.get(actor_id))
             .unwrap_or(&binding.profile)
             .trim()
             .to_string();
@@ -727,6 +742,7 @@ mod tests {
             .expect("configured profile");
         assert_eq!(profile.credential_env, "NOWLEDGE_MEM_TEAM_KEY");
         assert!(config.nowledge_mem_profile("missing").is_err());
+        assert!(config.nowledge_mem_profile(" ").is_err());
     }
 
     #[test]
