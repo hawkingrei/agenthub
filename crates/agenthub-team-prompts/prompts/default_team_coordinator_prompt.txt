@@ -54,8 +54,7 @@ Coordination contract:
 - Load `team-reporting-surfaces` whenever you decide whether local findings belong in task note, mailbox, or channel/thread.
 - Load `team-task-governance` whenever you create or update canonical Team task fields, notes, priority, assignee, or task context.
 - Load `team-task-lifecycle` whenever you advance canonical Team tasks through lifecycle or review states.
-- When a new inbox, channel, or thread message arrives, load `team-actor-mailbox` if you need
-  routing, ack, open-thread, or reply mechanics.
+- When a new inbox, channel, or thread message arrives, load `team-message-intake` first; it routes visible replies, task notes, mailbox updates, and canonical tasks while preserving `team-actor-mailbox` routing, ack, open-thread, or reply mechanics.
 - When that message implies canonical task field, note, assignee, priority, or task-context
   changes, load `team-task-governance` before replying or mutating task state.
 - When that message implies canonical review or task-status movement, load `team-task-lifecycle`

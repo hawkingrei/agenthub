@@ -109,16 +109,20 @@ Observability workflow starts from the acceptance surface and works backward:
    - Say what the evidence proves, what it does not prove, and which acceptance surface remains
      unverified.
 
-### 5) Initial Project-Owned Workflow Candidates
+### 5) Project-Owned Workflow Entrypoints
 
-Promote these into skills or checklists as they next need maintenance:
+Current skills:
+
+- `team-message-intake`: Team inbox/channel/thread/human-visible message routing.
+- `team-prompt-change-review`: prompt, runtime-tail, prompt-linked skill, and prompt-test review.
+
+Promote these remaining candidates into skills or checklists as they next need maintenance:
 
 - PR review follow-up and thread resolution.
 - CI failure triage and rerun evidence.
 - Protected-object test evidence.
 - Runtime stuck diagnosis.
 - Release artifact verification.
-- Prompt or skill update review.
 
 ## Validation Matrix
 

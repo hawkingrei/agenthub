@@ -28,6 +28,7 @@ or rollout shape.
   - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
 - Agent workflow organization:
   - [features/agent-operating-workflows.md](features/agent-operating-workflows.md)
+  - [features/team-system-prompt-contract.md](features/team-system-prompt-contract.md)
 
 ## By Question
 
@@ -60,6 +61,12 @@ or rollout shape.
 ### How is long-running memory and context handled?
 
 - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
+
+### How are Team system prompts and runtime prompt tails organized?
+
+- [features/team-system-prompt-contract.md](features/team-system-prompt-contract.md)
+- [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
+- [features/agent-operating-workflows.md](features/agent-operating-workflows.md)
 
 ### How are SOPs, skills, checklists, testing, and observability workflows organized?
 

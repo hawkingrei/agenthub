@@ -92,6 +92,7 @@ when adding or compacting specs so this directory stays navigable.
 - `docs/features/message-archive-lancedb.md`
 - `docs/features/message-storage-tiering.md`
 - `docs/features/agent-operating-workflows.md`
+- `docs/features/team-system-prompt-contract.md`
 - `docs/features/test-regression-guardrails.md`
 - `docs/features/pyroscope-profiling.md`
 - `docs/features/npm-binary-distribution.md`
