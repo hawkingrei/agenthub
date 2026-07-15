@@ -65,6 +65,10 @@ When older journals are superseded:
 
 ## Current Canonical Specs
 
+Categories are maintained in
+[`agent-operating-workflows.md`](agent-operating-workflows.md#2-feature-spec-categories). Use them
+when adding or compacting specs so this directory stays navigable.
+
 - `docs/features/frontend-design.md`
 - `docs/features/agent-nodes.md`
 - `docs/features/agents-teams.md`
@@ -82,6 +86,7 @@ When older journals are superseded:
 - `docs/features/logical-message-metadata-contract.md`
 - `docs/features/message-archive-lancedb.md`
 - `docs/features/message-storage-tiering.md`
+- `docs/features/agent-operating-workflows.md`
 - `docs/features/test-regression-guardrails.md`
 - `docs/features/app-linkers.md`
 - `docs/features/slock-oauth-linkers.md`
