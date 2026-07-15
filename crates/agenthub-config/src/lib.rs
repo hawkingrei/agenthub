@@ -1,7 +1,7 @@
 pub mod path_utils;
 
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use path_utils::expand_tilde;
 
@@ -25,6 +25,7 @@ pub struct AppConfig {
     pub proxy: Option<ProxyConfig>,
     pub worktree: Option<WorktreeConfig>,
     pub codex_acp: Option<CodexAcpConfig>,
+    pub nowledge_mem: Option<NowledgeMemConfig>,
     pub history: Option<HistoryConfig>,
     pub message_archive: Option<MessageArchiveConfig>,
     pub message_body_store: Option<MessageBodyStoreConfig>,
@@ -86,6 +87,35 @@ pub struct CodexAcpConfig {
     pub multi_agent_enabled: Option<bool>,
 }
 
+/// Secret-free connection profiles for the local Team Context Lens adapter.
+/// `credential_env` is an environment-variable reference, never a credential.
+#[derive(Debug, Clone, Deserialize)]
+pub struct NowledgeMemConfig {
+    pub profiles: Option<HashMap<String, NowledgeMemProfileConfig>>,
+    pub team_bindings: Option<HashMap<String, NowledgeMemTeamBindingConfig>>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct NowledgeMemProfileConfig {
+    pub endpoint: String,
+    pub credential_env: String,
+    pub tool_set: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NowledgeMemTeamBindingConfig {
+    pub profile: String,
+    pub space_id: String,
+    pub actor_profiles: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedNowledgeMemBinding {
+    pub profile_name: String,
+    pub profile: NowledgeMemProfileConfig,
+    pub space_id: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PushConfig {
     pub subject: Option<String>,
@@ -145,6 +175,66 @@ pub struct InternalGrpcBootstrapConfig {
 }
 
 impl AppConfig {
+    pub fn nowledge_mem_profile(&self, name: &str) -> anyhow::Result<NowledgeMemProfileConfig> {
+        let name = name.trim();
+        if name.is_empty() {
+            anyhow::bail!("Nowledge Mem profile name is required");
+        }
+        let profile = self
+            .nowledge_mem
+            .as_ref()
+            .and_then(|config| config.profiles.as_ref())
+            .and_then(|profiles| profiles.get(name))
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Nowledge Mem profile {name:?} is not configured"))?;
+        if profile.endpoint.trim().is_empty() {
+            anyhow::bail!("Nowledge Mem profile {name:?} has an empty endpoint");
+        }
+        if profile.credential_env.trim().is_empty() {
+            anyhow::bail!("Nowledge Mem profile {name:?} has an empty credential_env");
+        }
+        Ok(profile)
+    }
+
+    pub fn resolve_nowledge_mem_binding(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+    ) -> anyhow::Result<ResolvedNowledgeMemBinding> {
+        let team_id = team_id.trim();
+        if team_id.is_empty() {
+            anyhow::bail!("team_id is required");
+        }
+        let actor_id = actor_id.trim();
+        if actor_id.is_empty() {
+            anyhow::bail!("actor_id is required");
+        }
+        let binding = self
+            .nowledge_mem
+            .as_ref()
+            .and_then(|config| config.team_bindings.as_ref())
+            .and_then(|bindings| bindings.get(team_id))
+            .ok_or_else(|| {
+                anyhow::anyhow!("Nowledge Mem binding for team {team_id:?} is not configured")
+            })?;
+        let profile_name = binding
+            .actor_profiles
+            .as_ref()
+            .and_then(|profiles| profiles.get(actor_id))
+            .unwrap_or(&binding.profile)
+            .trim()
+            .to_string();
+        let space_id = binding.space_id.trim().to_string();
+        if space_id.is_empty() {
+            anyhow::bail!("Nowledge Mem binding for team {team_id:?} has no space_id");
+        }
+        Ok(ResolvedNowledgeMemBinding {
+            profile: self.nowledge_mem_profile(&profile_name)?,
+            profile_name,
+            space_id,
+        })
+    }
+
     pub fn load_with_info() -> anyhow::Result<(Self, ConfigLoadInfo)> {
         let path = config_path();
         let file_exists = path.exists();
@@ -613,7 +703,8 @@ fn detect_env_overrides() -> Vec<String> {
 mod tests {
     use super::{
         AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, MessageBodyStoreConfig,
-        ServerConfig, ServerRole, WorktreeConfig,
+        NowledgeMemConfig, NowledgeMemProfileConfig, NowledgeMemTeamBindingConfig, ServerConfig,
+        ServerRole, WorktreeConfig,
     };
 
     #[test]
@@ -628,6 +719,88 @@ mod tests {
             ..Default::default()
         };
         assert!(config.message_body_store_enabled());
+    }
+
+    #[test]
+    fn nowledge_mem_profile_returns_secret_free_reference() {
+        let config = AppConfig {
+            nowledge_mem: Some(NowledgeMemConfig {
+                profiles: Some(std::collections::HashMap::from([(
+                    "team".to_string(),
+                    NowledgeMemProfileConfig {
+                        endpoint: "https://mem.example.test/mcp".to_string(),
+                        credential_env: "NOWLEDGE_MEM_TEAM_KEY".to_string(),
+                        tool_set: Some("external-agent".to_string()),
+                    },
+                )])),
+                team_bindings: None,
+            }),
+            ..Default::default()
+        };
+
+        let profile = config
+            .nowledge_mem_profile("team")
+            .expect("configured profile");
+        assert_eq!(profile.credential_env, "NOWLEDGE_MEM_TEAM_KEY");
+        assert!(config.nowledge_mem_profile("missing").is_err());
+        assert!(config.nowledge_mem_profile(" ").is_err());
+    }
+
+    #[test]
+    fn resolve_nowledge_mem_binding_uses_actor_override_without_expanding_scope() {
+        let config = AppConfig {
+            nowledge_mem: Some(NowledgeMemConfig {
+                profiles: Some(std::collections::HashMap::from([
+                    (
+                        "team".to_string(),
+                        NowledgeMemProfileConfig {
+                            endpoint: "https://mem.example.test/mcp".to_string(),
+                            credential_env: "NOWLEDGE_MEM_TEAM_KEY".to_string(),
+                            tool_set: Some("external-agent".to_string()),
+                        },
+                    ),
+                    (
+                        "worker".to_string(),
+                        NowledgeMemProfileConfig {
+                            endpoint: "https://mem.example.test/mcp".to_string(),
+                            credential_env: "NOWLEDGE_MEM_WORKER_KEY".to_string(),
+                            tool_set: Some("external-agent".to_string()),
+                        },
+                    ),
+                ])),
+                team_bindings: Some(std::collections::HashMap::from([(
+                    "team-1".to_string(),
+                    NowledgeMemTeamBindingConfig {
+                        profile: "team".to_string(),
+                        space_id: "space-1".to_string(),
+                        actor_profiles: Some(std::collections::HashMap::from([(
+                            "worker-1".to_string(),
+                            "worker".to_string(),
+                        )])),
+                    },
+                )])),
+            }),
+            ..Default::default()
+        };
+
+        let worker = config
+            .resolve_nowledge_mem_binding("team-1", "worker-1")
+            .expect("worker binding");
+        assert_eq!(worker.profile_name, "worker");
+        assert_eq!(worker.profile.credential_env, "NOWLEDGE_MEM_WORKER_KEY");
+        assert_eq!(worker.space_id, "space-1");
+
+        let team_default = config
+            .resolve_nowledge_mem_binding("team-1", "worker-2")
+            .expect("team default binding");
+        assert_eq!(team_default.profile_name, "team");
+        assert_eq!(team_default.space_id, "space-1");
+        assert!(
+            config
+                .resolve_nowledge_mem_binding(" ", "worker-1")
+                .is_err()
+        );
+        assert!(config.resolve_nowledge_mem_binding("team-1", " ").is_err());
     }
 
     #[test]
