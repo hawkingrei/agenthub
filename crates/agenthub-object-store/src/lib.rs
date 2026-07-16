@@ -106,15 +106,17 @@ impl AgentHubObjectStore {
         bytes: impl Into<Vec<u8>>,
     ) -> anyhow::Result<StoredObject> {
         let bytes = bytes.into();
+        let size_bytes = bytes.len() as u64;
+        let sha256 = hex_sha256(&bytes);
         let normalized_key = self.scoped_key(key)?;
         self.operator
-            .write(&normalized_key, bytes.clone())
+            .write(&normalized_key, bytes)
             .await
             .with_context(|| format!("write object {normalized_key:?}"))?;
         Ok(StoredObject {
             key: normalized_key,
-            size_bytes: bytes.len() as u64,
-            sha256: hex_sha256(&bytes),
+            size_bytes,
+            sha256,
         })
     }
 
@@ -327,7 +329,13 @@ fn normalize_public_base_url(public_base_url: Option<&str>) -> Option<String> {
 
 fn hex_sha256(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(64);
+    for byte in digest {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 
 #[cfg(test)]
