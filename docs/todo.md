@@ -54,6 +54,12 @@ Stable contract:
 
 - [ ] `P1` Implement the RocksDB `cf_index` delivery projection and its authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). The opt-in Phase 1 `cf_body` dual-write/backfill is complete; keep normal reads on SQLite until ordered index reads, integrity checks, and backup validation are in place. Do not drop SQLite bodies before the Phase 2 rollout decision.
 
+## Object Storage
+
+- [ ] `P1` Wire the OpenDAL object store into runtime application state with a default local root, then add the upload metadata schema that stores backend, object key, size, checksum, MIME type, owner scope, publish state, and cleanup timestamps. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-16-object-storage-opendal.md](journal/2026-07-16-object-storage-opendal.md).
+- [ ] `P1` Add graph-bed image hosting routes after the upload metadata schema lands: accept allowlisted raster images, publish only after checksum/size verification, and return public URLs only after owner-scope authorization.
+- [ ] `P1` Add an S3-compatible integration fixture, preferably MinIO in CI or a provisioned test bucket, before enabling the `agenthub-object-store/s3` feature in release builds.
+
 ## Observability, CI, And Docs
 
 - [ ] `P2` Continue `features` compaction wave 2: finish a second pass over residual Team/UI micro-journals, extract stable decisions into canonical feature specs, and leave explicit supersession pointers on merged journals so only records with distinct implementation evidence remain. See [features/README.md](features/README.md).

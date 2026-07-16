@@ -27,6 +27,7 @@ env:
     //crates/agenthub-managed-skills:agenthub_managed_skills_tests
     //crates/agenthub-message-archive:agenthub_message_archive_tests
     //crates/agenthub-message-store:agenthub_message_store_tests
+    //crates/agenthub-object-store:agenthub_object_store_tests
     //crates/agenthub-pyroscope:agenthub_pyroscope_tests
     //crates/agenthub-team-actor:agenthub_team_actor_tests
     //crates/agenthub-team-domain:agenthub_team_domain_tests
@@ -45,6 +46,7 @@ env:
     //crates/agenthub-managed-skills:agenthub_managed_skills_tests
     //crates/agenthub-message-archive:agenthub_message_archive_tests
     //crates/agenthub-message-store:agenthub_message_store_tests
+    //crates/agenthub-object-store:agenthub_object_store_tests
     //crates/agenthub-pyroscope:agenthub_pyroscope_tests
     //crates/agenthub-team-actor:agenthub_team_actor_tests
     //crates/agenthub-team-domain:agenthub_team_domain_tests

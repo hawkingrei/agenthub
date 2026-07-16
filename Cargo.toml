@@ -27,6 +27,7 @@ members = [
     "crates/agenthub-pyroscope",
     "crates/agenthub-message-archive",
     "crates/agenthub-message-store",
+    "crates/agenthub-object-store",
 ]
 exclude = ["cmd/agenthub"]
 

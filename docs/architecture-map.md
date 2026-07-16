@@ -28,6 +28,9 @@ or rollout shape.
   - [features/distributed-node-architecture.md](features/distributed-node-architecture.md)
 - Context, memory, and long-running continuity:
   - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
+- Storage, object bytes, and metadata authority:
+  - [features/object-storage-opendal.md](features/object-storage-opendal.md)
+  - [features/message-storage-tiering.md](features/message-storage-tiering.md)
 - Agent workflow organization:
   - [features/agent-operating-workflows.md](features/agent-operating-workflows.md)
   - [features/team-system-prompt-contract.md](features/team-system-prompt-contract.md)
@@ -69,6 +72,11 @@ or rollout shape.
 ### How is long-running memory and context handled?
 
 - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
+
+### How are uploaded files and object bytes stored?
+
+- [features/object-storage-opendal.md](features/object-storage-opendal.md)
+- [features/logical-message-metadata-contract.md](features/logical-message-metadata-contract.md)
 
 ### How are Team system prompts and runtime prompt tails organized?
 
