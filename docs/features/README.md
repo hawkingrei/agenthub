@@ -72,6 +72,7 @@ when adding or compacting specs so this directory stays navigable.
 - `docs/features/frontend-design.md`
 - `docs/features/agent-nodes.md`
 - `docs/features/acp-runtime.md`
+- `docs/features/access-control-and-roles.md`
 - `docs/features/agents-teams.md`
 - `docs/features/agent-runtime-profiles.md`
 - `docs/features/team-channels-threads.md`

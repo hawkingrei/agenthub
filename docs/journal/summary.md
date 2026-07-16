@@ -35,6 +35,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 | Agent nodes and distributed execution | `docs/features/agent-nodes.md`, `docs/features/distributed-node-architecture.md` | `*-node-*.md`, `*-distributed-*.md`, `*-p2p-*.md` |
 | Release, packaging, and install paths | `docs/features/npm-binary-distribution.md`, `docs/features/debian-systemd-distribution.md` | `*-release-*.md`, `*-npm-*.md`, `*-debian-*.md`, `*-homebrew-*.md` |
 | CI, Bazel, coverage, and dependencies | `docs/developer-setup.md` | `*-ci-*.md`, `*-bazel-*.md`, `*-codecov-*.md`, `*-dependabot-*.md` |
+| Access control, auth, and permissions | `docs/features/access-control-and-roles.md`, `docs/features/acp-runtime.md` | `*-auth-*.md`, `*-access-control-*.md`, `*-permission-*.md` |
 | Message archive and metadata | `docs/features/logical-message-metadata-contract.md`, `docs/features/message-archive-lancedb.md` | `*-message-*.md`, `*-metadata-*.md`, `*-lancedb-*.md` |
 | RARA and app integrations | `docs/features/rara-direct-integration.md`, `docs/features/app-linkers.md` | `*-rara-*.md`, `*-app-*.md`, `*-linker-*.md` |
 
@@ -144,12 +145,15 @@ Main shape:
   observability workflow contracts without copying another project's process taxonomy.
 - Team system prompt organization now defines prompt layers, pointer-first runtime tails,
   skill/checklist entry points, and tool-neutral durable knowledge boundaries.
+- Access-control planning now defines user roles, capability gates, and route authorization
+  guardrails for moving beyond root-only checks.
 
 Start with:
 
 - `2026-07-13-message-body-store-phase1-dual-write.md`
 - `2026-07-15-agent-operating-workflows.md`
 - `2026-07-15-team-system-prompt-contract.md`
+- `2026-07-16-access-control-roles.md`
 
 ## Compaction Rules
 
