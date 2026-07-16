@@ -80,7 +80,22 @@ pub async fn insert_object_upload(
     .await
     .with_context(|| format!("insert object upload {}", upload.id))?;
 
-    get_object_upload(pool, upload.id).await
+    Ok(ObjectUploadRecord {
+        id: upload.id.to_string(),
+        owner_scope: upload.owner_scope.to_string(),
+        backend: upload.backend.to_string(),
+        object_key: upload.object_key.to_string(),
+        original_filename: upload.original_filename.to_string(),
+        content_type: upload.content_type.to_string(),
+        size_bytes: upload.size_bytes,
+        sha256: upload.sha256.to_string(),
+        public_url: upload.public_url.map(str::to_string),
+        created_by_actor_id: upload.created_by_actor_id.to_string(),
+        publish_state: upload.publish_state.to_string(),
+        created_at: upload.created_at,
+        published_at: upload.published_at,
+        cleanup_after: upload.cleanup_after,
+    })
 }
 
 pub async fn get_object_upload(
