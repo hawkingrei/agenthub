@@ -160,6 +160,15 @@ cleanup eligibility in SQLite metadata; the object store only stores bytes.
 
 The first supported backend is local filesystem storage. S3-compatible storage
 is available only in builds that enable the `agenthub-object-store/s3` feature.
+Actor-scoped uploads are available from the CLI:
+
+```bash
+agenthub actor upload --file report.json --scope teams/team-1
+agenthub actor upload --file screenshot.png --scope teams/team-1 --image
+```
+
+When `backend = "fs"` and `root` is omitted, actor uploads use
+`~/.agenthub/objects`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|

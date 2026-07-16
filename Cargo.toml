@@ -49,6 +49,7 @@ release-lance-fp16 = ["agenthub-message-archive/release-lance-fp16"]
 # default and enabled per release target (x86_64) so the native librocksdb-sys
 # build does not affect default/Bazel/aarch64 builds.
 rocksdb = ["agenthub-message-store/rocksdb"]
+object-store-s3 = ["agenthub-object-store/s3"]
 
 [[bin]]
 name = "agenthub"
@@ -119,6 +120,7 @@ agenthub-message-archive = { path = "crates/agenthub-message-archive" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
 agenthub-message-store = { path = "crates/agenthub-message-store" }
+agenthub-object-store = { path = "crates/agenthub-object-store" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
 agent-client-protocol = { version = "1.0.0", features = ["unstable"] }
 prost = "0.14"
