@@ -331,6 +331,7 @@ mod help;
 mod output;
 mod parse;
 mod runtime;
+mod upload;
 
 use self::execute::run_actor_command;
 use self::parse::parse_actor_args;

@@ -64,17 +64,19 @@ access_key_id_env = "AGENTHUB_OBJECT_STORE_ACCESS_KEY_ID"
 secret_access_key_env = "AGENTHUB_OBJECT_STORE_SECRET_ACCESS_KEY"
 ```
 
-Agent-scoped CLI uploads use the same storage contract:
+Agent-scoped CLI uploads use the same storage contract while staying separated from browser/API
+upload surfaces:
 
 ```bash
 agenthub actor upload --file report.json --scope teams/team-1
 agenthub actor upload --file screenshot.png --scope teams/team-1 --image
 ```
 
-The CLI writes bytes through OpenDAL, inserts a published `object_uploads` metadata row, and returns
-the object reference. If metadata publication fails after the byte write, AgentHub attempts to delete
-the just-written object before returning the error. When `[object_store].root` is omitted for the
-local filesystem backend, CLI upload defaults to `~/.agenthub/objects`.
+The actor CLI upload path owns command parsing, local file reading, and publish compensation. The
+database owns `object_uploads` metadata through a dedicated `object_uploads` module. The object-store
+crate still owns byte storage only. If metadata publication fails after the byte write, AgentHub
+attempts to delete the just-written object before returning the error. When `[object_store].root` is
+omitted for the local filesystem backend, CLI upload defaults to `~/.agenthub/objects`.
 
 Upload flows should follow a prepare/write/publish sequence:
 
