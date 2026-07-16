@@ -48,9 +48,6 @@ pub async fn require_capability(
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::path::Path;
-
     const FORBIDDEN_HUMAN_ROLE_CHECKS: [&str; 8] = [
         "user.role == \"root\"",
         "user.role != \"root\"",
@@ -62,11 +59,28 @@ mod tests {
         "user.role != \"viewer\"",
     ];
 
+    const API_SOURCES: [(&str, &str); 13] = [
+        ("admin.rs", include_str!("admin.rs")),
+        ("agent_nodes.rs", include_str!("agent_nodes.rs")),
+        ("agents.rs", include_str!("agents.rs")),
+        ("auth.rs", include_str!("auth.rs")),
+        ("diagnostics.rs", include_str!("diagnostics.rs")),
+        ("error.rs", include_str!("error.rs")),
+        ("join.rs", include_str!("join.rs")),
+        ("linkers.rs", include_str!("linkers.rs")),
+        ("mod.rs", include_str!("mod.rs")),
+        ("openapi/mod.rs", include_str!("openapi/mod.rs")),
+        ("push.rs", include_str!("push.rs")),
+        ("settings.rs", include_str!("settings.rs")),
+        ("teams.rs", include_str!("teams.rs")),
+    ];
+
     #[test]
     fn api_code_does_not_bypass_capability_authz_for_human_roles() {
-        let api_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/api");
         let mut violations = Vec::new();
-        collect_human_role_authz_violations(&api_dir, &mut violations);
+        for (path, content) in API_SOURCES {
+            collect_human_role_authz_violations(path, content, &mut violations);
+        }
 
         assert!(
             violations.is_empty(),
@@ -75,34 +89,17 @@ mod tests {
         );
     }
 
-    fn collect_human_role_authz_violations(dir: &Path, violations: &mut Vec<String>) {
-        for entry in fs::read_dir(dir).expect("read api dir") {
-            let entry = entry.expect("read api dir entry");
-            let path = entry.path();
-            if path.is_dir() {
-                collect_human_role_authz_violations(&path, violations);
-                continue;
-            }
-            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-                continue;
-            }
-            if path.file_name().and_then(|name| name.to_str()) == Some("authz.rs") {
-                continue;
-            }
-
-            let content = fs::read_to_string(&path).expect("read api source");
-            for (line_index, line) in content.lines().enumerate() {
-                if FORBIDDEN_HUMAN_ROLE_CHECKS
-                    .iter()
-                    .any(|forbidden| line.contains(forbidden))
-                {
-                    violations.push(format!(
-                        "{}:{}: {}",
-                        path.display(),
-                        line_index + 1,
-                        line.trim()
-                    ));
-                }
+    fn collect_human_role_authz_violations(
+        path: &str,
+        content: &str,
+        violations: &mut Vec<String>,
+    ) {
+        for (line_index, line) in content.lines().enumerate() {
+            if FORBIDDEN_HUMAN_ROLE_CHECKS
+                .iter()
+                .any(|forbidden| line.contains(forbidden))
+            {
+                violations.push(format!("{}:{}: {}", path, line_index + 1, line.trim()));
             }
         }
     }
