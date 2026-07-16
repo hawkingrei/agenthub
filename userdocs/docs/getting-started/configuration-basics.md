@@ -152,6 +152,59 @@ vacuum_on_cleanup = true
 delete_batch_size = 5000
 ```
 
+### `[object_store]` Section
+
+Object storage for uploaded files, generated artifacts, and image-hosting
+objects. AgentHub keeps ownership, publish state, size, checksum, MIME type, and
+cleanup eligibility in SQLite metadata; the object store only stores bytes.
+
+The first supported backend is local filesystem storage. S3-compatible storage
+is available only in builds that enable the `agenthub-object-store/s3` feature.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `backend` | string | `"fs"` | Object backend: `fs` or `s3` |
+| `root` | string | none | Filesystem root for `fs`; optional backend root/prefix for S3-compatible services |
+| `prefix` | string | none | Deployment or tenant prefix joined ahead of generated object keys |
+| `public_base_url` | string | none | Optional CDN/object-gateway base URL for image-hosting delivery |
+| `bucket` | string | none | S3-compatible bucket name |
+| `endpoint` | string | provider default | S3-compatible endpoint, for example AWS S3, R2, or MinIO |
+| `region` | string | provider default | S3-compatible region |
+| `access_key_id_env` | string | provider chain | Environment variable name that contains the access key id |
+| `secret_access_key_env` | string | provider chain | Environment variable name that contains the secret access key |
+
+**Local Object Store Example**:
+
+```toml
+[object_store]
+backend = "fs"
+root = "~/.agenthub/objects"
+prefix = "agenthub/local"
+```
+
+**S3-Compatible Object Store Example**:
+
+```toml
+[object_store]
+backend = "s3"
+bucket = "agenthub-artifacts"
+endpoint = "https://s3.amazonaws.com"
+region = "us-east-1"
+prefix = "agenthub/prod"
+public_base_url = "https://img.example.com"
+access_key_id_env = "AGENTHUB_OBJECT_STORE_ACCESS_KEY_ID"
+secret_access_key_env = "AGENTHUB_OBJECT_STORE_SECRET_ACCESS_KEY"
+```
+
+`access_key_id_env` and `secret_access_key_env` are references to environment
+variable names. Do not put secret values directly in `config.toml`.
+
+For image hosting, `public_base_url` is only a delivery URL helper. It does not
+grant create, read, replace, or delete permission. AgentHub API handlers must
+authorize against the owning metadata row before returning an image URL or
+mutating an object. The current image-hosting helper accepts only raster image
+MIME types: `image/png`, `image/jpeg`, `image/webp`, and `image/gif`.
+
 ### `[push]` Section
 
 Web Push notification settings.
@@ -388,6 +441,12 @@ delete_batch_size = 5000
 
 [push]
 subject = "mailto:ops@company.com"
+
+[object_store]
+backend = "fs"
+root = "/var/lib/agenthub/objects"
+prefix = "agenthub/prod"
+public_base_url = "https://img.agenthub.company.com"
 
 [internal_grpc]
 enabled = true
