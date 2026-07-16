@@ -29,6 +29,7 @@ pub struct AppConfig {
     pub history: Option<HistoryConfig>,
     pub message_archive: Option<MessageArchiveConfig>,
     pub message_body_store: Option<MessageBodyStoreConfig>,
+    pub object_store: Option<ObjectStoreConfig>,
     pub push: Option<PushConfig>,
     pub internal_grpc: Option<InternalGrpcConfig>,
     pub safe_paths: Option<Vec<String>>,
@@ -145,6 +146,19 @@ pub struct MessageBodyStoreConfig {
     /// Whether to backfill existing SQLite compatibility bodies into the store on startup. Default-on
     /// once the store itself is enabled; set `auto_migrate = false` to use `agenthub migrate`.
     pub auto_migrate: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ObjectStoreConfig {
+    pub backend: Option<String>,
+    pub root: Option<String>,
+    pub public_base_url: Option<String>,
+    pub prefix: Option<String>,
+    pub bucket: Option<String>,
+    pub endpoint: Option<String>,
+    pub region: Option<String>,
+    pub access_key_id_env: Option<String>,
+    pub secret_access_key_env: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -468,6 +482,85 @@ impl AppConfig {
             .unwrap_or(true)
     }
 
+    pub fn object_store_backend(&self) -> String {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.backend.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("fs")
+            .to_ascii_lowercase()
+    }
+
+    pub fn object_store_root(&self) -> Option<String> {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.root.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(expand_tilde)
+    }
+
+    pub fn object_store_prefix(&self) -> Option<String> {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.prefix.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.trim_matches('/').to_string())
+            .filter(|value| !value.is_empty())
+    }
+
+    pub fn object_store_public_base_url(&self) -> Option<String> {
+        trimmed_object_store_value(
+            self.object_store
+                .as_ref()
+                .and_then(|config| config.public_base_url.as_deref()),
+        )
+        .map(|value| value.trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+    }
+
+    pub fn object_store_bucket(&self) -> Option<String> {
+        trimmed_object_store_value(
+            self.object_store
+                .as_ref()
+                .and_then(|config| config.bucket.as_deref()),
+        )
+    }
+
+    pub fn object_store_endpoint(&self) -> Option<String> {
+        trimmed_object_store_value(
+            self.object_store
+                .as_ref()
+                .and_then(|config| config.endpoint.as_deref()),
+        )
+    }
+
+    pub fn object_store_region(&self) -> Option<String> {
+        trimmed_object_store_value(
+            self.object_store
+                .as_ref()
+                .and_then(|config| config.region.as_deref()),
+        )
+    }
+
+    pub fn object_store_access_key_id_env(&self) -> Option<String> {
+        trimmed_object_store_value(
+            self.object_store
+                .as_ref()
+                .and_then(|config| config.access_key_id_env.as_deref()),
+        )
+    }
+
+    pub fn object_store_secret_access_key_env(&self) -> Option<String> {
+        trimmed_object_store_value(
+            self.object_store
+                .as_ref()
+                .and_then(|config| config.secret_access_key_env.as_deref()),
+        )
+    }
+
     pub fn history_event_retention_days(&self) -> Option<u32> {
         let days = self
             .history
@@ -618,6 +711,13 @@ impl AppConfig {
     }
 }
 
+fn trimmed_object_store_value(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 pub fn normalize_codex_acp_mode_id(mode_id: &str) -> String {
     match mode_id.trim() {
         "yolo" | "yalo" | "danger_full_access" | "danger-full-access" => "full-access".to_string(),
@@ -703,8 +803,8 @@ fn detect_env_overrides() -> Vec<String> {
 mod tests {
     use super::{
         AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, MessageBodyStoreConfig,
-        NowledgeMemConfig, NowledgeMemProfileConfig, NowledgeMemTeamBindingConfig, ServerConfig,
-        ServerRole, WorktreeConfig,
+        NowledgeMemConfig, NowledgeMemProfileConfig, NowledgeMemTeamBindingConfig,
+        ObjectStoreConfig, ServerConfig, ServerRole, WorktreeConfig,
     };
 
     #[test]
@@ -828,6 +928,63 @@ mod tests {
             ..Default::default()
         };
         assert!(!config.message_body_store_auto_migrate());
+    }
+
+    #[test]
+    fn object_store_defaults_to_local_fs_backend() {
+        let config = AppConfig::default();
+        assert_eq!(config.object_store_backend(), "fs");
+        assert_eq!(config.object_store_root(), None);
+        assert_eq!(config.object_store_prefix(), None);
+        assert_eq!(config.object_store_bucket(), None);
+    }
+
+    #[test]
+    fn object_store_config_trims_secret_free_s3_references() {
+        let config = AppConfig {
+            object_store: Some(ObjectStoreConfig {
+                backend: Some(" S3 ".to_string()),
+                root: Some(" /tenant-root/ ".to_string()),
+                public_base_url: Some(" https://img.example.test/ ".to_string()),
+                prefix: Some("/agenthub/prod/".to_string()),
+                bucket: Some(" agenthub-artifacts ".to_string()),
+                endpoint: Some(" https://s3.example.test ".to_string()),
+                region: Some(" auto ".to_string()),
+                access_key_id_env: Some(" AGENTHUB_OBJECT_STORE_ACCESS_KEY_ID ".to_string()),
+                secret_access_key_env: Some(
+                    " AGENTHUB_OBJECT_STORE_SECRET_ACCESS_KEY ".to_string(),
+                ),
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(config.object_store_backend(), "s3");
+        assert_eq!(config.object_store_root().as_deref(), Some("/tenant-root/"));
+        assert_eq!(
+            config.object_store_public_base_url().as_deref(),
+            Some("https://img.example.test")
+        );
+        assert_eq!(
+            config.object_store_prefix().as_deref(),
+            Some("agenthub/prod")
+        );
+        assert_eq!(
+            config.object_store_bucket().as_deref(),
+            Some("agenthub-artifacts")
+        );
+        assert_eq!(
+            config.object_store_endpoint().as_deref(),
+            Some("https://s3.example.test")
+        );
+        assert_eq!(config.object_store_region().as_deref(), Some("auto"));
+        assert_eq!(
+            config.object_store_access_key_id_env().as_deref(),
+            Some("AGENTHUB_OBJECT_STORE_ACCESS_KEY_ID")
+        );
+        assert_eq!(
+            config.object_store_secret_access_key_env().as_deref(),
+            Some("AGENTHUB_OBJECT_STORE_SECRET_ACCESS_KEY")
+        );
     }
 
     #[test]

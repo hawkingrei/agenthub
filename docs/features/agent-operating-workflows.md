@@ -69,7 +69,7 @@ Use these categories when locating or compacting specs:
 | Access control and security | User roles, capabilities, route authorization, and runtime permission boundaries. | `access-control-and-roles.md`, `runtime-diagnostics.md` |
 | Team execution and coordination | Task ownership, mailbox, actor CLI, collaboration behavior. | `team-execution-vocabulary.md`, `team-mailbox-intake-and-ownership.md`, `actor-foundation.md`, `teams-collaboration-playbook.md` |
 | Distributed and node operation | Nodes, node registry, internal transport, multi-node execution. | `agent-nodes.md`, `distributed-node-architecture.md`, `distributed-node-registry-and-gossip.md` |
-| Storage and message authority | Durable message state, metadata, archive, body tiering, migration safety. | `logical-message-metadata-contract.md`, `message-archive-lancedb.md`, `message-storage-tiering.md` |
+| Storage and message authority | Durable message state, metadata, archive, body tiering, object bytes, migration safety. | `logical-message-metadata-contract.md`, `message-archive-lancedb.md`, `message-storage-tiering.md`, `object-storage-opendal.md` |
 | Testing and quality guardrails | Regression evidence, fixture consistency, protected objects. | `test-regression-guardrails.md` |
 | Observability and operations | Debugging, profiling, diagnostic evidence, release/install operation. | `runtime-diagnostics.md`, `pyroscope-profiling.md`, `npm-binary-distribution.md`, `debian-systemd-distribution.md` |
 | Integrations | Linkers, OAuth/linker boundaries, external runtime integration. | `app-linkers.md`, `slock-oauth-linkers.md` |
