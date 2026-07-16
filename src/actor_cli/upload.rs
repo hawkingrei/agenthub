@@ -117,55 +117,6 @@ fn object_store_backend_name(backend: ObjectStoreBackend) -> &'static str {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn temp_upload_path(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("agenthub-upload-{name}-{}", Uuid::new_v4()))
-    }
-
-    #[tokio::test]
-    async fn read_upload_file_reads_file_under_limit() {
-        let path = temp_upload_path("small");
-        tokio::fs::write(&path, b"hello")
-            .await
-            .expect("write upload fixture");
-
-        let bytes = read_upload_file(path.to_str().expect("utf-8 path"))
-            .await
-            .expect("read upload file");
-
-        assert_eq!(bytes, b"hello");
-        let _ = tokio::fs::remove_file(path).await;
-    }
-
-    #[tokio::test]
-    async fn read_upload_file_rejects_file_over_limit() {
-        let path = temp_upload_path("large");
-        let file = std::fs::File::create(&path).expect("create upload fixture");
-        file.set_len(MAX_UPLOAD_FILE_BYTES + 1)
-            .expect("size upload fixture");
-        drop(file);
-
-        let err = read_upload_file(path.to_str().expect("utf-8 path"))
-            .await
-            .expect_err("reject oversized upload");
-
-        match err {
-            UploadError::FileTooLarge {
-                size_bytes,
-                limit_bytes,
-            } => {
-                assert_eq!(size_bytes, MAX_UPLOAD_FILE_BYTES + 1);
-                assert_eq!(limit_bytes, MAX_UPLOAD_FILE_BYTES);
-            }
-            other => panic!("expected file-too-large error, got {other:?}"),
-        }
-        let _ = tokio::fs::remove_file(path).await;
-    }
-}
-
 fn object_store_settings_from_config(
     config: &agenthub_config::AppConfig,
 ) -> anyhow::Result<ObjectStoreSettings> {
@@ -270,5 +221,54 @@ async fn store_actor_upload(
                 .await?;
             Ok((image.object, image.public_url))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_upload_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("agenthub-upload-{name}-{}", Uuid::new_v4()))
+    }
+
+    #[tokio::test]
+    async fn read_upload_file_reads_file_under_limit() {
+        let path = temp_upload_path("small");
+        tokio::fs::write(&path, b"hello")
+            .await
+            .expect("write upload fixture");
+
+        let bytes = read_upload_file(path.to_str().expect("utf-8 path"))
+            .await
+            .expect("read upload file");
+
+        assert_eq!(bytes, b"hello");
+        let _ = tokio::fs::remove_file(path).await;
+    }
+
+    #[tokio::test]
+    async fn read_upload_file_rejects_file_over_limit() {
+        let path = temp_upload_path("large");
+        let file = std::fs::File::create(&path).expect("create upload fixture");
+        file.set_len(MAX_UPLOAD_FILE_BYTES + 1)
+            .expect("size upload fixture");
+        drop(file);
+
+        let err = read_upload_file(path.to_str().expect("utf-8 path"))
+            .await
+            .expect_err("reject oversized upload");
+
+        match err {
+            UploadError::FileTooLarge {
+                size_bytes,
+                limit_bytes,
+            } => {
+                assert_eq!(size_bytes, MAX_UPLOAD_FILE_BYTES + 1);
+                assert_eq!(limit_bytes, MAX_UPLOAD_FILE_BYTES);
+            }
+            other => panic!("expected file-too-large error, got {other:?}"),
+        }
+        let _ = tokio::fs::remove_file(path).await;
     }
 }
