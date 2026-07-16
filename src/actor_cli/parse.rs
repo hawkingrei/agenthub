@@ -1,8 +1,8 @@
 use super::help::{actor_usage, is_help_flag, is_help_subcommand, resolve_actor_help_topic};
 use super::{
     ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
-    ActorSendTargetRef, TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS, TeamTaskNoteKind,
-    build_actor_send_default_idempotency_key,
+    ActorSendTargetRef, ActorUploadKind, TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS,
+    TeamTaskNoteKind, build_actor_send_default_idempotency_key,
 };
 use std::fs;
 
@@ -2230,6 +2230,70 @@ pub(super) fn parse_actor_command(
                 idempotency,
             })
         }
+        "upload" => {
+            let mut actor_id = None;
+            let mut owner_scope = None;
+            let mut file_path = None;
+            let mut content_type = None;
+            let mut display_name = None;
+            let mut kind = ActorUploadKind::Object;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    flag @ ("--actor-id" | "--agent-id") => {
+                        idx += 1;
+                        actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
+                    "--scope" | "--owner-scope" => {
+                        idx += 1;
+                        owner_scope = Some(args.get(idx).cloned().ok_or_else(|| {
+                            anyhow::anyhow!("{} requires a value", args[idx - 1])
+                        })?);
+                    }
+                    "--file" => {
+                        idx += 1;
+                        file_path = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--file requires a value"))?,
+                        );
+                    }
+                    "--content-type" => {
+                        idx += 1;
+                        content_type =
+                            Some(args.get(idx).cloned().ok_or_else(|| {
+                                anyhow::anyhow!("--content-type requires a value")
+                            })?);
+                    }
+                    "--name" => {
+                        idx += 1;
+                        display_name = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--name requires a value"))?,
+                        );
+                    }
+                    "--image" => kind = ActorUploadKind::Image,
+                    other => return Err(anyhow::anyhow!("unknown flag for upload: {}", other)),
+                }
+                idx += 1;
+            }
+            Ok(ActorCommand::Upload {
+                actor_id: take_actor_id(actor_id)?,
+                owner_scope: owner_scope
+                    .ok_or_else(|| anyhow::anyhow!("upload requires --scope <owner_scope>"))?,
+                file_path: file_path
+                    .ok_or_else(|| anyhow::anyhow!("upload requires --file <path>"))?,
+                content_type,
+                display_name,
+                kind,
+            })
+        }
         "time-trigger-set" => {
             let mut actor_id = None;
             let mut delay_seconds = None;
@@ -2448,7 +2512,7 @@ pub(super) fn parse_actor_command(
 #[cfg(test)]
 mod tests {
     use super::parse_actor_args;
-    use crate::actor_cli::ActorCommand;
+    use crate::actor_cli::{ActorCommand, ActorUploadKind};
     use serde_json::json;
 
     #[test]
@@ -2488,6 +2552,61 @@ mod tests {
                 );
             }
             other => panic!("expected send command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_upload_requires_file_and_scope() {
+        let result = parse_actor_args(&[
+            "upload".to_string(),
+            "--actor-id".to_string(),
+            "worker".to_string(),
+            "--file".to_string(),
+            "report.json".to_string(),
+        ]);
+        let err = match result {
+            Ok(_) => panic!("scope is required"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("upload requires --scope"));
+    }
+
+    #[test]
+    fn parse_upload_accepts_image_mode() {
+        let parsed = parse_actor_args(&[
+            "upload".to_string(),
+            "--json".to_string(),
+            "--actor-id".to_string(),
+            "worker".to_string(),
+            "--file".to_string(),
+            "screenshot.png".to_string(),
+            "--scope".to_string(),
+            "teams/team-1".to_string(),
+            "--content-type".to_string(),
+            "image/png".to_string(),
+            "--name".to_string(),
+            "screen.png".to_string(),
+            "--image".to_string(),
+        ])
+        .expect("parse actor upload");
+
+        match parsed.command {
+            ActorCommand::Upload {
+                actor_id,
+                owner_scope,
+                file_path,
+                content_type,
+                display_name,
+                kind,
+            } => {
+                assert_eq!(actor_id, "worker");
+                assert_eq!(owner_scope, "teams/team-1");
+                assert_eq!(file_path, "screenshot.png");
+                assert_eq!(content_type.as_deref(), Some("image/png"));
+                assert_eq!(display_name.as_deref(), Some("screen.png"));
+                assert_eq!(kind, ActorUploadKind::Image);
+            }
+            other => panic!("expected upload command, got {other:?}"),
         }
     }
 

@@ -139,6 +139,14 @@ impl AgentHubObjectStore {
         Ok(())
     }
 
+    pub async fn delete_stored_object(&self, object: &StoredObject) -> anyhow::Result<()> {
+        self.operator
+            .delete(&object.key)
+            .await
+            .with_context(|| format!("delete object {:?}", object.key))?;
+        Ok(())
+    }
+
     pub async fn exists(&self, key: &str) -> anyhow::Result<bool> {
         let normalized_key = self.scoped_key(key)?;
         self.operator
@@ -408,6 +416,28 @@ mod tests {
 
         store.delete("runs/run-1/artifact.json").await.unwrap();
         assert!(!store.exists("runs/run-1/artifact.json").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn delete_stored_object_deletes_prefixed_key_without_double_prefixing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AgentHubObjectStore::from_settings(ObjectStoreSettings {
+            backend: ObjectStoreBackend::Fs,
+            root: Some(dir.path().to_string_lossy().to_string()),
+            prefix: Some("tenant-a".to_string()),
+            ..ObjectStoreSettings::default()
+        })
+        .unwrap();
+
+        let stored = store
+            .put_bytes("uploads/team-1/report.json", br#"{"ok":true}"#.to_vec())
+            .await
+            .unwrap();
+        assert_eq!(stored.key, "tenant-a/uploads/team-1/report.json");
+
+        store.delete_stored_object(&stored).await.unwrap();
+
+        assert!(!store.exists("uploads/team-1/report.json").await.unwrap());
     }
 
     #[tokio::test]
