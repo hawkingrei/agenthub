@@ -61,6 +61,9 @@ The next slice adds the first agent-facing upload entry without exposing browser
   images through the image-hosting helper.
 - `object_uploads` stores backend, object key, original filename, MIME type, size, SHA-256, owner
   scope, publishing actor, public URL, publish state, and cleanup timestamps.
+- Upload code is split by responsibility: actor CLI upload orchestration lives under
+  `src/actor_cli/upload.rs`, upload metadata helpers live under `agenthub-db::object_uploads`, and
+  `agenthub-object-store` remains the byte-storage boundary.
 - Local filesystem uploads default to `~/.agenthub/objects` when `[object_store].root` is omitted.
 - Metadata publication failure triggers a best-effort delete of the just-written object.
 
