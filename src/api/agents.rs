@@ -9,6 +9,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
+use agenthub_auth_domain::UserCapability;
 use agenthub_config::{
     normalize_optional_codex_acp_mode_id, normalize_optional_runtime_model,
     normalize_optional_thinking_level,
@@ -21,7 +22,7 @@ use crate::agent::{
     AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
     AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode, normalize_target_node_id,
 };
-use crate::api::authz::require_user;
+use crate::api::authz::{require_capability, require_user};
 use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::api::teams::prune_deleted_agent_from_team_specs;
@@ -247,7 +248,6 @@ async fn create_agent(
     headers: HeaderMap,
     Json(payload): Json<CreateAgentRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
     let CreateAgentRequest {
         name,
         workdir,
@@ -288,11 +288,11 @@ async fn create_agent(
     )?;
     let source = parse_agent_source(source.as_deref())?;
     let target_node_id = normalize_target_node_id(target_node_id.as_deref());
-    if target_node_id.is_some() && user.role != "root" {
-        return Err(ApiError::unauthorized(
-            "root required for remote target node",
-        ));
-    }
+    let _user = if target_node_id.is_some() {
+        require_capability(&headers, &state, UserCapability::NodesManage).await?
+    } else {
+        require_user(&headers, &state).await?
+    };
     let default_worktree_root = resolve_create_agent_default_worktree_root(
         &state,
         target_node_id.as_deref(),
@@ -2139,7 +2139,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_agent_route_rejects_remote_target_for_non_root_user() {
+    async fn create_agent_route_rejects_remote_target_without_node_capability() {
         let db = create_test_db().await;
         init_test_schema(&db).await;
         add_agent_node_support(&db).await;
@@ -2185,10 +2185,10 @@ mod tests {
                 })),
             ))
             .await
-            .expect("create remote-target agent as non-root");
+            .expect("create remote-target agent without node capability");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = decode_json_body(response).await;
-        assert_eq!(body["error"], "root required for remote target node");
+        assert_eq!(body["error"], "nodes:manage required");
     }
 
     #[tokio::test]

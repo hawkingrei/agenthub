@@ -42,6 +42,14 @@ Stable contracts:
 - [ ] `P1` Verify remote Team direct-mailbox routing on real multi-node teams: after the local API regression and routing fix in [journal/2026-05-26-team-remote-direct-mailbox-routing.md](journal/2026-05-26-team-remote-direct-mailbox-routing.md), confirm direct single-member delivery still preserves mention metadata plus summary/`detail_ref` payloads when the recipient agent is remote and transport falls back to p2p relay in a real multi-node rollout. Existing notes: [journal/2026-03-26-team-direct-mailbox-summary-first.md](journal/2026-03-26-team-direct-mailbox-summary-first.md).
 - [ ] `P2` Verify Team agent self-maintenance and deferred follow-up flows: `profile_patch_proposal`, `agent_time_trigger_*`, and operator-controlled `agent_loop` should behave consistently without blocking normal task progress.
 
+## Access Control
+
+Stable contract:
+
+- [features/access-control-and-roles.md](features/access-control-and-roles.md)
+
+- [ ] `P1` Continue user role/capability migration by route cluster: after the first domain matrix, capability helper, bypass guard, and remote-node create-agent gate, migrate normal operator routes from root-only auth to capability auth in the order defined by the stable contract.
+
 ## Message Storage
 
 - [ ] `P1` Implement the RocksDB `cf_index` delivery projection and its authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). The opt-in Phase 1 `cf_body` dual-write/backfill is complete; keep normal reads on SQLite until ordered index reads, integrity checks, and backup validation are in place. Do not drop SQLite bodies before the Phase 2 rollout decision.

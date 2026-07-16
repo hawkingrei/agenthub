@@ -12,6 +12,8 @@ or rollout shape.
 - Product and system framing:
   - [features/agents-teams.md](features/agents-teams.md)
   - [features/backend-runtime-logic.md](features/backend-runtime-logic.md)
+- Access control and authorization:
+  - [features/access-control-and-roles.md](features/access-control-and-roles.md)
 - Frontend and workspace shell:
   - [features/frontend-design.md](features/frontend-design.md)
   - [features/workspace-unified-ia.md](features/workspace-unified-ia.md)
@@ -47,6 +49,12 @@ or rollout shape.
 
 - [features/acp-runtime.md](features/acp-runtime.md)
 - related implementation journals in [journal/](journal/)
+
+### How are user roles, capabilities, and authorization boundaries organized?
+
+- [features/access-control-and-roles.md](features/access-control-and-roles.md)
+- [features/backend-runtime-logic.md](features/backend-runtime-logic.md)
+- [features/agents-teams.md](features/agents-teams.md)
 
 ### How does the shared workspace shell fit together?
 
