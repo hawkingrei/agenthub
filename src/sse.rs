@@ -1078,6 +1078,7 @@ mod tests {
         api::team_tests::build_test_state as build_team_test_state,
         auth::AuthService,
         config::{AppConfig, PushConfig, WebConfig},
+        object_upload::ObjectUploadService,
         push::PushService,
         state::AppState,
         team::{
@@ -1278,6 +1279,7 @@ mod tests {
             auth.clone(),
         ));
         let teams = Arc::new(TeamManager::new_with_event_dbs(db.clone(), event_dbs));
+        let object_uploads = Arc::new(test_object_upload_service(db.clone()));
         AppState {
             db,
             linker_http: crate::linkers::AppLinkerService::default_http_client(),
@@ -1286,10 +1288,33 @@ mod tests {
             push,
             auth,
             acp_permissions: permissions,
+            object_uploads,
             agent_node_join_bootstrap: crate::agent::AgentNodeJoinBootstrapInfo::disabled(),
             default_worktree_root: config.default_worktree_root(),
             body_store: None,
         }
+    }
+
+    fn test_object_upload_service(db: SqlitePool) -> ObjectUploadService {
+        let root = std::env::temp_dir()
+            .join(format!("agenthub-sse-objects-{}", Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string();
+        let config = AppConfig {
+            object_store: Some(agenthub_config::ObjectStoreConfig {
+                backend: Some("fs".to_string()),
+                root: Some(root),
+                public_base_url: None,
+                prefix: None,
+                bucket: None,
+                endpoint: None,
+                region: None,
+                access_key_id_env: None,
+                secret_access_key_env: None,
+            }),
+            ..Default::default()
+        };
+        ObjectUploadService::from_config(db, &config).expect("create object upload service")
     }
 
     async fn create_auth_token(state: &AppState) -> String {

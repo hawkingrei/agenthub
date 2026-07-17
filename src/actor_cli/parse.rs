@@ -1,8 +1,8 @@
 use super::help::{actor_usage, is_help_flag, is_help_subcommand, resolve_actor_help_topic};
 use super::{
     ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
-    ActorSendTargetRef, ActorUploadKind, TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS,
-    TeamTaskNoteKind, build_actor_send_default_idempotency_key,
+    ActorSendTargetRef, TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS, TeamTaskNoteKind,
+    build_actor_send_default_idempotency_key,
 };
 use std::fs;
 
@@ -10,6 +10,7 @@ use crate::actor_runtime_env::{
     ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV,
     ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var,
 };
+use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
 use crate::team::{
     TEAM_TASK_PRIORITY_VALUES, TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport,
     TeamTaskListQuery, TeamTaskPriority, TeamTaskStatus,
@@ -2236,7 +2237,7 @@ pub(super) fn parse_actor_command(
             let mut file_path = None;
             let mut content_type = None;
             let mut display_name = None;
-            let mut kind = ActorUploadKind::Object;
+            let mut kind = ObjectUploadKind::Object;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -2278,15 +2279,17 @@ pub(super) fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--name requires a value"))?,
                         );
                     }
-                    "--image" => kind = ActorUploadKind::Image,
+                    "--image" => kind = ObjectUploadKind::Image,
                     other => return Err(anyhow::anyhow!("unknown flag for upload: {}", other)),
                 }
                 idx += 1;
             }
             Ok(ActorCommand::Upload {
                 actor_id: take_actor_id(actor_id)?,
-                owner_scope: owner_scope
-                    .ok_or_else(|| anyhow::anyhow!("upload requires --scope <owner_scope>"))?,
+                owner_scope: ObjectUploadOwnerScope::parse(
+                    &owner_scope
+                        .ok_or_else(|| anyhow::anyhow!("upload requires --scope <owner_scope>"))?,
+                )?,
                 file_path: file_path
                     .ok_or_else(|| anyhow::anyhow!("upload requires --file <path>"))?,
                 content_type,
@@ -2512,7 +2515,8 @@ pub(super) fn parse_actor_command(
 #[cfg(test)]
 mod tests {
     use super::parse_actor_args;
-    use crate::actor_cli::{ActorCommand, ActorUploadKind};
+    use crate::actor_cli::ActorCommand;
+    use crate::object_upload::ObjectUploadKind;
     use serde_json::json;
 
     #[test]
@@ -2600,11 +2604,11 @@ mod tests {
                 kind,
             } => {
                 assert_eq!(actor_id, "worker");
-                assert_eq!(owner_scope, "teams/team-1");
+                assert_eq!(owner_scope.to_string(), "teams/team-1");
                 assert_eq!(file_path, "screenshot.png");
                 assert_eq!(content_type.as_deref(), Some("image/png"));
                 assert_eq!(display_name.as_deref(), Some("screen.png"));
-                assert_eq!(kind, ActorUploadKind::Image);
+                assert_eq!(kind, ObjectUploadKind::Image);
             }
             other => panic!("expected upload command, got {other:?}"),
         }

@@ -56,8 +56,8 @@ Stable contract:
 
 ## Object Storage
 
-- [ ] `P1` Wire the OpenDAL object store into runtime application state so browser/API upload routes can reuse the same default local root and metadata authority as `agenthub actor upload`. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-16-object-storage-opendal.md](journal/2026-07-16-object-storage-opendal.md).
-- [ ] `P1` Add graph-bed image hosting routes on top of `object_uploads`: accept allowlisted raster images, publish only after checksum/size verification, and return public URLs only after owner-scope authorization.
+- [ ] `P1` Add browser/API upload routes on top of the shared object upload service so non-CLI callers reuse the same default local root, owner-scope parser, metadata authority, and cleanup compensation as `agenthub actor upload`. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-16-object-storage-opendal.md](journal/2026-07-16-object-storage-opendal.md).
+- [ ] `P1` Add graph-bed image hosting routes on top of the shared object upload service: accept allowlisted raster images, publish only after checksum/size verification, and return public URLs only after owner-scope authorization.
 - [ ] `P1` Add an S3-compatible integration fixture, preferably MinIO in CI or a provisioned test bucket, before enabling the `agenthub-object-store/s3` feature in release builds.
 
 ## Observability, CI, And Docs

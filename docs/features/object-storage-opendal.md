@@ -72,11 +72,13 @@ agenthub actor upload --file report.json --scope teams/team-1
 agenthub actor upload --file screenshot.png --scope teams/team-1 --image
 ```
 
-The actor CLI upload path owns command parsing, local file reading, and publish compensation. The
+The actor CLI upload path owns command parsing and local file reading. The shared
+`ObjectUploadService` owns upload publication, metadata insertion, and best-effort compensation. The
 database owns `object_uploads` metadata through a dedicated `object_uploads` module. The object-store
 crate still owns byte storage only. If metadata publication fails after the byte write, AgentHub
 attempts to delete the just-written object before returning the error. When `[object_store].root` is
-omitted for the local filesystem backend, CLI upload defaults to `~/.agenthub/objects`.
+omitted for the local filesystem backend, runtime state and CLI upload both default to
+`~/.agenthub/objects`.
 
 Upload flows should follow a prepare/write/publish sequence:
 
@@ -126,16 +128,15 @@ that URL as a delivery address, not as the authorization decision.
 | Key normalization | Unit tests reject path escape shapes and accept scoped relative keys. |
 | Local backend | Focused async test writes, reads, checks existence, deletes, and verifies size/checksum. |
 | Image hosting helper | Focused async test writes a scoped raster image object, rejects nested image ids, and returns a normalized public URL. |
-| Agent upload entry | Parser and DB tests cover `agenthub actor upload`, required scope/file flags, image mode, and published metadata persistence. |
+| Agent upload entry | Parser, owner-scope, and DB tests cover `agenthub actor upload`, required scope/file flags, image mode, and published metadata persistence. |
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
 | Future S3 rollout | Add an integration test against MinIO or a provisioned S3-compatible bucket before enabling S3 in release builds. |
 
 ## Operational Notes
 
-- The default local root lives under `~/.agenthub/objects` for actor CLI uploads when `backend = "fs"`
-  and no explicit root is configured. Runtime application state should use the same default when the
-  browser/API upload surface lands.
+- The default local root lives under `~/.agenthub/objects` for shared runtime and actor CLI uploads
+  when `backend = "fs"` and no explicit root is configured.
 - Prefixes should include deployment or tenant scope when several AgentHub instances share one
   bucket.
 - `public_base_url` is optional. Use it only for deployments with a reviewed CDN/object gateway path
