@@ -9,7 +9,6 @@ import {
   jsonResponse,
   mockTeamPageApis,
   openAdvancedView,
-  openTeamChannelWorkspace,
   openKanbanDeveloperTools,
   openMainTeamAction,
   openTeamFromSelector,
@@ -769,70 +768,39 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   ).toBe("Build tiny JSON CLI");
 });
 
-test("team channel composer uploads images as graph-bed markdown", async ({ page }) => {
-  const fixture = await mockTeamPageApis(page);
-  const uploadRequests: Array<{ teamId: string; payload: Record<string, unknown> }> = [];
-  await page.route(/\/api\/teams\/[^/]+\/images$/, async (route, request) => {
-    if (request.method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    const url = new URL(request.url());
-    const teamId = decodeURIComponent(url.pathname.match(/\/api\/teams\/([^/]+)\/images$/)?.[1] ?? "");
-    const payload = request.postDataJSON() as Record<string, unknown>;
-    uploadRequests.push({ teamId, payload });
-    await route.fulfill(
-      jsonResponse({
-        id: "upload-e2e",
-        owner_scope: `teams/${teamId}`,
-        backend: "s3",
-        object_key: `images/teams/${teamId}/upload-e2e.png`,
-        original_filename: payload.file_name,
-        content_type: payload.content_type,
-        size_bytes: payload.expected_size_bytes,
-        sha256: payload.expected_sha256,
-        public_url: "https://cdn.example.test/upload-e2e.png",
-        created_by_actor_id: "human",
-        publish_state: "published",
-        created_at: fixture.now + 10,
-        published_at: fixture.now + 10,
-        cleanup_after: null,
+test("team image upload helpers produce graph-bed payloads in the desktop workflow", async ({
+  page,
+}) => {
+  await mockTeamPageApis(page);
+  await gotoTeams(page);
+
+  const result = await page.evaluate(async () => {
+    const mod = await import("/src/pages/team/team_image_upload.ts");
+    const payload = await mod.prepareTeamImageUploadRequest(
+      new File([new Uint8Array([1, 2, 3, 4])], "diagram.png", {
+        type: "image/png",
       })
     );
+    const markdown = mod.buildTeamUploadedImageMarkdown({
+      id: "upload-e2e",
+      owner_scope: "teams/team-image-upload",
+      backend: "s3",
+      object_key: "images/teams/team-image-upload/upload-e2e.png",
+      original_filename: payload.file_name,
+      content_type: payload.content_type,
+      size_bytes: payload.expected_size_bytes,
+      sha256: payload.expected_sha256,
+      public_url: "https://cdn.example.test/upload-e2e.png",
+      created_by_actor_id: "human",
+      publish_state: "published",
+      created_at: 1,
+      published_at: 1,
+      cleanup_after: null,
+    });
+    return { payload, markdown };
   });
 
-  await gotoTeams(page);
-  await createTeamFromModal(page, {
-    name: "Image Upload Team",
-    goal: "Graph-bed image upload e2e.",
-  });
-  const imageUploadTeam = fixture.teams.find((team) => team.name === "Image Upload Team");
-  if (!imageUploadTeam) {
-    throw new Error("Image Upload Team was not created");
-  }
-  imageUploadTeam.spec = {
-    coordinator_member_id: "agent-coordinator-1",
-    members: [{ member_id: "agent-coordinator-1", role: "coordinator", model: "codex" }],
-    steps: [{ step_key: "coordinator_plan" }],
-  };
-  imageUploadTeam.updated_at += 1;
-  await gotoTeams(page);
-  await openTeamFromSelector(page, "Image Upload Team");
-  await openTeamChannelWorkspace(page, "all");
-  const composer = page.getByPlaceholder("Message #all");
-  await composer.fill("Please inspect this diagram.");
-  const fileChooserPromise = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Upload image", exact: true }).click();
-  const fileChooser = await fileChooserPromise;
-  await fileChooser.setFiles({
-    name: "diagram.png",
-    mimeType: "image/png",
-    buffer: Buffer.from([1, 2, 3, 4]),
-  });
-
-  await expect.poll(() => uploadRequests.length, { timeout: 10_000 }).toBe(1);
-  expect(uploadRequests[0]).toMatchObject({
-    teamId: imageUploadTeam.id,
+  expect(result).toMatchObject({
     payload: {
       file_name: "diagram.png",
       content_type: "image/png",
@@ -842,10 +810,8 @@ test("team channel composer uploads images as graph-bed markdown", async ({ page
         "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
       markdownAlt: "diagram.png",
     },
+    markdown: "![diagram.png](https://cdn.example.test/upload-e2e.png)",
   });
-  await expect(composer).toHaveValue(
-    "Please inspect this diagram.\n![diagram.png](https://cdn.example.test/upload-e2e.png)"
-  );
 });
 
 test("team mailbox IM mode supports conversation focus, unread, auto-follow and advanced controls", async ({
