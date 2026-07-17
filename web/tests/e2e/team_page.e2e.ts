@@ -771,18 +771,6 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
 
 test("team channel composer uploads images as graph-bed markdown", async ({ page }) => {
   const fixture = await mockTeamPageApis(page);
-  fixture.teams.push({
-    id: "team-image-upload",
-    name: "Image Upload Team",
-    description: "graph-bed image upload e2e",
-    spec: {
-      coordinator_member_id: "agent-coordinator-1",
-      members: [{ member_id: "agent-coordinator-1", role: "coordinator", model: "codex" }],
-      steps: [{ step_key: "coordinator_plan" }],
-    },
-    created_at: fixture.now,
-    updated_at: fixture.now,
-  });
   const uploadRequests: Array<{ teamId: string; payload: Record<string, unknown> }> = [];
   await page.route(/\/api\/teams\/[^/]+\/images$/, async (route, request) => {
     if (request.method() !== "POST") {
@@ -814,6 +802,21 @@ test("team channel composer uploads images as graph-bed markdown", async ({ page
   });
 
   await gotoTeams(page);
+  await createTeamFromModal(page, {
+    name: "Image Upload Team",
+    goal: "Graph-bed image upload e2e.",
+  });
+  const imageUploadTeam = fixture.teams.find((team) => team.name === "Image Upload Team");
+  if (!imageUploadTeam) {
+    throw new Error("Image Upload Team was not created");
+  }
+  imageUploadTeam.spec = {
+    coordinator_member_id: "agent-coordinator-1",
+    members: [{ member_id: "agent-coordinator-1", role: "coordinator", model: "codex" }],
+    steps: [{ step_key: "coordinator_plan" }],
+  };
+  imageUploadTeam.updated_at += 1;
+  await gotoTeams(page);
   await openTeamFromSelector(page, "Image Upload Team");
   await openTeamChannelWorkspace(page, "all");
   const composer = page.getByPlaceholder("Message #all");
@@ -829,7 +832,7 @@ test("team channel composer uploads images as graph-bed markdown", async ({ page
 
   await expect.poll(() => uploadRequests.length, { timeout: 10_000 }).toBe(1);
   expect(uploadRequests[0]).toMatchObject({
-    teamId: "team-image-upload",
+    teamId: imageUploadTeam.id,
     payload: {
       file_name: "diagram.png",
       content_type: "image/png",
