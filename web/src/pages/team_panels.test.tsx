@@ -2971,6 +2971,88 @@ describe("team panels interactions", () => {
     );
   });
 
+  it("TeamTaskPanel reports when image upload is unavailable for the active context", async () => {
+    vi.restoreAllMocks();
+    const uploadSpy = vi.spyOn(api, "uploadTeamImage");
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        token="token-1"
+        selectedTeamId={null}
+        messageDraft="before"
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    const fileInput = required(
+      container.querySelector('input[type="file"]') as HTMLInputElement | null,
+      "image upload input missing"
+    );
+    await act(async () => {
+      Object.defineProperty(fileInput, "files", {
+        value: [new File([new Uint8Array([1, 2, 3, 4])], "diagram.png", { type: "image/png" })],
+        configurable: true,
+      });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(uploadSpy).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Select a Team channel before uploading an image.");
+  });
+
+  it("TeamTaskPanel reports image upload failures in the composer helper text", async () => {
+    vi.restoreAllMocks();
+    const onMessageDraftChange = vi.fn();
+    const uploadSpy = vi
+      .spyOn(api, "uploadTeamImage")
+      .mockRejectedValue(new Error("storage unavailable"));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        token="token-1"
+        selectedTeamId="team-1"
+        messageDraft="before"
+        onMessageDraftChange={onMessageDraftChange}
+        onSendMessage={vi.fn()}
+        messages={[]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    const fileInput = required(
+      container.querySelector('input[type="file"]') as HTMLInputElement | null,
+      "image upload input missing"
+    );
+    await act(async () => {
+      Object.defineProperty(fileInput, "files", {
+        value: [new File([new Uint8Array([1, 2, 3, 4])], "diagram.png", { type: "image/png" })],
+        configurable: true,
+      });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await vi.waitFor(() => {
+        expect(uploadSpy).toHaveBeenCalled();
+      });
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain("storage unavailable");
+    });
+    expect(onMessageDraftChange).not.toHaveBeenCalledWith(expect.stringContaining("!["));
+  });
+
   it("TeamTaskPanel keeps thread replies out of the main channel timeline", () => {
     renderWithMantine(
       root,

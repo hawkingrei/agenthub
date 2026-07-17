@@ -137,4 +137,37 @@ describe("TeamMessageComposer", () => {
       aliases: ["worker-agent"],
     });
   });
+
+  it("renders an image upload button with busy and disabled state", () => {
+    const onPickImage = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamMessageComposer
+            draft="hello"
+            placeholder="Message #all"
+            helperText="@name to reply · Enter to send"
+            sendLabel="Send"
+            imageUploadBusy={true}
+            imageUploadDisabled={true}
+            onPickImage={onPickImage}
+            onDraftChange={vi.fn()}
+            onSend={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const uploadButton = container.querySelector(
+      'button[aria-label="Uploading image"]'
+    ) as HTMLButtonElement | null;
+    expect(uploadButton).not.toBeNull();
+    expect(uploadButton?.disabled).toBe(true);
+    expect(uploadButton?.innerHTML).toContain("bi-cloud-arrow-up");
+    act(() => {
+      uploadButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onPickImage).not.toHaveBeenCalled();
+  });
 });
