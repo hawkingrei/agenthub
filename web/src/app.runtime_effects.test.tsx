@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installReactDomTestGlobals } from "./test_utils/react_test_helpers";
 
 const {
   authStatusMock,
@@ -65,8 +66,7 @@ vi.mock("./webauthn", () => ({
 
 import { AGENT_EVENT_PAGE_SIZE, App } from "./app";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+installReactDomTestGlobals();
 
 class MockVisualViewport extends EventTarget {
   width: number;
