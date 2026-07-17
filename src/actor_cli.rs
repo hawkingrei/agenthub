@@ -26,6 +26,7 @@ const ACTOR_HELP_TOPIC_ACK: &str = "ack";
 const ACTOR_HELP_TOPIC_TRIAGE: &str = "triage";
 const ACTOR_HELP_TOPIC_TASK_LINK: &str = "task-link";
 const ACTOR_HELP_TOPIC_SEND: &str = "send";
+const ACTOR_HELP_TOPIC_UPLOAD: &str = "upload";
 const ACTOR_HELP_TOPIC_PERMISSION_REVIEW_RESPOND: &str = "permission-review-respond";
 const ACTOR_HELP_TOPIC_TEAM_TASK_SHOW: &str = "team-task-show";
 const ACTOR_HELP_TOPIC_TEAM_TASK_NOTE: &str = "team-task-note";
@@ -50,6 +51,7 @@ const ACTOR_HELP_TOPICS: &[&str] = &[
     ACTOR_HELP_TOPIC_TRIAGE,
     ACTOR_HELP_TOPIC_TASK_LINK,
     ACTOR_HELP_TOPIC_SEND,
+    ACTOR_HELP_TOPIC_UPLOAD,
     "time-trigger-set",
     "time-trigger-list",
     "time-trigger-cancel",
@@ -146,6 +148,12 @@ impl TeamTaskNoteKind {
             Self::Result => "result",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorUploadKind {
+    Object,
+    Image,
 }
 
 #[derive(Debug)]
@@ -309,12 +317,21 @@ enum ActorCommand {
         payload_source: ActorSendPayloadSource,
         idempotency: ActorSendIdempotency,
     },
+    Upload {
+        actor_id: String,
+        owner_scope: String,
+        file_path: String,
+        content_type: Option<String>,
+        display_name: Option<String>,
+        kind: ActorUploadKind,
+    },
 }
 mod execute;
 mod help;
 mod output;
 mod parse;
 mod runtime;
+mod upload;
 
 use self::execute::run_actor_command;
 use self::parse::parse_actor_args;
@@ -3782,6 +3799,17 @@ mod tests {
                     idempotency: ActorSendIdempotency::Disabled,
                 },
                 ActorOutputPreference::JsonPreferred,
+            ),
+            (
+                ActorCommand::Upload {
+                    actor_id: "worker".to_string(),
+                    owner_scope: "teams/team-1".to_string(),
+                    file_path: "screenshot.png".to_string(),
+                    content_type: Some("image/png".to_string()),
+                    display_name: None,
+                    kind: ActorUploadKind::Image,
+                },
+                ActorOutputPreference::ToonPreferred,
             ),
             (
                 ActorCommand::TimeTriggerSet {

@@ -18,6 +18,9 @@ use anyhow::Context;
 use agenthub_config::path_utils::expand_tilde;
 
 pub mod message_body_outbox;
+pub mod object_uploads;
+
+pub use object_uploads::{NewObjectUpload, ObjectUploadRecord, insert_object_upload};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentEventCleanupResult {
@@ -797,6 +800,29 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS object_uploads (
+            id TEXT PRIMARY KEY,
+            owner_scope TEXT NOT NULL,
+            backend TEXT NOT NULL,
+            object_key TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            public_url TEXT,
+            created_by_actor_id TEXT NOT NULL,
+            publish_state TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            published_at INTEGER,
+            cleanup_after INTEGER
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS agent_time_triggers (
             id TEXT PRIMARY KEY,
             agent_id TEXT NOT NULL,
@@ -1127,6 +1153,34 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_context_flush_checkpoint_run_member: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_object_uploads_owner_created
+        ON object_uploads(owner_scope, created_at DESC);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_object_uploads_owner_created: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_object_uploads_object_key
+        ON object_uploads(object_key);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_object_uploads_object_key: {}",
             err
         );
     }
@@ -2804,8 +2858,8 @@ async fn backfill_team_channel_message_replica_group_ids(pool: &SqlitePool) -> a
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentEventDbRouter, AgentEventIdleGc, cleanup_agent_event_history, create_parent_dir,
-        init_db_at_path, try_connect,
+        AgentEventDbRouter, AgentEventIdleGc, NewObjectUpload, cleanup_agent_event_history,
+        create_parent_dir, init_db_at_path, insert_object_upload, try_connect,
     };
     use agenthub_config::path_utils::expand_tilde;
     use serde_json::json;
@@ -2843,14 +2897,15 @@ mod tests {
                 'team_actor_messages',
                 'team_member_continuity_state',
                 'team_context_artifacts',
-                'team_context_flush_checkpoint'
+                'team_context_flush_checkpoint',
+                'object_uploads'
               )
             "#,
         )
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 11);
+        assert_eq!(table_count, 12);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)
@@ -2877,6 +2932,59 @@ mod tests {
             fk_err.to_string().contains("FOREIGN KEY constraint failed"),
             "unexpected fk error: {fk_err}"
         );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn insert_object_upload_persists_published_metadata() {
+        let dir = unique_temp_dir("object-upload");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        let upload = insert_object_upload(
+            &pool,
+            &NewObjectUpload {
+                id: "upload-1",
+                owner_scope: "teams/team-1",
+                backend: "fs",
+                object_key: "uploads/teams/team-1/upload-1/report.json",
+                original_filename: "report.json",
+                content_type: "application/json",
+                size_bytes: 42,
+                sha256: "abc123",
+                public_url: Some("https://cdn.example/uploads/report.json"),
+                created_by_actor_id: "worker",
+                publish_state: "published",
+                created_at: 100,
+                published_at: Some(100),
+                cleanup_after: None,
+            },
+        )
+        .await
+        .expect("insert upload");
+
+        assert_eq!(upload.id, "upload-1");
+        assert_eq!(upload.owner_scope, "teams/team-1");
+        assert_eq!(upload.backend, "fs");
+        assert_eq!(
+            upload.object_key,
+            "uploads/teams/team-1/upload-1/report.json"
+        );
+        assert_eq!(upload.original_filename, "report.json");
+        assert_eq!(upload.content_type, "application/json");
+        assert_eq!(upload.size_bytes, 42);
+        assert_eq!(upload.sha256, "abc123");
+        assert_eq!(
+            upload.public_url.as_deref(),
+            Some("https://cdn.example/uploads/report.json")
+        );
+        assert_eq!(upload.created_by_actor_id, "worker");
+        assert_eq!(upload.publish_state, "published");
+        assert_eq!(upload.published_at, Some(100));
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

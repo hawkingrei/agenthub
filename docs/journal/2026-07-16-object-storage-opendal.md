@@ -51,3 +51,27 @@ cargo fmt --all --check
   type, owner scope, publish state, and cleanup timestamps.
 - Add image-hosting API routes for graph-bed uploads after the metadata schema exists.
 - Add an S3-compatible integration fixture before enabling the S3 feature in release builds.
+
+## Actor Upload Slice
+
+The next slice adds the first agent-facing upload entry without exposing browser-direct uploads:
+
+- `agenthub actor upload --file <path> --scope <owner_scope>` writes generic files through OpenDAL.
+- `agenthub actor upload --file <path> --scope <owner_scope> --image` writes allowlisted raster
+  images through the image-hosting helper.
+- `object_uploads` stores backend, object key, original filename, MIME type, size, SHA-256, owner
+  scope, publishing actor, public URL, publish state, and cleanup timestamps.
+- Upload code is split by responsibility: actor CLI upload orchestration lives under
+  `src/actor_cli/upload.rs`, upload metadata helpers live under `agenthub-db::object_uploads`, and
+  `agenthub-object-store` remains the byte-storage boundary.
+- Local filesystem uploads default to `~/.agenthub/objects` when `[object_store].root` is omitted.
+- Metadata publication failure triggers a best-effort delete of the just-written object.
+
+Focused checks for this slice:
+
+```bash
+cargo test -p agenthub-db insert_object_upload_persists_published_metadata
+cargo test -p agenthub parse_upload
+cargo test -p agenthub actor_output_preference_contract_covers_all_command_variants
+cargo fmt --all --check
+```

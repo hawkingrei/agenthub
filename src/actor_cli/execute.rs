@@ -5,6 +5,7 @@ use super::runtime::{
     init_actor_control_client, init_actor_mailbox_service, init_actor_permission_review_client,
     init_actor_task_link_service, load_actor_inbox, map_actor_service_error, receive_actor_inbox,
 };
+use super::upload::run_actor_upload;
 use super::{
     ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
     ActorSendTargetRef, MAX_TIME_TRIGGER_DELAY_SECONDS, build_actor_send_default_idempotency_key,
@@ -878,6 +879,25 @@ pub(super) async fn run_actor_command(
                 );
             }
             write_actor_output(&message, output_mode, output_preference)?;
+        }
+        ActorCommand::Upload {
+            actor_id,
+            owner_scope,
+            file_path,
+            content_type,
+            display_name,
+            kind,
+        } => {
+            let record = run_actor_upload(
+                actor_id,
+                owner_scope,
+                file_path,
+                content_type,
+                display_name,
+                kind,
+            )
+            .await?;
+            write_actor_output(&record, output_mode, output_preference)?;
         }
         ActorCommand::TimeTriggerSet {
             actor_id,
