@@ -418,6 +418,31 @@ export type TeamThreadReplyRecord = {
   message: TeamConversationMessageRecord;
 };
 
+export type TeamUploadRequest = {
+  file_name: string;
+  content_type: string;
+  bytes_base64: string;
+  expected_size_bytes?: number | null;
+  expected_sha256?: string | null;
+};
+
+export type ObjectUploadRecord = {
+  id: string;
+  owner_scope: string;
+  backend: string;
+  object_key: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+  public_url?: string | null;
+  created_by_actor_id: string;
+  publish_state: string;
+  created_at: number;
+  published_at?: number | null;
+  cleanup_after?: number | null;
+};
+
 export type TeamRunRecord = {
   id: string;
   team_id: string;
@@ -1104,6 +1129,15 @@ export const api = {
   ) =>
     apiFetch<TeamThreadReplyRecord>(
       `/api/teams/${encodePathSegment(teamId)}/channels/${encodePathSegment(channelId)}/threads/${rootMessageId}/replies`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
+  uploadTeamImage: (token: string, teamId: string, payload: TeamUploadRequest) =>
+    apiFetch<ObjectUploadRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/images`,
       token,
       {
         method: "POST",

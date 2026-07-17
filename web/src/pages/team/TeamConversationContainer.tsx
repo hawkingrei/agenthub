@@ -95,6 +95,7 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
       conversationKey={selectedConversation?.id ?? undefined}
       developerMode={developerMode}
       token={token}
+      selectedTeamId={effectiveSelectedTeamId}
       tasksLoading={tasksLoading}
       onRefreshTasks={onRefreshTasks}
       messageDraft={taskMessageDraft}

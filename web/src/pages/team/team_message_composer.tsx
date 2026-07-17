@@ -1,5 +1,11 @@
 import React from "react";
-import { ActionButton, MenuOptionButton, ToolbarRow, cx } from "../../ui/primitives";
+import {
+  ActionButton,
+  CompactIconButton,
+  MenuOptionButton,
+  ToolbarRow,
+  cx,
+} from "../../ui/primitives";
 import type { MentionCandidate } from "./mailbox_helpers";
 import {
   TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS,
@@ -35,6 +41,9 @@ type TeamMessageComposerProps = {
   sendButtonClassName?: string;
   mentionOptions?: TeamMessageComposerMentionOption[];
   activeMentionIndex?: number;
+  imageUploadBusy?: boolean;
+  imageUploadDisabled?: boolean;
+  onPickImage?: () => void;
   onSelectMention?: (option: TeamMessageComposerMentionOption) => void;
   onDraftChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onSend: () => void;
@@ -64,6 +73,9 @@ export function TeamMessageComposer({
   sendButtonClassName,
   mentionOptions = [],
   activeMentionIndex = 0,
+  imageUploadBusy = false,
+  imageUploadDisabled = false,
+  onPickImage,
   onSelectMention,
   onDraftChange,
   onSend,
@@ -152,6 +164,20 @@ export function TeamMessageComposer({
       ) : null}
       <ToolbarRow className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
         <span className={TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS}>{helperText}</span>
+        {onPickImage ? (
+          <CompactIconButton
+            type="button"
+            onClick={onPickImage}
+            disabled={imageUploadDisabled || imageUploadBusy}
+            title={imageUploadBusy ? "Uploading image" : "Upload image"}
+            aria-label={imageUploadBusy ? "Uploading image" : "Upload image"}
+          >
+            <i
+              className={`bi ${imageUploadBusy ? "bi-cloud-arrow-up" : "bi-image"} text-[13px]`}
+              aria-hidden="true"
+            />
+          </CompactIconButton>
+        ) : null}
       </ToolbarRow>
     </div>
   );

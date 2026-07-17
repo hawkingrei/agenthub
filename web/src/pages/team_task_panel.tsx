@@ -47,6 +47,10 @@ import {
   resolveDisplayName,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
+import {
+  insertMarkdownAtCursor,
+  uploadTeamImageForGraphBed,
+} from "./team/team_image_upload";
 import { TeamThreadRichText } from "./team/team_thread_rich_text";
 import { isMobileInputViewport } from "../components/input_dock";
 import { DeterministicAvatar } from "../components/deterministic_avatar";
@@ -80,6 +84,7 @@ type TeamTaskPanelProps = {
   conversationKey?: string;
   developerMode: boolean;
   token?: string | null;
+  selectedTeamId?: string | null;
   tasksLoading?: boolean;
   onRefreshTasks?: () => Promise<void> | void;
   messageDraft: string;
@@ -966,6 +971,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     conversationKey,
     developerMode,
     token = null,
+    selectedTeamId = null,
     messageDraft,
     onMessageDraftChange,
     onSendMessage,
@@ -1000,6 +1006,9 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   >({});
   const [permissionBusyId, setPermissionBusyId] = React.useState<string | null>(null);
   const [permissionErrorById, setPermissionErrorById] = React.useState<Record<string, string>>({});
+  const [imageUploadBusy, setImageUploadBusy] = React.useState(false);
+  const [imageUploadError, setImageUploadError] = React.useState<string | null>(null);
+  const imageUploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const activityListRef = React.useRef<HTMLDivElement | null>(null);
   const activityItemRefs = React.useRef(new Map<number, HTMLDivElement>());
   const lastActivityScrollTopRef = React.useRef<number | null>(null);
@@ -1074,6 +1083,9 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const composerHelperText = isChannelConversation
     ? `Root message stays summary-first · open a thread for deeper context · ${baseHelperText}`
     : baseHelperText;
+  const imageUploadHelperText = imageUploadBusy
+    ? "Uploading image..."
+    : imageUploadError ?? composerHelperText;
 
   const updateMentionQuery = React.useCallback((draft: string, cursor: number | null) => {
     if (cursor === null || Number.isNaN(cursor)) {
@@ -1108,6 +1120,58 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   );
 
   const canSendMessage = messageDraft.trim().length > 0 && busy !== "send-task-message";
+  const normalizedImageUploadTeamId = selectedTeamId?.trim() ?? "";
+  const canUploadImage =
+    isChannelConversation && token != null && token.length > 0 && normalizedImageUploadTeamId.length > 0;
+  const insertImageMarkdown = React.useCallback(
+    (markdown: string) => {
+      const textarea = messageTextareaRef.current;
+      const applied = insertMarkdownAtCursor(
+        messageDraft,
+        markdown,
+        textarea ? textarea.selectionStart : null
+      );
+      onMessageDraftChange(applied.text);
+      requestAnimationFrame(() => {
+        textarea?.focus();
+        textarea?.setSelectionRange(applied.cursor, applied.cursor);
+      });
+    },
+    [messageDraft, onMessageDraftChange]
+  );
+  const uploadImageFile = React.useCallback(
+    async (file: File) => {
+      if (!canUploadImage || !token || !normalizedImageUploadTeamId) {
+        setImageUploadError("Select a Team channel before uploading an image.");
+        return;
+      }
+      setImageUploadBusy(true);
+      setImageUploadError(null);
+      try {
+        const result = await uploadTeamImageForGraphBed({
+          token,
+          teamId: normalizedImageUploadTeamId,
+          file,
+        });
+        insertImageMarkdown(result.markdown);
+      } catch (err) {
+        setImageUploadError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setImageUploadBusy(false);
+      }
+    },
+    [canUploadImage, insertImageMarkdown, normalizedImageUploadTeamId, token]
+  );
+  const handleImageInputChange = React.useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      event.target.value = "";
+      if (file) {
+        void uploadImageFile(file);
+      }
+    },
+    [uploadImageFile]
+  );
   const sendCurrentMessage = React.useCallback(() => {
     const normalizedDraft = canonicalizeMentionDraft(messageDraft, mentionCandidates);
     if (!normalizedDraft.text.trim()) {
@@ -1783,6 +1847,17 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         className={TEAM_TASK_COMPOSER_PANEL_CLASS}
         data-team-channel-composer="true"
       >
+        {isChannelConversation ? (
+          <input
+            ref={imageUploadInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={handleImageInputChange}
+          />
+        ) : null}
         <TeamMessageComposer
           id="team-task-panel-message"
           name="team_task_message"
@@ -1790,12 +1865,22 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           draft={messageDraft}
           rows={1}
           placeholder={messagePlaceholder}
-          helperText={composerHelperText}
+          helperText={imageUploadHelperText}
           sendLabel="Send"
           disabled={!canSendMessage}
           textareaClassName="min-h-[40px] flex-1 border-transparent px-0 py-0 text-[13px] leading-5 shadow-none focus:border-transparent focus:ring-0"
           mentionOptions={activeMention ? filteredMentionCandidates : []}
           activeMentionIndex={activeMentionIndex}
+          imageUploadBusy={imageUploadBusy}
+          imageUploadDisabled={!canUploadImage}
+          onPickImage={
+            isChannelConversation
+              ? () => {
+                  setImageUploadError(null);
+                  imageUploadInputRef.current?.click();
+                }
+              : undefined
+          }
           onSelectMention={applyMentionSelection}
           onDraftChange={(event) => {
             const nextDraft = event.target.value;
