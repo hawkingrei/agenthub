@@ -4,6 +4,7 @@ import {
   gotoTeams,
   jsonResponse,
   mockTeamPageApis,
+  openTeamChannelWorkspace,
   openMainTeamAction,
   openTeamFromSelector,
   selectedTeamMenuLocator,
@@ -91,6 +92,88 @@ test("team channel image upload stays hidden when mobile composer is unavailable
     return document.documentElement.scrollWidth - document.documentElement.clientWidth;
   });
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
+});
+
+test("team channel image upload works from the mobile workflow when expanded", async ({ page }) => {
+  const fixture = await mockTeamPageApis(page);
+  const uploadRequests: Array<{ teamId: string; payload: Record<string, unknown> }> = [];
+  await page.route(/\/api\/teams\/[^/]+\/images$/, async (route, request) => {
+    if (request.method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    const teamId = decodeURIComponent(url.pathname.match(/\/api\/teams\/([^/]+)\/images$/)?.[1] ?? "");
+    const payload = request.postDataJSON() as Record<string, unknown>;
+    uploadRequests.push({ teamId, payload });
+    await route.fulfill(
+      jsonResponse({
+        id: "upload-mobile-expanded-e2e",
+        owner_scope: `teams/${teamId}`,
+        backend: "s3",
+        object_key: `images/teams/${teamId}/upload-mobile-expanded-e2e.png`,
+        original_filename: payload.file_name,
+        content_type: payload.content_type,
+        size_bytes: payload.expected_size_bytes,
+        sha256: payload.expected_sha256,
+        public_url: "https://cdn.example.test/upload-mobile-expanded-e2e.png",
+        created_by_actor_id: "human",
+        publish_state: "published",
+        created_at: fixture.now + 10,
+        published_at: fixture.now + 10,
+        cleanup_after: null,
+      })
+    );
+  });
+
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await gotoTeams(page);
+  await createTeamFromModal(page, {
+    name: "Mobile Expanded Image Upload Team",
+    goal: "Graph-bed image upload e2e in the mobile workflow.",
+  });
+  const imageUploadTeam = fixture.teams.find(
+    (team) => team.name === "Mobile Expanded Image Upload Team"
+  );
+  if (!imageUploadTeam) {
+    throw new Error("Mobile Expanded Image Upload Team was not created");
+  }
+  imageUploadTeam.spec = {
+    coordinator_member_id: "agent-coordinator-1",
+    members: [{ member_id: "agent-coordinator-1", role: "coordinator", model: "codex" }],
+    steps: [{ step_key: "coordinator_plan" }],
+  };
+  imageUploadTeam.updated_at += 1;
+  await gotoTeams(page);
+  await openTeamFromSelector(page, "Mobile Expanded Image Upload Team");
+  await openTeamChannelWorkspace(page, "all");
+  const composer = page.getByPlaceholder("Message #all");
+  await composer.fill("Expanded mobile draft");
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Upload image", exact: true }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "mobile-expanded.png",
+    mimeType: "image/png",
+    buffer: Buffer.from([1, 2, 3, 4]),
+  });
+
+  await expect.poll(() => uploadRequests.length, { timeout: 10_000 }).toBe(1);
+  expect(uploadRequests[0]).toMatchObject({
+    teamId: imageUploadTeam.id,
+    payload: {
+      file_name: "mobile-expanded.png",
+      content_type: "image/png",
+      bytes_base64: "AQIDBA==",
+      expected_size_bytes: 4,
+      expected_sha256:
+        "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
+      markdownAlt: "mobile-expanded.png",
+    },
+  });
+  await expect(composer).toHaveValue(
+    "Expanded mobile draft\n![mobile-expanded.png](https://cdn.example.test/upload-mobile-expanded-e2e.png)"
+  );
 });
 
 test("node detail keeps mobile detail surfaces stacked without horizontal overflow", async ({
