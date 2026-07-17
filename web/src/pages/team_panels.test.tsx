@@ -2804,6 +2804,173 @@ describe("team panels interactions", () => {
     });
   });
 
+  it("TeamTaskPanel preserves draft edits made while an image upload is in flight", async () => {
+    const onMessageDraftChange = vi.fn();
+    let resolveUpload!: (value: Awaited<ReturnType<typeof api.uploadTeamImage>>) => void;
+    const uploadPromise = new Promise<Awaited<ReturnType<typeof api.uploadTeamImage>>>((resolve) => {
+      resolveUpload = resolve;
+    });
+    vi.spyOn(api, "uploadTeamImage").mockReturnValue(uploadPromise);
+
+    function TeamTaskPanelHarness() {
+      const [draft, setDraft] = React.useState("before");
+      return (
+        <TeamTaskPanel
+          developerMode={false}
+          token="token-1"
+          selectedTeamId="team-1"
+          messageDraft={draft}
+          onMessageDraftChange={(value) => {
+            onMessageDraftChange(value);
+            setDraft(value);
+          }}
+          onSendMessage={vi.fn()}
+          messages={[]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+      );
+    }
+
+    renderWithMantine(root, <TeamTaskPanelHarness />);
+
+    const textarea = required(
+      container.querySelector("textarea") as HTMLTextAreaElement | null,
+      "message textarea missing"
+    );
+    const fileInput = required(
+      container.querySelector('input[type="file"]') as HTMLInputElement | null,
+      "image upload input missing"
+    );
+    await act(async () => {
+      textarea.focus();
+      textarea.setSelectionRange(6, 6);
+      Object.defineProperty(fileInput, "files", {
+        value: [new File([new Uint8Array([1, 2, 3, 4])], "diagram.png", { type: "image/png" })],
+        configurable: true,
+      });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await vi.waitFor(() => {
+        expect(api.uploadTeamImage).toHaveBeenCalled();
+      });
+      changeInputValue(textarea, "before typed");
+      textarea.setSelectionRange(12, 12);
+      resolveUpload({
+        id: "upload-1",
+        owner_scope: "teams/team-1",
+        backend: "s3",
+        object_key: "images/teams/team-1/upload-1.png",
+        original_filename: "diagram.png",
+        content_type: "image/png",
+        size_bytes: 4,
+        sha256: "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
+        public_url: "https://cdn.example.test/upload-1.png",
+        created_by_actor_id: "human",
+        publish_state: "published",
+        created_at: 1,
+        published_at: 1,
+        cleanup_after: null,
+      });
+      await uploadPromise;
+    });
+
+    await vi.waitFor(() => {
+      expect(onMessageDraftChange).toHaveBeenLastCalledWith(
+        "before typed\n![diagram.png](https://cdn.example.test/upload-1.png)"
+      );
+    });
+  });
+
+  it("TeamTaskPanel ignores stale image uploads after the channel context changes", async () => {
+    const onMessageDraftChange = vi.fn();
+    let resolveUpload!: (value: Awaited<ReturnType<typeof api.uploadTeamImage>>) => void;
+    const uploadPromise = new Promise<Awaited<ReturnType<typeof api.uploadTeamImage>>>((resolve) => {
+      resolveUpload = resolve;
+    });
+    vi.spyOn(api, "uploadTeamImage").mockReturnValue(uploadPromise);
+
+    function TeamTaskPanelHarness() {
+      const [draft, setDraft] = React.useState("before");
+      const [conversationKey, setConversationKey] = React.useState("conv-1");
+      const [teamId, setTeamId] = React.useState("team-1");
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setConversationKey("conv-2");
+              setTeamId("team-2");
+              setDraft("new channel");
+            }}
+          >
+            Switch context
+          </button>
+          <TeamTaskPanel
+            conversationKey={conversationKey}
+            developerMode={false}
+            token="token-1"
+            selectedTeamId={teamId}
+            messageDraft={draft}
+            onMessageDraftChange={(value) => {
+              onMessageDraftChange(value);
+              setDraft(value);
+            }}
+            onSendMessage={vi.fn()}
+            messages={[]}
+            messagesLoading={false}
+            busy={null}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+          />
+        </>
+      );
+    }
+
+    renderWithMantine(root, <TeamTaskPanelHarness />);
+
+    const fileInput = required(
+      container.querySelector('input[type="file"]') as HTMLInputElement | null,
+      "image upload input missing"
+    );
+    await act(async () => {
+      Object.defineProperty(fileInput, "files", {
+        value: [new File([new Uint8Array([1, 2, 3, 4])], "diagram.png", { type: "image/png" })],
+        configurable: true,
+      });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await vi.waitFor(() => {
+        expect(api.uploadTeamImage).toHaveBeenCalled();
+      });
+      clickElement(findButtonByText(container, "Switch context"));
+      resolveUpload({
+        id: "upload-1",
+        owner_scope: "teams/team-1",
+        backend: "s3",
+        object_key: "images/teams/team-1/upload-1.png",
+        original_filename: "diagram.png",
+        content_type: "image/png",
+        size_bytes: 4,
+        sha256: "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
+        public_url: "https://cdn.example.test/upload-1.png",
+        created_by_actor_id: "human",
+        publish_state: "published",
+        created_at: 1,
+        published_at: 1,
+        cleanup_after: null,
+      });
+      await uploadPromise;
+    });
+
+    expect(onMessageDraftChange).not.toHaveBeenCalledWith(
+      expect.stringContaining("https://cdn.example.test/upload-1.png")
+    );
+    expect((container.querySelector("textarea") as HTMLTextAreaElement | null)?.value).toBe(
+      "new channel"
+    );
+  });
+
   it("TeamTaskPanel keeps thread replies out of the main channel timeline", () => {
     renderWithMantine(
       root,

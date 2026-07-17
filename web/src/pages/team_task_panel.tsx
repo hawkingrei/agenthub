@@ -1009,6 +1009,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const [imageUploadBusy, setImageUploadBusy] = React.useState(false);
   const [imageUploadError, setImageUploadError] = React.useState<string | null>(null);
   const imageUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const latestMessageDraftRef = React.useRef(messageDraft);
+  const activeTeamIdRef = React.useRef("");
+  const activeConversationKeyRef = React.useRef<string | undefined>(conversationKey);
+  const mountedRef = React.useRef(false);
   const activityListRef = React.useRef<HTMLDivElement | null>(null);
   const activityItemRefs = React.useRef(new Map<number, HTMLDivElement>());
   const lastActivityScrollTopRef = React.useRef<number | null>(null);
@@ -1121,13 +1125,26 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
 
   const canSendMessage = messageDraft.trim().length > 0 && busy !== "send-task-message";
   const normalizedImageUploadTeamId = selectedTeamId?.trim() ?? "";
+  latestMessageDraftRef.current = messageDraft;
+  activeTeamIdRef.current = normalizedImageUploadTeamId;
+  activeConversationKeyRef.current = conversationKey;
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  React.useEffect(() => {
+    setImageUploadBusy(false);
+    setImageUploadError(null);
+  }, [conversationKey, normalizedImageUploadTeamId]);
   const canUploadImage =
     isChannelConversation && token != null && token.length > 0 && normalizedImageUploadTeamId.length > 0;
   const insertImageMarkdown = React.useCallback(
     (markdown: string) => {
       const textarea = messageTextareaRef.current;
       const applied = insertMarkdownAtCursor(
-        messageDraft,
+        latestMessageDraftRef.current,
         markdown,
         textarea ? textarea.selectionStart : null
       );
@@ -1137,7 +1154,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         textarea?.setSelectionRange(applied.cursor, applied.cursor);
       });
     },
-    [messageDraft, onMessageDraftChange]
+    [onMessageDraftChange]
   );
   const uploadImageFile = React.useCallback(
     async (file: File) => {
@@ -1145,22 +1162,34 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         setImageUploadError("Select a Team channel before uploading an image.");
         return;
       }
+      const expectedTeamId = normalizedImageUploadTeamId;
+      const expectedConversationKey = conversationKey;
+      const isActiveUploadContext = () =>
+        mountedRef.current &&
+        activeTeamIdRef.current === expectedTeamId &&
+        activeConversationKeyRef.current === expectedConversationKey;
       setImageUploadBusy(true);
       setImageUploadError(null);
       try {
         const result = await uploadTeamImageForGraphBed({
           token,
-          teamId: normalizedImageUploadTeamId,
+          teamId: expectedTeamId,
           file,
         });
-        insertImageMarkdown(result.markdown);
+        if (isActiveUploadContext()) {
+          insertImageMarkdown(result.markdown);
+        }
       } catch (err) {
-        setImageUploadError(err instanceof Error ? err.message : String(err));
+        if (isActiveUploadContext()) {
+          setImageUploadError(err instanceof Error ? err.message : String(err));
+        }
       } finally {
-        setImageUploadBusy(false);
+        if (isActiveUploadContext()) {
+          setImageUploadBusy(false);
+        }
       }
     },
-    [canUploadImage, insertImageMarkdown, normalizedImageUploadTeamId, token]
+    [canUploadImage, conversationKey, insertImageMarkdown, normalizedImageUploadTeamId, token]
   );
   const handleImageInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
