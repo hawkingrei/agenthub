@@ -64,6 +64,9 @@ The next slice adds the first agent-facing upload entry without exposing browser
 - Upload code is split by responsibility: actor CLI upload orchestration lives under
   `src/actor_cli/upload.rs`, upload metadata helpers live under `agenthub-db::object_uploads`, and
   `agenthub-object-store` remains the byte-storage boundary.
+- Runtime upload publication is centralized in `ObjectUploadService`; `AppState` owns the shared
+  service and actor CLI reuses the same owner-scope parser, default local root, metadata authority,
+  and cleanup compensation path that future API routes should call.
 - Local filesystem uploads default to `~/.agenthub/objects` when `[object_store].root` is omitted.
 - Metadata publication failure triggers a best-effort delete of the just-written object.
 

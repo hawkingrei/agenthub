@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
 use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskPriority, TeamTaskStatus};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorMessageHandlingDisposition,
@@ -148,12 +149,6 @@ impl TeamTaskNoteKind {
             Self::Result => "result",
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActorUploadKind {
-    Object,
-    Image,
 }
 
 #[derive(Debug)]
@@ -319,11 +314,11 @@ enum ActorCommand {
     },
     Upload {
         actor_id: String,
-        owner_scope: String,
+        owner_scope: ObjectUploadOwnerScope,
         file_path: String,
         content_type: Option<String>,
         display_name: Option<String>,
-        kind: ActorUploadKind,
+        kind: ObjectUploadKind,
     },
 }
 mod execute;
@@ -3803,11 +3798,12 @@ mod tests {
             (
                 ActorCommand::Upload {
                     actor_id: "worker".to_string(),
-                    owner_scope: "teams/team-1".to_string(),
+                    owner_scope: ObjectUploadOwnerScope::parse("teams/team-1")
+                        .expect("parse owner scope"),
                     file_path: "screenshot.png".to_string(),
                     content_type: Some("image/png".to_string()),
                     display_name: None,
-                    kind: ActorUploadKind::Image,
+                    kind: ObjectUploadKind::Image,
                 },
                 ActorOutputPreference::ToonPreferred,
             ),

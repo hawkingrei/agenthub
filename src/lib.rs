@@ -20,6 +20,7 @@ mod internal;
 mod linkers;
 pub mod message_body_store;
 mod migrate_cli;
+pub mod object_upload;
 pub use agenthub_config::path_utils;
 mod push;
 mod sse;

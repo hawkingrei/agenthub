@@ -19,6 +19,7 @@ use sqlx::SqlitePool;
 use crate::acp::AcpPermissionService;
 use crate::agent::{AgentManager, AgentNodeJoinBootstrapInfo};
 use crate::auth::AuthService;
+use crate::object_upload::ObjectUploadService;
 use crate::push::PushService;
 use crate::team::TeamManager;
 
@@ -31,6 +32,10 @@ pub struct AppState {
     pub push: Arc<PushService>,
     pub auth: Arc<AuthService>,
     pub acp_permissions: Arc<AcpPermissionService>,
+    /// Shared object upload publication service. API routes will read this once browser/image
+    /// upload surfaces are added; actor CLI uses the same service construction path directly.
+    #[allow(dead_code)]
+    pub object_uploads: Arc<ObjectUploadService>,
     pub agent_node_join_bootstrap: AgentNodeJoinBootstrapInfo,
     pub default_worktree_root: String,
     /// Tiered message body store, when enabled and compiled in. Held here so the read path can fetch
@@ -52,6 +57,7 @@ impl AppState {
         let event_dbs = agenthub_db::AgentEventDbRouter::with_default_base_dir();
 
         let body_store = crate::message_body_store::init_body_store(&config);
+        let object_uploads = Arc::new(ObjectUploadService::from_config(db.clone(), &config)?);
 
         let (agents, teams, push, auth, acp_permissions) =
             Self::initialize_services(&config, db.clone(), event_dbs.clone(), body_store.clone())
@@ -77,6 +83,7 @@ impl AppState {
             push,
             auth,
             acp_permissions,
+            object_uploads,
             agent_node_join_bootstrap,
             default_worktree_root,
             body_store,
