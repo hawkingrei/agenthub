@@ -83,6 +83,177 @@ async fn teams_api_requires_authorization() {
 }
 
 #[tokio::test]
+async fn team_upload_api_requires_team_access_and_publishes_metadata() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    let outsider_headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "upload-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create upload team");
+
+    let bytes = b"hello upload";
+    let sha256 = hex_encode(&Sha256::digest(bytes));
+    let request = TeamUploadRequest {
+        file_name: " report.txt ".to_string(),
+        content_type: " Text/Plain ".to_string(),
+        bytes_base64: STANDARD.encode(bytes),
+        expected_size_bytes: Some(bytes.len() as u64),
+        expected_sha256: Some(sha256.clone()),
+    };
+
+    let unauthorized = upload_team_object(
+        State(state.clone()),
+        HeaderMap::new(),
+        Path(created.id.clone()),
+        Json(request.clone()),
+    )
+    .await
+    .expect_err("missing auth should reject");
+    assert_eq!(unauthorized.into_response().status(), StatusCode::UNAUTHORIZED);
+
+    let forbidden = upload_team_object(
+        State(state.clone()),
+        outsider_headers,
+        Path(created.id.clone()),
+        Json(request.clone()),
+    )
+    .await
+    .expect_err("non-owner should not upload into team scope");
+    assert_eq!(forbidden.into_response().status(), StatusCode::NOT_FOUND);
+
+    let Json(upload) = upload_team_object(
+        State(state.clone()),
+        headers,
+        Path(created.id.clone()),
+        Json(request),
+    )
+    .await
+    .expect("upload team object");
+
+    assert_eq!(upload.owner_scope, format!("teams/{}", created.id));
+    assert!(upload.object_key.starts_with(&format!(
+        "uploads/teams/{}/",
+        created.id
+    )));
+    assert!(upload.object_key.ends_with("/report.txt"));
+    assert_eq!(upload.original_filename, "report.txt");
+    assert_eq!(upload.content_type, "text/plain");
+    assert_eq!(upload.size_bytes, bytes.len() as i64);
+    assert_eq!(upload.sha256, sha256);
+    assert_eq!(upload.publish_state, "published");
+    assert_eq!(upload.public_url, None);
+
+    let persisted = agenthub_db::object_uploads::get_object_upload(&state.db, &upload.id)
+        .await
+        .expect("load persisted upload");
+    assert_eq!(persisted, upload);
+}
+
+#[tokio::test]
+async fn team_image_upload_api_rejects_unsafe_content_types_and_checksum_mismatch() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "image-upload-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create image upload team");
+
+    let svg = TeamUploadRequest {
+        file_name: "diagram.svg".to_string(),
+        content_type: "image/svg+xml".to_string(),
+        bytes_base64: STANDARD.encode(b"<svg></svg>"),
+        expected_size_bytes: None,
+        expected_sha256: None,
+    };
+    let svg_err = upload_team_image(
+        State(state.clone()),
+        headers.clone(),
+        Path(created.id.clone()),
+        Json(svg),
+    )
+    .await
+    .expect_err("svg image uploads should reject");
+    assert_eq!(svg_err.into_response().status(), StatusCode::BAD_REQUEST);
+
+    let checksum_mismatch = TeamUploadRequest {
+        file_name: "screenshot.png".to_string(),
+        content_type: "image/png".to_string(),
+        bytes_base64: STANDARD.encode([1_u8, 2, 3, 4]),
+        expected_size_bytes: Some(4),
+        expected_sha256: Some(
+            "0000000000000000000000000000000000000000000000000000000000000000"
+                .to_string(),
+        ),
+    };
+    let checksum_err = upload_team_image(
+        State(state.clone()),
+        headers.clone(),
+        Path(created.id.clone()),
+        Json(checksum_mismatch),
+    )
+    .await
+    .expect_err("checksum mismatch should reject");
+    assert_eq!(
+        checksum_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
+
+    let count_after_rejections: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM object_uploads WHERE owner_scope = ?1")
+            .bind(format!("teams/{}", created.id))
+            .fetch_one(&state.db)
+            .await
+            .expect("count rejected uploads");
+    assert_eq!(count_after_rejections, 0);
+
+    let image_bytes = [1_u8, 2, 3, 4];
+    let sha256 = hex_encode(&Sha256::digest(image_bytes));
+    let valid = TeamUploadRequest {
+        file_name: "screenshot.png".to_string(),
+        content_type: "image/png".to_string(),
+        bytes_base64: STANDARD.encode(image_bytes),
+        expected_size_bytes: Some(image_bytes.len() as u64),
+        expected_sha256: Some(sha256.clone()),
+    };
+    let Json(upload) = upload_team_image(
+        State(state.clone()),
+        headers,
+        Path(created.id.clone()),
+        Json(valid),
+    )
+    .await
+    .expect("upload team image");
+
+    assert_eq!(upload.owner_scope, format!("teams/{}", created.id));
+    assert!(upload.object_key.starts_with(&format!(
+        "images/teams/{}/",
+        created.id
+    )));
+    assert!(upload.object_key.ends_with(".png"));
+    assert_eq!(upload.content_type, "image/png");
+    assert_eq!(upload.size_bytes, image_bytes.len() as i64);
+    assert_eq!(upload.sha256, sha256);
+    assert_eq!(upload.publish_state, "published");
+}
+
+#[tokio::test]
 async fn teams_api_create_list_get_and_reject_duplicate_name() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
