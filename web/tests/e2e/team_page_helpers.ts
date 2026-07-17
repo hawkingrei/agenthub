@@ -39,6 +39,7 @@ const TEAM_MEMBER_WORKSPACE_LABEL_PATTERN =
 
 const TEAM_SELECTOR_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/?$/;
 const TEAM_DETAIL_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/[^/]+$/;
+const TEAM_DETAIL_READY_TIMEOUT_MS = 15_000;
 
 function isTeamSelectorPath(pathname: string): boolean {
   return TEAM_SELECTOR_ROUTE_PATTERN.test(pathname);
@@ -294,7 +295,11 @@ export async function openTeamFromSelector(
     }
   }
   await page.goto(`/workspace/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
-  await expect.poll(() => isTeamDetailReady(page, teamName)).toBe(true);
+  await expect
+    .poll(() => isTeamDetailReady(page, teamName), {
+      timeout: TEAM_DETAIL_READY_TIMEOUT_MS,
+    })
+    .toBe(true);
 }
 
 export async function isTeamDetailReady(
