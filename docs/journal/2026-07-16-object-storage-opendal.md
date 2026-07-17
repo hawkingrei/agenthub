@@ -78,3 +78,27 @@ cargo test -p agenthub parse_upload
 cargo test -p agenthub actor_output_preference_contract_covers_all_command_variants
 cargo fmt --all --check
 ```
+
+## Team Upload API Slice
+
+The browser/API slice adds the first non-CLI upload surface without opening a raw owner-scope API:
+
+- `POST /api/teams/{team_id}/uploads` publishes generic objects through the shared
+  `ObjectUploadService`.
+- `POST /api/teams/{team_id}/images` publishes allowlisted raster images through the same service
+  and image-hosting helper.
+- API handlers derive `teams/<team_id>` from the authorized Team route instead of accepting an
+  owner scope string from the browser.
+- Requests use JSON/base64 for this first slice and include optional expected size and SHA-256
+  checks. Verification failures do not publish `object_uploads` metadata.
+- The remaining browser large-object decision is whether multipart or presigned upload-token
+  semantics should become the canonical path beyond small JSON/base64 uploads.
+
+Focused checks for this slice:
+
+```bash
+cargo test -p agenthub team_upload
+cargo test -p agenthub teams_router_accepts_team_upload_route
+cargo test -p agenthub object_upload
+cargo fmt --all --check
+```

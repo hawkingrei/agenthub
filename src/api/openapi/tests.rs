@@ -54,12 +54,16 @@ async fn openapi_json_contains_team_runs_list_path() {
     assert!(value["paths"]["/api/teams/{id}/channels"]["get"].is_object());
     assert!(value["paths"]["/api/teams/{id}/channels"]["post"].is_object());
     assert!(value["paths"]["/api/teams/{id}/channels/{channel_id}"]["delete"].is_object());
+    assert!(value["paths"]["/api/teams/{id}/uploads"]["post"].is_object());
+    assert!(value["paths"]["/api/teams/{id}/images"]["post"].is_object());
     assert!(value["paths"]["/api/teams/{id}/runs"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/resume"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/restart"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/snapshot"].is_object());
     assert!(value["components"]["schemas"]["TeamChannelRecord"].is_object());
     assert!(value["components"]["schemas"]["CreateTeamChannelRequest"].is_object());
+    assert!(value["components"]["schemas"]["TeamUploadRequest"].is_object());
+    assert!(value["components"]["schemas"]["ObjectUploadRecord"].is_object());
 }
 
 #[tokio::test]

@@ -39,6 +39,8 @@ use agenthub_team_actor::{
     ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
 };
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use sha2::{Digest, Sha256};
 
 use super::{
     AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
@@ -49,21 +51,22 @@ use super::{
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TakeoverTeamRunMessageRequest,
     TeamMemberSpec, TeamMessageSearchHitResponse, TeamRunSnapshotQuery, TeamTaskDetailResponse,
-    TransferTeamRunMessageRequest, TriageTeamRunMessageRequest, UpdateTeamSpecRequest,
-    UpdateTeamTaskRequest, ack_team_run_message, cancel_team_run, compile_team_task_run_preview,
-    complete_team_run_step, create_team, create_team_channel, create_team_run, delete_team,
-    delete_team_channel, ensure_team_shared_thread, escalate_team_run_message, fail_team_run_step,
-    flush_team_run_context, force_new_session_for_team_member, get_team, get_team_run,
-    get_team_run_snapshot, get_team_runtime, get_team_shared_thread, get_team_task,
-    list_team_channels, list_team_run_events, list_team_run_inbox, list_team_run_steps,
-    list_team_runs, list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
+    TeamUploadRequest, TransferTeamRunMessageRequest, TriageTeamRunMessageRequest,
+    UpdateTeamSpecRequest, UpdateTeamTaskRequest, ack_team_run_message, cancel_team_run,
+    compile_team_task_run_preview, complete_team_run_step, create_team, create_team_channel,
+    create_team_run, delete_team, delete_team_channel, ensure_team_shared_thread,
+    escalate_team_run_message, fail_team_run_step, flush_team_run_context,
+    force_new_session_for_team_member, get_team, get_team_run, get_team_run_snapshot,
+    get_team_runtime, get_team_shared_thread, get_team_task, hex_encode, list_team_channels,
+    list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
+    list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
     map_team_internal_error, normalize_conversation_mode, normalize_task_created_by_actor_id,
     normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, require_user,
     restart_team_run, resume_team_run, resume_team_run_step, search_team_messages,
     send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
     start_team_run_step, stop_team, submit_team_run_step, takeover_team_run_message,
     transfer_team_run_message, triage_team_run_message, update_team_spec, update_team_task,
-    validate_team_spec,
+    upload_team_image, upload_team_object, validate_team_spec,
 };
 
 #[derive(Default)]
@@ -387,6 +390,40 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create auth_sessions");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE object_uploads (
+            id TEXT PRIMARY KEY,
+            owner_scope TEXT NOT NULL,
+            backend TEXT NOT NULL,
+            object_key TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            public_url TEXT,
+            created_by_actor_id TEXT NOT NULL,
+            publish_state TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            published_at INTEGER,
+            cleanup_after INTEGER
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create object_uploads");
+
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX idx_object_uploads_object_key
+        ON object_uploads(object_key);
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create object upload object key index");
 
     sqlx::query(
         r#"

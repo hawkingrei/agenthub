@@ -43,6 +43,8 @@ pub(super) async fn run_actor_upload(
             file_name,
             content_type,
             kind,
+            expected_size_bytes: None,
+            expected_sha256: None,
             bytes,
         })
         .await

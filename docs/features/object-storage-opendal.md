@@ -64,21 +64,33 @@ access_key_id_env = "AGENTHUB_OBJECT_STORE_ACCESS_KEY_ID"
 secret_access_key_env = "AGENTHUB_OBJECT_STORE_SECRET_ACCESS_KEY"
 ```
 
-Agent-scoped CLI uploads use the same storage contract while staying separated from browser/API
-upload surfaces:
+Agent-scoped CLI uploads and Team-scoped browser/API uploads use the same storage contract:
 
 ```bash
 agenthub actor upload --file report.json --scope teams/team-1
 agenthub actor upload --file screenshot.png --scope teams/team-1 --image
 ```
 
-The actor CLI upload path owns command parsing and local file reading. The shared
-`ObjectUploadService` owns upload publication, metadata insertion, and best-effort compensation. The
-database owns `object_uploads` metadata through a dedicated `object_uploads` module. The object-store
-crate still owns byte storage only. If metadata publication fails after the byte write, AgentHub
-attempts to delete the just-written object before returning the error. When `[object_store].root` is
-omitted for the local filesystem backend, runtime state and CLI upload both default to
-`~/.agenthub/objects`.
+The actor CLI upload path owns command parsing and local file reading. Team upload API routes own
+authorization, owner-scope derivation from the route, and request decoding. The shared
+`ObjectUploadService` owns upload publication, metadata insertion, size/checksum verification, and
+best-effort compensation. The database owns `object_uploads` metadata through a dedicated
+`object_uploads` module. The object-store crate still owns byte storage only. If verification or
+metadata publication fails after the byte write, AgentHub attempts to delete the just-written object
+before returning the error. When `[object_store].root` is omitted for the local filesystem backend,
+runtime state and CLI upload both default to `~/.agenthub/objects`.
+
+The initial browser/API surface is intentionally Team-scoped and JSON/base64 based:
+
+```text
+POST /api/teams/{team_id}/uploads
+POST /api/teams/{team_id}/images
+```
+
+Handlers derive `teams/<team_id>` from the authorized Team route and do not accept a raw owner scope
+from the browser. The request includes `file_name`, `content_type`, `bytes_base64`, and optional
+`expected_size_bytes` / `expected_sha256` verification fields. Larger browser uploads may later move
+to multipart or presigned upload-token semantics, but that is a separate contract.
 
 Upload flows should follow a prepare/write/publish sequence:
 
@@ -129,6 +141,7 @@ that URL as a delivery address, not as the authorization decision.
 | Local backend | Focused async test writes, reads, checks existence, deletes, and verifies size/checksum. |
 | Image hosting helper | Focused async test writes a scoped raster image object, rejects nested image ids, and returns a normalized public URL. |
 | Agent upload entry | Parser, owner-scope, and DB tests cover `agenthub actor upload`, required scope/file flags, image mode, and published metadata persistence. |
+| Team upload API | Handler and router tests cover authorization, owner-scope derivation, base64 upload publication, raster-image allowlist, and size/checksum mismatch rejection without publishing metadata. |
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
 | Future S3 rollout | Add an integration test against MinIO or a provisioned S3-compatible bucket before enabling S3 in release builds. |

@@ -1735,3 +1735,55 @@ async fn teams_router_resume_restart_strategy_survives_state_reopen() {
 
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[tokio::test]
+async fn teams_router_accepts_team_upload_route() {
+    let state = build_test_state().await;
+    let token = create_auth_token(&state).await;
+    let app = super::router(state.clone());
+
+    let create_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&token),
+            Some(json!({
+                "name": "router-upload-team",
+                "description": null,
+                "spec": {
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner","role":"coordinator"}]
+                }
+            })),
+        ))
+        .await
+        .expect("create upload team via router");
+    assert_eq!(create_team_resp.status(), StatusCode::OK);
+    let created_team = decode_json_body(create_team_resp).await;
+    let team_id = created_team["id"].as_str().expect("team id");
+
+    let bytes = b"router upload";
+    let response = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/uploads"),
+            Some(&token),
+            Some(json!({
+                "file_name": "router.txt",
+                "content_type": "text/plain",
+                "bytes_base64": STANDARD.encode(bytes),
+                "expected_size_bytes": bytes.len(),
+                "expected_sha256": hex_encode(&Sha256::digest(bytes))
+            })),
+        ))
+        .await
+        .expect("upload via router");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = decode_json_body(response).await;
+    assert_eq!(body["owner_scope"], Value::from(format!("teams/{team_id}")));
+    assert_eq!(body["original_filename"], Value::from("router.txt"));
+    assert_eq!(body["content_type"], Value::from("text/plain"));
+    assert_eq!(body["size_bytes"], Value::from(bytes.len() as i64));
+}

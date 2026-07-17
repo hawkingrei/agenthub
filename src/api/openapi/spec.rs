@@ -235,6 +235,49 @@ pub(super) fn openapi_spec() -> Value {
               "description": { "type": ["string", "null"] }
             }
           },
+          "TeamUploadRequest": {
+            "type": "object",
+            "required": ["file_name", "content_type", "bytes_base64"],
+            "properties": {
+              "file_name": { "type": "string" },
+              "content_type": { "type": "string" },
+              "bytes_base64": { "type": "string", "format": "byte" },
+              "expected_size_bytes": { "type": ["integer", "null"], "format": "int64" },
+              "expected_sha256": { "type": ["string", "null"] }
+            }
+          },
+          "ObjectUploadRecord": {
+            "type": "object",
+            "required": [
+              "id",
+              "owner_scope",
+              "backend",
+              "object_key",
+              "original_filename",
+              "content_type",
+              "size_bytes",
+              "sha256",
+              "created_by_actor_id",
+              "publish_state",
+              "created_at"
+            ],
+            "properties": {
+              "id": { "type": "string" },
+              "owner_scope": { "type": "string" },
+              "backend": { "type": "string" },
+              "object_key": { "type": "string" },
+              "original_filename": { "type": "string" },
+              "content_type": { "type": "string" },
+              "size_bytes": { "type": "integer", "format": "int64" },
+              "sha256": { "type": "string" },
+              "public_url": { "type": ["string", "null"] },
+              "created_by_actor_id": { "type": "string" },
+              "publish_state": { "type": "string" },
+              "created_at": { "type": "integer", "format": "int64" },
+              "published_at": { "type": ["integer", "null"], "format": "int64" },
+              "cleanup_after": { "type": ["integer", "null"], "format": "int64" }
+            }
+          },
           "CreateTeamRunRequest": {
             "type": "object",
             "properties": {
@@ -409,6 +452,60 @@ pub(super) fn openapi_spec() -> Value {
                 "content": {
                   "application/json": {
                     "schema": { "$ref": "#/components/schemas/TeamDefinitionRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/uploads": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Upload team object",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TeamUploadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published object metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/images": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Upload team image",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TeamUploadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published image metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
                   }
                 }
               }
