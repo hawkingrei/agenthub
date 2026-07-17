@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, path::Path};
 
 use agenthub_object_store::{
     AgentHubObjectStore, ObjectStoreBackend, ObjectStoreSettings, StoredObject,
@@ -29,6 +29,7 @@ impl ObjectUploadOwnerScope {
                 "owner scope must be teams/<team_id>, tasks/<task_id>, or agents/<agent_id>"
             );
         };
+        let id = id.trim();
         if id.is_empty() || id.contains('/') || id.contains('\\') || id == "." || id == ".." {
             anyhow::bail!("owner scope id must be a single non-empty path segment");
         }
@@ -96,13 +97,14 @@ impl ObjectUploadService {
         &self,
         request: ObjectUploadRequest,
     ) -> anyhow::Result<agenthub_db::ObjectUploadRecord> {
+        let file_name = normalize_upload_file_name(&request.file_name)?;
         let upload_id = Uuid::now_v7().to_string();
         let owner_scope = request.owner_scope.to_string();
         let (object, public_url) = self
             .store_upload_bytes(
                 &upload_id,
                 &owner_scope,
-                &request.file_name,
+                &file_name,
                 &request.content_type,
                 request.kind,
                 request.bytes,
@@ -116,7 +118,7 @@ impl ObjectUploadService {
             owner_scope: &owner_scope,
             backend: object_store_backend_name(self.store.backend()),
             object_key: &object.key,
-            original_filename: &request.file_name,
+            original_filename: &file_name,
             content_type: &request.content_type,
             size_bytes,
             sha256: &object.sha256,
@@ -175,6 +177,17 @@ fn object_store_backend_name(backend: ObjectStoreBackend) -> &'static str {
     }
 }
 
+fn normalize_upload_file_name(file_name: &str) -> anyhow::Result<String> {
+    let file_name = file_name.trim();
+    if file_name.is_empty() || file_name == "." || file_name == ".." {
+        anyhow::bail!("file_name must be a single non-empty path segment");
+    }
+    if file_name.contains('/') || file_name.contains('\\') {
+        anyhow::bail!("file_name must be a single path segment");
+    }
+    Ok(file_name.to_string())
+}
+
 pub fn object_store_settings_from_config(
     config: &agenthub_config::AppConfig,
 ) -> anyhow::Result<ObjectStoreSettings> {
@@ -185,9 +198,7 @@ pub fn object_store_settings_from_config(
     };
     let root = match config.object_store_root() {
         Some(root) => Some(root),
-        None if backend == ObjectStoreBackend::Fs => Some(
-            agenthub_config::path_utils::expand_tilde("~/.agenthub/objects"),
-        ),
+        None if backend == ObjectStoreBackend::Fs => Some(default_object_store_fs_root()?),
         None => None,
     };
     let access_key_id = config
@@ -210,6 +221,24 @@ pub fn object_store_settings_from_config(
         secret_access_key,
         prefix: config.object_store_prefix(),
     })
+}
+
+fn default_object_store_fs_root() -> anyhow::Result<String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let current_dir = std::env::current_dir().context("resolve current directory")?;
+    Ok(default_object_store_fs_root_from_home(
+        Path::new(&home),
+        &current_dir,
+    ))
+}
+
+fn default_object_store_fs_root_from_home(home: &Path, current_dir: &Path) -> String {
+    let root = home.join(".agenthub/objects");
+    if root.is_absolute() {
+        root.to_string_lossy().to_string()
+    } else {
+        current_dir.join(root).to_string_lossy().to_string()
+    }
 }
 
 fn read_secret_env(name: &str, config_key: &str) -> anyhow::Result<String> {
@@ -236,7 +265,7 @@ mod tests {
             "tasks/task-1"
         );
         assert_eq!(
-            ObjectUploadOwnerScope::parse("agents/agent-1")
+            ObjectUploadOwnerScope::parse("agents/ agent-1 ")
                 .expect("parse agent scope")
                 .to_string(),
             "agents/agent-1"
@@ -251,5 +280,38 @@ mod tests {
                 "scope should be rejected: {value}"
             );
         }
+    }
+
+    #[test]
+    fn upload_file_name_rejects_nested_or_empty_values() {
+        assert_eq!(
+            normalize_upload_file_name(" report.json ").expect("normalize file name"),
+            "report.json"
+        );
+        for value in [
+            "",
+            " ",
+            ".",
+            "..",
+            "nested/report.json",
+            "nested\\report.json",
+        ] {
+            assert!(
+                normalize_upload_file_name(value).is_err(),
+                "file name should be rejected: {value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_object_store_root_absolutizes_relative_home() {
+        let root = default_object_store_fs_root_from_home(
+            Path::new("target/test-home"),
+            Path::new("/workspace/agenthub"),
+        );
+        assert_eq!(
+            root,
+            "/workspace/agenthub/target/test-home/.agenthub/objects"
+        );
     }
 }
