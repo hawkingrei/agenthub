@@ -101,7 +101,7 @@ impl ObjectUploadService {
     ) -> anyhow::Result<agenthub_db::ObjectUploadRecord> {
         let file_name = normalize_upload_file_name(&request.file_name)?;
         let expected_size_bytes = request.expected_size_bytes;
-        let expected_sha256 = request.expected_sha256.clone();
+        let expected_sha256 = normalize_expected_sha256(request.expected_sha256.as_deref())?;
         let upload_id = Uuid::now_v7().to_string();
         let owner_scope = request.owner_scope.to_string();
         let (object, public_url) = self
@@ -198,19 +198,25 @@ fn verify_stored_object(
             object.size_bytes
         );
     }
-    if let Some(expected_sha256) = expected_sha256 {
-        let expected_sha256 = expected_sha256.trim().to_ascii_lowercase();
-        anyhow::ensure!(
-            expected_sha256.len() == 64
-                && expected_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()),
-            "expected_sha256 must be a lowercase or uppercase SHA-256 hex digest"
-        );
+    if let Some(expected_sha256) = normalize_expected_sha256(expected_sha256)? {
         anyhow::ensure!(
             object.sha256 == expected_sha256,
             "uploaded object sha256 mismatch"
         );
     }
     Ok(())
+}
+
+fn normalize_expected_sha256(expected_sha256: Option<&str>) -> anyhow::Result<Option<String>> {
+    let Some(expected_sha256) = expected_sha256 else {
+        return Ok(None);
+    };
+    let expected_sha256 = expected_sha256.trim().to_ascii_lowercase();
+    anyhow::ensure!(
+        expected_sha256.len() == 64 && expected_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "expected_sha256 must be a lowercase or uppercase SHA-256 hex digest"
+    );
+    Ok(Some(expected_sha256))
 }
 
 fn object_store_backend_name(backend: ObjectStoreBackend) -> &'static str {
@@ -356,6 +362,28 @@ mod tests {
             root,
             "/workspace/agenthub/target/test-home/.agenthub/objects"
         );
+    }
+
+    #[test]
+    fn expected_sha256_normalization_rejects_malformed_values() {
+        assert_eq!(
+            normalize_expected_sha256(Some(
+                " 3A6EB0790F39AC87C94F3856B2DD2C5D110E6811602261A9A923D3BB23ADC8B7 "
+            ))
+            .expect("normalize expected sha256"),
+            Some("3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7".to_string())
+        );
+        for value in [
+            "",
+            "abc",
+            "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b",
+            "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8xz",
+        ] {
+            assert!(
+                normalize_expected_sha256(Some(value)).is_err(),
+                "checksum should be rejected: {value:?}"
+            );
+        }
     }
 
     #[tokio::test]
