@@ -67,6 +67,83 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
 });
 
+test("team channel image upload stays reachable on mobile", async ({ page }) => {
+  const fixture = await mockTeamPageApis(page);
+  fixture.teams.push({
+    id: "team-mobile-image-upload",
+    name: "Mobile Image Upload Team",
+    description: "mobile graph-bed image upload e2e",
+    spec: {
+      coordinator_member_id: "agent-coordinator-1",
+      members: [{ member_id: "agent-coordinator-1", role: "coordinator", model: "codex" }],
+      steps: [{ step_key: "coordinator_plan" }],
+    },
+    created_at: fixture.now,
+    updated_at: fixture.now,
+  });
+  const uploadRequests: Array<{ teamId: string; payload: Record<string, unknown> }> = [];
+  await page.route(/\/api\/teams\/[^/]+\/images$/, async (route, request) => {
+    if (request.method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(request.url());
+    const teamId = decodeURIComponent(url.pathname.match(/\/api\/teams\/([^/]+)\/images$/)?.[1] ?? "");
+    const payload = request.postDataJSON() as Record<string, unknown>;
+    uploadRequests.push({ teamId, payload });
+    await route.fulfill(
+      jsonResponse({
+        id: "upload-mobile-e2e",
+        owner_scope: `teams/${teamId}`,
+        backend: "s3",
+        object_key: `images/teams/${teamId}/upload-mobile-e2e.png`,
+        original_filename: payload.file_name,
+        content_type: payload.content_type,
+        size_bytes: payload.expected_size_bytes,
+        sha256: payload.expected_sha256,
+        public_url: "https://cdn.example.test/upload-mobile-e2e.png",
+        created_by_actor_id: "human",
+        publish_state: "published",
+        created_at: fixture.now + 10,
+        published_at: fixture.now + 10,
+        cleanup_after: null,
+      })
+    );
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await gotoTeams(page);
+  await openTeamFromSelector(page, "Mobile Image Upload Team");
+  await expect(page.getByRole("heading", { name: "# all", exact: true })).toBeVisible();
+  const composer = page.getByPlaceholder("Message #all");
+  await composer.fill("Mobile draft");
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Upload image", exact: true }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "mobile-diagram.png",
+    mimeType: "image/png",
+    buffer: Buffer.from([1, 2, 3, 4]),
+  });
+
+  await expect.poll(() => uploadRequests.length, { timeout: 10_000 }).toBe(1);
+  expect(uploadRequests[0]).toMatchObject({
+    teamId: "team-mobile-image-upload",
+    payload: {
+      file_name: "mobile-diagram.png",
+      content_type: "image/png",
+      bytes_base64: "AQIDBA==",
+      expected_size_bytes: 4,
+      expected_sha256:
+        "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
+      markdownAlt: "mobile-diagram.png",
+    },
+  });
+  await expect(composer).toHaveValue(
+    "Mobile draft\n![mobile-diagram.png](https://cdn.example.test/upload-mobile-e2e.png)"
+  );
+});
+
 test("node detail keeps mobile detail surfaces stacked without horizontal overflow", async ({
   page,
 }) => {
