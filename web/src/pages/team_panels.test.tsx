@@ -2775,6 +2775,7 @@ describe("team panels interactions", () => {
       type: "image/png",
     });
 
+    clickElement(findButtonByAriaLabel(container, "Upload image"));
     await act(async () => {
       textarea.focus();
       textarea.setSelectionRange(6, 6);
