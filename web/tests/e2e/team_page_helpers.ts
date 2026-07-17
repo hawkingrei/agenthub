@@ -566,6 +566,14 @@ export async function selectTeamChannelFromSidebar(
   await channelEntry.click();
 }
 
+export async function openTeamChannelWorkspace(
+  page: import("@playwright/test").Page,
+  channelId: string
+): Promise<void> {
+  await navigateToTeamChannelWorkspace(page, channelId);
+  await expect(page.getByPlaceholder(`Message #${channelId}`)).toBeVisible();
+}
+
 export function teamChannelSidebarEntry(
   page: import("@playwright/test").Page,
   channelId: string

@@ -9,12 +9,12 @@ import {
   jsonResponse,
   mockTeamPageApis,
   openAdvancedView,
+  openTeamChannelWorkspace,
   openKanbanDeveloperTools,
   openMainTeamAction,
   openTeamFromSelector,
   selectAgentFromSidebar,
   selectPrimaryTeamEntryFromSidebar,
-  selectTeamChannelFromSidebar,
   teamSelectorPanel,
 } from "./team_page_helpers";
 
@@ -815,8 +815,7 @@ test("team channel composer uploads images as graph-bed markdown", async ({ page
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Image Upload Team");
-  await selectTeamChannelFromSidebar(page, "all");
-  await expect(page.getByRole("heading", { name: "# all", exact: true })).toBeVisible();
+  await openTeamChannelWorkspace(page, "all");
   const composer = page.getByPlaceholder("Message #all");
   await composer.fill("Please inspect this diagram.");
   const fileChooserPromise = page.waitForEvent("filechooser");

@@ -4,9 +4,9 @@ import {
   gotoTeams,
   jsonResponse,
   mockTeamPageApis,
+  openTeamChannelWorkspace,
   openMainTeamAction,
   openTeamFromSelector,
-  selectTeamChannelFromSidebar,
   selectedTeamMenuLocator,
 } from "./team_page_helpers";
 
@@ -115,8 +115,7 @@ test("team channel image upload stays reachable on mobile", async ({ page }) => 
   await page.setViewportSize({ width: 390, height: 844 });
   await gotoTeams(page);
   await openTeamFromSelector(page, "Mobile Image Upload Team");
-  await selectTeamChannelFromSidebar(page, "all");
-  await expect(page.getByRole("heading", { name: "# all", exact: true })).toBeVisible();
+  await openTeamChannelWorkspace(page, "all");
   const composer = page.getByPlaceholder("Message #all");
   await composer.fill("Mobile draft");
   const fileChooserPromise = page.waitForEvent("filechooser");
