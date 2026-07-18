@@ -41,6 +41,53 @@ jobs:
       - name: Cargo check (workspace)
         run: cargo check --workspace --locked
 
+  rust-object-store-s3-minio:
+    name: Rust (Object Store S3 MinIO)
+    runs-on: ubuntu-latest
+    env:
+      MINIO_ROOT_USER: agenthubminio
+      MINIO_ROOT_PASSWORD: agenthubminio123
+      AGENTHUB_OBJECT_STORE_S3_TEST_ENDPOINT: http://127.0.0.1:9000
+      AGENTHUB_OBJECT_STORE_S3_TEST_BUCKET: agenthub-object-store-test
+      AGENTHUB_OBJECT_STORE_S3_TEST_REGION: us-east-1
+      AGENTHUB_OBJECT_STORE_S3_TEST_ACCESS_KEY_ID: agenthubminio
+      AGENTHUB_OBJECT_STORE_S3_TEST_SECRET_ACCESS_KEY: agenthubminio123
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y curl
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          profile: minimal
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Start MinIO
+        run: |
+          docker run -d --name agenthub-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER="${MINIO_ROOT_USER}" \
+            -e MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD}" \
+            minio/minio:RELEASE.2025-06-13T11-33-47Z \
+            server /data --address ":9000"
+          for i in {1..30}; do
+            if curl -fsS "${AGENTHUB_OBJECT_STORE_S3_TEST_ENDPOINT}/minio/health/ready"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs agenthub-minio
+          exit 1
+      - name: Create fixture bucket
+        run: |
+          curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/mc
+          chmod +x /tmp/mc
+          /tmp/mc alias set local "${AGENTHUB_OBJECT_STORE_S3_TEST_ENDPOINT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
+          /tmp/mc mb --ignore-existing "local/${AGENTHUB_OBJECT_STORE_S3_TEST_BUCKET}"
+      - name: Cargo test object store S3 fixture
+        run: cargo test -p agenthub-object-store --features s3 --locked s3_compatible_store_writes_reads_and_deletes_bytes -- --nocapture
+
   rust-message-store-rocksdb:
     name: Rust (Message Store RocksDB)
     runs-on: ubuntu-latest

@@ -6,7 +6,7 @@ license = "Apache-2.0"
 
 [features]
 default = []
-s3 = ["opendal/services-s3"]
+s3 = ["opendal/http-transport-reqwest", "opendal/services-s3"]
 
 [dependencies]
 anyhow = "1"

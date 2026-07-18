@@ -196,6 +196,8 @@ impl AgentHubObjectStore {
         prefix: Option<String>,
         public_base_url: Option<String>,
     ) -> anyhow::Result<Self> {
+        opendal::install_default();
+
         let bucket = settings
             .bucket
             .as_deref()
@@ -350,6 +352,32 @@ fn hex_sha256(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "s3")]
+    fn s3_fixture_settings_from_env() -> Option<ObjectStoreSettings> {
+        let endpoint = std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_ENDPOINT").ok()?;
+        let bucket = std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_BUCKET").ok()?;
+        let access_key_id = std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_ACCESS_KEY_ID").ok()?;
+        let secret_access_key =
+            std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_SECRET_ACCESS_KEY").ok()?;
+        let region = std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_REGION")
+            .unwrap_or_else(|_| "us-east-1".to_string());
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        Some(ObjectStoreSettings {
+            backend: ObjectStoreBackend::S3,
+            bucket: Some(bucket),
+            endpoint: Some(endpoint),
+            region: Some(region),
+            access_key_id: Some(access_key_id),
+            secret_access_key: Some(secret_access_key),
+            prefix: Some(format!("agenthub-object-store-ci/{nonce}")),
+            public_base_url: Some("https://img.example.test/objects".to_string()),
+            ..ObjectStoreSettings::default()
+        })
+    }
+
     #[test]
     fn normalize_object_key_rejects_path_escape() {
         for key in [
@@ -477,6 +505,72 @@ mod tests {
                 .put_image_bytes("teams/team-1", "nested/avatar-1", "image/png", vec![1])
                 .await
                 .is_err()
+        );
+    }
+
+    #[cfg(feature = "s3")]
+    #[tokio::test]
+    async fn s3_compatible_store_writes_reads_and_deletes_bytes() {
+        let Some(settings) = s3_fixture_settings_from_env() else {
+            eprintln!("skipping s3 fixture: AGENTHUB_OBJECT_STORE_S3_TEST_* env is not set");
+            return;
+        };
+        let store = AgentHubObjectStore::from_settings(settings).unwrap();
+
+        let stored = store
+            .put_bytes(
+                "uploads/teams/team-1/report.json",
+                br#"{"ok":true}"#.to_vec(),
+            )
+            .await
+            .unwrap();
+        assert!(stored.key.starts_with("agenthub-object-store-ci/"));
+        assert!(stored.key.ends_with("/uploads/teams/team-1/report.json"));
+        assert_eq!(stored.size_bytes, 11);
+        assert_eq!(
+            stored.sha256,
+            "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93"
+        );
+        assert!(
+            store
+                .exists("uploads/teams/team-1/report.json")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            store
+                .read_bytes("uploads/teams/team-1/report.json")
+                .await
+                .unwrap(),
+            br#"{"ok":true}"#.to_vec()
+        );
+
+        let image = store
+            .put_image_bytes("agents/agent-1", "image-1", "image/png", vec![1, 2, 3, 4])
+            .await
+            .unwrap();
+        assert!(
+            image
+                .object
+                .key
+                .contains("/images/agents/agent-1/image-1.png")
+        );
+        assert_eq!(image.content_type, "image/png");
+        assert_eq!(
+            image.public_url,
+            Some(format!(
+                "https://img.example.test/objects/{}",
+                image.object.key
+            ))
+        );
+
+        store.delete_stored_object(&stored).await.unwrap();
+        store.delete_stored_object(&image.object).await.unwrap();
+        assert!(
+            !store
+                .exists("uploads/teams/team-1/report.json")
+                .await
+                .unwrap()
         );
     }
 }

@@ -147,9 +147,8 @@ Main shape:
   skill/checklist entry points, and tool-neutral durable knowledge boundaries.
 - Access-control planning now defines user roles, capability gates, and route authorization
   guardrails for moving beyond root-only checks.
-- Object storage now has an OpenDAL-backed foundation, stable metadata/object-byte boundary, and
-  owner-scoped Team/task/agent upload API checkpoints for local filesystem and future
-  S3-compatible uploads.
+- Object storage now has an OpenDAL-backed foundation, stable metadata/object-byte boundary,
+  owner-scoped Team/task/agent upload API checkpoints, and a MinIO-backed S3-compatible fixture.
 
 Start with:
 
@@ -159,6 +158,7 @@ Start with:
 - `2026-07-16-access-control-roles.md`
 - `2026-07-16-object-storage-opendal.md`
 - `2026-07-18-object-upload-owner-scopes.md`
+- `2026-07-18-object-store-s3-minio-fixture.md`
 
 ## Compaction Rules
 
