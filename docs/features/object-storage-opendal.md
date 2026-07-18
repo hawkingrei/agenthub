@@ -152,7 +152,8 @@ operations must still authorize against the Team-owned metadata row.
 | Graph-bed UX | Frontend tests cover raster MIME allowlisting, browser SHA-256/base64 request preparation, Team image endpoint wiring, and Markdown image insertion in the Team channel composer. |
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
-| Future S3 rollout | Add an integration test against MinIO or a provisioned S3-compatible bucket before enabling S3 in release builds. |
+| S3-compatible fixture | A MinIO-backed CI job runs `agenthub-object-store` with the `s3` feature and verifies write/read/exists/delete plus hosted-image URL behavior against a real S3-compatible endpoint. |
+| Future S3 rollout | Keep S3 out of release feature sets until the MinIO fixture is green in PR and push CI and one reviewed release build includes the feature intentionally. |
 
 ## Operational Notes
 
@@ -175,8 +176,9 @@ operations must still authorize against the Team-owned metadata row.
   schema migration and read-compatibility plan.
 - Browser-direct upload requires short-lived presign or upload-token semantics plus size/checksum
   verification at publish time.
-- S3-compatible providers differ in multipart, path-style, and checksum behavior; each supported
-  provider needs a small compatibility fixture before being documented as production-ready.
+- S3-compatible providers differ in multipart, path-style, and checksum behavior; MinIO is the first
+  CI fixture, but each documented production provider still needs compatibility evidence before it
+  is described as production-ready.
 - Object lifecycle bugs can leak storage cost or delete still-referenced bytes unless metadata
   reference checks are kept explicit.
 
