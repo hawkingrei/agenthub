@@ -196,6 +196,8 @@ impl AgentHubObjectStore {
         prefix: Option<String>,
         public_base_url: Option<String>,
     ) -> anyhow::Result<Self> {
+        opendal::install_default();
+
         let bucket = settings
             .bucket
             .as_deref()
