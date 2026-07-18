@@ -189,6 +189,56 @@ describe("api request headers", () => {
     expect(headers.get("Content-Type")).toBe("application/json");
   });
 
+  it("uploads Team images through the scoped image endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "upload-1",
+          owner_scope: "teams/team-1",
+          backend: "s3",
+          object_key: "images/teams/team-1/upload-1.png",
+          original_filename: "diagram.png",
+          content_type: "image/png",
+          size_bytes: 4,
+          sha256: "sha",
+          public_url: "https://cdn.example.test/upload-1.png",
+          created_by_actor_id: "human",
+          publish_state: "published",
+          created_at: 1,
+          published_at: 1,
+          cleanup_after: null,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.uploadTeamImage("token-1", "team-1", {
+      file_name: "diagram.png",
+      content_type: "image/png",
+      bytes_base64: "AQIDBA==",
+      expected_size_bytes: 4,
+      expected_sha256: "sha",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/teams/team-1/images");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({
+        file_name: "diagram.png",
+        content_type: "image/png",
+        bytes_base64: "AQIDBA==",
+        expected_size_bytes: 4,
+        expected_sha256: "sha",
+      })
+    );
+  });
+
   it("includes priority when listing team tasks with a priority filter", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify([]), {

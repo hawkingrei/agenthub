@@ -13,6 +13,7 @@ type TeamConversationPanelProps = {
   conversationKey?: string;
   developerMode: boolean;
   token?: string | null;
+  selectedTeamId?: string | null;
   tasksLoading?: boolean;
   onRefreshTasks?: () => Promise<void> | void;
   messageDraft: string;
@@ -63,6 +64,7 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         conversationKey={props.conversationKey}
         developerMode={props.developerMode}
         token={props.token}
+        selectedTeamId={props.selectedTeamId}
         messageDraft={props.messageDraft}
         onMessageDraftChange={props.onMessageDraftChange}
         onSendMessage={props.onSendMessage}

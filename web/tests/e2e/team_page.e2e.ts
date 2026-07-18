@@ -768,6 +768,52 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   ).toBe("Build tiny JSON CLI");
 });
 
+test("team image upload helpers produce graph-bed payloads in the desktop workflow", async ({
+  page,
+}) => {
+  await mockTeamPageApis(page);
+  await gotoTeams(page);
+
+  const result = await page.evaluate(async () => {
+    const mod = await import("/src/pages/team/team_image_upload.ts");
+    const payload = await mod.prepareTeamImageUploadRequest(
+      new File([new Uint8Array([1, 2, 3, 4])], "diagram.png", {
+        type: "image/png",
+      })
+    );
+    const markdown = mod.buildTeamUploadedImageMarkdown({
+      id: "upload-e2e",
+      owner_scope: "teams/team-image-upload",
+      backend: "s3",
+      object_key: "images/teams/team-image-upload/upload-e2e.png",
+      original_filename: payload.file_name,
+      content_type: payload.content_type,
+      size_bytes: payload.expected_size_bytes,
+      sha256: payload.expected_sha256,
+      public_url: "https://cdn.example.test/upload-e2e.png",
+      created_by_actor_id: "human",
+      publish_state: "published",
+      created_at: 1,
+      published_at: 1,
+      cleanup_after: null,
+    });
+    return { payload, markdown };
+  });
+
+  expect(result).toMatchObject({
+    payload: {
+      file_name: "diagram.png",
+      content_type: "image/png",
+      bytes_base64: "AQIDBA==",
+      expected_size_bytes: 4,
+      expected_sha256:
+        "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
+      markdownAlt: "diagram.png",
+    },
+    markdown: "![diagram.png](https://cdn.example.test/upload-e2e.png)",
+  });
+});
+
 test("team mailbox IM mode supports conversation focus, unread, auto-follow and advanced controls", async ({
   page,
 }) => {

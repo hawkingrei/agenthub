@@ -102,3 +102,27 @@ cargo test -p agenthub teams_router_accepts_team_upload_route
 cargo test -p agenthub object_upload
 cargo fmt --all --check
 ```
+
+## Graph-Bed Image UX Slice
+
+The Team channel composer now consumes the Team image upload API as the first browser graph-bed
+flow:
+
+- The composer exposes an image upload action only for channel conversations with a selected Team
+  and auth token.
+- Browser-side preparation accepts only PNG, JPEG, WebP, and GIF, then computes byte length,
+  standard base64, and SHA-256 before calling `POST /api/teams/{team_id}/images`.
+- The returned published upload metadata is converted into a Markdown image link in the current
+  draft. Public URLs are treated as delivery addresses only; object ownership and future mutation
+  authority remain tied to the Team-scoped metadata row.
+- Thread replies remain unchanged in this slice so the first UX path stays focused on the shared
+  channel graph-bed flow.
+
+Focused checks for this slice:
+
+```bash
+npm exec vitest run src/pages/team/team_image_upload.test.ts src/api.test.ts src/pages/team_panels.test.tsx
+npm run lint
+npm exec tsc -- --noEmit
+npm run build
+```

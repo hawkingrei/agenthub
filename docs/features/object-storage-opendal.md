@@ -112,6 +112,12 @@ Only `image/png`, `image/jpeg`, `image/webp`, and `image/gif` are accepted in th
 helper may return a `public_base_url`-derived URL when configured, but API handlers must still treat
 that URL as a delivery address, not as the authorization decision.
 
+The Team channel composer is the first graph-bed consumer. It accepts only the same raster image
+types, reads the browser file locally, computes SHA-256 and byte length before upload, calls
+`POST /api/teams/{team_id}/images`, then inserts a Markdown image link using the published upload
+metadata. The inserted URL is for rendering/delivery only; future read, replace, delete, or presign
+operations must still authorize against the Team-owned metadata row.
+
 ## Contracts
 
 - Object keys are relative, slash-separated, and normalized before reaching OpenDAL.
@@ -142,6 +148,7 @@ that URL as a delivery address, not as the authorization decision.
 | Image hosting helper | Focused async test writes a scoped raster image object, rejects nested image ids, and returns a normalized public URL. |
 | Agent upload entry | Parser, owner-scope, and DB tests cover `agenthub actor upload`, required scope/file flags, image mode, and published metadata persistence. |
 | Team upload API | Handler and router tests cover authorization, owner-scope derivation, base64 upload publication, raster-image allowlist, and size/checksum mismatch rejection without publishing metadata. |
+| Graph-bed UX | Frontend tests cover raster MIME allowlisting, browser SHA-256/base64 request preparation, Team image endpoint wiring, and Markdown image insertion in the Team channel composer. |
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
 | Future S3 rollout | Add an integration test against MinIO or a provisioned S3-compatible bucket before enabling S3 in release builds. |
