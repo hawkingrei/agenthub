@@ -557,8 +557,11 @@ mod tests {
         );
         assert_eq!(image.content_type, "image/png");
         assert_eq!(
-            image.public_url.as_deref(),
-            Some(format!("https://img.example.test/objects/{}", image.object.key).as_str())
+            image.public_url,
+            Some(format!(
+                "https://img.example.test/objects/{}",
+                image.object.key
+            ))
         );
 
         store.delete_stored_object(&stored).await.unwrap();
