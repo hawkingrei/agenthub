@@ -15,6 +15,7 @@ pub(super) fn openapi_spec() -> Value {
       ],
       "tags": [
         { "name": "openapi", "description": "OpenAPI discovery endpoints" },
+        { "name": "agents", "description": "Agent runtime resources" },
         { "name": "teams", "description": "Team definitions, runs, steps, and actor mailbox" }
       ],
       "components": {
@@ -355,6 +356,60 @@ pub(super) fn openapi_spec() -> Value {
             }
           }
         },
+        "/api/agents/{id}/uploads": {
+          "post": {
+            "tags": ["agents"],
+            "summary": "Upload agent object",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TeamUploadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published object metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/agents/{id}/images": {
+          "post": {
+            "tags": ["agents"],
+            "summary": "Upload agent image",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TeamUploadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published image metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
         "/api/teams": {
           "get": {
             "tags": ["teams"],
@@ -491,6 +546,62 @@ pub(super) fn openapi_spec() -> Value {
             "summary": "Upload team image",
             "parameters": [
               { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TeamUploadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published image metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/tasks/{task_id}/uploads": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Upload team task object",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+              { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TeamUploadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published object metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/tasks/{task_id}/images": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Upload team task image",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+              { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } }
             ],
             "requestBody": {
               "required": true,

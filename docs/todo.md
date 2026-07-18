@@ -56,7 +56,7 @@ Stable contract:
 
 ## Object Storage
 
-- [ ] `P1` Extend object upload APIs beyond the initial Team-scoped JSON/base64 routes: add task/agent owner-scope authorization and decide whether browser-facing multipart or presigned upload tokens should become the canonical large-object path. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-16-object-storage-opendal.md](journal/2026-07-16-object-storage-opendal.md).
+- [ ] `P1` Decide whether browser-facing multipart or presigned upload tokens should become the canonical large-object path after the Team, task, and agent JSON/base64 owner-scope routes. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-16-object-storage-opendal.md](journal/2026-07-16-object-storage-opendal.md), [journal/2026-07-18-object-upload-owner-scopes.md](journal/2026-07-18-object-upload-owner-scopes.md).
 - [ ] `P1` Add an S3-compatible integration fixture, preferably MinIO in CI or a provisioned test bucket, before enabling the `agenthub-object-store/s3` feature in release builds.
 
 ## Observability, CI, And Docs

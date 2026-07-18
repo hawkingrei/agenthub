@@ -254,6 +254,104 @@ async fn team_image_upload_api_rejects_unsafe_content_types_and_checksum_mismatc
 }
 
 #[tokio::test]
+async fn team_task_upload_api_authorizes_parent_team_and_publishes_task_scope() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    let outsider_headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-upload-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create task upload team");
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "Collect evidence".to_string(),
+            priority: "high".to_string(),
+            assigned_member_id: "planner".to_string(),
+            created_by_actor_id: None,
+            context: None,
+            conversation_mode: None,
+            topic: None,
+        },
+    )
+    .await
+    .expect("create upload task");
+
+    let bytes = b"task evidence";
+    let sha256 = hex_encode(&Sha256::digest(bytes));
+    let request = TeamUploadRequest {
+        file_name: "evidence.txt".to_string(),
+        content_type: "text/plain".to_string(),
+        bytes_base64: STANDARD.encode(bytes),
+        expected_size_bytes: Some(bytes.len() as u64),
+        expected_sha256: Some(sha256.clone()),
+    };
+
+    let forbidden = upload_team_task_object(
+        State(state.clone()),
+        outsider_headers,
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(request.clone()),
+    )
+    .await
+    .expect_err("non-owner should not upload into task scope");
+    assert_eq!(forbidden.into_response().status(), StatusCode::NOT_FOUND);
+
+    let Json(upload) = upload_team_task_object(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(request),
+    )
+    .await
+    .expect("upload task object");
+
+    assert_eq!(upload.owner_scope, format!("tasks/{}", created.task.id));
+    assert!(upload.object_key.starts_with(&format!(
+        "uploads/tasks/{}/",
+        created.task.id
+    )));
+    assert!(upload.object_key.ends_with("/evidence.txt"));
+    assert_eq!(upload.content_type, "text/plain");
+    assert_eq!(upload.size_bytes, bytes.len() as i64);
+    assert_eq!(upload.sha256, sha256);
+
+    let image_bytes = [9_u8, 8, 7, 6];
+    let image_sha256 = hex_encode(&Sha256::digest(image_bytes));
+    let Json(image_upload) = upload_team_task_image(
+        State(state),
+        headers,
+        Path((team.id, created.task.id.clone())),
+        Json(TeamUploadRequest {
+            file_name: "evidence.png".to_string(),
+            content_type: "image/png".to_string(),
+            bytes_base64: STANDARD.encode(image_bytes),
+            expected_size_bytes: Some(image_bytes.len() as u64),
+            expected_sha256: Some(image_sha256.clone()),
+        }),
+    )
+    .await
+    .expect("upload task image");
+    assert_eq!(image_upload.owner_scope, format!("tasks/{}", created.task.id));
+    assert!(image_upload.object_key.starts_with(&format!(
+        "images/tasks/{}/",
+        created.task.id
+    )));
+    assert!(image_upload.object_key.ends_with(".png"));
+    assert_eq!(image_upload.sha256, image_sha256);
+}
+
+#[tokio::test]
 async fn teams_api_create_list_get_and_reject_duplicate_name() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

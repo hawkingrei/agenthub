@@ -26,6 +26,8 @@ use crate::api::authz::{require_capability, require_user};
 use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::api::teams::prune_deleted_agent_from_team_specs;
+use crate::api::uploads::{UploadRequest, upload_scoped_object};
+use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
 use crate::state::AppState;
 use crate::team::effective_team_member_skills;
 
@@ -197,6 +199,8 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}/start", post(start_agent))
         .route("/{id}/stop", post(stop_agent))
         .route("/{id}/input", post(send_input))
+        .route("/{id}/uploads", post(upload_agent_object))
+        .route("/{id}/images", post(upload_agent_image))
         .route(
             "/{id}/triggers",
             post(create_agent_time_trigger).get(list_agent_time_triggers),
@@ -455,6 +459,43 @@ async fn send_input(
         }
     }
     Ok(ok_response())
+}
+
+async fn upload_agent_object(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<UploadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    upload_agent_scoped_object(state, headers, agent_id, payload, ObjectUploadKind::Object).await
+}
+
+async fn upload_agent_image(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<UploadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    upload_agent_scoped_object(state, headers, agent_id, payload, ObjectUploadKind::Image).await
+}
+
+async fn upload_agent_scoped_object(
+    state: AppState,
+    headers: HeaderMap,
+    agent_id: String,
+    payload: UploadRequest,
+    kind: ObjectUploadKind,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let agent = state.agents.get_agent(&agent_id).await?;
+    upload_scoped_object(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Agent(agent.id),
+        payload,
+        kind,
+    )
+    .await
 }
 
 async fn create_agent_time_trigger(
@@ -1224,7 +1265,9 @@ mod tests {
     use axum::body::{Body, Bytes, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use axum::response::IntoResponse;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     use serde_json::{Value, json};
+    use sha2::{Digest, Sha256};
     use sqlx::Row;
     use sqlx::SqlitePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -1648,6 +1691,39 @@ mod tests {
 
         sqlx::query(
             r#"
+            CREATE TABLE object_uploads (
+                id TEXT PRIMARY KEY,
+                owner_scope TEXT NOT NULL,
+                backend TEXT NOT NULL,
+                object_key TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                public_url TEXT,
+                created_by_actor_id TEXT NOT NULL,
+                publish_state TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                published_at INTEGER,
+                cleanup_after INTEGER
+            )
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create object_uploads");
+        sqlx::query(
+            r#"
+            CREATE UNIQUE INDEX idx_object_uploads_object_key
+            ON object_uploads(object_key)
+            "#,
+        )
+        .execute(db)
+        .await
+        .expect("create object upload object key index");
+
+        sqlx::query(
+            r#"
             CREATE TABLE agent_sessions (
                 id TEXT PRIMARY KEY,
                 agent_id TEXT NOT NULL,
@@ -1982,6 +2058,13 @@ mod tests {
             .await
             .expect("read response body");
         String::from_utf8(bytes.to_vec()).expect("decode response text")
+    }
+
+    fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
+        Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
     }
 
     fn run_git(repo_dir: &std::path::Path, args: &[&str]) {
@@ -2352,6 +2435,114 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let body = decode_json_body(response).await;
         assert_eq!(body["error"], Value::from("name is required"));
+    }
+
+    #[tokio::test]
+    async fn agent_upload_routes_publish_agent_scoped_metadata() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let workdir = std::env::temp_dir()
+            .join(format!("agenthub-upload-agent-{}", Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(&workdir)
+            .bind(chrono::Utc::now().timestamp())
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+        let agent = state
+            .agents
+            .create_agent(crate::agent::AgentConfig {
+                name: "upload-agent".to_string(),
+                workdir,
+                command: "/bin/sh".to_string(),
+                args: vec!["-lc".to_string(), "sleep 10".to_string()],
+                target_node_id: None,
+                worktree_mode: WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: true,
+                codex_acp_default_mode: None,
+                runtime_model: None,
+                thinking_level: None,
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
+            })
+            .await
+            .expect("seed upload agent");
+        let agent_id = agent.id;
+        let app = router(state);
+
+        let bytes = b"agent evidence";
+        let sha256 = sha256_hex(bytes);
+        let object_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/uploads"),
+                Some(&token),
+                Some(json!({
+                    "file_name": "evidence.txt",
+                    "content_type": "text/plain",
+                    "bytes_base64": STANDARD.encode(bytes),
+                    "expected_size_bytes": bytes.len(),
+                    "expected_sha256": sha256
+                })),
+            ))
+            .await
+            .expect("upload agent object");
+        let object_status = object_response.status();
+        let object_upload = decode_json_body(object_response).await;
+        assert_eq!(
+            object_status,
+            StatusCode::OK,
+            "unexpected object upload body: {object_upload}"
+        );
+        assert_eq!(
+            object_upload["owner_scope"],
+            Value::from(format!("agents/{agent_id}"))
+        );
+        assert!(
+            object_upload["object_key"]
+                .as_str()
+                .is_some_and(|value| value.starts_with(&format!("uploads/agents/{agent_id}/")))
+        );
+        assert_eq!(
+            object_upload["original_filename"],
+            Value::from("evidence.txt")
+        );
+
+        let image_bytes = [5_u8, 6, 7, 8];
+        let image_sha256 = sha256_hex(image_bytes);
+        let image_response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/images"),
+                Some(&token),
+                Some(json!({
+                    "file_name": "evidence.png",
+                    "content_type": "image/png",
+                    "bytes_base64": STANDARD.encode(image_bytes),
+                    "expected_size_bytes": image_bytes.len(),
+                    "expected_sha256": image_sha256
+                })),
+            ))
+            .await
+            .expect("upload agent image");
+        assert_eq!(image_response.status(), StatusCode::OK);
+        let image_upload = decode_json_body(image_response).await;
+        assert_eq!(
+            image_upload["owner_scope"],
+            Value::from(format!("agents/{agent_id}"))
+        );
+        assert!(
+            image_upload["object_key"]
+                .as_str()
+                .is_some_and(|value| value.starts_with(&format!("images/agents/{agent_id}/")))
+        );
+        assert_eq!(image_upload["content_type"], Value::from("image/png"));
     }
 
     #[tokio::test]
