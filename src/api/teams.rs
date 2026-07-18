@@ -24,7 +24,6 @@ use axum::{
     http::HeaderMap,
     routing::{delete, get, post, put},
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures::future::try_join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -34,8 +33,9 @@ use uuid::Uuid;
 
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
+use crate::api::uploads::{UploadRequest, upload_scoped_object};
 use crate::auth::UserRecord;
-use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope, ObjectUploadRequest};
+use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
 use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport, TeamChannelRecord,
@@ -262,14 +262,7 @@ pub struct CreateTeamChannelRequest {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct TeamUploadRequest {
-    pub file_name: String,
-    pub content_type: String,
-    pub bytes_base64: String,
-    pub expected_size_bytes: Option<u64>,
-    pub expected_sha256: Option<String>,
-}
+pub type TeamUploadRequest = UploadRequest;
 
 #[derive(Debug, Deserialize)]
 pub struct CompileTeamTaskRunPreviewRequest {
@@ -548,6 +541,11 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/{id}/uploads", post(upload_team_object))
         .route("/{id}/images", post(upload_team_image))
+        .route(
+            "/{id}/tasks/{task_id}/uploads",
+            post(upload_team_task_object),
+        )
+        .route("/{id}/tasks/{task_id}/images", post(upload_team_task_image))
         .route("/{id}/channels/{channel_id}", delete(delete_team_channel))
         .route(
             "/{id}/tasks/{task_id}/compile_run_preview",
@@ -1107,49 +1105,76 @@ async fn upload_team_scoped_object(
 ) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
-    let content_type = normalize_upload_content_type(&payload.content_type)?;
-    let bytes = decode_upload_bytes(&payload.bytes_base64)?;
-    let upload = state
-        .object_uploads
-        .upload(ObjectUploadRequest {
-            actor_id: canonical_user_actor_id(&user),
-            owner_scope: ObjectUploadOwnerScope::Team(team.id),
-            file_name: payload.file_name,
-            content_type,
-            kind,
-            expected_size_bytes: payload.expected_size_bytes,
-            expected_sha256: payload.expected_sha256,
-            bytes,
-        })
+    upload_scoped_object(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Team(team.id),
+        payload,
+        kind,
+    )
+    .await
+}
+
+async fn upload_team_task_object(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id)): Path<(String, String)>,
+    Json(payload): Json<TeamUploadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    upload_team_task_scoped_object(
+        state,
+        headers,
+        team_id,
+        task_id,
+        payload,
+        ObjectUploadKind::Object,
+    )
+    .await
+}
+
+async fn upload_team_task_image(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id)): Path<(String, String)>,
+    Json(payload): Json<TeamUploadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    upload_team_task_scoped_object(
+        state,
+        headers,
+        team_id,
+        task_id,
+        payload,
+        ObjectUploadKind::Image,
+    )
+    .await
+}
+
+async fn upload_team_task_scoped_object(
+    state: AppState,
+    headers: HeaderMap,
+    team_id: String,
+    task_id: String,
+    payload: TeamUploadRequest,
+    kind: ObjectUploadKind,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
         .await
-        .map_err(map_upload_error)?;
-    Ok(Json(upload))
-}
-
-fn normalize_upload_content_type(value: &str) -> Result<String, ApiError> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err(ApiError::bad_request("content_type is required"));
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
     }
-    Ok(value.to_ascii_lowercase())
-}
-
-fn decode_upload_bytes(value: &str) -> Result<Vec<u8>, ApiError> {
-    STANDARD
-        .decode(value.trim())
-        .map_err(|_| ApiError::bad_request("bytes_base64 must be valid standard base64"))
-}
-
-fn map_upload_error(err: anyhow::Error) -> ApiError {
-    let message = err.to_string();
-    if message.contains("file_name")
-        || message.contains("size mismatch")
-        || message.contains("sha256")
-        || message.contains("unsupported hosted image content type")
-    {
-        return ApiError::bad_request(&message);
-    }
-    err.into()
+    upload_scoped_object(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Task(task.id),
+        payload,
+        kind,
+    )
+    .await
 }
 
 async fn get_team_task(

@@ -17,6 +17,7 @@ mod openapi;
 mod push;
 mod settings;
 mod teams;
+mod uploads;
 
 pub(crate) use self::error::ApiError;
 pub(crate) use self::error::ok_response;

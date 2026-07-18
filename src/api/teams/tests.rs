@@ -66,7 +66,8 @@ use super::{
     send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
     start_team_run_step, stop_team, submit_team_run_step, takeover_team_run_message,
     transfer_team_run_message, triage_team_run_message, update_team_spec, update_team_task,
-    upload_team_image, upload_team_object, validate_team_spec,
+    upload_team_image, upload_team_object, upload_team_task_image, upload_team_task_object,
+    validate_team_spec,
 };
 
 #[derive(Default)]
