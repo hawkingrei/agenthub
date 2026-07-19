@@ -225,10 +225,10 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
   expect(splitMetrics.overlaps).toBe(false);
   expect(splitMetrics.horizontalGap).toBeGreaterThanOrEqual(0);
   expect(splitMetrics.threadRightInset).toBeGreaterThanOrEqual(-1);
-  expect(splitMetrics.channelWidth / splitMetrics.layoutWidth).toBeGreaterThanOrEqual(0.48);
-  expect(splitMetrics.channelWidth / splitMetrics.layoutWidth).toBeLessThanOrEqual(0.58);
-  expect(splitMetrics.threadWidth / splitMetrics.layoutWidth).toBeGreaterThanOrEqual(0.40);
-  expect(splitMetrics.threadWidth / splitMetrics.layoutWidth).toBeLessThanOrEqual(0.50);
+  expect(splitMetrics.channelWidth / splitMetrics.layoutWidth).toBeGreaterThanOrEqual(0.56);
+  expect(splitMetrics.channelWidth / splitMetrics.layoutWidth).toBeLessThanOrEqual(0.66);
+  expect(splitMetrics.threadWidth / splitMetrics.layoutWidth).toBeGreaterThanOrEqual(0.32);
+  expect(splitMetrics.threadWidth / splitMetrics.layoutWidth).toBeLessThanOrEqual(0.42);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('[data-team-surface="thread-pane"]')).toBeVisible();
