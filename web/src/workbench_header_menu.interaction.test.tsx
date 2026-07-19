@@ -88,4 +88,32 @@ describe("WorkbenchHeaderMenu interactions", () => {
     expect(onNavigate).toHaveBeenNthCalledWith(2, "/workspace/nodes");
     expect(onNavigate).toHaveBeenNthCalledWith(3, "/admin");
   });
+
+  it("routes the Teams menu item through the canonical selector path", () => {
+    const onNavigate = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <WorkbenchHeaderMenu
+            active="workspace"
+            username="root"
+            isRoot={false}
+            onLogout={() => {}}
+            onNavigate={onNavigate}
+            buttonClassName="menu-button"
+            defaultOpened={true}
+          />
+        </MantineProvider>
+      );
+    });
+
+    act(() => {
+      findButtonByText(container, "Teams").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+    });
+
+    expect(onNavigate).toHaveBeenCalledWith("/workspace/teams");
+  });
 });

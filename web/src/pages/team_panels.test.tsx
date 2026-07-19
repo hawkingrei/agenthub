@@ -3929,6 +3929,13 @@ describe("team panels interactions", () => {
 
   it("TeamConversationContainer routes clicked channel mentions to member overview", async () => {
     const navigateTeamRoute = vi.fn();
+    const setChannelFocusMessageId = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
     const workspaceContext: TeamWorkspaceContextValue = {
       selectedConversation: null,
       developerMode: false,
@@ -3962,8 +3969,8 @@ describe("team panels interactions", () => {
       busy: null,
       routeThreadRootMessageId: null,
       routeSelectedMemberId: "",
-      channelFocusMessageId: null,
-      setChannelFocusMessageId: vi.fn(),
+      channelFocusMessageId: 14,
+      setChannelFocusMessageId,
       effectiveSelectedTeamId: "team-1",
       routeWorkspaceLens: "channels",
       routeChannelId: "all",
@@ -3989,22 +3996,32 @@ describe("team panels interactions", () => {
       setThreadReplyDraft: vi.fn(),
     };
 
-    renderWithMantine(
-      root,
-      <TeamWorkspaceProvider value={workspaceContext}>
-        <TeamConversationContainer />
-      </TeamWorkspaceProvider>
-    );
+    try {
+      renderWithMantine(
+        root,
+        <TeamWorkspaceProvider value={workspaceContext}>
+          <TeamConversationContainer />
+        </TeamWorkspaceProvider>
+      );
 
-    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
-    const mention = container.querySelector(
-      '[data-team-agent-mention-id="worker-agent"]'
-    ) as HTMLButtonElement | null;
-    expect(mention).not.toBeNull();
-    mention?.click();
-    expect(navigateTeamRoute).toHaveBeenCalledWith(
-      "/workspace/teams/team-1/channels/all/tasks/task-1/members/worker-agent"
-    );
+      await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+      await waitForCondition(() => setChannelFocusMessageId.mock.calls.length > 0);
+      expect(setChannelFocusMessageId).toHaveBeenCalledWith(null);
+      const mention = container.querySelector(
+        '[data-team-agent-mention-id="worker-agent"]'
+      ) as HTMLButtonElement | null;
+      expect(mention).not.toBeNull();
+      mention?.click();
+      expect(navigateTeamRoute).toHaveBeenCalledWith(
+        "/workspace/teams/team-1/channels/all/tasks/task-1/members/worker-agent"
+      );
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        writable: true,
+        value: originalScrollIntoView,
+      });
+    }
   });
 
   it("TeamConversationContainer ignores clicked channel mentions without a selected team", async () => {

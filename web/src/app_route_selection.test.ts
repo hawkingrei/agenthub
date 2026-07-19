@@ -337,6 +337,14 @@ describe("app route selection", () => {
       memberId: null,
       tab: null,
     });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/threads")).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
     expect(
       resolveTeamWorkspacePathState("/workspace/teams/team-1/members/worker-1/overview")
     ).toEqual({
