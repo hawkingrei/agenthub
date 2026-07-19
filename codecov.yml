@@ -1,5 +1,9 @@
 ignore:
   - "src/internal/proto/agenthub.internal.v1.rs"
+  - "docs/**"
+  - "web/src/**/*.test.ts"
+  - "web/src/**/*.test.tsx"
+  - "web/tests/**"
 
 coverage:
   status:
