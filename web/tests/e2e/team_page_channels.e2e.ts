@@ -6,6 +6,10 @@ import {
   selectTeamChannelFromSidebar,
   teamChannelSidebarEntry,
 } from "./team_page_helpers";
+import {
+  buildTeamChannelProfilePath,
+  buildTeamChannelThreadPath,
+} from "../../src/pages/team/team_route_helpers";
 
 test("team channel sidebar helper does not select prefixed channel ids", async ({ page }) => {
   await page.setContent(`
@@ -95,7 +99,7 @@ test("team channels create, switch and delete custom channel", async ({ page }) 
   await expect(reviewChannel).toBeVisible();
 
   await selectTeamChannelFromSidebar(page, "review");
-  await expect(page).toHaveURL(/channel=review/);
+  await expect(page).toHaveURL(/\/channels\/review/);
 
   await selectTeamChannelFromSidebar(page, "all");
 
@@ -147,14 +151,86 @@ test("team channels navigates to channel via url and opens thread", async ({ pag
     },
   ]);
 
-  // Navigate directly to a channel + thread URL
-  await page.goto(`/workspace/teams/${teamId}?lens=channels&channel=all&thread=5`);
+  // Navigate directly to the canonical channel + thread URL.
+  await page.goto(buildTeamChannelThreadPath(teamId, "all", 5));
 
   // The page should load with the channels lens active
   await expect(page).toHaveURL(/workspace/);
-  await expect(page).toHaveURL(/thread=5/);
+  await expect(page).toHaveURL(/\/channels\/all\/threads\/5/);
   await expect(page.getByText("Root channel update")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Reply in thread" })).toBeVisible();
+});
+
+test("team channels opens member profile from canonical channel url", async ({ page }) => {
+  const fixture = await mockTeamPageApis(page);
+  const teamId = "team-ch-profile";
+  const teamCreatedAt = fixture.now + 90;
+  const taskId = `task-${teamId}-1`;
+  const runId = `${teamId}-working-1`;
+  fixture.teams.push({
+    id: teamId,
+    name: "Profile Route Team",
+    description: "profile route e2e",
+    spec: {
+      coordinator_member_id: "agent-coordinator-1",
+      members: [
+        { member_id: "agent-coordinator-1", role: "coordinator", model: "codex" },
+        {
+          member_id: "agent-worker-1",
+          role: "worker",
+          model: "gemini",
+          description: "Handles browser route validation",
+        },
+      ],
+      steps: [
+        { step_key: "coordinator_plan", member_id: "agent-coordinator-1" },
+        { step_key: "worker_execute", member_id: "agent-worker-1" },
+      ],
+    },
+    created_at: teamCreatedAt,
+    updated_at: teamCreatedAt,
+  });
+  fixture.seedRuns(teamId, [
+    {
+      id: runId,
+      team_id: teamId,
+      context_id: `ctx-${runId}`,
+      status: "working",
+      input: {},
+      created_at: fixture.now + 100,
+      started_at: fixture.now + 101,
+      ended_at: null,
+    },
+  ]);
+
+  const runsResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/teams/${teamId}/runs`) &&
+      response.request().method() === "GET"
+  );
+  const snapshotResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/teams/runs/${runId}/snapshot`) &&
+      response.request().method() === "GET"
+  );
+  await page.goto(buildTeamChannelProfilePath(teamId, "all", "agent-worker-1", taskId));
+  const runsResponse = await runsResponsePromise;
+  const runsPayload = (await runsResponse.json()) as unknown[];
+  expect(runsPayload).toHaveLength(1);
+  const snapshotResponse = await snapshotResponsePromise;
+  const snapshotPayload = (await snapshotResponse.json()) as { members: unknown[] };
+  expect(snapshotPayload.members).toHaveLength(2);
+
+  await expect(page).toHaveURL(
+    /\/channels\/all\/tasks\/task-team-ch-profile-1\/members\/agent-worker-1/
+  );
+  await expect(page.getByText("Agent Profile")).toBeVisible();
+  await expect(page.getByText("Worker Agent agent-worker-1")).toBeVisible();
+  await expect(page.getByText("Handles browser route validation")).toBeVisible();
+
+  await page.getByRole("button", { name: "Close agent profile" }).click();
+  await expect(page).toHaveURL(new RegExp(`/workspace/teams/${teamId}$`));
+  await expect(page.getByText("Agent Profile")).toBeHidden();
 });
 
 test("non-default channel delete requires confirmation", async ({ page }) => {

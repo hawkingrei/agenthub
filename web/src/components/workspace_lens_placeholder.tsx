@@ -55,7 +55,7 @@ export function WorkspaceSearchLensPlaceholder({
       <EmptyState
         className="mt-2 border-0 bg-transparent px-0 py-0"
         title="Search workspace"
-        body="Use the sidebar search command to jump across channels, tasks, and agents."
+        body="Use the sidebar search command to jump across Channels, Tasks, and Members."
       />
     </SurfaceCard>
   );

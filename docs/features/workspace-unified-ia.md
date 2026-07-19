@@ -243,6 +243,74 @@ Explicit anti-goals:
 - do not over-segment the screen with too many persistent panels
 - do not make runtime/debug chrome louder than the primary content
 
+### 8.1) Shell Density And Chrome Contract
+
+The workspace shell should behave like a compact object directory plus one active work surface, not
+like a status dashboard.
+
+Stable shell-density rules:
+
+- keep the shell header short; do not add descriptive subtitles when the selected entity or lens
+  already explains the context
+- render global lenses as a quiet segmented row or compact tab strip, not as a second explanatory
+  navigation block
+- keep `Channels / Tasks / Members / Search` as the canonical global lens language
+- keep `thread` subordinate to `channel`; legacy `chat` or `threads` route values should normalize
+  to the canonical `channels` lens during compatibility rollout
+- keep Team and Agent rail rows in a `title + one compact meta line` shape where possible
+- keep row actions visually recessed until hover or focus on desktop
+- keep Team selector rows as directory choices instead of heavyweight cards
+- avoid persistent connection/status badges in the shell header unless the status changes operator
+  action
+- avoid duplicated object-local tabs when the left rail already exposes the same primary lane
+- reuse shared workspace section chrome, content stacks, and split-pane layout primitives for
+  embedded workspace header bands, body layout, and primary/secondary panes before adding
+  Team-specific wrapper markup; compact embedded agent workspaces may opt into tighter vertical
+  spacing, but should not fork the base border/background/overflow contract
+
+Agent and ACP panes should stay quiet while preserving runtime depth:
+
+- Agent object entry points should read as compact object/menu affordances, not action-heavy
+  command labels
+- ACP secondary tabs should use light page-tab treatment when embedded in the workspace shell
+- `Activity / Plan / Inspect` is the preferred ACP surface language for embedded Team member panes
+- channel and thread refresh controls should stay out of the primary conversation header when the
+  workspace already auto-refreshes
+- message metadata should use compact language such as `Pending` and `Seen x/y`
+- composer helper copy should be short enough to read as an input hint, not onboarding text
+
+### 8.2) Three-Zone Workbench Composition
+
+Desktop workspace pages should converge on a three-zone composition when there is enough horizontal
+space:
+
+1. Object directory zone: the persistent left rail for Teams, Agents, channels, and compact
+   cross-object switching.
+2. Primary work zone: the dominant middle pane for the current workflow, such as channel timeline,
+   Kanban lane, Agent workspace, or ACP activity.
+3. Context zone: a right-side detail or thread dock for subordinate context, such as message
+   threads, selected task detail, selected member profile, or inspector state.
+
+This composition is a hierarchy, not three equal dashboards:
+
+- the primary work zone should own most horizontal space and remain the visual anchor
+- the context zone should be optional, route-addressable where useful, and cheap to close without
+  losing the primary selection
+- the object directory should stay narrow, scannable, and action-light
+- secondary context should not introduce another full navigation model inside the dock
+- each zone should have an explicit empty/loading state so collapsing one zone does not create
+  ambiguous blank space
+- the shared layout primitives should encode stable width ratios and overflow behavior before
+  individual Team or Agent panes add local wrappers
+
+On narrow screens this model degrades to two reachable states instead of three persistent columns:
+
+- directory or primary work surface
+- primary work surface or context dock
+
+Mobile behavior should preserve operator location with explicit back/close affordances rather than
+stacking all three zones into one long page.
+
 ### 9) Route Model Direction
 
 The rollout should converge current top-level routes toward one workspace shell.
@@ -296,6 +364,61 @@ Compatibility rules:
   migration
 - existing Agent-root entry points should continue to resolve into the same shell instead of
   redirecting operators into a different product
+- Team-scoped path routes are the canonical subpath shape for new route-aware helpers while the Team
+  surface remains team-owned:
+  - `/workspace/teams/:team_id/channels/:channel_id`
+  - `/workspace/teams/:team_id/channels/:channel_id/threads/:thread_root_message_id`
+  - `/workspace/teams/:team_id/channels/:channel_id/tasks/:task_id`
+  - `/workspace/teams/:team_id/channels/:channel_id/members/:member_id`
+  - `/workspace/teams/:team_id/channels/:channel_id/tasks/:task_id/members/:member_id`
+  - `/workspace/teams/:team_id/tasks/:task_id`
+  - `/workspace/teams/:team_id/members/:member_id/:member_tab`
+- Query parameters stay compatible and take precedence over path-derived Team selection state during
+  migration. `thread` remains subordinate to `channels`; `/workspace/teams/:team_id/thread` must
+  not become a new top-level lens.
+- The legacy Team workspace builder may continue emitting query-string deep links until each caller
+  is migrated intentionally. New migration slices should use the explicit canonical subpath builder
+  instead of changing every existing navigation call at once.
+
+Team-owned route facade contract:
+
+- Team-aware callers should consume `web/src/pages/team/team_route_helpers.ts` for Team route
+  parsing, path construction, route types, workspace-lens resolution, active-lens fallback,
+  route-lens to Team-tab mapping, sidebar subject-pane resolution, Team detail paths, and Team
+  member workspace paths.
+- Team pages should consume a single route-selection snapshot from the facade when they need the
+  current workspace lens, Team tab, channel, thread root, selected task, and selected member. Page
+  components should not independently parse the same `pathname + search` state into parallel local
+  route facts.
+- The facade is the only Team surface boundary that should call the global route selection helpers
+  for Team semantics. Team page components, Team subcomponents, Agent Nodes Team drill-down links,
+  and Team-focused tests should depend on the Team facade instead of importing Team-specific path
+  semantics directly from `app_route_selection`.
+- App-level exports should not re-expose Team route parser or builder symbols. Callers that need
+  Team route semantics should import from the Team facade directly.
+- Direct use of the legacy query-string Team workspace builder should stay inside the Team facade
+  and compatibility tests. New route-aware navigation should use canonical Team subpaths unless the
+  caller is intentionally preserving a compatibility-only state shape.
+- Direct use of the low-level canonical Team subpath builder should also stay inside the Team
+  facade. Team callers should prefer named helpers for channel baselines, channel threads,
+  channel-scoped tasks, channel-scoped member profile panels, Team task paths, Team member
+  workspaces, and lens-preserving Team switches so callers do not depend on positional
+  route-builder arguments.
+- Team selector, deprecated search-lens compatibility, and tab-only compatibility URLs should also
+  be named helpers on the facade. Tests and fallback navigation may exercise those compatibility
+  paths, but they should not hand-roll Team route strings or mutate Team query parameters directly.
+- Team E2E entrypoints should navigate through named Team route helpers instead of direct
+  `page.goto("/teams...")` or `page.goto("/workspace/teams...")` strings, so browser fixtures
+  exercise the same canonical path construction as production callers.
+- Shell-level Team selector entrypoints, including the workbench menu and workspace lens selector,
+  should also navigate through the Team facade instead of hard-coded Team selector paths.
+- Channel-scoped member profile panel state should use canonical channel subpaths and remain
+  distinct from canonical member workspaces:
+  `/workspace/teams/:team_id/channels/:channel_id/members/:member_id` opens a lightweight
+  channel-local profile panel, while `/workspace/teams/:team_id/members/:member_id/:member_tab`
+  opens the full member workspace. Query `member=` remains a migration compatibility override.
+- Deprecated `search` lens input must continue to map through the channel surface for Team tabs and
+  sidebar panes. It must not become a Team content tab or a new Team-local workspace lens.
 
 ### 11) Deep-Link Contract
 
@@ -436,3 +559,8 @@ Suggested minimum validation by phase:
 - `docs/features/agents-teams.md`
 - `docs/features/frontend-design.md`
 - `docs/features/team-execution-vocabulary.md`
+- `docs/journal/2026-04-18-workspace-shell-compactness.md`
+- `docs/journal/2026-04-18-workspace-slock-notion-density-pass.md`
+- `docs/journal/2026-04-19-workspace-agent-pane-chrome-tightening.md`
+- `docs/journal/2026-04-19-workspace-channel-first-lens-language.md`
+- `docs/journal/2026-07-19-workspace-ui-compaction-wave2.md`

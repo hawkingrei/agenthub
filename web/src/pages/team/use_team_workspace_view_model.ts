@@ -6,8 +6,11 @@ import type {
   TeamRunRecord,
   TeamTaskRecord,
 } from "../../api";
-import type { WorkspaceLens } from "../../app_route_selection";
 import { buildStandardWorkspaceLensItems } from "../../components/workspace_lens_items";
+import {
+  resolveActiveTeamWorkspaceLens,
+  type WorkspaceLens,
+} from "./team_route_helpers";
 import { createDisplayNameLookup } from "./mailbox_helpers";
 import { describeTeamKanban } from "./channel_metadata";
 import type { TeamMemberLiveState, TeamMemberAgentStatusSummary } from "./member_helpers";
@@ -125,10 +128,10 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   const isAgentWorkspace =
     hasSelectedAgentContext && (tab === "agent_acp" || tab === "mailbox" || tab === "member_console");
 
-  const activeWorkspaceLens =
-    routeWorkspaceLens === "search"
-      ? resolveWorkspaceLensForTab(tab)
-      : routeWorkspaceLens ?? resolveWorkspaceLensForTab(tab);
+  const activeWorkspaceLens = resolveActiveTeamWorkspaceLens({
+    routeWorkspaceLens,
+    tab,
+  });
   const selectedAgentLabelMemberId = useMemo(() => {
     const resolvedMemberId = selectedAgentWorkspaceMemberId.trim();
     if (resolvedMemberId) {
@@ -643,15 +646,4 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       showNoActiveRunNotice,
     ]
   );
-}
-
-function resolveWorkspaceLensForTab(tab: TeamTab): WorkspaceLens {
-  switch (tab) {
-    case "tasks":
-      return "tasks";
-    case "overview":
-      return "members";
-    default:
-      return "channels";
-  }
 }

@@ -298,7 +298,11 @@ vi.mock("./team/TeamWorkbenchContainer", async () => {
 });
 
 import { TeamPage } from "./team_page";
-import { buildTeamWorkspacePath, resolveTeamRoute } from "../app_route_selection";
+import {
+  buildTeamDetailPath,
+  buildTeamMemberWorkspacePath,
+  resolveTeamRoute,
+} from "./team/team_route_helpers";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -449,7 +453,7 @@ describe("TeamPage agent loop profile flow", () => {
     useMediaQueryMock.mockReturnValue(false);
     teamPageFixture.teams = [];
     teamPageFixture.agents = [];
-    window.history.pushState({}, "", buildTeamWorkspacePath("team-1"));
+    window.history.pushState({}, "", buildTeamDetailPath("team-1"));
   });
 
   afterEach(() => {
@@ -558,7 +562,7 @@ describe("TeamPage agent loop profile flow", () => {
       window.history.pushState(
         {},
         "",
-        buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
+        buildTeamMemberWorkspacePath("team-1", "worker-1", "agent_acp")
       );
       await act(async () => {
         root.render(<TestTeamPageRouter />);
@@ -763,7 +767,7 @@ describe("TeamPage agent loop profile flow", () => {
       window.history.pushState(
         {},
         "",
-        buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
+        buildTeamMemberWorkspacePath("team-1", "worker-1", "agent_acp")
       );
       await act(async () => {
         root.render(<TestTeamPageRouter />);
@@ -880,7 +884,7 @@ describe("TeamPage agent loop profile flow", () => {
       window.history.pushState(
         {},
         "",
-        buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
+        buildTeamMemberWorkspacePath("team-1", "worker-1", "agent_acp")
       );
       await act(async () => {
         root.render(<TestTeamPageRouter />);

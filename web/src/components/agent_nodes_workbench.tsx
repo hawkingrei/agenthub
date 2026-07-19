@@ -1,11 +1,13 @@
 import React from "react";
 import { Button, Stack, Text, TextInput } from "@mantine/core";
 import {
-  buildTeamDetailPath,
-  buildTeamWorkspacePath,
   navigateToPath,
   shouldHandleInAppLinkClick,
 } from "../app_route_selection";
+import {
+  buildTeamDetailPath,
+  buildTeamMemberWorkspacePath,
+} from "../pages/team/team_route_helpers";
 import { isAgentActiveStatus } from "../agent_ws";
 import type { AgentNodeUpdate, TeamDefinitionRecord } from "../api";
 import {
@@ -412,25 +414,11 @@ function RemoteNodeDangerZone({
 }
 
 function buildTeamMemberAcpPath(teamId: string, memberId: string): string {
-  return buildTeamWorkspacePath(
-    teamId,
-    "members",
-    null,
-    null,
-    memberId,
-    "agent_acp",
-  );
+  return buildTeamMemberWorkspacePath(teamId, memberId, "agent_acp");
 }
 
 function buildTeamMemberConsolePath(teamId: string, memberId: string): string {
-  return buildTeamWorkspacePath(
-    teamId,
-    "members",
-    null,
-    null,
-    memberId,
-    "member_console",
-  );
+  return buildTeamMemberWorkspacePath(teamId, memberId, "member_console");
 }
 
 type AgentNodesWorkbenchProps = {

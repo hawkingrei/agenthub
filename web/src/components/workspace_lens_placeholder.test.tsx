@@ -39,7 +39,10 @@ describe("WorkspaceLensPlaceholder", () => {
 
     expect(html).toContain("Search");
     expect(html).toContain("Search workspace");
-    expect(html).toContain("Use the sidebar search command");
+    expect(html).toContain(
+      "Use the sidebar search command to jump across Channels, Tasks, and Members."
+    );
+    expect(html).not.toContain("channels, tasks, and agents");
     expect(html).not.toContain("type=\"search\"");
     expect(html).toContain("shared-search-card");
   });

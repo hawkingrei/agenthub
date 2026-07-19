@@ -68,6 +68,25 @@ const renderWorkbench = (overrides?: Partial<ComponentProps<typeof AgentNodesWor
     </MantineProvider>
   );
 
+function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement {
+  return required(
+    Array.from(container.querySelectorAll("button")).find((node) =>
+      node.textContent?.includes(text)
+    ) as HTMLButtonElement | undefined,
+    `${text} button missing`
+  );
+}
+
+function changeInputValue(input: HTMLInputElement, value: string): void {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(input) as HTMLInputElement,
+    "value"
+  );
+  descriptor?.set?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 describe("AgentNodesWorkbench", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -156,10 +175,10 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("Working");
     expect(html).toContain("AgentHub Runtime");
     expect(html).toContain("Worktree: Existing workdir");
-    expect(html).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=thread"');
+    expect(html).toContain('href="/workspace/teams/team-1/members/agent-remote-1/thread"');
     expect(
       html
-    ).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=member_console"');
+    ).toContain('href="/workspace/teams/team-1/members/agent-remote-1/member_console"');
     expect(html).toContain("Thread");
     expect(html).toContain("Console");
     expect(html).toContain("Danger Zone");
@@ -373,6 +392,16 @@ describe("AgentNodesWorkbench", () => {
     ).toBeNull();
   });
 
+  it("disables remote node name saves until the required routing metadata exists", () => {
+    const html = renderWorkbench({
+      nodes: baseProps.nodes.map((node) =>
+        node.id === "node-east" ? { ...node, grpc_target: null } : node
+      ),
+    });
+
+    expect(html).toContain("This node is missing a persisted gRPC target.");
+  });
+
   it("renders the no-team empty state when no teams use the selected node", () => {
     const html = renderWorkbench({
       agents: [],
@@ -465,5 +494,108 @@ describe("AgentNodesWorkbench", () => {
     });
 
     expect(onDeleteNode).toHaveBeenCalledWith("node-east");
+  });
+
+  it("routes remote node editor saves and drill-down links", () => {
+    const onUpdateNode = vi.fn();
+    renderWithMantine(
+      root,
+      <AgentNodesWorkbench
+        {...baseProps}
+        teams={[
+          {
+            id: "team-1",
+            name: "Team One",
+            description: null,
+            spec: {
+              members: [{ member_id: "agent-remote-1", role: "coordinator" }],
+            },
+            created_at: 1,
+            updated_at: 1,
+          },
+        ]}
+        agents={[
+          {
+            id: "agent-remote-1",
+            name: "Worker A",
+            command: "agenthub",
+            args: [],
+            workdir: "/tmp/worker-a",
+            status: "running",
+            target_node_id: "node-east",
+            worktree_mode: "use_existing",
+            code_mode: false,
+            created_at: 1,
+            updated_at: 1,
+          },
+        ]}
+        onUpdateNode={onUpdateNode}
+      />
+    );
+
+    const inputs = Array.from(container.querySelectorAll("input"));
+    const [nameInput, grpcTargetInput, tlsServerNameInput, worktreeRootInput] = inputs;
+    expect(nameInput).toBeDefined();
+    expect(grpcTargetInput).toBeDefined();
+    expect(tlsServerNameInput).toBeDefined();
+    expect(worktreeRootInput).toBeDefined();
+
+    act(() => {
+      changeInputValue(nameInput, "Node East Renamed");
+    });
+    act(() => {
+      findButtonByText(container, "Save Name").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+    });
+
+    act(() => {
+      changeInputValue(grpcTargetInput, "https://node-east.internal:60061");
+      changeInputValue(tlsServerNameInput, "node-east-alt.internal");
+      changeInputValue(worktreeRootInput, "/srv/agenthub/worktrees/node-east");
+    });
+    act(() => {
+      findButtonByText(container, "Save Settings").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+    });
+
+    expect(onUpdateNode).toHaveBeenNthCalledWith(1, "node-east", {
+      name: "Node East Renamed",
+      grpc_target: "https://node-east.internal:50051",
+      tls_server_name: "node-east.internal",
+      default_worktree_root: "~/.agenthub/worktrees/node-east",
+    });
+    expect(onUpdateNode).toHaveBeenNthCalledWith(2, "node-east", {
+      name: "Node East",
+      grpc_target: "https://node-east.internal:60061",
+      tls_server_name: "node-east-alt.internal",
+      default_worktree_root: "/srv/agenthub/worktrees/node-east",
+    });
+
+    const links = Array.from(container.querySelectorAll("a")) as HTMLAnchorElement[];
+    const teamLink = links.find((link) => link.textContent?.includes("Team One"));
+    const threadLink = links.find((link) => link.textContent?.trim() === "Thread");
+    const consoleLink = links.find((link) => link.textContent?.trim() === "Console");
+    expect(teamLink).toBeDefined();
+    expect(threadLink).toBeDefined();
+    expect(consoleLink).toBeDefined();
+
+    act(() => {
+      teamLink?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(window.location.pathname).toBe("/workspace/teams/team-1");
+
+    act(() => {
+      threadLink?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(window.location.pathname).toBe("/workspace/teams/team-1/members/agent-remote-1/thread");
+
+    act(() => {
+      consoleLink?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(window.location.pathname).toBe(
+      "/workspace/teams/team-1/members/agent-remote-1/member_console"
+    );
   });
 });

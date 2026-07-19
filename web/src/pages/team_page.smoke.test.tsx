@@ -172,6 +172,13 @@ vi.mock("../components/workbench_header_menu", () => ({
 }));
 
 import { TeamPage } from "./team_page";
+import {
+  buildTeamChannelPath,
+  buildTeamChannelTaskPath,
+  buildTeamChannelThreadPath,
+  buildTeamTaskPath,
+  splitTeamRoutePath,
+} from "./team/team_route_helpers";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -881,9 +888,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams/team-1"
+              routePathname={buildTeamChannelPath("team-1", "review")}
               routeTeamId="team-1"
-              routeSearch="?channel=review"
+              routeSearch=""
             />
           </MantineProvider>
         );
@@ -978,9 +985,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams/team-1"
+              routePathname={buildTeamChannelPath("team-1", "review")}
               routeTeamId="team-1"
-              routeSearch="?channel=review"
+              routeSearch=""
             />
           </MantineProvider>
         );
@@ -1198,9 +1205,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams/team-1"
+              routePathname={buildTeamChannelThreadPath("team-1", "review", 17)}
               routeTeamId="team-1"
-              routeSearch="?channel=review&thread=17"
+              routeSearch=""
             />
           </MantineProvider>
         );
@@ -1217,8 +1224,8 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review");
+      expect(window.location.pathname).toBe("/workspace/teams/team-1/channels/review");
+      expect(window.location.search).toBe("");
     } finally {
       act(() => {
         root.unmount();
@@ -1318,8 +1325,8 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review");
+      expect(window.location.pathname).toBe("/workspace/teams/team-1/channels/review");
+      expect(window.location.search).toBe("");
     } finally {
       act(() => {
         root.unmount();
@@ -1400,9 +1407,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams/team-1"
+              routePathname={buildTeamChannelThreadPath("team-1", "review", 17)}
               routeTeamId="team-1"
-              routeSearch="?channel=review&thread=17"
+              routeSearch=""
             />
           </MantineProvider>
         );
@@ -1419,8 +1426,8 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review");
+      expect(window.location.pathname).toBe("/workspace/teams/team-1/channels/review");
+      expect(window.location.search).toBe("");
     } finally {
       act(() => {
         root.unmount();
@@ -1520,8 +1527,10 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review&task=task-work");
+      expect(window.location.pathname).toBe(
+        "/workspace/teams/team-1/channels/review/tasks/task-work"
+      );
+      expect(window.location.search).toBe("");
     } finally {
       act(() => {
         root.unmount();
@@ -1816,8 +1825,8 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review");
+      expect(window.location.pathname).toBe("/workspace/teams/team-1/channels/review");
+      expect(window.location.search).toBe("");
     } finally {
       act(() => {
         root.unmount();
@@ -1917,8 +1926,8 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review");
+      expect(window.location.pathname).toBe("/workspace/teams/team-1/channels/review");
+      expect(window.location.search).toBe("");
     } finally {
       act(() => {
         root.unmount();
@@ -2018,8 +2027,10 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review&task=task-work");
+      expect(window.location.pathname).toBe(
+        "/workspace/teams/team-1/channels/review/tasks/task-work"
+      );
+      expect(window.location.search).toBe("");
     } finally {
       act(() => {
         root.unmount();
@@ -2540,7 +2551,7 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams/team-1"
+              routePathname={window.location.pathname}
               routeTeamId="team-1"
               routeSearch={window.location.search}
             />
@@ -2549,8 +2560,8 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?task=task-work");
+      expect(window.location.pathname).toBe("/workspace/teams/team-1/channels/all/tasks/task-work");
+      expect(window.location.search).toBe("");
 
       const lastOptions =
         teamConversationActionsOptionsSpy.mock.calls[
@@ -2653,9 +2664,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams/team-1"
+              routePathname={buildTeamChannelTaskPath("team-1", "review", "task-work")}
               routeTeamId="team-1"
-              routeSearch="?channel=review&task=task-work"
+              routeSearch=""
             />
           </MantineProvider>
         );
@@ -2778,8 +2789,10 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review&task=task-work");
+      expect(window.location.pathname).toBe(
+        "/workspace/teams/team-1/channels/review/tasks/task-work"
+      );
+      expect(window.location.search).toBe("");
 
       const lastOptions =
         teamConversationActionsOptionsSpy.mock.calls[
@@ -2872,6 +2885,7 @@ describe("TeamPage smoke render", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root: Root = createRoot(container);
+    const tasksRoute = splitTeamRoutePath(buildTeamTaskPath("team-1"));
 
     try {
       await act(async () => {
@@ -2887,9 +2901,9 @@ describe("TeamPage smoke render", () => {
               token="token"
               onLogout={() => {}}
               developerMode={false}
-              routePathname="/workspace/teams/team-1"
+              routePathname={tasksRoute.pathname}
               routeTeamId="team-1"
-              routeSearch="?lens=tasks"
+              routeSearch={tasksRoute.search}
             />
           </MantineProvider>
         );
@@ -2919,8 +2933,10 @@ describe("TeamPage smoke render", () => {
         await Promise.resolve();
       });
 
-      expect(window.location.pathname).toBe("/workspace/teams/team-1");
-      expect(window.location.search).toBe("?channel=review&task=task-work");
+      expect(window.location.pathname).toBe(
+        "/workspace/teams/team-1/channels/review/tasks/task-work"
+      );
+      expect(window.location.search).toBe("");
     } finally {
       act(() => {
         root.unmount();

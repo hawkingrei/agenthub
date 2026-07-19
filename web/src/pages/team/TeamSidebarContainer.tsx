@@ -3,7 +3,7 @@ import { TeamSidebar } from "../team_sidebar";
 import type { TeamDefinitionRecord, TeamTaskRecord } from "../../api";
 import type { TeamChannelItem } from "./channel_metadata";
 import type { TeamMemberLiveState } from "./member_helpers";
-import type { WorkspaceLens } from "../../app_route_selection";
+import type { WorkspaceLens } from "./team_route_helpers";
 import type { TeamTab } from "./state";
 
 type TeamSidebarProps = React.ComponentProps<typeof TeamSidebar>;

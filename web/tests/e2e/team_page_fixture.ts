@@ -198,6 +198,18 @@ export type TeamPageFixture = {
   getCreatePayload: () => CreateTeamPayload | null;
   getUpdateSpecPayloads: () => Array<{ teamId: string; payload: UpdateTeamSpecPayload }>;
   putTask: (task: TeamTaskRecord) => TeamTaskRecord;
+  seedTaskMessages: (
+    taskId: string,
+    messages: TeamConversationMessageRecord[]
+  ) => void;
+  seedMailboxMessages: (
+    runId: string,
+    messages: TeamActorMessageRecord[]
+  ) => void;
+  seedRuns: (
+    teamId: string,
+    runs: TeamRunRecord[]
+  ) => void;
 };
 
 export function jsonResponse(data: unknown, status = 200): {
@@ -312,6 +324,7 @@ export async function mockTeamPageApis(
   const tasksByTeamId = new Map<string, TeamTaskRecord[]>();
   const taskMessagesById = new Map<string, TeamConversationMessageRecord[]>();
   const taskCounterByTeamId = new Map<string, number>();
+  const runsByTeamId = new Map<string, TeamRunRecord[]>();
   const mailboxMessagesByRunId = new Map<string, TeamActorMessageRecord[]>();
   const runEventCounterByRunId = new Map<string, number>();
   let createTeamPayload: CreateTeamPayload | null = null;
@@ -368,6 +381,18 @@ export async function mockTeamPageApis(
     messages: TeamConversationMessageRecord[]
   ): void => {
     taskMessagesById.set(taskId, messages);
+  };
+  const seedMailboxMessages = (
+    runId: string,
+    messages: TeamActorMessageRecord[]
+  ): void => {
+    mailboxMessagesByRunId.set(runId, messages);
+  };
+  const seedRuns = (
+    teamId: string,
+    runs: TeamRunRecord[]
+  ): void => {
+    runsByTeamId.set(teamId, runs);
   };
 
   const inferRunStatusFromRunId = (runId: string): TeamRunRecord["status"] => {
@@ -993,7 +1018,8 @@ export async function mockTeamPageApis(
       await route.fallback();
       return;
     }
-    await route.fulfill(jsonResponse([]));
+    const teamId = request.url().match(/\/api\/teams\/([^/]+)\/runs/)?.[1] ?? "";
+    await route.fulfill(jsonResponse(runsByTeamId.get(teamId) ?? []));
   });
 
   await page.route(/\/api\/teams\/runs\/[^/]+$/, async (route, request) => {
@@ -1288,5 +1314,7 @@ export async function mockTeamPageApis(
     getUpdateSpecPayloads: () => updateSpecPayloads,
     putTask,
     seedTaskMessages,
+    seedMailboxMessages,
+    seedRuns,
   };
 }

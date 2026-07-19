@@ -1,4 +1,14 @@
 import { expect } from "./coverage";
+import {
+  buildTeamChannelPath,
+  buildTeamDetailPath,
+  buildTeamLensNavigationPath,
+  buildTeamSearchCompatibilityPath,
+  buildTeamSelectorPath,
+  buildTeamTabCompatibilityPath,
+  resolveTeamRoute,
+  type WorkspaceLens,
+} from "../../src/pages/team/team_route_helpers";
 import { UI_PREFS_STORAGE_KEY } from "../../src/ui/developer_mode";
 
 export {
@@ -267,7 +277,7 @@ export async function openTeamFromSelector(
     if ((await selectorButton.count()) > 0) {
       await selectorButton.first().click();
     } else {
-      await page.goto("/workspace/teams", { waitUntil: "domcontentloaded" });
+      await page.goto(buildTeamSelectorPath(), { waitUntil: "domcontentloaded" });
     }
   }
   await expect(page).toHaveURL(/\/(?:workspace\/)?teams(?:[/?#]|$)/);
@@ -283,18 +293,19 @@ export async function openTeamFromSelector(
   await expect(selectorTeamButton).toBeVisible();
   const selectorTeamId = await selectorTeamButton.getAttribute("data-team-id");
   expect(selectorTeamId).toBeTruthy();
+  const selectedTeamId = selectorTeamId ?? "";
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await selectorTeamButton.click({ timeout: 1_500, force: attempt > 0 });
     } catch {
-      await page.goto(`/workspace/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
+      await page.goto(buildTeamDetailPath(selectedTeamId), { waitUntil: "domcontentloaded" });
     }
     await page.waitForTimeout(150);
     if (await isTeamDetailReady(page, teamName)) {
       return;
     }
   }
-  await page.goto(`/workspace/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
+  await page.goto(buildTeamDetailPath(selectedTeamId), { waitUntil: "domcontentloaded" });
   await expect
     .poll(() => isTeamDetailReady(page, teamName), {
       timeout: TEAM_DETAIL_READY_TIMEOUT_MS,
@@ -334,7 +345,7 @@ export async function isTeamDetailReady(
 }
 
 export async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
-  await page.goto("/teams", { waitUntil: "domcontentloaded" });
+  await page.goto(buildTeamSelectorPath(), { waitUntil: "domcontentloaded" });
   await expect(teamSelectorPanel(page)).toBeVisible();
 }
 
@@ -522,18 +533,17 @@ async function revealTeamSidebarSubject(
     return;
   }
 
-  await page.evaluate((nextLens) => {
-    const nextUrl = new URL(window.location.href);
-    if (nextLens === "channels") {
-      nextUrl.searchParams.delete("lens");
-    } else if (nextLens === "agents") {
-      nextUrl.searchParams.set("lens", "members");
-    } else {
-      nextUrl.searchParams.set("lens", nextLens);
-    }
-    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }, subject);
+  const teamId = currentTeamId(page);
+  if (subject === "search") {
+    await pushTeamPath(page, buildTeamSearchCompatibilityPath(teamId));
+    return;
+  }
+  const lens: WorkspaceLens =
+    subject === "agents" ? "members" : subject === "tasks" ? "tasks" : "channels";
+  await pushTeamPath(
+    page,
+    lens === "channels" ? buildTeamChannelPath(teamId) : buildTeamLensNavigationPath(teamId, lens)
+  );
 }
 
 async function restoreTeamChannelWorkspace(
@@ -597,37 +607,37 @@ async function navigateToTeamChannelWorkspace(
   channelId: string
 ): Promise<void> {
   assertRawChannelId(channelId);
-  await page.evaluate((nextChannelId) => {
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.delete("lens");
-    nextUrl.searchParams.delete("member");
-    nextUrl.searchParams.delete("tab");
-    nextUrl.searchParams.delete("thread");
-    nextUrl.searchParams.delete("task");
-    if (nextChannelId === "all") {
-      nextUrl.searchParams.delete("channel");
-    } else {
-      nextUrl.searchParams.set("channel", nextChannelId);
-    }
-    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+  await pushTeamPath(
+    page,
+    buildTeamChannelPath(currentTeamId(page), channelId)
+  );
+}
+
+function currentTeamId(page: import("@playwright/test").Page): string {
+  const currentUrl = new URL(page.url());
+  const route = resolveTeamRoute(currentUrl.pathname);
+  if (!route || route.mode !== "detail") {
+    throw new Error(`Expected a Team detail route, got ${currentUrl.pathname}`);
+  }
+  return route.teamId;
+}
+
+async function pushTeamPath(
+  page: import("@playwright/test").Page,
+  path: string
+): Promise<void> {
+  await page.evaluate((nextPath) => {
+    window.history.pushState({}, "", nextPath);
     window.dispatchEvent(new PopStateEvent("popstate"));
-  }, channelId);
+  }, path);
 }
 
 async function navigateToTeamTab(
   page: import("@playwright/test").Page,
-  tab: string
+  tab: Parameters<typeof buildTeamTabCompatibilityPath>[1]
 ): Promise<void> {
-  await page.evaluate((nextTab) => {
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.delete("lens");
-    nextUrl.searchParams.delete("member");
-    nextUrl.searchParams.delete("thread");
-    nextUrl.searchParams.delete("task");
-    nextUrl.searchParams.set("tab", nextTab);
-    window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }, tab);
+  const currentUrl = new URL(page.url());
+  await pushTeamPath(page, buildTeamTabCompatibilityPath(currentUrl.pathname, tab));
 }
 
 export async function openMainTeamAction(

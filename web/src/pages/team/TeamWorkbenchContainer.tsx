@@ -12,12 +12,14 @@ import type {
   AgentRecord,
   AgentDiscoveryCardRecord,
 } from "../../api";
-import type { WorkspaceLens } from "../../app_route_selection";
 import type { StepAction, TeamTab } from "./state";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type { MailboxTemplateKey, TeamMailboxChatActors } from "./mailbox_helpers";
 import type { TeamRunStatusFilter } from "./run_helpers";
-import { buildTeamWorkspacePath } from "../../app_route_selection";
+import {
+  buildTeamChannelProfileClosePath,
+  type WorkspaceLens,
+} from "./team_route_helpers";
 import { TeamConversationContainer } from "./TeamConversationContainer";
 import { TeamTasksContainer } from "./TeamTasksContainer";
 import { TeamThreadContainer } from "./TeamThreadContainer";
@@ -43,7 +45,10 @@ import {
   buildTeamWorkbenchBodyProps,
 } from "./team_page_route_props";
 import { isAgentActiveStatus } from "../../agent_ws";
-import { useTeamWorkspace } from "./team_workspace_context";
+import {
+  useTeamWorkbenchRuntime,
+  useTeamWorkspaceShell,
+} from "./team_workspace_context";
 
 type TeamWorkspaceHeaderProps = Parameters<typeof buildTeamWorkspaceHeaderProps>[0];
 type TeamRunsPanelProps = Parameters<typeof buildTeamRunsPanelProps>[0];
@@ -320,16 +325,14 @@ export type TeamWorkbenchRuntimeContext = {
 };
 
 export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer() {
+  const props = useTeamWorkbenchRuntime();
   const {
-    workbench: props,
     routeThreadRootMessageId,
+    routeSelectedMemberId,
     selectedConversationMatchesChannelLane,
     routeChannelId,
     navigateTeamRoute,
-  } = useTeamWorkspace();
-  if (!props) {
-    throw new Error("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
-  }
+  } = useTeamWorkspaceShell();
   const {
     shell,
     header,
@@ -953,8 +956,8 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     !isAgentWorkspace &&
     tab === "conversation" &&
     activeWorkspaceLens === "channels" &&
-    selectedMemberId.trim().length > 0
-      ? selectedMemberId.trim()
+    (routeSelectedMemberId.trim() || selectedMemberId.trim()).length > 0
+      ? routeSelectedMemberId.trim() || selectedMemberId.trim()
       : "";
   const profilePane =
     channelProfileMemberId && activeRunForSelectedTeam ? (
@@ -970,7 +973,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
             setSelectedMemberId("");
             if (effectiveSelectedTeamId) {
               navigateTeamRoute(
-                buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId)
+                buildTeamChannelProfileClosePath(effectiveSelectedTeamId, routeChannelId)
               );
             }
           }}

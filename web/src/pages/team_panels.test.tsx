@@ -41,6 +41,7 @@ import {
   TeamWorkspaceProvider,
   type TeamWorkspaceContextValue,
 } from "./team/team_workspace_context";
+import { resolveTeamSelectedMemberId } from "./team/team_route_helpers";
 import {
   MAILBOX_ADVANCED_PANEL_TITLE_CLASS,
   MAILBOX_CHAT_HEADER_CLASS,
@@ -3172,6 +3173,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: 1,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId,
       effectiveSelectedTeamId: "team-1",
@@ -3224,12 +3226,12 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "View in channel"));
     expect(setChannelFocusMessageId).toHaveBeenCalledWith(1);
     expect(navigateTeamRoute).toHaveBeenCalledWith(
-      "/workspace/teams/team-1?task=task-1"
+      "/workspace/teams/team-1/channels/all/tasks/task-1"
     );
 
     clickElement(findButtonByText(container, "Close thread"));
     expect(navigateTeamRoute).toHaveBeenLastCalledWith(
-      "/workspace/teams/team-1?task=task-1"
+      "/workspace/teams/team-1/channels/all/tasks/task-1"
     );
   });
 
@@ -3265,6 +3267,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: null,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: "team-1",
@@ -3324,6 +3327,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: 404,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: "team-1",
@@ -3373,7 +3377,7 @@ describe("team panels interactions", () => {
           <TeamWorkbenchContainer />
         </TeamWorkspaceProvider>
       );
-    }).toThrow("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
+    }).toThrow("useTeamWorkbenchRuntime must be used within TeamWorkspaceProvider");
 
     suppressReactError.mockRestore();
   });
@@ -3871,6 +3875,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: null,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: "team-1",
@@ -3908,7 +3913,7 @@ describe("team panels interactions", () => {
 
     await waitForCondition(() => container.textContent?.includes("Agent Profile") ?? false);
     const dock = required(
-      container.querySelector('[data-team-surface="thread-dock"]'),
+      container.querySelector(".team-thread-dock"),
       "profile dock missing"
     );
     expect(dock.textContent).toContain("Worker Agent");
@@ -3924,6 +3929,13 @@ describe("team panels interactions", () => {
 
   it("TeamConversationContainer routes clicked channel mentions to member overview", async () => {
     const navigateTeamRoute = vi.fn();
+    const setChannelFocusMessageId = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
     const workspaceContext: TeamWorkspaceContextValue = {
       selectedConversation: null,
       developerMode: false,
@@ -3956,8 +3968,9 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: null,
-      channelFocusMessageId: null,
-      setChannelFocusMessageId: vi.fn(),
+      routeSelectedMemberId: "",
+      channelFocusMessageId: 14,
+      setChannelFocusMessageId,
       effectiveSelectedTeamId: "team-1",
       routeWorkspaceLens: "channels",
       routeChannelId: "all",
@@ -3983,22 +3996,32 @@ describe("team panels interactions", () => {
       setThreadReplyDraft: vi.fn(),
     };
 
-    renderWithMantine(
-      root,
-      <TeamWorkspaceProvider value={workspaceContext}>
-        <TeamConversationContainer />
-      </TeamWorkspaceProvider>
-    );
+    try {
+      renderWithMantine(
+        root,
+        <TeamWorkspaceProvider value={workspaceContext}>
+          <TeamConversationContainer />
+        </TeamWorkspaceProvider>
+      );
 
-    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
-    const mention = container.querySelector(
-      '[data-team-agent-mention-id="worker-agent"]'
-    ) as HTMLButtonElement | null;
-    expect(mention).not.toBeNull();
-    mention?.click();
-    expect(navigateTeamRoute).toHaveBeenCalledWith(
-      "/workspace/teams/team-1?task=task-1&member=worker-agent"
-    );
+      await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+      await waitForCondition(() => setChannelFocusMessageId.mock.calls.length > 0);
+      expect(setChannelFocusMessageId).toHaveBeenCalledWith(null);
+      const mention = container.querySelector(
+        '[data-team-agent-mention-id="worker-agent"]'
+      ) as HTMLButtonElement | null;
+      expect(mention).not.toBeNull();
+      mention?.click();
+      expect(navigateTeamRoute).toHaveBeenCalledWith(
+        "/workspace/teams/team-1/channels/all/tasks/task-1/members/worker-agent"
+      );
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        writable: true,
+        value: originalScrollIntoView,
+      });
+    }
   });
 
   it("TeamConversationContainer ignores clicked channel mentions without a selected team", async () => {
@@ -4035,6 +4058,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: null,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: null,
@@ -4118,7 +4142,7 @@ describe("team panels interactions", () => {
       );
       const navigateTeamRoute = React.useCallback((path: string) => {
         const url = new URL(path, "http://localhost");
-        setSelectedMemberId(url.searchParams.get("member") ?? "");
+        setSelectedMemberId(resolveTeamSelectedMemberId(url.search, url.pathname));
       }, []);
       const workspaceContext: TeamWorkspaceContextValue = {
         selectedConversation: null,
@@ -4152,6 +4176,7 @@ describe("team panels interactions", () => {
         taskMessagesLoading: false,
         busy: null,
         routeThreadRootMessageId: null,
+        routeSelectedMemberId: selectedMemberId,
         channelFocusMessageId: null,
         setChannelFocusMessageId: vi.fn(),
         effectiveSelectedTeamId: "team-1",

@@ -11,6 +11,12 @@ describe("buildStandardWorkspaceLensItems", () => {
       "tasks",
       "members",
     ]);
+    expect(items.map((item) => item.label)).toEqual([
+      "Teams",
+      "Channels",
+      "Tasks",
+      "Members",
+    ]);
     expect(items.find((item) => item.value === "tasks")?.active).toBe(true);
     expect(items.find((item) => item.value === "search")).toBeUndefined();
   });

@@ -29,15 +29,8 @@ import {
   shouldHideErrorBannerMessage,
 } from "../connection_status";
 import {
-  buildTeamDetailPath as buildCanonicalTeamDetailPath,
-  buildTeamWorkspacePath as buildCanonicalTeamWorkspacePath,
   buildWorkspaceNodePath,
-  isTeamMemberRouteTab,
   navigateToPath,
-  resolveTeamMemberRouteTab,
-  resolveWorkspaceLens,
-  type TeamMemberRouteTab,
-  type WorkspaceLens,
 } from "../app_route_selection";
 import { AuthState } from "../types";
 import {
@@ -58,6 +51,19 @@ import {
   type TeamChannelId,
   type TeamChannelItem,
 } from "./team/channel_metadata";
+import {
+  buildTeamChannelPath,
+  buildTeamChannelTaskPath,
+  buildTeamChannelThreadPath,
+  buildTeamDetailPath,
+  buildTeamLensNavigationPath,
+  buildTeamMemberWorkspacePath,
+  buildTeamSelectorPath,
+  buildTeamWorkspaceLensPath,
+  resolveTeamRouteSelection,
+  resolveTeamTabForWorkspaceLens,
+  type WorkspaceLens,
+} from "./team/team_route_helpers";
 import { parseErrorMessage } from "./team/create_helpers";
 import {
   persistTeamCreateDraft,
@@ -264,31 +270,6 @@ type TeamPageProps = {
   defaultWorktreeRoot?: string | null;
 };
 
-function toAsciiLowercase(value: string): string {
-  return value.replace(/[A-Z]/g, (char) => char.toLowerCase());
-}
-
-export function resolveTeamChannelId(search: string): TeamChannelId {
-  const params = new URLSearchParams(search);
-  const channel = (params.get("channel") ?? "").trim();
-  return channel.length === 0 ? DEFAULT_TEAM_CHANNEL_ID : toAsciiLowercase(channel);
-}
-
-export function resolveTeamThreadRootMessageId(search: string): number | null {
-  const params = new URLSearchParams(search);
-  const raw = (params.get("thread") ?? "").trim();
-  if (!raw) {
-    return null;
-  }
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-export function resolveTeamSelectedTaskId(search: string): string {
-  const params = new URLSearchParams(search);
-  return (params.get("task") ?? "").trim();
-}
-
 export function resolveRouteScopedConversationTaskSelection(options: {
   previousTaskId: string;
   routeSelectedTaskId: string;
@@ -346,15 +327,6 @@ export function resolveChannelRouteTaskId(options: {
     return null;
   }
   return normalizedRouteTaskId;
-}
-
-export function resolveTeamSelectedMemberId(search: string): string {
-  const params = new URLSearchParams(search);
-  return (params.get("member") ?? "").trim();
-}
-
-export function resolveTeamWorkspaceTab(search: string): TeamTab | null {
-  return resolveTeamMemberRouteTab(search);
 }
 
 export function parseTeamAgentInputSessionMismatch(
@@ -474,73 +446,12 @@ export function resolveNextSelectedAgentWorkspaceSessionOverride(
   return previous;
 }
 
-export function buildTeamDetailPath(teamId: string): string {
-  return buildCanonicalTeamDetailPath(teamId);
-}
-
 function navigateTeamRoute(pathname: string): void {
   if (`${location.pathname}${location.search}` === pathname) {
     return;
   }
   window.history.pushState({}, "", pathname);
   window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-function buildTeamSelectorPath(): string {
-  return "/workspace/teams";
-}
-
-export function buildTeamWorkspacePath(
-  teamId: string,
-  lens?: WorkspaceLens | null,
-  channelId?: TeamChannelId | null,
-  threadRootMessageId?: number | null,
-  memberId?: string | null,
-  tab?: TeamTab | null,
-  taskId?: string | null
-): string {
-  const normalizedTab: TeamMemberRouteTab | null = isTeamMemberRouteTab(tab) ? tab : null;
-  return buildCanonicalTeamWorkspacePath(
-    teamId,
-    lens,
-    channelId,
-    threadRootMessageId,
-    memberId,
-    normalizedTab,
-    taskId
-  );
-}
-
-export function buildTeamLensNavigationPath(
-  teamId: string,
-  lens: WorkspaceLens,
-  channelId?: TeamChannelId | null,
-  taskId?: string | null
-): string {
-  return buildTeamWorkspacePath(
-    teamId,
-    lens,
-    lens === "channels" ? (channelId ?? DEFAULT_TEAM_CHANNEL_ID) : null,
-    null,
-    null,
-    null,
-    lens === "channels" ? taskId : null
-  );
-}
-
-function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
-  switch (lens) {
-    case "channels":
-      return "conversation";
-    case "tasks":
-      return "tasks";
-    case "members":
-      return "overview";
-    case "search":
-      return null;
-    default:
-      return "conversation";
-  }
 }
 
 const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
@@ -640,30 +551,16 @@ const teamWorkbenchInfoStripLabelClassName = TEAM_WORKBENCH_INFO_STRIP_LABEL_CLA
 const teamWorkbenchInfoStripValueClassName = TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS;
 export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
-  const routeWorkspaceLens = useMemo(
-    () => resolveWorkspaceLens(props.routePathname, props.routeSearch ?? ""),
+  const routeSelection = useMemo(
+    () => resolveTeamRouteSelection(props.routePathname, props.routeSearch ?? ""),
     [props.routePathname, props.routeSearch]
   );
-  const routeWorkspaceTab = useMemo(
-    () => resolveTeamWorkspaceTab(props.routeSearch ?? ""),
-    [props.routeSearch]
-  );
-  const routeChannelId = useMemo(
-    () => resolveTeamChannelId(props.routeSearch ?? ""),
-    [props.routeSearch]
-  );
-  const routeThreadRootMessageId = useMemo(
-    () => resolveTeamThreadRootMessageId(props.routeSearch ?? ""),
-    [props.routeSearch]
-  );
-  const routeSelectedMemberId = useMemo(
-    () => resolveTeamSelectedMemberId(props.routeSearch ?? ""),
-    [props.routeSearch]
-  );
-  const routeSelectedTaskId = useMemo(
-    () => resolveTeamSelectedTaskId(props.routeSearch ?? ""),
-    [props.routeSearch]
-  );
+  const routeWorkspaceLens = routeSelection.workspaceLens;
+  const routeWorkspaceTab = routeSelection.workspaceTab;
+  const routeChannelId = routeSelection.channelId;
+  const routeThreadRootMessageId = routeSelection.threadRootMessageId;
+  const routeSelectedMemberId = routeSelection.selectedMemberId;
+  const routeSelectedTaskId = routeSelection.selectedTaskId;
   const isSelectorRoute = routeTeamId == null;
   const routeDefaultWorktreeRoot = React.useMemo(() => {
     const normalized = normalizeWorkdirInput(props.defaultWorktreeRoot ?? "");
@@ -710,9 +607,7 @@ export function TeamPage(props: TeamPageProps) {
   }, []);
   const navigateToTeamMemberWorkspace = useCallback(
     (teamId: string, memberId: string, tab: TeamTab) => {
-      navigateTeamRoute(
-        buildTeamWorkspacePath(teamId, "members", null, null, memberId, tab)
-      );
+      navigateTeamRoute(buildTeamMemberWorkspacePath(teamId, memberId, tab));
     },
     []
   );
@@ -1103,7 +998,7 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     if (teamChannelsSettled && teamChannelsLoadedSuccessfully) {
-      navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels"));
+      navigateTeamRoute(buildTeamChannelPath(effectiveSelectedTeamId));
     }
   }, [
     effectiveSelectedTeamId,
@@ -1115,14 +1010,6 @@ export function TeamPage(props: TeamPageProps) {
     teamChannelsLoadedSuccessfully,
     teamChannelsSettled,
   ]);
-  useEffect(() => {
-    const memberId = routeSelectedMemberId.trim();
-    if (!memberId) {
-      return;
-    }
-    setSelectedMemberId(memberId);
-    setFocusedAgentMemberId(memberId);
-  }, [routeSelectedMemberId, setSelectedMemberId]);
   const {
     teamSpecMemberIds,
     teamMemberSummaryByTeamId,
@@ -1904,6 +1791,19 @@ export function TeamPage(props: TeamPageProps) {
     setChatStickToBottom,
   });
 
+  useEffect(() => {
+    const memberId = routeSelectedMemberId.trim();
+    setSelectedMemberId(memberId);
+    if (memberId) {
+      setFocusedAgentMemberId(memberId);
+    }
+  }, [
+    activeRunIdForSelectedTeam,
+    knownSelectedTeamMemberIds,
+    routeSelectedMemberId,
+    setSelectedMemberId,
+  ]);
+
   useTeamMailboxLifecycleEffects({
     snapshot,
     selectedMemberId,
@@ -2022,15 +1922,18 @@ export function TeamPage(props: TeamPageProps) {
     // Canonicalize old task-only channel routes so channel-scoped conversations
     // regain their owning lane semantics, including thread-pane behavior.
     navigateTeamRoute(
-      buildTeamWorkspacePath(
-        effectiveSelectedTeamId,
-        "channels",
-        owningChannelId,
-        routeThreadRootMessageId,
-        null,
-        null,
-        routeSelectedTaskId
-      )
+      routeThreadRootMessageId
+        ? buildTeamChannelThreadPath(
+            effectiveSelectedTeamId,
+            owningChannelId,
+            routeThreadRootMessageId,
+            routeSelectedTaskId
+          )
+        : buildTeamChannelTaskPath(
+            effectiveSelectedTeamId,
+            owningChannelId,
+            routeSelectedTaskId
+          )
     );
   }, [
     effectiveSelectedTeamId,
@@ -2055,9 +1958,7 @@ export function TeamPage(props: TeamPageProps) {
     if (!shouldClearRouteTask) {
       return;
     }
-    navigateTeamRoute(
-      buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId)
-    );
+    navigateTeamRoute(buildTeamChannelPath(effectiveSelectedTeamId, routeChannelId));
   }, [
     effectiveSelectedTeamId,
     routeChannelId,
@@ -2218,7 +2119,7 @@ export function TeamPage(props: TeamPageProps) {
   );
   const navigateToSidebarTeam = useCallback(
     (teamId: string) => {
-      navigateTeamRoute(buildTeamWorkspacePath(teamId, routeWorkspaceLens, routeChannelId));
+      navigateTeamRoute(buildTeamWorkspaceLensPath(teamId, routeWorkspaceLens, routeChannelId));
     },
     [routeChannelId, routeWorkspaceLens]
   );
@@ -2315,7 +2216,7 @@ export function TeamPage(props: TeamPageProps) {
       setSelectedConversationTaskId("");
       setTab("conversation");
       if (effectiveSelectedTeamId) {
-        navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", channelId));
+        navigateTeamRoute(buildTeamChannelPath(effectiveSelectedTeamId, channelId));
       }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
@@ -2348,9 +2249,7 @@ export function TeamPage(props: TeamPageProps) {
         setFocusedAgentMemberId("");
         setSelectedConversationTaskId(created.task_id);
         setTab("conversation");
-        navigateTeamRoute(
-          buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", created.channel_id)
-        );
+        navigateTeamRoute(buildTeamChannelPath(effectiveSelectedTeamId, created.channel_id));
         if (isCompactWorkbench) {
           setTeamsSidebarCollapsed(true);
         }
@@ -2385,7 +2284,7 @@ export function TeamPage(props: TeamPageProps) {
         await refreshTeamChannels(effectiveSelectedTeamId);
         if (routeChannelId === channelId && routeWorkspaceLens === "channels") {
           setSelectedConversationTaskId("");
-          navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels"));
+          navigateTeamRoute(buildTeamChannelPath(effectiveSelectedTeamId));
         }
       } catch (err) {
         setError(parseErrorMessage(err));
@@ -3338,6 +3237,7 @@ export function TeamPage(props: TeamPageProps) {
     taskMessagesLoading,
     busy,
     routeThreadRootMessageId,
+    routeSelectedMemberId,
     channelFocusMessageId,
     setChannelFocusMessageId,
     effectiveSelectedTeamId,
