@@ -41,6 +41,7 @@ import {
   TeamWorkspaceProvider,
   type TeamWorkspaceContextValue,
 } from "./team/team_workspace_context";
+import { resolveTeamSelectedMemberId } from "./team/team_route_helpers";
 import {
   MAILBOX_ADVANCED_PANEL_TITLE_CLASS,
   MAILBOX_CHAT_HEADER_CLASS,
@@ -3912,7 +3913,7 @@ describe("team panels interactions", () => {
 
     await waitForCondition(() => container.textContent?.includes("Agent Profile") ?? false);
     const dock = required(
-      container.querySelector('[data-team-surface="thread-dock"]'),
+      container.querySelector(".team-thread-dock"),
       "profile dock missing"
     );
     expect(dock.textContent).toContain("Worker Agent");
@@ -4124,7 +4125,7 @@ describe("team panels interactions", () => {
       );
       const navigateTeamRoute = React.useCallback((path: string) => {
         const url = new URL(path, "http://localhost");
-        setSelectedMemberId(url.searchParams.get("member") ?? "");
+        setSelectedMemberId(resolveTeamSelectedMemberId(url.search, url.pathname));
       }, []);
       const workspaceContext: TeamWorkspaceContextValue = {
         selectedConversation: null,
