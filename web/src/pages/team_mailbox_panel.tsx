@@ -97,6 +97,8 @@ type MailboxConversationRow = {
   canAccept: boolean;
 };
 
+const EMPTY_REPLY_OBLIGATIONS: TeamReplyObligationRecord[] = [];
+
 type TeamMailboxPanelProps = {
   developerMode: boolean;
   mode?: "full" | "advanced_only";
@@ -262,7 +264,8 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const showAdvancedControls = mode === "advanced_only";
   const showDeveloperMailboxTools = developerMode && showAdvancedControls;
   const normalizedHumanActorId = humanActorId.trim();
-  const openReplyObligations = snapshot?.mailbox.open_reply_obligations ?? [];
+  const openReplyObligations =
+    snapshot?.mailbox.open_reply_obligations ?? EMPTY_REPLY_OBLIGATIONS;
   const mailboxMessagesById = React.useMemo(
     () => new Map(snapshot?.mailbox.recent_messages.map((message) => [message.message_id, message]) ?? []),
     [snapshot?.mailbox.recent_messages]
