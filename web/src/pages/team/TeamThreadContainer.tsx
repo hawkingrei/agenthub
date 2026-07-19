@@ -6,7 +6,7 @@ import {
   resolveChatMessageText,
   resolveThreadRootMessageIdFromPayload,
 } from "./page_helpers";
-import { buildTeamWorkspacePath } from "../../app_route_selection";
+import { buildTeamChannelPath, buildTeamChannelTaskPath } from "./team_route_helpers";
 import {
   createDisplayNameLookup,
   isHumanMailboxActor,
@@ -52,7 +52,6 @@ export const TeamThreadContainer = React.memo(function TeamThreadContainer() {
     selectedTeamMemberLiveStates,
     selectedConversationMatchesChannelLane,
     effectiveSelectedTeamId,
-    routeWorkspaceLens,
     routeChannelId,
     activeChannelConversationTaskId,
     navigateTeamRoute,
@@ -179,20 +178,17 @@ export const TeamThreadContainer = React.memo(function TeamThreadContainer() {
     if (!effectiveSelectedTeamId) {
       return null;
     }
-    return buildTeamWorkspacePath(
-      effectiveSelectedTeamId,
-      routeWorkspaceLens,
-      routeChannelId,
-      null,
-      null,
-      null,
-      activeChannelConversationTaskId
-    );
+    return activeChannelConversationTaskId
+      ? buildTeamChannelTaskPath(
+          effectiveSelectedTeamId,
+          routeChannelId,
+          activeChannelConversationTaskId
+        )
+      : buildTeamChannelPath(effectiveSelectedTeamId, routeChannelId);
   }, [
     activeChannelConversationTaskId,
     effectiveSelectedTeamId,
     routeChannelId,
-    routeWorkspaceLens,
   ]);
 
   const onViewInChannel = useCallback(() => {

@@ -130,7 +130,6 @@ export {
   resolveAppRouteKind,
   resolveWorkspaceAgentRoute,
   resolvePostAuthRedirectTarget,
-  resolveTeamRoute,
   shouldRedirectTeamsToLogin,
 } from "./app_route_selection";
 

@@ -156,10 +156,10 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("Working");
     expect(html).toContain("AgentHub Runtime");
     expect(html).toContain("Worktree: Existing workdir");
-    expect(html).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=thread"');
+    expect(html).toContain('href="/workspace/teams/team-1/members/agent-remote-1/thread"');
     expect(
       html
-    ).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=member_console"');
+    ).toContain('href="/workspace/teams/team-1/members/agent-remote-1/member_console"');
     expect(html).toContain("Thread");
     expect(html).toContain("Console");
     expect(html).toContain("Danger Zone");

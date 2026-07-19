@@ -1,6 +1,10 @@
 import React from "react";
-import type { WorkspaceLens } from "../../app_route_selection";
 import type { TeamDefinitionRecord } from "../../api";
+import {
+  WorkspaceContentStack,
+  WorkspaceSectionShell,
+  WorkspaceSplitPaneLayout,
+} from "../../components/layout/workspace_section_shell";
 import { WorkspacePanelLoadingFallback } from "../../components/workspace_panel_loading_fallback";
 import { ActionButton, EmptyState } from "../../ui/primitives";
 import {
@@ -9,6 +13,10 @@ import {
 } from "../team_workspace_state_panel";
 import { TeamWorkspaceHeader } from "./team_workspace_header";
 import type { TeamTab } from "./state";
+import {
+  normalizeTeamWorkspaceLensForHeader,
+  type WorkspaceLens,
+} from "./team_route_helpers";
 
 const loadTeamEventsPanel = () => import("../team_events_panel");
 const loadTeamMailboxPanel = () => import("../team_mailbox_panel");
@@ -86,6 +94,17 @@ export function TeamPanelLoadingFallback() {
   return <WorkspacePanelLoadingFallback />;
 }
 
+export function shouldShowTeamWorkspaceHeader({
+  activeWorkspaceLens,
+  tab,
+}: {
+  activeWorkspaceLens: WorkspaceLens;
+  tab: TeamTab;
+}): boolean {
+  const effectiveWorkspaceLens = normalizeTeamWorkspaceLensForHeader(activeWorkspaceLens);
+  return effectiveWorkspaceLens !== "tasks" && tab !== "tasks";
+}
+
 export type TeamWorkbenchContentProps = {
   showTeamBootstrapLoading: boolean;
   showTeamUnavailable: boolean;
@@ -159,9 +178,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   memberConsolePanelProps,
   debugPanel,
 }: TeamWorkbenchContentProps) {
-  const effectiveWorkspaceLens =
-    activeWorkspaceLens === "search" ? "channels" : activeWorkspaceLens;
-  const showWorkspaceHeader = effectiveWorkspaceLens !== "tasks" && tab !== "tasks";
+  const showWorkspaceHeader = shouldShowTeamWorkspaceHeader({ activeWorkspaceLens, tab });
 
   return (
     <div
@@ -173,20 +190,15 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
       {showTeamUnavailable && <TeamUnavailablePanel onBackToSelector={onBackToSelector} />}
 
       {selectedTeam && (
-        <div
-          className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
-            isAgentWorkspace ? "gap-2" : "gap-4"
-          }`}
-        >
+        <WorkspaceContentStack compact={isAgentWorkspace}>
           {showWorkspaceHeader && (
-            <div
-              className={`${teamWorkbenchWorkspaceShellClassName} ${
-                isAgentWorkspace ? "py-0.5" : ""
-              }`}
+            <WorkspaceSectionShell
+              className={teamWorkbenchWorkspaceShellClassName}
+              compact={isAgentWorkspace}
               data-team-workspace-header-shell="true"
             >
               <TeamWorkspaceHeader {...workspaceHeaderProps} />
-            </div>
+            </WorkspaceSectionShell>
           )}
 
           {!selectedTeamHasConfiguredMembers && (
@@ -235,36 +247,20 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
           )}
 
           {tab !== "runs" && !showRunContextLoading && !showNoActiveRunNotice && (
-            <div
-              className={`flex min-h-0 min-w-0 flex-1 flex-col ${
-                isAgentWorkspace ? "gap-2" : "gap-3"
-              }`}
+            <WorkspaceContentStack
+              compact={isAgentWorkspace}
+              gap={isAgentWorkspace ? "compact" : "tight"}
+              data-team-workspace-body-stack="true"
             >
               {tab === "conversation" && (
-                <div
-                  className={
-                    threadPane
-                      ? "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]"
-                      : "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden"
-                  }
+                <WorkspaceSplitPaneLayout
                   data-team-surface="channel-thread-layout"
                   data-thread-open={threadPane ? "true" : "false"}
-                >
-                  <div
-                    className="min-h-0 min-w-0 flex-1 overflow-hidden"
-                    data-team-surface="channel-pane"
-                  >
-                    {conversationPanel}
-                  </div>
-                  {threadPane && (
-                    <div
-                      className="flex max-h-[40vh] min-h-0 w-full shrink-0 flex-col overflow-hidden lg:h-full lg:max-h-none lg:min-w-0"
-                      data-team-surface="thread-dock"
-                    >
-                      {threadPane}
-                    </div>
-                  )}
-                </div>
+                  primary={conversationPanel}
+                  primaryClassName="team-channel-pane"
+                  secondary={threadPane}
+                  secondaryClassName="team-thread-dock"
+                />
               )}
 
               {tab === "tasks" && tasksPanel}
@@ -321,9 +317,9 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               )}
 
               {tab === "debug" && debugPanel}
-            </div>
+            </WorkspaceContentStack>
           )}
-        </div>
+        </WorkspaceContentStack>
       )}
     </div>
   );

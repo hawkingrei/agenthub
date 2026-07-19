@@ -5,10 +5,10 @@ import {
   removeAgentNodeRecord,
   replaceAgentNodeRecord,
   resolvePostAuthRedirectTarget,
-  resolveTeamRoute,
   shouldRedirectTeamsToLogin,
   upsertAgentNodeRecord,
 } from "./app";
+import { resolveTeamRoute } from "./pages/team/team_route_helpers";
 
 describe("team route auth redirect", () => {
   const makeNode = (id: string, name = id, createdAt = 1) => ({

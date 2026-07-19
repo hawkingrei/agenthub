@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthState } from "./types";
 import {
   buildTeamDetailPath,
+  buildCanonicalTeamWorkspaceSubpath,
   buildTeamWorkspacePath,
   buildWorkspaceNodePath,
   buildWorkspacePath,
@@ -16,6 +17,7 @@ import {
   resolveTeamMemberRouteTab,
   resolveTeamRoute,
   resolveTeamSelectedTaskId,
+  resolveTeamWorkspacePathState,
   resolveWorkspaceLens,
   resolveWorkspaceAgentRoute,
   resolveWorkspaceNodeId,
@@ -97,6 +99,9 @@ describe("app route selection", () => {
     expect(resolveWorkspaceLens("/workspace/teams/team-1", "")).toBe("channels");
     expect(resolveWorkspaceLens("/workspace/teams/team-1", "?lens=search")).toBe("channels");
     expect(resolveWorkspaceLens("/workspace/teams/team-1", "?lens=tasks")).toBe("tasks");
+    expect(resolveWorkspaceLens("/workspace/teams/team-1/channels/review", "")).toBe("channels");
+    expect(resolveWorkspaceLens("/workspace/teams/team-1/tasks/task-1", "")).toBe("tasks");
+    expect(resolveWorkspaceLens("/workspace/teams/team-1/members/worker-1", "")).toBe("members");
     expect(buildWorkspacePath("agent-1", "channels")).toBe(
       "/workspace/agents/agent-1"
     );
@@ -142,6 +147,141 @@ describe("app route selection", () => {
     expect(resolveTeamMemberRouteTab("?tab=overview")).toBeNull();
     expect(isTeamMemberRouteTab("agent_acp")).toBe(true);
     expect(isTeamMemberRouteTab("overview")).toBe(false);
+  });
+
+  it("parses canonical team workspace subpaths without treating thread as a top-level lens", () => {
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1")).toEqual({
+      lens: null,
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/threads/42")
+    ).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: 42,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/tasks/task%2F77")
+    ).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: "task/77",
+      memberId: null,
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState(
+        "/workspace/teams/team-1/channels/review/tasks/task%2F77/members/worker%2F1"
+      )
+    ).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: "task/77",
+      memberId: "worker/1",
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/all/members/worker-1")
+    ).toEqual({
+      lens: "channels",
+      channelId: "all",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: "worker-1",
+      tab: null,
+    });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/tasks/task-77")).toEqual({
+      lens: "tasks",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: "task-77",
+      memberId: null,
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/team-1/members/worker-1/thread")
+    ).toEqual({
+      lens: "members",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: "worker-1",
+      tab: "agent_acp",
+    });
+    expect(resolveWorkspaceLens("/workspace/teams/team-1/thread", "")).toBe("channels");
+  });
+
+  it("builds canonical team workspace subpaths for gradual route migration", () => {
+    expect(buildCanonicalTeamWorkspaceSubpath("team-1")).toBe("/workspace/teams/team-1");
+    expect(buildCanonicalTeamWorkspaceSubpath("team-1", "channels", "review")).toBe(
+      "/workspace/teams/team-1/channels/review"
+    );
+    expect(buildCanonicalTeamWorkspaceSubpath("team-1", "channels", "all", 42)).toBe(
+      "/workspace/teams/team-1/channels/all/threads/42"
+    );
+    expect(
+      buildCanonicalTeamWorkspaceSubpath("team-1", "channels", "review", 42)
+    ).toBe("/workspace/teams/team-1/channels/review/threads/42");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath("team-1", "channels", "review", null, null, null, "task/77")
+    ).toBe("/workspace/teams/team-1/channels/review/tasks/task%2F77");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath("team-1", "channels", "all", null, null, null, "task-77")
+    ).toBe("/workspace/teams/team-1/channels/all/tasks/task-77");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath(
+        "team-1",
+        "channels",
+        "review",
+        null,
+        "worker/1",
+        null,
+        "task/77"
+      )
+    ).toBe("/workspace/teams/team-1/channels/review/tasks/task%2F77/members/worker%2F1");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath(
+        "team-1",
+        "channels",
+        "all",
+        null,
+        "worker-1",
+        null,
+        null
+      )
+    ).toBe("/workspace/teams/team-1/channels/all/members/worker-1");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath("team-1", "tasks", null, null, null, null, "task-77")
+    ).toBe("/workspace/teams/team-1/tasks/task-77");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath("team-1", "members", null, null, "worker-1", "agent_acp")
+    ).toBe("/workspace/teams/team-1/members/worker-1/thread");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath(
+        "team-1",
+        "members",
+        null,
+        null,
+        "worker-1",
+        "member_console"
+      )
+    ).toBe("/workspace/teams/team-1/members/worker-1/member_console");
+    expect(buildCanonicalTeamWorkspaceSubpath("team-1", "members")).toBe(
+      "/workspace/teams/team-1?lens=members"
+    );
+    expect(buildCanonicalTeamWorkspaceSubpath("team-1", "tasks")).toBe(
+      "/workspace/teams/team-1?lens=tasks"
+    );
   });
 
   it("derives the post-auth redirect target only on the workspace root aliases", () => {

@@ -5,7 +5,10 @@ import {
   formatTs,
   toPrettyJson,
 } from "./page_helpers";
-import { buildTeamWorkspacePath } from "../../app_route_selection";
+import {
+  buildTeamChannelThreadPath,
+  buildTeamChannelProfilePath,
+} from "./team_route_helpers";
 import {
   useTeamConversationContext,
   useTeamTasksContext,
@@ -37,7 +40,6 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
     busy,
     routeThreadRootMessageId,
     effectiveSelectedTeamId,
-    routeWorkspaceLens,
     routeChannelId,
     activeChannelConversationTaskId,
     navigateTeamRoute,
@@ -47,13 +49,10 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
     (messageId: number) => {
       if (effectiveSelectedTeamId && selectedConversationMatchesChannelLane) {
         navigateTeamRoute(
-          buildTeamWorkspacePath(
+          buildTeamChannelThreadPath(
             effectiveSelectedTeamId,
-            routeWorkspaceLens,
             routeChannelId,
             messageId,
-            null,
-            null,
             activeChannelConversationTaskId
           )
         );
@@ -63,7 +62,6 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
       effectiveSelectedTeamId,
       selectedConversationMatchesChannelLane,
       navigateTeamRoute,
-      routeWorkspaceLens,
       routeChannelId,
       activeChannelConversationTaskId,
     ]
@@ -76,19 +74,19 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
         return;
       }
       navigateTeamRoute(
-        buildTeamWorkspacePath(
+        buildTeamChannelProfilePath(
           effectiveSelectedTeamId,
-          "channels",
           routeChannelId,
-          null,
           normalizedMemberId,
-          null,
           activeChannelConversationTaskId
         )
       );
     },
     [activeChannelConversationTaskId, effectiveSelectedTeamId, navigateTeamRoute, routeChannelId]
   );
+  const onJumpToMessageSettled = useCallback(() => {
+    setChannelFocusMessageId(null);
+  }, [setChannelFocusMessageId]);
 
   return (
     <TeamConversationPanel
@@ -117,9 +115,7 @@ export const TeamConversationContainer = React.memo(function TeamConversationCon
       activeThreadMessageId={selectedConversationMatchesChannelLane ? routeThreadRootMessageId : null}
       onOpenMemberProfile={onOpenMemberProfile}
       jumpToMessageId={channelFocusMessageId}
-      onJumpToMessageSettled={() => {
-        setChannelFocusMessageId(null);
-      }}
+      onJumpToMessageSettled={onJumpToMessageSettled}
       onOpenThread={onOpenThread}
     />
   );

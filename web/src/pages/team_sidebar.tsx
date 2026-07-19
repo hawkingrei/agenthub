@@ -32,8 +32,12 @@ import {
 } from "./team/channel_metadata";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
-import type { WorkspaceLens } from "../app_route_selection";
 import type { TeamTab } from "./team/state";
+import {
+  resolveTeamSidebarSubjectPane,
+  type TeamSidebarSubjectPane,
+  type WorkspaceLens,
+} from "./team/team_route_helpers";
 
 type TeamMemberSummary = {
   active: number;
@@ -98,7 +102,6 @@ type TeamSidebarProps = {
 
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
-type TeamSidebarSubjectPane = "channels" | "tasks" | "agents";
 const NO_ACTIVE_RUN_CONTEXT = "No active run context.";
 const DEBUG_CURRENT_WORK_PATTERN = /^(?:run_status|step_status)\s*=/i;
 type TeamSidebarSearchResult = {
@@ -204,25 +207,6 @@ const TEAM_SUBJECT_SWITCHER_ACTIVE_CLASS =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-notion-hover text-[13px] text-notion-text";
 const TEAM_SUBJECT_SWITCHER_IDLE_CLASS =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text";
-
-function resolveTeamSidebarSubjectPane(
-  tab: TeamTab,
-  activeWorkspaceLens?: WorkspaceLens
-): TeamSidebarSubjectPane {
-  if (activeWorkspaceLens === "tasks") {
-    return "tasks";
-  }
-  if (activeWorkspaceLens === "members") {
-    return "agents";
-  }
-  if (tab === "tasks") {
-    return "tasks";
-  }
-  if (AGENT_FOCUS_TABS.has(tab)) {
-    return "agents";
-  }
-  return "channels";
-}
 
 export function buildTeamSidebarSearchResults(options: {
   query: string;
@@ -377,10 +361,10 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     agents: true,
   });
   const [activeSubjectPane, setActiveSubjectPane] = React.useState<TeamSidebarSubjectPane>(() =>
-    resolveTeamSidebarSubjectPane(tab, activeWorkspaceLens)
+    resolveTeamSidebarSubjectPane({ tab, activeWorkspaceLens })
   );
   React.useEffect(() => {
-    setActiveSubjectPane(resolveTeamSidebarSubjectPane(tab, activeWorkspaceLens));
+    setActiveSubjectPane(resolveTeamSidebarSubjectPane({ tab, activeWorkspaceLens }));
   }, [activeWorkspaceLens, tab]);
   React.useEffect(() => {
     setShowCreateChannelForm(false);

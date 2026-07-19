@@ -1,6 +1,7 @@
 import React from "react";
 import { Menu, UnstyledButton } from "@mantine/core";
 import { buildWorkspaceNodePath } from "../app_route_selection";
+import { buildTeamSelectorPath } from "../pages/team/team_route_helpers";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 
 type WorkbenchHeaderMenuProps = {
@@ -46,7 +47,10 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
         <Menu.Item onClick={() => onNavigate("/workspace")} disabled={active === "workspace"}>
           Workspace
         </Menu.Item>
-        <Menu.Item onClick={() => onNavigate("/workspace/teams")} disabled={active === "teams"}>
+        <Menu.Item
+          onClick={() => onNavigate(buildTeamSelectorPath())}
+          disabled={active === "teams"}
+        >
           Teams
         </Menu.Item>
         {isRoot ? (

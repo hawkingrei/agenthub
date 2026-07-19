@@ -48,6 +48,14 @@ export type AppRouteKind =
 
 export type WorkspaceLens = "teams" | "channels" | "tasks" | "members" | "search" | "nodes";
 export type TeamMemberRouteTab = "agent_acp" | "mailbox" | "member_console";
+export type TeamWorkspacePathState = {
+  lens: Extract<WorkspaceLens, "channels" | "tasks" | "members"> | null;
+  channelId: string | null;
+  threadRootMessageId: number | null;
+  taskId: string | null;
+  memberId: string | null;
+  tab: TeamMemberRouteTab | null;
+};
 const TEAM_MEMBER_ROUTE_TABS = new Set<TeamMemberRouteTab>([
   "agent_acp",
   "mailbox",
@@ -74,8 +82,12 @@ export function resolveWorkspaceLens(pathname: string, search: string): Workspac
     if (route?.mode === "selector") {
       return "teams";
     }
+    const pathState = resolveTeamWorkspacePathState(pathname);
     if (lens === "tasks" || lens === "members") {
       return lens;
+    }
+    if (pathState.lens) {
+      return pathState.lens;
     }
     return "channels";
   }
@@ -162,6 +174,80 @@ export function buildTeamWorkspacePath(
   return search ? `${pathname}?${search}` : pathname;
 }
 
+export function buildCanonicalTeamWorkspaceSubpath(
+  teamId?: string | null,
+  lens?: WorkspaceLens | null,
+  channelId?: string | null,
+  threadRootMessageId?: number | null,
+  memberId?: string | null,
+  tab?: TeamMemberRouteTab | null,
+  taskId?: string | null
+): string {
+  const normalizedTeamId = teamId?.trim();
+  if (!normalizedTeamId) {
+    return "/workspace/teams";
+  }
+  const teamPath = `/workspace/teams/${encodeURIComponent(normalizedTeamId)}`;
+  const normalizedTaskId = taskId?.trim() ?? "";
+  const normalizedMemberId = memberId?.trim() ?? "";
+  const normalizedChannelId = channelId?.trim() ?? "";
+  if (lens === "members") {
+    if (!normalizedMemberId) {
+      return `${teamPath}?lens=members`;
+    }
+    const memberPath = `${teamPath}/members/${encodeURIComponent(normalizedMemberId)}`;
+    if (!isTeamMemberRouteTab(tab)) {
+      return memberPath;
+    }
+    return `${memberPath}/${encodeURIComponent(tab === "agent_acp" ? "thread" : tab)}`;
+  }
+  if (lens === "tasks") {
+    return normalizedTaskId
+      ? `${teamPath}/tasks/${encodeURIComponent(normalizedTaskId)}`
+      : `${teamPath}?lens=tasks`;
+  }
+  if (lens === "channels" || lens === "search" || !lens) {
+    const channelPath =
+      normalizedChannelId && normalizedChannelId !== "all"
+        ? `${teamPath}/channels/${encodeURIComponent(normalizedChannelId)}`
+        : teamPath;
+    if (threadRootMessageId && threadRootMessageId > 0) {
+      const basePath =
+        normalizedChannelId && normalizedChannelId !== "all"
+          ? channelPath
+          : `${teamPath}/channels/all`;
+      return `${basePath}/threads/${encodeURIComponent(String(threadRootMessageId))}`;
+    }
+    if (normalizedTaskId) {
+      const basePath =
+        normalizedChannelId && normalizedChannelId !== "all"
+          ? channelPath
+          : `${teamPath}/channels/all`;
+      const taskPath = `${basePath}/tasks/${encodeURIComponent(normalizedTaskId)}`;
+      return normalizedMemberId
+        ? `${taskPath}/members/${encodeURIComponent(normalizedMemberId)}`
+        : taskPath;
+    }
+    if (normalizedMemberId) {
+      const basePath =
+        normalizedChannelId && normalizedChannelId !== "all"
+          ? channelPath
+          : `${teamPath}/channels/all`;
+      return `${basePath}/members/${encodeURIComponent(normalizedMemberId)}`;
+    }
+    return channelPath;
+  }
+  return buildTeamWorkspacePath(
+    normalizedTeamId,
+    lens,
+    normalizedChannelId,
+    threadRootMessageId,
+    normalizedMemberId,
+    tab,
+    normalizedTaskId
+  );
+}
+
 export function resolveTeamSelectedTaskId(search: string): string {
   const params = new URLSearchParams(search);
   return (params.get("task") ?? "").trim();
@@ -174,6 +260,93 @@ export function resolveTeamMemberRouteTab(search: string): TeamMemberRouteTab | 
     return "agent_acp";
   }
   return isTeamMemberRouteTab(raw) ? raw : null;
+}
+
+function decodePathSegment(segment: string | undefined): string {
+  if (!segment) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(segment).trim();
+  } catch {
+    return segment.trim();
+  }
+}
+
+function parsePositiveIntegerSegment(segment: string | undefined): number | null {
+  const value = decodePathSegment(segment);
+  if (!value) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeMemberPathTab(segment: string | undefined): TeamMemberRouteTab | null {
+  const tab = decodePathSegment(segment);
+  if (tab === "thread") {
+    return "agent_acp";
+  }
+  return isTeamMemberRouteTab(tab) ? tab : null;
+}
+
+function resolveTeamWorkspacePathSegments(pathname: string): string[] {
+  if (!isTeamsRoute(pathname)) {
+    return [];
+  }
+  const prefix = pathname.startsWith("/workspace/teams") ? "/workspace/teams" : "/teams";
+  const suffix = pathname.slice(prefix.length);
+  const normalized = suffix.startsWith("/") ? suffix.slice(1) : suffix;
+  const segments = normalized.split("/").filter((segment) => segment.length > 0);
+  return segments.slice(1);
+}
+
+export function resolveTeamWorkspacePathState(pathname: string): TeamWorkspacePathState {
+  const state: TeamWorkspacePathState = {
+    lens: null,
+    channelId: null,
+    threadRootMessageId: null,
+    taskId: null,
+    memberId: null,
+    tab: null,
+  };
+  const segments = resolveTeamWorkspacePathSegments(pathname);
+  const [surface] = segments;
+  if (!surface) {
+    return state;
+  }
+
+  if (surface === "channels" || surface === "chat" || surface === "threads") {
+    state.lens = "channels";
+    state.channelId = decodePathSegment(segments[1]) || null;
+    const nestedSurface = segments[2];
+    if (nestedSurface === "threads") {
+      state.threadRootMessageId = parsePositiveIntegerSegment(segments[3]);
+    } else if (nestedSurface === "tasks") {
+      state.taskId = decodePathSegment(segments[3]) || null;
+      if (segments[4] === "members") {
+        state.memberId = decodePathSegment(segments[5]) || null;
+      }
+    } else if (nestedSurface === "members") {
+      state.memberId = decodePathSegment(segments[3]) || null;
+    }
+    return state;
+  }
+
+  if (surface === "tasks") {
+    state.lens = "tasks";
+    state.taskId = decodePathSegment(segments[1]) || null;
+    return state;
+  }
+
+  if (surface === "members") {
+    state.lens = "members";
+    state.memberId = decodePathSegment(segments[1]) || null;
+    state.tab = normalizeMemberPathTab(segments[2]);
+    return state;
+  }
+
+  return state;
 }
 
 export function navigateToPath(pathname: string): void {

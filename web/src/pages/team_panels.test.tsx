@@ -3172,6 +3172,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: 1,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId,
       effectiveSelectedTeamId: "team-1",
@@ -3224,12 +3225,12 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "View in channel"));
     expect(setChannelFocusMessageId).toHaveBeenCalledWith(1);
     expect(navigateTeamRoute).toHaveBeenCalledWith(
-      "/workspace/teams/team-1?task=task-1"
+      "/workspace/teams/team-1/channels/all/tasks/task-1"
     );
 
     clickElement(findButtonByText(container, "Close thread"));
     expect(navigateTeamRoute).toHaveBeenLastCalledWith(
-      "/workspace/teams/team-1?task=task-1"
+      "/workspace/teams/team-1/channels/all/tasks/task-1"
     );
   });
 
@@ -3265,6 +3266,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: null,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: "team-1",
@@ -3324,6 +3326,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: 404,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: "team-1",
@@ -3373,7 +3376,7 @@ describe("team panels interactions", () => {
           <TeamWorkbenchContainer />
         </TeamWorkspaceProvider>
       );
-    }).toThrow("TeamWorkbenchContainer requires TeamWorkspaceContext.workbench");
+    }).toThrow("useTeamWorkbenchRuntime must be used within TeamWorkspaceProvider");
 
     suppressReactError.mockRestore();
   });
@@ -3871,6 +3874,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: null,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: "team-1",
@@ -3956,6 +3960,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: null,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: "team-1",
@@ -3997,7 +4002,7 @@ describe("team panels interactions", () => {
     expect(mention).not.toBeNull();
     mention?.click();
     expect(navigateTeamRoute).toHaveBeenCalledWith(
-      "/workspace/teams/team-1?task=task-1&member=worker-agent"
+      "/workspace/teams/team-1/channels/all/tasks/task-1/members/worker-agent"
     );
   });
 
@@ -4035,6 +4040,7 @@ describe("team panels interactions", () => {
       taskMessagesLoading: false,
       busy: null,
       routeThreadRootMessageId: null,
+      routeSelectedMemberId: "",
       channelFocusMessageId: null,
       setChannelFocusMessageId: vi.fn(),
       effectiveSelectedTeamId: null,
@@ -4152,6 +4158,7 @@ describe("team panels interactions", () => {
         taskMessagesLoading: false,
         busy: null,
         routeThreadRootMessageId: null,
+        routeSelectedMemberId: selectedMemberId,
         channelFocusMessageId: null,
         setChannelFocusMessageId: vi.fn(),
         effectiveSelectedTeamId: "team-1",

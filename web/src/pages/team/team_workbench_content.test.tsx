@@ -10,6 +10,7 @@ import {
   TeamPanelLoadingFallback,
   prefetchTeamSetupSurface,
   prefetchTeamWorkbenchTab,
+  shouldShowTeamWorkspaceHeader,
   type TeamWorkbenchContentProps,
 } from "./team_workbench_content";
 
@@ -158,6 +159,33 @@ describe("team_workbench_content", () => {
     });
   });
 
+  it("keeps the workspace header visibility rule explicit for shell reuse", () => {
+    expect(
+      shouldShowTeamWorkspaceHeader({
+        activeWorkspaceLens: "channels",
+        tab: "conversation",
+      })
+    ).toBe(true);
+    expect(
+      shouldShowTeamWorkspaceHeader({
+        activeWorkspaceLens: "search",
+        tab: "conversation",
+      })
+    ).toBe(true);
+    expect(
+      shouldShowTeamWorkspaceHeader({
+        activeWorkspaceLens: "tasks",
+        tab: "conversation",
+      })
+    ).toBe(false);
+    expect(
+      shouldShowTeamWorkspaceHeader({
+        activeWorkspaceLens: "channels",
+        tab: "tasks",
+      })
+    ).toBe(false);
+  });
+
   it("only renders the constrained thread wrapper when a thread pane is present", () => {
     const baseProps = createBaseWorkbenchContentProps();
 
@@ -181,6 +209,10 @@ describe("team_workbench_content", () => {
     expect(withThread).toContain("lg:h-full");
     expect(withThread).toContain("lg:min-w-0");
     expect(withThread).toContain("flex-col");
+    expect(withThread).toContain('data-workspace-split-pane-layout="true"');
+    expect(withThread).toContain('data-secondary-open="true"');
+    expect(withThread).toContain("team-channel-pane");
+    expect(withThread).toContain("team-thread-dock");
     expect(withThread).not.toContain("overflow-y-auto");
   });
 
@@ -226,9 +258,38 @@ describe("team_workbench_content", () => {
     );
 
     const headerShellMatch = html.match(
-      /<div class="([^"]*workspace-shell[^"]*)" data-team-workspace-header-shell="true">/
+      /<div class="([^"]*workspace-shell[^"]*)" data-workspace-section-shell="true" data-team-workspace-header-shell="true">/
     );
     expect(headerShellMatch?.[1]).toContain("workspace-shell");
+    expect(headerShellMatch?.[1]).toContain("rounded-xl");
     expect(headerShellMatch?.[1]).not.toContain("teams-panel-card");
+  });
+
+  it("uses compact shared shell chrome for agent workspaces", () => {
+    const html = renderToStaticMarkup(
+      <TeamWorkbenchContent
+        {...createBaseWorkbenchContentProps()}
+        isAgentWorkspace
+        teamWorkbenchWorkspaceShellClassName="workspace-shell"
+      />
+    );
+
+    const headerShellMatch = html.match(
+      /<div class="([^"]*workspace-shell[^"]*)" data-workspace-section-shell="true" data-team-workspace-header-shell="true">/
+    );
+    expect(headerShellMatch?.[1]).toContain("py-0.5");
+  });
+
+  it("uses shared content stacks for Team workspace body layout", () => {
+    const html = renderToStaticMarkup(
+      <TeamWorkbenchContent
+        {...createBaseWorkbenchContentProps()}
+        conversationPanel={<div data-testid="conversation-panel">Conversation</div>}
+      />
+    );
+
+    expect(html).toContain('data-workspace-content-stack="true"');
+    expect(html).toContain('data-team-workspace-body-stack="true"');
+    expect(html).toContain("gap-3");
   });
 });

@@ -1,4 +1,5 @@
 import { expect, test } from "./coverage";
+import { buildTeamChannelThreadPath } from "../../src/pages/team/team_route_helpers";
 import {
   gotoTeams,
   mockTeamPageApis,
@@ -178,7 +179,7 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
   await expect(page.getByRole("button", { name: /Prepare layout release/ })).toBeVisible();
   await page.screenshot({ fullPage: false });
   await page.getByRole("button", { name: /Prepare layout release/ }).click();
-  await expect(page).toHaveURL(/task=task-team-layout-release/);
+  await expect(page).toHaveURL(/\/channels\/layout\/tasks\/task-team-layout-release/);
   await expect(page.getByText("Release task opened from search.")).toBeVisible();
 
   await page.getByRole("button", { name: "Search workspace", exact: true }).click();
@@ -188,17 +189,11 @@ test("team workspace keeps desktop layout proportions across shell, sidebar, hea
   await expect(searchInput).toBeHidden();
 
   await page.evaluate(
-    ({ nextTeamId, nextChannelId, nextTaskId }) => {
-      const nextUrl = new URL(window.location.href);
-      nextUrl.pathname = `/workspace/teams/${nextTeamId}`;
-      nextUrl.search = "";
-      nextUrl.searchParams.set("channel", nextChannelId);
-      nextUrl.searchParams.set("task", nextTaskId);
-      nextUrl.searchParams.set("thread", "101");
-      window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+    (nextPath) => {
+      window.history.pushState({}, "", nextPath);
       window.dispatchEvent(new PopStateEvent("popstate"));
     },
-    { nextTeamId: teamId, nextChannelId: channelId, nextTaskId: channelTaskId }
+    buildTeamChannelThreadPath(teamId, channelId, 101)
   );
   await expect(page.locator('[data-team-surface="thread-pane"]')).toBeVisible();
   await expect(page.locator('[data-team-surface="channel-thread-layout"]')).toHaveAttribute(

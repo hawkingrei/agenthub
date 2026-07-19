@@ -1,5 +1,5 @@
 import React, { Suspense, useMemo } from "react";
-import { resolveTeamRoute } from "../app_route_selection";
+import { resolveTeamRoute } from "../pages/team/team_route_helpers";
 import type { AuthState } from "../types";
 import { APP_ROOT_CLASS } from "../ui/tailwind_classes";
 import { RouteFallback } from "./route_fallback";

@@ -11,6 +11,7 @@ import {
   type WorkspaceLens,
 } from "../app_route_selection";
 import { buildStandardWorkspaceLensItems } from "../components/workspace_lens_items";
+import { buildTeamSelectorPath } from "../pages/team/team_route_helpers";
 import type { AuthState } from "../types";
 
 type UseWorkspaceRouteStateArgs = {
@@ -61,7 +62,7 @@ export function useWorkspaceRouteState({
     (value: string) => {
       const lens = value as WorkspaceLens;
       if (lens === "teams") {
-        navigateWorkbenchRoute("/workspace/teams");
+        navigateWorkbenchRoute(buildTeamSelectorPath());
         return;
       }
       if (lens === "nodes") {

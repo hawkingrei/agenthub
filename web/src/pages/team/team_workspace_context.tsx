@@ -8,7 +8,7 @@ import type {
   TeamTaskDetailResponse,
   TeamTaskRecord,
 } from "../../api";
-import type { WorkspaceLens } from "../../app_route_selection";
+import type { WorkspaceLens } from "./team_route_helpers";
 import { TeamTasksPanel } from "../team_tasks_panel";
 import type { TeamChannelItem } from "./channel_metadata";
 import type { TeamMemberLiveState } from "./member_helpers";
@@ -17,7 +17,6 @@ import type { TeamWorkbenchRuntimeContext } from "./TeamWorkbenchContainer";
 type TeamTasksPanelProps = ComponentProps<typeof TeamTasksPanel>;
 
 export type TeamWorkspaceShellContextValue = {
-  workbench?: TeamWorkbenchRuntimeContext;
   developerMode: boolean;
   busy: string | null;
   snapshot: TeamRunSnapshotRecord | null;
@@ -25,6 +24,7 @@ export type TeamWorkspaceShellContextValue = {
   selectedTeamMemberLiveStates: TeamMemberLiveState[];
   selectedConversationMatchesChannelLane: boolean;
   routeThreadRootMessageId: number | null;
+  routeSelectedMemberId: string;
   effectiveSelectedTeamId: string | null;
   routeWorkspaceLens: WorkspaceLens | null;
   routeChannelId: string;
@@ -72,11 +72,13 @@ export type TeamTasksContextValue = {
 };
 
 export type TeamWorkspaceContextValue =
+  { workbench?: TeamWorkbenchRuntimeContext } &
   TeamWorkspaceShellContextValue &
   TeamConversationContextValue &
   TeamTasksContextValue;
 
 const TeamWorkspaceContext = React.createContext<TeamWorkspaceContextValue | null>(null);
+const TeamWorkbenchContext = React.createContext<TeamWorkbenchRuntimeContext | null>(null);
 const TeamWorkspaceShellContext = React.createContext<TeamWorkspaceShellContextValue | null>(null);
 const TeamConversationContext = React.createContext<TeamConversationContextValue | null>(null);
 const TeamTasksContext = React.createContext<TeamTasksContextValue | null>(null);
@@ -111,8 +113,8 @@ export function TeamWorkspaceProvider({
   value: TeamWorkspaceContextValue;
   children: React.ReactNode;
 }) {
+  const workbenchValue = value.workbench ?? null;
   const shellValue = useShallowStableObject<TeamWorkspaceShellContextValue>({
-    workbench: value.workbench,
     developerMode: value.developerMode,
     busy: value.busy,
     snapshot: value.snapshot,
@@ -120,6 +122,7 @@ export function TeamWorkspaceProvider({
     selectedTeamMemberLiveStates: value.selectedTeamMemberLiveStates,
     selectedConversationMatchesChannelLane: value.selectedConversationMatchesChannelLane,
     routeThreadRootMessageId: value.routeThreadRootMessageId,
+    routeSelectedMemberId: value.routeSelectedMemberId,
     effectiveSelectedTeamId: value.effectiveSelectedTeamId,
     routeWorkspaceLens: value.routeWorkspaceLens,
     routeChannelId: value.routeChannelId,
@@ -166,11 +169,13 @@ export function TeamWorkspaceProvider({
 
   return (
     <TeamWorkspaceContext.Provider value={value}>
-      <TeamWorkspaceShellContext.Provider value={shellValue}>
-        <TeamConversationContext.Provider value={conversationValue}>
-          <TeamTasksContext.Provider value={tasksValue}>{children}</TeamTasksContext.Provider>
-        </TeamConversationContext.Provider>
-      </TeamWorkspaceShellContext.Provider>
+      <TeamWorkbenchContext.Provider value={workbenchValue}>
+        <TeamWorkspaceShellContext.Provider value={shellValue}>
+          <TeamConversationContext.Provider value={conversationValue}>
+            <TeamTasksContext.Provider value={tasksValue}>{children}</TeamTasksContext.Provider>
+          </TeamConversationContext.Provider>
+        </TeamWorkspaceShellContext.Provider>
+      </TeamWorkbenchContext.Provider>
     </TeamWorkspaceContext.Provider>
   );
 }
@@ -187,6 +192,14 @@ export function useTeamWorkspaceShell(): TeamWorkspaceShellContextValue {
   const value = React.useContext(TeamWorkspaceShellContext);
   if (!value) {
     throw new Error("useTeamWorkspaceShell must be used within TeamWorkspaceProvider");
+  }
+  return value;
+}
+
+export function useTeamWorkbenchRuntime(): TeamWorkbenchRuntimeContext {
+  const value = React.useContext(TeamWorkbenchContext);
+  if (!value) {
+    throw new Error("useTeamWorkbenchRuntime must be used within TeamWorkspaceProvider");
   }
   return value;
 }
