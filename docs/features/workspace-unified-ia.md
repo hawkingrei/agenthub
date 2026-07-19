@@ -279,6 +279,38 @@ Agent and ACP panes should stay quiet while preserving runtime depth:
 - message metadata should use compact language such as `Pending` and `Seen x/y`
 - composer helper copy should be short enough to read as an input hint, not onboarding text
 
+### 8.2) Three-Zone Workbench Composition
+
+Desktop workspace pages should converge on a three-zone composition when there is enough horizontal
+space:
+
+1. Object directory zone: the persistent left rail for Teams, Agents, channels, and compact
+   cross-object switching.
+2. Primary work zone: the dominant middle pane for the current workflow, such as channel timeline,
+   Kanban lane, Agent workspace, or ACP activity.
+3. Context zone: a right-side detail or thread dock for subordinate context, such as message
+   threads, selected task detail, selected member profile, or inspector state.
+
+This composition is a hierarchy, not three equal dashboards:
+
+- the primary work zone should own most horizontal space and remain the visual anchor
+- the context zone should be optional, route-addressable where useful, and cheap to close without
+  losing the primary selection
+- the object directory should stay narrow, scannable, and action-light
+- secondary context should not introduce another full navigation model inside the dock
+- each zone should have an explicit empty/loading state so collapsing one zone does not create
+  ambiguous blank space
+- the shared layout primitives should encode stable width ratios and overflow behavior before
+  individual Team or Agent panes add local wrappers
+
+On narrow screens this model degrades to two reachable states instead of three persistent columns:
+
+- directory or primary work surface
+- primary work surface or context dock
+
+Mobile behavior should preserve operator location with explicit back/close affordances rather than
+stacking all three zones into one long page.
+
 ### 9) Route Model Direction
 
 The rollout should converge current top-level routes toward one workspace shell.
