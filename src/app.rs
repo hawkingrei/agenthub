@@ -552,6 +552,11 @@ mod tests {
             "{\"name\":\"AgentHub\",\"display\":\"standalone\"}",
         )
         .expect("write manifest");
+        std::fs::write(
+            dir.join("sw.js"),
+            "self.addEventListener('install', () => self.skipWaiting());",
+        )
+        .expect("write service worker");
 
         let state = crate::api::team_tests::build_test_state().await;
         let api_router = crate::api::router(state.clone());
@@ -600,6 +605,7 @@ mod tests {
         );
 
         let manifest_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/manifest.webmanifest")
@@ -611,6 +617,43 @@ mod tests {
         assert_eq!(manifest_response.status(), StatusCode::OK);
         assert_eq!(
             manifest_response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
+
+        let service_worker_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/sw.js")
+                    .body(Body::empty())
+                    .expect("build service worker request"),
+            )
+            .await
+            .expect("request service worker path");
+        assert_eq!(service_worker_response.status(), StatusCode::OK);
+        assert_eq!(
+            service_worker_response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
+
+        let missing_asset_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/missing-abc123.js")
+                    .body(Body::empty())
+                    .expect("build missing asset request"),
+            )
+            .await
+            .expect("request missing asset path");
+        assert_eq!(missing_asset_response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            missing_asset_response
                 .headers()
                 .get(header::CACHE_CONTROL)
                 .and_then(|value| value.to_str().ok()),
