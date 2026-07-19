@@ -150,6 +150,14 @@ describe("app route selection", () => {
   });
 
   it("parses canonical team workspace subpaths without treating thread as a top-level lens", () => {
+    expect(resolveTeamWorkspacePathState("/teams")).toEqual({
+      lens: null,
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
     expect(resolveTeamWorkspacePathState("/workspace/teams/team-1")).toEqual({
       lens: null,
       channelId: null,
@@ -190,6 +198,40 @@ describe("app route selection", () => {
       memberId: "worker/1",
       tab: null,
     });
+    expect(resolveTeamWorkspacePathState("/teams/team-1/channels")).toEqual({
+      lens: "channels",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/tasks")).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/tasks/task-77/members")
+    ).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: "task-77",
+      memberId: null,
+      tab: null,
+    });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/members")).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
     expect(
       resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/all/members/worker-1")
     ).toEqual({
@@ -208,6 +250,14 @@ describe("app route selection", () => {
       memberId: null,
       tab: null,
     });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/tasks")).toEqual({
+      lens: "tasks",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
     expect(
       resolveTeamWorkspacePathState("/workspace/teams/team-1/members/worker-1/thread")
     ).toEqual({
@@ -217,6 +267,14 @@ describe("app route selection", () => {
       taskId: null,
       memberId: "worker-1",
       tab: "agent_acp",
+    });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/members")).toEqual({
+      lens: "members",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
     });
     expect(resolveWorkspaceLens("/workspace/teams/team-1/thread", "")).toBe("channels");
   });

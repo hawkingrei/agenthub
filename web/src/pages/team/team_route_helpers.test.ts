@@ -101,6 +101,9 @@ describe("team route helpers", () => {
       "/workspace/teams/team-1/channels/review?tab=runs"
     );
     expect(
+      buildTeamTabCompatibilityPath("/workspace/teams/team-1/members/worker-1", "mailbox")
+    ).toBe("/workspace/teams/team-1/members/worker-1?tab=mailbox");
+    expect(
       buildTeamTabCompatibilityPath("/workspace/teams/team-1/members/worker-1", "agent_acp")
     ).toBe("/workspace/teams/team-1/members/worker-1?tab=thread");
   });
@@ -128,6 +131,10 @@ describe("team route helpers", () => {
     expect(buildTeamLensNavigationPath("team-1", "channels", "review", "task-9")).toBe(
       "/workspace/teams/team-1/channels/review/tasks/task-9"
     );
+    expect(buildTeamLensNavigationPath("team-1", "channels", "review")).toBe(
+      "/workspace/teams/team-1/channels/review"
+    );
+    expect(buildTeamLensNavigationPath("team-1", "channels")).toBe("/workspace/teams/team-1");
     expect(buildTeamLensNavigationPath("team-1", "members", null, "task-9")).toBe(
       "/workspace/teams/team-1?lens=members"
     );

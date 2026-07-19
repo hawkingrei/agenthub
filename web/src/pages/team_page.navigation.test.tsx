@@ -204,6 +204,7 @@ vi.mock("./team/TeamSidebarContainer", () => ({
 import { TeamPage } from "./team_page";
 import {
   buildTeamChannelPath,
+  buildTeamChannelThreadPath,
   buildTeamMemberWorkspacePath,
   buildTeamWorkspaceLensPath,
 } from "./team/team_route_helpers";
@@ -490,6 +491,20 @@ describe("TeamPage navigation glue", () => {
       });
       expect(getTeamTask).toHaveBeenCalledWith("token", "team-1", "missing");
       expect(window.location.pathname).toBe(buildTeamChannelPath("team-1", "review"));
+      expect(window.location.search).toBe("");
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("keeps thread context when canonicalizing a channel-scoped task route", async () => {
+    const rendered = await renderTeamPage(buildTeamChannelPath("team-1"), "?task=task-review&thread=17");
+    try {
+      await act(async () => {
+        await flushEffects();
+      });
+      expect(getTeamTask).toHaveBeenCalledWith("token", "team-1", "task-review");
+      expect(window.location.pathname).toBe(buildTeamChannelThreadPath("team-1", "review", 17));
       expect(window.location.search).toBe("");
     } finally {
       rendered.cleanup();
