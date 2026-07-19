@@ -71,6 +71,6 @@ could keep serving old HTML or old asset graphs.
 
 ## Source Journals
 
-- `docs/journal/2026-02-08-pwa-removal.md`
-- `docs/journal/2026-04-03-pwa-install-and-team-permission-card-collapse.md`
-- `docs/journal/2026-07-19-pwa-cache-control-router-guard.md`
+- [docs/journal/2026-02-08-pwa-removal.md](../journal/2026-02-08-pwa-removal.md)
+- [docs/journal/2026-04-03-pwa-install-and-team-permission-card-collapse.md](../journal/2026-04-03-pwa-install-and-team-permission-card-collapse.md)
+- [docs/journal/2026-07-19-pwa-cache-control-router-guard.md](../journal/2026-07-19-pwa-cache-control-router-guard.md)
