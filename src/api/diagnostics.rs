@@ -67,6 +67,7 @@ async fn agent_trace(
 
 #[cfg(all(test, debug_assertions))]
 mod tests {
+    use agenthub_auth_domain::UserRole;
     use axum::body::{Body, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use serde_json::{Value, json};
@@ -77,19 +78,20 @@ mod tests {
     use crate::api::team_tests::build_test_state;
     use crate::state::AppState;
 
-    async fn create_role_token(state: &AppState, role: &str) -> String {
+    async fn create_role_token(state: &AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().timestamp();
+        let role_str = role.as_str();
         sqlx::query(
             r#"
             INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, ?4, NULL, ?5)
+            VALUES (?, ?, ?, ?, NULL, ?)
             "#,
         )
         .bind(&user_id)
-        .bind(format!("{role}-{}", Uuid::new_v4()))
-        .bind(role)
-        .bind(role)
+        .bind(format!("{role_str}-{}", Uuid::new_v4()))
+        .bind(role_str)
+        .bind(role_str)
         .bind(now)
         .execute(&state.db)
         .await
@@ -120,8 +122,8 @@ mod tests {
     #[tokio::test]
     async fn agent_trace_requires_diagnostics_read_capability() {
         let state = build_test_state().await;
-        let viewer_token = create_role_token(&state, "viewer").await;
-        let admin_token = create_role_token(&state, "admin").await;
+        let viewer_token = create_role_token(&state, UserRole::Viewer).await;
+        let admin_token = create_role_token(&state, UserRole::Admin).await;
         let app = router(state);
 
         let denied = app
