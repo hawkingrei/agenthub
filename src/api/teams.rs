@@ -31,7 +31,9 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::api::authz::require_user;
+use agenthub_auth_domain::UserCapability;
+
+use crate::api::authz::{require_capability, require_user};
 use crate::api::error::ApiError;
 use crate::api::uploads::{UploadRequest, upload_scoped_object};
 use crate::auth::UserRecord;
@@ -612,7 +614,7 @@ async fn get_team_prompt_defaults(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<TeamPromptDefaultsResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     Ok(Json(TeamPromptDefaultsResponse {
         coordinator_prompt: DEFAULT_TEAM_COORDINATOR_PROMPT.to_string(),
         worker_prompt: DEFAULT_TEAM_WORKER_PROMPT.to_string(),
