@@ -83,3 +83,36 @@ Remaining validation before closing the TODO:
   include `agenthub` and `agenthub-acp` archives plus Linux `.deb` packages;
 - confirm the next semver release or preview release still publishes successful binary assets even
   if one matrix target fails.
+
+### 2026-07-20 Release Prebuild Runtime Package Verification
+
+- Observed main `Release Prebuild` run `29748545683` after merge commit
+  `676230bf6d664eb56559d5ed96fa3fa4ca44a136`.
+- Confirmed the run completed successfully:
+  - `Prebuild x86_64-unknown-linux-gnu`: success, 1h10m59s.
+  - `Prebuild aarch64-unknown-linux-gnu`: success, 1h16m38s.
+  - `Prebuild aarch64-apple-darwin`: success, 43m53s.
+- Confirmed the release/prebuild matrix still exercised the canonical release build commands:
+  - `cross build --locked --release --target x86_64-unknown-linux-gnu --bin agenthub --features release-vendored-openssl,release-lance-fp16,rocksdb`
+  - `cross build --locked --release --target x86_64-unknown-linux-gnu -p agenthub-acp-adapter --features release-vendored-openssl`
+  - `cross build --locked --release --target aarch64-unknown-linux-gnu --bin agenthub --features release-vendored-openssl,rocksdb`
+  - `cross build --locked --release --target aarch64-unknown-linux-gnu -p agenthub-acp-adapter --features release-vendored-openssl`
+  - `cargo build --locked --release --target aarch64-apple-darwin --bin agenthub --features rocksdb`
+  - `cargo build --locked --release --target aarch64-apple-darwin -p agenthub-acp-adapter`
+- Confirmed all ACP adapter release legs compiled the renamed internal package:
+  `agenthub-codex-acp-runtime v0.10.0`.
+- Confirmed the run logs no longer compiled package `agenthub-codex-acp v0.10.0`.
+- Confirmed package logs still called only:
+  - `package_binary "agenthub"`
+  - `package_binary "agenthub-acp"`
+- Confirmed the run uploaded the expected matrix artifact bundles:
+  - `release-prebuild-x86_64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-apple-darwin`
+
+This closes the trimmed `Release Prebuild` runtime package follow-up: push-to-main prebuild now
+proves the release matrix builds through the `agenthub-codex-acp-runtime` package identity while
+still publishing only the canonical `agenthub` and `agenthub-acp` archive bundles.
+
+The broader partial release validation remains open until a semver or preview release run proves
+successful binary assets are published when one release matrix target fails.
