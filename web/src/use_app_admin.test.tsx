@@ -144,6 +144,27 @@ describe("useAppAdmin", () => {
     vi.clearAllMocks();
   });
 
+  it("falls back to the normal login shell when auth status cannot be loaded", async () => {
+    const captures: UseAppAdminResult[] = [];
+    authStatusMock.mockRejectedValue(new Error("status unavailable"));
+
+    await act(async () => {
+      root.render(
+        <HookHarness
+          auth={null}
+          isAdminRoute={false}
+          onCapture={(value) => captures.push(value)}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latest = captures[captures.length - 1];
+    expect(authStatusMock).toHaveBeenCalledTimes(1);
+    expect(latest.rootInitialized).toBe(true);
+  });
+
   it("encodes join tokens into the browser join url", async () => {
     const captures: UseAppAdminResult[] = [];
     const auth = { token: "token-1", role: "root" } as HookProps[0];
