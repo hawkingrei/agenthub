@@ -302,6 +302,8 @@ This composition is a hierarchy, not three equal dashboards:
   ambiguous blank space
 - the shared layout primitives should encode stable width ratios and overflow behavior before
   individual Team or Agent panes add local wrappers
+- Team channel thread docks and desktop task detail previews should use the same shared split-pane
+  primitive so the middle work zone and right context zone keep one width and overflow contract
 
 On narrow screens this model degrades to two reachable states instead of three persistent columns:
 
