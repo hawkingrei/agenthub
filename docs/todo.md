@@ -48,7 +48,7 @@ Stable contract:
 
 - [features/access-control-and-roles.md](features/access-control-and-roles.md)
 
-- [ ] `P1` Continue user role/capability migration by route cluster: after the first domain matrix, capability helper, bypass guard, and remote-node create-agent gate, migrate normal operator routes from root-only auth to capability auth in the order defined by the stable contract.
+- [ ] `P1` Continue user role/capability migration by route cluster: after the first domain matrix, capability helper, bypass guard, remote-node create-agent gate, and `push:subscribe` route gate, migrate normal operator routes from root-only auth to capability auth in the order defined by the stable contract. Latest notes: [journal/2026-07-20-push-subscribe-capability-gate.md](journal/2026-07-20-push-subscribe-capability-gate.md).
 
 ## Message Storage
 
