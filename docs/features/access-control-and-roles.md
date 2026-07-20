@@ -197,3 +197,4 @@ result.
 ## Source Journals
 
 - [2026-07-16 Access Control Roles](../journal/2026-07-16-access-control-roles.md)
+- [2026-07-21 Linker Capability Gate](../journal/2026-07-21-linker-capability-gate.md)

@@ -10,7 +10,9 @@ use rand::Rng;
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::api::authz::require_root;
+use agenthub_auth_domain::UserCapability;
+
+use crate::api::authz::{require_capability, require_root};
 use crate::api::error::{ApiError, map_linker_error};
 use crate::api::{extract_ip, extract_ua, ok_response};
 use crate::linkers::{self, AppLinkerRecord, AppLinkerService, SlockConfigInput};
@@ -375,7 +377,7 @@ async fn list_linkers(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<AppLinkerRecord>>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::LinkersManage).await?;
     AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .list_linkers()
         .await
@@ -388,7 +390,7 @@ async fn upsert_slock_linker(
     headers: HeaderMap,
     Json(payload): Json<UpsertSlockLinkerRequest>,
 ) -> Result<Json<AppLinkerRecord>, ApiError> {
-    let user = require_root(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::LinkersManage).await?;
     let record = AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .upsert_slock_config(
             &user.id,
@@ -421,7 +423,7 @@ async fn create_slock_link_attempt(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<SlockLinkAttemptResponse>, ApiError> {
-    let user = require_root(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::LinkersManage).await?;
     let attempt = AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .create_slock_link_attempt(&user.id)
         .await
@@ -454,7 +456,7 @@ async fn exchange_slock_code(
     headers: HeaderMap,
     Json(payload): Json<ExchangeSlockCodeRequest>,
 ) -> Result<Json<AppLinkerRecord>, ApiError> {
-    let user = require_root(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::LinkersManage).await?;
     let code = linkers::parse_slock_exchange_code(
         payload.code.as_deref(),
         payload.callback_url.as_deref(),
@@ -492,7 +494,7 @@ async fn get_slock_userinfo(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<AppLinkerRecord>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::LinkersManage).await?;
     let record = AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .get_slock_linker()
         .await
@@ -505,7 +507,7 @@ async fn list_slock_channels(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::LinkersManage).await?;
     AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .list_slock_channels()
         .await
@@ -518,7 +520,7 @@ async fn list_slock_channel_messages(
     headers: HeaderMap,
     Path(channel_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::LinkersManage).await?;
     AppLinkerService::new(state.db.clone(), state.linker_http.clone())
         .list_slock_channel_messages(&channel_id)
         .await
@@ -656,6 +658,8 @@ mod tests {
     use tower::util::ServiceExt;
     use uuid::Uuid;
 
+    use agenthub_auth_domain::UserRole;
+
     use crate::api::teams::tests::{
         build_test_state, build_test_state_with_message_archive, create_auth_token,
     };
@@ -729,28 +733,29 @@ mod tests {
         serde_json::from_slice(&bytes).expect("decode response body")
     }
 
-    async fn create_non_root_auth_token(state: &crate::state::AppState) -> String {
+    async fn create_role_auth_token(state: &crate::state::AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp();
         sqlx::query(
             r#"
             INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, 'user', NULL, ?4)
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5)
             "#,
         )
         .bind(&user_id)
         .bind(format!("user-{}", Uuid::new_v4()))
         .bind("User")
+        .bind(role.as_str())
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert non-root user");
+        .expect("insert role user");
 
         state
             .auth
             .create_session(&user_id)
             .await
-            .expect("create non-root token")
+            .expect("create role token")
     }
 
     fn slock_config_payload() -> Value {
@@ -898,10 +903,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn slock_linker_routes_require_root_and_do_not_expose_secrets() {
+    async fn slock_linker_routes_require_linkers_manage_and_do_not_expose_secrets() {
         let state = build_test_state().await;
-        let root_token = create_auth_token(&state).await;
-        let non_root_token = create_non_root_auth_token(&state).await;
+        let admin_token = create_role_auth_token(&state, UserRole::Admin).await;
+        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
         let app = super::router(state.clone());
 
         let unauthorized = app
@@ -909,20 +914,20 @@ mod tests {
             .oneshot(build_empty_request(
                 Method::GET,
                 "/linkers",
-                Some(&non_root_token),
+                Some(&operator_token),
             ))
             .await
             .expect("execute non-root list linkers request");
         assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
         let unauthorized_body = decode_json_body(unauthorized).await;
-        assert_eq!(unauthorized_body["error"], json!("root required"));
+        assert_eq!(unauthorized_body["error"], json!("linkers:manage required"));
 
         let response = app
             .clone()
             .oneshot(build_method_json_request(
                 Method::PUT,
                 "/linkers/slock",
-                Some(&root_token),
+                Some(&admin_token),
                 slock_config_payload(),
             ))
             .await
@@ -943,7 +948,7 @@ mod tests {
             .oneshot(build_empty_request(
                 Method::GET,
                 "/linkers",
-                Some(&root_token),
+                Some(&admin_token),
             ))
             .await
             .expect("execute list linkers request");
