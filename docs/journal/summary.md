@@ -149,6 +149,8 @@ Main shape:
   guardrails for moving beyond root-only checks.
 - Object storage now has an OpenDAL-backed foundation, stable metadata/object-byte boundary,
   owner-scoped Team/task/agent upload API checkpoints, and a MinIO-backed S3-compatible fixture.
+- Codecov project coverage gating now tolerates small multi-flag aggregation movement while keeping
+  patch coverage and upload fail-fast checks strict.
 
 Start with:
 
@@ -159,6 +161,7 @@ Start with:
 - `2026-07-16-object-storage-opendal.md`
 - `2026-07-18-object-upload-owner-scopes.md`
 - `2026-07-18-object-store-s3-minio-fixture.md`
+- `2026-07-20-codecov-project-threshold.md`
 
 ## Compaction Rules
 
