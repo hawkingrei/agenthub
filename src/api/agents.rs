@@ -343,9 +343,12 @@ async fn require_create_agent_capability(
     state: &AppState,
     target_node_id: Option<&str>,
 ) -> Result<(), ApiError> {
-    require_capability(headers, state, UserCapability::AgentsManage).await?;
-    if target_node_id.is_some() {
-        require_capability(headers, state, UserCapability::NodesManage).await?;
+    let user = require_capability(headers, state, UserCapability::AgentsManage).await?;
+    if target_node_id.is_some() && !user.has_capability(UserCapability::NodesManage) {
+        return Err(ApiError::unauthorized(&format!(
+            "{} required",
+            UserCapability::NodesManage.as_str()
+        )));
     }
     Ok(())
 }
