@@ -93,15 +93,31 @@ impl From<ClaudeCli> for UpstreamCli {
 
 pub async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
     match cli.provider {
-        ProviderCommand::Codex(codex) => {
-            agenthub_codex_acp::run_main(None, CliConfigOverrides::from(codex)).await?;
-            Ok(())
-        }
+        ProviderCommand::Codex(codex) => run_codex_runtime(codex).await,
         ProviderCommand::Claude(claude) => {
             let upstream_cli = UpstreamCli::from(claude);
             claude_code_acp::run_acp_with_cli(&upstream_cli).await
         }
     }
+}
+
+#[cfg(not(test))]
+async fn run_codex_runtime(codex: CodexCli) -> anyhow::Result<()> {
+    agenthub_codex_acp_runtime::run_main(None, CliConfigOverrides::from(codex)).await?;
+    Ok(())
+}
+
+#[cfg(test)]
+async fn run_codex_runtime(codex: CodexCli) -> anyhow::Result<()> {
+    let overrides = CliConfigOverrides::from(codex);
+    if overrides
+        .raw_overrides
+        .iter()
+        .any(|value| value == "__agenthub_test_error=true")
+    {
+        anyhow::bail!("test codex runtime failure");
+    }
+    Ok(())
 }
 
 pub fn shutdown() {
@@ -143,6 +159,21 @@ mod tests {
                 "sandbox_mode=workspace-write".to_string()
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn run_with_cli_routes_codex_provider() {
+        let cli = Cli::parse_from(["agenthub-acp", "codex", "-c", "model=gpt-5"]);
+        run_with_cli(cli).await.expect("codex runtime dispatch");
+    }
+
+    #[tokio::test]
+    async fn run_with_cli_propagates_codex_runtime_errors() {
+        let cli = Cli::parse_from(["agenthub-acp", "codex", "-c", "__agenthub_test_error=true"]);
+        let error = run_with_cli(cli)
+            .await
+            .expect_err("codex runtime error should propagate");
+        assert_eq!(error.to_string(), "test codex runtime failure");
     }
 
     #[test]

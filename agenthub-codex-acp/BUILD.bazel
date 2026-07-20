@@ -4,13 +4,13 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 package(default_visibility = ["//visibility:public"])
 
 rust_library(
-    name = "agenthub_codex_acp",
+    name = "agenthub_codex_acp_runtime",
     srcs = glob(["src/**/*.rs"]),
     compile_data = glob(["src/**/*.md"]) + [
         "NOTICE",
         "THIRD_PARTY_NOTICES.md",
     ],
-    crate_name = "agenthub_codex_acp",
+    crate_name = "agenthub_codex_acp_runtime",
     crate_root = "src/lib.rs",
     edition = "2024",
     aliases = aliases(),
@@ -27,14 +27,14 @@ rust_binary(
     edition = "2024",
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [
-        ":agenthub_codex_acp",
+        ":agenthub_codex_acp_runtime",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 
 rust_test(
     name = "agenthub_codex_acp_tests",
-    crate = ":agenthub_codex_acp",
+    crate = ":agenthub_codex_acp_runtime",
     compile_data = [
         "NOTICE",
         "THIRD_PARTY_NOTICES.md",
