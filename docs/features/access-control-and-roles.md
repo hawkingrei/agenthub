@@ -201,3 +201,4 @@ result.
 - [2026-07-21 Agent Inspect Capability Gate](../journal/2026-07-21-agent-inspect-capability-gate.md)
 - [2026-07-21 Agent Runtime Capability Gate](../journal/2026-07-21-agent-runtime-capability-gate.md)
 - [2026-07-21 Agent Management Capability Gate](../journal/2026-07-21-agent-management-capability-gate.md)
+- [2026-07-21 Settings Runtime Defaults Capability Gate](../journal/2026-07-21-settings-runtime-defaults-capability-gate.md)
