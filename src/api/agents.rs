@@ -346,7 +346,7 @@ async fn list_agents(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<AgentRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let agents = state.agents.list_agents().await?;
     Ok(Json(agents))
 }
@@ -356,7 +356,7 @@ async fn get_agent(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<AgentRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let agent = state.agents.get_agent(&agent_id).await?;
     Ok(Json(agent))
 }
@@ -366,7 +366,7 @@ async fn get_agent_discovery_card(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<AgentDiscoveryCardResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let agent = state.agents.get_agent(&agent_id).await?;
     let provider = state
         .agents
@@ -561,7 +561,7 @@ async fn list_events(
     Path(agent_id): Path<String>,
     Query(query): Query<ListEventsQuery>,
 ) -> Result<Json<Vec<crate::agent::AgentEvent>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let limit = query
         .limit
         .unwrap_or(AGENT_EVENTS_PAGE_LIMIT)
@@ -586,7 +586,7 @@ async fn get_event(
     headers: HeaderMap,
     Path((agent_id, event_id)): Path<(String, i64)>,
 ) -> Result<Json<crate::agent::AgentEvent>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let event = state
         .agents
         .get_event(&agent_id, event_id)
@@ -789,7 +789,7 @@ async fn list_permissions(
     Path(agent_id): Path<String>,
     Query(query): Query<PermissionListQuery>,
 ) -> Result<Json<Vec<AcpPermissionRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let status = query.status.as_deref();
     let records = state.acp_permissions.list(&agent_id, status).await?;
     Ok(Json(records))
@@ -1262,6 +1262,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use agenthub_auth_domain::UserRole;
     use axum::body::{Body, Bytes, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use axum::response::IntoResponse;
@@ -2027,6 +2028,66 @@ mod tests {
             .expect("create non-root session token")
     }
 
+    async fn create_role_auth_token(state: &AppState, role: UserRole) -> String {
+        let user_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp();
+        let role_str = role.as_str();
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5)
+            "#,
+        )
+        .bind(&user_id)
+        .bind(format!("{role_str}-{}", Uuid::new_v4()))
+        .bind(role_str)
+        .bind(role_str)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert role user");
+
+        if role == UserRole::Device {
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS devices (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    user_agent TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    last_login_at INTEGER,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+                "#,
+            )
+            .execute(&state.db)
+            .await
+            .expect("create devices table");
+            sqlx::query(
+                r#"
+                INSERT INTO devices (id, user_id, name, user_agent, status, created_at)
+                VALUES (?1, ?2, ?3, ?4, 'active', ?5)
+                "#,
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&user_id)
+            .bind("Test Device")
+            .bind("agenthub-test")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert active device");
+        }
+
+        state
+            .auth
+            .create_session(&user_id)
+            .await
+            .expect("create role session token")
+    }
+
     fn build_json_request(
         method: Method,
         path: &str,
@@ -2065,6 +2126,50 @@ mod tests {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect()
+    }
+
+    #[tokio::test]
+    async fn agent_inspect_routes_require_runtime_inspect_capability() {
+        let state = build_test_state().await;
+        let viewer_token = create_role_auth_token(&state, UserRole::Viewer).await;
+        let device_token = create_role_auth_token(&state, UserRole::Device).await;
+        let app = router(state);
+
+        let viewer_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                "/",
+                Some(&viewer_token),
+                None,
+            ))
+            .await
+            .expect("list agents with viewer role");
+        assert_eq!(viewer_response.status(), StatusCode::OK);
+
+        let denied_routes = [
+            "/",
+            "/missing-agent",
+            "/missing-agent/.well-known/agent-card",
+            "/missing-agent/events",
+            "/missing-agent/events/1",
+            "/missing-agent/permissions",
+        ];
+        for route in denied_routes {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    Method::GET,
+                    route,
+                    Some(&device_token),
+                    None,
+                ))
+                .await
+                .expect("run denied inspect request");
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{route}");
+            let body = decode_json_body(response).await;
+            assert_eq!(body["error"], json!("runtime:inspect required"), "{route}");
+        }
     }
 
     fn run_git(repo_dir: &std::path::Path, args: &[&str]) {
