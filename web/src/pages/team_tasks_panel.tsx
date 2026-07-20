@@ -370,6 +370,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   );
   const latestTaskNote = selectedTaskNotes[selectedTaskNotes.length - 1] ?? null;
   const showInitialLoadingState = tasksLoading && tasks.length === 0;
+  const showDesktopTaskDetailDock = !compactMode && Boolean(selectedTask);
 
   React.useEffect(() => {
     if (!selectedTaskId.trim()) {
@@ -841,7 +842,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   );
 
   const taskWorkspace =
-    !compactMode && selectedTask ? (
+    showDesktopTaskDetailDock ? (
       <WorkspaceSplitPaneLayout variant="detail" data-team-surface="task-board-detail-layout" primary={boardPanel} primaryClassName={TASKS_BOARD_PANE_CLASS} secondary={detailPanel} secondaryClassName={TASKS_DETAIL_DOCK_CLASS} />
     ) : (
       boardPanel
@@ -849,7 +850,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
 
   return (
     <div
-      className={`${TEAM_PANEL_CARD_CLASS} overflow-y-auto overscroll-y-contain p-4`}
+      className={`${TEAM_PANEL_CARD_CLASS} p-4 ${showDesktopTaskDetailDock ? "flex flex-col overflow-hidden" : "overflow-y-auto overscroll-y-contain"}`}
       data-team-surface="kanban"
     >
       <div className="flex flex-wrap items-center gap-3">
@@ -888,7 +889,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
         </div>
       </div>
 
-      <div className={TASKS_WORKSPACE_STACK_CLASS}>
+      <div className={`${TASKS_WORKSPACE_STACK_CLASS} ${showDesktopTaskDetailDock ? "flex-1" : ""}`}>
         {taskWorkspace}
       </div>
 
