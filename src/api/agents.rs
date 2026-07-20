@@ -385,7 +385,7 @@ async fn start_agent(
     Path(agent_id): Path<String>,
     body: Bytes,
 ) -> Result<Json<StartAgentResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let payload = parse_optional_start_agent_request(body)?;
     let actor_context = parse_start_actor_runtime_context(payload)?;
     if actor_context.is_some() {
@@ -402,7 +402,7 @@ async fn stop_agent(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     state.agents.stop_agent(&agent_id).await?;
     Ok(ok_response())
 }
@@ -431,7 +431,7 @@ async fn send_input(
     Path(agent_id): Path<String>,
     Json(payload): Json<SendInputRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let input = payload.input;
     if input.trim().is_empty() {
         return Err(ApiError::bad_request("input is required"));
@@ -504,7 +504,7 @@ async fn create_agent_time_trigger(
     Path(agent_id): Path<String>,
     Json(payload): Json<CreateAgentTimeTriggerRequest>,
 ) -> Result<Json<AgentTimeTriggerRecord>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_agent_exists(&state, &agent_id).await?;
     if !(1..=60 * 60 * 24 * 30).contains(&payload.delay_seconds) {
         return Err(ApiError::bad_request(
@@ -531,7 +531,7 @@ async fn list_agent_time_triggers(
     Path(agent_id): Path<String>,
     Query(query): Query<ListAgentTimeTriggersQuery>,
 ) -> Result<Json<Vec<AgentTimeTriggerRecord>>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     ensure_agent_exists(&state, &agent_id).await?;
     let manager = AgentTimeTriggerManager::new(state.db.clone());
     let records = manager
@@ -545,7 +545,7 @@ async fn cancel_agent_time_trigger(
     headers: HeaderMap,
     Path((agent_id, trigger_id)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_agent_exists(&state, &agent_id).await?;
     let manager = AgentTimeTriggerManager::new(state.db.clone());
     let canceled = manager.cancel_trigger(&agent_id, &trigger_id).await?;
@@ -702,7 +702,7 @@ async fn clear_acp_session(
     Path(agent_id): Path<String>,
     Json(payload): Json<ClearSessionRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let provider = match payload.provider {
         Some(provider) => provider,
         None => match state.agents.get_agent(&agent_id).await {
@@ -778,7 +778,7 @@ async fn cancel_acp(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     state.agents.cancel_acp(&agent_id).await?;
     Ok(ok_response())
 }
@@ -819,7 +819,7 @@ async fn respond_permission(
     Path((agent_id, permission_id)): Path<(String, String)>,
     Json(payload): Json<PermissionResponseRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     if !state
         .acp_permissions
         .belongs_to_agent(&permission_id, &agent_id)
@@ -2170,6 +2170,134 @@ mod tests {
             let body = decode_json_body(response).await;
             assert_eq!(body["error"], json!("runtime:inspect required"), "{route}");
         }
+    }
+
+    #[tokio::test]
+    async fn agent_runtime_routes_require_runtime_operate_capability() {
+        let state = build_test_state().await;
+        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
+        let viewer_token = create_role_auth_token(&state, UserRole::Viewer).await;
+        let app = router(state.clone());
+
+        let denied_routes = vec![
+            (Method::POST, "/missing-agent/start", None),
+            (Method::POST, "/missing-agent/stop", None),
+            (
+                Method::POST,
+                "/missing-agent/input",
+                Some(json!({
+                    "input": "hello"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/triggers",
+                Some(json!({
+                    "delay_seconds": 60,
+                    "message": "Re-check."
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/triggers/missing-trigger/cancel",
+                None,
+            ),
+            (
+                Method::POST,
+                "/missing-agent/acp/session/clear",
+                Some(json!({
+                    "provider": "codex"
+                })),
+            ),
+            (Method::POST, "/missing-agent/acp/cancel", None),
+            (
+                Method::POST,
+                "/missing-agent/permissions/missing-permission/respond",
+                Some(json!({
+                    "outcome": "cancelled"
+                })),
+            ),
+        ];
+
+        for (method, route, payload) in denied_routes {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    method,
+                    route,
+                    Some(&viewer_token),
+                    payload,
+                ))
+                .await
+                .expect("run denied runtime operate request");
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{route}");
+            let body = decode_json_body(response).await;
+            assert_eq!(body["error"], json!("runtime:operate required"), "{route}");
+        }
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 1, 'manual', 'created', ?, ?)
+            "#,
+        )
+        .bind("runtime-capability-agent")
+        .bind("runtime-capability-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert runtime capability agent");
+
+        let create_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/runtime-capability-agent/triggers",
+                Some(&operator_token),
+                Some(json!({
+                    "delay_seconds": 60,
+                    "message": "Re-check runtime capability gate."
+                })),
+            ))
+            .await
+            .expect("create trigger with operator");
+        assert_eq!(create_response.status(), StatusCode::OK);
+        let created = decode_json_body(create_response).await;
+        let trigger_id = created["id"].as_str().expect("trigger id").to_string();
+
+        let list_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                "/runtime-capability-agent/triggers",
+                Some(&viewer_token),
+                None,
+            ))
+            .await
+            .expect("list triggers with viewer");
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let listed = decode_json_body(list_response).await;
+        assert_eq!(listed.as_array().map(Vec::len), Some(1));
+        assert_eq!(listed[0]["id"], Value::from(trigger_id.clone()));
+
+        let cancel_response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runtime-capability-agent/triggers/{trigger_id}/cancel"),
+                Some(&operator_token),
+                None,
+            ))
+            .await
+            .expect("cancel trigger with operator");
+        assert_eq!(cancel_response.status(), StatusCode::OK);
     }
 
     fn run_git(repo_dir: &std::path::Path, args: &[&str]) {
