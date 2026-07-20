@@ -200,3 +200,4 @@ result.
 - [2026-07-21 Linker Capability Gate](../journal/2026-07-21-linker-capability-gate.md)
 - [2026-07-21 Agent Inspect Capability Gate](../journal/2026-07-21-agent-inspect-capability-gate.md)
 - [2026-07-21 Agent Runtime Capability Gate](../journal/2026-07-21-agent-runtime-capability-gate.md)
+- [2026-07-21 Agent Management Capability Gate](../journal/2026-07-21-agent-management-capability-gate.md)
