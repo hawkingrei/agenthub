@@ -2035,7 +2035,7 @@ mod tests {
         sqlx::query(
             r#"
             INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, ?4, NULL, ?5)
+            VALUES (?, ?, ?, ?, NULL, ?)
             "#,
         )
         .bind(&user_id)
@@ -2068,7 +2068,7 @@ mod tests {
             sqlx::query(
                 r#"
                 INSERT INTO devices (id, user_id, name, user_agent, status, created_at)
-                VALUES (?1, ?2, ?3, ?4, 'active', ?5)
+                VALUES (?, ?, ?, ?, 'active', ?)
                 "#,
             )
             .bind(Uuid::new_v4().to_string())
