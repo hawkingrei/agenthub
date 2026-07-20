@@ -154,7 +154,7 @@ adapter-specific and should be exposed only when the adapter can report them as 
 - `npm --prefix web run test -- src/components/agent_node_detail_shared.test.ts src/components/agent_nodes_workbench.test.tsx src/components/agent_node_section.test.tsx`
 - `npm --prefix web run lint`
 - `npm --prefix web exec tsc -- --noEmit --project web/tsconfig.json`
-- `cargo test -p agenthub-codex-acp` focused on live-turn diagnostic accounting and dirty custom
+- `cargo test -p agenthub-codex-acp-runtime` focused on live-turn diagnostic accounting and dirty custom
   tool-call history repair.
 - Focused backend/CLI tests should cover agent-output stall summaries for:
   - a live session with no newly persisted events after a recent input;

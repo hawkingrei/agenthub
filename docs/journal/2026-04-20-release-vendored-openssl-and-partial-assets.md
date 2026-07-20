@@ -51,3 +51,35 @@ Planned validation for the next release-tag or preview-tag run:
 - confirm `Release Prebuild` catches the same cross-build regressions on `push` to `main` before a
   tag is cut;
 - record the release workflow run IDs and the resulting release URLs in this note before closing the follow-up TODO item.
+
+### 2026-07-20 Release Prebuild Scope Audit
+
+- Observed main `Release Prebuild` run `29694176620` after merge commit
+  `909b1fb3f8eb8a90ebf02e3724afdf9e95148b9c`.
+- Confirmed the run completed successfully and uploaded exactly three matrix artifacts:
+  - `release-prebuild-aarch64-apple-darwin`
+  - `release-prebuild-x86_64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-unknown-linux-gnu`
+- Confirmed package logs still called `package_binary "agenthub"` and `package_binary
+  "agenthub-acp"` only, so the prebuild artifact contents stayed on the canonical release
+  entrypoints.
+- Confirmed the same run still compiled the internal package as `agenthub-codex-acp v0.10.0`
+  through the `agenthub-acp-adapter` release build. That means the artifact trimming had landed, but
+  the release build scope still exposed the old package identity.
+- Renamed the internal package to `agenthub-codex-acp-runtime` while preserving the compatibility
+  binary name `agenthub-codex-acp` and keeping `agenthub-acp` as the canonical packaged ACP
+  entrypoint.
+- Local validation:
+
+```bash
+cargo check -p agenthub-acp-adapter
+```
+
+Remaining validation before closing the TODO:
+
+- confirm the next `Release Prebuild` push-to-main run compiles `agenthub-codex-acp-runtime`
+  instead of `agenthub-codex-acp`;
+- confirm the same run still uploads only `release-prebuild-{target}` artifacts whose package logs
+  include `agenthub` and `agenthub-acp` archives plus Linux `.deb` packages;
+- confirm the next semver release or preview release still publishes successful binary assets even
+  if one matrix target fails.

@@ -235,8 +235,8 @@ ACP permission requests are first-class runtime records:
 - `pnpm -C web exec vitest run src/acp_panel.test.tsx src/acp_debug.test.tsx src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx src/hooks/use_acp_conversation.test.ts`
 - `cargo check -p agenthub-acp-adapter`
 - `cargo test -p agenthub-acp-adapter`
-- `cargo check -p agenthub-codex-acp`
-- `cargo test -p agenthub-codex-acp`
+- `cargo check -p agenthub-codex-acp-runtime`
+- `cargo test -p agenthub-codex-acp-runtime`
 - Focused `agenthub-codex-acp` tests for live-turn tool-call completeness:
   - a `CustomToolCall` without matching `CustomToolCallOutput` is recorded as diagnostic state
     before turn completion/compaction can panic
