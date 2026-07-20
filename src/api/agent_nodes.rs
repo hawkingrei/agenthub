@@ -1,3 +1,4 @@
+use agenthub_auth_domain::UserCapability;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -6,7 +7,7 @@ use axum::{
 };
 
 use crate::agent::{AgentNodeConfig, AgentNodeJoinBootstrapInfo, AgentNodeRecord, AgentNodeUpdate};
-use crate::api::authz::require_root;
+use crate::api::authz::{require_capability, require_root};
 use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::state::AppState;
@@ -50,7 +51,7 @@ async fn create_agent_node(
     headers: HeaderMap,
     Json(payload): Json<AgentNodeConfig>,
 ) -> Result<Json<AgentNodeRecord>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::NodesManage).await?;
     let node = state
         .agents
         .create_agent_node(payload)
@@ -63,7 +64,7 @@ async fn list_agent_nodes(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<AgentNodeRecord>>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::NodesManage).await?;
     let nodes = state.agents.list_agent_nodes().await?;
     Ok(Json(nodes))
 }
@@ -73,7 +74,7 @@ async fn get_agent_node(
     headers: HeaderMap,
     Path(node_id): Path<String>,
 ) -> Result<Json<AgentNodeRecord>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::NodesManage).await?;
     let node = state
         .agents
         .get_agent_node(&node_id)
@@ -96,7 +97,7 @@ async fn update_agent_node(
     Path(node_id): Path<String>,
     Json(payload): Json<AgentNodeUpdate>,
 ) -> Result<Json<AgentNodeRecord>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::NodesManage).await?;
     let node = state
         .agents
         .update_agent_node(&node_id, payload)
@@ -110,7 +111,7 @@ async fn delete_agent_node(
     headers: HeaderMap,
     Path(node_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::NodesManage).await?;
     state
         .agents
         .delete_agent_node(&node_id)
@@ -121,6 +122,7 @@ async fn delete_agent_node(
 
 #[cfg(test)]
 mod tests {
+    use agenthub_auth_domain::UserRole;
     use axum::body::{Body, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use serde_json::{Value, json};
@@ -130,27 +132,29 @@ mod tests {
     use super::router;
     use crate::api::team_tests::{build_test_state, create_auth_token};
 
-    async fn create_non_root_auth_token(state: &crate::state::AppState) -> String {
+    async fn create_role_auth_token(state: &crate::state::AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().timestamp();
+        let role_str = role.as_str();
         sqlx::query(
             r#"
             INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, 'user', NULL, ?4)
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5)
             "#,
         )
         .bind(&user_id)
-        .bind(format!("user-{}", Uuid::new_v4()))
-        .bind("User")
+        .bind(format!("{role_str}-{}", Uuid::new_v4()))
+        .bind(role_str)
+        .bind(role_str)
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert non-root user");
+        .expect("insert role user");
         state
             .auth
             .create_session(&user_id)
             .await
-            .expect("create non-root session")
+            .expect("create role session")
     }
 
     fn build_json_request(
@@ -180,35 +184,53 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_node_routes_require_root() {
+    async fn agent_node_routes_require_nodes_manage_capability() {
         let state = build_test_state().await;
-        let token = create_non_root_auth_token(&state).await;
-        let app = router(state);
+        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
+        let admin_token = create_role_auth_token(&state, UserRole::Admin).await;
+        let app = router(state.clone());
 
         let response = app
-            .oneshot(build_json_request(Method::GET, "/", Some(&token), None))
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                "/",
+                Some(&operator_token),
+                None,
+            ))
             .await
-            .expect("run non-root list agent nodes request");
+            .expect("run operator list agent nodes request");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = decode_json_body(response).await;
-        assert_eq!(body["error"], json!("root required"));
+        assert_eq!(body["error"], json!("nodes:manage required"));
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::GET,
+                "/",
+                Some(&admin_token),
+                None,
+            ))
+            .await
+            .expect("run admin list agent nodes request");
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn get_agent_node_bootstrap_requires_root() {
         let state = build_test_state().await;
-        let token = create_non_root_auth_token(&state).await;
+        let admin_token = create_role_auth_token(&state, UserRole::Admin).await;
         let app = router(state);
 
         let response = app
             .oneshot(build_json_request(
                 Method::GET,
                 "/bootstrap",
-                Some(&token),
+                Some(&admin_token),
                 None,
             ))
             .await
-            .expect("run non-root get agent node bootstrap request");
+            .expect("run admin get agent node bootstrap request");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = decode_json_body(response).await;
         assert_eq!(body["error"], json!("root required"));
