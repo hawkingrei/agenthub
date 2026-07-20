@@ -5,7 +5,9 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::api::authz::{require_root, require_user};
+use agenthub_auth_domain::UserCapability;
+
+use crate::api::authz::{require_capability, require_root};
 use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::push::PushSubscription;
@@ -42,9 +44,7 @@ async fn subscribe(
     headers: HeaderMap,
     Json(payload): Json<PushSubscription>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    // subscribe is open to any authenticated user (not just root),
-    // because device users also need push notifications.
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::PushSubscribe).await?;
     state.push.save_subscription(&user.id, payload).await?;
     Ok(ok_response())
 }
@@ -73,4 +73,242 @@ async fn vapid_rotate(
     let _user = require_root(&headers, &state).await?;
     let public_key = state.push.rotate_keys()?;
     Ok(Json(VapidRotateResponse { public_key }))
+}
+
+#[cfg(test)]
+mod tests {
+    use agenthub_auth_domain::UserRole;
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Method, Request, Response, StatusCode, header};
+    use serde_json::json;
+    use sqlx::Row;
+    use tower::util::ServiceExt;
+    use uuid::Uuid;
+
+    use super::router;
+    use crate::api::teams::tests::build_test_state;
+    use crate::state::AppState;
+
+    fn subscription_payload() -> serde_json::Value {
+        json!({
+            "endpoint": format!("https://push.example.test/{}", Uuid::new_v4()),
+            "keys": {
+                "p256dh": "test-p256dh",
+                "auth": "test-auth"
+            }
+        })
+    }
+
+    async fn create_auth_token_with_role(state: &AppState, role: Option<UserRole>) -> String {
+        let user_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp();
+        let role_str = role.map(UserRole::as_str).unwrap_or("unknown");
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+            VALUES (?, ?, ?, ?, NULL, ?)
+            "#,
+        )
+        .bind(&user_id)
+        .bind(format!("{role_str}-{}", Uuid::new_v4()))
+        .bind("Push Test User")
+        .bind(role_str)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert user");
+
+        if role == Some(UserRole::Device) {
+            sqlx::query(
+                r#"
+                INSERT INTO devices (id, user_id, name, user_agent, status, created_at)
+                VALUES (?, ?, ?, ?, 'active', ?)
+                "#,
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&user_id)
+            .bind("Test Device")
+            .bind("agenthub-test")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert active device");
+        }
+
+        state
+            .auth
+            .create_session(&user_id)
+            .await
+            .expect("create session token")
+    }
+
+    fn build_subscribe_request(token: Option<&str>) -> Request<Body> {
+        let mut builder = Request::builder()
+            .method(Method::POST)
+            .uri("/subscribe")
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        builder
+            .body(Body::from(subscription_payload().to_string()))
+            .expect("build subscribe request")
+    }
+
+    fn build_empty_request(method: Method, uri: &str, token: Option<&str>) -> Request<Body> {
+        let mut builder = Request::builder().method(method).uri(uri);
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        builder.body(Body::empty()).expect("build empty request")
+    }
+
+    async fn response_json(response: Response<Body>) -> serde_json::Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        serde_json::from_slice(&bytes).expect("parse response json")
+    }
+
+    async fn subscription_count(state: &AppState) -> i64 {
+        sqlx::query("SELECT COUNT(*) AS count FROM push_subscriptions")
+            .fetch_one(&state.db)
+            .await
+            .expect("count push subscriptions")
+            .get("count")
+    }
+
+    async fn ensure_push_subscriptions_table(state: &AppState) {
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                p256dh TEXT NOT NULL,
+                auth TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create push_subscriptions table");
+    }
+
+    #[tokio::test]
+    async fn subscribe_requires_push_subscribe_capability() {
+        let state = build_test_state().await;
+        ensure_push_subscriptions_table(&state).await;
+        let app = router(state.clone());
+
+        let missing_auth = app
+            .clone()
+            .oneshot(build_subscribe_request(None))
+            .await
+            .expect("subscribe without auth");
+        assert_eq!(missing_auth.status(), StatusCode::UNAUTHORIZED);
+
+        let unknown_role_token = create_auth_token_with_role(&state, None).await;
+        let unknown_role = app
+            .clone()
+            .oneshot(build_subscribe_request(Some(&unknown_role_token)))
+            .await
+            .expect("subscribe with unknown role");
+        assert_eq!(unknown_role.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(subscription_count(&state).await, 0);
+
+        let viewer_token = create_auth_token_with_role(&state, Some(UserRole::Viewer)).await;
+        let viewer = app
+            .clone()
+            .oneshot(build_subscribe_request(Some(&viewer_token)))
+            .await
+            .expect("subscribe with viewer role");
+        assert_eq!(viewer.status(), StatusCode::OK);
+
+        let device_token = create_auth_token_with_role(&state, Some(UserRole::Device)).await;
+        let device = app
+            .oneshot(build_subscribe_request(Some(&device_token)))
+            .await
+            .expect("subscribe with device role");
+        assert_eq!(device.status(), StatusCode::OK);
+        assert_eq!(subscription_count(&state).await, 2);
+    }
+
+    #[tokio::test]
+    async fn vapid_routes_expose_public_key_and_require_root_for_admin_actions() {
+        let state = build_test_state().await;
+        let app = router(state.clone());
+
+        let public = app
+            .clone()
+            .oneshot(build_empty_request(Method::GET, "/vapid_public", None))
+            .await
+            .expect("get public vapid key");
+        assert_eq!(public.status(), StatusCode::OK);
+        let public_body = response_json(public).await;
+        let initial_public_key = public_body
+            .get("public_key")
+            .and_then(serde_json::Value::as_str)
+            .expect("public key string");
+        assert!(!initial_public_key.is_empty());
+
+        let unauthenticated_info = app
+            .clone()
+            .oneshot(build_empty_request(Method::GET, "/vapid_info", None))
+            .await
+            .expect("get vapid info without auth");
+        assert_eq!(unauthenticated_info.status(), StatusCode::UNAUTHORIZED);
+
+        let root_token = create_auth_token_with_role(&state, Some(UserRole::Root)).await;
+        let info = app
+            .clone()
+            .oneshot(build_empty_request(
+                Method::GET,
+                "/vapid_info",
+                Some(&root_token),
+            ))
+            .await
+            .expect("get vapid info as root");
+        assert_eq!(info.status(), StatusCode::OK);
+        let info_body = response_json(info).await;
+        assert_eq!(
+            info_body.get("subject").and_then(serde_json::Value::as_str),
+            Some("mailto:test@example.com")
+        );
+        assert_eq!(
+            info_body
+                .get("public_key")
+                .and_then(serde_json::Value::as_str),
+            Some(initial_public_key)
+        );
+        let keys_path = info_body
+            .get("keys_path")
+            .and_then(serde_json::Value::as_str)
+            .expect("keys path string");
+        assert!(keys_path.ends_with("vapid.json"));
+        std::fs::create_dir_all(
+            std::path::Path::new(keys_path)
+                .parent()
+                .expect("keys path parent"),
+        )
+        .expect("restore fixture keys directory");
+
+        let rotate = app
+            .oneshot(build_empty_request(
+                Method::POST,
+                "/vapid_rotate",
+                Some(&root_token),
+            ))
+            .await
+            .expect("rotate vapid keys as root");
+        assert_eq!(rotate.status(), StatusCode::OK);
+        let rotate_body = response_json(rotate).await;
+        let rotated_public_key = rotate_body
+            .get("public_key")
+            .and_then(serde_json::Value::as_str)
+            .expect("rotated public key");
+        assert!(!rotated_public_key.is_empty());
+        assert_ne!(rotated_public_key, initial_public_key);
+    }
 }
