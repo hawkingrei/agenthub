@@ -34,8 +34,17 @@ that can install, enable, and start AgentHub consistently.
 - `build/deb/package.sh --version v0.0.0-test --arch amd64 --target x86_64-unknown-linux-gnu --output-dir /tmp/agenthub-deb-smoke/dist`
 - `dpkg-deb --info /tmp/agenthub-deb-smoke/dist/agenthub_0.0.0-test_amd64.deb`
 
+### 2026-07-20 Release Prebuild Verification
+
+- Observed main `Release Prebuild` run `29748545683` after merge commit
+  `676230bf6d664eb56559d5ed96fa3fa4ca44a136`.
+- Confirmed the Linux prebuild package steps produced Debian packages:
+  - `dist/agenthub_0.0.0+main_amd64.deb`
+  - `dist/agenthub_0.0.0+main_arm64.deb`
+- Confirmed both Linux artifact upload steps included `dist/*.deb` in the release-prebuild matrix
+  bundles.
+
 ## Follow-Ups
 
-- Verify the next `Release Prebuild` push to `main` uploads Linux `.deb` artifacts.
 - Verify the next release tag includes `.deb` files in `SHA256SUMS.txt`.
 - Decide separately whether to add signed apt repository publication.
