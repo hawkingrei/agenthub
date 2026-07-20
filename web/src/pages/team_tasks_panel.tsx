@@ -371,7 +371,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   );
   const latestTaskNote = selectedTaskNotes[selectedTaskNotes.length - 1] ?? null;
   const showInitialLoadingState = tasksLoading && tasks.length === 0;
-  /* c8 ignore next 7 -- both branch outputs are verified by DOM assertions. */
+  /* c8 ignore start -- both branch outputs are verified by DOM assertions. */
   const showDesktopTaskDetailDock = !compactMode && Boolean(selectedTask);
   const rootScrollClass = showDesktopTaskDetailDock
     ? "flex flex-col overflow-hidden"
@@ -379,6 +379,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   const workspaceStackClassName = showDesktopTaskDetailDock
     ? `${TASKS_WORKSPACE_STACK_CLASS} flex-1`
     : TASKS_WORKSPACE_STACK_CLASS;
+  /* c8 ignore stop */
 
   React.useEffect(() => {
     if (!selectedTaskId.trim()) {
@@ -848,7 +849,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
       )}
     </div>
   );
-  /* c8 ignore next 13 -- split-pane selection is covered through rendered surface assertions. */
+  /* c8 ignore start -- split-pane selection is covered through rendered surface assertions. */
   const taskWorkspace = showDesktopTaskDetailDock ? (
     <WorkspaceSplitPaneLayout
       data-team-surface="task-board-detail-layout"
@@ -860,6 +861,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   ) : (
     boardPanel
   );
+  /* c8 ignore stop */
 
   return (
     <div
