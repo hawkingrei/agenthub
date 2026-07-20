@@ -1,4 +1,5 @@
 import { expect } from "./coverage";
+import type { Locator, Page } from "@playwright/test";
 import {
   buildTeamChannelPath,
   buildTeamDetailPath,
@@ -458,20 +459,40 @@ function teamForgeDialog(page: import("@playwright/test").Page) {
     .last();
 }
 
-export async function openKanbanDeveloperTools(
-  page: import("@playwright/test").Page
-): Promise<void> {
-  const compilePreviewButton = page.getByRole("button", { name: "Compile Preview", exact: true });
-  const compilePreviewVisible = await compilePreviewButton.isVisible().catch(() => false);
-  if (!compilePreviewVisible) {
+async function visibleTaskDetailSurface(page: Page): Promise<Locator | null> {
+  const taskDetailDialog = page.getByRole("dialog", { name: "Task detail" });
+  if (await taskDetailDialog.isVisible().catch(() => false)) {
+    return taskDetailDialog;
+  }
+
+  const taskDetailDock = page.locator(".team-task-detail-dock").first();
+  if (await taskDetailDock.isVisible().catch(() => false)) {
+    return taskDetailDock;
+  }
+
+  return null;
+}
+
+export async function openKanbanDeveloperTools(page: Page): Promise<Locator> {
+  let taskDetailSurface = await visibleTaskDetailSurface(page);
+  if (!taskDetailSurface) {
     const firstTaskCard = page.locator('[data-team-surface="kanban"] .team-item').first();
     await expect(firstTaskCard).toBeVisible();
     await firstTaskCard.click();
 
-    const taskDetailDialog = page.getByRole("dialog", { name: "Task detail" });
-    await expect(taskDetailDialog).toBeVisible();
+    taskDetailSurface = await visibleTaskDetailSurface(page);
+    if (!taskDetailSurface) {
+      throw new Error("Task detail surface did not open");
+    }
+  }
 
-    const developerToolsSummary = taskDetailDialog.locator("summary").filter({
+  const compilePreviewButton = taskDetailSurface.getByRole("button", {
+    name: "Compile Preview",
+    exact: true,
+  });
+  const compilePreviewVisible = await compilePreviewButton.isVisible().catch(() => false);
+  if (!compilePreviewVisible) {
+    const developerToolsSummary = taskDetailSurface.locator("summary").filter({
       has: page.getByText("Developer tools", { exact: true }),
     });
     await expect(developerToolsSummary).toBeVisible();
@@ -479,6 +500,7 @@ export async function openKanbanDeveloperTools(
   }
   await expect(compilePreviewButton).toBeVisible();
   await expect(compilePreviewButton).toBeEnabled();
+  return compilePreviewButton;
 }
 
 async function closeTaskDetailModalIfOpen(

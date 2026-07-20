@@ -88,9 +88,9 @@ test("team debug run ops compiles task preview and applies payload to create-run
   await gotoTeams(page);
   await openTeamFromSelector(page, "Compile Team");
   await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
-  await openKanbanDeveloperTools(page);
+  const compilePreviewButton = await openKanbanDeveloperTools(page);
 
-  await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
+  await compilePreviewButton.click();
   await expect.poll(() => compileRequests.length).toBe(1);
 
   const compilePreview = page.locator('[data-team-compile-preview="true"]');
@@ -529,9 +529,9 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   await gotoTeams(page);
   await openTeamFromSelector(page, "Chat First Team");
   await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
-  await openKanbanDeveloperTools(page);
+  const compilePreviewButton = await openKanbanDeveloperTools(page);
 
-  await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
+  await compilePreviewButton.click();
   await expect(page.getByText("conversation-chat-1", { exact: true })).toBeVisible();
   await expect(page.getByText("Negotiate scope with coordinator")).toBeVisible();
 
@@ -750,8 +750,8 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
   );
 
   await selectPrimaryTeamEntryFromSidebar(page, "Kanban");
-  await openKanbanDeveloperTools(page);
-  await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
+  const compilePreviewButton = await openKanbanDeveloperTools(page);
+  await compilePreviewButton.click();
   await expect(page.locator(".teams-step-body")).toContainText("tiny-json-cli");
   await expect(page.locator(".teams-step-body")).toContainText(
     "Define tiny CLI interface"

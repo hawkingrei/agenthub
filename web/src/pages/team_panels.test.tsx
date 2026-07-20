@@ -6729,6 +6729,21 @@ describe("team panels interactions", () => {
     });
 
     expect(container.querySelector('[data-team-surface="kanban"]')).not.toBeNull();
+    const kanbanSurface = required(
+      container.querySelector('[data-team-surface="kanban"]') as HTMLDivElement | null,
+      "kanban surface missing"
+    );
+    expect(kanbanSurface.className).toContain("overflow-hidden");
+    expect(kanbanSurface.className).not.toContain("overflow-y-auto");
+    const taskDetailLayout = required(
+      container.querySelector('[data-team-surface="task-board-detail-layout"]') as HTMLDivElement | null,
+      "task board detail layout missing"
+    );
+    expect(taskDetailLayout.parentElement?.className).toContain("flex-1");
+    expect(taskDetailLayout.getAttribute("data-workspace-split-pane-layout")).toBe("true");
+    expect(taskDetailLayout.getAttribute("data-secondary-open")).toBe("true");
+    expect(taskDetailLayout.className).toContain("lg:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.9fr)]");
+    expect(taskDetailLayout.querySelector(".team-task-detail-dock")).not.toBeNull();
     expect(container.textContent).toContain("Wait for PR review");
     clickElement(findButtonByText(container, "Investigate bug"));
     await openTaskDetailModal(container, "Prepare rollout");
@@ -6792,7 +6807,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamTasksPanel
-            compactMode={false}
+            compactMode={true}
             developerMode={false}
             tasks={[
               buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
@@ -6993,7 +7008,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamTasksPanel
-            compactMode={false}
+            compactMode={true}
             developerMode={false}
             tasks={[
               buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
@@ -7265,6 +7280,7 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("Board lanes");
+    expect(container.querySelector('[data-team-surface="task-board-detail-layout"]')).toBeNull();
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 
     await openTaskDetailModal(container, "Prepare rollout");
