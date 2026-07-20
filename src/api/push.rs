@@ -166,7 +166,7 @@ mod tests {
     async fn ensure_push_subscriptions_table(state: &AppState) {
         sqlx::query(
             r#"
-            CREATE TABLE push_subscriptions (
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 endpoint TEXT NOT NULL,
