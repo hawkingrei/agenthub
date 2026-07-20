@@ -6741,7 +6741,6 @@ describe("team panels interactions", () => {
     );
     expect(taskDetailLayout.parentElement?.className).toContain("flex-1");
     expect(taskDetailLayout.getAttribute("data-workspace-split-pane-layout")).toBe("true");
-    expect(taskDetailLayout.getAttribute("data-workspace-split-variant")).toBe("detail");
     expect(taskDetailLayout.getAttribute("data-secondary-open")).toBe("true");
     expect(taskDetailLayout.className).toContain("lg:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.9fr)]");
     expect(taskDetailLayout.querySelector(".team-task-detail-dock")).not.toBeNull();

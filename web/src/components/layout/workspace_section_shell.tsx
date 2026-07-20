@@ -56,7 +56,6 @@ WorkspaceContentStack.displayName = "WorkspaceContentStack";
 type WorkspaceSplitPaneLayoutProps = Omit<React.ComponentPropsWithoutRef<"div">, "children"> & {
   primary: React.ReactNode;
   secondary?: React.ReactNode;
-  variant?: "context" | "detail";
   primaryClassName?: string;
   secondaryClassName?: string;
 };
@@ -65,7 +64,6 @@ export const WorkspaceSplitPaneLayout = React.memo(function WorkspaceSplitPaneLa
   className,
   primary,
   secondary = null,
-  variant = "context",
   primaryClassName,
   secondaryClassName,
   ...props
@@ -80,7 +78,6 @@ export const WorkspaceSplitPaneLayout = React.memo(function WorkspaceSplitPaneLa
       )}
       data-workspace-split-pane-layout="true"
       data-secondary-open={hasSecondary ? "true" : "false"}
-      data-workspace-split-variant={variant}
       {...props}
     >
       <div className={cx("min-h-0 min-w-0 flex-1 overflow-hidden", primaryClassName)}>

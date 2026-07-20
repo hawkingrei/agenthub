@@ -17,8 +17,8 @@ primitive, but the task board still kept selected task detail behind a modal-onl
 
 - Keep the existing compact/mobile modal task-detail path intact.
 - Add a desktop task-detail dock through the shared `WorkspaceSplitPaneLayout` primitive.
-- Add a split-pane variant marker so tests can distinguish thread context from task detail context
-  without relying only on local Team class names.
+- Keep the shared split-pane primitive generic; Team-specific tests identify the task-detail dock
+  through the Team surface marker and dock class.
 - Update the workspace IA contract to name task detail preview as part of the shared split-pane
   contract.
 
@@ -32,7 +32,9 @@ primitive, but the task board still kept selected task detail behind a modal-onl
 
 ## Validation
 
+- `cd web && npm run lint`
 - `cd web && npm run test -- src/components/layout/workspace_section_shell.test.tsx src/pages/team_panels.test.tsx`
+- `cd web && npm run test:coverage:core -- src/components/layout/workspace_section_shell.test.tsx src/pages/team_panels.test.tsx`
 
 The isolated worktree did not have `web/node_modules`, so validation first ran `cd web && npm ci`
 with `npm_config_cache=/private/tmp/agenthub-npm-cache`.
