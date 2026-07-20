@@ -96,6 +96,13 @@ const TASKS_DEBUG_SUMMARY_CLASS =
 const TASKS_DEBUG_SUMMARY_META_CLASS = "mt-1 text-[13px] text-notion-text-muted";
 const TASKS_DEBUG_BODY_CLASS = "mt-4 space-y-4 border-t border-notion-border/50 pt-4";
 
+function getTaskPanelScrollClass(showDesktopTaskDetailDock: boolean): string {
+  if (showDesktopTaskDetailDock) {
+    return "flex flex-col overflow-hidden";
+  }
+  return "overflow-y-auto overscroll-y-contain";
+}
+
 const SEGMENTED_CONTROL_CLASSNAMES = {
   root: "rounded-md border border-notion-border bg-white/50 p-0.5",
   control: "flex-1",
@@ -843,7 +850,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
 
   return (
     <div
-      className={`${TEAM_PANEL_CARD_CLASS} p-4 ${showDesktopTaskDetailDock ? "flex flex-col overflow-hidden" : "overflow-y-auto overscroll-y-contain"}`}
+      className={`${TEAM_PANEL_CARD_CLASS} p-4 ${getTaskPanelScrollClass(showDesktopTaskDetailDock)}`}
       data-team-surface="kanban"
     >
       <div className="flex flex-wrap items-center gap-3">
