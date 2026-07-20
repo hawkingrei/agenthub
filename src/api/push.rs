@@ -78,8 +78,8 @@ async fn vapid_rotate(
 #[cfg(test)]
 mod tests {
     use agenthub_auth_domain::UserRole;
-    use axum::body::Body;
-    use axum::http::{Method, Request, StatusCode, header};
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Method, Request, Response, StatusCode, header};
     use serde_json::json;
     use sqlx::Row;
     use tower::util::ServiceExt;
@@ -155,6 +155,21 @@ mod tests {
             .expect("build subscribe request")
     }
 
+    fn build_empty_request(method: Method, uri: &str, token: Option<&str>) -> Request<Body> {
+        let mut builder = Request::builder().method(method).uri(uri);
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        builder.body(Body::empty()).expect("build empty request")
+    }
+
+    async fn response_json(response: Response<Body>) -> serde_json::Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        serde_json::from_slice(&bytes).expect("parse response json")
+    }
+
     async fn subscription_count(state: &AppState) -> i64 {
         sqlx::query("SELECT COUNT(*) AS count FROM push_subscriptions")
             .fetch_one(&state.db)
@@ -218,5 +233,82 @@ mod tests {
             .expect("subscribe with device role");
         assert_eq!(device.status(), StatusCode::OK);
         assert_eq!(subscription_count(&state).await, 2);
+    }
+
+    #[tokio::test]
+    async fn vapid_routes_expose_public_key_and_require_root_for_admin_actions() {
+        let state = build_test_state().await;
+        let app = router(state.clone());
+
+        let public = app
+            .clone()
+            .oneshot(build_empty_request(Method::GET, "/vapid_public", None))
+            .await
+            .expect("get public vapid key");
+        assert_eq!(public.status(), StatusCode::OK);
+        let public_body = response_json(public).await;
+        let initial_public_key = public_body
+            .get("public_key")
+            .and_then(serde_json::Value::as_str)
+            .expect("public key string");
+        assert!(!initial_public_key.is_empty());
+
+        let unauthenticated_info = app
+            .clone()
+            .oneshot(build_empty_request(Method::GET, "/vapid_info", None))
+            .await
+            .expect("get vapid info without auth");
+        assert_eq!(unauthenticated_info.status(), StatusCode::UNAUTHORIZED);
+
+        let root_token = create_auth_token_with_role(&state, Some(UserRole::Root)).await;
+        let info = app
+            .clone()
+            .oneshot(build_empty_request(
+                Method::GET,
+                "/vapid_info",
+                Some(&root_token),
+            ))
+            .await
+            .expect("get vapid info as root");
+        assert_eq!(info.status(), StatusCode::OK);
+        let info_body = response_json(info).await;
+        assert_eq!(
+            info_body.get("subject").and_then(serde_json::Value::as_str),
+            Some("mailto:test@example.com")
+        );
+        assert_eq!(
+            info_body
+                .get("public_key")
+                .and_then(serde_json::Value::as_str),
+            Some(initial_public_key)
+        );
+        let keys_path = info_body
+            .get("keys_path")
+            .and_then(serde_json::Value::as_str)
+            .expect("keys path string");
+        assert!(keys_path.ends_with("vapid.json"));
+        std::fs::create_dir_all(
+            std::path::Path::new(keys_path)
+                .parent()
+                .expect("keys path parent"),
+        )
+        .expect("restore fixture keys directory");
+
+        let rotate = app
+            .oneshot(build_empty_request(
+                Method::POST,
+                "/vapid_rotate",
+                Some(&root_token),
+            ))
+            .await
+            .expect("rotate vapid keys as root");
+        assert_eq!(rotate.status(), StatusCode::OK);
+        let rotate_body = response_json(rotate).await;
+        let rotated_public_key = rotate_body
+            .get("public_key")
+            .and_then(serde_json::Value::as_str)
+            .expect("rotated public key");
+        assert!(!rotated_public_key.is_empty());
+        assert_ne!(rotated_public_key, initial_public_key);
     }
 }
