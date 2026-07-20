@@ -17,7 +17,7 @@ name = "agenthub_acp_adapter"
 path = "src/lib.rs"
 
 [dependencies]
-agenthub-codex-acp = { path = "../../agenthub-codex-acp" }
+agenthub-codex-acp-runtime = { path = "../../agenthub-codex-acp" }
 anyhow = "1"
 claude-code-acp-rs = { version = "0.1.22", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
@@ -26,7 +26,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 
 [features]
 default = []
-release-vendored-openssl = ["agenthub-codex-acp/release-vendored-openssl"]
+release-vendored-openssl = ["agenthub-codex-acp-runtime/release-vendored-openssl"]
 
 [lints.rust]
 let-underscore = "warn"

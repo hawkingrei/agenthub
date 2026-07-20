@@ -59,7 +59,9 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
         setRootInitialized(res.root_initialized);
         setPasskeyEnabled(res.passkey_enabled);
       })
-      .catch(() => {});
+      .catch(() => {
+        setRootInitialized(true);
+      });
   }, []);
 
   useEffect(() => {

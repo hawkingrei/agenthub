@@ -21,7 +21,7 @@ agenthub/
   tests/                  # Integration and blackbox tests
   docs/                   # Internal engineering docs and journals
   skills/                 # Team/agent runtime skill definitions
-  agenthub-codex-acp/     # Codex ACP integration workspace member
+  agenthub-codex-acp/     # Codex ACP runtime workspace member; compatibility binary lives here
   crates/agenthub-acp-adapter/ # Generic ACP provider adapter workspace member
 ```
 
