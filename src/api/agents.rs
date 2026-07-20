@@ -2016,29 +2016,6 @@ mod tests {
             .expect("create session token")
     }
 
-    async fn create_non_root_auth_token(state: &AppState) -> String {
-        let user_id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, 'user', NULL, ?4)
-            "#,
-        )
-        .bind(&user_id)
-        .bind(format!("user-{}", Uuid::new_v4()))
-        .bind("User")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert non-root user");
-        state
-            .auth
-            .create_session(&user_id)
-            .await
-            .expect("create non-root session token")
-    }
-
     async fn create_role_auth_token(state: &AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().timestamp();
@@ -2662,7 +2639,7 @@ mod tests {
             })
             .await
             .expect("create agent node");
-        let token = create_non_root_auth_token(&state).await;
+        let token = create_role_auth_token(&state, UserRole::Operator).await;
         let app = router(state);
 
         let response = app
