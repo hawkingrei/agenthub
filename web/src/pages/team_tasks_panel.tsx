@@ -840,18 +840,12 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
     </div>
   );
 
-  const taskWorkspace = !compactMode && selectedTask ? (
-    <WorkspaceSplitPaneLayout
-      variant="detail"
-      data-team-surface="task-board-detail-layout"
-      primary={boardPanel}
-      primaryClassName={TASKS_BOARD_PANE_CLASS}
-      secondary={detailPanel}
-      secondaryClassName={TASKS_DETAIL_DOCK_CLASS}
-    />
-  ) : (
-    boardPanel
-  );
+  const taskWorkspace =
+    !compactMode && selectedTask ? (
+      <WorkspaceSplitPaneLayout variant="detail" data-team-surface="task-board-detail-layout" primary={boardPanel} primaryClassName={TASKS_BOARD_PANE_CLASS} secondary={detailPanel} secondaryClassName={TASKS_DETAIL_DOCK_CLASS} />
+    ) : (
+      boardPanel
+    );
 
   return (
     <div
