@@ -94,7 +94,7 @@ impl From<ClaudeCli> for UpstreamCli {
 pub async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
     match cli.provider {
         ProviderCommand::Codex(codex) => {
-            agenthub_codex_acp::run_main(None, CliConfigOverrides::from(codex)).await?;
+            agenthub_codex_acp_runtime::run_main(None, CliConfigOverrides::from(codex)).await?;
             Ok(())
         }
         ProviderCommand::Claude(claude) => {

@@ -11,7 +11,7 @@ rust_library(
     edition = "2024",
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [
-        "//agenthub-codex-acp:agenthub_codex_acp",
+        "//agenthub-codex-acp:agenthub_codex_acp_runtime",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
@@ -37,7 +37,7 @@ rust_test(
         proc_macro_dev = True,
     ),
     deps = all_crate_deps(normal_dev = True) + [
-        "//agenthub-codex-acp:agenthub_codex_acp",
+        "//agenthub-codex-acp:agenthub_codex_acp_runtime",
     ],
     proc_macro_deps = all_crate_deps(proc_macro_dev = True),
 )

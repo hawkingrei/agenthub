@@ -1,10 +1,10 @@
 [package]
-name = "agenthub-codex-acp"
+name = "agenthub-codex-acp-runtime"
 version = "0.10.0"
 edition = "2024"
 authors = ["AgentHub <dev@agenthub.local>"]
 license = "Apache-2.0"
-description = "AgentHub ACP adapter for validating ACP pipelines"
+description = "AgentHub Codex ACP runtime used by the generic ACP adapter"
 repository = "https://github.com/hawkingrei/agenthub"
 homepage = "https://github.com/hawkingrei/agenthub"
 
@@ -13,7 +13,7 @@ name = "agenthub-codex-acp"
 path = "src/main.rs"
 
 [lib]
-name = "agenthub_codex_acp"
+name = "agenthub_codex_acp_runtime"
 path = "src/lib.rs"
 
 [features]
