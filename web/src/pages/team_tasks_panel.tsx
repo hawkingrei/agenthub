@@ -841,13 +841,6 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
     </div>
   );
 
-  const taskWorkspace =
-    showDesktopTaskDetailDock ? (
-      <WorkspaceSplitPaneLayout data-team-surface="task-board-detail-layout" primary={boardPanel} primaryClassName={TASKS_BOARD_PANE_CLASS} secondary={detailPanel} secondaryClassName={TASKS_DETAIL_DOCK_CLASS} />
-    ) : (
-      boardPanel
-    );
-
   return (
     <div
       className={`${TEAM_PANEL_CARD_CLASS} p-4 ${showDesktopTaskDetailDock ? "flex flex-col overflow-hidden" : "overflow-y-auto overscroll-y-contain"}`}
@@ -890,7 +883,11 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
       </div>
 
       <div className={`${TASKS_WORKSPACE_STACK_CLASS} ${showDesktopTaskDetailDock ? "flex-1" : ""}`}>
-        {taskWorkspace}
+        {showDesktopTaskDetailDock ? (
+          <WorkspaceSplitPaneLayout data-team-surface="task-board-detail-layout" primary={boardPanel} primaryClassName={TASKS_BOARD_PANE_CLASS} secondary={detailPanel} secondaryClassName={TASKS_DETAIL_DOCK_CLASS} />
+        ) : (
+          boardPanel
+        )}
       </div>
 
       <Modal
