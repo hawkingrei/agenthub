@@ -292,11 +292,7 @@ async fn create_agent(
     )?;
     let source = parse_agent_source(source.as_deref())?;
     let target_node_id = normalize_target_node_id(target_node_id.as_deref());
-    let _user = if target_node_id.is_some() {
-        require_capability(&headers, &state, UserCapability::NodesManage).await?
-    } else {
-        require_user(&headers, &state).await?
-    };
+    require_create_agent_capability(&headers, &state, target_node_id.as_deref()).await?;
     let default_worktree_root = resolve_create_agent_default_worktree_root(
         &state,
         target_node_id.as_deref(),
@@ -340,6 +336,21 @@ async fn create_agent(
             .map_err(map_create_agent_error)?
     };
     Ok(Json(agent))
+}
+
+async fn require_create_agent_capability(
+    headers: &HeaderMap,
+    state: &AppState,
+    target_node_id: Option<&str>,
+) -> Result<(), ApiError> {
+    let user = require_capability(headers, state, UserCapability::AgentsManage).await?;
+    if target_node_id.is_some() && !user.has_capability(UserCapability::NodesManage) {
+        return Err(ApiError::unauthorized(&format!(
+            "{} required",
+            UserCapability::NodesManage.as_str()
+        )));
+    }
+    Ok(())
 }
 
 async fn list_agents(
@@ -412,7 +423,7 @@ async fn delete_agent(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     let _ = state.agents.stop_agent(&agent_id).await;
     state.agents.delete_agent(&agent_id).await?;
     if let Err(err) = prune_deleted_agent_from_team_specs(&state, &agent_id).await {
@@ -607,7 +618,7 @@ async fn set_code_mode(
     Path(agent_id): Path<String>,
     Json(payload): Json<SetCodeModeRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     state
         .agents
         .set_code_mode(&agent_id, payload.code_mode)
@@ -621,7 +632,7 @@ async fn set_codex_acp_default_mode(
     Path(agent_id): Path<String>,
     Json(payload): Json<SetCodexAcpDefaultModeRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     let mode_id = normalize_codex_acp_default_mode_request(payload.mode_id.as_deref())?;
     state
         .agents
@@ -636,7 +647,7 @@ async fn set_runtime_profile(
     Path(agent_id): Path<String>,
     Json(payload): Json<SetRuntimeProfileRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     let agent = state.agents.get_agent(&agent_id).await?;
     let provider = state
         .agents
@@ -663,7 +674,7 @@ async fn set_agent_loop(
     Path(agent_id): Path<String>,
     Json(payload): Json<SetAgentLoopRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     let prompt = payload
         .prompt
         .as_deref()
@@ -737,7 +748,7 @@ async fn set_acp_mode(
     Path(agent_id): Path<String>,
     Json(payload): Json<SetAcpModeRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     state
         .agents
         .set_acp_mode(&agent_id, &payload.mode_id)
@@ -751,7 +762,7 @@ async fn set_acp_model(
     Path(agent_id): Path<String>,
     Json(payload): Json<SetAcpModelRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     state
         .agents
         .set_acp_model(&agent_id, &payload.model_id)
@@ -765,7 +776,7 @@ async fn set_acp_config(
     Path(agent_id): Path<String>,
     Json(payload): Json<SetAcpConfigRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     state
         .agents
         .set_acp_config(&agent_id, &payload.config_id, &payload.value)
@@ -2005,29 +2016,6 @@ mod tests {
             .expect("create session token")
     }
 
-    async fn create_non_root_auth_token(state: &AppState) -> String {
-        let user_id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, 'user', NULL, ?4)
-            "#,
-        )
-        .bind(&user_id)
-        .bind(format!("user-{}", Uuid::new_v4()))
-        .bind("User")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert non-root user");
-        state
-            .auth
-            .create_session(&user_id)
-            .await
-            .expect("create non-root session token")
-    }
-
     async fn create_role_auth_token(state: &AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().timestamp();
@@ -2300,6 +2288,149 @@ mod tests {
         assert_eq!(cancel_response.status(), StatusCode::OK);
     }
 
+    #[tokio::test]
+    async fn agent_management_routes_require_agents_manage_capability() {
+        let state = build_test_state().await;
+        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
+        let viewer_token = create_role_auth_token(&state, UserRole::Viewer).await;
+        let app = router(state.clone());
+        let workdir = std::env::temp_dir()
+            .join(format!("agenthub-managed-agent-{}", Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?, ?)")
+            .bind(&workdir)
+            .bind(chrono::Utc::now().timestamp())
+            .execute(&state.db)
+            .await
+            .expect("insert managed agent safe path");
+
+        let create_payload = json!({
+            "name": "managed-agent",
+            "workdir": workdir,
+            "command": "agenthub-codex-acp",
+            "args": [],
+            "worktree_mode": "use_existing"
+        });
+        let viewer_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&viewer_token),
+                Some(create_payload.clone()),
+            ))
+            .await
+            .expect("create agent with viewer");
+        assert_eq!(viewer_create.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(viewer_create).await;
+        assert_eq!(body["error"], json!("agents:manage required"));
+
+        let operator_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&operator_token),
+                Some(create_payload),
+            ))
+            .await
+            .expect("create agent with operator");
+        assert_eq!(operator_create.status(), StatusCode::OK);
+
+        add_agent_node_support(&state.db).await;
+        let remote_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&operator_token),
+                Some(json!({
+                    "name": "remote-managed-agent",
+                    "workdir": "",
+                    "command": "agenthub-codex-acp",
+                    "args": [],
+                    "target_node_id": "worker-node",
+                    "worktree_mode": "use_existing"
+                })),
+            ))
+            .await
+            .expect("create remote agent with operator");
+        assert_eq!(remote_create.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(remote_create).await;
+        assert_eq!(body["error"], json!("nodes:manage required"));
+
+        let denied_routes = vec![
+            (Method::DELETE, "/missing-agent", None),
+            (
+                Method::POST,
+                "/missing-agent/code_mode",
+                Some(json!({
+                    "code_mode": true
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/codex_acp_default_mode",
+                Some(json!({
+                    "mode_id": "auto"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/runtime_profile",
+                Some(json!({
+                    "runtime_model": "gpt-5",
+                    "thinking_level": "high"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/agent_loop",
+                Some(json!({
+                    "enabled": false
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/acp/mode",
+                Some(json!({
+                    "mode_id": "default"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/acp/model",
+                Some(json!({
+                    "model_id": "gpt-5"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/acp/config",
+                Some(json!({
+                    "config_id": "approval_policy",
+                    "value": "on-request"
+                })),
+            ),
+        ];
+        for (method, route, payload) in denied_routes {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    method,
+                    route,
+                    Some(&viewer_token),
+                    payload,
+                ))
+                .await
+                .expect("run denied agent management request");
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{route}");
+            let body = decode_json_body(response).await;
+            assert_eq!(body["error"], json!("agents:manage required"), "{route}");
+        }
+    }
+
     fn run_git(repo_dir: &std::path::Path, args: &[&str]) {
         let status = StdCommand::new("git")
             .arg("-C")
@@ -2508,7 +2639,7 @@ mod tests {
             })
             .await
             .expect("create agent node");
-        let token = create_non_root_auth_token(&state).await;
+        let token = create_role_auth_token(&state, UserRole::Operator).await;
         let app = router(state);
 
         let response = app
