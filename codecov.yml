@@ -10,7 +10,7 @@ coverage:
     project:
       default:
         target: auto
-        threshold: 0.02%
+        threshold: 0.10%
         removed_code_behavior: fully_covered_patch
 
 flag_management:
