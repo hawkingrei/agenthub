@@ -2166,7 +2166,8 @@ async fn teams_router_resume_restart_strategy_survives_state_reopen() {
 #[tokio::test]
 async fn teams_router_accepts_team_upload_route() {
     let state = build_test_state().await;
-    let token = create_auth_token(&state).await;
+    let operator_token = create_auth_token_with_role(&state, UserRole::Operator).await;
+    let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
     let app = super::router(state.clone());
 
     let create_team_resp = app
@@ -2174,7 +2175,7 @@ async fn teams_router_accepts_team_upload_route() {
         .oneshot(build_json_request(
             Method::POST,
             "/",
-            Some(&token),
+            Some(&operator_token),
             Some(json!({
                 "name": "router-upload-team",
                 "description": null,
@@ -2191,12 +2192,35 @@ async fn teams_router_accepts_team_upload_route() {
     let team_id = created_team["id"].as_str().expect("team id");
 
     let bytes = b"router upload";
+    let viewer_response = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/uploads"),
+            Some(&viewer_token),
+            Some(json!({
+                "file_name": "viewer.txt",
+                "content_type": "text/plain",
+                "bytes_base64": STANDARD.encode(bytes),
+                "expected_size_bytes": bytes.len(),
+                "expected_sha256": hex_encode(&Sha256::digest(bytes))
+            })),
+        ))
+        .await
+        .expect("viewer upload via router");
+    assert_eq!(viewer_response.status(), StatusCode::UNAUTHORIZED);
+    let viewer_body = decode_json_body(viewer_response).await;
+    assert_eq!(
+        viewer_body["error"],
+        Value::from("teams:manage required")
+    );
+
     let response = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
             &format!("/{team_id}/uploads"),
-            Some(&token),
+            Some(&operator_token),
             Some(json!({
                 "file_name": "router.txt",
                 "content_type": "text/plain",
@@ -2213,4 +2237,77 @@ async fn teams_router_accepts_team_upload_route() {
     assert_eq!(body["original_filename"], Value::from("router.txt"));
     assert_eq!(body["content_type"], Value::from("text/plain"));
     assert_eq!(body["size_bytes"], Value::from(bytes.len() as i64));
+
+    let mut operator_headers = HeaderMap::new();
+    operator_headers.insert(
+        header::AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {operator_token}"))
+            .expect("operator auth header"),
+    );
+    let task = create_team_task(
+        &state,
+        &operator_headers,
+        team_id,
+        CreateTeamTaskRequest {
+            title: "router upload task".to_string(),
+            priority: "high".to_string(),
+            assigned_member_id: "planner".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("uploads".to_string()),
+        },
+    )
+    .await
+    .expect("seed upload task");
+    let task_id = task.task.id;
+
+    let viewer_task_response = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/tasks/{task_id}/images"),
+            Some(&viewer_token),
+            Some(json!({
+                "file_name": "viewer-task.png",
+                "content_type": "image/png",
+                "bytes_base64": STANDARD.encode(bytes),
+                "expected_size_bytes": bytes.len(),
+                "expected_sha256": hex_encode(&Sha256::digest(bytes))
+            })),
+        ))
+        .await
+        .expect("viewer task image upload via router");
+    assert_eq!(viewer_task_response.status(), StatusCode::UNAUTHORIZED);
+    let viewer_task_body = decode_json_body(viewer_task_response).await;
+    assert_eq!(
+        viewer_task_body["error"],
+        Value::from("teams:manage required")
+    );
+
+    let task_response = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/tasks/{task_id}/images"),
+            Some(&operator_token),
+            Some(json!({
+                "file_name": "router-task.png",
+                "content_type": "image/png",
+                "bytes_base64": STANDARD.encode(bytes),
+                "expected_size_bytes": bytes.len(),
+                "expected_sha256": hex_encode(&Sha256::digest(bytes))
+            })),
+        ))
+        .await
+        .expect("task image upload via router");
+    assert_eq!(task_response.status(), StatusCode::OK);
+    let task_body = decode_json_body(task_response).await;
+    assert_eq!(task_body["owner_scope"], Value::from(format!("tasks/{task_id}")));
+    assert_eq!(
+        task_body["original_filename"],
+        Value::from("router-task.png")
+    );
+    assert_eq!(task_body["content_type"], Value::from("image/png"));
+    assert_eq!(task_body["size_bytes"], Value::from(bytes.len() as i64));
 }

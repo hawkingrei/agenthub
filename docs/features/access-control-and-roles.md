@@ -206,3 +206,4 @@ result.
 - [2026-07-21 Team Management Capability Gate](../journal/2026-07-21-team-management-capability-gate.md)
 - [2026-07-21 Team Runtime Control Capability Gate](../journal/2026-07-21-team-runtime-control-capability-gate.md)
 - [2026-07-21 Team Run Step Capability Gate](../journal/2026-07-21-team-run-step-capability-gate.md)
+- [2026-07-21 Team Upload Capability Gate](../journal/2026-07-21-team-upload-capability-gate.md)
