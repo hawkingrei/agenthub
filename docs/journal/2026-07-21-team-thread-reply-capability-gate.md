@@ -43,5 +43,6 @@ git diff --check
 
 ## Follow-Ups
 
-- Continue classifying Team read-only inspection routes, including task list/detail/message-list,
-  message search, and compile-preview.
+- Continue migrating remaining Team management or shared-thread mutation routes that still use
+  authentication-only authorization. Team read/preview routes are covered by
+  [2026-07-21 Team Read Preview Capability Gate](2026-07-21-team-read-preview-capability-gate.md).

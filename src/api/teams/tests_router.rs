@@ -8,6 +8,25 @@ async fn teams_router_http_contract() {
     let outsider_token = create_auth_token(&state).await;
     let app = super::router(state.clone());
 
+    macro_rules! assert_device_runtime_inspect_required {
+        ($method:expr, $path:expr, $payload:expr, $label:expr) => {{
+            let path = $path;
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    $method,
+                    path.as_str(),
+                    Some(&device_token),
+                    $payload,
+                ))
+                .await
+                .unwrap_or_else(|err| panic!("device {} request failed: {err}", $label));
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            let body = decode_json_body(response).await;
+            assert_eq!(body["error"], Value::from("runtime:inspect required"));
+        }};
+    }
+
     let unauthorized = app
         .clone()
         .oneshot(build_json_request(Method::GET, "/", None, None))
@@ -448,6 +467,16 @@ async fn teams_router_http_contract() {
         Value::from("teams:manage required")
     );
 
+    for (label, path) in [
+        ("list teams", "/".to_string()),
+        ("get team", format!("/{team_id}")),
+        ("get team runtime", format!("/{team_id}/runtime")),
+        ("get team shared thread", format!("/{team_id}/shared_thread")),
+        ("list team channels", format!("/{team_id}/channels")),
+    ] {
+        assert_device_runtime_inspect_required!(Method::GET, path, None, label);
+    }
+
     let list_teams_resp = app
         .clone()
         .oneshot(build_json_request(Method::GET, "/", Some(&token), None))
@@ -580,6 +609,33 @@ async fn teams_router_http_contract() {
     .await
     .expect("seed canonical task for router contract");
     let task_id = seeded_task.task.id.clone();
+
+    for (label, path, payload) in [
+        ("list team tasks", format!("/{team_id}/tasks?limit=20"), None),
+        ("get team task", format!("/{team_id}/tasks/{task_id}"), None),
+        (
+            "list task messages",
+            format!("/{team_id}/tasks/{task_id}/messages?limit=20"),
+            None,
+        ),
+        (
+            "search team messages",
+            format!("/{team_id}/messages/search?query=assign"),
+            None,
+        ),
+        (
+            "compile task run preview",
+            format!("/{team_id}/tasks/{task_id}/compile_run_preview"),
+            Some(json!({})),
+        ),
+    ] {
+        let method = if payload.is_some() {
+            Method::POST
+        } else {
+            Method::GET
+        };
+        assert_device_runtime_inspect_required!(method, path, payload, label);
+    }
 
     let list_tasks_resp = app
         .clone()
@@ -1040,6 +1096,18 @@ async fn teams_router_http_contract() {
     let run_id = run["id"].as_str().expect("run id").to_string();
     assert_eq!(run["status"], "submitted");
 
+    for (label, path) in [
+        ("list team runs", format!("/{team_id}/runs?limit=100")),
+        ("get team run", format!("/runs/{run_id}")),
+        (
+            "get team run snapshot",
+            format!("/runs/{run_id}/snapshot?event_limit=100&message_limit=100"),
+        ),
+        ("list team run events", format!("/runs/{run_id}/events?limit=100")),
+    ] {
+        assert_device_runtime_inspect_required!(Method::GET, path, None, label);
+    }
+
     let viewer_create_run_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -1313,6 +1381,13 @@ async fn teams_router_http_contract() {
     assert_eq!(submitted_step["step_key"], "router-step");
     assert_eq!(submitted_step["member_id"], "planner");
 
+    assert_device_runtime_inspect_required!(
+        Method::GET,
+        format!("/runs/{step_run_id}/steps"),
+        None,
+        "list team run steps"
+    );
+
     for (label, path, body) in [
         (
             "submit step",
@@ -1506,6 +1581,13 @@ async fn teams_router_http_contract() {
         .as_str()
         .expect("message run id")
         .to_string();
+
+    assert_device_runtime_inspect_required!(
+        Method::GET,
+        format!("/runs/{message_run_id}/messages/inbox?actor_id=planner&limit=100"),
+        None,
+        "list team run inbox"
+    );
 
     for (label, path, body) in [
         (
