@@ -17,8 +17,8 @@ slice covers agent lifecycle and configuration management without changing objec
 - Converted local agent create, delete, code-mode, Codex default mode, runtime profile, agent loop,
   and ACP mode/model/config routes to `agents:manage`.
 - Kept remote-target create-agent requests behind both `agents:manage` and `nodes:manage`.
-- Left agent object/image uploads on their existing authenticated-user path for a separate
-  owner-scope classification slice.
+- Left agent object/image uploads for a separate owner-scope classification slice; that follow-up is
+  now covered by [2026-07-21 Agent Upload Capability Gate](2026-07-21-agent-upload-capability-gate.md).
 - Added route coverage proving viewers are denied by `agents:manage`, operators can create local
   agents, and operators still cannot create remote-target agents without `nodes:manage`.
 
@@ -27,7 +27,7 @@ slice covers agent lifecycle and configuration management without changing objec
 - Treat runtime profile, agent loop, code mode, and ACP mode/model/config as agent configuration,
   not runtime operation, because they alter future runtime behavior.
 - Keep the remote-node create-agent gate layered rather than replacing it with `agents:manage`.
-- Keep upload classification separate because upload routes depend on authenticated user identity,
+- Classify upload routes separately because upload routes depend on authenticated user identity,
   object owner scope, and upload metadata.
 
 ## Validation
@@ -41,5 +41,6 @@ git diff --check
 
 ## Follow-Ups
 
-- Classify agent object/image upload routes separately.
-- Continue the next route-cluster migration with Team management and runtime routes.
+- Continue auditing other API route clusters for authentication-only authorization. Agent
+  object/image uploads are covered by
+  [2026-07-21 Agent Upload Capability Gate](2026-07-21-agent-upload-capability-gate.md).
