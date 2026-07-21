@@ -202,6 +202,39 @@ async fn teams_router_http_contract() {
         .await
         .expect("operator start step request");
     assert_eq!(operator_start_step_resp.status(), StatusCode::OK);
+    let operator_send_mailbox_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/messages/send"),
+            Some(&operator_token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"operator mailbox capability"}
+            })),
+        ))
+        .await
+        .expect("operator send mailbox message request");
+    assert_eq!(operator_send_mailbox_resp.status(), StatusCode::OK);
+    let operator_mailbox_message = decode_json_body(operator_send_mailbox_resp).await;
+    let operator_mailbox_message_id = operator_mailbox_message["message_id"]
+        .as_i64()
+        .expect("operator mailbox message id");
+    let operator_ack_mailbox_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/messages/{operator_mailbox_message_id}/ack"),
+            Some(&operator_token),
+            Some(json!({"actor_id":"planner"})),
+        ))
+        .await
+        .expect("operator ack mailbox message request");
+    assert_eq!(operator_ack_mailbox_resp.status(), StatusCode::OK);
     let operator_cancel_run_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -1323,6 +1356,60 @@ async fn teams_router_http_contract() {
         .as_str()
         .expect("message run id")
         .to_string();
+
+    for (label, path, body) in [
+        (
+            "send mailbox message",
+            format!("/runs/{message_run_id}/messages/send"),
+            json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"viewer should not send"}
+            }),
+        ),
+        (
+            "ack mailbox message",
+            format!("/runs/{message_run_id}/messages/1/ack"),
+            json!({"actor_id":"planner"}),
+        ),
+        (
+            "triage mailbox message",
+            format!("/runs/{message_run_id}/messages/1/triage"),
+            json!({"actor_id":"planner","disposition":"ignored","reason":"viewer denied"}),
+        ),
+        (
+            "escalate mailbox message",
+            format!("/runs/{message_run_id}/messages/1/escalate"),
+            json!({"actor_id":"planner"}),
+        ),
+        (
+            "transfer mailbox message",
+            format!("/runs/{message_run_id}/messages/1/transfer"),
+            json!({"actor_id":"planner","target_actor_id":"worker-1"}),
+        ),
+        (
+            "takeover mailbox message",
+            format!("/runs/{message_run_id}/messages/1/takeover"),
+            json!({"actor_id":"planner","target_actor_id":"worker-1"}),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &path,
+                Some(&viewer_token),
+                Some(body),
+            ))
+            .await
+            .unwrap_or_else(|err| panic!("viewer {label} request failed: {err}"));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], Value::from("runtime:operate required"));
+    }
 
     let send_local_message_resp = app
         .clone()

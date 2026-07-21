@@ -1931,7 +1931,7 @@ async fn send_team_run_message(
     Path(run_id): Path<String>,
     Json(payload): Json<SendTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let SendTeamRunMessageRequest {
         from_actor_id,
@@ -2127,7 +2127,7 @@ async fn ack_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<AckTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
@@ -2170,7 +2170,7 @@ async fn triage_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<TriageTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
@@ -2201,7 +2201,7 @@ async fn escalate_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<EscalateTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
@@ -2230,7 +2230,7 @@ async fn transfer_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<TransferTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
@@ -2264,7 +2264,7 @@ async fn takeover_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<TakeoverTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
