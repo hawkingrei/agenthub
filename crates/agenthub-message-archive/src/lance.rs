@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-use arrow_array::{
-    Array, ArrayRef, Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
-    UInt32Array,
-};
-use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use lance_index::scalar::FullTextSearchQuery;
+use lancedb::arrow::{
+    arrow_array::{
+        Array, ArrayRef, Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
+        UInt32Array,
+    },
+    arrow_schema::{DataType, Field, Schema, SchemaRef},
+};
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::{Connection, connect, database::CreateTableMode, index::Index};
 
@@ -422,7 +424,7 @@ mod tests {
         MessageArchiveBackend, MessageArchiveConfig, MessageArchiveStore, MessageDocument,
         MessageDocumentKind, MessageSearchQuery,
     };
-    use arrow_schema::{DataType, Field, Schema, SchemaRef};
+    use lancedb::arrow::arrow_schema::{DataType, Field, Schema, SchemaRef};
 
     fn legacy_schema() -> SchemaRef {
         Arc::new(Schema::new(vec![
