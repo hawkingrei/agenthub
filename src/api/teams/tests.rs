@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use agenthub_auth_domain::UserRole;
 use axum::Json;
 use axum::body::{Body, to_bytes};
 use axum::extract::{Path, Query, State};
@@ -1266,6 +1267,48 @@ pub(crate) async fn create_auth_token(state: &AppState) -> String {
         .create_session(&user_id)
         .await
         .expect("create token")
+}
+
+async fn create_auth_token_with_role(state: &AppState, role: UserRole) -> String {
+    let user_id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+        VALUES (?1, ?2, ?3, ?4, NULL, ?5)
+        "#,
+    )
+    .bind(&user_id)
+    .bind(format!("{}-{}", role.as_str(), Uuid::new_v4()))
+    .bind("Role Test User")
+    .bind(role.as_str())
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert role user");
+
+    if role == UserRole::Device {
+        sqlx::query(
+            r#"
+            INSERT INTO devices (id, user_id, name, user_agent, status, created_at)
+            VALUES (?1, ?2, ?3, ?4, 'active', ?5)
+            "#,
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&user_id)
+        .bind("Role Test Device")
+        .bind("role-test")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert role device");
+    }
+
+    state
+        .auth
+        .create_session(&user_id)
+        .await
+        .expect("create role token")
 }
 
 fn build_json_request(

@@ -2,6 +2,8 @@
 async fn teams_router_http_contract() {
     let state = build_test_state().await;
     let token = create_auth_token(&state).await;
+    let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
+    let device_token = create_auth_token_with_role(&state, UserRole::Device).await;
     let outsider_token = create_auth_token(&state).await;
     let app = super::router(state.clone());
 
@@ -24,12 +26,29 @@ async fn teams_router_http_contract() {
         .expect("run unauthorized prompt defaults request");
     assert_eq!(prompt_defaults_unauthorized.status(), StatusCode::UNAUTHORIZED);
 
+    let prompt_defaults_device = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            "/prompt_defaults",
+            Some(&device_token),
+            None,
+        ))
+        .await
+        .expect("run device prompt defaults request");
+    assert_eq!(prompt_defaults_device.status(), StatusCode::UNAUTHORIZED);
+    let prompt_defaults_device_body = decode_json_body(prompt_defaults_device).await;
+    assert_eq!(
+        prompt_defaults_device_body["error"],
+        Value::from("runtime:inspect required")
+    );
+
     let prompt_defaults_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::GET,
             "/prompt_defaults",
-            Some(&token),
+            Some(&viewer_token),
             None,
         ))
         .await
