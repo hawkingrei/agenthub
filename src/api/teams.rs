@@ -775,7 +775,7 @@ async fn list_teams(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<TeamDefinitionRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let teams = state
         .teams
         .list_teams()
@@ -792,7 +792,7 @@ async fn get_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     Ok(Json(sanitize_team_definition_for_response(team)))
 }
@@ -802,7 +802,7 @@ async fn get_team_runtime(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamRuntimeRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     reconcile_team_member_runtime_absence(&state, &team).await?;
     let runtime = state
@@ -849,7 +849,7 @@ async fn get_team_shared_thread(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let Some((task, conversation, latest_run)) = state
         .teams
@@ -903,7 +903,7 @@ async fn list_team_tasks(
     Path(team_id): Path<String>,
     Query(query): Query<ListTeamTasksQuery>,
 ) -> Result<Json<Vec<TeamTaskRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let priority = query
         .priority
@@ -1034,7 +1034,7 @@ async fn list_team_channels(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<Vec<TeamChannelRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let channels = state
         .teams
@@ -1184,7 +1184,7 @@ async fn get_team_task(
     headers: HeaderMap,
     Path((team_id, task_id)): Path<(String, String)>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let detail = state
         .teams
@@ -1318,7 +1318,7 @@ async fn list_team_task_messages(
     Path((team_id, task_id)): Path<(String, String)>,
     Query(query): Query<ListTeamTaskMessagesQuery>,
 ) -> Result<Json<Vec<TeamConversationMessageRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
@@ -1346,7 +1346,7 @@ async fn search_team_messages(
     Path(team_id): Path<String>,
     Query(query): Query<SearchTeamMessagesQuery>,
 ) -> Result<Json<Vec<TeamMessageSearchHitResponse>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let query_text = normalize_optional_string(Some(query.query))
         .ok_or_else(|| ApiError::bad_request("query is required"))?;
@@ -1445,7 +1445,7 @@ async fn compile_team_task_run_preview(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<CompileTeamTaskRunPreviewRequest>,
 ) -> Result<Json<TeamTaskRunCompilePreviewResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let task = state
@@ -1503,7 +1503,7 @@ async fn list_team_runs(
     Path(team_id): Path<String>,
     Query(query): Query<ListTeamRunsQuery>,
 ) -> Result<Json<Vec<TeamRunRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let status = normalize_optional_run_status_filter(query.status.as_deref())?;
@@ -1520,7 +1520,7 @@ async fn get_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let run = load_run_for_user(&state, &run_id, &user).await?;
     Ok(Json(run))
 }
@@ -1576,7 +1576,7 @@ async fn get_team_run_snapshot(
     Path(run_id): Path<String>,
     Query(query): Query<TeamRunSnapshotQuery>,
 ) -> Result<Json<TeamRunSnapshotResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let (run, team) = load_run_and_team_for_user(&state, &run_id, &user).await?;
     validate_team_spec(&team.spec)?;
 
@@ -1709,7 +1709,7 @@ async fn list_team_run_events(
     Path(run_id): Path<String>,
     Query(query): Query<ListTeamRunEventsQuery>,
 ) -> Result<Json<Vec<TeamRunEventRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let limit = query
         .limit
@@ -1771,7 +1771,7 @@ async fn list_team_run_steps(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<Vec<TeamStepRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let steps = state
         .teams
@@ -2083,7 +2083,7 @@ async fn list_team_run_inbox(
     Path(run_id): Path<String>,
     Query(query): Query<ListTeamRunInboxQuery>,
 ) -> Result<Json<Vec<TeamActorMessageRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(query.actor_id.as_str(), &member_ids, &user)?;
