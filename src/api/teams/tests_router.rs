@@ -157,6 +157,62 @@ async fn teams_router_http_contract() {
         .await
         .expect("operator start team request");
     assert_eq!(operator_start_team_resp.status(), StatusCode::OK);
+    let operator_create_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{operator_runtime_team_id}/runs"),
+            Some(&operator_token),
+            Some(json!({
+                "context_id": "ctx-operator-run",
+                "input": {"prompt":"operator run capability"}
+            })),
+        ))
+        .await
+        .expect("operator create run request");
+    assert_eq!(operator_create_run_resp.status(), StatusCode::OK);
+    let operator_run = decode_json_body(operator_create_run_resp).await;
+    let operator_run_id = operator_run["id"].as_str().expect("operator run id");
+    let operator_submit_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/steps"),
+            Some(&operator_token),
+            Some(json!({
+                "step_key": "operator-step",
+                "member_id": "planner",
+                "depends_on": [],
+                "input": {"goal":"operator"}
+            })),
+        ))
+        .await
+        .expect("operator submit step request");
+    assert_eq!(operator_submit_step_resp.status(), StatusCode::OK);
+    let operator_step = decode_json_body(operator_submit_step_resp).await;
+    let operator_step_id = operator_step["id"].as_str().expect("operator step id");
+    let operator_start_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/steps/{operator_step_id}/start"),
+            Some(&operator_token),
+            Some(json!({"runtime_handle_id":"operator-remote-task"})),
+        ))
+        .await
+        .expect("operator start step request");
+    assert_eq!(operator_start_step_resp.status(), StatusCode::OK);
+    let operator_cancel_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/cancel"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator cancel run request");
+    assert_eq!(operator_cancel_run_resp.status(), StatusCode::OK);
     let delete_operator_runtime_team_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -801,6 +857,63 @@ async fn teams_router_http_contract() {
     let run_id = run["id"].as_str().expect("run id").to_string();
     assert_eq!(run["status"], "submitted");
 
+    let viewer_create_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&viewer_token),
+            Some(json!({
+                "context_id": "ctx-viewer-denied",
+                "input": {"prompt":"viewer should not create runs"}
+            })),
+        ))
+        .await
+        .expect("viewer create run request");
+    assert_eq!(viewer_create_run_resp.status(), StatusCode::UNAUTHORIZED);
+    let viewer_create_run_err = decode_json_body(viewer_create_run_resp).await;
+    assert_eq!(
+        viewer_create_run_err["error"],
+        Value::from("runtime:operate required")
+    );
+
+    for (label, path, body) in [
+        (
+            "cancel run",
+            format!("/runs/{run_id}/cancel"),
+            None,
+        ),
+        (
+            "resume run",
+            format!("/runs/{run_id}/resume"),
+            None,
+        ),
+        (
+            "restart run",
+            format!("/runs/{run_id}/restart"),
+            None,
+        ),
+        (
+            "flush run context",
+            format!("/runs/{run_id}/context/flush"),
+            Some(json!({"member_id":"planner","trigger":"manual"})),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &path,
+                Some(&viewer_token),
+                body,
+            ))
+            .await
+            .unwrap_or_else(|err| panic!("viewer {label} request failed: {err}"));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], Value::from("runtime:operate required"));
+    }
+
     let snapshot_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -1016,6 +1129,58 @@ async fn teams_router_http_contract() {
     assert_eq!(submitted_step["status"], "submitted");
     assert_eq!(submitted_step["step_key"], "router-step");
     assert_eq!(submitted_step["member_id"], "planner");
+
+    for (label, path, body) in [
+        (
+            "submit step",
+            format!("/runs/{step_run_id}/steps"),
+            Some(json!({
+                "step_key": "viewer-step",
+                "member_id": "planner",
+                "depends_on": [],
+                "input": {"goal":"viewer"}
+            })),
+        ),
+        (
+            "start step",
+            format!("/runs/{step_run_id}/steps/{step_id}/start"),
+            Some(json!({"runtime_handle_id":"viewer-remote-task"})),
+        ),
+        (
+            "set step input required",
+            format!("/runs/{step_run_id}/steps/{step_id}/input_required"),
+            Some(json!({"reason":"viewer denied","input":null})),
+        ),
+        (
+            "resume step",
+            format!("/runs/{step_run_id}/steps/{step_id}/resume"),
+            Some(json!({"input":{"answer":"viewer"}})),
+        ),
+        (
+            "complete step",
+            format!("/runs/{step_run_id}/steps/{step_id}/complete"),
+            Some(json!({"output":{"result":"viewer"}})),
+        ),
+        (
+            "fail step",
+            format!("/runs/{step_run_id}/steps/{step_id}/fail"),
+            Some(json!({"error_text":"viewer denied"})),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &path,
+                Some(&viewer_token),
+                body,
+            ))
+            .await
+            .unwrap_or_else(|err| panic!("viewer {label} request failed: {err}"));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], Value::from("runtime:operate required"));
+    }
 
     let list_steps_resp = app
         .clone()
