@@ -693,7 +693,7 @@ async fn start_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let runtime = ensure_team_runtime_started(state.agents.as_ref(), &team)
@@ -707,7 +707,7 @@ async fn stop_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let runtime = stop_team_runtime(state.agents.as_ref(), &team)
         .await
@@ -762,7 +762,7 @@ async fn force_new_session_for_team_member(
     headers: HeaderMap,
     Path((team_id, member_id)): Path<(String, String)>,
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let runtime = force_team_member_new_session(state.agents.as_ref(), &team, &member_id)
