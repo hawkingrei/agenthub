@@ -42,4 +42,5 @@ git diff --check
 ## Follow-Ups
 
 - Continue classifying Team read-only inspection routes.
-- Continue migrating Team task mutation routes to explicit capability gates.
+- Team task mutation routes are covered by
+  [2026-07-21 Team Task Capability Gate](2026-07-21-team-task-capability-gate.md).

@@ -235,6 +235,55 @@ async fn teams_router_http_contract() {
         .await
         .expect("operator ack mailbox message request");
     assert_eq!(operator_ack_mailbox_resp.status(), StatusCode::OK);
+    let mut operator_token_headers = HeaderMap::new();
+    operator_token_headers.insert(
+        header::AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {operator_token}")).expect("operator auth header"),
+    );
+    let operator_task = create_team_task(
+        &state,
+        &operator_token_headers,
+        operator_runtime_team_id,
+        CreateTeamTaskRequest {
+            title: "operator task capability".to_string(),
+            priority: "medium".to_string(),
+            assigned_member_id: "planner".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("operator-task".to_string()),
+        },
+    )
+    .await
+    .expect("seed operator task for router contract");
+    let operator_task_id = operator_task.task.id;
+    let operator_task_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{operator_runtime_team_id}/tasks/{operator_task_id}/messages"),
+            Some(&operator_token),
+            Some(json!({
+                "route": "group_chat",
+                "payload": {"text":"operator task capability"}
+            })),
+        ))
+        .await
+        .expect("operator send task message request");
+    assert_eq!(operator_task_message_resp.status(), StatusCode::OK);
+    let operator_patch_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PATCH,
+            &format!("/{operator_runtime_team_id}/tasks/{operator_task_id}"),
+            Some(&operator_token),
+            Some(json!({
+                "status": "in_progress"
+            })),
+        ))
+        .await
+        .expect("operator patch task request");
+    assert_eq!(operator_patch_task_resp.status(), StatusCode::FORBIDDEN);
     let operator_cancel_run_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -566,9 +615,28 @@ async fn teams_router_http_contract() {
     assert_eq!(get_task_body["latest_run"], Value::Null);
     assert!(
         get_task_body["task"]["created_by_actor_id"]
-            .as_str()
-            .map(|value| value.starts_with("user:"))
-            .unwrap_or(false)
+        .as_str()
+        .map(|value| value.starts_with("user:"))
+        .unwrap_or(false)
+    );
+
+    let viewer_update_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PATCH,
+            &format!("/{team_id}/tasks/{task_id}"),
+            Some(&viewer_token),
+            Some(json!({
+                "status": "in_progress"
+            })),
+        ))
+        .await
+        .expect("viewer update task request");
+    assert_eq!(viewer_update_task_resp.status(), StatusCode::UNAUTHORIZED);
+    let viewer_update_task_err = decode_json_body(viewer_update_task_resp).await;
+    assert_eq!(
+        viewer_update_task_err["error"],
+        Value::from("teams:manage required")
     );
 
     let update_task_resp = app
@@ -605,6 +673,29 @@ async fn teams_router_http_contract() {
         .await
         .expect("invalid task status via router");
     assert_eq!(invalid_update_task_resp.status(), StatusCode::FORBIDDEN);
+
+    let viewer_send_task_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/tasks/{task_id}/messages"),
+            Some(&viewer_token),
+            Some(json!({
+                "route": "group_chat",
+                "payload": {"text":"viewer should not write task messages"}
+            })),
+        ))
+        .await
+        .expect("viewer send task message request");
+    assert_eq!(
+        viewer_send_task_message_resp.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let viewer_send_task_message_err = decode_json_body(viewer_send_task_message_resp).await;
+    assert_eq!(
+        viewer_send_task_message_err["error"],
+        Value::from("runtime:operate required")
+    );
 
     let send_human_task_message_resp = app
         .clone()
@@ -709,6 +800,28 @@ async fn teams_router_http_contract() {
     let source_message_id = source_message["message_id"]
         .as_i64()
         .expect("source message id");
+    let viewer_create_from_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels/review/messages/{source_message_id}/tasks"),
+            Some(&viewer_token),
+            Some(json!({
+                "priority": "high",
+                "context": {"token":"viewer"}
+            })),
+        ))
+        .await
+        .expect("viewer create task from channel message request");
+    assert_eq!(
+        viewer_create_from_message_resp.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let viewer_create_from_message_err = decode_json_body(viewer_create_from_message_resp).await;
+    assert_eq!(
+        viewer_create_from_message_err["error"],
+        Value::from("teams:manage required")
+    );
     let create_from_message_resp = app
         .clone()
         .oneshot(build_json_request(
