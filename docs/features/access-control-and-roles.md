@@ -201,6 +201,8 @@ result.
 - [2026-07-21 Agent Inspect Capability Gate](../journal/2026-07-21-agent-inspect-capability-gate.md)
 - [2026-07-21 Agent Runtime Capability Gate](../journal/2026-07-21-agent-runtime-capability-gate.md)
 - [2026-07-21 Agent Management Capability Gate](../journal/2026-07-21-agent-management-capability-gate.md)
+- [2026-07-21 Agent Upload Capability Gate](../journal/2026-07-21-agent-upload-capability-gate.md)
+- [2026-07-21 OpenAPI Capability Gate](../journal/2026-07-21-openapi-capability-gate.md)
 - [2026-07-21 Settings Runtime Defaults Capability Gate](../journal/2026-07-21-settings-runtime-defaults-capability-gate.md)
 - [2026-07-21 Team Prompt Defaults Capability Gate](../journal/2026-07-21-team-prompt-defaults-capability-gate.md)
 - [2026-07-21 Team Management Capability Gate](../journal/2026-07-21-team-management-capability-gate.md)

@@ -22,7 +22,7 @@ use crate::agent::{
     AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
     AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode, normalize_target_node_id,
 };
-use crate::api::authz::{require_capability, require_user};
+use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::api::teams::prune_deleted_agent_from_team_specs;
@@ -497,7 +497,7 @@ async fn upload_agent_scoped_object(
     payload: UploadRequest,
     kind: ObjectUploadKind,
 ) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
     let agent = state.agents.get_agent(&agent_id).await?;
     upload_scoped_object(
         State(state),
@@ -2805,6 +2805,7 @@ mod tests {
     async fn agent_upload_routes_publish_agent_scoped_metadata() {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
+        let viewer_token = create_role_auth_token(&state, UserRole::Viewer).await;
         let workdir = std::env::temp_dir()
             .join(format!("agenthub-upload-agent-{}", Uuid::new_v4()))
             .to_string_lossy()
@@ -2838,6 +2839,26 @@ mod tests {
             .expect("seed upload agent");
         let agent_id = agent.id;
         let app = router(state);
+
+        let viewer_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/uploads"),
+                Some(&viewer_token),
+                Some(json!({
+                    "file_name": "viewer.txt",
+                    "content_type": "text/plain",
+                    "bytes_base64": STANDARD.encode(b"viewer evidence"),
+                    "expected_size_bytes": 15,
+                    "expected_sha256": sha256_hex(b"viewer evidence")
+                })),
+            ))
+            .await
+            .expect("viewer upload agent object");
+        assert_eq!(viewer_response.status(), StatusCode::UNAUTHORIZED);
+        let viewer_body = decode_json_body(viewer_response).await;
+        assert_eq!(viewer_body["error"], Value::from("agents:manage required"));
 
         let bytes = b"agent evidence";
         let sha256 = sha256_hex(bytes);
