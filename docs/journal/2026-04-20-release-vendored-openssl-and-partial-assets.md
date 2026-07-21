@@ -114,5 +114,31 @@ This closes the trimmed `Release Prebuild` runtime package follow-up: push-to-ma
 proves the release matrix builds through the `agenthub-codex-acp-runtime` package identity while
 still publishing only the canonical `agenthub` and `agenthub-acp` archive bundles.
 
+### 2026-07-21 Release Prebuild Post-Dependency Verification
+
+- Observed main `Release Prebuild` run `29826619176` after merge commit
+  `1603ff5fe00137481467c918a066e21decec601f`.
+- Confirmed the run completed successfully:
+  - `Prebuild x86_64-unknown-linux-gnu`: success, artifact ID `8495483949`.
+  - `Prebuild aarch64-unknown-linux-gnu`: success, artifact ID `8495640365`.
+  - `Prebuild aarch64-apple-darwin`: success, artifact ID `8494697950`.
+- Confirmed the release/prebuild matrix still exercised the canonical build commands after the
+  dependency update:
+  - Linux `agenthub` builds used `cross build --locked --release --target ... --bin agenthub`
+    with release feature sets.
+  - Linux `agenthub-acp` builds used
+    `cross build --locked --release --target ... -p agenthub-acp-adapter --features release-vendored-openssl`.
+  - macOS builds used `cargo build --locked --release --target aarch64-apple-darwin` for
+    `agenthub` and `agenthub-acp-adapter`.
+- Confirmed ACP adapter release legs compiled the internal package as
+  `agenthub-codex-acp-runtime v0.10.0`.
+- Confirmed package logs still called only:
+  - `package_binary "agenthub"`
+  - `package_binary "agenthub-acp"`
+- Confirmed all three matrix artifacts were uploaded:
+  - `release-prebuild-x86_64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-apple-darwin`
+
 The broader partial release validation remains open until a semver or preview release run proves
 successful binary assets are published when one release matrix target fails.
