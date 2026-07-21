@@ -33,7 +33,7 @@ use uuid::Uuid;
 
 use agenthub_auth_domain::UserCapability;
 
-use crate::api::authz::{require_capability, require_user};
+use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
 use crate::api::uploads::{UploadRequest, upload_scoped_object};
 use crate::auth::UserRecord;
@@ -877,7 +877,7 @@ async fn ensure_team_shared_thread(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let (task, conversation, latest_run) = state
         .teams

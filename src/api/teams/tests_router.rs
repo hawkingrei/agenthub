@@ -477,6 +477,54 @@ async fn teams_router_http_contract() {
         assert_device_runtime_inspect_required!(Method::GET, path, None, label);
     }
 
+    let viewer_ensure_shared_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/shared_thread"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer ensure shared thread request");
+    assert_eq!(
+        viewer_ensure_shared_thread_resp.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let viewer_ensure_shared_thread_err = decode_json_body(viewer_ensure_shared_thread_resp).await;
+    assert_eq!(
+        viewer_ensure_shared_thread_err["error"],
+        Value::from("teams:manage required")
+    );
+
+    let ensure_shared_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/shared_thread"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("ensure shared thread via router");
+    assert_eq!(ensure_shared_thread_resp.status(), StatusCode::OK);
+    let ensured_shared_thread = decode_json_body(ensure_shared_thread_resp).await;
+    assert_eq!(ensured_shared_thread["task"]["title"], Value::from("all"));
+
+    let get_shared_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/shared_thread"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get shared thread via router");
+    assert_eq!(get_shared_thread_resp.status(), StatusCode::OK);
+    let shared_thread = decode_json_body(get_shared_thread_resp).await;
+    assert_eq!(shared_thread["task"]["id"], ensured_shared_thread["task"]["id"]);
+
     let list_teams_resp = app
         .clone()
         .oneshot(build_json_request(Method::GET, "/", Some(&token), None))

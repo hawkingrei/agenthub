@@ -45,5 +45,6 @@ git diff --check
 
 ## Follow-Ups
 
-- Continue migrating `POST /{id}/shared_thread` or any other remaining Team management/shared-thread
-  mutation routes that still use authentication-only authorization.
+- Continue auditing other API route clusters for authentication-only authorization. The
+  shared-thread ensure mutation is covered by
+  [2026-07-21 Team Shared Thread Capability Gate](2026-07-21-team-shared-thread-capability-gate.md).

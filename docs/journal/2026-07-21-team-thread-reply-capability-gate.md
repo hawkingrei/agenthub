@@ -43,6 +43,8 @@ git diff --check
 
 ## Follow-Ups
 
-- Continue migrating remaining Team management or shared-thread mutation routes that still use
-  authentication-only authorization. Team read/preview routes are covered by
-  [2026-07-21 Team Read Preview Capability Gate](2026-07-21-team-read-preview-capability-gate.md).
+- Continue auditing other API route clusters for authentication-only authorization. Team
+  read/preview routes are covered by
+  [2026-07-21 Team Read Preview Capability Gate](2026-07-21-team-read-preview-capability-gate.md),
+  and the shared-thread ensure mutation is covered by
+  [2026-07-21 Team Shared Thread Capability Gate](2026-07-21-team-shared-thread-capability-gate.md).
