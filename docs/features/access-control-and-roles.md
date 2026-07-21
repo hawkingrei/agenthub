@@ -211,3 +211,4 @@ result.
 - [2026-07-21 Team Task Capability Gate](../journal/2026-07-21-team-task-capability-gate.md)
 - [2026-07-21 Team Thread Reply Capability Gate](../journal/2026-07-21-team-thread-reply-capability-gate.md)
 - [2026-07-21 Team Read Preview Capability Gate](../journal/2026-07-21-team-read-preview-capability-gate.md)
+- [2026-07-21 Team Shared Thread Capability Gate](../journal/2026-07-21-team-shared-thread-capability-gate.md)

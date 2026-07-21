@@ -43,6 +43,8 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
 
+use crate::api::authz::require_user;
+
 use super::{
     AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
     CreateTeamChannelRequest, CreateTeamRequest, CreateTeamRunRequest, CreateTeamTaskRequest,
@@ -62,13 +64,12 @@ use super::{
     list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
     list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
     map_team_internal_error, normalize_conversation_mode, normalize_task_created_by_actor_id,
-    normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, require_user,
-    restart_team_run, resume_team_run, resume_team_run_step, search_team_messages,
-    send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
-    start_team_run_step, stop_team, submit_team_run_step, takeover_team_run_message,
-    transfer_team_run_message, triage_team_run_message, update_team_spec, update_team_task,
-    upload_team_image, upload_team_object, upload_team_task_image, upload_team_task_object,
-    validate_team_spec,
+    normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, restart_team_run,
+    resume_team_run, resume_team_run_step, search_team_messages, send_team_run_message,
+    send_team_task_message, set_team_run_step_input_required, start_team, start_team_run_step,
+    stop_team, submit_team_run_step, takeover_team_run_message, transfer_team_run_message,
+    triage_team_run_message, update_team_spec, update_team_task, upload_team_image,
+    upload_team_object, upload_team_task_image, upload_team_task_object, validate_team_spec,
 };
 
 #[derive(Default)]
