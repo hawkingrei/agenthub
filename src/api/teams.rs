@@ -1105,7 +1105,7 @@ async fn upload_team_scoped_object(
     payload: TeamUploadRequest,
     kind: ObjectUploadKind,
 ) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     upload_scoped_object(
         State(state),
@@ -1159,7 +1159,7 @@ async fn upload_team_task_scoped_object(
     payload: TeamUploadRequest,
     kind: ObjectUploadKind,
 ) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
