@@ -40,5 +40,6 @@ git diff --check
 
 ## Follow-Ups
 
-- Continue migrating Team run lifecycle and run step mutation routes to explicit capability gates.
+- Team run lifecycle and run step mutation routes are covered by
+  [2026-07-21 Team Run Step Capability Gate](2026-07-21-team-run-step-capability-gate.md).
 - Continue classifying Team read-only inspection, task, mailbox, and upload routes.

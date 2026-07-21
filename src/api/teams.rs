@@ -1482,7 +1482,7 @@ async fn create_team_run(
     Path(team_id): Path<String>,
     Json(payload): Json<CreateTeamRunRequest>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let run = state
@@ -1530,7 +1530,7 @@ async fn cancel_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
@@ -1545,7 +1545,7 @@ async fn resume_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
@@ -1560,7 +1560,7 @@ async fn restart_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
@@ -1729,7 +1729,7 @@ async fn flush_team_run_context(
     Path(run_id): Path<String>,
     Json(payload): Json<FlushTeamRunContextRequest>,
 ) -> Result<Json<FlushTeamRunContextResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let member_id = payload.member_id.trim().to_string();
     if member_id.is_empty() {
@@ -1787,7 +1787,7 @@ async fn submit_team_run_step(
     Path(run_id): Path<String>,
     Json(payload): Json<SubmitTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
 
     let step_key = payload.step_key.trim().to_string();
@@ -1814,7 +1814,7 @@ async fn start_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<StartTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let runtime_handle_id = payload
@@ -1847,7 +1847,7 @@ async fn complete_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<CompleteTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let step = state
@@ -1864,7 +1864,7 @@ async fn fail_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<FailTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let error_text = payload.error_text.trim();
@@ -1885,7 +1885,7 @@ async fn set_team_run_step_input_required(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<SetTeamRunStepInputRequiredRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let reason = normalize_optional_non_empty(payload.reason.as_deref())?.map(str::to_string);
@@ -1903,7 +1903,7 @@ async fn resume_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<ResumeTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let step = state
