@@ -2,6 +2,7 @@
 async fn teams_router_http_contract() {
     let state = build_test_state().await;
     let token = create_auth_token(&state).await;
+    let operator_token = create_auth_token_with_role(&state, UserRole::Operator).await;
     let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
     let device_token = create_auth_token_with_role(&state, UserRole::Device).await;
     let outsider_token = create_auth_token(&state).await;
@@ -70,6 +71,56 @@ async fn teams_router_http_contract() {
         prompt_defaults["worker_prompt"]
     );
 
+    let create_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&viewer_token),
+            Some(json!({
+                "name": "viewer-create-team",
+                "description": null,
+                "spec": {"entrypoint":"planner","members":[]}
+            })),
+        ))
+        .await
+        .expect("viewer create team request");
+    assert_eq!(create_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let create_team_viewer_err = decode_json_body(create_team_viewer_resp).await;
+    assert_eq!(
+        create_team_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
+
+    let create_team_operator_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&operator_token),
+            Some(json!({
+                "name": "operator-managed-team",
+                "description": null,
+                "spec": {"entrypoint":"planner","members":[]}
+            })),
+        ))
+        .await
+        .expect("operator create team request");
+    assert_eq!(create_team_operator_resp.status(), StatusCode::OK);
+    let operator_team = decode_json_body(create_team_operator_resp).await;
+    let operator_team_id = operator_team["id"].as_str().expect("operator team id");
+    let delete_operator_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{operator_team_id}"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator delete team request");
+    assert_eq!(delete_operator_team_resp.status(), StatusCode::OK);
+
     let empty_team_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -121,6 +172,32 @@ async fn teams_router_http_contract() {
     let created_team = decode_json_body(create_team_resp).await;
     let team_id = created_team["id"].as_str().expect("team id").to_string();
     assert_eq!(created_team["spec"]["spec_version"], Value::from(1));
+
+    let update_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PUT,
+            &format!("/{team_id}/spec"),
+            Some(&viewer_token),
+            Some(json!({
+                "expected_updated_at": created_team["updated_at"],
+                "spec": {
+                    "entrypoint": "planner",
+                    "members": [
+                        {"member_id":"planner","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }
+            })),
+        ))
+        .await
+        .expect("viewer update team spec request");
+    assert_eq!(update_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let update_team_viewer_err = decode_json_body(update_team_viewer_resp).await;
+    assert_eq!(
+        update_team_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
 
     let list_teams_resp = app
         .clone()
@@ -357,6 +434,26 @@ async fn teams_router_http_contract() {
             .unwrap_or(false)
     );
 
+    let create_channel_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels"),
+            Some(&viewer_token),
+            Some(json!({
+                "channel_id": "viewer-review",
+                "description": "Viewer should not create channels"
+            })),
+        ))
+        .await
+        .expect("viewer create channel request");
+    assert_eq!(create_channel_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let create_channel_viewer_err = decode_json_body(create_channel_viewer_resp).await;
+    assert_eq!(
+        create_channel_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
+
     let create_channel_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -376,6 +473,24 @@ async fn teams_router_http_contract() {
         .as_str()
         .expect("channel task id")
         .to_string();
+
+    let delete_channel_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{team_id}/channels/review"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer delete channel request");
+    assert_eq!(delete_channel_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let delete_channel_viewer_err = decode_json_body(delete_channel_viewer_resp).await;
+    assert_eq!(
+        delete_channel_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
+
     let source_message_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -1265,6 +1380,23 @@ async fn teams_router_http_contract() {
         .await
         .expect("unsupported version request");
     assert_eq!(unsupported_version_resp.status(), StatusCode::BAD_REQUEST);
+
+    let delete_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{team_id}"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer delete team request");
+    assert_eq!(delete_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let delete_team_viewer_err = decode_json_body(delete_team_viewer_resp).await;
+    assert_eq!(
+        delete_team_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
 
     let delete_team_resp = app
         .clone()
