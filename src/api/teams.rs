@@ -941,7 +941,7 @@ async fn create_team_task_from_channel_message(
     if message_id <= 0 {
         return Err(ApiError::bad_request("message_id must be positive"));
     }
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let channel_id = channel_id.trim().to_lowercase();
     if channel_id.is_empty() {
@@ -1208,7 +1208,7 @@ async fn update_team_task(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<UpdateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
@@ -1232,7 +1232,7 @@ async fn send_team_task_message(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<SendTeamTaskMessageRequest>,
 ) -> Result<Json<TeamConversationMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let SendTeamTaskMessageRequest {
         from_actor_id,
