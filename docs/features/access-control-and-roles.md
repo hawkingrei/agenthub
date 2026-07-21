@@ -129,8 +129,10 @@ Authorization changes should include three guardrails:
    - Prove a lower role is denied for a protected route.
    - Prove the nearest allowed role succeeds.
 3. Bypass guard
-   - Add a static or focused test that fails when new route/service code performs direct role checks
+   - Keep static or focused tests that fail when new route/service code performs direct role checks
      outside the canonical authz module.
+   - Keep a route-source guard that fails when production API route modules use `require_user` as an
+     authentication-only route gate instead of `require_capability` or documented `require_root`.
 
 ## Contracts
 
@@ -203,6 +205,7 @@ result.
 - [2026-07-21 Agent Management Capability Gate](../journal/2026-07-21-agent-management-capability-gate.md)
 - [2026-07-21 Agent Upload Capability Gate](../journal/2026-07-21-agent-upload-capability-gate.md)
 - [2026-07-21 OpenAPI Capability Gate](../journal/2026-07-21-openapi-capability-gate.md)
+- [2026-07-21 Auth Route Capability Guard](../journal/2026-07-21-auth-route-capability-guard.md)
 - [2026-07-21 Settings Runtime Defaults Capability Gate](../journal/2026-07-21-settings-runtime-defaults-capability-gate.md)
 - [2026-07-21 Team Prompt Defaults Capability Gate](../journal/2026-07-21-team-prompt-defaults-capability-gate.md)
 - [2026-07-21 Team Management Capability Gate](../journal/2026-07-21-team-management-capability-gate.md)

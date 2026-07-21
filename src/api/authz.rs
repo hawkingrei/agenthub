@@ -89,6 +89,20 @@ mod tests {
         );
     }
 
+    #[test]
+    fn api_routes_do_not_use_authentication_only_user_gate() {
+        let mut violations = Vec::new();
+        for (path, content) in API_SOURCES {
+            collect_authentication_only_route_gate_violations(path, content, &mut violations);
+        }
+
+        assert!(
+            violations.is_empty(),
+            "api routes must use require_capability or documented require_root gates instead of require_user:\n{}",
+            violations.join("\n")
+        );
+    }
+
     fn collect_human_role_authz_violations(
         path: &str,
         content: &str,
@@ -100,6 +114,26 @@ mod tests {
                 .any(|forbidden| line.contains(forbidden))
             {
                 violations.push(format!("{}:{}: {}", path, line_index + 1, line.trim()));
+            }
+        }
+    }
+
+    fn collect_authentication_only_route_gate_violations(
+        path: &str,
+        content: &str,
+        violations: &mut Vec<String>,
+    ) {
+        let normalized: String = content.chars().filter(|c| !c.is_whitespace()).collect();
+        let has_authentication_only_gate = normalized.contains("require_user(&headers,&state)")
+            || normalized.contains("require_user(headers,state)");
+        if !has_authentication_only_gate {
+            return;
+        }
+
+        for (line_index, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.contains("require_user") {
+                violations.push(format!("{}:{}: {}", path, line_index + 1, trimmed));
             }
         }
     }
