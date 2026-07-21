@@ -109,6 +109,66 @@ async fn teams_router_http_contract() {
     assert_eq!(create_team_operator_resp.status(), StatusCode::OK);
     let operator_team = decode_json_body(create_team_operator_resp).await;
     let operator_team_id = operator_team["id"].as_str().expect("operator team id");
+
+    let operator_runtime_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&operator_token),
+            Some(json!({
+                "name": "operator-runtime-team",
+                "description": null,
+                "spec": {
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }
+            })),
+        ))
+        .await
+        .expect("operator create runtime team request");
+    assert_eq!(operator_runtime_team_resp.status(), StatusCode::OK);
+    let operator_runtime_team = decode_json_body(operator_runtime_team_resp).await;
+    let operator_runtime_team_id = operator_runtime_team["id"]
+        .as_str()
+        .expect("operator runtime team id");
+    let operator_stop_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{operator_runtime_team_id}/stop"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator stop team request");
+    assert_eq!(operator_stop_team_resp.status(), StatusCode::OK);
+    let operator_start_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{operator_runtime_team_id}/start"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator start team request");
+    assert_eq!(operator_start_team_resp.status(), StatusCode::OK);
+    let delete_operator_runtime_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{operator_runtime_team_id}"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator delete runtime team request");
+    assert_eq!(delete_operator_runtime_team_resp.status(), StatusCode::OK);
+
     let delete_operator_team_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -172,6 +232,57 @@ async fn teams_router_http_contract() {
     let created_team = decode_json_body(create_team_resp).await;
     let team_id = created_team["id"].as_str().expect("team id").to_string();
     assert_eq!(created_team["spec"]["spec_version"], Value::from(1));
+
+    let stop_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/stop"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer stop team request");
+    assert_eq!(stop_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let stop_team_viewer_err = decode_json_body(stop_team_viewer_resp).await;
+    assert_eq!(
+        stop_team_viewer_err["error"],
+        Value::from("runtime:operate required")
+    );
+
+    let start_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/start"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer start team request");
+    assert_eq!(start_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let start_team_viewer_err = decode_json_body(start_team_viewer_resp).await;
+    assert_eq!(
+        start_team_viewer_err["error"],
+        Value::from("runtime:operate required")
+    );
+
+    let force_session_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/members/planner/force_new_session"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer force new session request");
+    assert_eq!(force_session_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let force_session_viewer_err = decode_json_body(force_session_viewer_resp).await;
+    assert_eq!(
+        force_session_viewer_err["error"],
+        Value::from("runtime:operate required")
+    );
 
     let update_team_viewer_resp = app
         .clone()
