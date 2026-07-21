@@ -41,4 +41,6 @@ git diff --check
 ## Follow-Ups
 
 - Continue classifying Team read-only inspection routes.
-- Continue migrating Team task and mailbox mutation routes to explicit capability gates.
+- Team run mailbox operation routes are covered by
+  [2026-07-21 Team Mailbox Capability Gate](2026-07-21-team-mailbox-capability-gate.md).
+- Continue migrating Team task mutation routes to explicit capability gates.
