@@ -203,3 +203,4 @@ result.
 - [2026-07-21 Agent Management Capability Gate](../journal/2026-07-21-agent-management-capability-gate.md)
 - [2026-07-21 Settings Runtime Defaults Capability Gate](../journal/2026-07-21-settings-runtime-defaults-capability-gate.md)
 - [2026-07-21 Team Prompt Defaults Capability Gate](../journal/2026-07-21-team-prompt-defaults-capability-gate.md)
+- [2026-07-21 Team Management Capability Gate](../journal/2026-07-21-team-management-capability-gate.md)

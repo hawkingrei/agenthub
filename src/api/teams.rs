@@ -626,7 +626,7 @@ async fn create_team(
     headers: HeaderMap,
     Json(payload): Json<CreateTeamRequest>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let name = payload.name.trim().to_string();
     if name.is_empty() {
         return Err(ApiError::bad_request("team name is required"));
@@ -662,7 +662,7 @@ async fn update_team_spec(
     Path(team_id): Path<String>,
     Json(payload): Json<UpdateTeamSpecRequest>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let current = load_team_for_user(&state, &team_id, &user).await?;
     let previous_member_ids = parse_member_ids(current.spec.get("members"))?;
     let mut spec = payload.spec;
@@ -818,7 +818,7 @@ async fn delete_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let member_ids = match parse_member_ids(team.spec.get("members")) {
         Ok(ids) => ids,
@@ -1050,7 +1050,7 @@ async fn create_team_channel(
     Path(team_id): Path<String>,
     Json(payload): Json<CreateTeamChannelRequest>,
 ) -> Result<Json<TeamChannelRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let channel = state
         .teams
@@ -1070,7 +1070,7 @@ async fn delete_team_channel(
     headers: HeaderMap,
     Path((team_id, channel_id)): Path<(String, String)>,
 ) -> Result<Json<TeamChannelRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let deleted = state
         .teams
