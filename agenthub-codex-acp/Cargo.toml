@@ -26,24 +26,24 @@ agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
 clap = "4"
-codex-apply-patch = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-config = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-arg0 = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-app-server-client = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-app-server-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-core = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-exec-server = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-extension-api = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-features = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-feedback = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
+codex-apply-patch = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-config = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-arg0 = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-app-server-client = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-app-server-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-core = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-exec-server = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-extension-api = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-features = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-feedback = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
 codex-login = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
-codex-models-manager = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-utils-approval-presets = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-utils-absolute-path = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
-codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.144.4" }
+codex-models-manager = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-utils-approval-presets = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-utils-absolute-path = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
+codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.144.6" }
 heck = "0.5.0"
 itertools = "0.15.0"
 libc = "0.2"
