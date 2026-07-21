@@ -1386,7 +1386,7 @@ async fn reply_team_thread(
     Path((team_id, channel_id, root_message_id)): Path<(String, String, i64)>,
     Json(payload): Json<ReplyTeamThreadRequest>,
 ) -> Result<Json<TeamThreadReplyRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let actor_scope = parse_task_actor_scope(&team.spec, &user)?;
     if root_message_id <= 0 {
