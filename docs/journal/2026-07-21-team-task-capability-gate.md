@@ -19,8 +19,8 @@ Team task mutation paths without changing read-only task inspection.
 - Converted the public Team task patch route to `teams:manage` before preserving its canonical
   agent-only rejection.
 - Converted task conversation message writes to `runtime:operate`.
-- Kept task list, task detail, task message list, message search, thread reply, and compile-preview
-  routes unchanged for later read/inspection classification.
+- Kept task list, task detail, task message list, message search, and compile-preview routes
+  unchanged for later read/inspection classification.
 - Added router coverage proving viewers are denied before task mutation state changes.
 - Added router coverage proving an operator can write task conversation messages for an owned Team
   task and reaches the existing agent-only rejection for public task patch attempts.
@@ -48,5 +48,7 @@ git diff --check
 
 ## Follow-Ups
 
+- Team channel thread replies are covered by
+  [2026-07-21 Team Thread Reply Capability Gate](2026-07-21-team-thread-reply-capability-gate.md).
 - Continue classifying Team read-only inspection routes, including task list/detail/message-list,
-  message search, thread replies, and compile-preview.
+  message search, and compile-preview.

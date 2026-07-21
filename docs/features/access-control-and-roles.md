@@ -209,3 +209,4 @@ result.
 - [2026-07-21 Team Upload Capability Gate](../journal/2026-07-21-team-upload-capability-gate.md)
 - [2026-07-21 Team Mailbox Capability Gate](../journal/2026-07-21-team-mailbox-capability-gate.md)
 - [2026-07-21 Team Task Capability Gate](../journal/2026-07-21-team-task-capability-gate.md)
+- [2026-07-21 Team Thread Reply Capability Gate](../journal/2026-07-21-team-thread-reply-capability-gate.md)

@@ -800,6 +800,43 @@ async fn teams_router_http_contract() {
     let source_message_id = source_message["message_id"]
         .as_i64()
         .expect("source message id");
+    let viewer_reply_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels/review/threads/{source_message_id}/replies"),
+            Some(&viewer_token),
+            Some(json!({
+                "text": "viewer should not reply"
+            })),
+        ))
+        .await
+        .expect("viewer reply thread request");
+    assert_eq!(viewer_reply_thread_resp.status(), StatusCode::UNAUTHORIZED);
+    let viewer_reply_thread_err = decode_json_body(viewer_reply_thread_resp).await;
+    assert_eq!(
+        viewer_reply_thread_err["error"],
+        Value::from("runtime:operate required")
+    );
+    let reply_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels/review/threads/{source_message_id}/replies"),
+            Some(&token),
+            Some(json!({
+                "text": "thread reply from operator path",
+                "mention_actor_ids": ["worker-1"]
+            })),
+        ))
+        .await
+        .expect("reply thread via router");
+    assert_eq!(reply_thread_resp.status(), StatusCode::OK);
+    let reply_thread = decode_json_body(reply_thread_resp).await;
+    assert_eq!(
+        reply_thread["message"]["payload"]["text"],
+        Value::from("thread reply from operator path")
+    );
     let viewer_create_from_message_resp = app
         .clone()
         .oneshot(build_json_request(
