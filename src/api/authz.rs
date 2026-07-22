@@ -103,6 +103,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn api_root_only_gates_stay_on_reviewed_security_boundaries() {
+        let mut callsites = Vec::new();
+        for (path, content) in API_SOURCES {
+            collect_root_only_gate_callsites(path, content, &mut callsites);
+        }
+
+        let mut expected = REVIEWED_ROOT_ONLY_CALLS
+            .iter()
+            .map(|callsite| (*callsite).to_string())
+            .collect::<Vec<_>>();
+        callsites.sort();
+        expected.sort();
+
+        assert_eq!(
+            callsites, expected,
+            "require_root callsites must be reviewed security boundaries; normal operations should use capability gates"
+        );
+    }
+
     fn collect_human_role_authz_violations(
         path: &str,
         content: &str,
@@ -134,6 +154,44 @@ mod tests {
             let trimmed = line.trim();
             if trimmed.contains("require_user") {
                 violations.push(format!("{}:{}: {}", path, line_index + 1, trimmed));
+            }
+        }
+    }
+
+    const REVIEWED_ROOT_ONLY_CALLS: [&str; 13] = [
+        "admin.rs::add_safe_path",
+        "admin.rs::delete_safe_path",
+        "admin.rs::get_settings",
+        "admin.rs::join_start",
+        "admin.rs::list_audits",
+        "admin.rs::list_devices",
+        "admin.rs::list_safe_paths",
+        "admin.rs::migrate_team_messages_archive",
+        "admin.rs::revoke_device",
+        "admin.rs::set_passkey_enabled",
+        "agent_nodes.rs::get_agent_node_bootstrap",
+        "push.rs::vapid_info",
+        "push.rs::vapid_rotate",
+    ];
+
+    fn collect_root_only_gate_callsites(path: &str, content: &str, callsites: &mut Vec<String>) {
+        let mut current_fn: Option<String> = None;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("async fn ") {
+                let name = rest
+                    .split_once('(')
+                    .map(|(name, _)| name)
+                    .unwrap_or(rest)
+                    .to_string();
+                current_fn = Some(name);
+            }
+            if trimmed.contains("require_root(") {
+                let function = current_fn
+                    .as_deref()
+                    .unwrap_or("<unknown-function>")
+                    .to_string();
+                callsites.push(format!("{path}::{function}"));
             }
         }
     }

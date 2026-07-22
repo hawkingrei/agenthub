@@ -162,6 +162,8 @@ Start with:
 - `2026-07-18-object-upload-owner-scopes.md`
 - `2026-07-18-object-store-s3-minio-fixture.md`
 - `2026-07-20-codecov-project-threshold.md`
+- `2026-07-22-access-control-root-only-closeout.md`
+- `2026-07-22-first-run-setup-closeout.md`
 
 ## Compaction Rules
 
