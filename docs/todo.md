@@ -46,7 +46,7 @@ Stable contracts:
 
 ## Object Storage
 
-- [ ] `P1` Decide whether browser-facing multipart or presigned upload tokens should become the canonical large-object path after the Team, task, and agent JSON/base64 owner-scope routes. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-16-object-storage-opendal.md](journal/2026-07-16-object-storage-opendal.md), [journal/2026-07-18-object-upload-owner-scopes.md](journal/2026-07-18-object-upload-owner-scopes.md).
+- [ ] `P1` Implement server-side large-object download ingestion after the Team, task, and agent JSON/base64 owner-scope routes: add route-derived download intents, SSRF-safe source URL validation, bounded streaming into object storage, final size/SHA-256 verification, failure cleanup, OpenAPI coverage, and metadata publication only after verified completion. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-16-object-storage-opendal.md](journal/2026-07-16-object-storage-opendal.md), [journal/2026-07-18-object-upload-owner-scopes.md](journal/2026-07-18-object-upload-owner-scopes.md), [journal/2026-07-22-object-storage-download-ingest.md](journal/2026-07-22-object-storage-download-ingest.md).
 - [ ] `P1` Keep `agenthub-object-store/s3` out of release feature sets until a reviewed release build intentionally includes it. PR #890 merged with `Rust (Object Store S3 MinIO)` green, and main push Rust workflow run `29639782907` / job `88068255089` passed the MinIO-backed S3 fixture.
 
 ## Observability, CI, And Docs
