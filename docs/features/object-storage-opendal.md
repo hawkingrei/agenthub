@@ -24,6 +24,8 @@ for multi-node operation, cleanup, access checks, or remote upload flows.
 - Exposing public object URLs as an authorization boundary.
 - Implementing multipart uploads, resumable uploads, or presigned browser uploads in the first
   backend slice.
+- Treating arbitrary remote URLs as safe object sources without SSRF, size, timeout, redirect, and
+  checksum controls.
 - Accepting SVG or HTML-backed image uploads in the first image-hosting slice.
 - Storing access keys, secret keys, or session tokens in SQLite or committed config.
 
@@ -89,8 +91,42 @@ POST /api/teams/{team_id}/images
 
 Handlers derive `teams/<team_id>` from the authorized Team route and do not accept a raw owner scope
 from the browser. The request includes `file_name`, `content_type`, `bytes_base64`, and optional
-`expected_size_bytes` / `expected_sha256` verification fields. Larger browser uploads may later move
-to multipart or presigned upload-token semantics, but that is a separate contract.
+`expected_size_bytes` / `expected_sha256` verification fields. This inline surface is not the
+canonical large-object path.
+
+Large browser-originated objects should enter AgentHub through server-side download ingestion, not
+browser multipart upload. The browser submits a download intent under the already-authorized Team,
+task, or agent route:
+
+```text
+POST /api/teams/{team_id}/uploads/downloads
+POST /api/tasks/{task_id}/uploads/downloads
+POST /api/agents/{agent_id}/uploads/downloads
+```
+
+The request names a source URL, file name, content type, optional expected size, optional expected
+SHA-256, and optional image mode. AgentHub authorizes the route resource, derives the owner scope,
+creates an ingest intent, downloads the source on the server, streams bytes into the object store,
+verifies the final size/checksum, publishes SQLite metadata, and records terminal failure state
+without exposing raw owner scopes to the browser.
+
+Download ingestion must be fail-closed:
+
+- allow only `http` and `https` source URLs;
+- reject loopback, link-local, private, multicast, unspecified, and otherwise operator-blocked
+  target addresses after DNS resolution and after each redirect;
+- cap redirects, connect timeout, read timeout, total bytes, and optional per-host concurrency;
+- never forward browser cookies, AgentHub credentials, authorization headers, or ambient provider
+  secrets to the remote URL;
+- require the final downloaded byte count to match `expected_size_bytes` when provided;
+- require the final SHA-256 to match `expected_sha256` when provided;
+- write to a server-generated temporary object key before publishing metadata;
+- delete the temporary object or leave it in a metadata-addressable failed state for cleanup if
+  verification or metadata publication fails.
+
+S3 presigned and multipart routes remain backend transport tools for a future browser-upload
+product path. They are not the default large-object ingestion path when the product action is
+"download this external file into AgentHub."
 
 Upload flows should follow a prepare/write/publish sequence:
 
@@ -128,6 +164,12 @@ operations must still authorize against the Team-owned metadata row.
   eligibility.
 - Object store presence does not grant read access. API handlers must authorize against the owning
   Team, channel, task, agent, or artifact row before reading bytes or issuing a future presigned URL.
+- Browser large-object ingestion uses AgentHub-owned download intents. Source URLs are inputs to a
+  server-side fetch job, not object-store authority and not metadata authority.
+- Download intents must bind caller, owner scope, source URL, file name, content type, expected
+  size, expected SHA-256, expiry, status, final object key, and error class.
+- Download completion must verify final size and SHA-256 before inserting a `published` metadata
+  row. Failed, canceled, expired, or oversized downloads must not publish object metadata.
 - Public image URLs must be issued only after the owner scope is validated and the metadata row is
   published. A CDN URL is not proof that a user may create, replace, or delete an image.
 - Writes must record size and SHA-256 so repair and migration jobs can verify object integrity.
@@ -149,6 +191,7 @@ operations must still authorize against the Team-owned metadata row.
 | Agent upload entry | Parser, owner-scope, and DB tests cover `agenthub actor upload`, required scope/file flags, image mode, and published metadata persistence. |
 | Team upload API | Handler and router tests cover authorization, owner-scope derivation, base64 upload publication, raster-image allowlist, and size/checksum mismatch rejection without publishing metadata. |
 | Task and agent upload APIs | Focused API tests cover parent Team authorization before task-scope publication, agent existence checks before agent-scope publication, object/image key prefixes, and OpenAPI fixture coverage for every new route. |
+| Large download ingestion | Service and API tests cover route-derived owner scopes, URL scheme rejection, private/loopback address rejection, redirect revalidation, timeout/byte-limit errors, final size/SHA-256 verification, no metadata publication on failure, cleanup compensation, and successful metadata publication after a streamed server-side download. |
 | Graph-bed UX | Frontend tests cover raster MIME allowlisting, browser SHA-256/base64 request preparation, Team image endpoint wiring, and Markdown image insertion in the Team channel composer. |
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
@@ -165,6 +208,11 @@ operations must still authorize against the Team-owned metadata row.
   and keep mutating API authorization on AgentHub metadata.
 - Cleanup should be metadata-driven: delete unlinked failed uploads only after their metadata state
   is older than the grace period and no published row references the same object key.
+- Download ingestion should stream through a bounded buffer into the object store and compute
+  SHA-256 while streaming. It must not materialize the full remote object in memory.
+- Operators should be able to configure maximum download bytes, source host allow/deny policy,
+  redirect limits, timeout limits, and retry policy before enabling untrusted user-submitted
+  downloads.
 - S3/R2/MinIO production use should add operation latency, byte count, error-class, and cleanup
   counters before large user-facing uploads become default-on.
 - Existing local Team context artifacts remain compatible until their metadata schema is explicitly
@@ -174,8 +222,8 @@ operations must still authorize against the Team-owned metadata row.
 
 - Existing artifact tables store local filesystem paths; moving those rows to object storage needs a
   schema migration and read-compatibility plan.
-- Browser-direct upload requires short-lived presign or upload-token semantics plus size/checksum
-  verification at publish time.
+- Download ingestion needs SSRF hardening and streaming object-store writer support before it should
+  accept untrusted user-submitted URLs in production.
 - S3-compatible providers differ in multipart, path-style, and checksum behavior; MinIO is the first
   CI fixture, but each documented production provider still needs compatibility evidence before it
   is described as production-ready.
@@ -185,3 +233,4 @@ operations must still authorize against the Team-owned metadata row.
 ## Source Journals
 
 - [2026-07-16-object-storage-opendal.md](../journal/2026-07-16-object-storage-opendal.md)
+- [2026-07-22-object-storage-download-ingest.md](../journal/2026-07-22-object-storage-download-ingest.md)

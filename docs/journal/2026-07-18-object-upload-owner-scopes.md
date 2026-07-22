@@ -41,5 +41,5 @@ cargo test openapi_json_contains_team_runs_list_path
 
 ## Follow-Ups
 
-- Decide whether multipart or presigned upload tokens are the canonical large-object browser path.
+- Implement server-side download ingestion as the canonical large-object path.
 - Add an S3-compatible integration fixture before enabling the S3 feature in release builds.
