@@ -190,7 +190,8 @@ result.
 ## Open Risks
 
 - Existing root-only routes mix true security settings with normal operator actions; migration needs
-  careful classification.
+  careful classification. The 2026-07-22 closeout guard now locks the reviewed
+  `require_root` route callsites to security-sensitive boundaries.
 - Adding roles without UI management can make tests pass while operators still cannot administer
   users conveniently.
 - Bypass guard patterns can produce false positives; keep the baseline small and explicit.
@@ -217,3 +218,4 @@ result.
 - [2026-07-21 Team Thread Reply Capability Gate](../journal/2026-07-21-team-thread-reply-capability-gate.md)
 - [2026-07-21 Team Read Preview Capability Gate](../journal/2026-07-21-team-read-preview-capability-gate.md)
 - [2026-07-21 Team Shared Thread Capability Gate](../journal/2026-07-21-team-shared-thread-capability-gate.md)
+- [2026-07-22 Access Control Root-Only Closeout](../journal/2026-07-22-access-control-root-only-closeout.md)

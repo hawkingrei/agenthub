@@ -125,10 +125,12 @@ server role and provider/runtime credentials.
 ## Open Risks
 
 - Provider API base URLs and API keys still need a reviewed config contract
-  before they become first-class setup inputs.
+  before they become first-class setup inputs. They are intentionally not
+  first-run web setup inputs.
 - Browser-side role/internal gRPC setup remains out of scope until there is a
   safe write path for instance configuration.
 
 ## Source Journals
 
 - [../journal/2026-07-20-first-run-web-setup-surface.md](../journal/2026-07-20-first-run-web-setup-surface.md)
+- [../journal/2026-07-22-first-run-setup-closeout.md](../journal/2026-07-22-first-run-setup-closeout.md)
