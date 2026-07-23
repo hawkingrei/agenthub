@@ -1311,6 +1311,10 @@ mod tests {
                 region: None,
                 access_key_id_env: None,
                 secret_access_key_env: None,
+                download_max_bytes: Some(1024 * 1024),
+                download_max_redirects: Some(3),
+                download_timeout_seconds: Some(10),
+                download_allow_private_networks: Some(true),
             }),
             ..Default::default()
         };

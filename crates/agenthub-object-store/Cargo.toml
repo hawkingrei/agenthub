@@ -10,6 +10,9 @@ s3 = ["opendal/http-transport-reqwest", "opendal/services-s3"]
 
 [dependencies]
 anyhow = "1"
+bytes = "1"
+futures-util = "0.3"
+log = "0.4"
 opendal = { version = "0.58", default-features = false, features = ["services-fs"] }
 sha2 = "0.11"
 

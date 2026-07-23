@@ -78,6 +78,7 @@ async fn openapi_json_contains_team_runs_list_path() {
     let value: Value = serde_json::from_slice(&bytes).expect("decode openapi json");
     assert_eq!(value["openapi"], Value::from("3.0.3"));
     assert!(value["paths"]["/api/agents/{id}/uploads"]["post"].is_object());
+    assert!(value["paths"]["/api/agents/{id}/uploads/downloads"]["post"].is_object());
     assert!(value["paths"]["/api/agents/{id}/images"]["post"].is_object());
     assert!(value["paths"]["/api/teams/prompt_defaults"]["get"].is_object());
     assert!(value["paths"]["/api/teams/{id}"]["delete"].is_object());
@@ -85,8 +86,12 @@ async fn openapi_json_contains_team_runs_list_path() {
     assert!(value["paths"]["/api/teams/{id}/channels"]["post"].is_object());
     assert!(value["paths"]["/api/teams/{id}/channels/{channel_id}"]["delete"].is_object());
     assert!(value["paths"]["/api/teams/{id}/uploads"]["post"].is_object());
+    assert!(value["paths"]["/api/teams/{id}/uploads/downloads"]["post"].is_object());
     assert!(value["paths"]["/api/teams/{id}/images"]["post"].is_object());
     assert!(value["paths"]["/api/teams/{id}/tasks/{task_id}/uploads"]["post"].is_object());
+    assert!(
+        value["paths"]["/api/teams/{id}/tasks/{task_id}/uploads/downloads"]["post"].is_object()
+    );
     assert!(value["paths"]["/api/teams/{id}/tasks/{task_id}/images"]["post"].is_object());
     assert!(value["paths"]["/api/teams/{id}/runs"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/resume"].is_object());
@@ -95,6 +100,7 @@ async fn openapi_json_contains_team_runs_list_path() {
     assert!(value["components"]["schemas"]["TeamChannelRecord"].is_object());
     assert!(value["components"]["schemas"]["CreateTeamChannelRequest"].is_object());
     assert!(value["components"]["schemas"]["TeamUploadRequest"].is_object());
+    assert!(value["components"]["schemas"]["ObjectDownloadRequest"].is_object());
     assert!(value["components"]["schemas"]["ObjectUploadRecord"].is_object());
 }
 

@@ -378,6 +378,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.22.1",
+ "bytes",
  "chrono",
  "clap",
  "futures",
@@ -709,6 +710,9 @@ name = "agenthub-object-store"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
+ "futures-util",
+ "log",
  "opendal",
  "sha2 0.11.0",
  "tempfile",

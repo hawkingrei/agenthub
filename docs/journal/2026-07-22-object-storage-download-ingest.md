@@ -40,19 +40,23 @@ downloads, not browser-originated large request bodies.
 
 ## Validation
 
-Planned focused checks for the implementation slice:
+The first synchronous implementation landed in
+[2026-07-23-object-storage-download-ingest-implementation.md](2026-07-23-object-storage-download-ingest-implementation.md).
+Its focused checks are:
 
 ```bash
-cargo test -p agenthub object_download
-cargo test -p agenthub openapi_json_contains_download_ingest_routes
+cargo test -p agenthub-object-store -- --nocapture
+cargo test -p agenthub download -- --nocapture
+cargo test -p agenthub agent_upload_routes_publish_agent_scoped_metadata -- --nocapture
+cargo test -p agenthub openapi -- --nocapture
+cargo test -p agenthub-config object_store -- --nocapture
 cargo fmt --all --check
 git diff --check
 ```
 
 ## Follow-Ups
 
-- Implement download intent metadata and server-side streaming ingest.
-- Add operator config for maximum bytes, source host allow/deny policy,
-  redirect limits, timeout limits, and retry policy.
-- Add observability for download latency, bytes written, failure class, cleanup
-  compensation, and publish success.
+- Add source host allow/deny lists, retry policy, per-host concurrency limits,
+  and download observability before broad untrusted production exposure.
+- Add an async intent table if product flows need queued/cancelable downloads
+  or durable failed ingest state.
