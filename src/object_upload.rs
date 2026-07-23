@@ -197,15 +197,15 @@ impl ObjectUploadService {
             }
             return Err(err);
         }
-        self.publish_verified_object(
-            &upload_id,
-            &owner_scope,
-            &file_name,
-            &request.content_type,
+        self.publish_verified_object(VerifiedObjectPublication {
+            upload_id,
+            owner_scope,
+            file_name,
+            content_type: request.content_type,
             object,
             public_url,
-            &request.actor_id,
-        )
+            actor_id: request.actor_id,
+        })
         .await
     }
 
@@ -242,15 +242,15 @@ impl ObjectUploadService {
             }
             return Err(err);
         }
-        self.publish_verified_object(
-            &upload_id,
-            &owner_scope,
-            &file_name,
-            &request.content_type,
+        self.publish_verified_object(VerifiedObjectPublication {
+            upload_id,
+            owner_scope,
+            file_name,
+            content_type: request.content_type,
             object,
-            None,
-            &request.actor_id,
-        )
+            public_url: None,
+            actor_id: request.actor_id,
+        })
         .await
     }
 
@@ -328,28 +328,23 @@ impl ObjectUploadService {
 
     async fn publish_verified_object(
         &self,
-        upload_id: &str,
-        owner_scope: &str,
-        file_name: &str,
-        content_type: &str,
-        object: StoredObject,
-        public_url: Option<String>,
-        actor_id: &str,
+        publication: VerifiedObjectPublication,
     ) -> anyhow::Result<agenthub_db::ObjectUploadRecord> {
+        let object = publication.object;
         let now = Utc::now().timestamp();
         let size_bytes = i64::try_from(object.size_bytes)
             .context("uploaded object is too large for SQLite metadata size_bytes")?;
         let upload = agenthub_db::NewObjectUpload {
-            id: upload_id,
-            owner_scope,
+            id: &publication.upload_id,
+            owner_scope: &publication.owner_scope,
             backend: object_store_backend_name(self.store.backend()),
             object_key: &object.key,
-            original_filename: file_name,
-            content_type,
+            original_filename: &publication.file_name,
+            content_type: &publication.content_type,
             size_bytes,
             sha256: &object.sha256,
-            public_url: public_url.as_deref(),
-            created_by_actor_id: actor_id,
+            public_url: publication.public_url.as_deref(),
+            created_by_actor_id: &publication.actor_id,
             publish_state: "published",
             created_at: now,
             published_at: Some(now),
@@ -369,6 +364,16 @@ impl ObjectUploadService {
             }
         }
     }
+}
+
+struct VerifiedObjectPublication {
+    upload_id: String,
+    owner_scope: String,
+    file_name: String,
+    content_type: String,
+    object: StoredObject,
+    public_url: Option<String>,
+    actor_id: String,
 }
 
 struct LimitedDownloadStream {
