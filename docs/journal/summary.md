@@ -165,6 +165,7 @@ Start with:
 - `2026-07-22-access-control-root-only-closeout.md`
 - `2026-07-22-first-run-setup-closeout.md`
 - `2026-07-22-object-storage-download-ingest.md`
+- `2026-07-23-object-storage-download-ingest-implementation.md`
 
 ## Compaction Rules
 

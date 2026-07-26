@@ -35,7 +35,9 @@ use agenthub_auth_domain::UserCapability;
 
 use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
-use crate::api::uploads::{UploadRequest, upload_scoped_object};
+use crate::api::uploads::{
+    DownloadRequest, UploadRequest, download_scoped_object, upload_scoped_object,
+};
 use crate::auth::UserRecord;
 use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
 use crate::state::AppState;
@@ -265,6 +267,7 @@ pub struct CreateTeamChannelRequest {
 }
 
 pub type TeamUploadRequest = UploadRequest;
+pub type TeamDownloadRequest = DownloadRequest;
 
 #[derive(Debug, Deserialize)]
 pub struct CompileTeamTaskRunPreviewRequest {
@@ -542,10 +545,15 @@ pub fn router(state: AppState) -> Router {
             get(list_team_channels).post(create_team_channel),
         )
         .route("/{id}/uploads", post(upload_team_object))
+        .route("/{id}/uploads/downloads", post(download_team_object))
         .route("/{id}/images", post(upload_team_image))
         .route(
             "/{id}/tasks/{task_id}/uploads",
             post(upload_team_task_object),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/downloads",
+            post(download_team_task_object),
         )
         .route("/{id}/tasks/{task_id}/images", post(upload_team_task_image))
         .route("/{id}/channels/{channel_id}", delete(delete_team_channel))
@@ -1098,6 +1106,23 @@ async fn upload_team_image(
     upload_team_scoped_object(state, headers, team_id, payload, ObjectUploadKind::Image).await
 }
 
+async fn download_team_object(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<TeamDownloadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    download_scoped_object(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Team(team.id),
+        payload,
+    )
+    .await
+}
+
 async fn upload_team_scoped_object(
     state: AppState,
     headers: HeaderMap,
@@ -1175,6 +1200,31 @@ async fn upload_team_task_scoped_object(
         ObjectUploadOwnerScope::Task(task.id),
         payload,
         kind,
+    )
+    .await
+}
+
+async fn download_team_task_object(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id)): Path<(String, String)>,
+    Json(payload): Json<TeamDownloadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    download_scoped_object(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Task(task.id),
+        payload,
     )
     .await
 }

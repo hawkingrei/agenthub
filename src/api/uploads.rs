@@ -5,7 +5,9 @@ use serde::Deserialize;
 
 use crate::api::error::ApiError;
 use crate::auth::UserRecord;
-use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope, ObjectUploadRequest};
+use crate::object_upload::{
+    ObjectDownloadRequest, ObjectUploadKind, ObjectUploadOwnerScope, ObjectUploadRequest,
+};
 use crate::state::AppState;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -13,6 +15,15 @@ pub struct UploadRequest {
     pub file_name: String,
     pub content_type: String,
     pub bytes_base64: String,
+    pub expected_size_bytes: Option<u64>,
+    pub expected_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DownloadRequest {
+    pub source_url: String,
+    pub file_name: String,
+    pub content_type: String,
     pub expected_size_bytes: Option<u64>,
     pub expected_sha256: Option<String>,
 }
@@ -47,6 +58,29 @@ pub(crate) async fn upload_scoped_object(
     Ok(Json(upload))
 }
 
+pub(crate) async fn download_scoped_object(
+    State(state): State<AppState>,
+    user: &UserRecord,
+    owner_scope: ObjectUploadOwnerScope,
+    payload: DownloadRequest,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let content_type = normalize_upload_content_type(&payload.content_type)?;
+    let upload = state
+        .object_uploads
+        .download(ObjectDownloadRequest {
+            actor_id: canonical_user_actor_id(user),
+            owner_scope,
+            file_name: payload.file_name,
+            content_type,
+            source_url: payload.source_url,
+            expected_size_bytes: payload.expected_size_bytes,
+            expected_sha256: payload.expected_sha256,
+        })
+        .await
+        .map_err(map_upload_error)?;
+    Ok(Json(upload))
+}
+
 fn normalize_upload_content_type(value: &str) -> Result<String, ApiError> {
     let value = value.trim();
     if value.is_empty() {
@@ -67,6 +101,8 @@ fn map_upload_error(err: anyhow::Error) -> ApiError {
         || message.contains("size mismatch")
         || message.contains("sha256")
         || message.contains("unsupported hosted image content type")
+        || message.contains("source_url")
+        || message.contains("download")
     {
         return ApiError::bad_request(&message);
     }

@@ -85,6 +85,7 @@ url = "2"
 argon2 = "0.5"
 rand = "0.10"
 base64 = "0.22"
+bytes = "1"
 jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust", "jwe"] }
 jsonwebtoken = "=10.4.0"
 mime_guess = "2"

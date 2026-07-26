@@ -247,6 +247,17 @@ pub(super) fn openapi_spec() -> Value {
               "expected_sha256": { "type": ["string", "null"] }
             }
           },
+          "ObjectDownloadRequest": {
+            "type": "object",
+            "required": ["source_url", "file_name", "content_type"],
+            "properties": {
+              "source_url": { "type": "string", "format": "uri" },
+              "file_name": { "type": "string" },
+              "content_type": { "type": "string" },
+              "expected_size_bytes": { "type": ["integer", "null"], "format": "int64" },
+              "expected_sha256": { "type": ["string", "null"] }
+            }
+          },
           "ObjectUploadRecord": {
             "type": "object",
             "required": [
@@ -368,6 +379,33 @@ pub(super) fn openapi_spec() -> Value {
               "content": {
                 "application/json": {
                   "schema": { "$ref": "#/components/schemas/TeamUploadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published object metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/agents/{id}/uploads/downloads": {
+          "post": {
+            "tags": ["agents"],
+            "summary": "Download agent object",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/ObjectDownloadRequest" }
                 }
               }
             },
@@ -540,6 +578,33 @@ pub(super) fn openapi_spec() -> Value {
             }
           }
         },
+        "/api/teams/{id}/uploads/downloads": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Download team object",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/ObjectDownloadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published object metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
         "/api/teams/{id}/images": {
           "post": {
             "tags": ["teams"],
@@ -580,6 +645,34 @@ pub(super) fn openapi_spec() -> Value {
               "content": {
                 "application/json": {
                   "schema": { "$ref": "#/components/schemas/TeamUploadRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Published object metadata",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/tasks/{task_id}/uploads/downloads": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Download team task object",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+              { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/ObjectDownloadRequest" }
                 }
               }
             },

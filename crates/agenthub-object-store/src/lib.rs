@@ -1,6 +1,8 @@
 use std::path::Path;
 
 use anyhow::{Context, anyhow};
+use bytes::Bytes;
+use futures_util::{Stream, StreamExt};
 use opendal::{Operator, services::Fs};
 use sha2::{Digest, Sha256};
 
@@ -117,6 +119,55 @@ impl AgentHubObjectStore {
             key: normalized_key,
             size_bytes,
             sha256,
+        })
+    }
+
+    pub async fn put_byte_stream<S, E>(
+        &self,
+        key: &str,
+        mut chunks: S,
+    ) -> anyhow::Result<StoredObject>
+    where
+        S: Stream<Item = Result<Bytes, E>> + Unpin,
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        let normalized_key = self.scoped_key(key)?;
+        let mut writer = self
+            .operator
+            .writer(&normalized_key)
+            .await
+            .with_context(|| format!("create object writer {normalized_key:?}"))?;
+        let mut hasher = Sha256::new();
+        let mut size_bytes = 0_u64;
+
+        while let Some(chunk) = chunks.next().await {
+            let chunk = match chunk {
+                Ok(chunk) => chunk,
+                Err(err) => {
+                    abort_writer(&mut writer, &normalized_key).await;
+                    return Err(err)
+                        .with_context(|| format!("read object chunk {normalized_key:?}"));
+                }
+            };
+            size_bytes = size_bytes
+                .checked_add(chunk.len() as u64)
+                .context("streamed object is too large")?;
+            hasher.update(&chunk);
+            if let Err(err) = writer.write(chunk).await {
+                abort_writer(&mut writer, &normalized_key).await;
+                return Err(err).with_context(|| format!("write object chunk {normalized_key:?}"));
+            }
+        }
+
+        if let Err(err) = writer.close().await {
+            abort_writer(&mut writer, &normalized_key).await;
+            return Err(err).with_context(|| format!("close object writer {normalized_key:?}"));
+        }
+
+        Ok(StoredObject {
+            key: normalized_key,
+            size_bytes,
+            sha256: hex_sha256_digest(hasher.finalize().as_slice()),
         })
     }
 
@@ -338,7 +389,10 @@ fn normalize_public_base_url(public_base_url: Option<&str>) -> Option<String> {
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
+    hex_sha256_digest(Sha256::digest(bytes).as_slice())
+}
+
+fn hex_sha256_digest(digest: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut output = String::with_capacity(64);
     for byte in digest {
@@ -346,6 +400,12 @@ fn hex_sha256(bytes: &[u8]) -> String {
         output.push(HEX[(byte & 0x0f) as usize] as char);
     }
     output
+}
+
+async fn abort_writer(writer: &mut opendal::Writer, key: &str) {
+    if let Err(err) = writer.abort().await {
+        log::warn!("failed to abort object writer {key:?}: {err}");
+    }
 }
 
 #[cfg(test)]
@@ -444,6 +504,36 @@ mod tests {
 
         store.delete("runs/run-1/artifact.json").await.unwrap();
         assert!(!store.exists("runs/run-1/artifact.json").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn fs_store_streams_chunks_and_hashes_object() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AgentHubObjectStore::from_settings(ObjectStoreSettings {
+            backend: ObjectStoreBackend::Fs,
+            root: Some(dir.path().to_string_lossy().to_string()),
+            ..ObjectStoreSettings::default()
+        })
+        .unwrap();
+
+        let chunks = futures_util::stream::iter([
+            Ok::<_, std::io::Error>(Bytes::from_static(b"streamed ")),
+            Ok::<_, std::io::Error>(Bytes::from_static(b"download")),
+        ]);
+        let stored = store
+            .put_byte_stream("uploads/teams/team-1/download.txt", chunks)
+            .await
+            .unwrap();
+
+        assert_eq!(stored.size_bytes, 17);
+        assert_eq!(stored.sha256, hex_sha256(b"streamed download"));
+        assert_eq!(
+            store
+                .read_bytes("uploads/teams/team-1/download.txt")
+                .await
+                .unwrap(),
+            b"streamed download"
+        );
     }
 
     #[tokio::test]

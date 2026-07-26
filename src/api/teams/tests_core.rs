@@ -73,6 +73,30 @@ fn assert_forced_restart_runtime(
     assert_ne!(runtime.members[0].session_id, original_session_id);
 }
 
+async fn spawn_download_source(bytes: Vec<u8>) -> String {
+    let bytes = Arc::new(bytes);
+    let app = axum::Router::new().route(
+        "/artifact",
+        axum::routing::get({
+            let bytes = Arc::clone(&bytes);
+            move || {
+                let bytes = Arc::clone(&bytes);
+                async move { bytes.as_ref().clone() }
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind download source");
+    let address = listener.local_addr().expect("read download source address");
+    tokio::spawn(async move {
+        axum::serve(listener, app)
+            .await
+            .expect("serve download source");
+    });
+    format!("http://{address}/artifact")
+}
+
 #[tokio::test]
 async fn teams_api_requires_authorization() {
     let state = build_test_state().await;
@@ -156,6 +180,119 @@ async fn team_upload_api_requires_team_access_and_publishes_metadata() {
         .await
         .expect("load persisted upload");
     assert_eq!(persisted, upload);
+}
+
+#[tokio::test]
+async fn team_download_api_streams_remote_object_and_publishes_metadata() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "download-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create download team");
+
+    let bytes = b"downloaded evidence";
+    let sha256 = hex_encode(&Sha256::digest(bytes));
+    let source_url = spawn_download_source(bytes.to_vec()).await;
+    let request = TeamDownloadRequest {
+        source_url,
+        file_name: " evidence.txt ".to_string(),
+        content_type: " Text/Plain ".to_string(),
+        expected_size_bytes: Some(bytes.len() as u64),
+        expected_sha256: Some(sha256.clone()),
+    };
+
+    let Json(upload) = download_team_object(
+        State(state.clone()),
+        headers,
+        Path(created.id.clone()),
+        Json(request),
+    )
+    .await
+    .expect("download team object");
+
+    assert_eq!(upload.owner_scope, format!("teams/{}", created.id));
+    assert!(upload.object_key.starts_with(&format!(
+        "uploads/teams/{}/",
+        created.id
+    )));
+    assert!(upload.object_key.ends_with("/evidence.txt"));
+    assert_eq!(upload.original_filename, "evidence.txt");
+    assert_eq!(upload.content_type, "text/plain");
+    assert_eq!(upload.size_bytes, bytes.len() as i64);
+    assert_eq!(upload.sha256, sha256);
+    assert_eq!(upload.publish_state, "published");
+
+    let persisted = agenthub_db::object_uploads::get_object_upload(&state.db, &upload.id)
+        .await
+        .expect("load persisted download");
+    assert_eq!(persisted, upload);
+}
+
+#[tokio::test]
+async fn team_task_download_api_publishes_task_scoped_metadata() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "download-task-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create download task team");
+    let task = create_team_task(
+        &state,
+        &headers,
+        &created.id,
+        CreateTeamTaskRequest {
+            title: "Collect artifact".to_string(),
+            priority: "high".to_string(),
+            assigned_member_id: "planner".to_string(),
+            created_by_actor_id: None,
+            context: None,
+            conversation_mode: None,
+            topic: None,
+        },
+    )
+    .await
+    .expect("create download task");
+
+    let bytes = b"task download evidence";
+    let source_url = spawn_download_source(bytes.to_vec()).await;
+    let Json(upload) = download_team_task_object(
+        State(state.clone()),
+        headers,
+        Path((created.id.clone(), task.task.id.clone())),
+        Json(TeamDownloadRequest {
+            source_url,
+            file_name: "task-evidence.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            expected_size_bytes: Some(bytes.len() as u64),
+            expected_sha256: Some(hex_encode(&Sha256::digest(bytes))),
+        }),
+    )
+    .await
+    .expect("download task object");
+
+    assert_eq!(upload.owner_scope, format!("tasks/{}", task.task.id));
+    assert!(upload.object_key.starts_with(&format!(
+        "uploads/tasks/{}/",
+        task.task.id
+    )));
+    assert_eq!(upload.size_bytes, bytes.len() as i64);
 }
 
 #[tokio::test]

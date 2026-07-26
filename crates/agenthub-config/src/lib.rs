@@ -159,6 +159,10 @@ pub struct ObjectStoreConfig {
     pub region: Option<String>,
     pub access_key_id_env: Option<String>,
     pub secret_access_key_env: Option<String>,
+    pub download_max_bytes: Option<u64>,
+    pub download_max_redirects: Option<u8>,
+    pub download_timeout_seconds: Option<u64>,
+    pub download_allow_private_networks: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -561,6 +565,36 @@ impl AppConfig {
         )
     }
 
+    pub fn object_store_download_max_bytes(&self) -> u64 {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.download_max_bytes)
+            .filter(|value| *value > 0)
+            .unwrap_or(512 * 1024 * 1024)
+    }
+
+    pub fn object_store_download_max_redirects(&self) -> u8 {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.download_max_redirects)
+            .unwrap_or(5)
+    }
+
+    pub fn object_store_download_timeout_seconds(&self) -> u64 {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.download_timeout_seconds)
+            .filter(|value| *value > 0)
+            .unwrap_or(120)
+    }
+
+    pub fn object_store_download_allow_private_networks(&self) -> bool {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.download_allow_private_networks)
+            .unwrap_or(false)
+    }
+
     pub fn history_event_retention_days(&self) -> Option<u32> {
         let days = self
             .history
@@ -937,6 +971,10 @@ mod tests {
         assert_eq!(config.object_store_root(), None);
         assert_eq!(config.object_store_prefix(), None);
         assert_eq!(config.object_store_bucket(), None);
+        assert_eq!(config.object_store_download_max_bytes(), 512 * 1024 * 1024);
+        assert_eq!(config.object_store_download_max_redirects(), 5);
+        assert_eq!(config.object_store_download_timeout_seconds(), 120);
+        assert!(!config.object_store_download_allow_private_networks());
     }
 
     #[test]
@@ -954,6 +992,10 @@ mod tests {
                 secret_access_key_env: Some(
                     " AGENTHUB_OBJECT_STORE_SECRET_ACCESS_KEY ".to_string(),
                 ),
+                download_max_bytes: Some(1024),
+                download_max_redirects: Some(2),
+                download_timeout_seconds: Some(9),
+                download_allow_private_networks: Some(true),
             }),
             ..Default::default()
         };
@@ -985,6 +1027,10 @@ mod tests {
             config.object_store_secret_access_key_env().as_deref(),
             Some("AGENTHUB_OBJECT_STORE_SECRET_ACCESS_KEY")
         );
+        assert_eq!(config.object_store_download_max_bytes(), 1024);
+        assert_eq!(config.object_store_download_max_redirects(), 2);
+        assert_eq!(config.object_store_download_timeout_seconds(), 9);
+        assert!(config.object_store_download_allow_private_networks());
     }
 
     #[test]

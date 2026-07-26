@@ -26,7 +26,9 @@ use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::api::teams::prune_deleted_agent_from_team_specs;
-use crate::api::uploads::{UploadRequest, upload_scoped_object};
+use crate::api::uploads::{
+    DownloadRequest, UploadRequest, download_scoped_object, upload_scoped_object,
+};
 use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
 use crate::state::AppState;
 use crate::team::effective_team_member_skills;
@@ -200,6 +202,7 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}/stop", post(stop_agent))
         .route("/{id}/input", post(send_input))
         .route("/{id}/uploads", post(upload_agent_object))
+        .route("/{id}/uploads/downloads", post(download_agent_object))
         .route("/{id}/images", post(upload_agent_image))
         .route(
             "/{id}/triggers",
@@ -488,6 +491,23 @@ async fn upload_agent_image(
     Json(payload): Json<UploadRequest>,
 ) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
     upload_agent_scoped_object(state, headers, agent_id, payload, ObjectUploadKind::Image).await
+}
+
+async fn download_agent_object(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<DownloadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
+    let agent = state.agents.get_agent(&agent_id).await?;
+    download_scoped_object(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Agent(agent.id),
+        payload,
+    )
+    .await
 }
 
 async fn upload_agent_scoped_object(
@@ -1945,6 +1965,10 @@ mod tests {
                 region: None,
                 access_key_id_env: None,
                 secret_access_key_env: None,
+                download_max_bytes: Some(1024 * 1024),
+                download_max_redirects: Some(3),
+                download_timeout_seconds: Some(10),
+                download_allow_private_networks: Some(true),
             }),
             ..Default::default()
         };
@@ -2114,6 +2138,30 @@ mod tests {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect()
+    }
+
+    async fn spawn_download_source(bytes: Vec<u8>) -> String {
+        let bytes = Arc::new(bytes);
+        let app = axum::Router::new().route(
+            "/artifact",
+            axum::routing::get({
+                let bytes = Arc::clone(&bytes);
+                move || {
+                    let bytes = Arc::clone(&bytes);
+                    async move { bytes.as_ref().clone() }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind download source");
+        let address = listener.local_addr().expect("read download source address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve download source");
+        });
+        format!("http://{address}/artifact")
     }
 
     #[tokio::test]
@@ -2898,6 +2946,50 @@ mod tests {
             object_upload["original_filename"],
             Value::from("evidence.txt")
         );
+
+        let download_bytes = b"agent downloaded evidence";
+        let download_sha256 = sha256_hex(download_bytes);
+        let download_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/uploads/downloads"),
+                Some(&token),
+                Some(json!({
+                    "source_url": spawn_download_source(download_bytes.to_vec()).await,
+                    "file_name": "downloaded.txt",
+                    "content_type": "text/plain",
+                    "expected_size_bytes": download_bytes.len(),
+                    "expected_sha256": download_sha256
+                })),
+            ))
+            .await
+            .expect("download agent object");
+        let download_status = download_response.status();
+        let download_upload = decode_json_body(download_response).await;
+        assert_eq!(
+            download_status,
+            StatusCode::OK,
+            "unexpected object download body: {download_upload}"
+        );
+        assert_eq!(
+            download_upload["owner_scope"],
+            Value::from(format!("agents/{agent_id}"))
+        );
+        assert!(
+            download_upload["object_key"]
+                .as_str()
+                .is_some_and(|value| value.starts_with(&format!("uploads/agents/{agent_id}/")))
+        );
+        assert_eq!(
+            download_upload["original_filename"],
+            Value::from("downloaded.txt")
+        );
+        assert_eq!(
+            download_upload["size_bytes"],
+            Value::from(download_bytes.len() as i64)
+        );
+        assert_eq!(download_upload["sha256"], Value::from(download_sha256));
 
         let image_bytes = [5_u8, 6, 7, 8];
         let image_sha256 = sha256_hex(image_bytes);
