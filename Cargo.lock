@@ -451,7 +451,7 @@ dependencies = [
  "anyhow",
  "clap",
  "claude-code-acp-rs",
- "codex-utils-cli",
+ "codex-utils-cli 0.145.0",
  "tokio",
 ]
 
@@ -545,7 +545,7 @@ dependencies = [
  "codex-shell-command 0.144.6",
  "codex-utils-absolute-path 0.144.6",
  "codex-utils-approval-presets",
- "codex-utils-cli",
+ "codex-utils-cli 0.145.0",
  "heck",
  "itertools 0.15.0",
  "libc",
@@ -2989,7 +2989,7 @@ dependencies = [
  "codex-thread-store",
  "codex-tools",
  "codex-utils-absolute-path 0.144.6",
- "codex-utils-cli",
+ "codex-utils-cli 0.144.6",
  "codex-utils-json-to-toml",
  "codex-utils-path-uri 0.144.6",
  "codex-utils-pty 0.144.6",
@@ -3224,7 +3224,7 @@ dependencies = [
  "codex-login",
  "codex-model-provider",
  "codex-plugin",
- "codex-utils-cli",
+ "codex-utils-cli 0.144.6",
  "serde",
  "tokio",
 ]
@@ -4171,7 +4171,7 @@ dependencies = [
  "codex-image-generation-extension",
  "codex-login",
  "codex-protocol 0.144.6",
- "codex-utils-cli",
+ "codex-utils-cli 0.144.6",
  "codex-utils-json-to-toml",
  "rmcp 1.8.0",
  "schemars 0.8.22",
@@ -4926,6 +4926,18 @@ dependencies = [
  "clap",
  "codex-protocol 0.144.6",
  "codex-shell-command 0.144.6",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "codex-utils-cli"
+version = "0.145.0"
+source = "git+https://github.com/openai/codex?tag=rust-v0.145.0#25af12f7e61572b0bc18ddb1008be543b91519b0"
+dependencies = [
+ "clap",
+ "codex-protocol 0.145.0",
+ "codex-shell-command 0.145.0",
  "serde",
  "toml 0.9.12+spec-1.1.0",
 ]
