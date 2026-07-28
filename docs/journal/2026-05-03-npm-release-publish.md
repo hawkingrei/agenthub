@@ -33,8 +33,25 @@ appropriate npm publish targets. The correct distribution unit is the Rust CLI b
 - `node --test build/npm/agenthub/tests/launcher.test.cjs`
 - `cd build/npm/agenthub && npm pack --dry-run`
 
+## 2026-07-28 Live Publish Verification
+
+- Observed successful `Release` run `29194967848` for tag `v0.0.11`.
+- Confirmed the publish job had `NPM_TOKEN` present and published platform packages before the
+  wrapper package:
+  - `@linkerdog/agenthub-darwin-arm64@0.0.11`
+  - `@linkerdog/agenthub-linux-arm64@0.0.11`
+  - `@linkerdog/agenthub-linux-x64@0.0.11`
+  - `@linkerdog/agenthub@0.0.11`
+- Confirmed npm registry state reports `latest: 0.0.11` for the wrapper package and Linux platform
+  packages.
+
+Validation:
+
+- `gh run view 29194967848 --log | rg -n "npm publish|@linkerdog/agenthub"`
+- `npm --cache /private/tmp/npm-cache-agenthub view @linkerdog/agenthub version dist-tags time repository --json`
+- `npm --cache /private/tmp/npm-cache-agenthub view @linkerdog/agenthub-linux-x64 version dist-tags time --json`
+- `npm --cache /private/tmp/npm-cache-agenthub view @linkerdog/agenthub-linux-arm64 version dist-tags time --json`
+
 # Follow-Ups
 
 - add additional platform packages if release coverage expands beyond the current three targets
-- verify the `@linkerdog` npm scope and `NPM_TOKEN` publish permissions before the first live
-  semver release
