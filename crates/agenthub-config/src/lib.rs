@@ -162,6 +162,8 @@ pub struct ObjectStoreConfig {
     pub download_max_bytes: Option<u64>,
     pub download_max_redirects: Option<u8>,
     pub download_timeout_seconds: Option<u64>,
+    pub download_retry_attempts: Option<u8>,
+    pub download_retry_backoff_millis: Option<u64>,
     pub download_allow_private_networks: Option<bool>,
     pub download_allowed_hosts: Option<Vec<String>>,
     pub download_denied_hosts: Option<Vec<String>>,
@@ -590,6 +592,21 @@ impl AppConfig {
             .unwrap_or(120)
     }
 
+    pub fn object_store_download_retry_attempts(&self) -> u8 {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.download_retry_attempts)
+            .filter(|value| *value > 0)
+            .unwrap_or(3)
+    }
+
+    pub fn object_store_download_retry_backoff_millis(&self) -> u64 {
+        self.object_store
+            .as_ref()
+            .and_then(|config| config.download_retry_backoff_millis)
+            .unwrap_or(250)
+    }
+
     pub fn object_store_download_allow_private_networks(&self) -> bool {
         self.object_store
             .as_ref()
@@ -1005,6 +1022,8 @@ mod tests {
         assert_eq!(config.object_store_download_max_bytes(), 512 * 1024 * 1024);
         assert_eq!(config.object_store_download_max_redirects(), 5);
         assert_eq!(config.object_store_download_timeout_seconds(), 120);
+        assert_eq!(config.object_store_download_retry_attempts(), 3);
+        assert_eq!(config.object_store_download_retry_backoff_millis(), 250);
         assert!(!config.object_store_download_allow_private_networks());
         assert!(config.object_store_download_allowed_hosts().is_empty());
         assert!(config.object_store_download_denied_hosts().is_empty());
@@ -1028,6 +1047,8 @@ mod tests {
                 download_max_bytes: Some(1024),
                 download_max_redirects: Some(2),
                 download_timeout_seconds: Some(9),
+                download_retry_attempts: Some(4),
+                download_retry_backoff_millis: Some(0),
                 download_allow_private_networks: Some(true),
                 download_allowed_hosts: Some(vec![
                     " Downloads.Example.Test. ".to_string(),
@@ -1073,6 +1094,8 @@ mod tests {
         assert_eq!(config.object_store_download_max_bytes(), 1024);
         assert_eq!(config.object_store_download_max_redirects(), 2);
         assert_eq!(config.object_store_download_timeout_seconds(), 9);
+        assert_eq!(config.object_store_download_retry_attempts(), 4);
+        assert_eq!(config.object_store_download_retry_backoff_millis(), 0);
         assert!(config.object_store_download_allow_private_networks());
         assert_eq!(
             config.object_store_download_allowed_hosts(),
