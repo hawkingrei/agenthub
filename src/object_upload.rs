@@ -4,7 +4,7 @@ use std::{
     path::Path,
     pin::Pin,
     task::{Context as TaskContext, Poll},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use agenthub_object_store::{
@@ -14,9 +14,9 @@ use anyhow::{Context, anyhow};
 use bytes::Bytes;
 use chrono::Utc;
 use futures::Stream;
-use reqwest::{Url, header};
+use reqwest::{StatusCode, Url, header};
 use sqlx::SqlitePool;
-use tokio::net::lookup_host;
+use tokio::{net::lookup_host, time::sleep};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +103,8 @@ pub struct ObjectDownloadSettings {
     pub max_bytes: u64,
     pub max_redirects: u8,
     pub timeout: Duration,
+    pub retry_attempts: u8,
+    pub retry_backoff: Duration,
     pub allow_private_networks: bool,
     pub allowed_hosts: Vec<String>,
     pub denied_hosts: Vec<String>,
@@ -114,6 +116,8 @@ impl Default for ObjectDownloadSettings {
             max_bytes: 512 * 1024 * 1024,
             max_redirects: 5,
             timeout: Duration::from_secs(120),
+            retry_attempts: 3,
+            retry_backoff: Duration::from_millis(250),
             allow_private_networks: false,
             allowed_hosts: Vec::new(),
             denied_hosts: Vec::new(),
@@ -161,6 +165,10 @@ impl ObjectUploadService {
             max_bytes: config.object_store_download_max_bytes(),
             max_redirects: config.object_store_download_max_redirects(),
             timeout: Duration::from_secs(config.object_store_download_timeout_seconds()),
+            retry_attempts: config.object_store_download_retry_attempts(),
+            retry_backoff: Duration::from_millis(
+                config.object_store_download_retry_backoff_millis(),
+            ),
             allow_private_networks: config.object_store_download_allow_private_networks(),
             allowed_hosts: config.object_store_download_allowed_hosts(),
             denied_hosts: config.object_store_download_denied_hosts(),
@@ -229,13 +237,40 @@ impl ObjectUploadService {
             );
         }
         let source_url = parse_download_url(&request.source_url)?;
+        let source_host = source_url
+            .host_str()
+            .expect("host checked by parse_download_url")
+            .to_string();
+        let started_at = Instant::now();
         let upload_id = Uuid::now_v7().to_string();
         let owner_scope = request.owner_scope.to_string();
         let key = format!("uploads/{owner_scope}/{upload_id}/{file_name}");
-        let object = self
-            .download_to_object(&key, source_url)
-            .await
-            .context("download object source")?;
+        let object = match self.download_to_object(&key, source_url).await {
+            Ok(object) => {
+                tracing::info!(
+                    upload_id = %upload_id,
+                    owner_scope = %owner_scope,
+                    source_host = %source_host,
+                    object_key = %object.key,
+                    size_bytes = object.size_bytes,
+                    elapsed_ms = started_at.elapsed().as_millis() as u64,
+                    "object download ingestion completed"
+                );
+                object
+            }
+            Err(err) => {
+                tracing::warn!(
+                    upload_id = %upload_id,
+                    owner_scope = %owner_scope,
+                    source_host = %source_host,
+                    failure_class = classify_download_error(&err),
+                    elapsed_ms = started_at.elapsed().as_millis() as u64,
+                    error = %err,
+                    "object download ingestion failed"
+                );
+                return Err(err).context("download object source");
+            }
+        };
         if let Err(err) =
             verify_stored_object(&object, expected_size_bytes, expected_sha256.as_deref())
         {
@@ -289,13 +324,7 @@ impl ObjectUploadService {
         let mut current = source_url;
         for redirect_count in 0..=self.download_settings.max_redirects {
             validate_download_url(&current, &self.download_settings).await?;
-            let response = self
-                .download_http
-                .get(current.clone())
-                .header(header::ACCEPT, "*/*")
-                .send()
-                .await
-                .with_context(|| format!("request download source {current}"))?;
+            let response = self.send_download_request(&current).await?;
             if response.status().is_redirection() {
                 let location = response
                     .headers()
@@ -330,6 +359,69 @@ impl ObjectUploadService {
             return self.store.put_byte_stream(key, stream).await;
         }
         Err(anyhow!("download exceeded max redirects"))
+    }
+
+    async fn send_download_request(&self, url: &Url) -> anyhow::Result<reqwest::Response> {
+        let max_attempts = self.download_settings.retry_attempts.max(1);
+        let mut attempt = 1;
+        loop {
+            let response = self
+                .download_http
+                .get(url.clone())
+                .header(header::ACCEPT, "*/*")
+                .send()
+                .await;
+            match response {
+                Ok(response)
+                    if should_retry_download_status(response.status())
+                        && attempt < max_attempts =>
+                {
+                    let status = response.status();
+                    self.log_download_retry(url, attempt, Some(status), None);
+                    self.sleep_before_download_retry(attempt).await;
+                    attempt += 1;
+                }
+                Ok(response) => return Ok(response),
+                Err(err) if is_retryable_download_request_error(&err) && attempt < max_attempts => {
+                    let error = err.to_string();
+                    self.log_download_retry(url, attempt, None, Some(error.as_str()));
+                    self.sleep_before_download_retry(attempt).await;
+                    attempt += 1;
+                }
+                Err(err) => {
+                    return Err(err).with_context(|| format!("request download source {url}"));
+                }
+            }
+        }
+    }
+
+    async fn sleep_before_download_retry(&self, attempt: u8) {
+        if self.download_settings.retry_backoff.is_zero() {
+            return;
+        }
+        let delay = self
+            .download_settings
+            .retry_backoff
+            .checked_mul(attempt as u32)
+            .unwrap_or(self.download_settings.retry_backoff);
+        sleep(delay).await;
+    }
+
+    fn log_download_retry(
+        &self,
+        url: &Url,
+        attempt: u8,
+        status: Option<StatusCode>,
+        error: Option<&str>,
+    ) {
+        tracing::warn!(
+            source_host = %url.host_str().unwrap_or("<missing>"),
+            attempt,
+            max_attempts = self.download_settings.retry_attempts.max(1),
+            status = status.map(|status| status.as_u16()),
+            error,
+            "retrying object download source request"
+        );
     }
 
     async fn publish_verified_object(
@@ -433,6 +525,42 @@ fn parse_download_url(value: &str) -> anyhow::Result<Url> {
     let url = Url::parse(value.trim()).context("source_url must be a valid URL")?;
     validate_download_url_shape(&url)?;
     Ok(url)
+}
+
+fn should_retry_download_status(status: StatusCode) -> bool {
+    status == StatusCode::REQUEST_TIMEOUT
+        || status == StatusCode::TOO_MANY_REQUESTS
+        || status.is_server_error()
+}
+
+fn is_retryable_download_request_error(err: &reqwest::Error) -> bool {
+    err.is_connect() || err.is_timeout()
+}
+
+fn classify_download_error(err: &anyhow::Error) -> &'static str {
+    let message = err.to_string();
+    if message.contains("HTTP 408") || message.contains("HTTP 429") {
+        return "transient_status";
+    }
+    if message.contains("HTTP 5") {
+        return "server_status";
+    }
+    if message.contains("max_bytes") || message.contains("content-length") {
+        return "size_limit";
+    }
+    if message.contains("private or local")
+        || message.contains("denied by object_store.download_denied_hosts")
+        || message.contains("not allowed by object_store.download_allowed_hosts")
+    {
+        return "source_policy";
+    }
+    if message.contains("max redirects") || message.contains("redirect") {
+        return "redirect";
+    }
+    if message.contains("resolve download source host") {
+        return "dns";
+    }
+    "request"
 }
 
 fn validate_download_url_shape(url: &Url) -> anyhow::Result<()> {
@@ -658,6 +786,101 @@ fn read_secret_env(name: &str, config_key: &str) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use axum::{Router, extract::State, response::IntoResponse, routing::get};
+    use sqlx::SqlitePool;
+    use tokio::net::TcpListener;
+
+    #[test]
+    fn download_retry_status_policy_only_retries_transient_failures() {
+        for status in [
+            StatusCode::REQUEST_TIMEOUT,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_GATEWAY,
+            StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::GATEWAY_TIMEOUT,
+        ] {
+            assert!(
+                should_retry_download_status(status),
+                "status should be retried: {status}"
+            );
+        }
+
+        for status in [
+            StatusCode::OK,
+            StatusCode::BAD_REQUEST,
+            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
+            StatusCode::NOT_FOUND,
+            StatusCode::PERMANENT_REDIRECT,
+        ] {
+            assert!(
+                !should_retry_download_status(status),
+                "status should not be retried: {status}"
+            );
+        }
+    }
+
+    #[test]
+    fn download_error_classification_keeps_operator_signal() {
+        assert_eq!(
+            classify_download_error(&anyhow!("download source returned HTTP 503")),
+            "server_status"
+        );
+        assert_eq!(
+            classify_download_error(&anyhow!(
+                "download content-length exceeds configured max_bytes"
+            )),
+            "size_limit"
+        );
+        assert_eq!(
+            classify_download_error(&anyhow!(
+                "source_url host resolves to a private or local address"
+            )),
+            "source_policy"
+        );
+        assert_eq!(
+            classify_download_error(&anyhow!("download exceeded max redirects")),
+            "redirect"
+        );
+    }
+
+    #[tokio::test]
+    async fn download_request_retries_transient_status_before_success() {
+        let (url, attempts) = spawn_retry_source(StatusCode::SERVICE_UNAVAILABLE, StatusCode::OK)
+            .await
+            .expect("spawn retry source");
+        let service = test_download_request_service(2);
+
+        let response = service
+            .send_download_request(&url)
+            .await
+            .expect("request should retry and then succeed");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn download_request_does_not_retry_permanent_status() {
+        let (url, attempts) = spawn_retry_source(StatusCode::BAD_REQUEST, StatusCode::OK)
+            .await
+            .expect("spawn retry source");
+        let service = test_download_request_service(2);
+
+        let response = service
+            .send_download_request(&url)
+            .await
+            .expect("permanent status should return without retry");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn owner_scope_parses_supported_scopes() {
@@ -861,5 +1084,62 @@ mod tests {
             request.expected_sha256.as_deref(),
         )
         .expect("uppercase checksum should normalize");
+    }
+
+    fn test_download_request_service(retry_attempts: u8) -> ObjectUploadService {
+        let root =
+            std::env::temp_dir().join(format!("agenthub-object-download-{}", Uuid::now_v7()));
+        std::fs::create_dir_all(&root).expect("create object store tempdir");
+        let store = AgentHubObjectStore::from_settings(ObjectStoreSettings {
+            backend: ObjectStoreBackend::Fs,
+            root: Some(root.to_string_lossy().into_owned()),
+            ..ObjectStoreSettings::default()
+        })
+        .expect("create object store");
+        ObjectUploadService::new_with_download_settings(
+            SqlitePool::connect_lazy("sqlite::memory:").expect("create lazy sqlite pool"),
+            store,
+            ObjectDownloadSettings {
+                retry_attempts,
+                retry_backoff: Duration::ZERO,
+                ..ObjectDownloadSettings::default()
+            },
+        )
+    }
+
+    async fn spawn_retry_source(
+        first_status: StatusCode,
+        next_status: StatusCode,
+    ) -> anyhow::Result<(Url, Arc<AtomicUsize>)> {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .route("/", get(retry_source_handler))
+            .with_state(RetrySourceState {
+                attempts: attempts.clone(),
+                first_status,
+                next_status,
+            });
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        Ok((Url::parse(&format!("http://{address}/"))?, attempts))
+    }
+
+    #[derive(Clone)]
+    struct RetrySourceState {
+        attempts: Arc<AtomicUsize>,
+        first_status: StatusCode,
+        next_status: StatusCode,
+    }
+
+    async fn retry_source_handler(State(state): State<RetrySourceState>) -> impl IntoResponse {
+        let attempt = state.attempts.fetch_add(1, Ordering::SeqCst);
+        if attempt == 0 {
+            state.first_status
+        } else {
+            state.next_status
+        }
     }
 }

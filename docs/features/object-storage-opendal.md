@@ -52,6 +52,8 @@ root = "~/.agenthub/objects"
 prefix = "agenthub/local"
 download_allowed_hosts = ["downloads.example.com", "*.cdn.example.com"]
 download_denied_hosts = ["metadata.google.internal", "169.254.169.254"]
+download_retry_attempts = 3
+download_retry_backoff_millis = 250
 ```
 
 S3-compatible deployments use the same logical surface and keep credentials indirect:
@@ -118,7 +120,8 @@ Download ingestion must be fail-closed:
 - allow only `http` and `https` source URLs;
 - reject loopback, link-local, private, multicast, unspecified, and otherwise operator-blocked
   target addresses after DNS resolution and after each redirect;
-- cap redirects, request timeout, and total bytes; optional per-host concurrency remains future
+- cap redirects, request timeout, retry attempts, retry backoff, and total bytes; optional
+  per-host concurrency remains future
   operator hardening;
 - never forward browser cookies, AgentHub credentials, authorization headers, or ambient provider
   secrets to the remote URL;
@@ -215,13 +218,15 @@ operations must still authorize against the Team-owned metadata row.
   is older than the grace period and no published row references the same object key.
 - Download ingestion should stream through a bounded buffer into the object store and compute
   SHA-256 while streaming. It must not materialize the full remote object in memory.
-- Operators can configure maximum download bytes, redirect limits, timeout limits, whether private
-  networks are allowed for controlled deployments/tests, and source-host allow/deny lists. Host
-  policy defaults to allow all non-private HTTP(S) sources, denies exact or wildcard-denied hosts
-  first, and requires an exact or wildcard allow match when `download_allowed_hosts` is non-empty.
-  Retry policy and per-host concurrency remain future hardening before broad untrusted rollout.
-- S3/R2/MinIO production use should add operation latency, byte count, error-class, and cleanup
-  counters before large user-facing uploads become default-on.
+- Operators can configure maximum download bytes, redirect limits, timeout limits, retry attempts,
+  retry backoff, whether private networks are allowed for controlled deployments/tests, and
+  source-host allow/deny lists. Host policy defaults to allow all non-private HTTP(S) sources,
+  denies exact or wildcard-denied hosts first, and requires an exact or wildcard allow match when
+  `download_allowed_hosts` is non-empty. Download ingestion retries only pre-stream transient source
+  request failures: request timeout, 429, 5xx, connection errors, and client timeouts.
+- Download ingestion emits structured logs for retry attempts and terminal success/failure with
+  source host, owner scope, upload id, latency, byte count on success, and failure class. S3/R2/MinIO
+  production use should add durable counters before large user-facing uploads become default-on.
 - Existing local Team context artifacts remain compatible until their metadata schema is explicitly
   migrated to record backend/key instead of only absolute local paths.
 
@@ -229,9 +234,9 @@ operations must still authorize against the Team-owned metadata row.
 
 - Existing artifact tables store local filesystem paths; moving those rows to object storage needs a
   schema migration and read-compatibility plan.
-- Download ingestion has first-pass SSRF guardrails, operator source-host policy, and streaming
-  object-store writer support, but still needs retry policy, per-host concurrency limits, and
-  observability before broad untrusted production exposure.
+- Download ingestion has first-pass SSRF guardrails, operator source-host policy, bounded pre-stream
+  retry, structured logs, and streaming object-store writer support, but still needs per-host
+  concurrency limits and durable metrics counters before broad untrusted production exposure.
 - S3-compatible providers differ in multipart, path-style, and checksum behavior; MinIO is the first
   CI fixture, but each documented production provider still needs compatibility evidence before it
   is described as production-ready.
