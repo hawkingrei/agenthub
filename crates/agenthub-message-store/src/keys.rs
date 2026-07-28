@@ -37,40 +37,59 @@ fn join(parts: &[&[u8]], sort_id: Option<[u8; 8]>) -> Vec<u8> {
     key
 }
 
-/// `msg/by_channel/<group_id>/<channel_id>/<sort_id>`
-pub fn channel_key(group_id: &str, channel_id: &str, seq: u64) -> Vec<u8> {
+/// `msg/by_channel/<group_id>/<channel_id>`
+pub fn channel_prefix(group_id: &str, channel_id: &str) -> Vec<u8> {
     join(
         &[
             b"msg/by_channel",
             group_id.as_bytes(),
             channel_id.as_bytes(),
         ],
+        None,
+    )
+}
+
+/// `msg/by_channel/<group_id>/<channel_id>/<sort_id>`
+pub fn channel_key(group_id: &str, channel_id: &str, seq: u64) -> Vec<u8> {
+    join(
+        &[&channel_prefix(group_id, channel_id)],
         Some(encode_sort_id(seq)),
     )
+}
+
+/// `msg/by_agent/<agent_id>`
+pub fn agent_prefix(agent_id: &str) -> Vec<u8> {
+    join(&[b"msg/by_agent", agent_id.as_bytes()], None)
 }
 
 /// `msg/by_agent/<agent_id>/<sort_id>`
 pub fn agent_key(agent_id: &str, seq: u64) -> Vec<u8> {
-    join(
-        &[b"msg/by_agent", agent_id.as_bytes()],
-        Some(encode_sort_id(seq)),
-    )
+    join(&[&agent_prefix(agent_id)], Some(encode_sort_id(seq)))
+}
+
+/// `msg/by_run/<run_id>`
+pub fn run_prefix(run_id: &str) -> Vec<u8> {
+    join(&[b"msg/by_run", run_id.as_bytes()], None)
 }
 
 /// `msg/by_run/<run_id>/<sort_id>`
 pub fn run_key(run_id: &str, seq: u64) -> Vec<u8> {
-    join(
-        &[b"msg/by_run", run_id.as_bytes()],
-        Some(encode_sort_id(seq)),
-    )
+    join(&[&run_prefix(run_id)], Some(encode_sort_id(seq)))
+}
+
+/// `msg/by_id/<message_id>`
+pub fn by_id_key(message_id: &crate::ids::DeliveryMessageId) -> Vec<u8> {
+    join(&[b"msg/by_id", message_id.as_str().as_bytes()], None)
+}
+
+/// `inbox/by_actor/<actor_id>` — unified chronological inbox across runs.
+pub fn inbox_prefix(actor_id: &str) -> Vec<u8> {
+    join(&[b"inbox/by_actor", actor_id.as_bytes()], None)
 }
 
 /// `inbox/by_actor/<actor_id>/<sort_id>` — unified chronological inbox across runs.
 pub fn inbox_key(actor_id: &str, seq: u64) -> Vec<u8> {
-    join(
-        &[b"inbox/by_actor", actor_id.as_bytes()],
-        Some(encode_sort_id(seq)),
-    )
+    join(&[&inbox_prefix(actor_id)], Some(encode_sort_id(seq)))
 }
 
 /// `body/by_message/<authority_message_id>` — the body key. One body per logical message.

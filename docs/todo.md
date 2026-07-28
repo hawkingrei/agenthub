@@ -40,7 +40,7 @@ Stable contracts:
 
 ## Message Storage
 
-- [ ] `P1` Implement the RocksDB `cf_index` delivery projection and its authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). The opt-in Phase 1 `cf_body` dual-write/backfill is complete; keep normal reads on SQLite until ordered index reads, integrity checks, and backup validation are in place. Do not drop SQLite bodies before the Phase 2 rollout decision.
+- [ ] `P1` Implement the RocksDB `cf_index` authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). The opt-in Phase 1 `cf_body` dual-write/backfill and a `cf_index` projection backend foundation are complete; remaining work is deriving projections from SQLite authority rows, rebuild/repair, ordered index reads, integrity checks, and backup validation. Keep normal reads on SQLite and do not drop SQLite bodies before the Phase 2 rollout decision. Notes: [journal/2026-06-10-message-store-foundation-crate.md](journal/2026-06-10-message-store-foundation-crate.md).
 
 ## Object Storage
 
