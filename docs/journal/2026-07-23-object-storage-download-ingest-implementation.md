@@ -76,8 +76,7 @@ cargo test -p agenthub download_ -- --nocapture
 
 ### Follow-Ups
 
-- Add per-host concurrency limits and durable download counters before broad untrusted production
-  exposure.
+- Add durable download counters before broad untrusted production exposure.
 - Add an async intent table if product flows need queued/cancelable downloads or durable failed
   ingest state.
 
@@ -116,7 +115,41 @@ cargo check -p agenthub
 
 ### Follow-Ups
 
-- Add per-host concurrency limits and durable latency/byte/failure/cleanup counters before broad
-  untrusted production exposure.
+- Add durable latency/byte/failure/cleanup counters before broad untrusted production exposure.
+- Add an async intent table if product flows need queued/cancelable downloads or durable failed
+  ingest state.
+
+## 2026-07-29 Per-Host Concurrency
+
+### Summary
+
+Server-side download ingestion now limits concurrent in-flight downloads by normalized source host.
+
+### Scope
+
+- Added `[object_store].download_max_concurrent_per_host` with a default limit of `4`.
+- Added per-service source-host semaphore tracking keyed by the same normalized host form used by
+  source-host policy.
+- Held the host permit through object-store stream writing so large downloads remain covered by the
+  limit.
+- Added a focused async regression test for same-host blocking and different-host independence.
+
+### Key Decisions
+
+- The limit is keyed by host rather than origin. A source cannot bypass the guard by changing ports
+  on the same host.
+- Redirects reacquire the permit for the redirected host after the existing redirect URL validation.
+
+### Validation
+
+```bash
+cargo test -p agenthub-config object_store -- --nocapture
+cargo test -p agenthub download_ -- --nocapture
+cargo check -p agenthub
+```
+
+### Follow-Ups
+
+- Add durable latency/byte/failure/cleanup counters before broad untrusted production exposure.
 - Add an async intent table if product flows need queued/cancelable downloads or durable failed
   ingest state.

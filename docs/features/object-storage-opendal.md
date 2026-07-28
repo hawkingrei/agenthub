@@ -54,6 +54,7 @@ download_allowed_hosts = ["downloads.example.com", "*.cdn.example.com"]
 download_denied_hosts = ["metadata.google.internal", "169.254.169.254"]
 download_retry_attempts = 3
 download_retry_backoff_millis = 250
+download_max_concurrent_per_host = 4
 ```
 
 S3-compatible deployments use the same logical surface and keep credentials indirect:
@@ -120,9 +121,8 @@ Download ingestion must be fail-closed:
 - allow only `http` and `https` source URLs;
 - reject loopback, link-local, private, multicast, unspecified, and otherwise operator-blocked
   target addresses after DNS resolution and after each redirect;
-- cap redirects, request timeout, retry attempts, retry backoff, and total bytes; optional
-  per-host concurrency remains future
-  operator hardening;
+- cap redirects, request timeout, retry attempts, retry backoff, per-host concurrency, and total
+  bytes;
 - never forward browser cookies, AgentHub credentials, authorization headers, or ambient provider
   secrets to the remote URL;
 - require the final downloaded byte count to match `expected_size_bytes` when provided;
@@ -219,11 +219,15 @@ operations must still authorize against the Team-owned metadata row.
 - Download ingestion should stream through a bounded buffer into the object store and compute
   SHA-256 while streaming. It must not materialize the full remote object in memory.
 - Operators can configure maximum download bytes, redirect limits, timeout limits, retry attempts,
-  retry backoff, whether private networks are allowed for controlled deployments/tests, and
-  source-host allow/deny lists. Host policy defaults to allow all non-private HTTP(S) sources,
-  denies exact or wildcard-denied hosts first, and requires an exact or wildcard allow match when
-  `download_allowed_hosts` is non-empty. Download ingestion retries only pre-stream transient source
-  request failures: request timeout, 429, 5xx, connection errors, and client timeouts.
+  retry backoff, per-host concurrency, whether private networks are allowed for controlled
+  deployments/tests, and source-host allow/deny lists. Host policy defaults to allow all non-private
+  HTTP(S) sources, denies exact or wildcard-denied hosts first, and requires an exact or wildcard
+  allow match when `download_allowed_hosts` is non-empty. Download ingestion retries only
+  pre-stream transient source request failures: request timeout, 429, 5xx, connection errors, and
+  client timeouts.
+- Download ingestion limits concurrent in-flight downloads by normalized source host. The permit is
+  held until the object-store byte stream finishes so one hot source cannot monopolize download
+  workers with large objects.
 - Download ingestion emits structured logs for retry attempts and terminal success/failure with
   source host, owner scope, upload id, latency, byte count on success, and failure class. S3/R2/MinIO
   production use should add durable counters before large user-facing uploads become default-on.
@@ -235,8 +239,8 @@ operations must still authorize against the Team-owned metadata row.
 - Existing artifact tables store local filesystem paths; moving those rows to object storage needs a
   schema migration and read-compatibility plan.
 - Download ingestion has first-pass SSRF guardrails, operator source-host policy, bounded pre-stream
-  retry, structured logs, and streaming object-store writer support, but still needs per-host
-  concurrency limits and durable metrics counters before broad untrusted production exposure.
+  retry, per-host concurrency limits, structured logs, and streaming object-store writer support,
+  but still needs durable metrics counters before broad untrusted production exposure.
 - S3-compatible providers differ in multipart, path-style, and checksum behavior; MinIO is the first
   CI fixture, but each documented production provider still needs compatibility evidence before it
   is described as production-ready.
