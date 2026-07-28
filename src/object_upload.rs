@@ -1,8 +1,10 @@
 use std::{
+    collections::HashMap,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::Path,
     pin::Pin,
+    sync::Arc,
     task::{Context as TaskContext, Poll},
     time::{Duration, Instant},
 };
@@ -16,7 +18,11 @@ use chrono::Utc;
 use futures::Stream;
 use reqwest::{StatusCode, Url, header};
 use sqlx::SqlitePool;
-use tokio::{net::lookup_host, time::sleep};
+use tokio::{
+    net::lookup_host,
+    sync::{Mutex, OwnedSemaphorePermit, Semaphore},
+    time::sleep,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +111,7 @@ pub struct ObjectDownloadSettings {
     pub timeout: Duration,
     pub retry_attempts: u8,
     pub retry_backoff: Duration,
+    pub max_concurrent_per_host: u16,
     pub allow_private_networks: bool,
     pub allowed_hosts: Vec<String>,
     pub denied_hosts: Vec<String>,
@@ -118,6 +125,7 @@ impl Default for ObjectDownloadSettings {
             timeout: Duration::from_secs(120),
             retry_attempts: 3,
             retry_backoff: Duration::from_millis(250),
+            max_concurrent_per_host: 4,
             allow_private_networks: false,
             allowed_hosts: Vec::new(),
             denied_hosts: Vec::new(),
@@ -131,6 +139,7 @@ pub struct ObjectUploadService {
     store: AgentHubObjectStore,
     download_http: reqwest::Client,
     download_settings: ObjectDownloadSettings,
+    download_host_limiters: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
 }
 
 impl ObjectUploadService {
@@ -153,6 +162,7 @@ impl ObjectUploadService {
             store,
             download_http,
             download_settings,
+            download_host_limiters: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -169,6 +179,7 @@ impl ObjectUploadService {
             retry_backoff: Duration::from_millis(
                 config.object_store_download_retry_backoff_millis(),
             ),
+            max_concurrent_per_host: config.object_store_download_max_concurrent_per_host(),
             allow_private_networks: config.object_store_download_allow_private_networks(),
             allowed_hosts: config.object_store_download_allowed_hosts(),
             denied_hosts: config.object_store_download_denied_hosts(),
@@ -324,6 +335,7 @@ impl ObjectUploadService {
         let mut current = source_url;
         for redirect_count in 0..=self.download_settings.max_redirects {
             validate_download_url(&current, &self.download_settings).await?;
+            let _host_permit = self.acquire_download_host_permit(&current).await?;
             let response = self.send_download_request(&current).await?;
             if response.status().is_redirection() {
                 let location = response
@@ -359,6 +371,36 @@ impl ObjectUploadService {
             return self.store.put_byte_stream(key, stream).await;
         }
         Err(anyhow!("download exceeded max redirects"))
+    }
+
+    async fn acquire_download_host_permit(
+        &self,
+        url: &Url,
+    ) -> anyhow::Result<OwnedSemaphorePermit> {
+        let host = normalized_download_url_host(url)?;
+        let max_concurrent_per_host = self.download_settings.max_concurrent_per_host.max(1);
+        let limiter = {
+            let mut limiters = self.download_host_limiters.lock().await;
+            limiters
+                .entry(host.clone())
+                .or_insert_with(|| Arc::new(Semaphore::new(max_concurrent_per_host as usize)))
+                .clone()
+        };
+        let started_at = Instant::now();
+        let permit = limiter
+            .acquire_owned()
+            .await
+            .with_context(|| format!("acquire download source host concurrency permit {host:?}"))?;
+        let waited_ms = started_at.elapsed().as_millis() as u64;
+        if waited_ms > 0 {
+            tracing::debug!(
+                source_host = %host,
+                waited_ms,
+                max_concurrent_per_host,
+                "object download source host concurrency permit acquired"
+            );
+        }
+        Ok(permit)
     }
 
     async fn send_download_request(&self, url: &Url) -> anyhow::Result<reqwest::Response> {
@@ -525,6 +567,13 @@ fn parse_download_url(value: &str) -> anyhow::Result<Url> {
     let url = Url::parse(value.trim()).context("source_url must be a valid URL")?;
     validate_download_url_shape(&url)?;
     Ok(url)
+}
+
+fn normalized_download_url_host(url: &Url) -> anyhow::Result<String> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow!("source_url must include a host"))?;
+    normalize_download_host_pattern(host)
 }
 
 fn should_retry_download_status(status: StatusCode) -> bool {
@@ -882,6 +931,47 @@ mod tests {
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
 
+    #[tokio::test]
+    async fn download_host_concurrency_limit_is_keyed_by_normalized_host() {
+        let service = test_download_service_with_settings(ObjectDownloadSettings {
+            max_concurrent_per_host: 1,
+            ..ObjectDownloadSettings::default()
+        });
+        let first_url = Url::parse("https://Downloads.Example.Test.:443/file").unwrap();
+        let same_host_url = Url::parse("https://downloads.example.test:8443/other").unwrap();
+        let other_host_url = Url::parse("https://other.example.test/file").unwrap();
+
+        let first_permit = service
+            .acquire_download_host_permit(&first_url)
+            .await
+            .expect("first same-host permit");
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            service.acquire_download_host_permit(&same_host_url),
+        )
+        .await
+        .expect_err("same normalized host should wait for the permit");
+
+        let other_permit = tokio::time::timeout(
+            Duration::from_millis(50),
+            service.acquire_download_host_permit(&other_host_url),
+        )
+        .await
+        .expect("different host should not wait")
+        .expect("different host permit");
+        drop(other_permit);
+
+        drop(first_permit);
+        let released_permit = tokio::time::timeout(
+            Duration::from_millis(50),
+            service.acquire_download_host_permit(&same_host_url),
+        )
+        .await
+        .expect("same host should acquire after release")
+        .expect("released same-host permit");
+        drop(released_permit);
+    }
+
     #[test]
     fn owner_scope_parses_supported_scopes() {
         assert_eq!(
@@ -1087,6 +1177,16 @@ mod tests {
     }
 
     fn test_download_request_service(retry_attempts: u8) -> ObjectUploadService {
+        test_download_service_with_settings(ObjectDownloadSettings {
+            retry_attempts,
+            retry_backoff: Duration::ZERO,
+            ..ObjectDownloadSettings::default()
+        })
+    }
+
+    fn test_download_service_with_settings(
+        download_settings: ObjectDownloadSettings,
+    ) -> ObjectUploadService {
         let root =
             std::env::temp_dir().join(format!("agenthub-object-download-{}", Uuid::now_v7()));
         std::fs::create_dir_all(&root).expect("create object store tempdir");
@@ -1099,11 +1199,7 @@ mod tests {
         ObjectUploadService::new_with_download_settings(
             SqlitePool::connect_lazy("sqlite::memory:").expect("create lazy sqlite pool"),
             store,
-            ObjectDownloadSettings {
-                retry_attempts,
-                retry_backoff: Duration::ZERO,
-                ..ObjectDownloadSettings::default()
-            },
+            download_settings,
         )
     }
 
