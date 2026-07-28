@@ -59,3 +59,33 @@ sed -n '1,20p' docs/todo.md
 - keep `move to Team` behind a later rollout that explicitly defines stopped-only and ownership
   transfer behavior
 - add focused backend/web validation once the first `copy` implementation begins
+
+## 2026-07-29 Extension Contract Follow-Up
+
+The canonical spec now separates post-copy adoption extensions into explicit reviewable modes:
+
+- `copy configuration and workspace content`
+- `copy configuration and seed memory/context`
+- `move stopped agent to Team`
+
+Key boundary:
+
+- default copy remains configuration-only
+- workspace copy must create a new Team-owned workspace root or worktree, exclude runtime-local and
+  credential-bearing state, and produce a copy manifest
+- memory/context seeding must be provenance-marked, idempotent, Team-scoped, and detached from later
+  source-agent memory changes
+- move remains deferred and must be stopped-only with atomic ownership transfer
+
+Validation:
+
+```bash
+sed -n '1,340p' docs/features/team-agent-adoption.md
+sed -n '1,120p' docs/journal/2026-05-03-team-agent-adoption-contract.md
+sed -n '20,34p' docs/todo.md
+```
+
+Remaining work:
+
+- implement each extension mode behind typed API requests and focused backend/web tests
+- collect browser evidence once the UI exposes these modes
