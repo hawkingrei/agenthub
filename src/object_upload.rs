@@ -104,6 +104,8 @@ pub struct ObjectDownloadSettings {
     pub max_redirects: u8,
     pub timeout: Duration,
     pub allow_private_networks: bool,
+    pub allowed_hosts: Vec<String>,
+    pub denied_hosts: Vec<String>,
 }
 
 impl Default for ObjectDownloadSettings {
@@ -113,6 +115,8 @@ impl Default for ObjectDownloadSettings {
             max_redirects: 5,
             timeout: Duration::from_secs(120),
             allow_private_networks: false,
+            allowed_hosts: Vec::new(),
+            denied_hosts: Vec::new(),
         }
     }
 }
@@ -158,6 +162,8 @@ impl ObjectUploadService {
             max_redirects: config.object_store_download_max_redirects(),
             timeout: Duration::from_secs(config.object_store_download_timeout_seconds()),
             allow_private_networks: config.object_store_download_allow_private_networks(),
+            allowed_hosts: config.object_store_download_allowed_hosts(),
+            denied_hosts: config.object_store_download_denied_hosts(),
         };
         Ok(Self::new_with_download_settings(
             db,
@@ -282,7 +288,7 @@ impl ObjectUploadService {
     async fn download_to_object(&self, key: &str, source_url: Url) -> anyhow::Result<StoredObject> {
         let mut current = source_url;
         for redirect_count in 0..=self.download_settings.max_redirects {
-            validate_download_url(&current, self.download_settings.allow_private_networks).await?;
+            validate_download_url(&current, &self.download_settings).await?;
             let response = self
                 .download_http
                 .get(current.clone())
@@ -442,10 +448,11 @@ fn validate_download_url_shape(url: &Url) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn validate_download_url(url: &Url, allow_private_networks: bool) -> anyhow::Result<()> {
+async fn validate_download_url(url: &Url, settings: &ObjectDownloadSettings) -> anyhow::Result<()> {
     validate_download_url_shape(url)?;
     let host = url.host_str().expect("host checked above");
-    if !allow_private_networks && host.eq_ignore_ascii_case("localhost") {
+    validate_download_host_policy(host, &settings.allowed_hosts, &settings.denied_hosts)?;
+    if !settings.allow_private_networks && host.eq_ignore_ascii_case("localhost") {
         anyhow::bail!("source_url host resolves to a private or local address");
     }
     let port = url
@@ -459,7 +466,7 @@ async fn validate_download_url(url: &Url, allow_private_networks: bool) -> anyho
         !addresses.is_empty(),
         "source_url host did not resolve to any address"
     );
-    if !allow_private_networks {
+    if !settings.allow_private_networks {
         for address in addresses {
             anyhow::ensure!(
                 is_public_download_ip(address.ip()),
@@ -468,6 +475,46 @@ async fn validate_download_url(url: &Url, allow_private_networks: bool) -> anyho
         }
     }
     Ok(())
+}
+
+fn validate_download_host_policy(
+    host: &str,
+    allowed_hosts: &[String],
+    denied_hosts: &[String],
+) -> anyhow::Result<()> {
+    let host = normalize_download_host_pattern(host)?;
+    if denied_hosts
+        .iter()
+        .any(|pattern| download_host_pattern_matches(pattern, &host))
+    {
+        anyhow::bail!("source_url host is denied by object_store.download_denied_hosts");
+    }
+    if !allowed_hosts.is_empty()
+        && !allowed_hosts
+            .iter()
+            .any(|pattern| download_host_pattern_matches(pattern, &host))
+    {
+        anyhow::bail!("source_url host is not allowed by object_store.download_allowed_hosts");
+    }
+    Ok(())
+}
+
+fn normalize_download_host_pattern(value: &str) -> anyhow::Result<String> {
+    let value = value.trim().trim_end_matches('.').to_ascii_lowercase();
+    anyhow::ensure!(!value.is_empty(), "download host pattern must not be empty");
+    Ok(value)
+}
+
+fn download_host_pattern_matches(pattern: &str, host: &str) -> bool {
+    let Ok(pattern) = normalize_download_host_pattern(pattern) else {
+        return false;
+    };
+    if let Some(suffix) = pattern.strip_prefix("*.") {
+        return host
+            .strip_suffix(suffix)
+            .is_some_and(|prefix| prefix.ends_with('.') && prefix.len() > 1);
+    }
+    pattern == host
 }
 
 fn is_public_download_ip(ip: IpAddr) -> bool {
@@ -702,14 +749,49 @@ mod tests {
     #[tokio::test]
     async fn download_url_guard_rejects_private_sources_by_default() {
         let url = parse_download_url("http://127.0.0.1:8080/file.txt").unwrap();
-        let err = validate_download_url(&url, false)
+        let err = validate_download_url(&url, &ObjectDownloadSettings::default())
             .await
             .expect_err("private download sources should be rejected");
         assert!(err.to_string().contains("private or local"));
 
-        validate_download_url(&url, true)
-            .await
-            .expect("private download sources can be explicitly enabled");
+        validate_download_url(
+            &url,
+            &ObjectDownloadSettings {
+                allow_private_networks: true,
+                ..ObjectDownloadSettings::default()
+            },
+        )
+        .await
+        .expect("private download sources can be explicitly enabled");
+    }
+
+    #[test]
+    fn download_host_policy_denies_blocked_hosts_before_allow_list() {
+        let allowed_hosts = vec!["*.example.test".to_string()];
+        let denied_hosts = vec!["blocked.example.test".to_string()];
+
+        validate_download_host_policy("files.example.test", &allowed_hosts, &denied_hosts)
+            .expect("matching wildcard host should be allowed");
+
+        let err =
+            validate_download_host_policy("blocked.example.test", &allowed_hosts, &denied_hosts)
+                .expect_err("denied host should win over allow list");
+        assert!(err.to_string().contains("denied"));
+
+        let err = validate_download_host_policy("example.test", &allowed_hosts, &denied_hosts)
+            .expect_err("wildcard should not match apex host");
+        assert!(err.to_string().contains("not allowed"));
+    }
+
+    #[test]
+    fn download_host_policy_normalizes_case_and_trailing_dot() {
+        let allowed_hosts = vec!["Downloads.Example.Test.".to_string()];
+        let denied_hosts = vec!["*.internal.example.test".to_string()];
+
+        validate_download_host_policy("downloads.example.test.", &allowed_hosts, &denied_hosts)
+            .expect("exact host should normalize");
+        validate_download_host_policy("Sub.Internal.Example.Test", &[], &denied_hosts)
+            .expect_err("wildcard deny should normalize");
     }
 
     #[test]

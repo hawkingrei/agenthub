@@ -50,6 +50,8 @@ Configuration lives under `[object_store]`:
 backend = "fs"
 root = "~/.agenthub/objects"
 prefix = "agenthub/local"
+download_allowed_hosts = ["downloads.example.com", "*.cdn.example.com"]
+download_denied_hosts = ["metadata.google.internal", "169.254.169.254"]
 ```
 
 S3-compatible deployments use the same logical surface and keep credentials indirect:
@@ -194,7 +196,7 @@ operations must still authorize against the Team-owned metadata row.
 | Agent upload entry | Parser, owner-scope, and DB tests cover `agenthub actor upload`, required scope/file flags, image mode, and published metadata persistence. |
 | Team upload API | Handler and router tests cover authorization, owner-scope derivation, base64 upload publication, raster-image allowlist, and size/checksum mismatch rejection without publishing metadata. |
 | Task and agent upload APIs | Focused API tests cover parent Team authorization before task-scope publication, agent existence checks before agent-scope publication, object/image key prefixes, and OpenAPI fixture coverage for every new route. |
-| Large download ingestion | Service and API tests cover route-derived owner scopes, URL scheme rejection, private/loopback address rejection, configurable private-network allowance for controlled tests, final size/SHA-256 verification, OpenAPI coverage, and successful metadata publication after a streamed server-side download. Object-store tests cover chunked writes with size/hash calculation. |
+| Large download ingestion | Service and API tests cover route-derived owner scopes, URL scheme rejection, private/loopback address rejection, operator source-host allow/deny policy, configurable private-network allowance for controlled tests, final size/SHA-256 verification, OpenAPI coverage, and successful metadata publication after a streamed server-side download. Object-store tests cover chunked writes with size/hash calculation. |
 | Graph-bed UX | Frontend tests cover raster MIME allowlisting, browser SHA-256/base64 request preparation, Team image endpoint wiring, and Markdown image insertion in the Team channel composer. |
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
@@ -213,9 +215,11 @@ operations must still authorize against the Team-owned metadata row.
   is older than the grace period and no published row references the same object key.
 - Download ingestion should stream through a bounded buffer into the object store and compute
   SHA-256 while streaming. It must not materialize the full remote object in memory.
-- Operators can configure maximum download bytes, redirect limits, timeout limits, and whether
-  private networks are allowed for controlled deployments/tests. Source host allow/deny lists,
-  retry policy, and per-host concurrency remain future hardening before broad untrusted rollout.
+- Operators can configure maximum download bytes, redirect limits, timeout limits, whether private
+  networks are allowed for controlled deployments/tests, and source-host allow/deny lists. Host
+  policy defaults to allow all non-private HTTP(S) sources, denies exact or wildcard-denied hosts
+  first, and requires an exact or wildcard allow match when `download_allowed_hosts` is non-empty.
+  Retry policy and per-host concurrency remain future hardening before broad untrusted rollout.
 - S3/R2/MinIO production use should add operation latency, byte count, error-class, and cleanup
   counters before large user-facing uploads become default-on.
 - Existing local Team context artifacts remain compatible until their metadata schema is explicitly
@@ -225,9 +229,9 @@ operations must still authorize against the Team-owned metadata row.
 
 - Existing artifact tables store local filesystem paths; moving those rows to object storage needs a
   schema migration and read-compatibility plan.
-- Download ingestion has first-pass SSRF guardrails and streaming object-store writer support, but
-  still needs reviewed source allow/deny policy, per-host concurrency limits, and observability
-  before broad untrusted production exposure.
+- Download ingestion has first-pass SSRF guardrails, operator source-host policy, and streaming
+  object-store writer support, but still needs retry policy, per-host concurrency limits, and
+  observability before broad untrusted production exposure.
 - S3-compatible providers differ in multipart, path-style, and checksum behavior; MinIO is the first
   CI fixture, but each documented production provider still needs compatibility evidence before it
   is described as production-ready.

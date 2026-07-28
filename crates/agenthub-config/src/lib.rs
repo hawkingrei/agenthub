@@ -163,6 +163,8 @@ pub struct ObjectStoreConfig {
     pub download_max_redirects: Option<u8>,
     pub download_timeout_seconds: Option<u64>,
     pub download_allow_private_networks: Option<bool>,
+    pub download_allowed_hosts: Option<Vec<String>>,
+    pub download_denied_hosts: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -595,6 +597,22 @@ impl AppConfig {
             .unwrap_or(false)
     }
 
+    pub fn object_store_download_allowed_hosts(&self) -> Vec<String> {
+        normalized_object_store_host_list(
+            self.object_store
+                .as_ref()
+                .and_then(|config| config.download_allowed_hosts.as_deref()),
+        )
+    }
+
+    pub fn object_store_download_denied_hosts(&self) -> Vec<String> {
+        normalized_object_store_host_list(
+            self.object_store
+                .as_ref()
+                .and_then(|config| config.download_denied_hosts.as_deref()),
+        )
+    }
+
     pub fn history_event_retention_days(&self) -> Option<u32> {
         let days = self
             .history
@@ -750,6 +768,19 @@ fn trimmed_object_store_value(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn normalized_object_store_host_list(values: Option<&[String]>) -> Vec<String> {
+    let Some(values) = values else {
+        return Vec::new();
+    };
+    let mut seen = HashSet::new();
+    values
+        .iter()
+        .map(|value| value.trim().trim_end_matches('.').to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .filter(|value| seen.insert(value.clone()))
+        .collect()
 }
 
 pub fn normalize_codex_acp_mode_id(mode_id: &str) -> String {
@@ -975,6 +1006,8 @@ mod tests {
         assert_eq!(config.object_store_download_max_redirects(), 5);
         assert_eq!(config.object_store_download_timeout_seconds(), 120);
         assert!(!config.object_store_download_allow_private_networks());
+        assert!(config.object_store_download_allowed_hosts().is_empty());
+        assert!(config.object_store_download_denied_hosts().is_empty());
     }
 
     #[test]
@@ -996,6 +1029,16 @@ mod tests {
                 download_max_redirects: Some(2),
                 download_timeout_seconds: Some(9),
                 download_allow_private_networks: Some(true),
+                download_allowed_hosts: Some(vec![
+                    " Downloads.Example.Test. ".to_string(),
+                    "*.CDN.Example.Test".to_string(),
+                    "downloads.example.test".to_string(),
+                    " ".to_string(),
+                ]),
+                download_denied_hosts: Some(vec![
+                    " Metadata.Google.Internal ".to_string(),
+                    "169.254.169.254".to_string(),
+                ]),
             }),
             ..Default::default()
         };
@@ -1031,6 +1074,14 @@ mod tests {
         assert_eq!(config.object_store_download_max_redirects(), 2);
         assert_eq!(config.object_store_download_timeout_seconds(), 9);
         assert!(config.object_store_download_allow_private_networks());
+        assert_eq!(
+            config.object_store_download_allowed_hosts(),
+            vec!["downloads.example.test", "*.cdn.example.test"]
+        );
+        assert_eq!(
+            config.object_store_download_denied_hosts(),
+            vec!["metadata.google.internal", "169.254.169.254"]
+        );
     }
 
     #[test]
