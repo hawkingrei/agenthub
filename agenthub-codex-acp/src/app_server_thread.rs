@@ -38,15 +38,15 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs};
 use codex_protocol::protocol::{
-    AgentMessageContentDeltaEvent, AgentMessageEvent, ContextCompactedEvent,
+    AgentMessageContentDeltaEvent, AgentMessageEvent, CodexErrorInfo, ContextCompactedEvent,
     DeprecationNoticeEvent, EnteredReviewModeEvent, ErrorEvent, Event, EventMsg,
     ExecCommandBeginEvent, ExecCommandEndEvent, ExecCommandOutputDeltaEvent, ExecCommandSource,
     ExecCommandStatus, ExitedReviewModeEvent, FileChange, McpInvocation, McpToolCallBeginEvent,
-    McpToolCallEndEvent, ModelRerouteEvent, Op, PatchApplyBeginEvent, PatchApplyEndEvent,
-    PatchApplyStatus, ReviewDecision, ReviewOutputEvent, ReviewTarget, StreamErrorEvent,
-    TerminalInteractionEvent, TokenCountEvent, TokenUsage, TokenUsageInfo, TurnAbortReason,
-    TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, ViewImageToolCallEvent, WarningEvent,
-    WebSearchBeginEvent, WebSearchEndEvent,
+    McpToolCallEndEvent, ModelRerouteEvent, NonSteerableTurnKind, Op, PatchApplyBeginEvent,
+    PatchApplyEndEvent, PatchApplyStatus, ReviewDecision, ReviewOutputEvent, ReviewTarget,
+    StreamErrorEvent, TerminalInteractionEvent, TokenCountEvent, TokenUsage, TokenUsageInfo,
+    TurnAbortReason, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, ViewImageToolCallEvent,
+    WarningEvent, WebSearchBeginEvent, WebSearchEndEvent,
 };
 use codex_protocol::request_permissions::{
     PermissionGrantScope, RequestPermissionProfile, RequestPermissionsEvent,
@@ -550,6 +550,8 @@ impl AppServerCodexThread {
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 turn_id: String::new(),
                                 last_agent_message: None,
+                                error: None,
+                                started_at: None,
                                 completed_at: None,
                                 duration_ms: None,
                                 time_to_first_token_ms: None,
@@ -1134,7 +1136,10 @@ impl AppServerCodexThread {
             ServerNotification::ThreadNameUpdated(_)
             | ServerNotification::ThreadSettingsUpdated(_)
             | ServerNotification::ThreadDeleted(_)
-            | ServerNotification::TurnModerationMetadata(_) => Ok(None),
+            | ServerNotification::TurnModerationMetadata(_)
+            | ServerNotification::EnvironmentConnected(_)
+            | ServerNotification::EnvironmentDisconnected(_)
+            | ServerNotification::RawResponseCompleted(_) => Ok(None),
             ServerNotification::FileChangePatchUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
                 Ok(submission_id.map(|id| Event {
@@ -1223,6 +1228,10 @@ impl AppServerCodexThread {
                             total_token_usage: TokenUsage {
                                 input_tokens: payload.token_usage.total.input_tokens,
                                 cached_input_tokens: payload.token_usage.total.cached_input_tokens,
+                                cache_write_input_tokens: payload
+                                    .token_usage
+                                    .total
+                                    .cache_write_input_tokens,
                                 output_tokens: payload.token_usage.total.output_tokens,
                                 reasoning_output_tokens: payload
                                     .token_usage
@@ -1233,6 +1242,10 @@ impl AppServerCodexThread {
                             last_token_usage: TokenUsage {
                                 input_tokens: payload.token_usage.last.input_tokens,
                                 cached_input_tokens: payload.token_usage.last.cached_input_tokens,
+                                cache_write_input_tokens: payload
+                                    .token_usage
+                                    .last
+                                    .cache_write_input_tokens,
                                 output_tokens: payload.token_usage.last.output_tokens,
                                 reasoning_output_tokens: payload
                                     .token_usage
@@ -1397,25 +1410,18 @@ impl AppServerCodexThread {
                             ..
                         },
                     ) => {
-                        let (
-                            connector_id,
-                            link_id,
-                            resource_uri,
-                            app_name,
-                            template_id,
-                            action_name,
-                        ) = app_context
-                            .map(|context| {
-                                (
-                                    Some(context.connector_id),
-                                    context.link_id,
-                                    context.resource_uri,
-                                    context.app_name,
-                                    context.template_id,
-                                    context.action_name,
-                                )
-                            })
-                            .unwrap_or_default();
+                        let (connector_id, link_id, resource_uri, app_name, action_name) =
+                            app_context
+                                .map(|context| {
+                                    (
+                                        Some(context.connector_id),
+                                        context.link_id,
+                                        context.resource_uri,
+                                        context.app_name,
+                                        context.action_name,
+                                    )
+                                })
+                                .unwrap_or_default();
                         Some(Event {
                             id,
                             msg: EventMsg::McpToolCallBegin(McpToolCallBeginEvent {
@@ -1429,7 +1435,6 @@ impl AppServerCodexThread {
                                 mcp_app_resource_uri: resource_uri.or(mcp_app_resource_uri),
                                 link_id,
                                 app_name,
-                                template_id,
                                 action_name,
                                 plugin_id,
                             }),
@@ -1651,25 +1656,18 @@ impl AppServerCodexThread {
                             ..
                         },
                     ) => {
-                        let (
-                            connector_id,
-                            link_id,
-                            resource_uri,
-                            app_name,
-                            template_id,
-                            action_name,
-                        ) = app_context
-                            .map(|context| {
-                                (
-                                    Some(context.connector_id),
-                                    context.link_id,
-                                    context.resource_uri,
-                                    context.app_name,
-                                    context.template_id,
-                                    context.action_name,
-                                )
-                            })
-                            .unwrap_or_default();
+                        let (connector_id, link_id, resource_uri, app_name, action_name) =
+                            app_context
+                                .map(|context| {
+                                    (
+                                        Some(context.connector_id),
+                                        context.link_id,
+                                        context.resource_uri,
+                                        context.app_name,
+                                        context.action_name,
+                                    )
+                                })
+                                .unwrap_or_default();
                         let result = match (result, error) {
                             (Some(result), None) => Ok(CallToolResult {
                                 content: result.content,
@@ -1698,7 +1696,6 @@ impl AppServerCodexThread {
                                 mcp_app_resource_uri: resource_uri.or(mcp_app_resource_uri),
                                 link_id,
                                 app_name,
-                                template_id,
                                 action_name,
                                 plugin_id,
                                 duration: duration_ms
@@ -1754,6 +1751,7 @@ impl AppServerCodexThread {
                                     .action
                                     .map(app_server_web_search_action_to_core)
                                     .unwrap_or(codex_protocol::models::WebSearchAction::Other),
+                                results: item.results,
                             }),
                         })
                     }
@@ -1954,7 +1952,7 @@ impl CodexThreadImpl for AppServerCodexThread {
                     cwd: thread_settings
                         .environments
                         .map(|environments| environments.legacy_fallback_cwd.to_path_buf()),
-                    workspace_roots: thread_settings.workspace_roots,
+                    workspace_roots: None,
                     profile_workspace_roots: thread_settings.profile_workspace_roots,
                     approval_policy: thread_settings.approval_policy,
                     approvals_reviewer: thread_settings.approvals_reviewer,
@@ -2036,6 +2034,7 @@ fn cancel_queued_submissions(state: &mut AppServerState) {
             msg: EventMsg::TurnAborted(TurnAbortedEvent {
                 turn_id: None,
                 reason: TurnAbortReason::Interrupted,
+                started_at: None,
                 completed_at: None,
                 duration_ms: None,
             }),
@@ -2729,7 +2728,7 @@ fn review_decision_to_app_server(decision: ReviewDecision) -> CommandExecutionAp
         } => CommandExecutionApprovalDecision::ApplyNetworkPolicyAmendment {
             network_policy_amendment: network_policy_amendment.into(),
         },
-        ReviewDecision::Denied => CommandExecutionApprovalDecision::Decline,
+        ReviewDecision::Denied { .. } => CommandExecutionApprovalDecision::Decline,
         ReviewDecision::TimedOut => CommandExecutionApprovalDecision::Decline,
         ReviewDecision::Abort => CommandExecutionApprovalDecision::Cancel,
     }
@@ -2739,7 +2738,7 @@ fn patch_review_decision_to_app_server(decision: ReviewDecision) -> FileChangeAp
     match decision {
         ReviewDecision::Approved => FileChangeApprovalDecision::Accept,
         ReviewDecision::ApprovedForSession => FileChangeApprovalDecision::AcceptForSession,
-        ReviewDecision::Denied => FileChangeApprovalDecision::Decline,
+        ReviewDecision::Denied { .. } => FileChangeApprovalDecision::Decline,
         ReviewDecision::TimedOut => FileChangeApprovalDecision::Decline,
         ReviewDecision::Abort => FileChangeApprovalDecision::Cancel,
         ReviewDecision::ApprovedExecpolicyAmendment { .. }
@@ -2763,7 +2762,7 @@ fn app_server_review_decision_to_core(
         } => ReviewDecision::NetworkPolicyAmendment {
             network_policy_amendment: network_policy_amendment.into_core(),
         },
-        CommandExecutionApprovalDecision::Decline => ReviewDecision::Denied,
+        CommandExecutionApprovalDecision::Decline => ReviewDecision::denied("declined"),
         CommandExecutionApprovalDecision::Cancel => ReviewDecision::Abort,
     }
 }
@@ -2782,6 +2781,46 @@ fn app_server_command_source_to_core(
         codex_app_server_protocol::CommandExecutionSource::UnifiedExecInteraction => {
             ExecCommandSource::UnifiedExecInteraction
         }
+    }
+}
+
+fn app_server_codex_error_info_to_core(error: AppServerCodexErrorInfo) -> CodexErrorInfo {
+    match error {
+        AppServerCodexErrorInfo::ContextWindowExceeded => CodexErrorInfo::ContextWindowExceeded,
+        AppServerCodexErrorInfo::SessionBudgetExceeded => CodexErrorInfo::SessionBudgetExceeded,
+        AppServerCodexErrorInfo::UsageLimitExceeded => CodexErrorInfo::UsageLimitExceeded,
+        AppServerCodexErrorInfo::ServerOverloaded => CodexErrorInfo::ServerOverloaded,
+        AppServerCodexErrorInfo::CyberPolicy => CodexErrorInfo::CyberPolicy,
+        AppServerCodexErrorInfo::HttpConnectionFailed { http_status_code } => {
+            CodexErrorInfo::HttpConnectionFailed { http_status_code }
+        }
+        AppServerCodexErrorInfo::ResponseStreamConnectionFailed { http_status_code } => {
+            CodexErrorInfo::ResponseStreamConnectionFailed { http_status_code }
+        }
+        AppServerCodexErrorInfo::InternalServerError => CodexErrorInfo::InternalServerError,
+        AppServerCodexErrorInfo::Unauthorized => CodexErrorInfo::Unauthorized,
+        AppServerCodexErrorInfo::BadRequest => CodexErrorInfo::BadRequest,
+        AppServerCodexErrorInfo::ThreadRollbackFailed => CodexErrorInfo::ThreadRollbackFailed,
+        AppServerCodexErrorInfo::SandboxError => CodexErrorInfo::SandboxError,
+        AppServerCodexErrorInfo::ResponseStreamDisconnected { http_status_code } => {
+            CodexErrorInfo::ResponseStreamDisconnected { http_status_code }
+        }
+        AppServerCodexErrorInfo::ResponseTooManyFailedAttempts { http_status_code } => {
+            CodexErrorInfo::ResponseTooManyFailedAttempts { http_status_code }
+        }
+        AppServerCodexErrorInfo::ActiveTurnNotSteerable { turn_kind } => {
+            CodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: match turn_kind {
+                    codex_app_server_protocol::NonSteerableTurnKind::Review => {
+                        NonSteerableTurnKind::Review
+                    }
+                    codex_app_server_protocol::NonSteerableTurnKind::Compact => {
+                        NonSteerableTurnKind::Compact
+                    }
+                },
+            }
+        }
+        AppServerCodexErrorInfo::Other => CodexErrorInfo::Other,
     }
 }
 
@@ -2820,6 +2859,14 @@ fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> 
         TurnStatus::Completed => EventMsg::TurnComplete(TurnCompleteEvent {
             turn_id: turn.id.clone(),
             last_agent_message,
+            error: turn.error.as_ref().map(|error| ErrorEvent {
+                message: error.message.clone(),
+                codex_error_info: error
+                    .codex_error_info
+                    .clone()
+                    .map(app_server_codex_error_info_to_core),
+            }),
+            started_at: turn.started_at,
             completed_at: turn.completed_at,
             duration_ms: turn.duration_ms,
             time_to_first_token_ms: None,
@@ -2827,6 +2874,7 @@ fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> 
         TurnStatus::Interrupted => EventMsg::TurnAborted(TurnAbortedEvent {
             turn_id: Some(turn.id.clone()),
             reason: TurnAbortReason::Interrupted,
+            started_at: turn.started_at,
             completed_at: turn.completed_at,
             duration_ms: turn.duration_ms,
         }),

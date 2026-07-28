@@ -774,8 +774,8 @@ impl PromptState {
                     }) => option_map
                         .get(option_id.0.as_ref())
                         .cloned()
-                        .unwrap_or(ReviewDecision::Denied),
-                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Denied,
+                        .unwrap_or_else(|| ReviewDecision::denied("unknown option")),
+                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::denied("cancelled"),
                 };
 
                 self.thread
@@ -801,8 +801,8 @@ impl PromptState {
                     }) => option_map
                         .get(option_id.0.as_ref())
                         .cloned()
-                        .unwrap_or(ReviewDecision::Denied),
-                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Denied,
+                        .unwrap_or_else(|| ReviewDecision::denied("unknown option")),
+                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::denied("cancelled"),
                 };
 
                 self.thread
@@ -1025,6 +1025,7 @@ impl PromptState {
                 call_id,
                 query,
                 action,
+                results: _,
             }) => {
                 info!("Web search query received: call_id={call_id}, query={query}");
                 // Send update that the search is in progress with the query
@@ -1187,6 +1188,7 @@ impl PromptState {
             EventMsg::TurnAborted(TurnAbortedEvent {
                 reason,
                 turn_id,
+                started_at: _,
                 completed_at: _,
                 duration_ms: _,
             }) => {
@@ -1322,7 +1324,10 @@ impl PromptState {
             | EventMsg::CollabCloseBegin(..)
             | EventMsg::CollabCloseEnd(..)
             | EventMsg::SubAgentActivity(..)
-            | EventMsg::PlanDelta(..) => {}
+            | EventMsg::PlanDelta(..)
+            | EventMsg::EnvironmentConnected(..)
+            | EventMsg::EnvironmentDisconnected(..)
+            | EventMsg::RawResponseCompleted(..) => {}
             EventMsg::GuardianAssessment(..) => {}
         }
     }
@@ -1430,7 +1435,7 @@ impl PromptState {
                 call_id: call_id.clone(),
                 option_map: HashMap::from([
                     ("approved".to_string(), ReviewDecision::Approved),
-                    ("denied".to_string(), ReviewDecision::Denied),
+                    ("denied".to_string(), ReviewDecision::denied("denied")),
                 ]),
             },
             ToolCallUpdate::new(
@@ -1601,6 +1606,14 @@ impl PromptState {
                                         ContentBlock::ResourceLink(ResourceLink::new(
                                             image_url.clone(),
                                             image_url,
+                                        )),
+                                    ))
+                                }
+                                DynamicToolCallOutputContentItem::InputAudio { audio_url } => {
+                                    ToolCallContent::Content(Content::new(
+                                        ContentBlock::ResourceLink(ResourceLink::new(
+                                            audio_url.clone(),
+                                            audio_url,
                                         )),
                                     ))
                                 }
@@ -2186,14 +2199,14 @@ impl PromptState {
             content.push(reason.clone());
         }
         if let Some(file_system) = permissions.file_system.as_ref() {
-            if let Some((read, write)) = file_system.legacy_read_write_roots() {
-                if let Some(read) = read {
+            if let Some(roots) = file_system.legacy_read_write_roots() {
+                if let Some(read) = roots.read {
                     content.push(format!(
                         "File System Read Access: {}",
                         read.iter().map(|p| p.display()).join(", ")
                     ));
                 }
-                if let Some(write) = write {
+                if let Some(write) = roots.write {
                     content.push(format!(
                         "File System Write Access: {}",
                         write.iter().map(|p| p.display()).join(", ")
@@ -2422,14 +2435,14 @@ fn build_exec_permission_options(
                     },
                 }
             }),
-            ReviewDecision::Denied => Some(ExecPermissionOption {
+            ReviewDecision::Denied { .. } => Some(ExecPermissionOption {
                 option_id: "denied",
                 permission_option: PermissionOption::new(
                     "denied",
                     "No, continue without running it",
                     PermissionOptionKind::RejectOnce,
                 ),
-                decision: ReviewDecision::Denied,
+                decision: ReviewDecision::denied("denied"),
             }),
             ReviewDecision::TimedOut => None,
             ReviewDecision::Abort => Some(ExecPermissionOption {
@@ -2439,7 +2452,7 @@ fn build_exec_permission_options(
                     "No, continue without running it",
                     PermissionOptionKind::RejectOnce,
                 ),
-                decision: ReviewDecision::Denied,
+                decision: ReviewDecision::denied("aborted"),
             }),
         })
         .collect::<Vec<_>>();
@@ -3951,7 +3964,7 @@ impl<A: Auth> ThreadActor<A> {
             }
             ResponseItem::WebSearchCall { id, action, .. } => {
                 let (title, call_id) = if let Some(action) = action {
-                    web_search_action_to_title_and_id(id, action)
+                    web_search_action_to_title_and_id(id.as_ref().map(|id| id.as_ref()), action)
                 } else {
                     ("Web Search".into(), generate_fallback_id("web_search"))
                 };
@@ -4593,7 +4606,7 @@ fn mcp_tool_call_content(
 
 /// Extract title and call_id from a WebSearchAction (used for replay)
 fn web_search_action_to_title_and_id(
-    id: &Option<String>,
+    id: Option<&str>,
     action: &codex_protocol::models::WebSearchAction,
 ) -> (String, String) {
     match action {
@@ -4604,14 +4617,14 @@ fn web_search_action_to_title_and_id(
                 .or_else(|| query.clone())
                 .unwrap_or_else(|| "Web search".to_string());
             let call_id = id
-                .clone()
+                .map(ToString::to_string)
                 .unwrap_or_else(|| generate_fallback_id("web_search"));
             (title, call_id)
         }
         codex_protocol::models::WebSearchAction::OpenPage { url } => {
             let title = url.clone().unwrap_or_else(|| "Open page".to_string());
             let call_id = id
-                .clone()
+                .map(ToString::to_string)
                 .unwrap_or_else(|| generate_fallback_id("web_open"));
             (title, call_id)
         }
@@ -4620,7 +4633,7 @@ fn web_search_action_to_title_and_id(
                 .clone()
                 .unwrap_or_else(|| "Find in page".to_string());
             let call_id = id
-                .clone()
+                .map(ToString::to_string)
                 .unwrap_or_else(|| generate_fallback_id("web_find"));
             (title, call_id)
         }
@@ -4668,6 +4681,18 @@ mod tests {
     };
 
     use super::*;
+
+    fn test_turn_complete_event(turn_id: impl Into<String>) -> TurnCompleteEvent {
+        TurnCompleteEvent {
+            last_agent_message: None,
+            turn_id: turn_id.into(),
+            error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+            time_to_first_token_ms: None,
+        }
+    }
 
     #[test]
     fn render_model_verification_message_lists_verifications() {
@@ -5247,13 +5272,9 @@ mod tests {
                 })?;
                 let second_stop_rx = second_response_rx.await??;
 
-                thread.emit(EventMsg::TurnComplete(TurnCompleteEvent {
-                    last_agent_message: Some("done".to_string()),
-                    turn_id: "shared-turn".to_string(),
-                    completed_at: None,
-                    duration_ms: None,
-                    time_to_first_token_ms: None,
-                }));
+                let mut event = test_turn_complete_event("shared-turn");
+                event.last_agent_message = Some("done".to_string());
+                thread.emit(EventMsg::TurnComplete(event));
 
                 assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
                 assert_eq!(second_stop_rx.await??, StopReason::EndTurn);
@@ -5315,13 +5336,11 @@ mod tests {
                 actor
                     .handle_event(Event {
                         id: "resumed-turn".to_string(),
-                        msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                            last_agent_message: Some("resumed output".to_string()),
-                            turn_id: "resumed-turn".to_string(),
-                            completed_at: None,
-                            duration_ms: None,
-                            time_to_first_token_ms: None,
-                        }),
+                        msg: {
+                            let mut event = test_turn_complete_event("resumed-turn");
+                            event.last_agent_message = Some("resumed output".to_string());
+                            EventMsg::TurnComplete(event)
+                        },
                     })
                     .await;
 
@@ -5623,13 +5642,9 @@ mod tests {
                     }));
                 }
 
-                thread.emit(EventMsg::TurnComplete(TurnCompleteEvent {
-                    last_agent_message: Some("done".to_string()),
-                    turn_id: "shared-turn".to_string(),
-                    completed_at: None,
-                    duration_ms: None,
-                    time_to_first_token_ms: None,
-                }));
+                let mut event = test_turn_complete_event("shared-turn");
+                event.last_agent_message = Some("done".to_string());
+                thread.emit(EventMsg::TurnComplete(event));
 
                 assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
                 assert_eq!(answer_stop_rx.await??, StopReason::EndTurn);
@@ -5857,13 +5872,7 @@ mod tests {
                             status: ExecCommandStatus::Completed,
                             completed_at_ms: 0,
                         }));
-                        send(EventMsg::TurnComplete(TurnCompleteEvent {
-                            last_agent_message: None,
-                            turn_id,
-                            completed_at: None,
-                            duration_ms: None,
-                            time_to_first_token_ms: None,
-                        }));
+                        send(EventMsg::TurnComplete(test_turn_complete_event(turn_id)));
                     } else if prompt == "hanging-exec" {
                         self.op_tx
                             .send(Event {
@@ -5938,13 +5947,9 @@ mod tests {
                         self.op_tx
                             .send(Event {
                                 id: submission_id.clone(),
-                                msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                    last_agent_message: None,
-                                    turn_id: id.to_string(),
-                                    completed_at: None,
-                                    duration_ms: None,
-                                    time_to_first_token_ms: None,
-                                }),
+                                msg: EventMsg::TurnComplete(test_turn_complete_event(
+                                    id.to_string(),
+                                )),
                             })
                             .unwrap();
                     }
@@ -5978,13 +5983,7 @@ mod tests {
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                last_agent_message: None,
-                                turn_id: id.to_string(),
-                                completed_at: None,
-                                duration_ms: None,
-                                time_to_first_token_ms: None,
-                            }),
+                            msg: EventMsg::TurnComplete(test_turn_complete_event(id.to_string())),
                         })
                         .unwrap();
                 }
@@ -6015,13 +6014,7 @@ mod tests {
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                last_agent_message: None,
-                                turn_id: id.to_string(),
-                                completed_at: None,
-                                duration_ms: None,
-                                time_to_first_token_ms: None,
-                            }),
+                            msg: EventMsg::TurnComplete(test_turn_complete_event(id.to_string())),
                         })
                         .unwrap();
                 }
@@ -6061,13 +6054,7 @@ mod tests {
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                last_agent_message: None,
-                                turn_id: id.to_string(),
-                                completed_at: None,
-                                duration_ms: None,
-                                time_to_first_token_ms: None,
-                            }),
+                            msg: EventMsg::TurnComplete(test_turn_complete_event(id.to_string())),
                         })
                         .unwrap();
                 }
@@ -6085,6 +6072,7 @@ mod tests {
                                 msg: EventMsg::TurnAborted(TurnAbortedEvent {
                                     turn_id: Some(active_prompt_id),
                                     reason: codex_protocol::protocol::TurnAbortReason::Interrupted,
+                                    started_at: None,
                                     completed_at: None,
                                     duration_ms: None,
                                 }),
@@ -6335,7 +6323,7 @@ mod tests {
                             additional_permissions: None,
                             available_decisions: Some(vec![
                                 ReviewDecision::Approved,
-                                ReviewDecision::Denied,
+                                ReviewDecision::denied("denied"),
                             ]),
                             parsed_cmd: vec![ParsedCommand::Unknown {
                                 cmd: "echo hi".to_string(),
@@ -6372,7 +6360,7 @@ mod tests {
                     Some(Op::ExecApproval {
                         id,
                         turn_id,
-                        decision: ReviewDecision::Denied,
+                        decision: ReviewDecision::Denied { .. },
                     }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
                 ));
 
@@ -6460,7 +6448,7 @@ mod tests {
                     Some(Op::ExecApproval {
                         id,
                         turn_id,
-                        decision: ReviewDecision::Denied,
+                        decision: ReviewDecision::Denied { .. },
                     }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
                 ));
 
@@ -6621,7 +6609,7 @@ mod tests {
                     ops.last(),
                     Some(Op::PatchApproval {
                         id,
-                        decision: ReviewDecision::Denied,
+                        decision: ReviewDecision::Denied { .. },
                     }) if id == "patch-call"
                 ));
 
@@ -7320,7 +7308,6 @@ mod tests {
                             mcp_app_resource_uri: Some(resource_uri.clone()),
                             link_id: None,
                             app_name: None,
-                            template_id: None,
                             action_name: None,
                             plugin_id: None,
                         }),
@@ -7337,7 +7324,6 @@ mod tests {
                             mcp_app_resource_uri: Some(resource_uri.clone()),
                             link_id: None,
                             app_name: None,
-                            template_id: None,
                             action_name: None,
                             plugin_id: None,
                             duration: Duration::from_millis(5),

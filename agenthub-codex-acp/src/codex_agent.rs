@@ -15,8 +15,9 @@ use agent_client_protocol::schema::ProtocolVersion;
 use codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID;
 use codex_config::types::{AuthKeyringBackendKind, McpServerConfig, McpServerTransportConfig};
 use codex_core::{
-    RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey, config::Config,
-    find_thread_path_by_id_str, parse_cursor, thread_store_from_config,
+    CodexAppsToolsCache, RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey,
+    build_models_manager, config::Config, find_thread_path_by_id_str, parse_cursor,
+    thread_store_from_config,
 };
 use codex_extension_api::{
     LoadUserInstructionsFuture, LoadedUserInstructions, UserInstructionsProvider,
@@ -97,6 +98,8 @@ impl CodexAgent {
         let thread_manager = ThreadManager::new(
             &config,
             auth_manager.clone(),
+            build_models_manager(&config, auth_manager.clone()),
+            CodexAppsToolsCache::default(),
             SessionSource::Unknown,
             build_environment_manager(&config).await?,
             empty_extension_registry(),
@@ -584,6 +587,7 @@ async fn persist_repaired_initial_history(
     for item in history.get_rollout_items() {
         let line = RolloutLine {
             timestamp: timestamp.clone(),
+            ordinal: None,
             item: item.clone(),
         };
         let serialized = serde_json::to_string(&line).map_err(|err| {
