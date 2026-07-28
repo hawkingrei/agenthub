@@ -14,8 +14,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 git_repository(
     name = "codex_src",
-    # rust-v0.142.0 tag commit (matches what Cargo resolves the codex-* tags to).
-    commit = "3a76f3ac68c8949d1cac6ea769b6ec7b8953a415",
+    # rust-v0.145.0 peeled tag commit (matches what Cargo resolves the codex-* tags to).
+    commit = "25af12f7e61572b0bc18ddb1008be543b91519b0",
     remote = "https://github.com/openai/codex",
 )
 
