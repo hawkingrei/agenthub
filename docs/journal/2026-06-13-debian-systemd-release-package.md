@@ -44,7 +44,21 @@ that can install, enable, and start AgentHub consistently.
 - Confirmed both Linux artifact upload steps included `dist/*.deb` in the release-prebuild matrix
   bundles.
 
+### 2026-07-28 Release Tag Verification
+
+- Observed successful `Release` run `29194967848` for tag `v0.0.11`.
+- Confirmed release `v0.0.11` published both Debian assets:
+  - `agenthub_0.0.11_amd64.deb`
+  - `agenthub_0.0.11_arm64.deb`
+- Confirmed `SHA256SUMS.txt` includes both `.deb` files with checksums:
+  - `fd7dce09d1b791cbc2d405508a5a2fd83f58236510c55408dc5af79c031a3ac0  agenthub_0.0.11_amd64.deb`
+  - `171e513b3a46f3819e6fb5a8c4986c26b1ec52650d9e0bd0634c3c567a56fcd2  agenthub_0.0.11_arm64.deb`
+
+Validation:
+
+- `gh release view --json tagName,name,isDraft,isPrerelease,publishedAt,url,assets`
+- `curl -L https://github.com/hawkingrei/agenthub/releases/download/v0.0.11/SHA256SUMS.txt`
+
 ## Follow-Ups
 
-- Verify the next release tag includes `.deb` files in `SHA256SUMS.txt`.
 - Decide separately whether to add signed apt repository publication.
