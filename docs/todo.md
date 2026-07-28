@@ -44,7 +44,7 @@ Stable contracts:
 
 ## Object Storage
 
-- [ ] `P1` Keep `agenthub-object-store/s3` out of release feature sets until a reviewed release build intentionally includes it. PR #890 merged with `Rust (Object Store S3 MinIO)` green, and main push Rust workflow run `29639782907` / job `88068255089` passed the MinIO-backed S3 fixture.
+- [ ] `P1` Keep `agenthub-object-store/s3` out of release feature sets until a reviewed release build intentionally includes it. PR #890 merged with `Rust (Object Store S3 MinIO)` green, and main push Rust workflow run `29639782907` / job `88068255089` passed the MinIO-backed S3 fixture. A 2026-07-29 local release feature gate now covers default/root/object-store manifest features plus `release.yml` and `release-prebuild.yml` against accidental S3 or `--all-features` enablement; remaining work is the future reviewed release-build decision before intentionally enabling S3.
 - [ ] `P2` Harden server-side download ingestion for broad untrusted production exposure: source host allow/deny lists, bounded pre-stream retry, per-host concurrency limits, and structured success/failure logs are implemented; remaining hardening is durable latency/bytes/failure/cleanup counters and an async intent table if product flows need queued, cancelable, or durable failed downloads. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-22-object-storage-download-ingest.md](journal/2026-07-22-object-storage-download-ingest.md), [journal/2026-07-23-object-storage-download-ingest-implementation.md](journal/2026-07-23-object-storage-download-ingest-implementation.md).
 
 ## Observability, CI, And Docs
