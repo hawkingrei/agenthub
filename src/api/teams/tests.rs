@@ -336,6 +336,8 @@ fn test_object_upload_service(db: SqlitePool) -> ObjectUploadService {
             download_max_redirects: Some(3),
             download_timeout_seconds: Some(10),
             download_allow_private_networks: Some(true),
+            download_allowed_hosts: None,
+            download_denied_hosts: None,
         }),
         ..Default::default()
     };

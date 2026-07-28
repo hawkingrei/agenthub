@@ -46,7 +46,37 @@ cargo test -p agenthub-config object_store -- --nocapture
 
 ## Follow-Ups
 
-- Add source host allow/deny lists, retry policy, per-host concurrency limits, and download
-  observability before broad untrusted production exposure.
+- Add retry policy, per-host concurrency limits, and download observability before broad untrusted
+  production exposure.
+- Add an async intent table if product flows need queued/cancelable downloads or durable failed
+  ingest state.
+
+## 2026-07-28 Host Policy Hardening
+
+### Summary
+
+Server-side download ingestion now accepts operator-controlled source-host policy through
+`[object_store].download_allowed_hosts` and `[object_store].download_denied_hosts`.
+
+### Scope
+
+- Added config parsing that trims, lowercases, de-duplicates, and ignores empty source-host policy
+  entries.
+- Added host validation before DNS/network access on the initial URL and every redirect hop.
+- Kept the default behavior compatible: an empty allow list permits any otherwise-valid public
+  HTTP(S) host, while deny entries always win.
+- Supported exact host patterns and `*.example.com` wildcard subdomain patterns.
+
+### Validation
+
+```bash
+cargo test -p agenthub-config object_store -- --nocapture
+cargo test -p agenthub download_ -- --nocapture
+```
+
+### Follow-Ups
+
+- Add retry policy, per-host concurrency limits, and download observability before broad untrusted
+  production exposure.
 - Add an async intent table if product flows need queued/cancelable downloads or durable failed
   ingest state.
