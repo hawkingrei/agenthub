@@ -9,14 +9,23 @@
 
 use std::path::Path;
 
-use rocksdb::{ColumnFamilyDescriptor, DB, DBCompressionType, IteratorMode, Options};
+use rocksdb::{
+    ColumnFamilyDescriptor, DB, DBCompressionType, Direction, IteratorMode, Options, WriteBatch,
+};
 
 use crate::body_store::{BodyStoreError, MessageBodyStore};
 use crate::ids::AuthorityMessageId;
 use crate::keys::body_key;
+use crate::{
+    DeliveryMessageId, MessageRef,
+    index_store::{MessageIndex, MessageIndexError, MessageIndexProjection},
+    keys,
+};
 
 /// Column family holding compressed message bodies.
 pub const CF_BODY: &str = "cf_body";
+/// Column family holding body-free delivery index rows.
+pub const CF_INDEX: &str = "cf_index";
 
 fn backend_err(err: impl ToString) -> BodyStoreError {
     BodyStoreError::Backend(err.to_string())
@@ -60,6 +69,7 @@ impl RocksdbBodyStore {
         let cfs = vec![
             ColumnFamilyDescriptor::new("default", Options::default()),
             ColumnFamilyDescriptor::new(CF_BODY, body_cf_options(compression)),
+            ColumnFamilyDescriptor::new(CF_INDEX, Options::default()),
         ];
         let db = DB::open_cf_descriptors(&db_opts, path, cfs).map_err(backend_err)?;
         Ok(Self { db })
@@ -71,6 +81,33 @@ impl RocksdbBodyStore {
             .ok_or_else(|| BodyStoreError::Backend(format!("missing column family {CF_BODY}")))
     }
 
+    fn index_cf(&self) -> Result<&rocksdb::ColumnFamily, MessageIndexError> {
+        self.db
+            .cf_handle(CF_INDEX)
+            .ok_or_else(|| MessageIndexError::Backend(format!("missing column family {CF_INDEX}")))
+    }
+
+    /// Put the body and all derived delivery-index refs in one RocksDB batch.
+    pub fn put_body_and_index(
+        &self,
+        id: &AuthorityMessageId,
+        body: &[u8],
+        projection: &MessageIndexProjection,
+    ) -> Result<(), MessageIndexError> {
+        let body_cf = self
+            .body_cf()
+            .map_err(|err| MessageIndexError::Backend(err.to_string()))?;
+        let index_cf = self.index_cf()?;
+        let mut batch = WriteBatch::default();
+        batch.put_cf(body_cf, body_key(id), body);
+        for (key, value) in projection.entries()? {
+            batch.put_cf(index_cf, key, value);
+        }
+        self.db
+            .write(batch)
+            .map_err(|err| MessageIndexError::Backend(err.to_string()))
+    }
+
     /// Flush memtables and compact `cf_body` so compression is applied to SST files. Test-only:
     /// it forces a full compaction and is only needed by the on-disk size test.
     #[cfg(test)]
@@ -79,6 +116,57 @@ impl RocksdbBodyStore {
         self.db.flush_cf(cf).map_err(backend_err)?;
         self.db.compact_range_cf(cf, None::<&[u8]>, None::<&[u8]>);
         Ok(())
+    }
+}
+
+impl RocksdbBodyStore {
+    fn decode_index_ref(bytes: &[u8]) -> Result<MessageRef, MessageIndexError> {
+        MessageRef::from_bytes(bytes).map_err(MessageIndexError::Encode)
+    }
+}
+
+impl MessageIndex for RocksdbBodyStore {
+    fn put_message(&self, projection: &MessageIndexProjection) -> Result<(), MessageIndexError> {
+        let cf = self.index_cf()?;
+        let mut batch = WriteBatch::default();
+        for (key, value) in projection.entries()? {
+            batch.put_cf(cf, key, value);
+        }
+        self.db
+            .write(batch)
+            .map_err(|err| MessageIndexError::Backend(err.to_string()))
+    }
+
+    fn get_by_id(
+        &self,
+        message_id: &DeliveryMessageId,
+    ) -> Result<Option<MessageRef>, MessageIndexError> {
+        let cf = self.index_cf()?;
+        self.db
+            .get_cf(cf, keys::by_id_key(message_id))
+            .map_err(|err| MessageIndexError::Backend(err.to_string()))?
+            .map(|bytes| Self::decode_index_ref(&bytes))
+            .transpose()
+    }
+
+    fn scan_prefix(
+        &self,
+        prefix: &[u8],
+        limit: usize,
+    ) -> Result<Vec<MessageRef>, MessageIndexError> {
+        let cf = self.index_cf()?;
+        let iter = self
+            .db
+            .iterator_cf(cf, IteratorMode::From(prefix, Direction::Forward));
+        let mut refs = Vec::new();
+        for item in iter {
+            let (key, value) = item.map_err(|err| MessageIndexError::Backend(err.to_string()))?;
+            if !key.starts_with(prefix) || refs.len() >= limit {
+                break;
+            }
+            refs.push(Self::decode_index_ref(&value)?);
+        }
+        Ok(refs)
     }
 }
 
@@ -125,6 +213,7 @@ impl MessageBodyStore for RocksdbBodyStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{DeliveryMessageId, MessageIndex, MessageIndexProjection, MessageKind, MessageRef};
 
     fn corpus(repeat: usize) -> Vec<(AuthorityMessageId, String)> {
         let speakers = ["alice", "bob", "agent-claude", "agent-codex"];
@@ -143,6 +232,22 @@ mod tests {
             out.push((AuthorityMessageId::new(format!("auth-{i}")), body));
         }
         out
+    }
+
+    fn sample_ref(seq: u64) -> MessageRef {
+        MessageRef {
+            message_id: DeliveryMessageId::new(format!("delivery-{seq}")),
+            authority_message_id: AuthorityMessageId::new(format!("auth-{seq}")),
+            archive_document_id: Some(format!("doc-{seq}")),
+            created_at: 1_700_000_000 + seq as i64,
+            source_kind: "team_conversation_messages".to_string(),
+            message_kind: MessageKind::Text,
+            correlation_id: Some(format!("corr-{seq}")),
+            group_id: Some("group-a".to_string()),
+            run_id: Some("run-a".to_string()),
+            conversation_id: Some("channel-a".to_string()),
+            agent_id: Some("agent-a".to_string()),
+        }
     }
 
     /// Total size of the SST data files (`.sst`/`.ldb`) under `path`. Only these are subject to SST
@@ -201,6 +306,58 @@ mod tests {
         let missing = AuthorityMessageId::new("auth-missing");
         assert_eq!(store.get_body(&missing).unwrap(), None);
         assert!(!store.contains(&missing));
+    }
+
+    #[test]
+    fn cf_index_scans_ordered_body_free_refs() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RocksdbBodyStore::open(dir.path()).unwrap();
+        for seq in [2, 0, 1] {
+            let reference = sample_ref(seq);
+            let projection = MessageIndexProjection::new(seq, reference)
+                .for_channel("group-a", "channel-a")
+                .for_agent("agent-a")
+                .for_run("run-a")
+                .for_inbox_actor("actor-a");
+            store.put_message(&projection).unwrap();
+        }
+
+        let channel = store.scan_channel("group-a", "channel-a", 10).unwrap();
+        let ids: Vec<_> = channel.iter().map(|row| row.message_id.as_str()).collect();
+        assert_eq!(ids, ["delivery-0", "delivery-1", "delivery-2"]);
+        assert_eq!(
+            store
+                .get_by_id(&DeliveryMessageId::new("delivery-2"))
+                .unwrap()
+                .unwrap()
+                .authority_message_id
+                .as_str(),
+            "auth-2"
+        );
+        assert_eq!(store.scan_agent("agent-a", 10).unwrap().len(), 3);
+        assert_eq!(store.scan_run("run-a", 10).unwrap().len(), 3);
+        assert_eq!(store.scan_inbox("actor-a", 1).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn body_and_index_write_share_one_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RocksdbBodyStore::open(dir.path()).unwrap();
+        let reference = sample_ref(7);
+        let authority = reference.authority_message_id.clone();
+        let projection = MessageIndexProjection::new(7, reference).for_channel("group-a", "chan-a");
+        store
+            .put_body_and_index(&authority, b"body in the same batch", &projection)
+            .unwrap();
+
+        assert_eq!(
+            store.get_body(&authority).unwrap().as_deref(),
+            Some(&b"body in the same batch"[..])
+        );
+        assert_eq!(
+            store.scan_channel("group-a", "chan-a", 10).unwrap().len(),
+            1
+        );
     }
 
     #[test]

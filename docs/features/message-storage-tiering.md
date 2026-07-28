@@ -100,7 +100,14 @@ Delivery index column family (`cf_index`)
   - `authority_message_id`;
   - `correlation_id`;
   - optional `group_id`, `run_id`, `conversation_id`, `agent_id`;
-  - compact delivery state when the key is ack/cursor scoped.
+- compact delivery state when the key is ack/cursor scoped.
+
+The message-store foundation exposes `MessageIndexProjection` as the typed boundary for writing these
+body-free refs. A projection always writes the direct `msg/by_id/<message_id>` lookup and may write
+channel, agent, run, and actor-inbox ordered prefixes for the same `MessageRef`. This API is the
+storage boundary only: callers must still derive projections from SQLite authority metadata, and
+authority-derived rebuild/repair remains the correctness boundary before ordered reads can become
+production-facing.
 
 Body column family (`cf_body`)
 

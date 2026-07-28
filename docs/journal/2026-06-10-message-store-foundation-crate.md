@@ -56,3 +56,40 @@ spec requires isolating it behind a backend boundary. This crate establishes tha
 - Implement the RocksDB backend of `MessageBodyStore` (`cf_body` + `cf_index`) behind a feature flag,
   with SST zstd + bottommost zstd, plus the dual-body migration write path. Tracked in
   [todo.md](../todo.md) under Message Storage.
+
+# 2026-07-29 Follow-Up: Delivery Index Projection Foundation
+
+## Summary
+
+Added the first `cf_index` delivery-projection foundation to `agenthub-message-store`. The crate now
+has a backend-agnostic `MessageIndex` API, an in-memory implementation, and a RocksDB implementation
+behind the existing opt-in `rocksdb` feature.
+
+## Scope
+
+- Added typed `MessageIndexProjection` writes for body-free `MessageRef` rows.
+- Added direct `msg/by_id/<message_id>` lookup plus ordered channel, agent, run, and actor inbox scan
+  prefixes.
+- Opened RocksDB with both `cf_body` and `cf_index`.
+- Added a RocksDB batch helper that writes one body plus its derived index refs in one `WriteBatch`.
+
+## Key Decisions
+
+- Keep `cf_index` strictly derived: the new API stores `MessageRef` rows only and never inlines body
+  bytes.
+- Keep normal application reads on the existing SQLite path; this slice only provides the index
+  backend boundary and tests.
+- Leave authority-derived rebuild/repair for a later slice, because that must integrate with SQLite
+  authority tables rather than crate-local fixtures.
+
+## Validation
+
+- `cargo test -p agenthub-message-store`
+- `cargo test -p agenthub-message-store --features rocksdb cf_index -- --nocapture`
+- `cargo test -p agenthub-message-store --features rocksdb body_and_index_write_share_one_batch -- --nocapture`
+
+## Follow-Ups
+
+- Wire projection derivation from SQLite authority rows.
+- Add rebuild/repair and integrity checks that rebuild `cf_index` from SQLite metadata alone.
+- Keep normal reads on SQLite until ordered index reads and backup/restore evidence are reviewed.
