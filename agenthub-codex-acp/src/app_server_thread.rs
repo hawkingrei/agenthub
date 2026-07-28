@@ -3315,6 +3315,194 @@ mod tests {
     }
 
     #[test]
+    fn app_server_codex_error_info_translation_preserves_variants() {
+        let variants = [
+            (
+                AppServerCodexErrorInfo::ContextWindowExceeded,
+                CodexErrorInfo::ContextWindowExceeded,
+            ),
+            (
+                AppServerCodexErrorInfo::SessionBudgetExceeded,
+                CodexErrorInfo::SessionBudgetExceeded,
+            ),
+            (
+                AppServerCodexErrorInfo::UsageLimitExceeded,
+                CodexErrorInfo::UsageLimitExceeded,
+            ),
+            (
+                AppServerCodexErrorInfo::ServerOverloaded,
+                CodexErrorInfo::ServerOverloaded,
+            ),
+            (
+                AppServerCodexErrorInfo::CyberPolicy,
+                CodexErrorInfo::CyberPolicy,
+            ),
+            (
+                AppServerCodexErrorInfo::HttpConnectionFailed {
+                    http_status_code: Some(502),
+                },
+                CodexErrorInfo::HttpConnectionFailed {
+                    http_status_code: Some(502),
+                },
+            ),
+            (
+                AppServerCodexErrorInfo::ResponseStreamConnectionFailed {
+                    http_status_code: Some(503),
+                },
+                CodexErrorInfo::ResponseStreamConnectionFailed {
+                    http_status_code: Some(503),
+                },
+            ),
+            (
+                AppServerCodexErrorInfo::InternalServerError,
+                CodexErrorInfo::InternalServerError,
+            ),
+            (
+                AppServerCodexErrorInfo::Unauthorized,
+                CodexErrorInfo::Unauthorized,
+            ),
+            (
+                AppServerCodexErrorInfo::BadRequest,
+                CodexErrorInfo::BadRequest,
+            ),
+            (
+                AppServerCodexErrorInfo::ThreadRollbackFailed,
+                CodexErrorInfo::ThreadRollbackFailed,
+            ),
+            (
+                AppServerCodexErrorInfo::SandboxError,
+                CodexErrorInfo::SandboxError,
+            ),
+            (
+                AppServerCodexErrorInfo::ResponseStreamDisconnected {
+                    http_status_code: Some(504),
+                },
+                CodexErrorInfo::ResponseStreamDisconnected {
+                    http_status_code: Some(504),
+                },
+            ),
+            (
+                AppServerCodexErrorInfo::ResponseTooManyFailedAttempts {
+                    http_status_code: Some(429),
+                },
+                CodexErrorInfo::ResponseTooManyFailedAttempts {
+                    http_status_code: Some(429),
+                },
+            ),
+            (AppServerCodexErrorInfo::Other, CodexErrorInfo::Other),
+        ];
+
+        for (input, expected) in variants {
+            assert_eq!(app_server_codex_error_info_to_core(input), expected);
+        }
+    }
+
+    #[test]
+    fn app_server_codex_error_info_translation_preserves_nonsteerable_kind() {
+        let review =
+            app_server_codex_error_info_to_core(AppServerCodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: codex_app_server_protocol::NonSteerableTurnKind::Review,
+            });
+        assert!(matches!(
+            review,
+            CodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: NonSteerableTurnKind::Review
+            }
+        ));
+
+        let compact =
+            app_server_codex_error_info_to_core(AppServerCodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: codex_app_server_protocol::NonSteerableTurnKind::Compact,
+            });
+        assert!(matches!(
+            compact,
+            CodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: NonSteerableTurnKind::Compact
+            }
+        ));
+    }
+
+    #[test]
+    fn turn_completed_event_msg_preserves_error_and_timing() {
+        let started_at = 100;
+        let completed_at = 101;
+        let turn = Turn {
+            id: "turn-1".to_string(),
+            items: Vec::new(),
+            items_view: codex_app_server_protocol::TurnItemsView::Full,
+            status: TurnStatus::Completed,
+            error: Some(AppServerTurnError {
+                message: "context window exceeded".to_string(),
+                codex_error_info: Some(AppServerCodexErrorInfo::ContextWindowExceeded),
+                additional_details: None,
+            }),
+            started_at: Some(started_at),
+            completed_at: Some(completed_at),
+            duration_ms: Some(250),
+        };
+
+        let event = turn_completed_event_msg(&turn, Some("done".to_string()));
+
+        let EventMsg::TurnComplete(event) = event else {
+            panic!("expected turn complete");
+        };
+        assert_eq!(event.turn_id, "turn-1");
+        assert_eq!(event.last_agent_message.as_deref(), Some("done"));
+        assert_eq!(event.started_at, Some(started_at));
+        assert_eq!(event.completed_at, Some(completed_at));
+        assert_eq!(event.duration_ms, Some(250));
+        let error = event.error.expect("completion error");
+        assert_eq!(error.message, "context window exceeded");
+        assert_eq!(
+            error.codex_error_info,
+            Some(CodexErrorInfo::ContextWindowExceeded)
+        );
+    }
+
+    #[test]
+    fn turn_completed_event_msg_preserves_interrupted_timing() {
+        let started_at = 200;
+        let completed_at = 201;
+        let turn = Turn {
+            id: "turn-2".to_string(),
+            items: Vec::new(),
+            items_view: codex_app_server_protocol::TurnItemsView::Full,
+            status: TurnStatus::Interrupted,
+            error: None,
+            started_at: Some(started_at),
+            completed_at: Some(completed_at),
+            duration_ms: Some(500),
+        };
+
+        let event = turn_completed_event_msg(&turn, None);
+
+        let EventMsg::TurnAborted(event) = event else {
+            panic!("expected turn aborted");
+        };
+        assert_eq!(event.turn_id.as_deref(), Some("turn-2"));
+        assert_eq!(event.reason, TurnAbortReason::Interrupted);
+        assert_eq!(event.started_at, Some(started_at));
+        assert_eq!(event.completed_at, Some(completed_at));
+        assert_eq!(event.duration_ms, Some(500));
+    }
+
+    #[test]
+    fn review_decision_translation_maps_denied_payloads() {
+        assert_eq!(
+            review_decision_to_app_server(ReviewDecision::denied("declined")),
+            CommandExecutionApprovalDecision::Decline
+        );
+        assert_eq!(
+            patch_review_decision_to_app_server(ReviewDecision::denied("declined")),
+            FileChangeApprovalDecision::Decline
+        );
+        assert!(matches!(
+            app_server_review_decision_to_core(CommandExecutionApprovalDecision::Decline),
+            ReviewDecision::Denied { .. }
+        ));
+    }
+
+    #[test]
     fn config_warning_message_includes_details_and_location() {
         let message =
             format_config_warning_message(codex_app_server_protocol::ConfigWarningNotification {

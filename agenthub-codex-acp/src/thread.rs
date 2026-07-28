@@ -4736,6 +4736,60 @@ mod tests {
         assert_eq!(resolved, preset.default_reasoning_effort);
     }
 
+    #[test]
+    fn build_exec_permission_options_maps_denied_and_abort_to_reject_once() {
+        let options = build_exec_permission_options(
+            &[ReviewDecision::denied("declined"), ReviewDecision::Abort],
+            None,
+            None,
+        );
+
+        assert_eq!(options.len(), 1);
+        let option = &options[0];
+        assert_eq!(option.option_id, "denied");
+        assert!(matches!(
+            option.permission_option.kind,
+            PermissionOptionKind::RejectOnce
+        ));
+        assert!(matches!(option.decision, ReviewDecision::Denied { .. }));
+    }
+
+    #[test]
+    fn web_search_action_to_title_and_id_preserves_existing_id() {
+        let (title, call_id) = web_search_action_to_title_and_id(
+            Some("call-1"),
+            &WebSearchAction::Search {
+                query: Some("rust codex".to_string()),
+                queries: None,
+            },
+        );
+
+        assert_eq!(title, "rust codex");
+        assert_eq!(call_id, "call-1");
+    }
+
+    #[test]
+    fn web_search_action_to_title_and_id_generates_kind_specific_fallbacks() {
+        let (open_title, open_id) = web_search_action_to_title_and_id(
+            None,
+            &WebSearchAction::OpenPage {
+                url: Some("https://example.com".to_string()),
+            },
+        );
+        assert_eq!(open_title, "https://example.com");
+        assert!(open_id.starts_with("web_open_"));
+
+        let (find_title, find_id) = web_search_action_to_title_and_id(
+            None,
+            &WebSearchAction::FindInPage {
+                pattern: Some("needle".to_string()),
+                url: None,
+            },
+        );
+        assert_eq!(find_title, "needle");
+        assert!(find_id.starts_with("web_find_"));
+    }
+
     struct TempManagedSkillsHome {
         home: PathBuf,
     }
