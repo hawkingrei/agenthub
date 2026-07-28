@@ -204,7 +204,7 @@ operations must still authorize against the Team-owned metadata row.
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
 | S3-compatible fixture | A MinIO-backed CI job runs `agenthub-object-store` with the `s3` feature and verifies write/read/exists/delete plus hosted-image URL behavior against a real S3-compatible endpoint. |
-| Future S3 rollout | Keep S3 out of release feature sets until the MinIO fixture is green in PR and push CI and one reviewed release build includes the feature intentionally. |
+| Future S3 rollout | Keep S3 out of release feature sets until the MinIO fixture is green in PR and push CI and one reviewed release build includes the feature intentionally. Local regression tests parse the root and object-store manifests and release workflows so default/release feature sets cannot accidentally enable S3 or use `--all-features`. |
 
 ## Operational Notes
 
