@@ -43,7 +43,7 @@
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "^17.8.0",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.0",
     "postcss": "^8.5.24",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",
