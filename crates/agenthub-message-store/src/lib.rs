@@ -17,6 +17,7 @@ pub mod index_store;
 pub mod keys;
 pub mod outbox;
 pub mod reference;
+pub mod repair;
 #[cfg(feature = "rocksdb")]
 pub mod rocksdb_store;
 
@@ -28,6 +29,10 @@ pub use index_store::{
 };
 pub use outbox::BodyOutbox;
 pub use reference::MessageRef;
+pub use repair::{
+    MessageIndexIntegrityReport, MessageIndexNamespace, MissingIndexRef,
+    check_authority_projection_integrity, repair_authority_projection_index,
+};
 #[cfg(feature = "rocksdb")]
 pub use rocksdb_store::RocksdbBodyStore;
 

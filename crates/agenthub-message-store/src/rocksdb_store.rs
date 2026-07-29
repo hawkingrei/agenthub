@@ -361,6 +361,35 @@ mod tests {
     }
 
     #[test]
+    fn repair_report_checks_cf_index_and_cf_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RocksdbBodyStore::open(dir.path()).unwrap();
+        let reference = sample_ref(8);
+        let authority = reference.authority_message_id.clone();
+        let projection = MessageIndexProjection::new(8, reference)
+            .for_channel("group-a", "chan-a")
+            .for_agent("agent-a")
+            .for_run("run-a")
+            .for_inbox_actor("actor-a");
+        let expected = vec![projection];
+
+        let missing =
+            crate::check_authority_projection_integrity(&store, &store, &expected).unwrap();
+        assert_eq!(missing.missing_index_refs.len(), 5);
+        assert_eq!(missing.missing_bodies, vec![authority.clone()]);
+
+        crate::repair_authority_projection_index(&store, &expected).unwrap();
+        let still_missing_body =
+            crate::check_authority_projection_integrity(&store, &store, &expected).unwrap();
+        assert!(still_missing_body.missing_index_refs.is_empty());
+        assert_eq!(still_missing_body.missing_bodies, vec![authority.clone()]);
+
+        store.put_body(&authority, b"body").unwrap();
+        let clean = crate::check_authority_projection_integrity(&store, &store, &expected).unwrap();
+        assert!(clean.is_clean());
+    }
+
+    #[test]
     fn fan_out_stores_one_body_per_authority_message() {
         let dir = tempfile::tempdir().unwrap();
         let store = RocksdbBodyStore::open(dir.path()).unwrap();
