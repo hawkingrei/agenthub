@@ -547,6 +547,7 @@ dependencies = [
  "codex-utils-absolute-path",
  "codex-utils-approval-presets",
  "codex-utils-cli",
+ "codex-utils-path-uri",
  "heck",
  "itertools 0.15.0",
  "libc",

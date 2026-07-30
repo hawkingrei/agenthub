@@ -1363,44 +1363,18 @@ impl AppServerCodexThread {
                 Ok(match (submission_id, payload.item) {
                     (
                         Some(id),
-                        codex_app_server_protocol::ThreadItem::CommandExecution {
-                            id: call_id,
-                            plugin_id,
-                            script_path,
-                            command,
-                            cwd,
-                            process_id,
-                            source,
-                            ..
-                        },
+                        item @ codex_app_server_protocol::ThreadItem::CommandExecution { .. },
                     ) => {
-                        let command_vec = shell_command_vec(&command);
-                        // The app-server reports cwd as a `LegacyAppPathString`, but the
-                        // core exec events now require a `PathUri`. Fall back to the
-                        // agent's configured cwd if the legacy string cannot be parsed.
                         let fallback_cwd = self.state.lock().await.config.cwd.clone();
-                        let cwd = cwd.try_into().unwrap_or_else(|err| {
-                            tracing::warn!(
-                                ?err,
-                                "legacy exec cwd is not a parseable path; falling back to configured cwd"
-                            );
-                            fallback_cwd.into()
-                        });
-                        Some(Event {
+                        app_server_command_begin_event_from_item(
+                            payload.turn_id,
+                            payload.started_at_ms,
+                            item,
+                            &fallback_cwd,
+                        )
+                        .map(|event| Event {
                             id,
-                            msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
-                                call_id,
-                                plugin_id,
-                                script_path,
-                                process_id,
-                                turn_id: payload.turn_id,
-                                started_at_ms: payload.started_at_ms,
-                                command: command_vec.clone(),
-                                cwd,
-                                parsed_cmd: parse_command(&command_vec),
-                                source: app_server_command_source_to_core(source),
-                                interaction_input: None,
-                            }),
+                            msg: EventMsg::ExecCommandBegin(event),
                         })
                     }
                     (
@@ -1571,58 +1545,18 @@ impl AppServerCodexThread {
                     }),
                     (
                         Some(id),
-                        codex_app_server_protocol::ThreadItem::CommandExecution {
-                            id: call_id,
-                            plugin_id,
-                            script_path,
-                            command,
-                            cwd,
-                            process_id,
-                            source,
-                            aggregated_output,
-                            exit_code,
-                            duration_ms,
-                            status,
-                            ..
-                        },
+                        item @ codex_app_server_protocol::ThreadItem::CommandExecution { .. },
                     ) => {
-                        let command_vec = shell_command_vec(&command);
-                        // The app-server reports cwd as a `LegacyAppPathString`, but the
-                        // core exec events now require a `PathUri`. Fall back to the
-                        // agent's configured cwd if the legacy string cannot be parsed.
                         let fallback_cwd = self.state.lock().await.config.cwd.clone();
-                        let cwd = cwd.try_into().unwrap_or_else(|err| {
-                            tracing::warn!(
-                                ?err,
-                                "legacy exec cwd is not a parseable path; falling back to configured cwd"
-                            );
-                            fallback_cwd.into()
-                        });
-                        Some(Event {
+                        app_server_command_end_event_from_item(
+                            payload.turn_id,
+                            payload.completed_at_ms,
+                            item,
+                            &fallback_cwd,
+                        )
+                        .map(|event| Event {
                             id,
-                            msg: EventMsg::ExecCommandEnd(ExecCommandEndEvent {
-                                call_id,
-                                plugin_id,
-                                script_path,
-                                process_id,
-                                turn_id: payload.turn_id,
-                                completed_at_ms: payload.completed_at_ms,
-                                command: command_vec.clone(),
-                                cwd,
-                                parsed_cmd: parse_command(&command_vec),
-                                source: app_server_command_source_to_core(source),
-                                interaction_input: None,
-                                stdout: String::new(),
-                                stderr: String::new(),
-                                aggregated_output: aggregated_output.unwrap_or_default(),
-                                exit_code: exit_code.unwrap_or_default(),
-                                duration: duration_ms
-                                    .and_then(|ms| u64::try_from(ms).ok())
-                                    .map(Duration::from_millis)
-                                    .unwrap_or_default(),
-                                formatted_output: String::new(),
-                                status: app_server_command_status_to_core(status),
-                            }),
+                            msg: EventMsg::ExecCommandEnd(event),
                         })
                     }
                     (
@@ -2792,6 +2726,105 @@ fn app_server_command_source_to_core(
             ExecCommandSource::UnifiedExecInteraction
         }
     }
+}
+
+fn app_server_command_begin_event_from_item(
+    turn_id: String,
+    started_at_ms: i64,
+    item: codex_app_server_protocol::ThreadItem,
+    fallback_cwd: &codex_utils_absolute_path::AbsolutePathBuf,
+) -> Option<ExecCommandBeginEvent> {
+    let codex_app_server_protocol::ThreadItem::CommandExecution {
+        id: call_id,
+        plugin_id,
+        script_path,
+        command,
+        cwd,
+        process_id,
+        source,
+        ..
+    } = item
+    else {
+        return None;
+    };
+
+    let command_vec = shell_command_vec(&command);
+    Some(ExecCommandBeginEvent {
+        call_id,
+        plugin_id,
+        script_path,
+        process_id,
+        turn_id,
+        started_at_ms,
+        command: command_vec.clone(),
+        cwd: app_server_exec_cwd_to_core(cwd, fallback_cwd),
+        parsed_cmd: parse_command(&command_vec),
+        source: app_server_command_source_to_core(source),
+        interaction_input: None,
+    })
+}
+
+fn app_server_command_end_event_from_item(
+    turn_id: String,
+    completed_at_ms: i64,
+    item: codex_app_server_protocol::ThreadItem,
+    fallback_cwd: &codex_utils_absolute_path::AbsolutePathBuf,
+) -> Option<ExecCommandEndEvent> {
+    let codex_app_server_protocol::ThreadItem::CommandExecution {
+        id: call_id,
+        plugin_id,
+        script_path,
+        command,
+        cwd,
+        process_id,
+        source,
+        aggregated_output,
+        exit_code,
+        duration_ms,
+        status,
+        ..
+    } = item
+    else {
+        return None;
+    };
+
+    let command_vec = shell_command_vec(&command);
+    Some(ExecCommandEndEvent {
+        call_id,
+        plugin_id,
+        script_path,
+        process_id,
+        turn_id,
+        completed_at_ms,
+        command: command_vec.clone(),
+        cwd: app_server_exec_cwd_to_core(cwd, fallback_cwd),
+        parsed_cmd: parse_command(&command_vec),
+        source: app_server_command_source_to_core(source),
+        interaction_input: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        aggregated_output: aggregated_output.unwrap_or_default(),
+        exit_code: exit_code.unwrap_or_default(),
+        duration: duration_ms
+            .and_then(|ms| u64::try_from(ms).ok())
+            .map(Duration::from_millis)
+            .unwrap_or_default(),
+        formatted_output: String::new(),
+        status: app_server_command_status_to_core(status),
+    })
+}
+
+fn app_server_exec_cwd_to_core(
+    cwd: codex_utils_path_uri::LegacyAppPathString,
+    fallback_cwd: &codex_utils_absolute_path::AbsolutePathBuf,
+) -> codex_utils_path_uri::PathUri {
+    cwd.try_into().unwrap_or_else(|err| {
+        tracing::warn!(
+            ?err,
+            "legacy exec cwd is not a parseable path; falling back to configured cwd"
+        );
+        fallback_cwd.clone().into()
+    })
 }
 
 fn app_server_codex_error_info_to_core(error: AppServerCodexErrorInfo) -> CodexErrorInfo {
@@ -4055,6 +4088,67 @@ mod tests {
             Some(FileChange::Update { unified_diff, move_path: None })
                 if unified_diff == "diff --git a/README.md b/README.md\n"
         ));
+    }
+
+    fn command_execution_item_with_plugin_fields(
+        cwd: &AbsolutePathBuf,
+    ) -> codex_app_server_protocol::ThreadItem {
+        codex_app_server_protocol::ThreadItem::CommandExecution {
+            id: "exec-1".to_string(),
+            plugin_id: Some("plugin-1".to_string()),
+            script_path: Some("scripts/run.sh".to_string()),
+            command: "echo done".to_string(),
+            cwd: codex_utils_path_uri::LegacyAppPathString::from_abs_path(cwd),
+            process_id: Some("pid-1".to_string()),
+            source: codex_app_server_protocol::CommandExecutionSource::Agent,
+            status: codex_app_server_protocol::CommandExecutionStatus::Completed,
+            command_actions: Vec::new(),
+            aggregated_output: Some("done\n".to_string()),
+            exit_code: Some(0),
+            duration_ms: Some(5),
+        }
+    }
+
+    #[test]
+    fn command_execution_begin_translation_preserves_plugin_fields() {
+        let cwd = AbsolutePathBuf::try_from(std::env::temp_dir()).expect("valid temp dir");
+        let event = app_server_command_begin_event_from_item(
+            "turn-1".to_string(),
+            100,
+            command_execution_item_with_plugin_fields(&cwd),
+            &cwd,
+        )
+        .expect("command begin event");
+
+        assert_eq!(event.call_id, "exec-1");
+        assert_eq!(event.plugin_id.as_deref(), Some("plugin-1"));
+        assert_eq!(event.script_path.as_deref(), Some("scripts/run.sh"));
+        assert_eq!(event.process_id.as_deref(), Some("pid-1"));
+        assert_eq!(event.turn_id, "turn-1");
+        assert_eq!(event.started_at_ms, 100);
+    }
+
+    #[test]
+    fn command_execution_end_translation_preserves_plugin_fields() {
+        let cwd = AbsolutePathBuf::try_from(std::env::temp_dir()).expect("valid temp dir");
+        let event = app_server_command_end_event_from_item(
+            "turn-1".to_string(),
+            200,
+            command_execution_item_with_plugin_fields(&cwd),
+            &cwd,
+        )
+        .expect("command end event");
+
+        assert_eq!(event.call_id, "exec-1");
+        assert_eq!(event.plugin_id.as_deref(), Some("plugin-1"));
+        assert_eq!(event.script_path.as_deref(), Some("scripts/run.sh"));
+        assert_eq!(event.process_id.as_deref(), Some("pid-1"));
+        assert_eq!(event.turn_id, "turn-1");
+        assert_eq!(event.completed_at_ms, 200);
+        assert_eq!(event.aggregated_output, "done\n");
+        assert_eq!(event.exit_code, 0);
+        assert_eq!(event.duration, Duration::from_millis(5));
+        assert_eq!(event.status, ExecCommandStatus::Completed);
     }
 
     #[test]
