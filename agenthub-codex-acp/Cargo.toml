@@ -43,7 +43,7 @@ codex-models-manager = { git = "https://github.com/openai/codex", tag = "rust-v0
 codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.145.0" }
 codex-utils-approval-presets = { git = "https://github.com/openai/codex", tag = "rust-v0.145.0" }
 codex-utils-absolute-path = { git = "https://github.com/openai/codex", tag = "rust-v0.145.0" }
-codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.145.0" }
+codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.146.0" }
 heck = "0.5.0"
 itertools = "0.15.0"
 libc = "0.2"
