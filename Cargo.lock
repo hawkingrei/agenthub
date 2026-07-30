@@ -5968,10 +5968,10 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-approval-presets"
-version = "0.145.0"
-source = "git+https://github.com/openai/codex?tag=rust-v0.145.0#25af12f7e61572b0bc18ddb1008be543b91519b0"
+version = "0.146.0"
+source = "git+https://github.com/openai/codex?tag=rust-v0.146.0#e363b08c9175ac1cbe5893615dd2cb9ddf95043b"
 dependencies = [
- "codex-protocol 0.145.0",
+ "codex-protocol 0.146.0",
 ]
 
 [[package]]
