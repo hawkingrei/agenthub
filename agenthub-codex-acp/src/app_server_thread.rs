@@ -954,6 +954,8 @@ impl AppServerCodexThread {
                     id: submission_id,
                     msg: EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                         call_id: params.item_id,
+                        plugin_id: None,
+                        script_path: None,
                         approval_id: params.approval_id,
                         turn_id: params.turn_id,
                         environment_id: params.environment_id,
@@ -1363,6 +1365,8 @@ impl AppServerCodexThread {
                         Some(id),
                         codex_app_server_protocol::ThreadItem::CommandExecution {
                             id: call_id,
+                            plugin_id,
+                            script_path,
                             command,
                             cwd,
                             process_id,
@@ -1386,6 +1390,8 @@ impl AppServerCodexThread {
                             id,
                             msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                                 call_id,
+                                plugin_id,
+                                script_path,
                                 process_id,
                                 turn_id: payload.turn_id,
                                 started_at_ms: payload.started_at_ms,
@@ -1567,6 +1573,8 @@ impl AppServerCodexThread {
                         Some(id),
                         codex_app_server_protocol::ThreadItem::CommandExecution {
                             id: call_id,
+                            plugin_id,
+                            script_path,
                             command,
                             cwd,
                             process_id,
@@ -1594,6 +1602,8 @@ impl AppServerCodexThread {
                             id,
                             msg: EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                                 call_id,
+                                plugin_id,
+                                script_path,
                                 process_id,
                                 turn_id: payload.turn_id,
                                 completed_at_ms: payload.completed_at_ms,

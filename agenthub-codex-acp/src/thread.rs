@@ -1149,6 +1149,7 @@ impl PromptState {
                 turn_id,
                 item,
                 completed_at_ms: _,
+                started_at_ms: _,
             }) => {
                 info!("Item completed: thread_id={}, turn_id={}, item={:?}", thread_id, turn_id, item);
             }
@@ -1678,6 +1679,8 @@ impl PromptState {
         let raw_input = serde_json::json!(&event);
         let ExecApprovalRequestEvent {
             call_id,
+            plugin_id: _,
+            script_path: _,
             command,
             turn_id,
             environment_id: _,
@@ -1822,6 +1825,8 @@ impl PromptState {
         let raw_input = serde_json::json!(&event);
         let ExecCommandBeginEvent {
             turn_id: _,
+            plugin_id: _,
+            script_path: _,
             source: _,
             interaction_input: _,
             call_id,
@@ -1932,6 +1937,8 @@ impl PromptState {
         let raw_output = serde_json::json!(&event);
         let ExecCommandEndEvent {
             turn_id: _,
+            plugin_id: _,
+            script_path: _,
             command: _,
             cwd: _,
             parsed_cmd: _,
@@ -5866,6 +5873,8 @@ mod tests {
                         };
                         send(EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                             call_id: "call-a".into(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "a".into()],
@@ -5879,6 +5888,8 @@ mod tests {
                         }));
                         send(EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                             call_id: "call-b".into(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "b".into()],
@@ -5892,6 +5903,8 @@ mod tests {
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-a".into(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "a".into()],
@@ -5910,6 +5923,8 @@ mod tests {
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-b".into(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "b".into()],
@@ -5933,6 +5948,8 @@ mod tests {
                                 id: submission_id.clone(),
                                 msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                                     call_id: "call-hanging".into(),
+                                    plugin_id: None,
+                                    script_path: None,
                                     process_id: None,
                                     turn_id: id.to_string(),
                                     command: vec!["sleep".into(), "999".into()],
@@ -5952,6 +5969,8 @@ mod tests {
                                 id: submission_id.clone(),
                                 msg: EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                                     call_id: "call-id".to_string(),
+                                    plugin_id: None,
+                                    script_path: None,
                                     approval_id: Some("approval-id".to_string()),
                                     environment_id: None,
                                     turn_id: id.to_string(),
@@ -6364,6 +6383,8 @@ mod tests {
                         &session_client,
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -6452,6 +6473,8 @@ mod tests {
                         &session_client,
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -6780,6 +6803,8 @@ mod tests {
                         &session_client,
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -6862,6 +6887,8 @@ mod tests {
                         &session_client,
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -7124,6 +7151,8 @@ mod tests {
                         &session_client,
                         EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -7597,6 +7626,8 @@ mod tests {
                         &session_client,
                         EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-1".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: "turn-1".to_string(),
                             command: vec!["cargo".to_string(), "test".to_string()],
@@ -7704,6 +7735,8 @@ mod tests {
                         &session_client,
                         EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-1".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: "turn-1".to_string(),
                             command: vec!["cargo".to_string(), "test".to_string()],

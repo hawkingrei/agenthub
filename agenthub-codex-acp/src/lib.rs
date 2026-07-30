@@ -17,6 +17,7 @@ use codex_core::config::ManagedFeatures;
 use codex_core::config::{Config, ConfigOverrides};
 use codex_exec_server::{EnvironmentManager, ExecServerRuntimePaths};
 use codex_features::{Feature, Features};
+use codex_http_client::{HttpClientFactory, OutboundProxyPolicy};
 use codex_utils_cli::CliConfigOverrides;
 use std::fmt;
 use std::future::Future;
@@ -103,14 +104,19 @@ pub(crate) async fn build_environment_manager(
             "failed to resolve exec-server runtime paths: {err}"
         ))
     })?;
-    EnvironmentManager::from_codex_home(&config.codex_home, Some(runtime_paths))
-        .await
-        .map(Arc::new)
-        .map_err(|err| {
-            agent_client_protocol::Error::internal_error().data(format!(
-                "failed to initialize exec-server environment: {err}"
-            ))
-        })
+    let http_client_factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
+    EnvironmentManager::from_codex_home(
+        &config.codex_home,
+        Some(runtime_paths),
+        http_client_factory,
+    )
+    .await
+    .map(Arc::new)
+    .map_err(|err| {
+        agent_client_protocol::Error::internal_error().data(format!(
+            "failed to initialize exec-server environment: {err}"
+        ))
+    })
 }
 
 #[cfg(test)]
