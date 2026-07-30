@@ -87,7 +87,7 @@ rand = "0.10"
 base64 = "0.23"
 bytes = "1"
 jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust", "jwe"] }
-jsonwebtoken = "=10.4.0"
+jsonwebtoken = "=11.0.0"
 mime_guess = "2"
 rust-embed = "8"
 async-trait = "0.1"
