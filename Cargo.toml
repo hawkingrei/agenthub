@@ -84,10 +84,10 @@ webauthn-rs = "0.5"
 url = "2"
 argon2 = "0.5"
 rand = "0.10"
-base64 = "0.22"
+base64 = "0.23"
 bytes = "1"
 jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust", "jwe"] }
-jsonwebtoken = "=10.4.0"
+jsonwebtoken = "=11.0.0"
 mime_guess = "2"
 rust-embed = "8"
 async-trait = "0.1"
@@ -123,7 +123,7 @@ agenthub-db = { path = "crates/agenthub-db" }
 agenthub-message-store = { path = "crates/agenthub-message-store" }
 agenthub-object-store = { path = "crates/agenthub-object-store" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
-agent-client-protocol = { version = "1.0.0", features = ["unstable"] }
+agent-client-protocol = { version = "2.0.0", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }

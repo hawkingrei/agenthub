@@ -100,7 +100,19 @@ Delivery index column family (`cf_index`)
   - `authority_message_id`;
   - `correlation_id`;
   - optional `group_id`, `run_id`, `conversation_id`, `agent_id`;
-  - compact delivery state when the key is ack/cursor scoped.
+- compact delivery state when the key is ack/cursor scoped.
+
+The message-store foundation exposes `MessageIndexProjection` as the typed boundary for writing these
+body-free refs. A projection always writes the direct `msg/by_id/<message_id>` lookup and may write
+channel, agent, run, and actor-inbox ordered prefixes for the same `MessageRef`. This API is the
+storage boundary only: callers must still derive projections from SQLite authority metadata, and
+authority-derived rebuild/repair remains the correctness boundary before ordered reads can become
+production-facing.
+
+The repair foundation accepts those authority-derived projections as input and can verify/replay the
+expected index refs idempotently. Its body check is intentionally report-only: `cf_body` is primary
+data after migration, so missing bodies are surfaced as durability failures and are never rebuilt from
+index rows.
 
 Body column family (`cf_body`)
 
@@ -251,10 +263,11 @@ Index rebuild inputs:
 Required operations:
 
 - dry-run index scan that reports expected key counts per namespace;
+- replay expected projections derived from SQLite metadata into the index idempotently;
 - rebuild index namespace for one team, channel, agent, run, or actor from SQLite metadata;
 - rebuild all delivery indexes from SQLite metadata;
-- integrity check (not rebuild): verify each index ref has a matching `cf_body` entry and, when archive
-  is enabled, an existing archive document id;
+- integrity check (not rebuild): verify each expected index ref has a matching `cf_body` entry and,
+  when archive is enabled, an existing archive document id;
 - detect and report orphan index refs, with an explicit prune mode that deletes refs not backed by
   authority rows;
 - detect index refs whose `cf_body` entry is missing (a body-loss signal that the SQLite body outbox or
@@ -388,6 +401,8 @@ it must not authorize or redefine message authority.
   - SQLite authority write still succeeds when a RocksDB write fails after commit;
   - read-repair / high-water-mark guard surfaces a freshly written message rather than dropping it;
   - repair job rebuilds missing index keys from SQLite metadata alone (no `cf_body` dependency).
+  - missing `cf_body` entries are reported as body durability failures rather than rebuilt from index
+    rows.
 - Body durability tests:
   - the body is committed to `message_body_outbox` inside the authority transaction;
   - a `cf_body` write failure after the authority commit leaves the body recoverable from the outbox,

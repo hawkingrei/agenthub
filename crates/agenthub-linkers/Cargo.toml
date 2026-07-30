@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 anyhow = "1"
 agenthub-db = { path = "../agenthub-db" }
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["clock"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

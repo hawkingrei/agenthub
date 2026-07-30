@@ -13,16 +13,26 @@
 
 pub mod body_store;
 pub mod ids;
+pub mod index_store;
 pub mod keys;
 pub mod outbox;
 pub mod reference;
+pub mod repair;
 #[cfg(feature = "rocksdb")]
 pub mod rocksdb_store;
 
 pub use body_store::{BodyStoreError, InMemoryBodyStore, MessageBodyStore};
 pub use ids::{AuthorityMessageId, DeliveryMessageId, MessageKind};
+pub use index_store::{
+    ChannelProjection, InMemoryMessageIndex, MessageIndex, MessageIndexError,
+    MessageIndexProjection,
+};
 pub use outbox::BodyOutbox;
 pub use reference::MessageRef;
+pub use repair::{
+    MessageIndexIntegrityReport, MessageIndexNamespace, MissingIndexRef,
+    check_authority_projection_integrity, repair_authority_projection_index,
+};
 #[cfg(feature = "rocksdb")]
 pub use rocksdb_store::RocksdbBodyStore;
 

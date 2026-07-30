@@ -6,7 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 anyhow = "1"
-base64 = "0.22"
+base64 = "0.23"
 rand = "0.10"
 rcgen = "0.14"
 rustls = "0.23.40"

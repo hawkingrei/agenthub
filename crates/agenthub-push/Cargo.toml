@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 agenthub-config = { path = "../agenthub-config" }
 anyhow = "1"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["clock"] }
 jwt-simple = { version = "0.12", default-features = false, features = ["pure-rust", "jwe"] }
 serde = { version = "1", features = ["derive"] }
