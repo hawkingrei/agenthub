@@ -313,6 +313,38 @@ This preserves:
 - thread continuity
 - task-first ownership discipline
 
+### 11) Composer Send And Visibility Contract
+
+Team channel and thread composers should feel like chat inputs while preserving task, mailbox, and
+permission-review boundaries.
+
+Required behavior:
+
+- `Enter` sends a message, while `Shift+Enter`, `Ctrl+Enter`, or `Cmd+Enter` may stay as newline
+  input depending on platform conventions;
+- the composer should clear a submitted draft immediately after the local send is accepted by the
+  page session;
+- a page-local in-flight guard should prevent repeated `Enter` presses or rapid send clicks from
+  enqueuing duplicate drafts before the HTTP result returns;
+- optimistic local echoes are allowed, but the persisted message and idempotency result remain
+  authoritative;
+- channel and thread views should render user-visible chat messages and explicit permission-review
+  cards, not dump task notes, unknown ACP/debug payloads, or raw JSON into the human channel stream;
+- switching conversation scope should clear stale visible messages before the next target payload
+  arrives, so a task/thread title never briefly shows the previous shared-channel body;
+- when task lists are temporarily stale, an opened conversation may use its already-loaded detail
+  object for title and metadata continuity until the list catches up;
+- conversation refresh should use known selected-run context when available instead of issuing
+  avoidable recovery fetches on every refresh cycle.
+
+Task-intent and task creation constraints:
+
+- composer task intent remains metadata on a conversation or thread message;
+- public UI and HTTP clients must not bypass coordinator/runtime by directly creating canonical
+  Team tasks from channel actions;
+- coordinator/runtime remains responsible for choosing explicit owner, priority, and linkage before
+  materializing a canonical task.
+
 ## Validation Matrix
 
 1. Channel and thread routing
@@ -345,6 +377,13 @@ This preserves:
 - thread pane carries the deeper context;
 - narrow-screen shell preserves the same distinction without turning thread into a top-level lens.
 
+7. Composer/send behavior
+- rapid duplicate sends from one page session do not enqueue duplicate drafts;
+- send idempotency returns the original persisted message on exact replay;
+- reusing an idempotency key with a different normalized payload, route, or target fails closed;
+- channel rendering excludes non-chat debug payloads from the human stream;
+- conversation scope switching does not show stale shared-channel content under a task/thread title.
+
 ## Operational Notes
 
 - Keep channel roots summary-first; move long logs, detailed evidence, and extended back-and-forth
@@ -374,3 +413,6 @@ This preserves:
 - [docs/journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md](../journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md)
 - [docs/journal/2026-05-21-team-prompt-operating-contract-refresh.md](../journal/2026-05-21-team-prompt-operating-contract-refresh.md)
 - [docs/journal/2026-05-21-team-task-first-and-mailbox-envelope-slice.md](../journal/2026-05-21-team-task-first-and-mailbox-envelope-slice.md)
+- [docs/journal/2026-04-05-team-channel-send-feedback-and-visibility.md](../journal/2026-04-05-team-channel-send-feedback-and-visibility.md)
+- [docs/journal/2026-04-05-team-conversation-selection-resilience.md](../journal/2026-04-05-team-conversation-selection-resilience.md)
+- [docs/journal/2026-07-19-team-conversation-composer-compaction-wave2.md](../journal/2026-07-19-team-conversation-composer-compaction-wave2.md)

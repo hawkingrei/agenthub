@@ -16,6 +16,15 @@ impl MessageArchiveStore for RecordingMessageArchive {
         Ok(())
     }
 
+    async fn contains_document(&self, document_id: &str) -> anyhow::Result<bool> {
+        Ok(self
+            .documents
+            .lock()
+            .await
+            .iter()
+            .any(|document| document.document_id == document_id))
+    }
+
     async fn search(&self, _query: &MessageSearchQuery) -> anyhow::Result<Vec<MessageSearchHit>> {
         Ok(Vec::new())
     }
@@ -136,6 +145,15 @@ impl MessageArchiveStore for TailAppendingMessageArchive {
         Ok(())
     }
 
+    async fn contains_document(&self, document_id: &str) -> anyhow::Result<bool> {
+        Ok(self
+            .documents
+            .lock()
+            .await
+            .iter()
+            .any(|document| document.document_id == document_id))
+    }
+
     async fn search(&self, _query: &MessageSearchQuery) -> anyhow::Result<Vec<MessageSearchHit>> {
         Ok(Vec::new())
     }
@@ -152,6 +170,10 @@ impl MessageArchiveStore for PendingMessageArchive {
     async fn append_documents(&self, _documents: &[MessageDocument]) -> anyhow::Result<()> {
         std::future::pending::<()>().await;
         Ok(())
+    }
+
+    async fn contains_document(&self, _document_id: &str) -> anyhow::Result<bool> {
+        Ok(false)
     }
 
     async fn search(&self, _query: &MessageSearchQuery) -> anyhow::Result<Vec<MessageSearchHit>> {

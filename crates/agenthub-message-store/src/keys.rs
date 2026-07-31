@@ -39,41 +39,74 @@ fn join(parts: &[&[u8]], sort_id: Option<[u8; 8]>) -> Vec<u8> {
 
 /// `msg/by_channel/<group_id>/<channel_id>/<sort_id>`
 pub fn channel_key(group_id: &str, channel_id: &str, seq: u64) -> Vec<u8> {
+    let mut key = channel_prefix(group_id, channel_id);
+    key.push(SEP);
+    key.extend_from_slice(&encode_sort_id(seq));
+    key
+}
+
+/// `msg/by_channel/<group_id>/<channel_id>`
+pub fn channel_prefix(group_id: &str, channel_id: &str) -> Vec<u8> {
     join(
         &[
             b"msg/by_channel",
             group_id.as_bytes(),
             channel_id.as_bytes(),
         ],
-        Some(encode_sort_id(seq)),
+        None,
     )
 }
 
 /// `msg/by_agent/<agent_id>/<sort_id>`
 pub fn agent_key(agent_id: &str, seq: u64) -> Vec<u8> {
-    join(
-        &[b"msg/by_agent", agent_id.as_bytes()],
-        Some(encode_sort_id(seq)),
-    )
+    let mut key = agent_prefix(agent_id);
+    key.push(SEP);
+    key.extend_from_slice(&encode_sort_id(seq));
+    key
+}
+
+/// `msg/by_agent/<agent_id>`
+pub fn agent_prefix(agent_id: &str) -> Vec<u8> {
+    join(&[b"msg/by_agent", agent_id.as_bytes()], None)
 }
 
 /// `msg/by_run/<run_id>/<sort_id>`
 pub fn run_key(run_id: &str, seq: u64) -> Vec<u8> {
-    join(
-        &[b"msg/by_run", run_id.as_bytes()],
-        Some(encode_sort_id(seq)),
-    )
+    let mut key = run_prefix(run_id);
+    key.push(SEP);
+    key.extend_from_slice(&encode_sort_id(seq));
+    key
+}
+
+/// `msg/by_run/<run_id>`
+pub fn run_prefix(run_id: &str) -> Vec<u8> {
+    join(&[b"msg/by_run", run_id.as_bytes()], None)
+}
+
+/// `msg/by_id/<message_id>`
+pub fn message_id_key(message_id: &str) -> Vec<u8> {
+    join(&[b"msg/by_id", message_id.as_bytes()], None)
 }
 
 /// `inbox/by_actor/<actor_id>/<sort_id>` — unified chronological inbox across runs.
 pub fn inbox_key(actor_id: &str, seq: u64) -> Vec<u8> {
-    join(
-        &[b"inbox/by_actor", actor_id.as_bytes()],
-        Some(encode_sort_id(seq)),
-    )
+    let mut key = inbox_prefix(actor_id);
+    key.push(SEP);
+    key.extend_from_slice(&encode_sort_id(seq));
+    key
+}
+
+/// `inbox/by_actor/<actor_id>`
+pub fn inbox_prefix(actor_id: &str) -> Vec<u8> {
+    join(&[b"inbox/by_actor", actor_id.as_bytes()], None)
 }
 
 /// `body/by_message/<authority_message_id>` — the body key. One body per logical message.
 pub fn body_key(id: &AuthorityMessageId) -> Vec<u8> {
     join(&[b"body/by_message", id.as_str().as_bytes()], None)
+}
+
+/// `meta/high_water/<stream_id>` — projected authority high-water mark for one stream.
+pub fn high_water_key(stream_id: &str) -> Vec<u8> {
+    join(&[b"meta/high_water", stream_id.as_bytes()], None)
 }

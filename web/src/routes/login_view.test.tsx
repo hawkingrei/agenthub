@@ -31,10 +31,15 @@ describe("LoginView", () => {
     expect(html).toContain('value="user1"');
     expect(html).toContain('value="password1"');
     expect(html).not.toContain("Initialize Root");
+    expect(html).not.toContain("First-run setup");
   });
 
   it("renders register fields when root is not initialized", () => {
     const html = renderHtml({ rootInitialized: false });
+    expect(html).toContain("First-run setup");
+    expect(html).toContain("Initialize this AgentHub instance");
+    expect(html).toContain("This step creates the first operator account");
+    expect(html).toContain("Use agenthub init or ~/.agenthub/config.toml");
     expect(html).toContain("Initialize Root");
     expect(html).toContain('value="User One"');
   });

@@ -1,3 +1,4 @@
+import React from "react";
 import { type AcpConversationBubbleProps, AcpConversationBubble } from "./acp_conversation_bubble";
 import {
   getConversationItemKey,
@@ -11,7 +12,7 @@ type AcpConversationItemRowProps = AcpConversationBubbleProps & {
 
 export { getConversationItemKey } from "./acp_conversation_item_meta";
 
-export function AcpConversationItemRow({
+function AcpConversationItemRowInner({
   focusedToolCallId,
   ...bubbleProps
 }: AcpConversationItemRowProps) {
@@ -29,5 +30,31 @@ export function AcpConversationItemRow({
     >
       <AcpConversationBubble {...bubbleProps} />
     </div>
+  );
+}
+
+export const AcpConversationItemRow = React.memo(
+  AcpConversationItemRowInner,
+  areAcpConversationItemRowPropsEqual
+);
+
+export function areAcpConversationItemRowPropsEqual(
+  prev: Readonly<AcpConversationItemRowProps>,
+  next: Readonly<AcpConversationItemRowProps>
+): boolean {
+  if (prev.msg !== next.msg) return false;
+  if (prev.globalIndex !== next.globalIndex) return false;
+  if (prev.latestVisibleGlobalIndex !== next.latestVisibleGlobalIndex) return false;
+  if (prev.shouldAutoCollapse !== next.shouldAutoCollapse) return false;
+  if (prev.collapseCutoff !== next.collapseCutoff) return false;
+  if (prev.toolCallsDefaultCollapsed !== next.toolCallsDefaultCollapsed) return false;
+  if (prev.isFrozenView !== next.isFrozenView) return false;
+  if (prev.runStatus !== next.runStatus) return false;
+  if (prev.ansi !== next.ansi) return false;
+  if (prev.markdownRenderVersion !== next.markdownRenderVersion) return false;
+  if (prev.onSubmitRequestUserInput !== next.onSubmitRequestUserInput) return false;
+  return (
+    isConversationItemFocusedToolCall(prev.msg, prev.focusedToolCallId ?? null) ===
+    isConversationItemFocusedToolCall(next.msg, next.focusedToolCallId ?? null)
   );
 }

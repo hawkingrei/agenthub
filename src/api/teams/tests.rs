@@ -23,6 +23,7 @@ use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::agent::AgentManager;
 use crate::agent::WorktreeMode;
 use crate::agenthub_binary::resolve_agenthub_binary_path;
+use crate::api::authz::require_user;
 use crate::auth::AuthService;
 use crate::object_upload::ObjectUploadService;
 use crate::push::PushService;
@@ -31,7 +32,8 @@ use crate::team::{
     TeamActorMessageTransport, TeamDefinitionConfig, TeamManager, TeamTaskCreateInput,
     TeamTaskPriority, force_team_member_new_session,
 };
-use agenthub_config::{AppConfig, PushConfig, WebConfig};
+use agenthub_auth_domain::UserRole;
+use agenthub_config::{AppConfig, ObjectStoreConfig, PushConfig, WebConfig};
 use agenthub_message_archive::{
     MessageArchiveStore, MessageDocument, MessageDocumentKind, MessageSearchHit, MessageSearchQuery,
 };
@@ -61,13 +63,12 @@ use super::{
     list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
     list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
     map_team_internal_error, normalize_conversation_mode, normalize_task_created_by_actor_id,
-    normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, require_user,
-    restart_team_run, resume_team_run, resume_team_run_step, search_team_messages,
-    send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
-    start_team_run_step, stop_team, submit_team_run_step, takeover_team_run_message,
-    transfer_team_run_message, triage_team_run_message, update_team_spec, update_team_task,
-    upload_team_image, upload_team_object, upload_team_task_image, upload_team_task_object,
-    validate_team_spec,
+    normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, restart_team_run,
+    resume_team_run, resume_team_run_step, search_team_messages, send_team_run_message,
+    send_team_task_message, set_team_run_step_input_required, start_team, start_team_run_step,
+    stop_team, submit_team_run_step, takeover_team_run_message, transfer_team_run_message,
+    triage_team_run_message, update_team_spec, update_team_task, upload_team_image,
+    upload_team_object, upload_team_task_image, upload_team_task_object, validate_team_spec,
 };
 
 #[derive(Default)]
@@ -84,6 +85,13 @@ impl MessageArchiveStore for RecordingSearchArchive {
 
     async fn append_documents(&self, _documents: &[MessageDocument]) -> anyhow::Result<()> {
         Ok(())
+    }
+
+    async fn contains_document(&self, document_id: &str) -> anyhow::Result<bool> {
+        Ok(self
+            .hits
+            .iter()
+            .any(|hit| hit.document_id.as_str() == document_id))
     }
 
     async fn search(&self, query: &MessageSearchQuery) -> anyhow::Result<Vec<MessageSearchHit>> {
@@ -209,39 +217,87 @@ fn long_lived_test_agent_args() -> String {
 }
 
 pub(crate) async fn build_test_state() -> AppState {
-    build_test_state_with_db_source_and_archive(None, true, true, None, None).await
+    build_test_state_with_db_source_archive_and_object_store(None, true, true, None, None, None)
+        .await
 }
 
 pub(crate) async fn build_test_state_without_seeded_team_member_agents() -> AppState {
-    build_test_state_with_db_source_and_archive(None, true, false, None, None).await
+    build_test_state_with_db_source_archive_and_object_store(None, true, false, None, None, None)
+        .await
 }
 
 pub(crate) async fn build_test_state_with_db_path(path: &StdPath) -> AppState {
-    build_test_state_with_db_source_and_archive(Some(path), true, true, None, None).await
+    build_test_state_with_db_source_archive_and_object_store(
+        Some(path),
+        true,
+        true,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn reopen_test_state_with_db_path(path: &StdPath) -> AppState {
-    build_test_state_with_db_source_and_archive(Some(path), false, false, None, None).await
+    build_test_state_with_db_source_archive_and_object_store(
+        Some(path),
+        false,
+        false,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn build_test_state_with_message_archive(
     archive: Arc<dyn MessageArchiveStore>,
 ) -> AppState {
-    build_test_state_with_db_source_and_archive(None, true, false, Some(archive), None).await
+    build_test_state_with_db_source_archive_and_object_store(
+        None,
+        true,
+        false,
+        Some(archive),
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn build_test_state_with_body_store(
     body_store: crate::message_body_store::SharedBodyStore,
 ) -> AppState {
-    build_test_state_with_db_source_and_archive(None, true, true, None, Some(body_store)).await
+    build_test_state_with_db_source_archive_and_object_store(
+        None,
+        true,
+        true,
+        None,
+        Some(body_store),
+        None,
+    )
+    .await
 }
 
-async fn build_test_state_with_db_source_and_archive(
+#[cfg(feature = "object-store-s3")]
+async fn build_test_state_with_object_store(object_store: ObjectStoreConfig) -> AppState {
+    build_test_state_with_db_source_archive_and_object_store(
+        None,
+        true,
+        true,
+        None,
+        None,
+        Some(object_store),
+    )
+    .await
+}
+
+async fn build_test_state_with_db_source_archive_and_object_store(
     path: Option<&StdPath>,
     initialize_schema: bool,
     seed_default_agents: bool,
     message_archive: Option<Arc<dyn MessageArchiveStore>>,
     body_store: Option<crate::message_body_store::SharedBodyStore>,
+    object_store: Option<ObjectStoreConfig>,
 ) -> AppState {
     let db = match path {
         Some(path) => create_test_db_at(path).await,
@@ -264,6 +320,7 @@ async fn build_test_state_with_db_source_and_archive(
             subject: Some("mailto:test@example.com".to_string()),
             keys_path: Some(keys_path.to_string_lossy().to_string()),
         }),
+        object_store: object_store.clone(),
         ..Default::default()
     };
     let push = Arc::new(PushService::new(db.clone(), &config).expect("create push service"));
@@ -291,9 +348,21 @@ async fn build_test_state_with_db_source_and_archive(
     ));
     let teams = Arc::new(
         TeamManager::new_with_event_dbs_and_message_archive(db.clone(), event_dbs, message_archive)
-            .with_body_store(body_store.clone()),
+            .with_body_store(body_store.clone())
+            .with_message_index(None)
+            .with_read_repair_scheduler(None),
     );
-    let object_uploads = Arc::new(test_object_upload_service(db.clone()));
+    let object_uploads = Arc::new(match object_store {
+        Some(object_store) => {
+            let config = AppConfig {
+                object_store: Some(object_store),
+                ..Default::default()
+            };
+            ObjectUploadService::from_config(db.clone(), &config)
+                .expect("create configured object upload service")
+        }
+        None => test_object_upload_service(db.clone()),
+    });
     let state = AppState {
         db,
         linker_http: crate::linkers::AppLinkerService::default_http_client(),
@@ -306,11 +375,39 @@ async fn build_test_state_with_db_source_and_archive(
         agent_node_join_bootstrap: crate::agent::AgentNodeJoinBootstrapInfo::disabled(),
         default_worktree_root: config.default_worktree_root(),
         body_store,
+        message_index: None,
+        message_read_repair: None,
     };
     if seed_default_agents {
         seed_default_team_member_agents(&state).await;
     }
     state
+}
+
+#[cfg(feature = "object-store-s3")]
+fn s3_fixture_object_store_config_from_env() -> Option<ObjectStoreConfig> {
+    let endpoint = std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_ENDPOINT").ok()?;
+    let bucket = std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_BUCKET").ok()?;
+    std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_ACCESS_KEY_ID").ok()?;
+    std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_SECRET_ACCESS_KEY").ok()?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("read system time")
+        .as_nanos();
+    Some(ObjectStoreConfig {
+        backend: Some("s3".to_string()),
+        root: None,
+        prefix: Some(format!("agenthub-api-s3-ci/{nonce}")),
+        public_base_url: Some("https://img.example.test/objects".to_string()),
+        bucket: Some(bucket),
+        endpoint: Some(endpoint),
+        region: Some(
+            std::env::var("AGENTHUB_OBJECT_STORE_S3_TEST_REGION")
+                .unwrap_or_else(|_| "us-east-1".to_string()),
+        ),
+        access_key_id_env: Some("AGENTHUB_OBJECT_STORE_S3_TEST_ACCESS_KEY_ID".to_string()),
+        secret_access_key_env: Some("AGENTHUB_OBJECT_STORE_S3_TEST_SECRET_ACCESS_KEY".to_string()),
+    })
 }
 
 fn test_object_upload_service(db: SqlitePool) -> ObjectUploadService {
@@ -394,6 +491,22 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create push_subscriptions");
+
+    sqlx::query(
+        r#"
         CREATE TABLE object_uploads (
             id TEXT PRIMARY KEY,
             owner_scope TEXT NOT NULL,
@@ -425,6 +538,49 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create object upload object key index");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE object_upload_sessions (
+            id TEXT PRIMARY KEY,
+            owner_scope TEXT NOT NULL,
+            backend TEXT NOT NULL,
+            object_key TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            object_kind TEXT NOT NULL,
+            expected_size_bytes INTEGER NOT NULL,
+            expected_sha256 TEXT,
+            created_by_actor_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            canceled_at INTEGER,
+            published_upload_id TEXT
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create object_upload_sessions");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE object_upload_session_parts (
+            session_id TEXT NOT NULL,
+            part_number INTEGER NOT NULL,
+            object_key TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            uploaded_at INTEGER NOT NULL,
+            PRIMARY KEY(session_id, part_number)
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create object_upload_session_parts");
 
     sqlx::query(
         r#"
@@ -492,6 +648,7 @@ async fn init_test_schema(db: &SqlitePool) {
             agent_loop_idle_seconds INTEGER,
             agent_loop_prompt TEXT,
             status TEXT NOT NULL,
+            target_node_id TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -1245,27 +1402,41 @@ async fn auth_headers(state: &AppState) -> HeaderMap {
 }
 
 pub(crate) async fn create_auth_token(state: &AppState) -> String {
+    create_auth_token_with_role(state, UserRole::Root).await
+}
+
+pub(crate) async fn create_auth_token_with_role(state: &AppState, role: UserRole) -> String {
+    let (_user_id, token) = create_auth_token_with_role_and_user_id(state, role).await;
+    token
+}
+
+pub(crate) async fn create_auth_token_with_role_and_user_id(
+    state: &AppState,
+    role: UserRole,
+) -> (String, String) {
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now().timestamp();
     sqlx::query(
         r#"
         INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-        VALUES (?1, ?2, ?3, 'root', NULL, ?4)
+        VALUES (?1, ?2, ?3, ?4, NULL, ?5)
         "#,
     )
     .bind(&user_id)
-    .bind(format!("root-{}", Uuid::new_v4()))
-    .bind("Root")
+    .bind(format!("{}-{}", role.as_str(), Uuid::new_v4()))
+    .bind(role.as_str())
+    .bind(role.as_str())
     .bind(now)
     .execute(&state.db)
     .await
     .expect("insert user");
 
-    state
+    let token = state
         .auth
         .create_session(&user_id)
         .await
-        .expect("create token")
+        .expect("create token");
+    (user_id, token)
 }
 
 fn build_json_request(
@@ -1292,6 +1463,233 @@ async fn decode_json_body(response: axum::response::Response) -> Value {
         .await
         .expect("read response body");
     serde_json::from_slice(&bytes).expect("decode json response")
+}
+
+#[cfg(feature = "object-store-s3")]
+#[tokio::test]
+async fn team_upload_session_s3_multipart_route_fixture_publishes_metadata() {
+    let Some(object_store) = s3_fixture_object_store_config_from_env() else {
+        eprintln!("skipping s3 route fixture: AGENTHUB_OBJECT_STORE_S3_TEST_* env is not set");
+        return;
+    };
+    let state = build_test_state_with_object_store(object_store).await;
+    let token = create_auth_token(&state).await;
+    let headers = headers_for_token(&token);
+
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers,
+        Json(CreateTeamRequest {
+            name: "s3-multipart-upload-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create s3 multipart upload team");
+    let app = super::router(state.clone());
+
+    let bytes = vec![b'x'; 5 * 1024 * 1024];
+    let sha256 = hex_encode(&Sha256::digest(&bytes));
+    let prepared = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{}/uploads/sessions", created.id),
+            Some(&token),
+            Some(json!({
+                "file_name": "large-route-fixture.bin",
+                "content_type": "application/octet-stream",
+                "object_kind": "object",
+                "expected_size_bytes": bytes.len(),
+                "expected_sha256": sha256
+            })),
+        ))
+        .await
+        .expect("prepare s3 multipart upload session");
+    let prepared_status = prepared.status();
+    let session = decode_json_body(prepared).await;
+    assert_eq!(
+        prepared_status,
+        StatusCode::OK,
+        "unexpected prepare body: {session}"
+    );
+    let session_id = session["id"].as_str().expect("session id").to_string();
+
+    let initiated = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{}/uploads/sessions/{session_id}/multipart", created.id),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("initiate s3 multipart upload session");
+    let initiated_status = initiated.status();
+    let multipart = decode_json_body(initiated).await;
+    assert_eq!(
+        initiated_status,
+        StatusCode::OK,
+        "unexpected initiate body: {multipart}"
+    );
+    let upload_id = multipart["upload_id"]
+        .as_str()
+        .expect("multipart upload id")
+        .to_string();
+
+    let part_write = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!(
+                "/{}/uploads/sessions/{session_id}/multipart/parts/1",
+                created.id
+            ),
+            Some(&token),
+            Some(json!({
+                "upload_id": upload_id,
+                "expires_in_seconds": 300
+            })),
+        ))
+        .await
+        .expect("prepare s3 multipart upload part");
+    let part_write_status = part_write.status();
+    let part = decode_json_body(part_write).await;
+    assert_eq!(
+        part_write_status,
+        StatusCode::OK,
+        "unexpected part write body: {part}"
+    );
+    assert_eq!(part["method"], Value::from("PUT"));
+
+    let mut request = reqwest::Client::new().put(part["url"].as_str().expect("part url"));
+    for header in part["headers"].as_array().expect("part headers") {
+        let name = header["name"].as_str().expect("part header name");
+        if name.eq_ignore_ascii_case("host") {
+            continue;
+        }
+        request = request.header(name, header["value"].as_str().expect("part header value"));
+    }
+    let put_response = request
+        .body(bytes.clone())
+        .send()
+        .await
+        .expect("put presigned multipart part");
+    let put_status = put_response.status();
+    let etag = put_response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|value| value.to_str().ok())
+        .expect("multipart part etag")
+        .to_string();
+    let put_body = put_response
+        .text()
+        .await
+        .expect("read multipart put response body");
+    assert!(
+        put_status.is_success(),
+        "unexpected multipart put status {put_status}: {put_body}"
+    );
+
+    let completed = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!(
+                "/{}/uploads/sessions/{session_id}/multipart/complete",
+                created.id
+            ),
+            Some(&token),
+            Some(json!({
+                "upload_id": upload_id,
+                "parts": [{ "part_number": 1, "etag": etag }]
+            })),
+        ))
+        .await
+        .expect("complete s3 multipart upload session");
+    let completed_status = completed.status();
+    let upload = decode_json_body(completed).await;
+    assert_eq!(
+        completed_status,
+        StatusCode::OK,
+        "unexpected multipart complete body: {upload}"
+    );
+    assert_eq!(
+        upload["owner_scope"],
+        Value::from(format!("teams/{}", created.id))
+    );
+    assert_eq!(upload["publish_state"], Value::from("published"));
+    assert_eq!(upload["size_bytes"], Value::from(bytes.len() as i64));
+    let persisted = agenthub_db::object_uploads::get_object_upload(
+        &state.db,
+        upload["id"].as_str().expect("upload id"),
+    )
+    .await
+    .expect("load persisted multipart upload");
+    assert_eq!(persisted.publish_state, "published");
+    assert_eq!(persisted.owner_scope, format!("teams/{}", created.id));
+
+    let abort_prepared = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{}/uploads/sessions", created.id),
+            Some(&token),
+            Some(json!({
+                "file_name": "abort-route-fixture.bin",
+                "content_type": "application/octet-stream",
+                "object_kind": "object",
+                "expected_size_bytes": bytes.len()
+            })),
+        ))
+        .await
+        .expect("prepare s3 multipart abort session");
+    assert_eq!(abort_prepared.status(), StatusCode::OK);
+    let abort_session = decode_json_body(abort_prepared).await;
+    let abort_session_id = abort_session["id"]
+        .as_str()
+        .expect("abort session id")
+        .to_string();
+    let abort_initiated = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!(
+                "/{}/uploads/sessions/{abort_session_id}/multipart",
+                created.id
+            ),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("initiate s3 multipart abort session");
+    assert_eq!(abort_initiated.status(), StatusCode::OK);
+    let abort_upload = decode_json_body(abort_initiated).await;
+    let abort_upload_id = abort_upload["upload_id"]
+        .as_str()
+        .expect("abort upload id")
+        .to_string();
+    let aborted = app
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!(
+                "/{}/uploads/sessions/{abort_session_id}/multipart/abort",
+                created.id
+            ),
+            Some(&token),
+            Some(json!({ "upload_id": abort_upload_id })),
+        ))
+        .await
+        .expect("abort s3 multipart upload session");
+    let aborted_status = aborted.status();
+    let aborted_session = decode_json_body(aborted).await;
+    assert_eq!(
+        aborted_status,
+        StatusCode::OK,
+        "unexpected multipart abort body: {aborted_session}"
+    );
+    assert_eq!(aborted_session["status"], Value::from("canceled"));
 }
 
 include!("tests_core.rs");

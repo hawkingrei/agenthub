@@ -14,6 +14,13 @@ existing debug and permission interaction behavior.
 - `web/src/components/acp_debug.tsx`
 - `docs/todo.md`
 
+## Supersession
+
+Stable ACP debug-shell and permission/debug control styling rules from this note now live in
+`docs/features/acp-runtime.md#4-conversationdebug-surfaces` and
+`docs/features/frontend-design.md#42-acp-heavy-output-visual-contract`. This journal remains the
+rollout evidence for the Tailwind phase-8 ACP debug shell migration.
+
 ## Key Decisions
 
 1. Keep ACP behavior unchanged:

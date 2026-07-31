@@ -261,6 +261,7 @@ pub(super) fn build_remote_relay_envelope(message: &TeamActorMessageRecord) -> V
         "to_actor_id": &message.to_actor_id,
         "to_peer_id": &message.to_peer_id,
         "to_actor_kind": &message.to_actor_kind,
+        "message_kind": message.message_kind.as_str(),
         "channel": &message.channel,
         "transport": message.transport.as_str(),
         "created_at": message.created_at,

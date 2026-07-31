@@ -44,6 +44,8 @@ import {
   TEAM_THREAD_PANE_CLASS,
   TEAM_THREAD_REPLY_COUNT_CLASS,
   TEAM_THREAD_REPLIES_LIST_CLASS,
+  TEAM_THREAD_REPLIES_WINDOW_BUTTON_CLASS,
+  TEAM_THREAD_REPLIES_WINDOW_NOTICE_CLASS,
   TEAM_THREAD_RICH_TEXT_CLASS,
   TEAM_THREAD_SECTION_ROW_CLASS,
   TEAM_THREAD_SECTION_TITLE_CLASS,
@@ -56,6 +58,11 @@ import {
   TEAM_THREAD_TRANSCRIPT_CLASS,
 } from "../../ui/tailwind_classes";
 import { isMobileInputViewport } from "../../components/input_dock";
+import {
+  DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE,
+  shouldDefaultTeamConversationStickToBottom,
+  windowTeamConversation,
+} from "./team_conversation_viewport";
 
 type TeamThreadReplyItem = {
   messageId: number;
@@ -64,11 +71,19 @@ type TeamThreadReplyItem = {
   text: string;
 };
 
-type TeamThreadRenderMessage = {
+export type TeamThreadRenderMessage = {
   messageId: number;
   authorLabel: string;
   createdAtLabel: string;
   text: string;
+};
+
+export type TeamThreadMessageRowProps = {
+  message: TeamThreadRenderMessage;
+  avatarStableId: string | number | null;
+  renderSanitizedHtml: (text: string) => string;
+  original?: boolean;
+  showMissingTextWhenEmpty?: boolean;
 };
 
 type TeamThreadPaneProps = {
@@ -92,6 +107,78 @@ type TeamThreadPaneProps = {
 function formatThreadReplyCount(count: number): string {
   return count === 1 ? "1 reply" : `${count} replies`;
 }
+
+export function areTeamThreadMessageRowPropsEqual(
+  prev: TeamThreadMessageRowProps,
+  next: TeamThreadMessageRowProps
+): boolean {
+  return (
+    prev.avatarStableId === next.avatarStableId &&
+    prev.renderSanitizedHtml === next.renderSanitizedHtml &&
+    prev.original === next.original &&
+    prev.showMissingTextWhenEmpty === next.showMissingTextWhenEmpty &&
+    prev.message.messageId === next.message.messageId &&
+    prev.message.authorLabel === next.message.authorLabel &&
+    prev.message.createdAtLabel === next.message.createdAtLabel &&
+    prev.message.text === next.message.text
+  );
+}
+
+const TeamThreadMessageRow = React.memo(function TeamThreadMessageRow({
+  message,
+  avatarStableId,
+  renderSanitizedHtml,
+  original = false,
+  showMissingTextWhenEmpty = false,
+}: TeamThreadMessageRowProps) {
+  return (
+    <div className={TEAM_THREAD_MESSAGE_ROW_CLASS}>
+      <DeterministicAvatar
+        name={message.authorLabel}
+        stableId={avatarStableId}
+        className={TEAM_THREAD_MESSAGE_AVATAR_CLASS}
+      />
+      <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
+        <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
+          <span className={TEAM_THREAD_MESSAGE_AUTHOR_CLASS}>
+            {message.authorLabel}
+          </span>
+          <span>{message.createdAtLabel}</span>
+          <span>{`#${message.messageId}`}</span>
+          {original ? (
+            <Badge
+              tone="outline"
+              shape="pill"
+              className={TEAM_THREAD_ORIGINAL_BADGE_CLASS}
+            >
+              Original
+            </Badge>
+          ) : null}
+        </div>
+        <ConversationBubble className={TEAM_THREAD_MESSAGE_BUBBLE_CLASS}>
+          {message.text ? (
+            <TeamThreadRichText
+              className={TEAM_THREAD_RICH_TEXT_CLASS}
+              text={message.text}
+              renderSanitizedHtml={renderSanitizedHtml}
+            />
+          ) : showMissingTextWhenEmpty ? (
+            <div className={TEAM_THREAD_MISSING_TEXT_CLASS}>
+              Original content is not available in chat text form.
+            </div>
+          ) : (
+            <TeamThreadRichText
+              className={TEAM_THREAD_RICH_TEXT_CLASS}
+              text=""
+              renderSanitizedHtml={renderSanitizedHtml}
+            />
+          )}
+        </ConversationBubble>
+      </div>
+    </div>
+  );
+}, areTeamThreadMessageRowPropsEqual);
+
 function formatThreadSourceSummary(
   rootAuthorLabel: string | null,
   rootMessageId: number | null
@@ -164,6 +251,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
   const replyTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [activeMention, setActiveMention] = React.useState<ReturnType<typeof resolveMentionDraftQuery>>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
+  const [showAllReplies, setShowAllReplies] = React.useState(false);
   const [sendOnEnter, setSendOnEnter] = React.useState(() =>
     typeof window === "undefined" ? true : !isMobileInputViewport(window.innerWidth)
   );
@@ -201,6 +289,21 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
       }),
     [formatTs, replies]
   );
+  const shouldWindowReplies =
+    !showAllReplies && shouldDefaultTeamConversationStickToBottom(replyRenderMessages.length);
+  const replyWindow = React.useMemo(
+    () =>
+      windowTeamConversation(
+        replyRenderMessages,
+        shouldWindowReplies,
+        DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE
+      ),
+    [replyRenderMessages, shouldWindowReplies]
+  );
+  const hiddenReplyCount = replyWindow.offset;
+  React.useEffect(() => {
+    setShowAllReplies(false);
+  }, [rootMessageId]);
   React.useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -364,42 +467,15 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
           </EmptyState>
         ) : (
           <div className={TEAM_THREAD_TRANSCRIPT_CLASS}>
-            <div className={TEAM_THREAD_MESSAGE_ROW_CLASS}>
-              <DeterministicAvatar
-                name={rootRenderMessage?.authorLabel ?? "Unknown"}
-                stableId={rootAuthorLabel || rootMessageId}
-                className={TEAM_THREAD_MESSAGE_AVATAR_CLASS}
+            {rootRenderMessage ? (
+              <TeamThreadMessageRow
+                message={rootRenderMessage}
+                avatarStableId={rootAuthorLabel || rootMessageId}
+                renderSanitizedHtml={renderThreadMessageHtml}
+                original
+                showMissingTextWhenEmpty
               />
-              <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
-                <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
-                  <span className={TEAM_THREAD_MESSAGE_AUTHOR_CLASS}>
-                    {rootRenderMessage?.authorLabel ?? "Unknown"}
-                  </span>
-                  <span>{rootRenderMessage?.createdAtLabel ?? ""}</span>
-                  <span>{`#${rootRenderMessage?.messageId ?? rootMessageId}`}</span>
-                  <Badge
-                    tone="outline"
-                    shape="pill"
-                    className={TEAM_THREAD_ORIGINAL_BADGE_CLASS}
-                  >
-                    Original
-                  </Badge>
-                </div>
-                <ConversationBubble className={TEAM_THREAD_MESSAGE_BUBBLE_CLASS}>
-                  {rootRenderMessage?.text ? (
-                    <TeamThreadRichText
-                      className={TEAM_THREAD_RICH_TEXT_CLASS}
-                      text={rootRenderMessage.text}
-                      renderSanitizedHtml={renderThreadMessageHtml}
-                    />
-                  ) : (
-                    <div className={TEAM_THREAD_MISSING_TEXT_CLASS}>
-                      Original content is not available in chat text form.
-                    </div>
-                  )}
-                </ConversationBubble>
-              </div>
-            </div>
+            ) : null}
             <div className={TEAM_THREAD_SECTION_ROW_CLASS}>
               <div className={TEAM_THREAD_SECTION_TITLE_CLASS}>
                 Replies
@@ -412,29 +488,35 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                   No replies yet.
                 </div>
               ) : (
-                replyRenderMessages.map((reply) => (
-                  <div key={reply.messageId} className={TEAM_THREAD_MESSAGE_ROW_CLASS}>
-                    <DeterministicAvatar
-                      name={reply.authorLabel}
-                      stableId={reply.authorLabel === "Unknown" ? reply.messageId : reply.authorLabel}
-                      className={TEAM_THREAD_MESSAGE_AVATAR_CLASS}
-                    />
-                    <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
-                      <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
-                        <span className={TEAM_THREAD_MESSAGE_AUTHOR_CLASS}>{reply.authorLabel}</span>
-                        <span>{reply.createdAtLabel}</span>
-                        <span>{`#${reply.messageId}`}</span>
-                      </div>
-                      <ConversationBubble className={TEAM_THREAD_MESSAGE_BUBBLE_CLASS}>
-                        <TeamThreadRichText
-                          className={TEAM_THREAD_RICH_TEXT_CLASS}
-                          text={reply.text}
-                          renderSanitizedHtml={renderThreadMessageHtml}
-                        />
-                      </ConversationBubble>
+                <>
+                  {hiddenReplyCount > 0 ? (
+                    <div
+                      className={TEAM_THREAD_REPLIES_WINDOW_NOTICE_CLASS}
+                      data-team-surface="thread-replies-window-notice"
+                    >
+                      <span>
+                        {`Showing latest ${replyWindow.items.length} of ${replyWindow.total} replies.`}
+                      </span>
+                      <CompactButton
+                        type="button"
+                        className={TEAM_THREAD_REPLIES_WINDOW_BUTTON_CLASS}
+                        onClick={() => setShowAllReplies(true)}
+                      >
+                        Show earlier replies
+                      </CompactButton>
                     </div>
-                  </div>
-                ))
+                  ) : null}
+                  {replyWindow.items.map((reply) => (
+                    <TeamThreadMessageRow
+                      key={reply.messageId}
+                      message={reply}
+                      avatarStableId={
+                        reply.authorLabel === "Unknown" ? reply.messageId : reply.authorLabel
+                      }
+                      renderSanitizedHtml={renderThreadMessageHtml}
+                    />
+                  ))}
+                </>
               )}
             </div>
           </div>

@@ -33,9 +33,33 @@ that can install, enable, and start AgentHub consistently.
 - `sh -n build/deb/DEBIAN/postinst build/deb/DEBIAN/prerm build/deb/DEBIAN/postrm`
 - `build/deb/package.sh --version v0.0.0-test --arch amd64 --target x86_64-unknown-linux-gnu --output-dir /tmp/agenthub-deb-smoke/dist`
 - `dpkg-deb --info /tmp/agenthub-deb-smoke/dist/agenthub_0.0.0-test_amd64.deb`
+- `gh run list --workflow "Release Prebuild" --limit 10`
+  - run `29639782865`
+  - title `test(ci): add object-store s3 minio fixture (#890)`
+  - branch `main`
+  - event `push`
+  - status `completed`
+  - conclusion `success`
+  - started `2026-07-18T09:48:34Z`
+- `gh api repos/hawkingrei/agenthub/actions/runs/29639782865/artifacts`
+  - `release-prebuild-x86_64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-apple-darwin`
+- `gh run view 29639782865 --log | rg "agenthub_.*\.deb|release-prebuild-|Uploading artifact|Artifact name"`
+  - `dpkg-deb` built `dist/agenthub_0.0.0+main_amd64.deb`
+  - `dpkg-deb` built `dist/agenthub_0.0.0+main_arm64.deb`
+  - uploaded `release-prebuild-x86_64-unknown-linux-gnu.zip`
+  - uploaded `release-prebuild-aarch64-unknown-linux-gnu.zip`
+- `gh release view v0.0.11 --json tagName,name,publishedAt,url,assets`
+  - release `v0.0.11`
+  - published `2026-07-12T13:44:59Z`
+  - includes `agenthub_0.0.11_amd64.deb`
+  - includes `agenthub_0.0.11_arm64.deb`
+  - includes `SHA256SUMS.txt`
+- `gh release download v0.0.11 --pattern SHA256SUMS.txt --dir /private/tmp/agenthub-release-v0.0.11-check --clobber`
+  - `SHA256SUMS.txt` includes `agenthub_0.0.11_amd64.deb`
+  - `SHA256SUMS.txt` includes `agenthub_0.0.11_arm64.deb`
 
 ## Follow-Ups
 
-- Verify the next `Release Prebuild` push to `main` uploads Linux `.deb` artifacts.
-- Verify the next release tag includes `.deb` files in `SHA256SUMS.txt`.
 - Decide separately whether to add signed apt repository publication.

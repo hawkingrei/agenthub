@@ -19,6 +19,7 @@ import {
 import { useAcpMarkdownRenderVersion } from "./use_acp_markdown_assets";
 export { parseAnsiSegmentsCached } from "./acp_tool_content";
 export { shouldAutoCollapseConversationItem } from "./acp_conversation_bubble";
+export { areAcpConversationItemRowPropsEqual } from "./acp_conversation_items";
 export {
   deriveToolCallOpenState,
   isToolCallEffectivelyLive,

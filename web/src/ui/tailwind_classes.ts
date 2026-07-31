@@ -577,6 +577,12 @@ export const TEAM_THREAD_SECTION_TITLE_CLASS =
 export const TEAM_THREAD_REPLIES_LIST_CLASS =
   "flex flex-col gap-2 border-t border-notion-border/70 pt-3";
 
+export const TEAM_THREAD_REPLIES_WINDOW_NOTICE_CLASS =
+  "flex flex-wrap items-center justify-between gap-2 rounded-lg border border-notion-border/70 bg-notion-surface-subtle px-2 py-1.5 text-[11px] leading-5 text-notion-text-muted";
+
+export const TEAM_THREAD_REPLIES_WINDOW_BUTTON_CLASS =
+  "h-6 px-2 text-[10px] font-medium text-notion-text-muted";
+
 export const TEAM_THREAD_EMPTY_REPLIES_CLASS = "px-2 text-[11px] leading-5 text-notion-text-muted";
 
 export const TEAM_THREAD_COMPOSER_REGION_CLASS =

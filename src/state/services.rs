@@ -12,7 +12,7 @@ impl AppState {
         config: &agenthub_config::AppConfig,
         db: SqlitePool,
         event_dbs: agenthub_db::AgentEventDbRouter,
-        body_store: Option<crate::message_body_store::SharedBodyStore>,
+        message_stores: crate::message_body_store::MessageStores,
     ) -> anyhow::Result<(
         Arc<AgentManager>,
         Arc<TeamManager>,
@@ -37,6 +37,8 @@ impl AppState {
                 acp_permissions: acp_permissions.clone(),
                 auth: auth.clone(),
                 internal_peer_client: internal_peer_client.clone(),
+                message_index: message_stores.index.clone(),
+                read_repair: message_stores.read_repair.clone(),
             },
         );
 
@@ -44,7 +46,9 @@ impl AppState {
             &db,
             &event_dbs,
             message_archive,
-            body_store,
+            message_stores.body,
+            message_stores.index,
+            message_stores.read_repair,
         );
         super::team_wiring::configure_team_services(
             &teams,

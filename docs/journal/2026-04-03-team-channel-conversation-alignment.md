@@ -5,6 +5,13 @@
 - relaxed Team channel stick-to-bottom handling to match ACP's default near-bottom threshold.
 - converted Team channel layout to the same split-shell pattern as ACP so the composer stays pinned to the bottom while the message body owns scrolling.
 
+## Supersession
+
+Stable conversation layout and composer-pinning rules from this note now live in
+`docs/features/frontend-design.md#41-conversation-and-composer-visual-contract` and
+`docs/features/team-channels-threads.md#11-composer-send-and-visibility-contract`. This journal
+remains the rollout evidence for the channel/conversation alignment pass.
+
 ## Details
 
 - `web/src/conversation.ts`

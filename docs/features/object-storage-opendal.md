@@ -22,8 +22,7 @@ for multi-node operation, cleanup, access checks, or remote upload flows.
 - Replacing SQLite metadata tables with object storage.
 - Migrating existing Team context artifact rows in this slice.
 - Exposing public object URLs as an authorization boundary.
-- Implementing multipart uploads, resumable uploads, or presigned browser uploads in the first
-  backend slice.
+- Exposing OpenDAL backend-private multipart APIs directly to AgentHub callers.
 - Accepting SVG or HTML-backed image uploads in the first image-hosting slice.
 - Storing access keys, secret keys, or session tokens in SQLite or committed config.
 
@@ -89,8 +88,35 @@ POST /api/teams/{team_id}/images
 
 Handlers derive `teams/<team_id>` from the authorized Team route and do not accept a raw owner scope
 from the browser. The request includes `file_name`, `content_type`, `bytes_base64`, and optional
-`expected_size_bytes` / `expected_sha256` verification fields. Larger browser uploads may later move
-to multipart or presigned upload-token semantics, but that is a separate contract.
+`expected_size_bytes` / `expected_sha256` verification fields. This inline JSON/base64 surface is
+bounded to small uploads only; it must not become the large-object path.
+
+The canonical large-object browser path is an AgentHub-issued upload session:
+
+```text
+POST /api/teams/{team_id}/uploads/sessions
+POST /api/teams/{team_id}/uploads/sessions/{session_id}/complete
+POST /api/teams/{team_id}/uploads/sessions/{session_id}/direct-write
+POST /api/teams/{team_id}/uploads/sessions/{session_id}/complete-direct
+POST /api/teams/{team_id}/uploads/sessions/{session_id}/parts/{part_number}
+POST /api/teams/{team_id}/uploads/sessions/{session_id}/complete-parts
+POST /api/teams/{team_id}/uploads/sessions/{session_id}/cancel
+```
+
+Task and agent routes use the same session shape under their authorized resource paths. A session is
+created only after AgentHub authorizes the route resource and binds the owner scope, object kind,
+file name, content type, expected size, expected SHA-256, expiry, and backend key prefix. The first
+complete path accepts an `application/octet-stream` body through AgentHub, writes the prepared key,
+verifies size/checksum, publishes SQLite metadata, and marks the session completed. Provider-neutral
+proxy part uploads write temporary session part objects, record a SQLite part manifest, and assemble
+the final object through a bounded-memory object-store writer.
+
+S3-compatible backends may also expose a short-lived whole-object presigned `PUT` request for the
+prepared session key. After the browser writes through that URL, `complete-direct` returns to
+AgentHub, streams the stored object by range to verify final size and SHA-256, publishes SQLite
+metadata, and marks the session completed. Filesystem and other non-S3 backends reject direct
+presigned writes and continue to use AgentHub proxy completion. Browser-visible presigned URLs are
+upload transport hints, not product authority.
 
 Upload flows should follow a prepare/write/publish sequence:
 
@@ -128,6 +154,26 @@ operations must still authorize against the Team-owned metadata row.
   eligibility.
 - Object store presence does not grant read access. API handlers must authorize against the owning
   Team, channel, task, agent, or artifact row before reading bytes or issuing a future presigned URL.
+- Inline JSON/base64 upload routes are for small objects only and must reject payloads above the
+  configured inline limit before publication.
+- Large browser uploads use short-lived upload sessions owned by AgentHub. Sessions must bind owner
+  scope, object kind, file name, content type, expected size, expected SHA-256, backend key, expiry,
+  and caller before any part URL or proxy writer is exposed.
+- Provider-neutral proxy chunk uploads write session-scoped part objects and record a SQLite part
+  manifest keyed by `(session_id, part_number)`. Retrying the same part number replaces that part's
+  manifest entry; completion requires contiguous parts starting at `1`, verifies every part's
+  recorded size/checksum, verifies the assembled object size/checksum, publishes metadata, and
+  removes the temporary part objects after a successful publish.
+- S3 direct-write sessions expose only short-lived whole-object presigned `PUT` requests for the
+  prepared session key. Direct completion streams the stored object through AgentHub for
+  size/checksum verification before metadata publication.
+- Presigned multipart URLs, when available, are scoped to the session key and part numbers. They do
+  not authorize metadata publication, owner-scope changes, reads, replacement, or deletion.
+- Upload-session completion must verify final size and SHA-256 before inserting a `published`
+  metadata row.
+- Expiry cleanup marks only `prepared` sessions whose `expires_at` is older than the cleanup cutoff
+  as `expired`; completed, canceled, and still-valid prepared sessions remain unchanged. The
+  terminal timestamp is stored in the existing session termination timestamp column.
 - Public image URLs must be issued only after the owner scope is validated and the metadata row is
   published. A CDN URL is not proof that a user may create, replace, or delete an image.
 - Writes must record size and SHA-256 so repair and migration jobs can verify object integrity.
@@ -149,11 +195,13 @@ operations must still authorize against the Team-owned metadata row.
 | Agent upload entry | Parser, owner-scope, and DB tests cover `agenthub actor upload`, required scope/file flags, image mode, and published metadata persistence. |
 | Team upload API | Handler and router tests cover authorization, owner-scope derivation, base64 upload publication, raster-image allowlist, and size/checksum mismatch rejection without publishing metadata. |
 | Task and agent upload APIs | Focused API tests cover parent Team authorization before task-scope publication, agent existence checks before agent-scope publication, object/image key prefixes, and OpenAPI fixture coverage for every new route. |
+| Inline upload bound | API tests reject JSON/base64 upload payloads above the inline limit before object-store publication. |
+| Large upload sessions | DB, service, API, and OpenAPI tests cover prepared session metadata, planned key stability, Team/task/agent route-derived owner scopes, cancellation, AgentHub whole-body proxy completion, chunked/resumable proxy part writes, contiguous part completion, bounded-memory final-object streaming, S3 direct-write URL issuance, direct object streaming verification, S3 multipart route wiring for session-scoped initiate/part/complete/abort endpoints, size/checksum verification, owner-scope immutability at publish time, expiry cleanup for stale prepared sessions, and metadata publication only after verified completion. Object-store S3 tests cover the low-level multipart initiate, upload-part presign, complete, and abort primitives against MinIO when fixture credentials are present. API S3 route tests cover HTTP initiate, presigned part upload, complete, abort, and metadata publication against the same fixture credentials. |
 | Graph-bed UX | Frontend tests cover raster MIME allowlisting, browser SHA-256/base64 request preparation, Team image endpoint wiring, and Markdown image insertion in the Team channel composer. |
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
-| S3-compatible fixture | A MinIO-backed CI job runs `agenthub-object-store` with the `s3` feature and verifies write/read/exists/delete plus hosted-image URL behavior against a real S3-compatible endpoint. |
-| Future S3 rollout | Keep S3 out of release feature sets until the MinIO fixture is green in PR and push CI and one reviewed release build includes the feature intentionally. |
+| S3-compatible fixture | A MinIO-backed CI job runs `agenthub-object-store` with the `s3` feature and the root API suite with `object-store-s3`, verifying write/read/exists/delete, hosted-image URL behavior, whole-object presign, low-level multipart initiate/upload-part presign/complete/abort, and the Team upload-session HTTP multipart route against a real S3-compatible endpoint. |
+| Future S3 rollout | Keep S3 out of release feature sets until the MinIO fixture is green in PR and push CI and one reviewed release build includes the feature intentionally. A local manifest/workflow guard verifies S3 stays opt-in, release workflows do not name S3 features, release workflows do not use `--all-features`, and the active TODO still requires reviewed release-build intent. |
 
 ## Operational Notes
 
@@ -165,6 +213,10 @@ operations must still authorize against the Team-owned metadata row.
   and keep mutating API authorization on AgentHub metadata.
 - Cleanup should be metadata-driven: delete unlinked failed uploads only after their metadata state
   is older than the grace period and no published row references the same object key.
+- Proxy part completion streams recorded parts through an object-store writer while maintaining final
+  size and SHA-256 metadata; it must not allocate the full final object as one in-memory buffer.
+- Direct-write completion streams the existing prepared-key object by range to maintain size and
+  SHA-256 metadata without rewriting the object or loading it as one in-memory buffer.
 - S3/R2/MinIO production use should add operation latency, byte count, error-class, and cleanup
   counters before large user-facing uploads become default-on.
 - Existing local Team context artifacts remain compatible until their metadata schema is explicitly
@@ -174,8 +226,9 @@ operations must still authorize against the Team-owned metadata row.
 
 - Existing artifact tables store local filesystem paths; moving those rows to object storage needs a
   schema migration and read-compatibility plan.
-- Browser-direct upload requires short-lived presign or upload-token semantics plus size/checksum
-  verification at publish time.
+- Whole-object S3 direct writes and multipart upload-session routes are available, but the release
+  feature gate should stay off until the MinIO-backed object-store and API route fixtures are green
+  in PR and push CI.
 - S3-compatible providers differ in multipart, path-style, and checksum behavior; MinIO is the first
   CI fixture, but each documented production provider still needs compatibility evidence before it
   is described as production-ready.
@@ -185,3 +238,5 @@ operations must still authorize against the Team-owned metadata row.
 ## Source Journals
 
 - [2026-07-16-object-storage-opendal.md](../journal/2026-07-16-object-storage-opendal.md)
+- [2026-07-18-object-upload-large-object-path.md](../journal/2026-07-18-object-upload-large-object-path.md)
+- [2026-07-18-object-store-s3-minio-fixture.md](../journal/2026-07-18-object-store-s3-minio-fixture.md)

@@ -5,6 +5,12 @@
 - Team conversation selection now falls back to `selectedConversationDetail.task` when the task list is temporarily stale, so an already opened thread keeps its title and metadata even if the visible task list has not caught up yet.
 - Team conversation refresh now reuses `selectedConversationLatestRun` when it is already known, instead of refetching `GET /api/teams/:team_id/tasks/:task_id` on every refresh cycle just to recover the latest run id.
 
+## Supersession
+
+Stable conversation-scope resilience rules from this note now live in
+`docs/features/team-channels-threads.md#11-composer-send-and-visibility-contract`. This journal
+remains the rollout evidence for the selection resilience follow-up.
+
 ## Validation
 
 - `cd web && npm run test -- src/pages/team/page_helpers.test.ts src/pages/team/use_team_conversation_actions.test.tsx src/pages/team_page.smoke.test.tsx`

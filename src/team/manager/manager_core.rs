@@ -75,6 +75,8 @@ impl TeamManager {
             event_dbs,
             message_archive,
             body_store: None,
+            message_index: None,
+            read_repair: None,
             conversation_events,
             remote_relay_adapter,
             agents_target_node_id_column,
@@ -88,6 +90,25 @@ impl TeamManager {
         body_store: Option<crate::message_body_store::SharedBodyStore>,
     ) -> Self {
         self.body_store = body_store;
+        self
+    }
+
+    /// Attach the rebuildable message index store. Reads use it only when the relevant stream is
+    /// marked fresh through SQLite authority and fall back to SQLite otherwise.
+    pub fn with_message_index(
+        mut self,
+        message_index: Option<crate::message_body_store::SharedIndexStore>,
+    ) -> Self {
+        self.message_index = message_index;
+        self
+    }
+
+    /// Attach a scheduler for lagging index projections discovered by guarded reads.
+    pub fn with_read_repair_scheduler(
+        mut self,
+        read_repair: Option<crate::message_body_store::SharedReadRepairScheduler>,
+    ) -> Self {
+        self.read_repair = read_repair;
         self
     }
 
@@ -107,5 +128,37 @@ impl TeamManager {
         config: Option<InternalGrpcPeerClientConfig>,
     ) {
         self.remote_relay_adapter.configure_grpc_peer_client(config);
+    }
+
+    pub(super) fn schedule_index_read_repair(
+        &self,
+        stream_id: impl Into<String>,
+        authority_max: u64,
+        freshness: agenthub_message_store::IndexFreshness,
+    ) {
+        let agenthub_message_store::IndexFreshness::Lagging {
+            indexed_through, ..
+        } = freshness
+        else {
+            return;
+        };
+        let Some(scheduler) = self.read_repair.as_deref() else {
+            return;
+        };
+        let stream_id = stream_id.into();
+        if let Err(error) =
+            scheduler.schedule_read_repair(agenthub_message_store::IndexReadRepairRequest {
+                stream_id: stream_id.clone(),
+                authority_max,
+                reason: agenthub_message_store::IndexReadRepairReason::Lagging { indexed_through },
+            })
+        {
+            tracing::warn!(
+                ?error,
+                stream_id,
+                authority_max,
+                "failed to schedule message index read repair"
+            );
+        }
     }
 }

@@ -8,6 +8,12 @@
 - Team channel rendering now shows only user-visible `chat_message` payloads plus explicit permission-review cards. `task_note` and unknown ACP/debug payloads are no longer dumped into the visible channel stream as raw JSON.
 - Follow-up cleanup keeps `idempotency_key` trimming logic shared between the HTTP API and manager storage path, and the SQLite bootstrap now reuses one helper to create the task-message idempotency index in both fresh-init and migration paths.
 
+## Supersession
+
+Stable send-feedback, idempotency, and human-visible payload filtering rules from this note now live
+in `docs/features/team-channels-threads.md#11-composer-send-and-visibility-contract`. This journal
+remains the rollout evidence for the send feedback and visibility pass.
+
 ## Validation
 
 - `cd web && npm run test -- src/pages/team/use_team_conversation_actions.test.tsx src/pages/team_panels.test.tsx`

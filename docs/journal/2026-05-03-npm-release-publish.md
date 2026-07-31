@@ -32,9 +32,34 @@ appropriate npm publish targets. The correct distribution unit is the Rust CLI b
 
 - `node --test build/npm/agenthub/tests/launcher.test.cjs`
 - `cd build/npm/agenthub && npm pack --dry-run`
+- `gh run view 29194967848 --log | rg "npm publish|@linkerdog/agenthub|NPM_TOKEN|NODE_AUTH_TOKEN|Publishing"`
+  - release run `29194967848` used `NODE_AUTH_TOKEN` from the release environment
+  - platform packages published first:
+    - `@linkerdog/agenthub-darwin-arm64@0.0.11`
+    - `@linkerdog/agenthub-linux-arm64@0.0.11`
+    - `@linkerdog/agenthub-linux-x64@0.0.11`
+  - wrapper package published after the platform packages:
+    - `@linkerdog/agenthub@0.0.11`
+- `npm view @linkerdog/agenthub version dist-tags time versions --json --cache /private/tmp/agenthub-npm-cache`
+  - latest wrapper package is `0.0.11`
+  - `0.0.11` was published at `2026-07-12T15:04:58.611Z`
+- `npm view @linkerdog/agenthub-darwin-arm64 version dist-tags time --json --cache /private/tmp/agenthub-npm-cache`
+  - latest platform package is `0.0.11`
+  - `0.0.11` was published at `2026-07-12T15:04:15.728Z`
+- `npm view @linkerdog/agenthub-linux-arm64 version dist-tags time --json --cache /private/tmp/agenthub-npm-cache`
+  - latest platform package is `0.0.11`
+  - `0.0.11` was published at `2026-07-12T15:04:35.498Z`
+- `npm view @linkerdog/agenthub-linux-x64 version dist-tags time --json --cache /private/tmp/agenthub-npm-cache`
+  - latest platform package is `0.0.11`
+  - `0.0.11` was published at `2026-07-12T15:04:57.338Z`
+
+# Published Package URLs
+
+- `https://www.npmjs.com/package/@linkerdog/agenthub/v/0.0.11`
+- `https://www.npmjs.com/package/@linkerdog/agenthub-darwin-arm64/v/0.0.11`
+- `https://www.npmjs.com/package/@linkerdog/agenthub-linux-arm64/v/0.0.11`
+- `https://www.npmjs.com/package/@linkerdog/agenthub-linux-x64/v/0.0.11`
 
 # Follow-Ups
 
 - add additional platform packages if release coverage expands beyond the current three targets
-- verify the `@linkerdog` npm scope and `NPM_TOKEN` publish permissions before the first live
-  semver release

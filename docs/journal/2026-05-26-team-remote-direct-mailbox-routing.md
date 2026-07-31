@@ -12,6 +12,10 @@ Added local regression coverage for Team task-message direct routing to a remote
 
 - Added an API regression test for inferred single-member direct routing when the recipient member is remote.
 - Fixed task-message mailbox forwarding so recipient delivery resolution reuses the same remote-node lookup path as mailbox channel fanout.
+- Extended the manager-level relay success regression so the captured remote HTTP relay body must
+  preserve `summary`, `detail_ref`, `mention_actor_ids`, and `mentioned_actor_ids` metadata.
+- Extended the remote HTTP relay envelope so it also carries `message_kind`, matching the gRPC relay
+  path's semantic message preservation.
 - Kept the TODO open because this change does not replace real multi-node rollout validation.
 
 ## Key Decisions
@@ -21,6 +25,7 @@ Added local regression coverage for Team task-message direct routing to a remote
   - conversation payload still normalizes `summary` and `detail_ref`
   - mailbox row switches to `transport=remote`
   - relay route carries `grpc_target`, `tls_server_name`, and `target_node_id`
+  - relay envelopes carry `message_kind`
   - mention metadata and reply target stay intact
 - Left the real multi-node TODO item open with a narrower remaining tail instead of marking the whole rollout complete from a local regression test.
 
@@ -29,6 +34,7 @@ Added local regression coverage for Team task-message direct routing to a remote
 ```bash
 cargo fmt --all --check
 cargo test -p agenthub team_task_messages_api_routes_single_remote_mention_over_p2p_and_preserves_summary_metadata --target-dir /private/tmp/agenthub-remote-mailbox-target -- --nocapture
+cargo test -p agenthub remote_actor_messages_relay_success_preserves_payload_metadata -- --nocapture
 cargo check --target-dir /private/tmp/agenthub-remote-mailbox-target
 ```
 

@@ -13,6 +13,8 @@
 
 pub mod body_store;
 pub mod ids;
+pub mod index_store;
+pub mod integrity;
 pub mod keys;
 pub mod outbox;
 pub mod reference;
@@ -21,6 +23,17 @@ pub mod rocksdb_store;
 
 pub use body_store::{BodyStoreError, InMemoryBodyStore, MessageBodyStore};
 pub use ids::{AuthorityMessageId, DeliveryMessageId, MessageKind};
+pub use index_store::{
+    AuthorityIndexProjection, InMemoryIndexReadRepairScheduler, InMemoryIndexStore, IndexFreshness,
+    IndexReadRepairReason, IndexReadRepairRequest, IndexReadRepairScheduler, IndexRepairReport,
+    IndexStoreError, IndexedMessageRef, MessageIndexStore, check_index_freshness,
+    mark_index_repaired_through, repair_index_from_authority, repair_index_from_authority_through,
+};
+pub use integrity::{
+    IndexAuthorityIntegrityReport, IndexAuthorityPruneReport, IndexBodyIntegrityReport,
+    IntegrityCheckError, MissingBodyRef, OrphanIndexRef, check_index_refs_have_authority,
+    check_index_refs_have_bodies, prune_index_refs_without_authority,
+};
 pub use outbox::BodyOutbox;
 pub use reference::MessageRef;
 #[cfg(feature = "rocksdb")]
@@ -116,6 +129,21 @@ mod tests {
     }
 
     #[test]
+    fn high_water_key_is_separate_from_message_refs() {
+        let key = keys::high_water_key("team_conversation_messages");
+        assert!(key.starts_with(b"meta/high_water/"));
+        assert!(!key.starts_with(b"msg/"));
+        assert!(!key.starts_with(b"body/"));
+    }
+
+    #[test]
+    fn message_id_key_uses_delivery_message_id() {
+        let key = keys::message_id_key("delivery-xyz");
+        assert!(key.starts_with(b"msg/by_id/"));
+        assert!(key.ends_with(b"delivery-xyz"));
+    }
+
+    #[test]
     fn message_ref_round_trips_and_carries_no_body() {
         let original = sample_ref();
         let bytes = original.to_bytes().expect("serialize");
@@ -191,6 +219,329 @@ mod tests {
         assert_eq!(confirmed, 1);
         assert!(outbox.is_empty());
         assert_eq!(store.get_body(&id).unwrap().as_deref(), Some(&body[..]));
+    }
+
+    #[test]
+    fn authority_repair_rebuilds_body_free_index_refs() {
+        let index = InMemoryIndexStore::new();
+        let authority = AuthorityMessageId::new("auth-repair");
+        let first = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-1"),
+            authority_message_id: authority.clone(),
+            ..sample_ref()
+        };
+        let second = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-2"),
+            authority_message_id: authority,
+            ..sample_ref()
+        };
+
+        let projections = vec![
+            AuthorityIndexProjection {
+                key: keys::channel_key("group-a", "chan-1", 1),
+                message_ref: first.clone(),
+            },
+            AuthorityIndexProjection {
+                key: keys::channel_key("group-a", "chan-1", 2),
+                message_ref: second.clone(),
+            },
+        ];
+
+        let report = repair_index_from_authority(&index, projections).expect("repair");
+        assert_eq!(report.repaired_refs, 2);
+        assert_eq!(
+            index
+                .scan_prefix(&keys::channel_prefix("group-a", "chan-1"))
+                .expect("scan"),
+            vec![first, second]
+        );
+    }
+
+    #[test]
+    fn high_water_guard_reports_lag_until_repair_marks_authority_max() {
+        let index = InMemoryIndexStore::new();
+        assert_eq!(
+            check_index_freshness(&index, "team_conversation_messages", 9).expect("check"),
+            IndexFreshness::Lagging {
+                indexed_through: None,
+                authority_max: 9
+            }
+        );
+
+        mark_index_repaired_through(&index, "team_conversation_messages", 7).expect("mark");
+        assert_eq!(
+            check_index_freshness(&index, "team_conversation_messages", 9).expect("check"),
+            IndexFreshness::Lagging {
+                indexed_through: Some(7),
+                authority_max: 9
+            }
+        );
+
+        mark_index_repaired_through(&index, "team_conversation_messages", 9).expect("mark");
+        assert_eq!(
+            check_index_freshness(&index, "team_conversation_messages", 9).expect("check"),
+            IndexFreshness::Fresh { indexed_through: 9 }
+        );
+
+        mark_index_repaired_through(&index, "team_conversation_messages", 8).expect("mark");
+        assert_eq!(
+            check_index_freshness(&index, "team_conversation_messages", 9).expect("check"),
+            IndexFreshness::Fresh { indexed_through: 9 },
+            "older repair passes must not lower the high-water mark"
+        );
+    }
+
+    #[test]
+    fn repair_through_marks_high_water_after_refs_are_rebuilt() {
+        let index = InMemoryIndexStore::new();
+        let message_ref = sample_ref();
+        let projection = AuthorityIndexProjection {
+            key: keys::run_key("run-1", 12),
+            message_ref: message_ref.clone(),
+        };
+
+        let report =
+            repair_index_from_authority_through(&index, [projection], "team_actor_messages", 12)
+                .expect("repair");
+
+        assert_eq!(report.repaired_refs, 1);
+        assert_eq!(
+            index.scan_prefix(&keys::run_prefix("run-1")).expect("scan"),
+            vec![message_ref]
+        );
+        assert_eq!(
+            check_index_freshness(&index, "team_actor_messages", 12).expect("check"),
+            IndexFreshness::Fresh {
+                indexed_through: 12
+            }
+        );
+    }
+
+    #[test]
+    fn read_repair_scheduler_keeps_highest_requested_authority_bound() {
+        let scheduler = InMemoryIndexReadRepairScheduler::new();
+        scheduler
+            .schedule_read_repair(IndexReadRepairRequest {
+                stream_id: "team_actor_messages".to_string(),
+                authority_max: 12,
+                reason: IndexReadRepairReason::Lagging {
+                    indexed_through: Some(7),
+                },
+            })
+            .expect("schedule initial repair");
+        scheduler
+            .schedule_read_repair(IndexReadRepairRequest {
+                stream_id: "team_actor_messages".to_string(),
+                authority_max: 9,
+                reason: IndexReadRepairReason::Lagging {
+                    indexed_through: Some(8),
+                },
+            })
+            .expect("schedule older repair");
+        scheduler
+            .schedule_read_repair(IndexReadRepairRequest {
+                stream_id: "team_run_events".to_string(),
+                authority_max: 3,
+                reason: IndexReadRepairReason::Lagging {
+                    indexed_through: None,
+                },
+            })
+            .expect("schedule missing high-water repair");
+
+        let repairs = scheduler.pending_repairs();
+        assert_eq!(repairs.len(), 2);
+        assert!(repairs.contains(&IndexReadRepairRequest {
+            stream_id: "team_actor_messages".to_string(),
+            authority_max: 12,
+            reason: IndexReadRepairReason::Lagging {
+                indexed_through: Some(7),
+            },
+        }));
+        assert!(repairs.contains(&IndexReadRepairRequest {
+            stream_id: "team_run_events".to_string(),
+            authority_max: 3,
+            reason: IndexReadRepairReason::Lagging {
+                indexed_through: None,
+            },
+        }));
+    }
+
+    #[test]
+    fn integrity_check_reports_index_refs_missing_bodies() {
+        let index = InMemoryIndexStore::new();
+        let bodies = InMemoryBodyStore::new();
+        let present_id = AuthorityMessageId::new("auth-present");
+        let missing_id = AuthorityMessageId::new("auth-missing");
+
+        bodies
+            .put_body(&present_id, b"present body")
+            .expect("put present body");
+
+        let present_ref = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-present"),
+            authority_message_id: present_id,
+            ..sample_ref()
+        };
+        let first_missing_ref = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-missing-1"),
+            authority_message_id: missing_id.clone(),
+            source_kind: "team_actor_messages".to_string(),
+            ..sample_ref()
+        };
+        let second_missing_ref = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-missing-2"),
+            authority_message_id: missing_id.clone(),
+            source_kind: "team_actor_messages".to_string(),
+            ..sample_ref()
+        };
+
+        index
+            .put_ref(&keys::channel_key("group-a", "chan-1", 1), &present_ref)
+            .expect("put present ref");
+        index
+            .put_ref(
+                &keys::channel_key("group-a", "chan-1", 2),
+                &first_missing_ref,
+            )
+            .expect("put first missing ref");
+        index
+            .put_ref(
+                &keys::channel_key("group-a", "chan-1", 3),
+                &second_missing_ref,
+            )
+            .expect("put second missing ref");
+
+        let report = check_index_refs_have_bodies(
+            &index,
+            &bodies,
+            [keys::channel_prefix("group-a", "chan-1")],
+        )
+        .expect("integrity check");
+
+        assert_eq!(report.scanned_refs, 3);
+        assert!(!report.is_clean());
+        assert_eq!(report.missing_body_refs.len(), 2);
+        assert_eq!(
+            report
+                .missing_body_refs
+                .iter()
+                .map(|missing| missing.message_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["delivery-missing-1", "delivery-missing-2"]
+        );
+        assert_eq!(report.missing_authority_message_ids, vec![missing_id]);
+    }
+
+    #[test]
+    fn integrity_check_reports_index_refs_missing_authority() {
+        let index = InMemoryIndexStore::new();
+        let authority_id = AuthorityMessageId::new("auth-present");
+        let orphan_id = AuthorityMessageId::new("auth-orphan");
+
+        let authority_ref = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-present"),
+            authority_message_id: authority_id.clone(),
+            ..sample_ref()
+        };
+        let first_orphan_ref = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-orphan-1"),
+            authority_message_id: orphan_id.clone(),
+            source_kind: "team_actor_messages".to_string(),
+            ..sample_ref()
+        };
+        let second_orphan_ref = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-orphan-2"),
+            authority_message_id: orphan_id.clone(),
+            source_kind: "team_actor_messages".to_string(),
+            ..sample_ref()
+        };
+
+        index
+            .put_ref(&keys::run_key("run-1", 1), &authority_ref)
+            .expect("put authority ref");
+        index
+            .put_ref(&keys::run_key("run-1", 2), &first_orphan_ref)
+            .expect("put first orphan ref");
+        index
+            .put_ref(&keys::run_key("run-1", 3), &second_orphan_ref)
+            .expect("put second orphan ref");
+
+        let report =
+            check_index_refs_have_authority(&index, [keys::run_prefix("run-1")], [authority_id])
+                .expect("orphan check");
+
+        assert_eq!(report.scanned_refs, 3);
+        assert!(!report.is_clean());
+        assert_eq!(
+            report
+                .orphan_refs
+                .iter()
+                .map(|orphan| orphan.message_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["delivery-orphan-1", "delivery-orphan-2"]
+        );
+        assert_eq!(report.orphan_authority_message_ids, vec![orphan_id]);
+    }
+
+    #[test]
+    fn explicit_orphan_prune_deletes_only_refs_without_authority() {
+        let index = InMemoryIndexStore::new();
+        let authority_id = AuthorityMessageId::new("auth-present");
+        let orphan_id = AuthorityMessageId::new("auth-orphan");
+
+        let authority_ref = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-present"),
+            authority_message_id: authority_id.clone(),
+            ..sample_ref()
+        };
+        let orphan_ref = MessageRef {
+            message_id: DeliveryMessageId::new("delivery-orphan"),
+            authority_message_id: orphan_id.clone(),
+            source_kind: "team_run_events".to_string(),
+            ..sample_ref()
+        };
+        let authority_key = keys::run_key("run-1", 1);
+        let orphan_key = keys::run_key("run-1", 2);
+
+        index
+            .put_ref(&authority_key, &authority_ref)
+            .expect("put authority ref");
+        index
+            .put_ref(&orphan_key, &orphan_ref)
+            .expect("put orphan ref");
+        mark_index_repaired_through(&index, "team_run_events", 2).expect("mark high-water");
+
+        let check_report = check_index_refs_have_authority(
+            &index,
+            [keys::run_prefix("run-1")],
+            [authority_id.clone()],
+        )
+        .expect("orphan check");
+        assert_eq!(check_report.orphan_refs.len(), 1);
+        assert_eq!(
+            index.get_ref(&orphan_key).expect("get orphan before prune"),
+            Some(orphan_ref.clone()),
+            "diagnostic check must not delete index refs"
+        );
+
+        let prune_report =
+            prune_index_refs_without_authority(&index, [keys::run_prefix("run-1")], [authority_id])
+                .expect("orphan prune");
+
+        assert_eq!(prune_report.scanned_refs, 2);
+        assert_eq!(prune_report.pruned_refs.len(), 1);
+        assert_eq!(prune_report.pruned_refs[0].index_key, orphan_key);
+        assert_eq!(prune_report.pruned_authority_message_ids, vec![orphan_id]);
+        assert_eq!(
+            index.get_ref(&authority_key).expect("get authority"),
+            Some(authority_ref)
+        );
+        assert_eq!(index.get_ref(&orphan_key).expect("get orphan"), None);
+        assert_eq!(
+            check_index_freshness(&index, "team_run_events", 2).expect("check high-water"),
+            IndexFreshness::Fresh { indexed_through: 2 },
+            "prune must not lower or rewrite high-water markers"
+        );
     }
 
     // --- Compression validation -------------------------------------------------------------------

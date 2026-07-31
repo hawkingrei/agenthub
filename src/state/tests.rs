@@ -217,7 +217,7 @@ async fn initialize_services_skips_internal_grpc_material_when_disabled() {
         &config,
         db,
         AgentEventDbRouter::with_default_base_dir(),
-        None,
+        crate::message_body_store::MessageStores::default(),
     )
     .await;
     assert!(
@@ -317,10 +317,14 @@ async fn initialize_services_disables_push_for_node_role() {
         ..Default::default()
     };
 
-    let (_, _, push, _, _) =
-        AppState::initialize_services(&config, db, AgentEventDbRouter::new(event_dir), None)
-            .await
-            .expect("initialize node services");
+    let (_, _, push, _, _) = AppState::initialize_services(
+        &config,
+        db,
+        AgentEventDbRouter::new(event_dir),
+        crate::message_body_store::MessageStores::default(),
+    )
+    .await
+    .expect("initialize node services");
 
     assert!(
         !push.is_enabled(),
@@ -359,10 +363,14 @@ async fn initialize_services_enables_push_for_main_role() {
         ..Default::default()
     };
 
-    let (_, _, push, _, _) =
-        AppState::initialize_services(&config, db, AgentEventDbRouter::new(event_dir), None)
-            .await
-            .expect("initialize main services");
+    let (_, _, push, _, _) = AppState::initialize_services(
+        &config,
+        db,
+        AgentEventDbRouter::new(event_dir),
+        crate::message_body_store::MessageStores::default(),
+    )
+    .await
+    .expect("initialize main services");
 
     assert!(
         push.is_enabled(),

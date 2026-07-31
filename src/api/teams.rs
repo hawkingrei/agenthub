@@ -20,6 +20,7 @@ use agenthub_team_prompts::{
 };
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{delete, get, post, put},
@@ -31,9 +32,22 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::api::authz::require_user;
+use agenthub_auth_domain::UserCapability;
+
+use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
-use crate::api::uploads::{UploadRequest, upload_scoped_object};
+use crate::api::uploads::{
+    UploadRequest, UploadSessionDirectWriteRequest, UploadSessionDirectWriteResponse,
+    UploadSessionMultipartAbortRequest, UploadSessionMultipartCompleteRequest,
+    UploadSessionMultipartPartWriteRequest, UploadSessionMultipartPartWriteResponse,
+    UploadSessionMultipartUploadResponse, UploadSessionPrepareRequest,
+    abort_scoped_multipart_upload_session, cancel_scoped_upload_session,
+    complete_scoped_direct_upload_session, complete_scoped_multipart_upload_session,
+    complete_scoped_upload_session, complete_scoped_upload_session_parts,
+    initiate_scoped_multipart_upload_session, prepare_scoped_direct_upload_session_write,
+    prepare_scoped_multipart_upload_session_part, prepare_scoped_upload_session,
+    upload_scoped_object, upload_scoped_upload_session_part,
+};
 use crate::auth::UserRecord;
 use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
 use crate::state::AppState;
@@ -263,6 +277,7 @@ pub struct CreateTeamChannelRequest {
 }
 
 pub type TeamUploadRequest = UploadRequest;
+pub type TeamUploadSessionPrepareRequest = UploadSessionPrepareRequest;
 
 #[derive(Debug, Deserialize)]
 pub struct CompileTeamTaskRunPreviewRequest {
@@ -541,11 +556,96 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/{id}/uploads", post(upload_team_object))
         .route("/{id}/images", post(upload_team_image))
+        .route("/{id}/uploads/sessions", post(prepare_team_upload_session))
+        .route(
+            "/{id}/uploads/sessions/{session_id}/cancel",
+            post(cancel_team_upload_session),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/complete",
+            post(complete_team_upload_session),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/direct-write",
+            post(prepare_team_direct_upload_session_write),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/complete-direct",
+            post(complete_team_direct_upload_session),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/multipart",
+            post(initiate_team_multipart_upload_session),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/multipart/parts/{part_number}",
+            post(prepare_team_multipart_upload_session_part),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/multipart/complete",
+            post(complete_team_multipart_upload_session),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/multipart/abort",
+            post(abort_team_multipart_upload_session),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/parts/{part_number}",
+            post(upload_team_upload_session_part),
+        )
+        .route(
+            "/{id}/uploads/sessions/{session_id}/complete-parts",
+            post(complete_team_upload_session_parts),
+        )
         .route(
             "/{id}/tasks/{task_id}/uploads",
             post(upload_team_task_object),
         )
         .route("/{id}/tasks/{task_id}/images", post(upload_team_task_image))
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions",
+            post(prepare_team_task_upload_session),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/cancel",
+            post(cancel_team_task_upload_session),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/complete",
+            post(complete_team_task_upload_session),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/direct-write",
+            post(prepare_team_task_direct_upload_session_write),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/complete-direct",
+            post(complete_team_task_direct_upload_session),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/multipart",
+            post(initiate_team_task_multipart_upload_session),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/multipart/parts/{part_number}",
+            post(prepare_team_task_multipart_upload_session_part),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/multipart/complete",
+            post(complete_team_task_multipart_upload_session),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/multipart/abort",
+            post(abort_team_task_multipart_upload_session),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/parts/{part_number}",
+            post(upload_team_task_upload_session_part),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/complete-parts",
+            post(complete_team_task_upload_session_parts),
+        )
         .route("/{id}/channels/{channel_id}", delete(delete_team_channel))
         .route(
             "/{id}/tasks/{task_id}/compile_run_preview",
@@ -612,7 +712,7 @@ async fn get_team_prompt_defaults(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<TeamPromptDefaultsResponse>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     Ok(Json(TeamPromptDefaultsResponse {
         coordinator_prompt: DEFAULT_TEAM_COORDINATOR_PROMPT.to_string(),
         worker_prompt: DEFAULT_TEAM_WORKER_PROMPT.to_string(),
@@ -624,7 +724,7 @@ async fn create_team(
     headers: HeaderMap,
     Json(payload): Json<CreateTeamRequest>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let name = payload.name.trim().to_string();
     if name.is_empty() {
         return Err(ApiError::bad_request("team name is required"));
@@ -660,7 +760,7 @@ async fn update_team_spec(
     Path(team_id): Path<String>,
     Json(payload): Json<UpdateTeamSpecRequest>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let current = load_team_for_user(&state, &team_id, &user).await?;
     let previous_member_ids = parse_member_ids(current.spec.get("members"))?;
     let mut spec = payload.spec;
@@ -691,7 +791,7 @@ async fn start_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let runtime = ensure_team_runtime_started(state.agents.as_ref(), &team)
@@ -705,7 +805,7 @@ async fn stop_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let runtime = stop_team_runtime(state.agents.as_ref(), &team)
         .await
@@ -760,7 +860,7 @@ async fn force_new_session_for_team_member(
     headers: HeaderMap,
     Path((team_id, member_id)): Path<(String, String)>,
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let runtime = force_team_member_new_session(state.agents.as_ref(), &team, &member_id)
@@ -773,7 +873,7 @@ async fn list_teams(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<TeamDefinitionRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let teams = state
         .teams
         .list_teams()
@@ -790,7 +890,7 @@ async fn get_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     Ok(Json(sanitize_team_definition_for_response(team)))
 }
@@ -800,7 +900,7 @@ async fn get_team_runtime(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamRuntimeRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     reconcile_team_member_runtime_absence(&state, &team).await?;
     let runtime = state
@@ -816,7 +916,7 @@ async fn delete_team(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let member_ids = match parse_member_ids(team.spec.get("members")) {
         Ok(ids) => ids,
@@ -847,7 +947,7 @@ async fn get_team_shared_thread(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let Some((task, conversation, latest_run)) = state
         .teams
@@ -875,7 +975,7 @@ async fn ensure_team_shared_thread(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let (task, conversation, latest_run) = state
         .teams
@@ -901,7 +1001,7 @@ async fn list_team_tasks(
     Path(team_id): Path<String>,
     Query(query): Query<ListTeamTasksQuery>,
 ) -> Result<Json<Vec<TeamTaskRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let priority = query
         .priority
@@ -939,7 +1039,7 @@ async fn create_team_task_from_channel_message(
     if message_id <= 0 {
         return Err(ApiError::bad_request("message_id must be positive"));
     }
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let channel_id = channel_id.trim().to_lowercase();
     if channel_id.is_empty() {
@@ -1032,7 +1132,7 @@ async fn list_team_channels(
     headers: HeaderMap,
     Path(team_id): Path<String>,
 ) -> Result<Json<Vec<TeamChannelRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let channels = state
         .teams
@@ -1048,7 +1148,7 @@ async fn create_team_channel(
     Path(team_id): Path<String>,
     Json(payload): Json<CreateTeamChannelRequest>,
 ) -> Result<Json<TeamChannelRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let channel = state
         .teams
@@ -1068,7 +1168,7 @@ async fn delete_team_channel(
     headers: HeaderMap,
     Path((team_id, channel_id)): Path<(String, String)>,
 ) -> Result<Json<TeamChannelRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let deleted = state
         .teams
@@ -1103,7 +1203,7 @@ async fn upload_team_scoped_object(
     payload: TeamUploadRequest,
     kind: ObjectUploadKind,
 ) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     upload_scoped_object(
         State(state),
@@ -1111,6 +1211,187 @@ async fn upload_team_scoped_object(
         ObjectUploadOwnerScope::Team(team.id),
         payload,
         kind,
+    )
+    .await
+}
+
+async fn prepare_team_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<TeamUploadSessionPrepareRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    prepare_scoped_upload_session(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Team(team.id),
+        payload,
+    )
+    .await
+}
+
+async fn cancel_team_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id)): Path<(String, String)>,
+) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    cancel_scoped_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+    )
+    .await
+}
+
+async fn complete_team_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id)): Path<(String, String)>,
+    bytes: Bytes,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    complete_scoped_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+        bytes,
+    )
+    .await
+}
+
+async fn prepare_team_direct_upload_session_write(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id)): Path<(String, String)>,
+    Json(payload): Json<UploadSessionDirectWriteRequest>,
+) -> Result<Json<UploadSessionDirectWriteResponse>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    prepare_scoped_direct_upload_session_write(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+        payload,
+    )
+    .await
+}
+
+async fn complete_team_direct_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id)): Path<(String, String)>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    complete_scoped_direct_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+    )
+    .await
+}
+
+async fn initiate_team_multipart_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id)): Path<(String, String)>,
+) -> Result<Json<UploadSessionMultipartUploadResponse>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    initiate_scoped_multipart_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+    )
+    .await
+}
+
+async fn prepare_team_multipart_upload_session_part(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id, part_number)): Path<(String, String, u32)>,
+    Json(payload): Json<UploadSessionMultipartPartWriteRequest>,
+) -> Result<Json<UploadSessionMultipartPartWriteResponse>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    prepare_scoped_multipart_upload_session_part(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+        part_number,
+        payload,
+    )
+    .await
+}
+
+async fn complete_team_multipart_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id)): Path<(String, String)>,
+    Json(payload): Json<UploadSessionMultipartCompleteRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    complete_scoped_multipart_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+        payload,
+    )
+    .await
+}
+
+async fn abort_team_multipart_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id)): Path<(String, String)>,
+    Json(payload): Json<UploadSessionMultipartAbortRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    abort_scoped_multipart_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+        payload,
+    )
+    .await
+}
+
+async fn upload_team_upload_session_part(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id, part_number)): Path<(String, String, u32)>,
+    bytes: Bytes,
+) -> Result<Json<agenthub_db::ObjectUploadSessionPartRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    upload_scoped_upload_session_part(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
+        part_number,
+        bytes,
+    )
+    .await
+}
+
+async fn complete_team_upload_session_parts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, session_id)): Path<(String, String)>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    complete_scoped_upload_session_parts(
+        State(state),
+        ObjectUploadOwnerScope::Team(team.id),
+        session_id,
     )
     .await
 }
@@ -1157,7 +1438,7 @@ async fn upload_team_task_scoped_object(
     payload: TeamUploadRequest,
     kind: ObjectUploadKind,
 ) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
@@ -1177,12 +1458,281 @@ async fn upload_team_task_scoped_object(
     .await
 }
 
+async fn prepare_team_task_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id)): Path<(String, String)>,
+    Json(payload): Json<TeamUploadSessionPrepareRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    prepare_scoped_upload_session(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Task(task.id),
+        payload,
+    )
+    .await
+}
+
+async fn cancel_team_task_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
+) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    cancel_scoped_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+    )
+    .await
+}
+
+async fn complete_team_task_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
+    bytes: Bytes,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    complete_scoped_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+        bytes,
+    )
+    .await
+}
+
+async fn prepare_team_task_direct_upload_session_write(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
+    Json(payload): Json<UploadSessionDirectWriteRequest>,
+) -> Result<Json<UploadSessionDirectWriteResponse>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    prepare_scoped_direct_upload_session_write(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+        payload,
+    )
+    .await
+}
+
+async fn complete_team_task_direct_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    complete_scoped_direct_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+    )
+    .await
+}
+
+async fn initiate_team_task_multipart_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
+) -> Result<Json<UploadSessionMultipartUploadResponse>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    initiate_scoped_multipart_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+    )
+    .await
+}
+
+async fn prepare_team_task_multipart_upload_session_part(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id, part_number)): Path<(String, String, String, u32)>,
+    Json(payload): Json<UploadSessionMultipartPartWriteRequest>,
+) -> Result<Json<UploadSessionMultipartPartWriteResponse>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    prepare_scoped_multipart_upload_session_part(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+        part_number,
+        payload,
+    )
+    .await
+}
+
+async fn complete_team_task_multipart_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
+    Json(payload): Json<UploadSessionMultipartCompleteRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    complete_scoped_multipart_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+        payload,
+    )
+    .await
+}
+
+async fn abort_team_task_multipart_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
+    Json(payload): Json<UploadSessionMultipartAbortRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    abort_scoped_multipart_upload_session(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+        payload,
+    )
+    .await
+}
+
+async fn upload_team_task_upload_session_part(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id, part_number)): Path<(String, String, String, u32)>,
+    bytes: Bytes,
+) -> Result<Json<agenthub_db::ObjectUploadSessionPartRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    upload_scoped_upload_session_part(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+        part_number,
+        bytes,
+    )
+    .await
+}
+
+async fn complete_team_task_upload_session_parts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    complete_scoped_upload_session_parts(
+        State(state),
+        ObjectUploadOwnerScope::Task(task.id),
+        session_id,
+    )
+    .await
+}
+
 async fn get_team_task(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((team_id, task_id)): Path<(String, String)>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let detail = state
         .teams
@@ -1206,7 +1756,7 @@ async fn update_team_task(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<UpdateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
@@ -1230,7 +1780,7 @@ async fn send_team_task_message(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<SendTeamTaskMessageRequest>,
 ) -> Result<Json<TeamConversationMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let SendTeamTaskMessageRequest {
         from_actor_id,
@@ -1316,7 +1866,7 @@ async fn list_team_task_messages(
     Path((team_id, task_id)): Path<(String, String)>,
     Query(query): Query<ListTeamTaskMessagesQuery>,
 ) -> Result<Json<Vec<TeamConversationMessageRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
@@ -1344,7 +1894,7 @@ async fn search_team_messages(
     Path(team_id): Path<String>,
     Query(query): Query<SearchTeamMessagesQuery>,
 ) -> Result<Json<Vec<TeamMessageSearchHitResponse>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let query_text = normalize_optional_string(Some(query.query))
         .ok_or_else(|| ApiError::bad_request("query is required"))?;
@@ -1384,7 +1934,7 @@ async fn reply_team_thread(
     Path((team_id, channel_id, root_message_id)): Path<(String, String, i64)>,
     Json(payload): Json<ReplyTeamThreadRequest>,
 ) -> Result<Json<TeamThreadReplyRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     let actor_scope = parse_task_actor_scope(&team.spec, &user)?;
     if root_message_id <= 0 {
@@ -1443,7 +1993,7 @@ async fn compile_team_task_run_preview(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<CompileTeamTaskRunPreviewRequest>,
 ) -> Result<Json<TeamTaskRunCompilePreviewResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let task = state
@@ -1480,7 +2030,7 @@ async fn create_team_run(
     Path(team_id): Path<String>,
     Json(payload): Json<CreateTeamRunRequest>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let run = state
@@ -1501,7 +2051,7 @@ async fn list_team_runs(
     Path(team_id): Path<String>,
     Query(query): Query<ListTeamRunsQuery>,
 ) -> Result<Json<Vec<TeamRunRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let status = normalize_optional_run_status_filter(query.status.as_deref())?;
@@ -1518,7 +2068,7 @@ async fn get_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let run = load_run_for_user(&state, &run_id, &user).await?;
     Ok(Json(run))
 }
@@ -1528,7 +2078,7 @@ async fn cancel_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
@@ -1543,7 +2093,7 @@ async fn resume_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
@@ -1558,7 +2108,7 @@ async fn restart_team_run(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<TeamRunRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let run = state
         .teams
@@ -1574,7 +2124,7 @@ async fn get_team_run_snapshot(
     Path(run_id): Path<String>,
     Query(query): Query<TeamRunSnapshotQuery>,
 ) -> Result<Json<TeamRunSnapshotResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let (run, team) = load_run_and_team_for_user(&state, &run_id, &user).await?;
     validate_team_spec(&team.spec)?;
 
@@ -1707,7 +2257,7 @@ async fn list_team_run_events(
     Path(run_id): Path<String>,
     Query(query): Query<ListTeamRunEventsQuery>,
 ) -> Result<Json<Vec<TeamRunEventRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let limit = query
         .limit
@@ -1727,7 +2277,7 @@ async fn flush_team_run_context(
     Path(run_id): Path<String>,
     Json(payload): Json<FlushTeamRunContextRequest>,
 ) -> Result<Json<FlushTeamRunContextResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let member_id = payload.member_id.trim().to_string();
     if member_id.is_empty() {
@@ -1769,7 +2319,7 @@ async fn list_team_run_steps(
     headers: HeaderMap,
     Path(run_id): Path<String>,
 ) -> Result<Json<Vec<TeamStepRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     let steps = state
         .teams
@@ -1785,7 +2335,7 @@ async fn submit_team_run_step(
     Path(run_id): Path<String>,
     Json(payload): Json<SubmitTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
 
     let step_key = payload.step_key.trim().to_string();
@@ -1812,7 +2362,7 @@ async fn start_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<StartTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let runtime_handle_id = payload
@@ -1845,7 +2395,7 @@ async fn complete_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<CompleteTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let step = state
@@ -1862,7 +2412,7 @@ async fn fail_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<FailTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let error_text = payload.error_text.trim();
@@ -1883,7 +2433,7 @@ async fn set_team_run_step_input_required(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<SetTeamRunStepInputRequiredRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let reason = normalize_optional_non_empty(payload.reason.as_deref())?.map(str::to_string);
@@ -1901,7 +2451,7 @@ async fn resume_team_run_step(
     Path((run_id, step_id)): Path<(String, String)>,
     Json(payload): Json<ResumeTeamRunStepRequest>,
 ) -> Result<Json<TeamStepRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
     ensure_step_in_run(&state, &run_id, &step_id).await?;
     let step = state
@@ -1929,7 +2479,7 @@ async fn send_team_run_message(
     Path(run_id): Path<String>,
     Json(payload): Json<SendTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let SendTeamRunMessageRequest {
         from_actor_id,
@@ -2081,7 +2631,7 @@ async fn list_team_run_inbox(
     Path(run_id): Path<String>,
     Query(query): Query<ListTeamRunInboxQuery>,
 ) -> Result<Json<Vec<TeamActorMessageRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(query.actor_id.as_str(), &member_ids, &user)?;
@@ -2125,7 +2675,7 @@ async fn ack_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<AckTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
@@ -2168,7 +2718,7 @@ async fn triage_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<TriageTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
@@ -2199,7 +2749,7 @@ async fn escalate_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<EscalateTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
@@ -2228,7 +2778,7 @@ async fn transfer_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<TransferTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;
@@ -2262,7 +2812,7 @@ async fn takeover_team_run_message(
     Path((run_id, message_id)): Path<(String, i64)>,
     Json(payload): Json<TakeoverTeamRunMessageRequest>,
 ) -> Result<Json<TeamActorMessageRecord>, ApiError> {
-    let user = require_user(&headers, &state).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
         resolve_run_mailbox_query_actor_ids(payload.actor_id.as_str(), &member_ids, &user)?;

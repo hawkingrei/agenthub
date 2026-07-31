@@ -1,5 +1,78 @@
 use super::*;
 
+#[derive(Debug, Default)]
+struct CountingIndexStore {
+    inner: agenthub_message_store::InMemoryIndexStore,
+    scan_count: std::sync::atomic::AtomicUsize,
+}
+
+impl CountingIndexStore {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn scan_count(&self) -> usize {
+        self.scan_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl agenthub_message_store::MessageIndexStore for CountingIndexStore {
+    fn put_ref(
+        &self,
+        key: &[u8],
+        message_ref: &agenthub_message_store::MessageRef,
+    ) -> Result<(), agenthub_message_store::IndexStoreError> {
+        self.inner.put_ref(key, message_ref)
+    }
+
+    fn get_ref(
+        &self,
+        key: &[u8],
+    ) -> Result<Option<agenthub_message_store::MessageRef>, agenthub_message_store::IndexStoreError>
+    {
+        self.inner.get_ref(key)
+    }
+
+    fn delete_ref(&self, key: &[u8]) -> Result<(), agenthub_message_store::IndexStoreError> {
+        self.inner.delete_ref(key)
+    }
+
+    fn scan_prefix(
+        &self,
+        prefix: &[u8],
+    ) -> Result<Vec<agenthub_message_store::MessageRef>, agenthub_message_store::IndexStoreError>
+    {
+        self.scan_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.scan_prefix(prefix)
+    }
+
+    fn scan_prefix_entries(
+        &self,
+        prefix: &[u8],
+    ) -> Result<
+        Vec<agenthub_message_store::IndexedMessageRef>,
+        agenthub_message_store::IndexStoreError,
+    > {
+        self.inner.scan_prefix_entries(prefix)
+    }
+
+    fn put_high_water(
+        &self,
+        stream_id: &str,
+        seq: u64,
+    ) -> Result<(), agenthub_message_store::IndexStoreError> {
+        self.inner.put_high_water(stream_id, seq)
+    }
+
+    fn get_high_water(
+        &self,
+        stream_id: &str,
+    ) -> Result<Option<u64>, agenthub_message_store::IndexStoreError> {
+        self.inner.get_high_water(stream_id)
+    }
+}
+
 #[tokio::test]
 async fn create_team_task_and_run_persist_authority_group_id() {
     let db = setup_test_db().await;
@@ -125,6 +198,1239 @@ async fn append_task_conversation_message_persists_authority_group_id() {
             .await
             .expect("read task message group_id");
     assert_eq!(stored_group_id, Some("user-message-authority".to_string()));
+}
+
+#[tokio::test]
+async fn repair_team_conversation_message_index_derives_refs_from_sqlite_authority() {
+    use agenthub_message_store::{
+        InMemoryIndexStore, IndexFreshness, MessageIndexStore, MessageKind, check_index_freshness,
+        keys,
+    };
+
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "message-index-team".to_string(),
+                description: Some("team with repairable message index".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[{"member_id":"coordinator","role":"coordinator"}]
+                }),
+            },
+            Some("user-message-index"),
+        )
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Message index task",
+            "user",
+            json!({"summary":"message index repair check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    let (message, created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "group_chat",
+            json!({
+                "type": "tool_call",
+                "text": "index this message",
+                "correlation_id": "corr-message-index"
+            }),
+            Some("message-index-1"),
+        )
+        .await
+        .expect("append message");
+    assert!(created);
+
+    let index = InMemoryIndexStore::new();
+    let report = manager
+        .repair_team_conversation_message_index(&index, 16, message.message_id)
+        .await
+        .expect("repair index");
+    assert_eq!(report.repaired_refs, 2);
+    assert_eq!(
+        check_index_freshness(
+            &index,
+            "team_conversation_messages",
+            message.message_id as u64
+        )
+        .expect("check freshness"),
+        IndexFreshness::Fresh {
+            indexed_through: message.message_id as u64
+        }
+    );
+
+    let refs = index
+        .scan_prefix(&keys::channel_prefix(
+            "user-message-index",
+            &conversation.id,
+        ))
+        .expect("scan channel refs");
+    assert_eq!(refs.len(), 1);
+    let message_ref = &refs[0];
+    assert_eq!(
+        message_ref.message_id.as_str(),
+        format!(
+            "team_conversation_message:{}:{}",
+            conversation.id, message.message_id
+        )
+    );
+    assert_eq!(
+        message_ref.authority_message_id.as_str(),
+        format!("tcm:{}", message.message_id)
+    );
+    assert_eq!(message_ref.message_kind, MessageKind::ToolCall);
+    assert_eq!(
+        message_ref.archive_document_id.as_deref(),
+        Some(
+            format!(
+                "team_conversation_message:{}:{}",
+                conversation.id, message.message_id
+            )
+            .as_str()
+        )
+    );
+    assert_eq!(
+        message_ref.correlation_id.as_deref(),
+        Some("corr-message-index")
+    );
+    assert_eq!(message_ref.group_id.as_deref(), Some("user-message-index"));
+    assert_eq!(
+        message_ref.conversation_id.as_deref(),
+        Some(conversation.id.as_str())
+    );
+    assert_eq!(message_ref.agent_id.as_deref(), Some("coordinator"));
+
+    let by_id = index
+        .get_ref(&keys::message_id_key(message_ref.message_id.as_str()))
+        .expect("get by id")
+        .expect("message id ref");
+    assert_eq!(by_id, *message_ref);
+}
+
+#[tokio::test]
+async fn list_task_conversation_messages_uses_fresh_index_and_falls_back_when_lagging() {
+    let db = setup_test_db().await;
+    let index = Arc::new(CountingIndexStore::new());
+    let repair_scheduler =
+        Arc::new(agenthub_message_store::InMemoryIndexReadRepairScheduler::new());
+    let manager = TeamManager::new(db.clone())
+        .with_message_index(Some(
+            index.clone() as crate::message_body_store::SharedIndexStore
+        ))
+        .with_read_repair_scheduler(Some(
+            repair_scheduler.clone() as crate::message_body_store::SharedReadRepairScheduler
+        ));
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "indexed-list-team".to_string(),
+                description: Some("team with guarded indexed list reads".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[{"member_id":"coordinator","role":"coordinator"}]
+                }),
+            },
+            Some("user-indexed-list"),
+        )
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Indexed list task",
+            "user",
+            json!({"summary":"indexed list check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    let first = manager
+        .append_task_conversation_message(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "group_chat",
+            json!({"type":"chat_message","text":"first"}),
+        )
+        .await
+        .expect("append first");
+    let second = manager
+        .append_task_conversation_message(
+            &task.id,
+            "coordinator",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"second"}),
+        )
+        .await
+        .expect("append second");
+
+    let lagging = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list through SQLite fallback");
+    assert_eq!(
+        lagging
+            .iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        vec![first.message_id, second.message_id]
+    );
+    assert_eq!(
+        index.scan_count(),
+        0,
+        "lagging high-water must not scan the index"
+    );
+    assert_eq!(
+        repair_scheduler.pending_repairs(),
+        vec![agenthub_message_store::IndexReadRepairRequest {
+            stream_id: "team_conversation_messages".to_string(),
+            authority_max: second.message_id as u64,
+            reason: agenthub_message_store::IndexReadRepairReason::Lagging {
+                indexed_through: None,
+            },
+        }]
+    );
+
+    agenthub_message_store::mark_index_repaired_through(
+        index.as_ref(),
+        "team_conversation_messages",
+        second.message_id as u64,
+    )
+    .expect("mark incomplete index fresh");
+    let incomplete = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list through incomplete-index fallback");
+    assert_eq!(
+        incomplete
+            .iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        vec![first.message_id, second.message_id]
+    );
+    assert_eq!(
+        index.scan_count(),
+        1,
+        "fresh but incomplete index is scanned once before falling back"
+    );
+
+    manager
+        .repair_team_conversation_message_index(index.as_ref(), 16, second.message_id)
+        .await
+        .expect("repair index");
+    let last = manager
+        .list_task_conversation_messages(&task.id, 1, None)
+        .await
+        .expect("list through fresh index");
+    assert_eq!(
+        last.iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        vec![second.message_id]
+    );
+    assert_eq!(index.scan_count(), 2);
+
+    let previous = manager
+        .list_task_conversation_messages(&task.id, 10, Some(second.message_id))
+        .await
+        .expect("list previous page through fresh index");
+    assert_eq!(
+        previous
+            .iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        vec![first.message_id]
+    );
+    assert_eq!(index.scan_count(), 3);
+}
+
+#[tokio::test]
+async fn repair_team_actor_message_index_derives_refs_from_sqlite_authority() {
+    use agenthub_message_store::{
+        InMemoryIndexStore, IndexFreshness, MessageIndexStore, MessageKind, check_index_freshness,
+        keys,
+    };
+
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "actor-index-team".to_string(),
+                description: Some("team with repairable actor index".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[
+                        {"member_id":"coordinator","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }),
+            },
+            Some("user-actor-index"),
+        )
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Actor index task",
+            "user",
+            json!({"summary":"actor index repair check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(&team.id, Some(&task.id), json!({"task_id":task.id}))
+        .await
+        .expect("create run");
+
+    let message = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type": "chat_message",
+                "text": "index actor mailbox",
+                "correlation_id": "corr-actor-index"
+            }),
+            idempotency_key: Some("actor-index-1"),
+            message_kind: Some(agenthub_team_actor::ActorMessageKind::SystemNotice),
+        })
+        .await
+        .expect("send actor message");
+
+    let index = InMemoryIndexStore::new();
+    let report = manager
+        .repair_team_actor_message_index(&index, 16, message.message_id)
+        .await
+        .expect("repair actor index");
+    assert_eq!(report.repaired_refs, 4);
+    assert_eq!(
+        check_index_freshness(&index, "team_actor_messages", message.message_id as u64)
+            .expect("check freshness"),
+        IndexFreshness::Fresh {
+            indexed_through: message.message_id as u64
+        }
+    );
+
+    let run_refs = index
+        .scan_prefix(&keys::run_prefix(&run.id))
+        .expect("scan run refs");
+    assert_eq!(run_refs.len(), 1);
+    let message_ref = &run_refs[0];
+    assert_eq!(
+        message_ref.message_id.as_str(),
+        format!("team_actor_message:{}:{}", run.id, message.message_id)
+    );
+    assert_eq!(
+        message_ref.authority_message_id.as_str(),
+        format!("tam:{}", message.message_id)
+    );
+    assert_eq!(message_ref.message_kind, MessageKind::System);
+    assert_eq!(
+        message_ref.archive_document_id.as_deref(),
+        Some(format!("team_actor_message:{}:{}", run.id, message.message_id).as_str())
+    );
+    assert_eq!(
+        message_ref.correlation_id.as_deref(),
+        Some("corr-actor-index")
+    );
+    assert_eq!(message_ref.group_id.as_deref(), Some("user-actor-index"));
+    assert_eq!(message_ref.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(message_ref.agent_id.as_deref(), Some("worker-1"));
+
+    assert_eq!(
+        index
+            .scan_prefix(&keys::agent_prefix("worker-1"))
+            .expect("scan agent refs"),
+        vec![message_ref.clone()]
+    );
+    assert_eq!(
+        index
+            .scan_prefix(&keys::inbox_prefix("main:worker-1"))
+            .expect("scan inbox refs"),
+        vec![message_ref.clone()]
+    );
+    assert_eq!(
+        index
+            .get_ref(&keys::message_id_key(message_ref.message_id.as_str()))
+            .expect("get by id"),
+        Some(message_ref.clone())
+    );
+}
+
+#[tokio::test]
+async fn list_actor_inbox_history_uses_fresh_index_and_falls_back_when_lagging() {
+    let db = setup_test_db().await;
+    let index = Arc::new(CountingIndexStore::new());
+    let manager = TeamManager::new(db.clone()).with_message_index(Some(
+        index.clone() as crate::message_body_store::SharedIndexStore
+    ));
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "indexed-actor-inbox-team".to_string(),
+                description: Some("team with guarded indexed actor inbox reads".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[
+                        {"member_id":"coordinator","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }),
+            },
+            Some("user-indexed-actor-inbox"),
+        )
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Indexed actor inbox task",
+            "user",
+            json!({"summary":"indexed actor inbox history check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(&team.id, Some(&task.id), json!({"task_id":task.id}))
+        .await
+        .expect("create run");
+
+    let first = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"first"}),
+            idempotency_key: Some("indexed-inbox-1"),
+            message_kind: None,
+        })
+        .await
+        .expect("send first actor message");
+    let second = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"second"}),
+            idempotency_key: Some("indexed-inbox-2"),
+            message_kind: None,
+        })
+        .await
+        .expect("send second actor message");
+    let third = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"third"}),
+            idempotency_key: Some("indexed-inbox-3"),
+            message_kind: None,
+        })
+        .await
+        .expect("send third actor message");
+
+    let lagging = manager
+        .list_actor_inbox(&run.id, "worker-1", 10, Some(first.message_id), true)
+        .await
+        .expect("list through SQLite fallback");
+    assert_eq!(
+        lagging
+            .iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        vec![second.message_id, third.message_id]
+    );
+    assert_eq!(
+        index.scan_count(),
+        0,
+        "lagging high-water must not scan the actor inbox index"
+    );
+
+    agenthub_message_store::mark_index_repaired_through(
+        index.as_ref(),
+        "team_actor_messages",
+        third.message_id as u64,
+    )
+    .expect("mark incomplete actor index fresh");
+    let incomplete = manager
+        .list_actor_inbox(&run.id, "worker-1", 10, Some(first.message_id), true)
+        .await
+        .expect("list through incomplete-index fallback");
+    assert_eq!(
+        incomplete
+            .iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        vec![second.message_id, third.message_id]
+    );
+    assert_eq!(
+        index.scan_count(),
+        1,
+        "fresh but incomplete actor inbox index is scanned once before falling back"
+    );
+
+    manager
+        .repair_team_actor_message_index(index.as_ref(), 16, third.message_id)
+        .await
+        .expect("repair actor index");
+    let indexed = manager
+        .list_actor_inbox(&run.id, "worker-1", 1, Some(first.message_id), true)
+        .await
+        .expect("list through fresh actor inbox index");
+    assert_eq!(
+        indexed
+            .iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        vec![second.message_id]
+    );
+    assert_eq!(index.scan_count(), 2);
+}
+
+#[tokio::test]
+async fn list_actor_inbox_first_page_uses_index_without_hiding_pending() {
+    let db = setup_test_db().await;
+    let index = Arc::new(CountingIndexStore::new());
+    let manager = TeamManager::new(db.clone()).with_message_index(Some(
+        index.clone() as crate::message_body_store::SharedIndexStore
+    ));
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "indexed-actor-inbox-first-page-team".to_string(),
+                description: Some("team with indexed actor inbox first-page reads".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[
+                        {"member_id":"coordinator","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }),
+            },
+            Some("user-indexed-actor-inbox-first-page"),
+        )
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Indexed actor inbox first-page task",
+            "user",
+            json!({"summary":"indexed actor inbox first-page check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(&team.id, Some(&task.id), json!({"task_id":task.id}))
+        .await
+        .expect("create run");
+
+    let mut delivered_ids = Vec::new();
+    for idx in 0..3 {
+        let idempotency_key = format!("indexed-inbox-first-page-history-{idx}");
+        let sent = manager
+            .send_actor_message(SendActorMessageInput {
+                run_id: &run.id,
+                from_actor_id: "coordinator",
+                from_peer_id: ACTOR_MAIN_PEER_ID,
+                to_actor_id: "worker-1",
+                to_peer_id: ACTOR_MAIN_PEER_ID,
+                channel: "all",
+                transport: TeamActorMessageTransport::Local,
+                route: None,
+                payload: json!({"type":"chat_message","text": format!("history-{idx}")}),
+                idempotency_key: Some(idempotency_key.as_str()),
+                message_kind: None,
+            })
+            .await
+            .expect("send delivered actor message");
+        manager
+            .ack_actor_message(&run.id, "worker-1", sent.message_id)
+            .await
+            .expect("ack delivered actor message");
+        delivered_ids.push(sent.message_id);
+    }
+
+    let mut latest_message_id = *delivered_ids.last().expect("delivered message");
+    manager
+        .repair_team_actor_message_index(index.as_ref(), 16, latest_message_id)
+        .await
+        .expect("repair actor index");
+
+    let history_only = manager
+        .list_actor_inbox(&run.id, "worker-1", 10, None, true)
+        .await
+        .expect("list history-only first page through index");
+    assert_eq!(
+        history_only
+            .iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        delivered_ids
+    );
+    assert!(
+        history_only
+            .iter()
+            .all(|message| message.status == TeamActorMessageStatus::Delivered)
+    );
+    assert_eq!(index.scan_count(), 1);
+
+    let mut pending_id = None;
+    for idx in 0..25 {
+        let idempotency_key = format!("indexed-inbox-first-page-pending-{idx}");
+        let sent = manager
+            .send_actor_message(SendActorMessageInput {
+                run_id: &run.id,
+                from_actor_id: "coordinator",
+                from_peer_id: ACTOR_MAIN_PEER_ID,
+                to_actor_id: "worker-1",
+                to_peer_id: ACTOR_MAIN_PEER_ID,
+                channel: "all",
+                transport: TeamActorMessageTransport::Local,
+                route: None,
+                payload: json!({"type":"chat_message","text": format!("pending-first-{idx}")}),
+                idempotency_key: Some(idempotency_key.as_str()),
+                message_kind: None,
+            })
+            .await
+            .expect("send pending-first actor message");
+        latest_message_id = sent.message_id;
+        if idx < 24 {
+            manager
+                .ack_actor_message(&run.id, "worker-1", sent.message_id)
+                .await
+                .expect("ack historical actor message");
+        } else {
+            pending_id = Some(sent.message_id);
+        }
+    }
+
+    manager
+        .repair_team_actor_message_index(index.as_ref(), 16, latest_message_id)
+        .await
+        .expect("repair actor index through pending");
+
+    let pending_first = manager
+        .list_actor_inbox(&run.id, "worker-1", 20, None, true)
+        .await
+        .expect("list pending-first first page through SQLite fallback");
+    assert_eq!(
+        pending_first
+            .iter()
+            .map(|message| message.message_id)
+            .collect::<Vec<_>>(),
+        vec![pending_id.expect("pending message")]
+    );
+    assert_eq!(pending_first[0].status, TeamActorMessageStatus::Pending);
+    assert_eq!(
+        index.scan_count(),
+        2,
+        "fresh first-page index should be scanned before falling back when it would hide pending"
+    );
+}
+
+#[tokio::test]
+async fn repair_team_run_event_index_derives_refs_from_sqlite_authority() {
+    use agenthub_message_store::{
+        InMemoryIndexStore, IndexFreshness, MessageIndexStore, MessageKind, check_index_freshness,
+        keys,
+    };
+
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "run-event-index-team".to_string(),
+                description: Some("team with repairable run event index".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[{"member_id":"coordinator","role":"coordinator"}]
+                }),
+            },
+            Some("user-run-event-index"),
+        )
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Run event index task",
+            "user",
+            json!({"summary":"run event index repair check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({
+                "task_id": task.id,
+                "conversation_id": conversation.id
+            }),
+        )
+        .await
+        .expect("create run");
+
+    manager
+        .append_run_event(
+            &run.id,
+            "tool_call_started",
+            json!({
+                "type": "tool_call",
+                "text": "run event projection",
+                "correlation_id": "corr-run-event-index",
+                "agent_id": "coordinator"
+            }),
+        )
+        .await
+        .expect("append run event");
+    let event_id: i64 = sqlx::query_scalar("SELECT MAX(id) FROM team_run_events WHERE run_id = ?1")
+        .bind(&run.id)
+        .fetch_one(&db)
+        .await
+        .expect("read run event id");
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_run_events WHERE run_id = ?1 AND id <= ?2")
+            .bind(&run.id)
+            .bind(event_id)
+            .fetch_one(&db)
+            .await
+            .expect("count run events");
+
+    let index = InMemoryIndexStore::new();
+    let report = manager
+        .repair_team_run_event_index(&index, 16, event_id)
+        .await
+        .expect("repair run event index");
+    assert_eq!(report.repaired_refs, event_count as usize * 2);
+    assert_eq!(
+        check_index_freshness(&index, "team_run_events", event_id as u64).expect("check freshness"),
+        IndexFreshness::Fresh {
+            indexed_through: event_id as u64
+        }
+    );
+
+    let run_refs = index
+        .scan_prefix(&keys::run_prefix(&run.id))
+        .expect("scan run refs");
+    assert_eq!(run_refs.len(), event_count as usize);
+    let expected_delivery_id = format!("team_run_event:{}:{event_id}", run.id);
+    let message_ref = run_refs
+        .iter()
+        .find(|message_ref| message_ref.message_id.as_str() == expected_delivery_id)
+        .expect("appended event ref");
+    assert_eq!(message_ref.message_id.as_str(), expected_delivery_id);
+    assert_eq!(
+        message_ref.authority_message_id.as_str(),
+        format!("tre:{}:{event_id}", run.id)
+    );
+    assert_eq!(message_ref.message_kind, MessageKind::ToolCall);
+    assert_eq!(
+        message_ref.archive_document_id.as_deref(),
+        Some(format!("team_run_event:{}:{event_id}", run.id).as_str())
+    );
+    assert_eq!(
+        message_ref.correlation_id.as_deref(),
+        Some("corr-run-event-index")
+    );
+    assert_eq!(
+        message_ref.group_id.as_deref(),
+        Some("user-run-event-index")
+    );
+    assert_eq!(message_ref.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(
+        message_ref.conversation_id.as_deref(),
+        Some(conversation.id.as_str())
+    );
+    assert_eq!(message_ref.agent_id.as_deref(), Some("coordinator"));
+    assert_eq!(
+        index
+            .get_ref(&keys::message_id_key(message_ref.message_id.as_str()))
+            .expect("get by id"),
+        Some(message_ref.clone())
+    );
+}
+
+#[tokio::test]
+async fn list_run_events_uses_fresh_index_and_falls_back_when_lagging() {
+    let db = setup_test_db().await;
+    let index = Arc::new(CountingIndexStore::new());
+    let manager = TeamManager::new(db.clone()).with_message_index(Some(
+        index.clone() as crate::message_body_store::SharedIndexStore
+    ));
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "indexed-run-events-team".to_string(),
+                description: Some("team with guarded indexed run event reads".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[{"member_id":"coordinator","role":"coordinator"}]
+                }),
+            },
+            Some("user-indexed-run-events"),
+        )
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Indexed run events task",
+            "user",
+            json!({"summary":"indexed run event list check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "conversation_id": conversation.id}),
+        )
+        .await
+        .expect("create run");
+
+    manager
+        .append_run_event(&run.id, "first_event", json!({"text":"first"}))
+        .await
+        .expect("append first event");
+    manager
+        .append_run_event(&run.id, "second_event", json!({"text":"second"}))
+        .await
+        .expect("append second event");
+    let event_ids: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM team_run_events WHERE run_id = ?1 ORDER BY id ASC")
+            .bind(&run.id)
+            .fetch_all(&db)
+            .await
+            .expect("read event ids");
+    assert!(
+        event_ids.len() >= 2,
+        "run fixture should include bootstrap plus appended events"
+    );
+    let last_event_id = *event_ids.last().expect("last event id");
+
+    let lagging = manager
+        .list_run_events(&run.id, 50, None)
+        .await
+        .expect("list through SQLite fallback");
+    assert_eq!(
+        lagging
+            .iter()
+            .map(|event| event.event_id)
+            .collect::<Vec<_>>(),
+        event_ids
+    );
+    assert_eq!(
+        index.scan_count(),
+        0,
+        "lagging high-water must not scan the run index"
+    );
+
+    agenthub_message_store::mark_index_repaired_through(
+        index.as_ref(),
+        "team_run_events",
+        last_event_id as u64,
+    )
+    .expect("mark incomplete run index fresh");
+    let incomplete = manager
+        .list_run_events(&run.id, 50, None)
+        .await
+        .expect("list through incomplete-index fallback");
+    assert_eq!(
+        incomplete
+            .iter()
+            .map(|event| event.event_id)
+            .collect::<Vec<_>>(),
+        event_ids
+    );
+    assert_eq!(
+        index.scan_count(),
+        1,
+        "fresh but incomplete run index is scanned once before falling back"
+    );
+
+    manager
+        .repair_team_run_event_index(index.as_ref(), 16, last_event_id)
+        .await
+        .expect("repair run event index");
+    let last = manager
+        .list_run_events(&run.id, 1, None)
+        .await
+        .expect("list through fresh run index");
+    assert_eq!(
+        last.iter().map(|event| event.event_id).collect::<Vec<_>>(),
+        vec![last_event_id]
+    );
+    assert_eq!(index.scan_count(), 2);
+
+    let previous = manager
+        .list_run_events(&run.id, 10, Some(last_event_id))
+        .await
+        .expect("list previous run event page through fresh index");
+    let expected_previous = event_ids[..event_ids.len() - 1].to_vec();
+    assert_eq!(
+        previous
+            .iter()
+            .map(|event| event.event_id)
+            .collect::<Vec<_>>(),
+        expected_previous
+    );
+    assert_eq!(index.scan_count(), 3);
+}
+
+async fn insert_agent_for_event_index(db: &SqlitePool, agent_id: &str, session_id: &str) {
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind(agent_id)
+    .bind(agent_id)
+    .bind(std::env::temp_dir().to_string_lossy().to_string())
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("running")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(db)
+    .await
+    .expect("insert agent");
+    sqlx::query(
+        "INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at) VALUES (?1, ?2, ?3, ?4, NULL)",
+    )
+    .bind(session_id)
+    .bind(agent_id)
+    .bind("running")
+    .bind(1_i64)
+    .execute(db)
+    .await
+    .expect("insert agent session");
+}
+
+async fn insert_step_for_event_index(
+    db: &SqlitePool,
+    run_id: &str,
+    agent_id: &str,
+    session_id: &str,
+    started_at: i64,
+    ended_at: Option<i64>,
+) {
+    sqlx::query(
+        r#"
+        INSERT INTO team_steps (
+            id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json, started_at, ended_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'working', 0, '[]', NULL, ?6, ?7)
+        "#,
+    )
+    .bind(format!("{run_id}-{agent_id}-step"))
+    .bind(run_id)
+    .bind(format!("{agent_id}-step"))
+    .bind(agent_id)
+    .bind(session_id)
+    .bind(started_at)
+    .bind(ended_at)
+    .execute(db)
+    .await
+    .expect("insert team step");
+}
+
+#[tokio::test]
+async fn repair_main_agent_event_index_derives_refs_from_sqlite_authority() {
+    use agenthub_message_store::{
+        InMemoryIndexStore, IndexFreshness, MessageIndexStore, MessageKind, check_index_freshness,
+        keys,
+    };
+
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let agent_id = "planner-main-index";
+    let session_id = "main-index-session";
+    insert_agent_for_event_index(&db, agent_id, session_id).await;
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "main-agent-event-index-team".to_string(),
+                description: Some("team with main agent event index".to_string()),
+                spec: json!({
+                    "entrypoint":"planner-main-index",
+                    "members":[{"member_id":"planner-main-index","role":"coordinator"}]
+                }),
+            },
+            Some("user-main-agent-event-index"),
+        )
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Main agent event index task",
+            "user",
+            json!({"summary":"main agent event index repair check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "conversation_id": conversation.id}),
+        )
+        .await
+        .expect("create run");
+    insert_step_for_event_index(&db, &run.id, agent_id, session_id, 1, None).await;
+
+    let event_id = sqlx::query(
+        "INSERT INTO agent_events (agent_id, session_id, seq, ts, stream, message) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    )
+    .bind(agent_id)
+    .bind(session_id)
+    .bind("1")
+    .bind(10_i64)
+    .bind("stdout")
+    .bind(br#"{"type":"tool_call","text":"main event","correlation_id":"corr-main-agent-event"}"#.as_slice())
+    .execute(&db)
+    .await
+    .expect("insert main agent event")
+    .last_insert_rowid();
+
+    let index = InMemoryIndexStore::new();
+    let report = manager
+        .repair_main_agent_event_index(&index, 16, event_id)
+        .await
+        .expect("repair main agent event index");
+    assert_eq!(report.repaired_refs, 3);
+    assert_eq!(
+        check_index_freshness(&index, "agent_events:main", event_id as u64)
+            .expect("check freshness"),
+        IndexFreshness::Fresh {
+            indexed_through: event_id as u64
+        }
+    );
+
+    let agent_refs = index
+        .scan_prefix(&keys::agent_prefix(agent_id))
+        .expect("scan agent refs");
+    assert_eq!(agent_refs.len(), 1);
+    let message_ref = &agent_refs[0];
+    assert_eq!(
+        message_ref.message_id.as_str(),
+        format!("agent_event:{agent_id}:{session_id}:{event_id}")
+    );
+    assert_eq!(
+        message_ref.authority_message_id.as_str(),
+        format!("ae:{agent_id}:{session_id}:{event_id}")
+    );
+    assert_eq!(message_ref.source_kind, "agent_events");
+    assert_eq!(message_ref.message_kind, MessageKind::ToolCall);
+    assert_eq!(
+        message_ref.correlation_id.as_deref(),
+        Some("corr-main-agent-event")
+    );
+    assert_eq!(message_ref.group_id, None);
+    assert_eq!(message_ref.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(
+        message_ref.conversation_id.as_deref(),
+        Some(conversation.id.as_str())
+    );
+    assert_eq!(message_ref.agent_id.as_deref(), Some(agent_id));
+    assert_eq!(
+        index
+            .scan_prefix(&keys::run_prefix(&run.id))
+            .expect("scan run refs"),
+        vec![message_ref.clone()]
+    );
+    assert_eq!(
+        index
+            .get_ref(&keys::message_id_key(message_ref.message_id.as_str()))
+            .expect("get by id"),
+        Some(message_ref.clone())
+    );
+}
+
+#[tokio::test]
+async fn repair_per_agent_event_index_derives_refs_from_agent_event_db() {
+    use agenthub_message_store::{
+        InMemoryIndexStore, IndexFreshness, MessageIndexStore, MessageKind, check_index_freshness,
+        keys,
+    };
+
+    let db = setup_test_db().await;
+    let event_dbs = AgentEventDbRouter::new(
+        std::env::temp_dir().join(format!("agenthub-index-eventdb-{}", uuid::Uuid::new_v4())),
+    );
+    let manager = TeamManager::new_with_event_dbs(db.clone(), event_dbs.clone());
+    let agent_id = "planner-per-agent-index";
+    let session_id = "per-agent-index-session";
+    insert_agent_for_event_index(&db, agent_id, session_id).await;
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "per-agent-event-index-team".to_string(),
+                description: Some("team with per-agent event index".to_string()),
+                spec: json!({
+                    "entrypoint":"planner-per-agent-index",
+                    "members":[{"member_id":"planner-per-agent-index","role":"coordinator"}]
+                }),
+            },
+            Some("user-per-agent-event-index"),
+        )
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Per-agent event index task",
+            "user",
+            json!({"summary":"per-agent event index repair check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "conversation_id": conversation.id}),
+        )
+        .await
+        .expect("create run");
+    insert_step_for_event_index(&db, &run.id, agent_id, session_id, 1, None).await;
+
+    let event_db = event_dbs
+        .pool_for_agent(agent_id)
+        .await
+        .expect("open per-agent event db");
+    let event_id = sqlx::query(
+        "INSERT INTO agent_events (session_id, seq, ts, stream, message) VALUES (?1, ?2, ?3, ?4, ?5)",
+    )
+    .bind(session_id)
+    .bind("1")
+    .bind(10_i64)
+    .bind("stderr")
+    .bind(br#"{"type":"system","text":"per-agent event","correlation_id":"corr-per-agent-event"}"#.as_slice())
+    .execute(&event_db)
+    .await
+    .expect("insert per-agent event")
+    .last_insert_rowid();
+
+    let index = InMemoryIndexStore::new();
+    let report = manager
+        .repair_per_agent_event_index(&index, agent_id, 16, event_id)
+        .await
+        .expect("repair per-agent event index");
+    assert_eq!(report.repaired_refs, 3);
+    assert_eq!(
+        check_index_freshness(
+            &index,
+            &format!("agent_events:agent:{agent_id}"),
+            event_id as u64
+        )
+        .expect("check freshness"),
+        IndexFreshness::Fresh {
+            indexed_through: event_id as u64
+        }
+    );
+
+    let agent_refs = index
+        .scan_prefix(&keys::agent_prefix(agent_id))
+        .expect("scan agent refs");
+    assert_eq!(agent_refs.len(), 1);
+    let message_ref = &agent_refs[0];
+    assert_eq!(
+        message_ref.message_id.as_str(),
+        format!("agent_event:{agent_id}:{session_id}:{event_id}")
+    );
+    assert_eq!(message_ref.source_kind, "per_agent_agent_events");
+    assert_eq!(message_ref.message_kind, MessageKind::System);
+    assert_eq!(
+        message_ref.correlation_id.as_deref(),
+        Some("corr-per-agent-event")
+    );
+    assert_eq!(message_ref.run_id.as_deref(), Some(run.id.as_str()));
+    assert_eq!(
+        message_ref.conversation_id.as_deref(),
+        Some(conversation.id.as_str())
+    );
+    assert_eq!(
+        index
+            .scan_prefix(&keys::run_prefix(&run.id))
+            .expect("scan run refs"),
+        vec![message_ref.clone()]
+    );
+    assert_eq!(
+        index
+            .get_ref(&keys::message_id_key(message_ref.message_id.as_str()))
+            .expect("get by id"),
+        Some(message_ref.clone())
+    );
 }
 
 #[tokio::test]

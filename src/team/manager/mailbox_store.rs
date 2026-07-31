@@ -15,6 +15,42 @@ use crate::team::TeamActorMessageRecord;
 pub(super) struct SqlActorMailboxStore {
     pub(super) db: SqlitePool,
     pub(super) message_archive: Option<MessageArchiveStoreRef>,
+    pub(super) message_index: Option<crate::message_body_store::SharedIndexStore>,
+    pub(super) read_repair: Option<crate::message_body_store::SharedReadRepairScheduler>,
+}
+
+impl SqlActorMailboxStore {
+    pub(super) fn schedule_index_read_repair(
+        &self,
+        stream_id: impl Into<String>,
+        authority_max: u64,
+        freshness: agenthub_message_store::IndexFreshness,
+    ) {
+        let agenthub_message_store::IndexFreshness::Lagging {
+            indexed_through, ..
+        } = freshness
+        else {
+            return;
+        };
+        let Some(scheduler) = self.read_repair.as_deref() else {
+            return;
+        };
+        let stream_id = stream_id.into();
+        if let Err(error) =
+            scheduler.schedule_read_repair(agenthub_message_store::IndexReadRepairRequest {
+                stream_id: stream_id.clone(),
+                authority_max,
+                reason: agenthub_message_store::IndexReadRepairReason::Lagging { indexed_through },
+            })
+        {
+            tracing::warn!(
+                ?error,
+                stream_id,
+                authority_max,
+                "failed to schedule actor inbox index read repair"
+            );
+        }
+    }
 }
 
 #[derive(Debug, Error)]

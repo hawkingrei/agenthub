@@ -73,6 +73,8 @@ pub struct AgentManager {
     acp_default_mode: Option<String>,
     codex_acp_multi_agent_enabled: bool,
     permissions: Arc<AcpPermissionService>,
+    message_index: Option<crate::message_body_store::SharedIndexStore>,
+    read_repair: Option<crate::message_body_store::SharedReadRepairScheduler>,
     permission_review_dispatcher: Arc<StdRwLock<Option<Arc<dyn AcpPermissionReviewDispatcher>>>>,
     internal_peer_client: Option<InternalGrpcPeerClientConfig>,
     starting: Arc<Mutex<HashSet<String>>>,
@@ -90,6 +92,7 @@ const INTERNAL_AGENT_MANAGE_PERMISSION: &str = "agent:manage";
 const TEAM_MEMBER_ROLE_COORDINATOR: &str = "coordinator";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
 const AGENT_LOOP_MESSAGE_ID_PREFIX: &str = "agent-loop:";
+const PER_AGENT_EVENT_SOURCE: &str = "per_agent_agent_events";
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum AgentSendInputError {
     #[error("agent session mismatch: expected={expected} running={running}")]
@@ -123,6 +126,29 @@ impl AgentLoopController {
     fn stop(&self) {
         let _ = self.tx.send(AgentLoopCommand::Stop);
     }
+}
+
+fn agent_event_from_row(agent_id: &str, row: &sqlx::sqlite::SqliteRow) -> AgentEvent {
+    let stream_str: String = row.get("stream");
+    AgentEvent {
+        event_id: row.get("id"),
+        agent_id: agent_id.to_string(),
+        session_id: row.get("session_id"),
+        seq: row.get("seq"),
+        ts: row.get("ts"),
+        stream: stream_from_str(&stream_str),
+        // Decode compressed ACP rows while keeping legacy plain rows untouched.
+        message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
+    }
+}
+
+fn agent_event_id_from_delivery_id<'a>(
+    agent_id: &str,
+    delivery_id: &'a str,
+) -> Option<(&'a str, i64)> {
+    let rest = delivery_id.strip_prefix(&format!("agent_event:{agent_id}:"))?;
+    let (session_id, event_id) = rest.rsplit_once(':')?;
+    Some((session_id, event_id.parse().ok()?))
 }
 
 #[derive(Debug, Clone)]
@@ -763,11 +789,32 @@ impl AgentManager {
             acp_default_mode,
             codex_acp_multi_agent_enabled,
             permissions,
+            message_index: None,
+            read_repair: None,
             internal_peer_client,
             permission_review_dispatcher: Arc::new(StdRwLock::new(None)),
             starting: Arc::new(Mutex::new(HashSet::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Attach the rebuildable message index store. Agent event reads use it only when the per-agent
+    /// projection is fresh through SQLite authority and fall back to SQLite otherwise.
+    pub fn with_message_index(
+        mut self,
+        message_index: Option<crate::message_body_store::SharedIndexStore>,
+    ) -> Self {
+        self.message_index = message_index;
+        self
+    }
+
+    /// Attach a scheduler for lagging index projections discovered by guarded reads.
+    pub fn with_read_repair_scheduler(
+        mut self,
+        read_repair: Option<crate::message_body_store::SharedReadRepairScheduler>,
+    ) -> Self {
+        self.read_repair = read_repair;
+        self
     }
 
     pub fn set_permission_review_dispatcher(
@@ -776,6 +823,38 @@ impl AgentManager {
     ) {
         if let Ok(mut guard) = self.permission_review_dispatcher.write() {
             *guard = dispatcher;
+        }
+    }
+
+    fn schedule_index_read_repair(
+        &self,
+        stream_id: impl Into<String>,
+        authority_max: u64,
+        freshness: agenthub_message_store::IndexFreshness,
+    ) {
+        let agenthub_message_store::IndexFreshness::Lagging {
+            indexed_through, ..
+        } = freshness
+        else {
+            return;
+        };
+        let Some(scheduler) = self.read_repair.as_deref() else {
+            return;
+        };
+        let stream_id = stream_id.into();
+        if let Err(error) =
+            scheduler.schedule_read_repair(agenthub_message_store::IndexReadRepairRequest {
+                stream_id: stream_id.clone(),
+                authority_max,
+                reason: agenthub_message_store::IndexReadRepairReason::Lagging { indexed_through },
+            })
+        {
+            tracing::warn!(
+                ?error,
+                stream_id,
+                authority_max,
+                "failed to schedule agent event index read repair"
+            );
         }
     }
 
@@ -1495,19 +1574,76 @@ impl AgentManager {
                 .await;
         }
         let event_db = self.event_dbs.pool_for_agent(agent_id).await?;
+        match self
+            .try_list_agent_events_from_index(agent_id, &event_db, limit, None, before_id)
+            .await
+        {
+            Ok(Some(events)) => return Ok(events),
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    agent_id,
+                    "falling back to SQLite after agent event index read failed"
+                );
+            }
+        }
+        self.list_agent_events_from_sqlite(agent_id, &event_db, limit, None, before_id)
+            .await
+    }
+
+    async fn list_agent_events_from_sqlite(
+        &self,
+        agent_id: &str,
+        event_db: &SqlitePool,
+        limit: i64,
+        session_id: Option<&str>,
+        before_id: Option<i64>,
+    ) -> anyhow::Result<Vec<AgentEvent>> {
         let rows = if let Some(before_id) = before_id {
+            if let Some(session_id) = session_id {
+                sqlx::query(
+                    r#"
+                    SELECT id, session_id, seq, ts, stream, message
+                    FROM agent_events
+                    WHERE session_id = ?1 AND id < ?2
+                    ORDER BY id DESC
+                    LIMIT ?3
+                    "#,
+                )
+                .bind(session_id)
+                .bind(before_id)
+                .bind(limit)
+                .fetch_all(event_db)
+                .await?
+            } else {
+                sqlx::query(
+                    r#"
+                    SELECT id, session_id, seq, ts, stream, message
+                    FROM agent_events
+                    WHERE id < ?1
+                    ORDER BY id DESC
+                    LIMIT ?2
+                    "#,
+                )
+                .bind(before_id)
+                .bind(limit)
+                .fetch_all(event_db)
+                .await?
+            }
+        } else if let Some(session_id) = session_id {
             sqlx::query(
                 r#"
                 SELECT id, session_id, seq, ts, stream, message
                 FROM agent_events
-                WHERE id < ?1
+                WHERE session_id = ?1
                 ORDER BY id DESC
                 LIMIT ?2
                 "#,
             )
-            .bind(before_id)
+            .bind(session_id)
             .bind(limit)
-            .fetch_all(&event_db)
+            .fetch_all(event_db)
             .await?
         } else {
             sqlx::query(
@@ -1519,25 +1655,166 @@ impl AgentManager {
                 "#,
             )
             .bind(limit)
-            .fetch_all(&event_db)
+            .fetch_all(event_db)
             .await?
         };
 
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
-            let stream_str: String = row.get("stream");
-            events.push(AgentEvent {
-                event_id: row.get("id"),
-                agent_id: agent_id.to_string(),
-                session_id: row.get("session_id"),
-                seq: row.get("seq"),
-                ts: row.get("ts"),
-                stream: stream_from_str(&stream_str),
-                // Decode compressed ACP rows while keeping legacy plain rows untouched.
-                message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
-            });
+            events.push(agent_event_from_row(agent_id, &row));
         }
         events.reverse();
+        Ok(events)
+    }
+
+    async fn try_list_agent_events_from_index(
+        &self,
+        agent_id: &str,
+        event_db: &SqlitePool,
+        limit: i64,
+        session_id: Option<&str>,
+        before_id: Option<i64>,
+    ) -> anyhow::Result<Option<Vec<AgentEvent>>> {
+        let Some(index) = self.message_index.as_deref() else {
+            return Ok(None);
+        };
+
+        let authority_max = self
+            .max_agent_event_id_for_page(event_db, session_id, before_id)
+            .await?;
+        if authority_max == 0 {
+            return Ok(Some(Vec::new()));
+        }
+        let authority_count = self
+            .count_agent_events_for_page(event_db, session_id, before_id)
+            .await?;
+        let stream_id = format!("agent_events:agent:{agent_id}");
+        let freshness =
+            agenthub_message_store::check_index_freshness(index, &stream_id, authority_max as u64)?;
+        if !matches!(
+            freshness,
+            agenthub_message_store::IndexFreshness::Fresh { .. }
+        ) {
+            self.schedule_index_read_repair(stream_id, authority_max as u64, freshness);
+            return Ok(None);
+        }
+
+        let refs = index.scan_prefix(&agenthub_message_store::keys::agent_prefix(agent_id))?;
+        let mut ids = Vec::new();
+        let limit = limit.max(1) as usize;
+        for message_ref in refs {
+            if message_ref.source_kind != PER_AGENT_EVENT_SOURCE
+                || message_ref.agent_id.as_deref() != Some(agent_id)
+            {
+                continue;
+            }
+            let Some((delivery_session_id, event_id)) =
+                agent_event_id_from_delivery_id(agent_id, message_ref.message_id.as_str())
+            else {
+                return Ok(None);
+            };
+            if session_id.is_some_and(|session_id| session_id != delivery_session_id) {
+                continue;
+            }
+            if before_id.is_some_and(|before_id| event_id >= before_id) {
+                continue;
+            }
+            ids.push(event_id);
+        }
+        if !ids.contains(&authority_max) || ids.len() < authority_count {
+            return Ok(None);
+        }
+        if ids.len() > limit {
+            ids.drain(0..ids.len() - limit);
+        }
+
+        self.load_agent_events_by_ids(agent_id, event_db, &ids)
+            .await
+            .map(Some)
+    }
+
+    async fn max_agent_event_id_for_page(
+        &self,
+        event_db: &SqlitePool,
+        session_id: Option<&str>,
+        before_id: Option<i64>,
+    ) -> anyhow::Result<i64> {
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT COALESCE(MAX(id), 0) FROM agent_events WHERE 1 = 1",
+        );
+        if let Some(session_id) = session_id {
+            builder.push(" AND session_id = ");
+            builder.push_bind(session_id);
+        }
+        if let Some(before_id) = before_id {
+            builder.push(" AND id < ");
+            builder.push_bind(before_id);
+        }
+        Ok(builder.build_query_scalar().fetch_one(event_db).await?)
+    }
+
+    async fn count_agent_events_for_page(
+        &self,
+        event_db: &SqlitePool,
+        session_id: Option<&str>,
+        before_id: Option<i64>,
+    ) -> anyhow::Result<usize> {
+        let mut builder =
+            QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM agent_events WHERE 1 = 1");
+        if let Some(session_id) = session_id {
+            builder.push(" AND session_id = ");
+            builder.push_bind(session_id);
+        }
+        if let Some(before_id) = before_id {
+            builder.push(" AND id < ");
+            builder.push_bind(before_id);
+        }
+        let count: i64 = builder.build_query_scalar().fetch_one(event_db).await?;
+        Ok(count.max(0) as usize)
+    }
+
+    async fn load_agent_events_by_ids(
+        &self,
+        agent_id: &str,
+        event_db: &SqlitePool,
+        ids: &[i64],
+    ) -> anyhow::Result<Vec<AgentEvent>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT id, session_id, seq, ts, stream, message FROM agent_events WHERE id IN (",
+        );
+        let mut separated = builder.separated(", ");
+        for id in ids {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(")");
+
+        let rows = builder.build().fetch_all(event_db).await?;
+        if rows.len() != ids.len() {
+            anyhow::bail!(
+                "agent event index referenced {} rows for agent {}, but SQLite hydrated {}",
+                ids.len(),
+                agent_id,
+                rows.len()
+            );
+        }
+
+        let mut by_id = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let event = agent_event_from_row(agent_id, &row);
+            by_id.insert(event.event_id, event);
+        }
+
+        let mut events = Vec::with_capacity(ids.len());
+        for id in ids {
+            let Some(event) = by_id.remove(id) else {
+                anyhow::bail!("agent event index referenced row {id} that SQLite did not return");
+            };
+            events.push(event);
+        }
         Ok(events)
     }
 
@@ -1652,53 +1929,29 @@ impl AgentManager {
                 .await;
         }
         let event_db = self.event_dbs.pool_for_agent(agent_id).await?;
-        let rows = if let Some(before_id) = before_id {
-            sqlx::query(
-                r#"
-                SELECT id, session_id, seq, ts, stream, message
-                FROM agent_events
-                WHERE session_id = ?1 AND id < ?2
-                ORDER BY id DESC
-                LIMIT ?3
-                "#,
+        match self
+            .try_list_agent_events_from_index(
+                agent_id,
+                &event_db,
+                limit,
+                Some(session_id),
+                before_id,
             )
-            .bind(session_id)
-            .bind(before_id)
-            .bind(limit)
-            .fetch_all(&event_db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT id, session_id, seq, ts, stream, message
-                FROM agent_events
-                WHERE session_id = ?1
-                ORDER BY id DESC
-                LIMIT ?2
-                "#,
-            )
-            .bind(session_id)
-            .bind(limit)
-            .fetch_all(&event_db)
-            .await?
-        };
-
-        let mut events = Vec::with_capacity(rows.len());
-        for row in rows {
-            let stream_str: String = row.get("stream");
-            events.push(AgentEvent {
-                event_id: row.get("id"),
-                agent_id: agent_id.to_string(),
-                session_id: row.get("session_id"),
-                seq: row.get("seq"),
-                ts: row.get("ts"),
-                stream: stream_from_str(&stream_str),
-                // Decode compressed ACP rows while keeping legacy plain rows untouched.
-                message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
-            });
+            .await
+        {
+            Ok(Some(events)) => return Ok(events),
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    agent_id,
+                    session_id,
+                    "falling back to SQLite after session agent event index read failed"
+                );
+            }
         }
-        events.reverse();
-        Ok(events)
+        self.list_agent_events_from_sqlite(agent_id, &event_db, limit, Some(session_id), before_id)
+            .await
     }
 
     async fn checkout_team_worker_branch(&self, workdir: &str, branch: &str) -> anyhow::Result<()> {

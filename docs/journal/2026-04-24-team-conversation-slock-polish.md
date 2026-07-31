@@ -10,6 +10,13 @@ This pass tightened the Team chat, thread, and ACP presentation so they read lik
 - channel, thread, and ACP composers now share one lightweight shell/editor-row/send-button language;
 - `markdown-it` rendering now emits stable `md-*` structure classes so rich text blocks can be styled as chat-native rich text instead of document cards.
 
+## Supersession
+
+Stable message-row, bubble, rich-text, composer, and mobile stream-first rules from this note now
+live in `docs/features/frontend-design.md#41-conversation-and-composer-visual-contract`. This
+journal remains the rollout evidence for the Slock polish, shared composer, and mobile stream-first
+checkpoints.
+
 ## Key UI Rules Landed
 
 ### Message rows

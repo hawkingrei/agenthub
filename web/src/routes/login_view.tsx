@@ -33,6 +33,8 @@ export const LoginView = React.memo(function LoginView({
   onLogin,
   onRegister,
 }: LoginViewProps) {
+  const isFirstRun = rootInitialized === false;
+
   return (
     <form
       className={AUTH_FORM_CARD_CLASS}
@@ -41,9 +43,38 @@ export const LoginView = React.memo(function LoginView({
         void onLogin();
       }}
     >
-      <h2 className="text-xl font-bold tracking-tight text-notion-text">
-        Login
-      </h2>
+      <div className="space-y-2">
+        <p className="text-xs font-bold uppercase text-notion-text-muted">
+          {isFirstRun ? "First-run setup" : "AgentHub"}
+        </p>
+        <h2 className="text-xl font-bold tracking-tight text-notion-text">
+          {isFirstRun ? "Initialize this AgentHub instance" : "Login"}
+        </h2>
+        {isFirstRun ? (
+          <p className="text-sm leading-6 text-notion-text-muted">
+            Create the root account that controls this web instance. Runtime
+            role, network listeners, and provider credentials stay in the local
+            instance configuration.
+          </p>
+        ) : null}
+      </div>
+      {isFirstRun ? (
+        <div className="space-y-3 border-y border-notion-border bg-notion-sidebar px-4 py-3 text-sm text-notion-text">
+          <div>
+            <p className="font-semibold">Root bootstrap</p>
+            <p className="mt-1 text-notion-text-muted">
+              This step creates the first operator account for browser access.
+            </p>
+          </div>
+          <div>
+            <p className="font-semibold">Instance configuration</p>
+            <p className="mt-1 text-notion-text-muted">
+              Use agenthub init or ~/.agenthub/config.toml for server role,
+              internal gRPC, and provider API endpoints or keys.
+            </p>
+          </div>
+        </div>
+      ) : null}
       <input
         className={AUTH_INPUT_CLASS}
         id="login-username"
@@ -65,7 +96,7 @@ export const LoginView = React.memo(function LoginView({
         autoComplete="current-password"
         onChange={(e) => setPassword(e.target.value)}
       />
-      {rootInitialized === false ? (
+      {isFirstRun ? (
         <input
           className={AUTH_INPUT_CLASS}
           id="login-display-name"
@@ -78,7 +109,7 @@ export const LoginView = React.memo(function LoginView({
         />
       ) : null}
       <div className={AUTH_ACTIONS_CLASS}>
-        {rootInitialized === false ? (
+        {isFirstRun ? (
           <ActionButton
             tone="secondary"
             className={AUTH_SECONDARY_BUTTON_CLASS}

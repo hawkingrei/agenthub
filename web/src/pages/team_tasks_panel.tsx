@@ -261,6 +261,89 @@ function resolveTaskAssigneeLabel(
   return assigneeLabelById.get(assignedMemberId) ?? assignedMemberId;
 }
 
+export type TeamTaskBoardCardProps = {
+  task: TeamTaskRecord;
+  active: boolean;
+  developerMode: boolean;
+  updatedAtLabel: string;
+  createdAtLabel: string;
+  assigneeLabel: string;
+  priority: TeamTaskPriority;
+  priorityLabel: string;
+  priorityClassName: string;
+  onSelectTask: (taskId: string) => void;
+};
+
+function areTeamTaskRecordsEqualForBoardCard(
+  left: TeamTaskRecord,
+  right: TeamTaskRecord
+): boolean {
+  return (
+    left.id === right.id &&
+    left.team_id === right.team_id &&
+    left.title === right.title &&
+    left.status === right.status &&
+    left.priority === right.priority &&
+    left.created_by_actor_id === right.created_by_actor_id &&
+    left.assigned_member_id === right.assigned_member_id &&
+    left.created_at === right.created_at &&
+    left.updated_at === right.updated_at
+  );
+}
+
+export function areTeamTaskBoardCardPropsEqual(
+  prev: TeamTaskBoardCardProps,
+  next: TeamTaskBoardCardProps
+): boolean {
+  return (
+    areTeamTaskRecordsEqualForBoardCard(prev.task, next.task) &&
+    prev.active === next.active &&
+    prev.developerMode === next.developerMode &&
+    prev.updatedAtLabel === next.updatedAtLabel &&
+    prev.createdAtLabel === next.createdAtLabel &&
+    prev.assigneeLabel === next.assigneeLabel &&
+    prev.priority === next.priority &&
+    prev.priorityLabel === next.priorityLabel &&
+    prev.priorityClassName === next.priorityClassName &&
+    prev.onSelectTask === next.onSelectTask
+  );
+}
+
+const TeamTaskBoardCard = React.memo(function TeamTaskBoardCard({
+  task,
+  active,
+  developerMode,
+  updatedAtLabel,
+  createdAtLabel,
+  assigneeLabel,
+  priorityLabel,
+  priorityClassName,
+  onSelectTask,
+}: TeamTaskBoardCardProps) {
+  return (
+    <SelectableListItem
+      className={active ? TASKS_BOARD_CARD_ACTIVE_CLASS : TASKS_BOARD_CARD_IDLE_CLASS}
+      active={active}
+      onClick={() => onSelectTask(task.id)}
+    >
+      <span className={TASKS_BOARD_CARD_SELECT_BUTTON_CLASS}>
+        <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>{task.title}</span>
+        <span className={TASKS_BOARD_CARD_META_ROW_CLASS}>
+          <span>{`upd ${updatedAtLabel}`}</span>
+          <Badge className={priorityClassName}>{priorityLabel}</Badge>
+          <span>{`cre ${createdAtLabel}`}</span>
+        </span>
+        <span className={TEAM_LIST_ITEM_META_CLASS}>
+          {`owner ${assigneeLabel}`}
+        </span>
+        {developerMode && (
+          <span className={TEAM_LIST_ITEM_META_CLASS}>{task.id}</span>
+        )}
+      </span>
+    </SelectableListItem>
+  );
+}, areTeamTaskBoardCardPropsEqual);
+
 function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   const {
     compactMode = false,
@@ -448,37 +531,23 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                   )}
                   {!showInitialLoadingState &&
                     laneTasks.map((task) => (
-                      <SelectableListItem
+                      <TeamTaskBoardCard
                         key={task.id}
-                        className={
-                          task.id === selectedTask?.id
-                            ? TASKS_BOARD_CARD_ACTIVE_CLASS
-                            : TASKS_BOARD_CARD_IDLE_CLASS
-                        }
+                        task={task}
                         active={task.id === selectedTask?.id}
-                        onClick={() => onSelectTask(task.id)}
-                      >
-                        <span className={TASKS_BOARD_CARD_SELECT_BUTTON_CLASS}>
-                          <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>{task.title}</span>
-                          <span className={TASKS_BOARD_CARD_META_ROW_CLASS}>
-                            <span>{`upd ${formatTs(task.updated_at)}`}</span>
-                            <Badge
-                              className={resolveTaskPriorityBadgeClass(
-                                normalizeTaskPriority(task.priority)
-                              )}
-                            >
-                              {resolveTaskPriorityLabel(normalizeTaskPriority(task.priority))}
-                            </Badge>
-                            <span>{`cre ${formatTs(task.created_at)}`}</span>
-                          </span>
-                          <span className={TEAM_LIST_ITEM_META_CLASS}>
-                            {`owner ${resolveTaskAssigneeLabel(task, assigneeLabelById)}`}
-                          </span>
-                          {developerMode && (
-                            <span className={TEAM_LIST_ITEM_META_CLASS}>{task.id}</span>
-                          )}
-                        </span>
-                      </SelectableListItem>
+                        developerMode={developerMode}
+                        updatedAtLabel={formatTs(task.updated_at)}
+                        createdAtLabel={formatTs(task.created_at)}
+                        assigneeLabel={resolveTaskAssigneeLabel(task, assigneeLabelById)}
+                        priority={normalizeTaskPriority(task.priority)}
+                        priorityLabel={resolveTaskPriorityLabel(
+                          normalizeTaskPriority(task.priority)
+                        )}
+                        priorityClassName={resolveTaskPriorityBadgeClass(
+                          normalizeTaskPriority(task.priority)
+                        )}
+                        onSelectTask={onSelectTask}
+                      />
                     ))}
                 </div>
               </section>

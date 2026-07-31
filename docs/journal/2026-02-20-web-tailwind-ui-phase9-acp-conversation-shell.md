@@ -12,6 +12,13 @@ interaction semantics.
 - `web/src/components/acp_conversation.tsx`
 - `docs/todo.md`
 
+## Supersession
+
+Stable ACP conversation-shell, fold, payload, progressive rendering, and semantic-class rules from
+this note now live in `docs/features/acp-runtime.md#4-conversationdebug-surfaces` and
+`docs/features/frontend-design.md#42-acp-heavy-output-visual-contract`. This journal remains the
+rollout evidence for the Tailwind phase-9 ACP conversation migration.
+
 ## Key Decisions
 
 1. Keep behavior unchanged:

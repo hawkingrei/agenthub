@@ -7,6 +7,12 @@
 Tighten the unified workspace shell so the top-level UI feels quieter and more Notion-like instead
 of reading like a control dashboard.
 
+## Supersession
+
+Stable shell-density rules from this note now live in
+`docs/features/workspace-unified-ia.md#81-shell-density-and-chrome-contract`. This journal remains
+the rollout evidence for the 2026-04-18 compactness pass.
+
 ## Changes
 
 - Remove verbose shell subtitles from the standalone workspace header and keep the Team selector

@@ -115,6 +115,55 @@ type VisibleConversationItem = {
   text: string;
 };
 
+export type TeamTaskActivityItem = {
+  key: string;
+  sequence: number;
+  createdAt: number | null;
+  createdAtLabel: string;
+  fromActorId: string;
+  toActorId: string | null;
+  routeOrStatus: string;
+  streamLabel: string;
+  payload: unknown;
+  text: string;
+  permissionCardPayload: PermissionReviewCardPayload | null;
+  canOpenThread: boolean;
+  threadReplyCount: number;
+};
+
+export type TeamTaskActivityRowModel = {
+  item: TeamTaskActivityItem;
+  state?: TeamMemberLiveState;
+  isHumanAuthor: boolean;
+  isActiveThreadRoot: boolean;
+  authorLabel: string;
+  seenActorIds: string[];
+  seenProgress: SeenProgressState;
+  shouldShowSeenMeta: boolean;
+  itemClassName: string;
+  contentClassName: string;
+  bubbleClassName: string;
+  threadButtonLabel: string;
+  permissionCardPayload: PermissionReviewCardPayload | null;
+  permissionRecord?: AcpPermissionRecord;
+  permissionBusy: boolean;
+  permissionErrorText?: string;
+};
+
+export type TeamTaskActivityRowProps = {
+  row: TeamTaskActivityRowModel;
+  developerMode: boolean;
+  expanded: boolean;
+  isChannelConversation: boolean;
+  memberDisplayNamesById: Record<string, string>;
+  renderSanitizedHtml: (text: string) => string;
+  onMentionClick?: (actorId: string) => void;
+  onOpenThread?: (messageId: number) => void;
+  onRespondPermission: (payload: PermissionReviewCardPayload, optionId?: string) => void;
+  onRegisterActivityItem: (sequence: number, node: HTMLDivElement | null) => void;
+  onToggleDetails: (itemKey: string) => void;
+};
+
 function formatThreadButtonLabel(replyCount: number): string {
   if (replyCount <= 0) {
     return "Thread";
@@ -966,6 +1015,267 @@ function resolveSeenProgressState(
   };
 }
 
+function equalStringArrays(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function equalSeenProgressState(
+  left: SeenProgressState,
+  right: SeenProgressState
+): boolean {
+  return (
+    left.totalCount === right.totalCount &&
+    left.readCount === right.readCount &&
+    left.unreadCount === right.unreadCount &&
+    left.progress === right.progress &&
+    equalStringArrays(left.readActorIds, right.readActorIds) &&
+    equalStringArrays(left.unreadActorIds, right.unreadActorIds)
+  );
+}
+
+function equalTeamMemberLiveState(
+  left?: TeamMemberLiveState,
+  right?: TeamMemberLiveState
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.member_id === right.member_id &&
+    left.role === right.role &&
+    left.agent_name === right.agent_name &&
+    left.lifecycle_status === right.lifecycle_status &&
+    left.lifecycle_tone === right.lifecycle_tone &&
+    left.run_status === right.run_status &&
+    left.step_status === right.step_status &&
+    left.pending_inbox_count === right.pending_inbox_count &&
+    left.current_work === right.current_work
+  );
+}
+
+function equalPermissionReviewCardPayload(
+  left: PermissionReviewCardPayload | null,
+  right: PermissionReviewCardPayload | null
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.permission_id === right.permission_id &&
+    left.agent_id === right.agent_id &&
+    (left.agent_session_id ?? null) === (right.agent_session_id ?? null) &&
+    (left.acp_session_id ?? null) === (right.acp_session_id ?? null) &&
+    (left.tool_call_id ?? null) === (right.tool_call_id ?? null) &&
+    left.tool_call === right.tool_call &&
+    (left.tool_name ?? null) === (right.tool_name ?? null) &&
+    (left.requester_actor_id ?? null) === (right.requester_actor_id ?? null) &&
+    (left.requester_role ?? null) === (right.requester_role ?? null) &&
+    (left.summary ?? null) === (right.summary ?? null) &&
+    (left.reason ?? null) === (right.reason ?? null) &&
+    (left.reason_text ?? null) === (right.reason_text ?? null) &&
+    (left.status ?? null) === (right.status ?? null) &&
+    equalPermissionOptions(left.options, right.options)
+  );
+}
+
+function equalOptionalPermissionRecord(
+  left?: AcpPermissionRecord,
+  right?: AcpPermissionRecord
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return equalPermissionRecords(left, right);
+}
+
+function equalTeamTaskActivityItem(
+  left: TeamTaskActivityItem,
+  right: TeamTaskActivityItem
+): boolean {
+  return (
+    left.key === right.key &&
+    left.sequence === right.sequence &&
+    left.createdAt === right.createdAt &&
+    left.createdAtLabel === right.createdAtLabel &&
+    left.fromActorId === right.fromActorId &&
+    left.toActorId === right.toActorId &&
+    left.routeOrStatus === right.routeOrStatus &&
+    left.streamLabel === right.streamLabel &&
+    left.payload === right.payload &&
+    left.text === right.text &&
+    left.canOpenThread === right.canOpenThread &&
+    left.threadReplyCount === right.threadReplyCount &&
+    equalPermissionReviewCardPayload(left.permissionCardPayload, right.permissionCardPayload)
+  );
+}
+
+function equalTeamTaskActivityRowModel(
+  left: TeamTaskActivityRowModel,
+  right: TeamTaskActivityRowModel
+): boolean {
+  return (
+    equalTeamTaskActivityItem(left.item, right.item) &&
+    equalTeamMemberLiveState(left.state, right.state) &&
+    left.isHumanAuthor === right.isHumanAuthor &&
+    left.isActiveThreadRoot === right.isActiveThreadRoot &&
+    left.authorLabel === right.authorLabel &&
+    equalStringArrays(left.seenActorIds, right.seenActorIds) &&
+    equalSeenProgressState(left.seenProgress, right.seenProgress) &&
+    left.shouldShowSeenMeta === right.shouldShowSeenMeta &&
+    left.itemClassName === right.itemClassName &&
+    left.contentClassName === right.contentClassName &&
+    left.bubbleClassName === right.bubbleClassName &&
+    left.threadButtonLabel === right.threadButtonLabel &&
+    equalPermissionReviewCardPayload(left.permissionCardPayload, right.permissionCardPayload) &&
+    equalOptionalPermissionRecord(left.permissionRecord, right.permissionRecord) &&
+    left.permissionBusy === right.permissionBusy &&
+    left.permissionErrorText === right.permissionErrorText
+  );
+}
+
+export function areTeamTaskActivityRowPropsEqual(
+  prev: TeamTaskActivityRowProps,
+  next: TeamTaskActivityRowProps
+): boolean {
+  return (
+    equalTeamTaskActivityRowModel(prev.row, next.row) &&
+    prev.developerMode === next.developerMode &&
+    prev.expanded === next.expanded &&
+    prev.isChannelConversation === next.isChannelConversation &&
+    prev.memberDisplayNamesById === next.memberDisplayNamesById &&
+    prev.renderSanitizedHtml === next.renderSanitizedHtml &&
+    prev.onMentionClick === next.onMentionClick &&
+    prev.onOpenThread === next.onOpenThread &&
+    prev.onRespondPermission === next.onRespondPermission &&
+    prev.onRegisterActivityItem === next.onRegisterActivityItem &&
+    prev.onToggleDetails === next.onToggleDetails
+  );
+}
+
+const TeamTaskActivityRow = React.memo(function TeamTaskActivityRow({
+  row,
+  developerMode,
+  expanded,
+  isChannelConversation,
+  memberDisplayNamesById,
+  renderSanitizedHtml,
+  onMentionClick,
+  onOpenThread,
+  onRespondPermission,
+  onRegisterActivityItem,
+  onToggleDetails,
+}: TeamTaskActivityRowProps) {
+  const {
+    item,
+    state,
+    isHumanAuthor,
+    isActiveThreadRoot,
+    authorLabel,
+    seenActorIds,
+    seenProgress,
+    shouldShowSeenMeta,
+    itemClassName,
+    contentClassName,
+    bubbleClassName,
+    threadButtonLabel,
+    permissionCardPayload,
+    permissionRecord,
+    permissionBusy,
+    permissionErrorText,
+  } = row;
+  return (
+    <div
+      ref={(node) => onRegisterActivityItem(item.sequence, node)}
+      className={itemClassName}
+      data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
+      data-team-channel-item="true"
+      data-team-thread-root-active={isActiveThreadRoot ? "true" : "false"}
+    >
+      <DeterministicAvatar
+        name={authorLabel}
+        stableId={item.fromActorId || item.sequence}
+        className={
+          isHumanAuthor
+            ? TEAM_TASK_ACTIVITY_AVATAR_HUMAN_CLASS
+            : TEAM_TASK_ACTIVITY_AVATAR_AGENT_CLASS
+        }
+      />
+      <div className={contentClassName}>
+        <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
+          <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
+            <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
+            <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{item.createdAtLabel}</span>
+          </div>
+          {(developerMode || (isChannelConversation && onOpenThread)) && (
+            <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
+              {isChannelConversation && onOpenThread && item.canOpenThread && (
+                <CompactButton
+                  className={
+                    isActiveThreadRoot
+                      ? `${TEAM_TASK_ACTIVITY_META_BUTTON_CLASS} bg-transparent text-notion-text-muted/82`
+                      : TEAM_TASK_ACTIVITY_META_BUTTON_CLASS
+                  }
+                  onClick={() => onOpenThread(item.sequence)}
+                >
+                  {threadButtonLabel}
+                </CompactButton>
+              )}
+              {developerMode ? (
+                <CompactButton
+                  className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
+                  onClick={() => onToggleDetails(item.key)}
+                  aria-expanded={expanded}
+                >
+                  {expanded ? "Hide" : "Details"}
+                </CompactButton>
+              ) : null}
+            </div>
+          )}
+        </div>
+        {permissionCardPayload ? (
+          <div data-team-channel-bubble="permission" className="mt-1 max-w-full">
+            <PermissionReviewCard
+              payload={permissionCardPayload}
+              permissionRecord={permissionRecord}
+              busy={permissionBusy}
+              errorText={permissionErrorText}
+              onRespond={onRespondPermission}
+            />
+          </div>
+        ) : (
+          <TeamActivityBubble
+            bubbleKind={isHumanAuthor ? "human" : "agent"}
+            bubbleClassName={bubbleClassName}
+            showSeenMeta={shouldShowSeenMeta}
+            itemKey={item.key}
+            seenActorIds={seenActorIds}
+            seenProgress={seenProgress}
+            memberDisplayNamesById={memberDisplayNamesById}
+          >
+            <TeamActivityBubbleBody
+              text={item.text}
+              renderSanitizedHtml={renderSanitizedHtml}
+              onMentionClick={onMentionClick}
+            />
+          </TeamActivityBubble>
+        )}
+        {developerMode && expanded && (
+          <ActivityDetailsPanel item={item} state={state} />
+        )}
+      </div>
+    </div>
+  );
+}, areTeamTaskActivityRowPropsEqual);
+
 function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const {
     conversationKey,
@@ -1406,6 +1716,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           key: `conversation-${message.message_id}`,
           sequence: message.message_id,
           createdAt: message.created_at,
+          createdAtLabel: formatTs(message.created_at),
           fromActorId: message.from_actor_id,
           toActorId: message.to_actor_id ?? null,
           routeOrStatus: message.route,
@@ -1417,7 +1728,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           threadReplyCount: 0,
         };
       }),
-    [activityWindow.items]
+    [activityWindow.items, formatTs]
   );
   const threadReplyCountByRootMessageId = React.useMemo(() => {
     const replyCountByRootMessageId = new Map<number, number>();
@@ -1617,6 +1928,22 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     },
     [token]
   );
+  const registerActivityItem = React.useCallback(
+    (sequence: number, node: HTMLDivElement | null) => {
+      if (node) {
+        activityItemRefs.current.set(sequence, node);
+        return;
+      }
+      activityItemRefs.current.delete(sequence);
+    },
+    []
+  );
+  const toggleActivityDetails = React.useCallback((itemKey: string) => {
+    setExpandedItemKeys((current) => ({
+      ...current,
+      [itemKey]: !current[itemKey],
+    }));
+  }, []);
 
   const scrollActivityToBottom = React.useCallback(() => {
     const node = activityListRef.current;
@@ -1730,120 +2057,22 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       style={{ height: hiddenWaterfallSpacerHeight }}
                     />
                   )}
-                  {visibleActivityRows.map((row) => {
-                    const {
-                      item,
-                      state,
-                      isHumanAuthor,
-                      isActiveThreadRoot,
-                      authorLabel,
-                      seenActorIds,
-                      seenProgress,
-                      shouldShowSeenMeta,
-                      itemClassName,
-                      contentClassName,
-                      bubbleClassName,
-                      threadButtonLabel,
-                      permissionCardPayload,
-                      permissionRecord,
-                      permissionBusy,
-                      permissionErrorText,
-                    } = row;
-                    return (
-                      <div
-                        key={item.key}
-                        ref={(node) => {
-                          if (node) {
-                            activityItemRefs.current.set(item.sequence, node);
-                            return;
-                          }
-                          activityItemRefs.current.delete(item.sequence);
-                        }}
-                        className={itemClassName}
-                        data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
-                        data-team-channel-item="true"
-                        data-team-thread-root-active={isActiveThreadRoot ? "true" : "false"}
-                      >
-                        <DeterministicAvatar
-                          name={authorLabel}
-                          stableId={item.fromActorId || item.sequence}
-                          className={
-                            isHumanAuthor
-                              ? TEAM_TASK_ACTIVITY_AVATAR_HUMAN_CLASS
-                              : TEAM_TASK_ACTIVITY_AVATAR_AGENT_CLASS
-                          }
-                        />
-                        <div className={contentClassName}>
-                          <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
-                            <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
-                              <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
-                              <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
-                            </div>
-                            {(developerMode || (isChannelConversation && onOpenThread)) && (
-                              <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
-                                {isChannelConversation && onOpenThread && item.canOpenThread && (
-                                  <CompactButton
-                                    className={
-                                      isActiveThreadRoot
-                                        ? `${TEAM_TASK_ACTIVITY_META_BUTTON_CLASS} bg-transparent text-notion-text-muted/82`
-                                        : TEAM_TASK_ACTIVITY_META_BUTTON_CLASS
-                                    }
-                                    onClick={() => onOpenThread(item.sequence)}
-                                  >
-                                    {threadButtonLabel}
-                                  </CompactButton>
-                                )}
-                                {developerMode ? (
-                                  <CompactButton
-                                    className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
-                                    onClick={() =>
-                                      setExpandedItemKeys((current) => ({
-                                        ...current,
-                                        [item.key]: !current[item.key],
-                                      }))
-                                    }
-                                    aria-expanded={Boolean(expandedItemKeys[item.key])}
-                                  >
-                                    {expandedItemKeys[item.key] ? "Hide" : "Details"}
-                                  </CompactButton>
-                                ) : null}
-                              </div>
-                            )}
-                          </div>
-                          {permissionCardPayload ? (
-                            <div data-team-channel-bubble="permission" className="mt-1 max-w-full">
-                              <PermissionReviewCard
-                                payload={permissionCardPayload}
-                                permissionRecord={permissionRecord}
-                                busy={permissionBusy}
-                                errorText={permissionErrorText}
-                                onRespond={onRespondPermission}
-                              />
-                            </div>
-                          ) : (
-                            <TeamActivityBubble
-                              bubbleKind={isHumanAuthor ? "human" : "agent"}
-                              bubbleClassName={bubbleClassName}
-                              showSeenMeta={shouldShowSeenMeta}
-                              itemKey={item.key}
-                              seenActorIds={seenActorIds}
-                              seenProgress={seenProgress}
-                              memberDisplayNamesById={memberDisplayNamesById}
-                            >
-                              <TeamActivityBubbleBody
-                                text={item.text}
-                                renderSanitizedHtml={renderTeamMessageHtml}
-                                onMentionClick={onOpenMemberProfile}
-                              />
-                            </TeamActivityBubble>
-                          )}
-                          {developerMode && expandedItemKeys[item.key] && (
-                            <ActivityDetailsPanel item={item} state={state} />
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {visibleActivityRows.map((row) => (
+                    <TeamTaskActivityRow
+                      key={row.item.key}
+                      row={row}
+                      developerMode={developerMode}
+                      expanded={Boolean(expandedItemKeys[row.item.key])}
+                      isChannelConversation={isChannelConversation}
+                      memberDisplayNamesById={memberDisplayNamesById}
+                      renderSanitizedHtml={renderTeamMessageHtml}
+                      onMentionClick={onOpenMemberProfile}
+                      onOpenThread={onOpenThread}
+                      onRespondPermission={onRespondPermission}
+                      onRegisterActivityItem={registerActivityItem}
+                      onToggleDetails={toggleActivityDetails}
+                    />
+                  ))}
                   {showInitialThreadLoading && (
                     <EmptyState title="Loading thread..." className={TEAM_TASK_MESSAGE_EMPTY_CLASS} />
                   )}

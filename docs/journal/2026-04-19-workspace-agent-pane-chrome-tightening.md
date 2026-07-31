@@ -15,6 +15,12 @@
 - shortened and dimmed the composer helper line to `@name to reply · Enter to send` so the input footer reads as a hint instead of a product explainer
 - removed the duplicated `Channels / Kanban` header tabs from Team workspace pages and kept `# all / Kanban` entry points in the left rail only
 
+## Supersession
+
+Stable agent-pane, ACP chrome, channel-header, and message-metadata rules from this note now live in
+`docs/features/workspace-unified-ia.md#81-shell-density-and-chrome-contract`. This journal remains
+the rollout evidence for the 2026-04-19 chrome tightening pass.
+
 ## Why
 
 - the previous chrome still looked too much like a product prototype, especially in populated Team agent workspace states

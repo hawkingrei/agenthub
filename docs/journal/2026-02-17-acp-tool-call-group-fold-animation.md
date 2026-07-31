@@ -4,6 +4,13 @@
 
 Group consecutive ACP tool calls into a single conversation bubble, with a shared fold control and subtle entry/expand animations.
 
+## Supersession
+
+Stable ACP tool-call grouping, nested jump, and reduced-motion rules from this note now live in
+`docs/features/acp-runtime.md#4-conversationdebug-surfaces` and
+`docs/features/frontend-design.md#42-acp-heavy-output-visual-contract`. This journal remains the
+rollout evidence for the group fold animation pass.
+
 ## Background
 
 When an agent emits multiple tool calls in one response turn, rendering each tool call as an independent top-level bubble makes the timeline noisy and harder to scan. It also fragments fold behavior and weakens debug-to-conversation jump ergonomics.
