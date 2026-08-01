@@ -150,17 +150,41 @@ impl TeamManager {
             }
             ids.push(message_id);
         }
-        if !ids.contains(&authority_max) {
-            return Ok(None);
-        }
-
         let limit = limit.max(1) as usize;
         if ids.len() > limit {
             ids = ids.split_off(ids.len() - limit);
         }
+        if ids
+            != self
+                .expected_conversation_message_ids(&conversation.id, limit, before_id)
+                .await?
+        {
+            return Ok(None);
+        }
         self.load_conversation_messages_by_ids(&conversation.id, &ids)
             .await
             .map(Some)
+    }
+
+    async fn expected_conversation_message_ids(
+        &self,
+        conversation_id: &str,
+        limit: usize,
+        before_id: Option<i64>,
+    ) -> anyhow::Result<Vec<i64>> {
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT id FROM team_conversation_messages WHERE conversation_id = ",
+        );
+        builder.push_bind(conversation_id);
+        if let Some(before_id) = before_id {
+            builder.push(" AND id < ");
+            builder.push_bind(before_id);
+        }
+        builder.push(" ORDER BY id DESC LIMIT ");
+        builder.push_bind(limit as i64);
+        let mut ids = builder.build_query_scalar().fetch_all(&self.db).await?;
+        ids.reverse();
+        Ok(ids)
     }
 
     async fn max_conversation_message_id_for_page(

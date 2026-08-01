@@ -31,8 +31,8 @@ rust_library(
     crate_root = "src/lib.rs",
     compile_data = [
         "Cargo.toml",
-        "crates/agenthub-acp-adapter/Cargo.toml",
-        "crates/agenthub-object-store/Cargo.toml",
+        "//crates/agenthub-acp-adapter:Cargo.toml",
+        "//crates/agenthub-object-store:Cargo.toml",
         ".github/workflows/release.yml",
         ".github/workflows/release-prebuild.yml",
         "docs/todo.md",

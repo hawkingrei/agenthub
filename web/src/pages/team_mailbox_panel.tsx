@@ -372,6 +372,10 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
     () => conversationRows.filter((row) => row.canAccept).map((row) => row.message),
     [conversationRows]
   );
+  const visibleConversationRows = React.useMemo(
+    () => (conversationRows.length > 32 ? conversationRows.slice(-32) : conversationRows),
+    [conversationRows]
+  );
 
   const advancedControls = (
     <div className={MAILBOX_ADVANCED_GRID_CLASS}>
@@ -759,7 +763,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               ref={chatMessagesRef as React.Ref<HTMLUListElement>}
               onScroll={() => onConversationScroll()}
             >
-              {conversationRows.map((row) => {
+              {visibleConversationRows.map((row) => {
                 return (
                   <li
                     key={row.message.message_id}

@@ -157,7 +157,7 @@ impl SqlActorMailboxStore {
                 break;
             }
         }
-        if !ids.contains(&authority_max) && ids.len() < limit {
+        if ids != self.expected_actor_inbox_message_ids(query, limit).await? {
             return Ok(None);
         }
 
@@ -171,6 +171,32 @@ impl SqlActorMailboxStore {
         }
 
         Ok(Some(messages))
+    }
+
+    async fn expected_actor_inbox_message_ids(
+        &self,
+        query: &ListActorInboxQuery,
+        limit: usize,
+    ) -> Result<Vec<i64>, SqlActorMailboxStoreError> {
+        Ok(sqlx::query_scalar(
+            r#"
+            SELECT id
+            FROM team_actor_messages
+            WHERE run_id = ?1
+              AND to_actor_id = ?2
+              AND to_peer_id = ?3
+              AND id > ?4
+            ORDER BY id ASC
+            LIMIT ?5
+            "#,
+        )
+        .bind(&query.run_id)
+        .bind(&query.actor_id)
+        .bind(&query.peer_id)
+        .bind(query.after_id.unwrap_or_default())
+        .bind(limit as i64)
+        .fetch_all(&self.db)
+        .await?)
     }
 
     async fn first_page_index_would_hide_pending(

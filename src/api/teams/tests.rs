@@ -409,6 +409,15 @@ fn s3_fixture_object_store_config_from_env() -> Option<ObjectStoreConfig> {
         ),
         access_key_id_env: Some("AGENTHUB_OBJECT_STORE_S3_TEST_ACCESS_KEY_ID".to_string()),
         secret_access_key_env: Some("AGENTHUB_OBJECT_STORE_S3_TEST_SECRET_ACCESS_KEY".to_string()),
+        download_max_bytes: Some(1024 * 1024),
+        download_max_redirects: Some(3),
+        download_timeout_seconds: Some(10),
+        download_retry_attempts: Some(1),
+        download_retry_backoff_millis: Some(0),
+        download_max_concurrent_per_host: Some(4),
+        download_allow_private_networks: Some(true),
+        download_allowed_hosts: None,
+        download_denied_hosts: None,
     })
 }
 
@@ -1498,8 +1507,7 @@ async fn team_upload_session_s3_multipart_route_fixture_publishes_metadata() {
         return;
     };
     let state = build_test_state_with_object_store(object_store).await;
-    let token = create_auth_token(&state).await;
-    let headers = headers_for_token(&token);
+    let headers = auth_headers(&state).await;
 
     let Json(created) = create_team(
         State(state.clone()),

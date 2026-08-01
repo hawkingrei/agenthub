@@ -115,15 +115,38 @@ impl TeamManager {
             }
             ids.push(event_id);
         }
-        if !ids.contains(&authority_max) {
-            return Ok(None);
-        }
-
         let limit = limit.max(1) as usize;
         if ids.len() > limit {
             ids = ids.split_off(ids.len() - limit);
         }
+        if ids
+            != self
+                .expected_run_event_ids(run_id, limit, before_id)
+                .await?
+        {
+            return Ok(None);
+        }
         self.load_run_events_by_ids(run_id, &ids).await.map(Some)
+    }
+
+    async fn expected_run_event_ids(
+        &self,
+        run_id: &str,
+        limit: usize,
+        before_id: Option<i64>,
+    ) -> anyhow::Result<Vec<i64>> {
+        let mut builder =
+            QueryBuilder::<Sqlite>::new("SELECT id FROM team_run_events WHERE run_id = ");
+        builder.push_bind(run_id);
+        if let Some(before_id) = before_id {
+            builder.push(" AND id < ");
+            builder.push_bind(before_id);
+        }
+        builder.push(" ORDER BY id DESC LIMIT ");
+        builder.push_bind(limit as i64);
+        let mut ids = builder.build_query_scalar().fetch_all(&self.db).await?;
+        ids.reverse();
+        Ok(ids)
     }
 
     async fn max_run_event_id_for_page(
