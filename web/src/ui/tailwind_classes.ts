@@ -106,14 +106,17 @@ export const CONVERSATION_MESSAGE_STACK_ROW_CLASS =
 export const CONVERSATION_MESSAGE_INLINE_ROW_CLASS =
   `${CONVERSATION_MESSAGE_ROW_BASE_CLASS} flex items-start gap-2 px-1.5 py-1`;
 
+export const CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS =
+  "border border-black/6 bg-white/96 text-notion-text shadow-none transition-all";
+
 export const ACP_MESSAGE_BUBBLE_CLASS =
-  "acp-message-bubble relative w-full max-w-full rounded-[10px] border border-black/6 px-1.5 py-1 text-[14px] leading-6 shadow-none transition-all";
+  `acp-message-bubble relative w-full max-w-full rounded-[10px] px-1.5 py-1 text-[14px] leading-6 ${CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS}`;
 
 export const ACP_MESSAGE_BUBBLE_AGENT_CLASS =
-  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-agent self-start rounded-tl-[6px] bg-white/96 text-slate-900`;
+  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-agent self-start rounded-tl-[6px]`;
 
 export const ACP_MESSAGE_BUBBLE_USER_CLASS =
-  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-user self-end rounded-tr-[6px] bg-white/94 text-slate-900`;
+  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-user self-end rounded-tr-[6px]`;
 
 export const ACP_BUBBLE_THINKING_CLASS =
   "acp-bubble agent_thinking self-start w-full max-w-full rounded-[10px] rounded-tl-[6px] border border-black/6 bg-slate-50/78 px-1.5 py-1 italic text-slate-600 shadow-none";
@@ -561,7 +564,7 @@ export const TEAM_THREAD_ORIGINAL_BADGE_CLASS =
   "ml-0.5 border-black/8 bg-white/92 px-2 py-0 text-[9px] font-semibold uppercase tracking-[0.06em] text-notion-text-muted";
 
 export const TEAM_THREAD_MESSAGE_BUBBLE_CLASS =
-  "w-full rounded-[12px] border border-black/6 bg-white/96 px-2 py-[5px] shadow-none [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80";
+  `w-full rounded-[12px] px-2 py-[5px] ${CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS} [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80`;
 
 export const TEAM_THREAD_RICH_TEXT_CLASS = "text-[13px] leading-6 text-notion-text";
 
@@ -688,13 +691,13 @@ export const MAILBOX_MESSAGE_ITEM_CLASS =
   "teams-message-item group relative flex w-full flex-col px-2 py-1";
 
 export const MAILBOX_MESSAGE_BUBBLE_CLASS =
-  "teams-message-bubble relative max-w-[88%] rounded-[16px] px-3 py-2 text-[14px] leading-6 shadow-notion-soft transition-all";
+  `teams-message-bubble relative max-w-[88%] rounded-[16px] px-3 py-2 text-[14px] leading-6 ${CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS}`;
 
 export const MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS =
-  `${MAILBOX_MESSAGE_BUBBLE_CLASS} teams-message-bubble-outgoing self-end rounded-tr-[4px] border border-notion-accent/15 bg-notion-bubble-user text-notion-text`;
+  `${MAILBOX_MESSAGE_BUBBLE_CLASS} teams-message-bubble-outgoing self-end rounded-tr-[4px]`;
 
 export const MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS =
-  `${MAILBOX_MESSAGE_BUBBLE_CLASS} teams-message-bubble-incoming self-start rounded-tl-[4px] border border-notion-border bg-white text-notion-text`;
+  `${MAILBOX_MESSAGE_BUBBLE_CLASS} teams-message-bubble-incoming self-start rounded-tl-[4px]`;
 
 export const MAILBOX_CONVERSATION_EMPTY_CLASS =
   "teams-conversation-empty mx-auto my-8 rounded-full border border-notion-border bg-white px-6 py-2 text-sm font-medium text-notion-text-muted italic shadow-sm";

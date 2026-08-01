@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { AcpConversation } from "./components/acp_conversation";
 import { preloadThreadMarkdownAssets } from "./components/thread_rich_text";
 import { ConversationItem } from "./conversation";
+import { CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS } from "./ui/tailwind_classes";
 
 async function renderConversation(
   items: ConversationItem[],
@@ -304,6 +305,9 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain('data-acp-message-bubble="agent"');
     expect(html).toContain('data-acp-message-bubble="user"');
+    for (const token of CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS.split(" ")) {
+      expect(html).toContain(token);
+    }
   });
 
   it("renders a native request_user_input card for pending questions", async () => {

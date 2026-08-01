@@ -8607,6 +8607,15 @@ describe("team panels interactions", () => {
         "mailbox incoming bubble missing"
       ).className
     ).toContain("rounded-[16px]");
+    const outgoingBubble = required(
+      container.querySelector(".teams-message-bubble-outgoing"),
+      "mailbox outgoing bubble missing"
+    );
+    expect(outgoingBubble.className).toContain("bg-white/96");
+    expect(outgoingBubble.className).toContain("border-black/6");
+    expect(outgoingBubble.className).toContain("shadow-none");
+    expect(outgoingBubble.className).not.toContain("bg-notion-bubble-user");
+    expect(outgoingBubble.className).not.toContain("border-notion-accent/15");
 
     act(() => {
       root.render(
