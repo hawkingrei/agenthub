@@ -147,6 +147,11 @@ impl SqlActorMailboxStore {
             let Some(message_id) =
                 actor_message_id_from_delivery_id(&query.run_id, message_ref.message_id.as_str())
             else {
+                self.schedule_incomplete_index_repair(
+                    "team_actor_messages",
+                    authority_max as u64,
+                    authority_max as u64,
+                );
                 return Ok(None);
             };
             if message_id <= after_id {
@@ -158,6 +163,11 @@ impl SqlActorMailboxStore {
             }
         }
         if ids != self.expected_actor_inbox_message_ids(query, limit).await? {
+            self.schedule_incomplete_index_repair(
+                "team_actor_messages",
+                authority_max as u64,
+                authority_max as u64,
+            );
             return Ok(None);
         }
 

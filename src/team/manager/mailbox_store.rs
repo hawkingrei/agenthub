@@ -35,12 +35,43 @@ impl SqlActorMailboxStore {
         let Some(scheduler) = self.read_repair.as_deref() else {
             return;
         };
-        let stream_id = stream_id.into();
+        self.schedule_index_read_repair_request(
+            scheduler,
+            stream_id.into(),
+            authority_max,
+            agenthub_message_store::IndexReadRepairReason::Lagging { indexed_through },
+        );
+    }
+
+    pub(super) fn schedule_incomplete_index_repair(
+        &self,
+        stream_id: impl Into<String>,
+        authority_max: u64,
+        indexed_through: u64,
+    ) {
+        let Some(scheduler) = self.read_repair.as_deref() else {
+            return;
+        };
+        self.schedule_index_read_repair_request(
+            scheduler,
+            stream_id.into(),
+            authority_max,
+            agenthub_message_store::IndexReadRepairReason::Incomplete { indexed_through },
+        );
+    }
+
+    fn schedule_index_read_repair_request(
+        &self,
+        scheduler: &dyn crate::message_body_store::IndexReadRepairScheduler,
+        stream_id: String,
+        authority_max: u64,
+        reason: agenthub_message_store::IndexReadRepairReason,
+    ) {
         if let Err(error) =
             scheduler.schedule_read_repair(agenthub_message_store::IndexReadRepairRequest {
                 stream_id: stream_id.clone(),
                 authority_max,
-                reason: agenthub_message_store::IndexReadRepairReason::Lagging { indexed_through },
+                reason,
             })
         {
             tracing::warn!(

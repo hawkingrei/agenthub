@@ -99,6 +99,7 @@ impl IndexFreshness {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IndexReadRepairReason {
     Lagging { indexed_through: Option<u64> },
+    Incomplete { indexed_through: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,6 +116,12 @@ pub struct IndexReadRepairRequest {
 /// target repair watermark.
 pub trait IndexReadRepairScheduler: Send + Sync {
     fn schedule_read_repair(&self, request: IndexReadRepairRequest) -> Result<(), IndexStoreError>;
+
+    /// Atomically claim the currently scheduled repairs.
+    ///
+    /// A worker owns the returned batch. Failed work must be scheduled again so a concurrent
+    /// guarded read can raise its authority bound while the worker is rebuilding the projection.
+    fn take_pending_repairs(&self) -> Result<Vec<IndexReadRepairRequest>, IndexStoreError>;
 }
 
 /// In-memory read-repair scheduler used by the single-process Phase 1 runtime and tests.
@@ -136,6 +143,14 @@ impl InMemoryIndexReadRepairScheduler {
             .cloned()
             .collect()
     }
+
+    pub fn take_pending_repairs(&self) -> Vec<IndexReadRepairRequest> {
+        let mut requests = self
+            .requests
+            .lock()
+            .expect("index read-repair scheduler mutex poisoned");
+        std::mem::take(&mut *requests).into_values().collect()
+    }
 }
 
 impl IndexReadRepairScheduler for InMemoryIndexReadRepairScheduler {
@@ -151,6 +166,10 @@ impl IndexReadRepairScheduler for InMemoryIndexReadRepairScheduler {
             *entry = request;
         }
         Ok(())
+    }
+
+    fn take_pending_repairs(&self) -> Result<Vec<IndexReadRepairRequest>, IndexStoreError> {
+        Ok(self.take_pending_repairs())
     }
 }
 

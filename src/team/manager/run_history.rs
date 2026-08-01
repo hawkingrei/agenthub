@@ -108,6 +108,11 @@ impl TeamManager {
             let Some(event_id) =
                 run_event_id_from_delivery_id(run_id, message_ref.message_id.as_str())
             else {
+                self.schedule_incomplete_index_repair(
+                    "team_run_events",
+                    authority_max as u64,
+                    authority_max as u64,
+                );
                 return Ok(None);
             };
             if before_id.is_some_and(|before_id| event_id >= before_id) {
@@ -124,6 +129,11 @@ impl TeamManager {
                 .expected_run_event_ids(run_id, limit, before_id)
                 .await?
         {
+            self.schedule_incomplete_index_repair(
+                "team_run_events",
+                authority_max as u64,
+                authority_max as u64,
+            );
             return Ok(None);
         }
         self.load_run_events_by_ids(run_id, &ids).await.map(Some)

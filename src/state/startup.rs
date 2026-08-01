@@ -23,6 +23,17 @@ impl AppState {
                 Self::spawn_conversation_body_backfill(db.clone(), store.clone());
             }
         }
+        #[cfg(feature = "rocksdb")]
+        if let (Some(index), Some(read_repair)) = (
+            &teams.message_index_for_repair(),
+            &teams.read_repair_scheduler_for_repair(),
+        ) {
+            Self::spawn_message_index_read_repair_worker(
+                teams.clone(),
+                index.clone(),
+                read_repair.clone(),
+            );
+        }
         let _mailbox_hint_handle = TeamMailboxUnreadHintWorker::new(teams.clone(), agents.clone())
             .spawn(TeamMailboxUnreadHintWorkerSettings::default());
         let trigger_manager = Arc::new(AgentTimeTriggerManager::new(db.clone()));
@@ -128,6 +139,40 @@ impl AppState {
                             break;
                         }
                     }
+                }
+            }
+        });
+    }
+
+    #[cfg(feature = "rocksdb")]
+    fn spawn_message_index_read_repair_worker(
+        teams: Arc<TeamManager>,
+        index: crate::message_body_store::SharedIndexStore,
+        read_repair: crate::message_body_store::SharedReadRepairScheduler,
+    ) {
+        const DRAIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+        const DRAIN_BATCH: i64 = 256;
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(DRAIN_INTERVAL);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                match teams
+                    .drain_message_index_read_repairs(
+                        index.as_ref(),
+                        read_repair.as_ref(),
+                        DRAIN_BATCH,
+                    )
+                    .await
+                {
+                    Ok(0) => {}
+                    Ok(repaired_streams) => {
+                        tracing::debug!(repaired_streams, "message index read repairs completed")
+                    }
+                    Err(error) => tracing::warn!(
+                        error = %error,
+                        "message index read repair worker failed"
+                    ),
                 }
             }
         });

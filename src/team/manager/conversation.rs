@@ -143,6 +143,11 @@ impl TeamManager {
                 &conversation.id,
                 message_ref.message_id.as_str(),
             ) else {
+                self.schedule_incomplete_index_repair(
+                    "team_conversation_messages",
+                    authority_max as u64,
+                    authority_max as u64,
+                );
                 return Ok(None);
             };
             if before_id.is_some_and(|before_id| message_id >= before_id) {
@@ -159,6 +164,11 @@ impl TeamManager {
                 .expected_conversation_message_ids(&conversation.id, limit, before_id)
                 .await?
         {
+            self.schedule_incomplete_index_repair(
+                "team_conversation_messages",
+                authority_max as u64,
+                authority_max as u64,
+            );
             return Ok(None);
         }
         self.load_conversation_messages_by_ids(&conversation.id, &ids)
