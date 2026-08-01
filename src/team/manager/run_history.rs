@@ -2,7 +2,7 @@ use super::{
     TeamActorMessageRecord, TeamManager, TeamRunEventRecord, mailbox, parse_run_event_row,
     parse_team_actor_message_row,
 };
-use agenthub_message_store::{IndexFreshness, keys};
+use agenthub_message_store::keys;
 use sqlx::{QueryBuilder, Sqlite};
 
 impl TeamManager {
@@ -94,7 +94,7 @@ impl TeamManager {
             "team_run_events",
             authority_max as u64,
         )?;
-        if !matches!(freshness, IndexFreshness::Fresh { .. }) {
+        if !freshness.is_fresh() {
             self.schedule_index_read_repair("team_run_events", authority_max as u64, freshness);
             return Ok(None);
         }

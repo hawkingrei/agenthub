@@ -1719,10 +1719,7 @@ impl AgentManager {
         let stream_id = format!("agent_events:agent:{agent_id}");
         let freshness =
             agenthub_message_store::check_index_freshness(index, &stream_id, authority_max as u64)?;
-        if !matches!(
-            freshness,
-            agenthub_message_store::IndexFreshness::Fresh { .. }
-        ) {
+        if !freshness.is_fresh() {
             self.schedule_index_read_repair(stream_id, authority_max as u64, freshness);
             return Ok(None);
         }

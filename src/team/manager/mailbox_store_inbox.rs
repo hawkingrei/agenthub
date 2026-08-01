@@ -123,10 +123,7 @@ impl SqlActorMailboxStore {
             authority_max as u64,
         )
         .map_err(|err| sqlx::Error::Protocol(err.to_string()))?;
-        if !matches!(
-            freshness,
-            agenthub_message_store::IndexFreshness::Fresh { .. }
-        ) {
+        if !freshness.is_fresh() {
             self.schedule_index_read_repair("team_actor_messages", authority_max as u64, freshness);
             return Ok(None);
         }

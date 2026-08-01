@@ -162,7 +162,9 @@ impl IndexReadRepairScheduler for InMemoryIndexReadRepairScheduler {
         let entry = requests
             .entry(request.stream_id.clone())
             .or_insert_with(|| request.clone());
-        if request.authority_max > entry.authority_max {
+        if request.authority_max > entry.authority_max
+            || (request.authority_max == entry.authority_max && request.reason != entry.reason)
+        {
             *entry = request;
         }
         Ok(())

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use agenthub_message_store::{IndexFreshness, keys};
+use agenthub_message_store::keys;
 use sqlx::{QueryBuilder, Sqlite};
 
 use super::TEAM_CHANNEL_BOOTSTRAP_KIND;
@@ -123,7 +123,7 @@ impl TeamManager {
             "team_conversation_messages",
             authority_max as u64,
         )?;
-        if !matches!(freshness, IndexFreshness::Fresh { .. }) {
+        if !freshness.is_fresh() {
             self.schedule_index_read_repair(
                 "team_conversation_messages",
                 authority_max as u64,
