@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { AcpConversation } from "./components/acp_conversation";
 import { preloadThreadMarkdownAssets } from "./components/thread_rich_text";
 import { ConversationItem } from "./conversation";
+import { CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS } from "./ui/tailwind_classes";
 
 async function renderConversation(
   items: ConversationItem[],
@@ -34,6 +35,15 @@ async function renderConversation(
   );
   await stream.allReady;
   return (await new Response(stream).text()).split("<!-- -->").join("");
+}
+
+function bubbleClassName(html: string, role: "agent" | "user"): string {
+  const element = html.match(
+    new RegExp(`<[^>]*data-acp-message-bubble="${role}"[^>]*>`)
+  )?.[0];
+  const className = element?.match(/\bclass="([^"]*)"/)?.[1];
+  expect(className).toBeDefined();
+  return className ?? "";
 }
 
 describe("AcpConversation rendering", () => {
@@ -304,6 +314,12 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain('data-acp-message-bubble="agent"');
     expect(html).toContain('data-acp-message-bubble="user"');
+    for (const role of ["agent", "user"] as const) {
+      const className = bubbleClassName(html, role);
+      for (const token of CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS.split(" ")) {
+        expect(className).toContain(token);
+      }
+    }
   });
 
   it("renders a native request_user_input card for pending questions", async () => {

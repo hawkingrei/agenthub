@@ -168,6 +168,17 @@ Start with:
 - `2026-07-23-object-storage-download-ingest-implementation.md`
 - `2026-07-28-codex-145-upgrade.md`
 
+### 2026-08
+
+Main shape:
+
+- Conversation surfaces now share neutral message-bubble styling while preserving their own
+  interaction semantics; final deployed-browser evidence remains open.
+
+Start with:
+
+- `2026-08-01-team-conversation-style-convergence.md`
+
 ## Compaction Rules
 
 - Keep original dated journals when they contain validation evidence, PR context, or detailed
