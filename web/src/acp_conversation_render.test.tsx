@@ -316,8 +316,9 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain('data-acp-message-bubble="user"');
     for (const role of ["agent", "user"] as const) {
       const className = bubbleClassName(html, role);
+      const classTokens = className.split(/\s+/);
       for (const token of CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS.split(" ")) {
-        expect(className).toContain(token);
+        expect(classTokens).toContain(token);
       }
     }
   });
