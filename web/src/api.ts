@@ -967,6 +967,15 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+  moveExistingAgentToTeam: (
+    token: string,
+    id: string,
+    payload: { agent_id: string; spec: unknown; expected_updated_at: number }
+  ) =>
+    apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}/members/move`, token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   getTeamRuntime: (token: string, id: string) =>
     apiFetch<TeamRuntimeRecord>(`/api/teams/${encodePathSegment(id)}/runtime`, token),
   startTeam: (token: string, id: string) =>

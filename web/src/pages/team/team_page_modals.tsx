@@ -32,6 +32,7 @@ export type TeamPageModalsProps = {
   closeTeamMemberForgeModal: () => void;
   closeCopyExistingAgentModal: () => void;
   onCopyExistingAgent: (agentId: string) => void;
+  onMoveExistingAgent: (agentId: string) => void;
   selectedAgentLabel: string;
   teamMemberEditDraft: TeamMemberProfileDraft | null;
   patchTeamMemberEditDraft: (patch: Partial<TeamMemberProfileDraft>) => void;
@@ -64,6 +65,7 @@ export const TeamPageModals = React.memo(function TeamPageModals({
   closeTeamMemberForgeModal,
   closeCopyExistingAgentModal,
   onCopyExistingAgent,
+  onMoveExistingAgent,
   selectedAgentLabel,
   teamMemberEditDraft,
   patchTeamMemberEditDraft,
@@ -101,10 +103,11 @@ export const TeamPageModals = React.memo(function TeamPageModals({
       />
       <TeamCopyExistingAgentDialog
         open={showCopyExistingAgentModal}
-        busy={busy === "copy-team-agent"}
+        busy={busy === "copy-team-agent" || busy === "move-team-agent"}
         selectedTeamHasCoordinator={selectedTeamHasCoordinator}
         candidateAgents={copyExistingCandidates}
         onCopy={onCopyExistingAgent}
+        onMove={onMoveExistingAgent}
         onClose={closeCopyExistingAgentModal}
         chrome={forgeChrome}
       />

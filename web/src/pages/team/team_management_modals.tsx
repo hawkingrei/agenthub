@@ -437,6 +437,7 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
   selectedTeamHasCoordinator,
   candidateAgents,
   onCopy,
+  onMove,
   onClose,
   chrome,
 }: {
@@ -445,6 +446,7 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
   selectedTeamHasCoordinator: boolean;
   candidateAgents: AgentRecord[];
   onCopy: (agentId: string) => void;
+  onMove?: (agentId: string) => void;
   onClose: () => void;
   chrome: TeamModalChrome;
 }) {
@@ -489,6 +491,8 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
   }
 
   const copyRoleLabel = selectedTeamHasCoordinator ? "worker" : "coordinator";
+  const selectedAgent = filteredAgents.find((agent) => agent.id === selectedAgentId);
+  const canMove = selectedAgent?.status === "created" || selectedAgent?.status === "stopped";
 
   return (
     <div
@@ -636,6 +640,16 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
             type="button"
           >
             {busy ? "Copying..." : "Copy into Team"}
+          </ActionButton>
+          <ActionButton
+            className={chrome.mutedButtonClassName}
+            onClick={() => onMove?.(selectedAgentId)}
+            disabled={busy || !canMove || !onMove}
+            size="md"
+            tone="secondary"
+            type="button"
+          >
+            {busy ? "Working..." : "Move to Team"}
           </ActionButton>
         </div>
       </div>

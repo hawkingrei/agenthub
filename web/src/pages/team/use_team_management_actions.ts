@@ -657,6 +657,44 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     token,
   ]);
 
+  const onMoveExistingTeamAgent = useCallback(async (sourceAgentId: string) => {
+    if (busy === "move-team-agent") return;
+    if (!selectedTeam) return setError("Select a team first");
+    const sourceAgent = agents.find((agent) => agent.id === sourceAgentId);
+    if (!sourceAgent) return setError("Select an existing agent first");
+    if (sourceAgent.status !== "created" && sourceAgent.status !== "stopped") {
+      return setError("Only created or stopped agents can move into a Team");
+    }
+    const role = resolveInitialTeamMemberRole(selectedTeamHasCoordinator);
+    const draft: TeamMemberProfileDraft = {
+      member_id: sourceAgent.id, role,
+      description: "Moved from the global agent catalog.",
+      model: formatAgentModelLabel(sourceAgent.command, sourceAgent.args) || DEFAULT_AGENT_PRESET_ID,
+      prompt: resolveTeamPromptForRole(teamPromptDefaults, role),
+      skills: [], custom_skills: "", agent_loop_enabled: false, agent_loop_idle_seconds: "", agent_loop_prompt: "",
+      codex_acp_default_mode: DEFAULT_CODEX_ACP_MODE,
+      runtime_model: sourceAgent.runtime_model ?? "", thinking_level: sourceAgent.thinking_level ?? "",
+    };
+    setBusy("move-team-agent");
+    setError(null);
+    try {
+      const updated = await api.moveExistingAgentToTeam(token, selectedTeam.id, {
+        agent_id: sourceAgent.id,
+        spec: appendTeamMemberToSpec(selectedTeam.spec, draft, sourceAgent, teamPromptDefaults),
+        expected_updated_at: selectedTeam.updated_at,
+      });
+      setAgents((prev) => prev.filter((agent) => agent.id !== sourceAgent.id));
+      setTeams((prev) => [...prev.filter((team) => team.id !== updated.id), updated].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedTeamId(updated.id);
+      setShowCopyExistingAgentModal(false);
+      void refreshTeamRuntime(updated.id).catch(() => undefined);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [agents, busy, refreshTeamRuntime, selectedTeam, selectedTeamHasCoordinator, setAgents, setBusy, setError, setSelectedTeamId, setShowCopyExistingAgentModal, setTeams, teamPromptDefaults, token]);
+
   const onSaveTeamMemberProfile = useCallback(async () => {
     if (!selectedTeam) {
       setError("Select a team first");
@@ -1188,6 +1226,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     refreshTeamRuntime,
     onCreateForgeAgent,
     onCopyExistingTeamAgent,
+    onMoveExistingTeamAgent,
     onSaveTeamMemberProfile,
     onCreateTeam,
     onDeleteTeam,
