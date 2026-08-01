@@ -663,7 +663,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     const sourceAgent = agents.find((agent) => agent.id === sourceAgentId);
     if (!sourceAgent) return setError("Select an existing agent first");
     if (sourceAgent.status !== "created" && sourceAgent.status !== "stopped") {
-      return setError("Stop the agent before moving it into a Team");
+      return setError("Only created or stopped agents can move into a Team");
     }
     const role = resolveInitialTeamMemberRole(selectedTeamHasCoordinator);
     const draft: TeamMemberProfileDraft = {

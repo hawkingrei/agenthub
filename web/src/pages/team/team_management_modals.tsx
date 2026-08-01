@@ -649,7 +649,7 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
             tone="secondary"
             type="button"
           >
-            {busy ? "Moving..." : "Move to Team"}
+            {busy ? "Working..." : "Move to Team"}
           </ActionButton>
         </div>
       </div>

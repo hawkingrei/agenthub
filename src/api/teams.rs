@@ -725,7 +725,7 @@ async fn move_existing_agent_to_team(
         .map_err(|err| map_not_found_error(err, "agent not found"))?;
     if !matches!(agent.status, AgentStatus::Created | AgentStatus::Stopped) {
         return Err(ApiError::conflict(
-            "agent must be stopped before moving it into a team",
+            "agent must be created or stopped before moving it into a team",
         ));
     }
     if !state
@@ -746,6 +746,11 @@ async fn move_existing_agent_to_team(
     let added_member_ids = next_member_ids
         .difference(&previous_member_ids)
         .collect::<Vec<_>>();
+    if !previous_member_ids.is_subset(&next_member_ids) {
+        return Err(ApiError::bad_request(
+            "move must not remove existing team members",
+        ));
+    }
     if added_member_ids.len() != 1 || added_member_ids[0].as_str() != agent_id {
         return Err(ApiError::bad_request(
             "move must add exactly the selected agent to the current team spec",
