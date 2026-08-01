@@ -150,6 +150,14 @@ describe("app route selection", () => {
   });
 
   it("parses canonical team workspace subpaths without treating thread as a top-level lens", () => {
+    expect(resolveTeamWorkspacePathState("/teams")).toEqual({
+      lens: null,
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
     expect(resolveTeamWorkspacePathState("/workspace/teams/team-1")).toEqual({
       lens: null,
       channelId: null,
@@ -190,6 +198,40 @@ describe("app route selection", () => {
       memberId: "worker/1",
       tab: null,
     });
+    expect(resolveTeamWorkspacePathState("/teams/team-1/channels")).toEqual({
+      lens: "channels",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/tasks")).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/tasks/task-77/members")
+    ).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: "task-77",
+      memberId: null,
+      tab: null,
+    });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/members")).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
     expect(
       resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/all/members/worker-1")
     ).toEqual({
@@ -208,6 +250,14 @@ describe("app route selection", () => {
       memberId: null,
       tab: null,
     });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/tasks")).toEqual({
+      lens: "tasks",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
     expect(
       resolveTeamWorkspacePathState("/workspace/teams/team-1/members/worker-1/thread")
     ).toEqual({
@@ -218,11 +268,24 @@ describe("app route selection", () => {
       memberId: "worker-1",
       tab: "agent_acp",
     });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/members")).toEqual({
+      lens: "members",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
     expect(resolveWorkspaceLens("/workspace/teams/team-1/thread", "")).toBe("channels");
   });
 
   it("builds canonical team workspace subpaths for gradual route migration", () => {
+    expect(buildCanonicalTeamWorkspaceSubpath(null)).toBe("/workspace/teams");
+    expect(buildCanonicalTeamWorkspaceSubpath("   ")).toBe("/workspace/teams");
     expect(buildCanonicalTeamWorkspaceSubpath("team-1")).toBe("/workspace/teams/team-1");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath(" team/1 ", "members", null, null, " worker/1 ", "mailbox")
+    ).toBe("/workspace/teams/team%2F1/members/worker%2F1/mailbox");
     expect(buildCanonicalTeamWorkspaceSubpath("team-1", "channels", "review")).toBe(
       "/workspace/teams/team-1/channels/review"
     );
@@ -276,12 +339,88 @@ describe("app route selection", () => {
         "member_console"
       )
     ).toBe("/workspace/teams/team-1/members/worker-1/member_console");
+    expect(
+      buildCanonicalTeamWorkspaceSubpath(
+        "team-1",
+        "members",
+        null,
+        null,
+        "worker-1",
+        "conversation" as never
+      )
+    ).toBe("/workspace/teams/team-1/members/worker-1");
     expect(buildCanonicalTeamWorkspaceSubpath("team-1", "members")).toBe(
       "/workspace/teams/team-1?lens=members"
     );
     expect(buildCanonicalTeamWorkspaceSubpath("team-1", "tasks")).toBe(
       "/workspace/teams/team-1?lens=tasks"
     );
+    expect(
+      buildCanonicalTeamWorkspaceSubpath(
+        "team-1",
+        "nodes",
+        "review",
+        42,
+        "worker-1",
+        "mailbox",
+        "task-9"
+      )
+    ).toBe(
+      "/workspace/teams/team-1?lens=nodes&channel=review&thread=42&task=task-9&member=worker-1&tab=mailbox"
+    );
+  });
+
+  it("parses malformed or partial canonical team subpaths defensively", () => {
+    expect(resolveTeamRoute("/workspace/teams/%E0%A4%A")).toEqual({
+      mode: "detail",
+      teamId: "%E0%A4%A",
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/%E0%A4%A/channels/%E0%A4%A")
+    ).toEqual({
+      lens: "channels",
+      channelId: "%E0%A4%A",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/threads/not-a-number")
+    ).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/channels/review/threads")).toEqual({
+      lens: "channels",
+      channelId: "review",
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
+    expect(
+      resolveTeamWorkspacePathState("/workspace/teams/team-1/members/worker-1/overview")
+    ).toEqual({
+      lens: "members",
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: "worker-1",
+      tab: null,
+    });
+    expect(resolveTeamWorkspacePathState("/workspace/teams/team-1/unknown/review")).toEqual({
+      lens: null,
+      channelId: null,
+      threadRootMessageId: null,
+      taskId: null,
+      memberId: null,
+      tab: null,
+    });
   });
 
   it("derives the post-auth redirect target only on the workspace root aliases", () => {

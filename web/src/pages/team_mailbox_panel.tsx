@@ -22,10 +22,6 @@ import {
   resolveVisibleTeamPayloadText,
 } from "./team/mailbox_helpers";
 import {
-  DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE,
-  windowTeamConversation,
-} from "./team/team_conversation_viewport";
-import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
@@ -91,25 +87,17 @@ type MailboxActorRow = {
   label: string;
 };
 
-const MAILBOX_CONVERSATION_TAIL_ITEM_ESTIMATED_HEIGHT = 64;
-
-export type MailboxConversationRow = {
+type MailboxConversationRow = {
   message: TeamActorMessageRecord;
   isOutgoing: boolean;
   htmlPayload: string | null;
   payload: string;
   fromLabel: string;
   toLabel: string;
-  createdAtLabel: string;
   canAccept: boolean;
 };
 
-export type MailboxConversationMessageRowProps = {
-  row: MailboxConversationRow;
-  busy: string | null;
-  onAcceptMessage: (message: TeamActorMessageRecord) => Promise<void> | void;
-  onOpenMention: (actorId: string) => void;
-};
+const EMPTY_REPLY_OBLIGATIONS: TeamReplyObligationRecord[] = [];
 
 type TeamMailboxPanelProps = {
   developerMode: boolean;
@@ -216,134 +204,6 @@ function resolveMailboxDispositionLabel(message: TeamActorMessageRecord | null):
   return message?.handling_disposition ?? "untriaged";
 }
 
-function areMailboxMessagesEqual(
-  left: TeamActorMessageRecord,
-  right: TeamActorMessageRecord
-): boolean {
-  return (
-    left.message_id === right.message_id &&
-    left.run_id === right.run_id &&
-    left.from_actor_id === right.from_actor_id &&
-    left.from_peer_id === right.from_peer_id &&
-    left.from_actor_kind === right.from_actor_kind &&
-    left.to_actor_id === right.to_actor_id &&
-    left.to_peer_id === right.to_peer_id &&
-    left.to_actor_kind === right.to_actor_kind &&
-    left.channel === right.channel &&
-    left.transport === right.transport &&
-    left.status === right.status &&
-    left.handling_disposition === right.handling_disposition &&
-    left.handled_by_actor_id === right.handled_by_actor_id &&
-    left.thread_topic_key === right.thread_topic_key &&
-    left.thread_claim_status === right.thread_claim_status &&
-    left.thread_owner_actor_id === right.thread_owner_actor_id &&
-    left.thread_lease_expires_at === right.thread_lease_expires_at &&
-    left.linked_task_id === right.linked_task_id &&
-    left.linked_task_relation === right.linked_task_relation &&
-    left.created_at === right.created_at &&
-    left.delivered_at === right.delivered_at
-  );
-}
-
-function areMailboxConversationRowsEqual(
-  left: MailboxConversationRow,
-  right: MailboxConversationRow
-): boolean {
-  return (
-    areMailboxMessagesEqual(left.message, right.message) &&
-    left.isOutgoing === right.isOutgoing &&
-    left.htmlPayload === right.htmlPayload &&
-    left.payload === right.payload &&
-    left.fromLabel === right.fromLabel &&
-    left.toLabel === right.toLabel &&
-    left.createdAtLabel === right.createdAtLabel &&
-    left.canAccept === right.canAccept
-  );
-}
-
-export function areMailboxConversationMessageRowPropsEqual(
-  prev: MailboxConversationMessageRowProps,
-  next: MailboxConversationMessageRowProps
-): boolean {
-  return (
-    areMailboxConversationRowsEqual(prev.row, next.row) &&
-    prev.busy === next.busy &&
-    prev.onAcceptMessage === next.onAcceptMessage &&
-    prev.onOpenMention === next.onOpenMention
-  );
-}
-
-const MailboxConversationMessageRow = React.memo(function MailboxConversationMessageRow({
-  row,
-  busy,
-  onAcceptMessage,
-  onOpenMention,
-}: MailboxConversationMessageRowProps) {
-  return (
-    <li
-      className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${
-        row.isOutgoing ? "items-end" : "items-start"
-      }`}
-      data-team-mailbox-message-id={row.message.message_id}
-    >
-      <div
-        className={
-          row.isOutgoing
-            ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS
-            : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS
-        }
-      >
-        <div
-          className={`${MAILBOX_MESSAGE_HEAD_CLASS} ${
-            row.isOutgoing ? "justify-end text-right" : "justify-start text-left"
-          }`}
-        >
-          <span className="font-bold">{row.fromLabel}</span>
-          <span className="opacity-60">{" → "}</span>
-          <span className="font-bold">{row.toLabel}</span>
-          <span className="opacity-40">{" · "}</span>
-          <span className="opacity-60">{row.createdAtLabel}</span>
-        </div>
-        <div className={MAILBOX_MESSAGE_BODY_CLASS}>
-          {row.htmlPayload !== null ? (
-            <div
-              onClick={(event) => {
-                const actorId = resolveMentionActorIdFromEventTarget(event.target);
-                if (actorId) {
-                  onOpenMention(actorId);
-                }
-              }}
-              dangerouslySetInnerHTML={{
-                __html: row.htmlPayload,
-              }}
-            />
-          ) : (
-            <pre className={MAILBOX_MESSAGE_PRE_CLASS}>{row.payload}</pre>
-          )}
-        </div>
-        {row.canAccept && (
-          <div
-            className={`${MAILBOX_MESSAGE_ACTIONS_CLASS} ${
-              row.isOutgoing ? "justify-end" : "justify-start"
-            }`}
-          >
-            <ActionButton
-              tone="secondary"
-              size="md"
-              onClick={() => {
-                void onAcceptMessage(row.message);
-              }}
-              disabled={busy !== null}
-            >
-              Accept
-            </ActionButton>
-          </div>
-        )}
-      </div>
-    </li>
-  );
-}, areMailboxConversationMessageRowPropsEqual);
-
 function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
@@ -404,10 +264,8 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const showAdvancedControls = mode === "advanced_only";
   const showDeveloperMailboxTools = developerMode && showAdvancedControls;
   const normalizedHumanActorId = humanActorId.trim();
-  const openReplyObligations = React.useMemo(
-    () => snapshot?.mailbox.open_reply_obligations ?? [],
-    [snapshot?.mailbox.open_reply_obligations]
-  );
+  const openReplyObligations =
+    snapshot?.mailbox.open_reply_obligations ?? EMPTY_REPLY_OBLIGATIONS;
   const mailboxMessagesById = React.useMemo(
     () => new Map(snapshot?.mailbox.recent_messages.map((message) => [message.message_id, message]) ?? []),
     [snapshot?.mailbox.recent_messages]
@@ -469,19 +327,10 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
     snapshot?.members,
     unreadByMemberId,
   ]);
-  const conversationWindow = React.useMemo(
-    () =>
-      windowTeamConversation(
-        conversationMessages,
-        chatStickToBottom,
-        DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE
-      ),
-    [chatStickToBottom, conversationMessages]
-  );
   const conversationRows = React.useMemo<MailboxConversationRow[]>(() => {
     // Precompute mailbox row presentation so long conversations do not repeatedly
     // re-parse payload text and actor labels during every list render.
-    return conversationWindow.items.map((message) => {
+    return conversationMessages.map((message) => {
       const isOutgoing = message.from_actor_id === chatActors.fromActorId;
       const chatText = resolveVisibleTeamPayloadText(message.payload);
       const payload = chatText ?? toPrettyJson(message.payload);
@@ -504,7 +353,6 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
           displayNameByActorId,
           normalizedHumanActorId
         ),
-        createdAtLabel: formatTs(message.created_at),
         canAccept: isMessageAcceptableForInbox(
           message,
           chatActors.inboxActorId,
@@ -515,26 +363,14 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   }, [
     chatActors.fromActorId,
     chatActors.inboxActorId,
-    conversationWindow.items,
+    conversationMessages,
     displayNameByActorId,
-    formatTs,
     normalizedHumanActorId,
     toPrettyJson,
   ]);
-  const hiddenConversationCount = conversationWindow.offset;
-  const hiddenConversationSpacerHeight =
-    chatStickToBottom && hiddenConversationCount > 0
-      ? hiddenConversationCount * MAILBOX_CONVERSATION_TAIL_ITEM_ESTIMATED_HEIGHT
-      : 0;
   const acceptVisibleMessages = React.useMemo(
     () => conversationRows.filter((row) => row.canAccept).map((row) => row.message),
     [conversationRows]
-  );
-  const openMentionFromConversation = React.useCallback(
-    (actorId: string) => {
-      (onOpenMemberProfile ?? onSelectMember)(actorId);
-    },
-    [onOpenMemberProfile, onSelectMember]
   );
 
   const advancedControls = (
@@ -923,22 +759,59 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               ref={chatMessagesRef as React.Ref<HTMLUListElement>}
               onScroll={() => onConversationScroll()}
             >
-              {hiddenConversationSpacerHeight > 0 ? (
-                <li
-                  aria-hidden="true"
-                  data-team-mailbox-top-spacer="true"
-                  style={{ height: hiddenConversationSpacerHeight }}
-                />
-              ) : null}
-              {conversationRows.map((row) => (
-                <MailboxConversationMessageRow
-                  key={row.message.message_id}
-                  row={row}
-                  busy={busy}
-                  onAcceptMessage={onAcceptMessage}
-                  onOpenMention={openMentionFromConversation}
-                />
-              ))}
+              {conversationRows.map((row) => {
+                return (
+                  <li
+                    key={row.message.message_id}
+                    className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${row.isOutgoing ? "items-end" : "items-start"}`}
+                  >
+                    <div className={row.isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}>
+                      <div className={`${MAILBOX_MESSAGE_HEAD_CLASS} ${row.isOutgoing ? "justify-end text-right" : "justify-start text-left"}`}>
+                        <span className="font-bold">
+                          {row.fromLabel}
+                        </span>
+                        <span className="opacity-60">{" → "}</span>
+                        <span className="font-bold">
+                          {row.toLabel}
+                        </span>
+                        <span className="opacity-40">{" · "}</span>
+                        <span className="opacity-60">{formatTs(row.message.created_at)}</span>
+                      </div>
+                      <div className={MAILBOX_MESSAGE_BODY_CLASS}>
+                        {row.htmlPayload !== null ? (
+                          <div
+                            onClick={(event) => {
+                              const actorId = resolveMentionActorIdFromEventTarget(event.target);
+                              if (actorId) {
+                                (onOpenMemberProfile ?? onSelectMember)(actorId);
+                              }
+                            }}
+                            dangerouslySetInnerHTML={{
+                              __html: row.htmlPayload,
+                            }}
+                          />
+                        ) : (
+                          <pre className={MAILBOX_MESSAGE_PRE_CLASS}>{row.payload}</pre>
+                        )}
+                      </div>
+                      {row.canAccept && (
+                        <div className={`${MAILBOX_MESSAGE_ACTIONS_CLASS} ${row.isOutgoing ? "justify-end" : "justify-start"}`}>
+                          <ActionButton
+                            tone="secondary"
+                            size="md"
+                            onClick={() => {
+                              void onAcceptMessage(row.message);
+                            }}
+                            disabled={busy !== null}
+                          >
+                            Accept
+                          </ActionButton>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
               {conversationMessages.length === 0 && (
                 <li className={MAILBOX_CONVERSATION_EMPTY_CLASS}>
                   No conversation records yet for this pair.

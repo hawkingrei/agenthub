@@ -27,16 +27,7 @@ use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::api::teams::prune_deleted_agent_from_team_specs;
 use crate::api::uploads::{
-    UploadRequest, UploadSessionDirectWriteRequest, UploadSessionDirectWriteResponse,
-    UploadSessionMultipartAbortRequest, UploadSessionMultipartCompleteRequest,
-    UploadSessionMultipartPartWriteRequest, UploadSessionMultipartPartWriteResponse,
-    UploadSessionMultipartUploadResponse, UploadSessionPrepareRequest,
-    abort_scoped_multipart_upload_session, cancel_scoped_upload_session,
-    complete_scoped_direct_upload_session, complete_scoped_multipart_upload_session,
-    complete_scoped_upload_session, complete_scoped_upload_session_parts,
-    initiate_scoped_multipart_upload_session, prepare_scoped_direct_upload_session_write,
-    prepare_scoped_multipart_upload_session_part, prepare_scoped_upload_session,
-    upload_scoped_object, upload_scoped_upload_session_part,
+    DownloadRequest, UploadRequest, download_scoped_object, upload_scoped_object,
 };
 use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
 use crate::state::AppState;
@@ -211,48 +202,8 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}/stop", post(stop_agent))
         .route("/{id}/input", post(send_input))
         .route("/{id}/uploads", post(upload_agent_object))
+        .route("/{id}/uploads/downloads", post(download_agent_object))
         .route("/{id}/images", post(upload_agent_image))
-        .route("/{id}/uploads/sessions", post(prepare_agent_upload_session))
-        .route(
-            "/{id}/uploads/sessions/{session_id}/cancel",
-            post(cancel_agent_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/complete",
-            post(complete_agent_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/direct-write",
-            post(prepare_agent_direct_upload_session_write),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/complete-direct",
-            post(complete_agent_direct_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/multipart",
-            post(initiate_agent_multipart_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/multipart/parts/{part_number}",
-            post(prepare_agent_multipart_upload_session_part),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/multipart/complete",
-            post(complete_agent_multipart_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/multipart/abort",
-            post(abort_agent_multipart_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/parts/{part_number}",
-            post(upload_agent_upload_session_part),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/complete-parts",
-            post(complete_agent_upload_session_parts),
-        )
         .route(
             "/{id}/triggers",
             post(create_agent_time_trigger).get(list_agent_time_triggers),
@@ -344,11 +295,7 @@ async fn create_agent(
     )?;
     let source = parse_agent_source(source.as_deref())?;
     let target_node_id = normalize_target_node_id(target_node_id.as_deref());
-    let _user = if target_node_id.is_some() {
-        require_capability(&headers, &state, UserCapability::NodesManage).await?
-    } else {
-        require_capability(&headers, &state, UserCapability::AgentsManage).await?
-    };
+    require_create_agent_capability(&headers, &state, target_node_id.as_deref()).await?;
     let default_worktree_root = resolve_create_agent_default_worktree_root(
         &state,
         target_node_id.as_deref(),
@@ -392,6 +339,21 @@ async fn create_agent(
             .map_err(map_create_agent_error)?
     };
     Ok(Json(agent))
+}
+
+async fn require_create_agent_capability(
+    headers: &HeaderMap,
+    state: &AppState,
+    target_node_id: Option<&str>,
+) -> Result<(), ApiError> {
+    let user = require_capability(headers, state, UserCapability::AgentsManage).await?;
+    if target_node_id.is_some() && !user.has_capability(UserCapability::NodesManage) {
+        return Err(ApiError::unauthorized(&format!(
+            "{} required",
+            UserCapability::NodesManage.as_str()
+        )));
+    }
+    Ok(())
 }
 
 async fn list_agents(
@@ -531,6 +493,23 @@ async fn upload_agent_image(
     upload_agent_scoped_object(state, headers, agent_id, payload, ObjectUploadKind::Image).await
 }
 
+async fn download_agent_object(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<DownloadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
+    let agent = state.agents.get_agent(&agent_id).await?;
+    download_scoped_object(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Agent(agent.id),
+        payload,
+    )
+    .await
+}
+
 async fn upload_agent_scoped_object(
     state: AppState,
     headers: HeaderMap,
@@ -546,187 +525,6 @@ async fn upload_agent_scoped_object(
         ObjectUploadOwnerScope::Agent(agent.id),
         payload,
         kind,
-    )
-    .await
-}
-
-async fn prepare_agent_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(agent_id): Path<String>,
-    Json(payload): Json<UploadSessionPrepareRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    prepare_scoped_upload_session(
-        State(state),
-        &user,
-        ObjectUploadOwnerScope::Agent(agent.id),
-        payload,
-    )
-    .await
-}
-
-async fn cancel_agent_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id)): Path<(String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    cancel_scoped_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-    )
-    .await
-}
-
-async fn complete_agent_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id)): Path<(String, String)>,
-    bytes: Bytes,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    complete_scoped_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-        bytes,
-    )
-    .await
-}
-
-async fn prepare_agent_direct_upload_session_write(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id)): Path<(String, String)>,
-    Json(payload): Json<UploadSessionDirectWriteRequest>,
-) -> Result<Json<UploadSessionDirectWriteResponse>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    prepare_scoped_direct_upload_session_write(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn complete_agent_direct_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id)): Path<(String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    complete_scoped_direct_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-    )
-    .await
-}
-
-async fn initiate_agent_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id)): Path<(String, String)>,
-) -> Result<Json<UploadSessionMultipartUploadResponse>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    initiate_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-    )
-    .await
-}
-
-async fn prepare_agent_multipart_upload_session_part(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id, part_number)): Path<(String, String, u32)>,
-    Json(payload): Json<UploadSessionMultipartPartWriteRequest>,
-) -> Result<Json<UploadSessionMultipartPartWriteResponse>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    prepare_scoped_multipart_upload_session_part(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-        part_number,
-        payload,
-    )
-    .await
-}
-
-async fn complete_agent_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id)): Path<(String, String)>,
-    Json(payload): Json<UploadSessionMultipartCompleteRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    complete_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn abort_agent_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id)): Path<(String, String)>,
-    Json(payload): Json<UploadSessionMultipartAbortRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    abort_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn upload_agent_upload_session_part(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id, part_number)): Path<(String, String, u32)>,
-    bytes: Bytes,
-) -> Result<Json<agenthub_db::ObjectUploadSessionPartRecord>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    upload_scoped_upload_session_part(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
-        part_number,
-        bytes,
-    )
-    .await
-}
-
-async fn complete_agent_upload_session_parts(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((agent_id, session_id)): Path<(String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let agent = state.agents.get_agent(&agent_id).await?;
-    complete_scoped_upload_session_parts(
-        State(state),
-        ObjectUploadOwnerScope::Agent(agent.id),
-        session_id,
     )
     .await
 }
@@ -935,7 +733,7 @@ async fn clear_acp_session(
     Path(agent_id): Path<String>,
     Json(payload): Json<ClearSessionRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let provider = match payload.provider {
         Some(provider) => provider,
         None => match state.agents.get_agent(&agent_id).await {
@@ -1495,6 +1293,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use agenthub_auth_domain::UserRole;
     use axum::body::{Body, Bytes, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use axum::response::IntoResponse;
@@ -1957,49 +1756,6 @@ mod tests {
 
         sqlx::query(
             r#"
-            CREATE TABLE object_upload_sessions (
-                id TEXT PRIMARY KEY,
-                owner_scope TEXT NOT NULL,
-                backend TEXT NOT NULL,
-                object_key TEXT NOT NULL,
-                original_filename TEXT NOT NULL,
-                content_type TEXT NOT NULL,
-                object_kind TEXT NOT NULL,
-                expected_size_bytes INTEGER NOT NULL,
-                expected_sha256 TEXT,
-                created_by_actor_id TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL,
-                completed_at INTEGER,
-                canceled_at INTEGER,
-                published_upload_id TEXT
-            )
-            "#,
-        )
-        .execute(db)
-        .await
-        .expect("create object_upload_sessions");
-
-        sqlx::query(
-            r#"
-            CREATE TABLE object_upload_session_parts (
-                session_id TEXT NOT NULL,
-                part_number INTEGER NOT NULL,
-                object_key TEXT NOT NULL,
-                size_bytes INTEGER NOT NULL,
-                sha256 TEXT NOT NULL,
-                uploaded_at INTEGER NOT NULL,
-                PRIMARY KEY(session_id, part_number)
-            )
-            "#,
-        )
-        .execute(db)
-        .await
-        .expect("create object_upload_session_parts");
-
-        sqlx::query(
-            r#"
             CREATE TABLE agent_sessions (
                 id TEXT PRIMARY KEY,
                 agent_id TEXT NOT NULL,
@@ -2190,8 +1946,6 @@ mod tests {
             agent_node_join_bootstrap: crate::agent::AgentNodeJoinBootstrapInfo::disabled(),
             default_worktree_root: config.default_worktree_root(),
             body_store: None,
-            message_index: None,
-            message_read_repair: None,
         }
     }
 
@@ -2211,6 +1965,15 @@ mod tests {
                 region: None,
                 access_key_id_env: None,
                 secret_access_key_env: None,
+                download_max_bytes: Some(1024 * 1024),
+                download_max_redirects: Some(3),
+                download_timeout_seconds: Some(10),
+                download_retry_attempts: Some(1),
+                download_retry_backoff_millis: Some(0),
+                download_max_concurrent_per_host: Some(4),
+                download_allow_private_networks: Some(true),
+                download_allowed_hosts: None,
+                download_denied_hosts: None,
             }),
             ..Default::default()
         };
@@ -2282,32 +2045,64 @@ mod tests {
             .expect("create session token")
     }
 
-    async fn create_non_root_auth_token(state: &AppState) -> String {
-        create_auth_token_with_role(state, "user").await
-    }
-
-    async fn create_auth_token_with_role(state: &AppState, role: &str) -> String {
+    async fn create_role_auth_token(state: &AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().timestamp();
+        let role_str = role.as_str();
         sqlx::query(
             r#"
             INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, ?4, NULL, ?5)
+            VALUES (?, ?, ?, ?, NULL, ?)
             "#,
         )
         .bind(&user_id)
-        .bind(format!("{role}-{}", Uuid::new_v4()))
-        .bind("Agent Route Test User")
-        .bind(role)
+        .bind(format!("{role_str}-{}", Uuid::new_v4()))
+        .bind(role_str)
+        .bind(role_str)
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert user");
+        .expect("insert role user");
+
+        if role == UserRole::Device {
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS devices (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    user_agent TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    last_login_at INTEGER,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+                "#,
+            )
+            .execute(&state.db)
+            .await
+            .expect("create devices table");
+            sqlx::query(
+                r#"
+                INSERT INTO devices (id, user_id, name, user_agent, status, created_at)
+                VALUES (?, ?, ?, ?, 'active', ?)
+                "#,
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&user_id)
+            .bind("Test Device")
+            .bind("agenthub-test")
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert active device");
+        }
+
         state
             .auth
             .create_session(&user_id)
             .await
-            .expect("create session token")
+            .expect("create role session token")
     }
 
     fn build_json_request(
@@ -2348,6 +2143,345 @@ mod tests {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect()
+    }
+
+    async fn spawn_download_source(bytes: Vec<u8>) -> String {
+        let bytes = Arc::new(bytes);
+        let app = axum::Router::new().route(
+            "/artifact",
+            axum::routing::get({
+                let bytes = Arc::clone(&bytes);
+                move || {
+                    let bytes = Arc::clone(&bytes);
+                    async move { bytes.as_ref().clone() }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind download source");
+        let address = listener.local_addr().expect("read download source address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve download source");
+        });
+        format!("http://{address}/artifact")
+    }
+
+    #[tokio::test]
+    async fn agent_inspect_routes_require_runtime_inspect_capability() {
+        let state = build_test_state().await;
+        let viewer_token = create_role_auth_token(&state, UserRole::Viewer).await;
+        let device_token = create_role_auth_token(&state, UserRole::Device).await;
+        let app = router(state);
+
+        let viewer_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                "/",
+                Some(&viewer_token),
+                None,
+            ))
+            .await
+            .expect("list agents with viewer role");
+        assert_eq!(viewer_response.status(), StatusCode::OK);
+
+        let denied_routes = [
+            "/",
+            "/missing-agent",
+            "/missing-agent/.well-known/agent-card",
+            "/missing-agent/events",
+            "/missing-agent/events/1",
+            "/missing-agent/permissions",
+        ];
+        for route in denied_routes {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    Method::GET,
+                    route,
+                    Some(&device_token),
+                    None,
+                ))
+                .await
+                .expect("run denied inspect request");
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{route}");
+            let body = decode_json_body(response).await;
+            assert_eq!(body["error"], json!("runtime:inspect required"), "{route}");
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_runtime_routes_require_runtime_operate_capability() {
+        let state = build_test_state().await;
+        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
+        let viewer_token = create_role_auth_token(&state, UserRole::Viewer).await;
+        let app = router(state.clone());
+
+        let denied_routes = vec![
+            (Method::POST, "/missing-agent/start", None),
+            (Method::POST, "/missing-agent/stop", None),
+            (
+                Method::POST,
+                "/missing-agent/input",
+                Some(json!({
+                    "input": "hello"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/triggers",
+                Some(json!({
+                    "delay_seconds": 60,
+                    "message": "Re-check."
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/triggers/missing-trigger/cancel",
+                None,
+            ),
+            (
+                Method::POST,
+                "/missing-agent/acp/session/clear",
+                Some(json!({
+                    "provider": "codex"
+                })),
+            ),
+            (Method::POST, "/missing-agent/acp/cancel", None),
+            (
+                Method::POST,
+                "/missing-agent/permissions/missing-permission/respond",
+                Some(json!({
+                    "outcome": "cancelled"
+                })),
+            ),
+        ];
+
+        for (method, route, payload) in denied_routes {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    method,
+                    route,
+                    Some(&viewer_token),
+                    payload,
+                ))
+                .await
+                .expect("run denied runtime operate request");
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{route}");
+            let body = decode_json_body(response).await;
+            assert_eq!(body["error"], json!("runtime:operate required"), "{route}");
+        }
+
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 1, 'manual', 'created', ?, ?)
+            "#,
+        )
+        .bind("runtime-capability-agent")
+        .bind("runtime-capability-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert runtime capability agent");
+
+        let create_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/runtime-capability-agent/triggers",
+                Some(&operator_token),
+                Some(json!({
+                    "delay_seconds": 60,
+                    "message": "Re-check runtime capability gate."
+                })),
+            ))
+            .await
+            .expect("create trigger with operator");
+        assert_eq!(create_response.status(), StatusCode::OK);
+        let created = decode_json_body(create_response).await;
+        let trigger_id = created["id"].as_str().expect("trigger id").to_string();
+
+        let list_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                "/runtime-capability-agent/triggers",
+                Some(&viewer_token),
+                None,
+            ))
+            .await
+            .expect("list triggers with viewer");
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let listed = decode_json_body(list_response).await;
+        assert_eq!(listed.as_array().map(Vec::len), Some(1));
+        assert_eq!(listed[0]["id"], Value::from(trigger_id.clone()));
+
+        let cancel_response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/runtime-capability-agent/triggers/{trigger_id}/cancel"),
+                Some(&operator_token),
+                None,
+            ))
+            .await
+            .expect("cancel trigger with operator");
+        assert_eq!(cancel_response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn agent_management_routes_require_agents_manage_capability() {
+        let state = build_test_state().await;
+        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
+        let viewer_token = create_role_auth_token(&state, UserRole::Viewer).await;
+        let app = router(state.clone());
+        let workdir = std::env::temp_dir()
+            .join(format!("agenthub-managed-agent-{}", Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?, ?)")
+            .bind(&workdir)
+            .bind(chrono::Utc::now().timestamp())
+            .execute(&state.db)
+            .await
+            .expect("insert managed agent safe path");
+
+        let create_payload = json!({
+            "name": "managed-agent",
+            "workdir": workdir,
+            "command": "agenthub-codex-acp",
+            "args": [],
+            "worktree_mode": "use_existing"
+        });
+        let viewer_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&viewer_token),
+                Some(create_payload.clone()),
+            ))
+            .await
+            .expect("create agent with viewer");
+        assert_eq!(viewer_create.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(viewer_create).await;
+        assert_eq!(body["error"], json!("agents:manage required"));
+
+        let operator_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&operator_token),
+                Some(create_payload),
+            ))
+            .await
+            .expect("create agent with operator");
+        assert_eq!(operator_create.status(), StatusCode::OK);
+
+        add_agent_node_support(&state.db).await;
+        let remote_create = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&operator_token),
+                Some(json!({
+                    "name": "remote-managed-agent",
+                    "workdir": "",
+                    "command": "agenthub-codex-acp",
+                    "args": [],
+                    "target_node_id": "worker-node",
+                    "worktree_mode": "use_existing"
+                })),
+            ))
+            .await
+            .expect("create remote agent with operator");
+        assert_eq!(remote_create.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(remote_create).await;
+        assert_eq!(body["error"], json!("nodes:manage required"));
+
+        let denied_routes = vec![
+            (Method::DELETE, "/missing-agent", None),
+            (
+                Method::POST,
+                "/missing-agent/code_mode",
+                Some(json!({
+                    "code_mode": true
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/codex_acp_default_mode",
+                Some(json!({
+                    "mode_id": "auto"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/runtime_profile",
+                Some(json!({
+                    "runtime_model": "gpt-5",
+                    "thinking_level": "high"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/agent_loop",
+                Some(json!({
+                    "enabled": false
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/acp/mode",
+                Some(json!({
+                    "mode_id": "default"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/acp/model",
+                Some(json!({
+                    "model_id": "gpt-5"
+                })),
+            ),
+            (
+                Method::POST,
+                "/missing-agent/acp/config",
+                Some(json!({
+                    "config_id": "approval_policy",
+                    "value": "on-request"
+                })),
+            ),
+        ];
+        for (method, route, payload) in denied_routes {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    method,
+                    route,
+                    Some(&viewer_token),
+                    payload,
+                ))
+                .await
+                .expect("run denied agent management request");
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{route}");
+            let body = decode_json_body(response).await;
+            assert_eq!(body["error"], json!("agents:manage required"), "{route}");
+        }
     }
 
     fn run_git(repo_dir: &std::path::Path, args: &[&str]) {
@@ -2558,7 +2692,7 @@ mod tests {
             })
             .await
             .expect("create agent node");
-        let token = create_non_root_auth_token(&state).await;
+        let token = create_role_auth_token(&state, UserRole::Operator).await;
         let app = router(state);
 
         let response = app
@@ -2724,6 +2858,7 @@ mod tests {
     async fn agent_upload_routes_publish_agent_scoped_metadata() {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
+        let viewer_token = create_role_auth_token(&state, UserRole::Viewer).await;
         let workdir = std::env::temp_dir()
             .join(format!("agenthub-upload-agent-{}", Uuid::new_v4()))
             .to_string_lossy()
@@ -2757,6 +2892,26 @@ mod tests {
             .expect("seed upload agent");
         let agent_id = agent.id;
         let app = router(state);
+
+        let viewer_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/uploads"),
+                Some(&viewer_token),
+                Some(json!({
+                    "file_name": "viewer.txt",
+                    "content_type": "text/plain",
+                    "bytes_base64": STANDARD.encode(b"viewer evidence"),
+                    "expected_size_bytes": 15,
+                    "expected_sha256": sha256_hex(b"viewer evidence")
+                })),
+            ))
+            .await
+            .expect("viewer upload agent object");
+        assert_eq!(viewer_response.status(), StatusCode::UNAUTHORIZED);
+        let viewer_body = decode_json_body(viewer_response).await;
+        assert_eq!(viewer_body["error"], Value::from("agents:manage required"));
 
         let bytes = b"agent evidence";
         let sha256 = sha256_hex(bytes);
@@ -2797,10 +2952,53 @@ mod tests {
             Value::from("evidence.txt")
         );
 
+        let download_bytes = b"agent downloaded evidence";
+        let download_sha256 = sha256_hex(download_bytes);
+        let download_response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/uploads/downloads"),
+                Some(&token),
+                Some(json!({
+                    "source_url": spawn_download_source(download_bytes.to_vec()).await,
+                    "file_name": "downloaded.txt",
+                    "content_type": "text/plain",
+                    "expected_size_bytes": download_bytes.len(),
+                    "expected_sha256": download_sha256
+                })),
+            ))
+            .await
+            .expect("download agent object");
+        let download_status = download_response.status();
+        let download_upload = decode_json_body(download_response).await;
+        assert_eq!(
+            download_status,
+            StatusCode::OK,
+            "unexpected object download body: {download_upload}"
+        );
+        assert_eq!(
+            download_upload["owner_scope"],
+            Value::from(format!("agents/{agent_id}"))
+        );
+        assert!(
+            download_upload["object_key"]
+                .as_str()
+                .is_some_and(|value| value.starts_with(&format!("uploads/agents/{agent_id}/")))
+        );
+        assert_eq!(
+            download_upload["original_filename"],
+            Value::from("downloaded.txt")
+        );
+        assert_eq!(
+            download_upload["size_bytes"],
+            Value::from(download_bytes.len() as i64)
+        );
+        assert_eq!(download_upload["sha256"], Value::from(download_sha256));
+
         let image_bytes = [5_u8, 6, 7, 8];
         let image_sha256 = sha256_hex(image_bytes);
         let image_response = app
-            .clone()
             .oneshot(build_json_request(
                 Method::POST,
                 &format!("/{agent_id}/images"),
@@ -2827,249 +3025,6 @@ mod tests {
                 .is_some_and(|value| value.starts_with(&format!("images/agents/{agent_id}/")))
         );
         assert_eq!(image_upload["content_type"], Value::from("image/png"));
-
-        let session_response = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions"),
-                Some(&token),
-                Some(json!({
-                    "file_name": "large.bin",
-                    "content_type": "application/octet-stream",
-                    "object_kind": "object",
-                    "expected_size_bytes": 128,
-                    "ttl_seconds": 60
-                })),
-            ))
-            .await
-            .expect("prepare agent upload session");
-        let session_status = session_response.status();
-        let session = decode_json_body(session_response).await;
-        assert_eq!(
-            session_status,
-            StatusCode::OK,
-            "unexpected session body: {session}"
-        );
-        assert_eq!(
-            session["owner_scope"],
-            Value::from(format!("agents/{agent_id}"))
-        );
-        assert_eq!(session["status"], Value::from("prepared"));
-        assert!(
-            session["object_key"]
-                .as_str()
-                .is_some_and(|value| value.starts_with(&format!("uploads/agents/{agent_id}/")))
-        );
-        let session_id = session["id"].as_str().expect("session id").to_string();
-
-        let canceled = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions/{session_id}/cancel"),
-                Some(&token),
-                None,
-            ))
-            .await
-            .expect("cancel agent upload session");
-        assert_eq!(canceled.status(), StatusCode::OK);
-
-        let complete_bytes = b"agent large object";
-        let complete_session_response = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions"),
-                Some(&token),
-                Some(json!({
-                    "file_name": "complete.bin",
-                    "content_type": "application/octet-stream",
-                    "object_kind": "object",
-                    "expected_size_bytes": complete_bytes.len(),
-                    "ttl_seconds": 60
-                })),
-            ))
-            .await
-            .expect("prepare complete agent upload session");
-        assert_eq!(complete_session_response.status(), StatusCode::OK);
-        let complete_session = decode_json_body(complete_session_response).await;
-        let complete_session_id = complete_session["id"]
-            .as_str()
-            .expect("complete session id")
-            .to_string();
-        let completed = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method(Method::POST)
-                    .uri(format!(
-                        "/{agent_id}/uploads/sessions/{complete_session_id}/complete"
-                    ))
-                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                    .header(header::CONTENT_TYPE, "application/octet-stream")
-                    .body(Body::from(complete_bytes.to_vec()))
-                    .expect("build complete request"),
-            )
-            .await
-            .expect("complete agent upload session");
-        let completed_status = completed.status();
-        let completed_upload = decode_json_body(completed).await;
-        assert_eq!(
-            completed_status,
-            StatusCode::OK,
-            "unexpected completed upload body: {completed_upload}"
-        );
-        assert_eq!(
-            completed_upload["owner_scope"],
-            Value::from(format!("agents/{agent_id}"))
-        );
-        assert_eq!(completed_upload["publish_state"], Value::from("published"));
-
-        let direct_session_response = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions"),
-                Some(&token),
-                Some(json!({
-                    "file_name": "direct.bin",
-                    "content_type": "application/octet-stream",
-                    "object_kind": "object",
-                    "expected_size_bytes": 11,
-                    "ttl_seconds": 60
-                })),
-            ))
-            .await
-            .expect("prepare direct agent upload session");
-        assert_eq!(direct_session_response.status(), StatusCode::OK);
-        let direct_session = decode_json_body(direct_session_response).await;
-        let direct_session_id = direct_session["id"]
-            .as_str()
-            .expect("direct session id")
-            .to_string();
-        let direct_write = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions/{direct_session_id}/direct-write"),
-                Some(&token),
-                Some(json!({ "expires_in_seconds": 60 })),
-            ))
-            .await
-            .expect("prepare direct agent upload session write");
-        assert_eq!(direct_write.status(), StatusCode::BAD_REQUEST);
-
-        let multipart_session_response = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions"),
-                Some(&token),
-                Some(json!({
-                    "file_name": "multipart.bin",
-                    "content_type": "application/octet-stream",
-                    "object_kind": "object",
-                    "expected_size_bytes": 16,
-                    "ttl_seconds": 60
-                })),
-            ))
-            .await
-            .expect("prepare multipart agent upload session");
-        assert_eq!(multipart_session_response.status(), StatusCode::OK);
-        let multipart_session = decode_json_body(multipart_session_response).await;
-        let multipart_session_id = multipart_session["id"]
-            .as_str()
-            .expect("multipart session id")
-            .to_string();
-        let multipart_upload = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions/{multipart_session_id}/multipart"),
-                Some(&token),
-                None,
-            ))
-            .await
-            .expect("initiate direct multipart agent upload session");
-        assert_eq!(multipart_upload.status(), StatusCode::BAD_REQUEST);
-
-        let part_bytes = b"agent resumable object";
-        let part_session_response = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions"),
-                Some(&token),
-                Some(json!({
-                    "file_name": "resumable.bin",
-                    "content_type": "application/octet-stream",
-                    "object_kind": "object",
-                    "expected_size_bytes": part_bytes.len(),
-                    "expected_sha256": sha256_hex(part_bytes),
-                    "ttl_seconds": 60
-                })),
-            ))
-            .await
-            .expect("prepare resumable agent upload session");
-        assert_eq!(part_session_response.status(), StatusCode::OK);
-        let part_session = decode_json_body(part_session_response).await;
-        let part_session_id = part_session["id"]
-            .as_str()
-            .expect("part session id")
-            .to_string();
-        for (part_number, chunk) in [
-            (1, b"agent ".as_slice()),
-            (2, b"resumable object".as_slice()),
-        ] {
-            let part_response = app
-                .clone()
-                .oneshot(
-                    Request::builder()
-                        .method(Method::POST)
-                        .uri(format!(
-                            "/{agent_id}/uploads/sessions/{part_session_id}/parts/{part_number}"
-                        ))
-                        .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                        .header(header::CONTENT_TYPE, "application/octet-stream")
-                        .body(Body::from(chunk.to_vec()))
-                        .expect("build upload part request"),
-                )
-                .await
-                .expect("upload agent session part");
-            let part_status = part_response.status();
-            let part = decode_json_body(part_response).await;
-            assert_eq!(
-                part_status,
-                StatusCode::OK,
-                "unexpected part upload body: {part}"
-            );
-            assert_eq!(part["part_number"], Value::from(part_number));
-        }
-        let completed_parts = app
-            .oneshot(build_json_request(
-                Method::POST,
-                &format!("/{agent_id}/uploads/sessions/{part_session_id}/complete-parts"),
-                Some(&token),
-                None,
-            ))
-            .await
-            .expect("complete agent upload session from parts");
-        let completed_parts_status = completed_parts.status();
-        let completed_parts_upload = decode_json_body(completed_parts).await;
-        assert_eq!(
-            completed_parts_status,
-            StatusCode::OK,
-            "unexpected completed parts body: {completed_parts_upload}"
-        );
-        assert_eq!(
-            completed_parts_upload["owner_scope"],
-            Value::from(format!("agents/{agent_id}"))
-        );
-        assert_eq!(
-            completed_parts_upload["size_bytes"],
-            Value::from(part_bytes.len() as i64)
-        );
     }
 
     #[tokio::test]
@@ -5199,386 +5154,6 @@ mod tests {
             body.contains("permission request not found for agent"),
             "unexpected error body: {body}"
         );
-    }
-
-    #[tokio::test]
-    async fn agent_management_routes_require_agents_manage_capability() {
-        let state = build_test_state().await;
-        let operator_token = create_auth_token_with_role(&state, "operator").await;
-        let unknown_role_token = create_auth_token_with_role(&state, "unknown").await;
-        let app = router(state.clone());
-        let now = chrono::Utc::now().timestamp();
-
-        sqlx::query(
-            r#"
-            INSERT INTO agents (
-                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'created', ?7, ?8)
-            "#,
-        )
-        .bind("delete-agent")
-        .bind("delete-agent")
-        .bind("/tmp")
-        .bind("agenthub-codex-acp")
-        .bind("[]")
-        .bind("use_existing")
-        .bind(now)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert delete agent");
-
-        let denied_management_requests = [
-            (
-                Method::POST,
-                "/",
-                Some(json!({
-                    "name": "denied-create-agent",
-                    "workdir": "/tmp",
-                    "command": "agenthub-codex-acp",
-                    "args": []
-                })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/uploads",
-                Some(json!({
-                    "file_name": "denied.txt",
-                    "content_type": "text/plain",
-                    "bytes_base64": "ZGVuaWVk"
-                })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/uploads/sessions",
-                Some(json!({
-                    "file_name": "denied.bin",
-                    "content_type": "application/octet-stream",
-                    "object_kind": "object",
-                    "expected_size_bytes": 7
-                })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/codex_acp_default_mode",
-                Some(json!({ "mode_id": null })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/runtime_profile",
-                Some(json!({
-                    "runtime_model": null,
-                    "thinking_level": null
-                })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/agent_loop",
-                Some(json!({ "enabled": false })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/acp/session/clear",
-                Some(json!({ "provider": "codex" })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/acp/mode",
-                Some(json!({ "mode_id": "read-only" })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/acp/model",
-                Some(json!({ "model_id": "gpt-5" })),
-            ),
-            (
-                Method::POST,
-                "/delete-agent/acp/config",
-                Some(json!({
-                    "config_id": "approval_policy",
-                    "value": "default"
-                })),
-            ),
-        ];
-        for (method, path, payload) in denied_management_requests {
-            let denied = app
-                .clone()
-                .oneshot(build_json_request(
-                    method,
-                    path,
-                    Some(&unknown_role_token),
-                    payload,
-                ))
-                .await
-                .expect("execute denied management request");
-            assert_eq!(denied.status(), StatusCode::UNAUTHORIZED, "path={path}");
-            let denied_body = decode_json_body(denied).await;
-            assert_eq!(
-                denied_body["error"],
-                json!("agents:manage required"),
-                "path={path}"
-            );
-        }
-
-        let denied_code_mode = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                "/delete-agent/code_mode",
-                Some(&unknown_role_token),
-                Some(json!({ "code_mode": false })),
-            ))
-            .await
-            .expect("execute denied code mode request");
-        assert_eq!(denied_code_mode.status(), StatusCode::UNAUTHORIZED);
-        let denied_code_mode_body = decode_json_body(denied_code_mode).await;
-        assert_eq!(
-            denied_code_mode_body["error"],
-            json!("agents:manage required")
-        );
-
-        let allowed_code_mode = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::POST,
-                "/delete-agent/code_mode",
-                Some(&operator_token),
-                Some(json!({ "code_mode": false })),
-            ))
-            .await
-            .expect("execute allowed code mode request");
-        assert_eq!(allowed_code_mode.status(), StatusCode::OK);
-
-        let denied_delete = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::DELETE,
-                "/delete-agent",
-                Some(&unknown_role_token),
-                None,
-            ))
-            .await
-            .expect("execute denied delete request");
-        assert_eq!(denied_delete.status(), StatusCode::UNAUTHORIZED);
-        let denied_delete_body = decode_json_body(denied_delete).await;
-        assert_eq!(denied_delete_body["error"], json!("agents:manage required"));
-
-        let allowed = app
-            .oneshot(build_json_request(
-                Method::DELETE,
-                "/delete-agent",
-                Some(&operator_token),
-                None,
-            ))
-            .await
-            .expect("execute allowed delete request");
-        assert_eq!(allowed.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn agent_runtime_operate_routes_require_runtime_operate_capability() {
-        let state = build_test_state().await;
-        let operator_token = create_auth_token_with_role(&state, "operator").await;
-        let unknown_role_token = create_auth_token_with_role(&state, "unknown").await;
-        let app = router(state.clone());
-        let now = chrono::Utc::now().timestamp();
-
-        sqlx::query(
-            r#"
-            INSERT INTO agents (
-                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'running', ?7, ?8)
-            "#,
-        )
-        .bind("operate-agent")
-        .bind("operate-agent")
-        .bind("/tmp")
-        .bind("agenthub-codex-acp")
-        .bind("[]")
-        .bind("use_existing")
-        .bind(now)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert operate agent");
-
-        sqlx::query(
-            r#"
-            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
-            VALUES (?1, ?2, 'running', ?3, NULL)
-            "#,
-        )
-        .bind("session-operate")
-        .bind("operate-agent")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert operate session");
-
-        for (method, path, payload) in [
-            (
-                Method::POST,
-                "/operate-agent/start",
-                Some(json!({
-                    "actor_runtime": {
-                        "actor_id": "coordinator"
-                    }
-                })),
-            ),
-            (
-                Method::POST,
-                "/operate-agent/input",
-                Some(json!({ "input": "" })),
-            ),
-            (Method::POST, "/operate-agent/stop", None),
-            (
-                Method::POST,
-                "/operate-agent/triggers",
-                Some(json!({ "delay_seconds": 1, "message": "Resume" })),
-            ),
-            (Method::POST, "/operate-agent/triggers/missing/cancel", None),
-            (Method::POST, "/operate-agent/acp/cancel", None),
-            (
-                Method::POST,
-                "/operate-agent/permissions/missing/respond",
-                Some(json!({ "outcome": "cancelled" })),
-            ),
-        ] {
-            let denied = app
-                .clone()
-                .oneshot(build_json_request(
-                    method.clone(),
-                    path,
-                    Some(&unknown_role_token),
-                    payload.clone(),
-                ))
-                .await
-                .expect("execute denied operate request");
-            assert_eq!(denied.status(), StatusCode::UNAUTHORIZED, "path={path}");
-            let denied_body = decode_json_body(denied).await;
-            assert_eq!(
-                denied_body["error"],
-                json!("runtime:operate required"),
-                "path={path}"
-            );
-
-            let allowed = app
-                .clone()
-                .oneshot(build_json_request(
-                    method,
-                    path,
-                    Some(&operator_token),
-                    payload,
-                ))
-                .await
-                .expect("execute allowed operate request");
-            assert_ne!(
-                allowed.status(),
-                StatusCode::UNAUTHORIZED,
-                "operator should pass auth for path={path}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn agent_runtime_inspect_routes_require_runtime_inspect_capability() {
-        let state = build_test_state().await;
-        let viewer_token = create_auth_token_with_role(&state, "viewer").await;
-        let unknown_role_token = create_auth_token_with_role(&state, "unknown").await;
-        let app = router(state.clone());
-        let now = chrono::Utc::now().timestamp();
-
-        sqlx::query(
-            r#"
-            INSERT INTO agents (
-                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'running', ?7, ?8)
-            "#,
-        )
-        .bind("inspect-agent")
-        .bind("inspect-agent")
-        .bind("/tmp")
-        .bind("agenthub-codex-acp")
-        .bind("[]")
-        .bind("use_existing")
-        .bind(now)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert inspect agent");
-
-        sqlx::query(
-            r#"
-            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
-            VALUES (?1, ?2, 'running', ?3, NULL)
-            "#,
-        )
-        .bind("session-inspect")
-        .bind("inspect-agent")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert inspect session");
-
-        let event_db = state
-            .agents
-            .test_event_pool_for_agent("inspect-agent")
-            .await
-            .expect("event pool");
-        sqlx::query(
-            r#"
-            INSERT INTO agent_events (session_id, seq, ts, stream, message)
-            VALUES (?1, ?2, ?3, 'stdout', ?4)
-            "#,
-        )
-        .bind("session-inspect")
-        .bind("seq-inspect")
-        .bind(now)
-        .bind("inspect event")
-        .execute(&event_db)
-        .await
-        .expect("insert inspect event");
-
-        for path in [
-            "/",
-            "/inspect-agent",
-            "/inspect-agent/.well-known/agent-card",
-            "/inspect-agent/events",
-            "/inspect-agent/permissions",
-        ] {
-            let denied = app
-                .clone()
-                .oneshot(build_json_request(
-                    Method::GET,
-                    path,
-                    Some(&unknown_role_token),
-                    None,
-                ))
-                .await
-                .expect("execute denied inspect request");
-            assert_eq!(denied.status(), StatusCode::UNAUTHORIZED, "path={path}");
-            let denied_body = decode_json_body(denied).await;
-            assert_eq!(
-                denied_body["error"],
-                json!("runtime:inspect required"),
-                "path={path}"
-            );
-
-            let allowed = app
-                .clone()
-                .oneshot(build_json_request(
-                    Method::GET,
-                    path,
-                    Some(&viewer_token),
-                    None,
-                ))
-                .await
-                .expect("execute allowed inspect request");
-            assert_eq!(allowed.status(), StatusCode::OK, "path={path}");
-        }
     }
 
     #[tokio::test]

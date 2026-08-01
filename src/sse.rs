@@ -1313,6 +1313,15 @@ mod tests {
                 region: None,
                 access_key_id_env: None,
                 secret_access_key_env: None,
+                download_max_bytes: Some(1024 * 1024),
+                download_max_redirects: Some(3),
+                download_timeout_seconds: Some(10),
+                download_retry_attempts: Some(1),
+                download_retry_backoff_millis: Some(0),
+                download_max_concurrent_per_host: Some(4),
+                download_allow_private_networks: Some(true),
+                download_allowed_hosts: None,
+                download_denied_hosts: None,
             }),
             ..Default::default()
         };

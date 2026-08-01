@@ -1,3 +1,4 @@
+use agenthub_auth_domain::UserCapability;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -5,10 +6,8 @@ use axum::{
     routing::{get, post},
 };
 
-use agenthub_auth_domain::UserCapability;
-
 use crate::agent::{AgentNodeConfig, AgentNodeJoinBootstrapInfo, AgentNodeRecord, AgentNodeUpdate};
-use crate::api::authz::require_capability;
+use crate::api::authz::{require_capability, require_root};
 use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::state::AppState;
@@ -88,7 +87,7 @@ async fn get_agent_node_bootstrap(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<AgentNodeJoinBootstrapInfo>, ApiError> {
-    let _user = require_capability(&headers, &state, UserCapability::NodesManage).await?;
+    let _user = require_root(&headers, &state).await?;
     Ok(Json(state.agent_node_join_bootstrap.clone()))
 }
 
@@ -123,6 +122,7 @@ async fn delete_agent_node(
 
 #[cfg(test)]
 mod tests {
+    use agenthub_auth_domain::UserRole;
     use axum::body::{Body, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use serde_json::{Value, json};
@@ -132,9 +132,10 @@ mod tests {
     use super::router;
     use crate::api::team_tests::{build_test_state, create_auth_token};
 
-    async fn create_auth_token_with_role(state: &crate::state::AppState, role: &str) -> String {
+    async fn create_role_auth_token(state: &crate::state::AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().timestamp();
+        let role_str = role.as_str();
         sqlx::query(
             r#"
             INSERT INTO users (id, username, display_name, role, password_hash, created_at)
@@ -142,18 +143,18 @@ mod tests {
             "#,
         )
         .bind(&user_id)
-        .bind(format!("{role}-{}", Uuid::new_v4()))
-        .bind("Agent Node Test User")
-        .bind(role)
+        .bind(format!("{role_str}-{}", Uuid::new_v4()))
+        .bind(role_str)
+        .bind(role_str)
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert user");
+        .expect("insert role user");
         state
             .auth
             .create_session(&user_id)
             .await
-            .expect("create session")
+            .expect("create role session")
     }
 
     fn build_json_request(
@@ -185,7 +186,8 @@ mod tests {
     #[tokio::test]
     async fn agent_node_routes_require_nodes_manage_capability() {
         let state = build_test_state().await;
-        let operator_token = create_auth_token_with_role(&state, "operator").await;
+        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
+        let admin_token = create_role_auth_token(&state, UserRole::Admin).await;
         let app = router(state.clone());
 
         let response = app
@@ -202,7 +204,6 @@ mod tests {
         let body = decode_json_body(response).await;
         assert_eq!(body["error"], json!("nodes:manage required"));
 
-        let admin_token = create_auth_token_with_role(&state, "admin").await;
         let response = app
             .oneshot(build_json_request(
                 Method::GET,
@@ -216,26 +217,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_agent_node_bootstrap_requires_nodes_manage_capability() {
+    async fn get_agent_node_bootstrap_requires_root() {
         let state = build_test_state().await;
-        let operator_token = create_auth_token_with_role(&state, "operator").await;
-        let app = router(state.clone());
+        let admin_token = create_role_auth_token(&state, UserRole::Admin).await;
+        let app = router(state);
 
-        let response = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::GET,
-                "/bootstrap",
-                Some(&operator_token),
-                None,
-            ))
-            .await
-            .expect("run operator get agent node bootstrap request");
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        let body = decode_json_body(response).await;
-        assert_eq!(body["error"], json!("nodes:manage required"));
-
-        let admin_token = create_auth_token_with_role(&state, "admin").await;
         let response = app
             .oneshot(build_json_request(
                 Method::GET,
@@ -245,11 +231,13 @@ mod tests {
             ))
             .await
             .expect("run admin get agent node bootstrap request");
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], json!("root required"));
     }
 
     #[tokio::test]
-    async fn get_agent_node_bootstrap_returns_nodes_manage_join_info() {
+    async fn get_agent_node_bootstrap_returns_root_only_join_info() {
         let mut state = build_test_state().await;
         state.agent_node_join_bootstrap = crate::agent::AgentNodeJoinBootstrapInfo {
             enabled: true,

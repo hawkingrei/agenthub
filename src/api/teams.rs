@@ -20,7 +20,6 @@ use agenthub_team_prompts::{
 };
 use axum::{
     Json, Router,
-    body::Bytes,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{delete, get, post, put},
@@ -37,16 +36,7 @@ use agenthub_auth_domain::UserCapability;
 use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
 use crate::api::uploads::{
-    UploadRequest, UploadSessionDirectWriteRequest, UploadSessionDirectWriteResponse,
-    UploadSessionMultipartAbortRequest, UploadSessionMultipartCompleteRequest,
-    UploadSessionMultipartPartWriteRequest, UploadSessionMultipartPartWriteResponse,
-    UploadSessionMultipartUploadResponse, UploadSessionPrepareRequest,
-    abort_scoped_multipart_upload_session, cancel_scoped_upload_session,
-    complete_scoped_direct_upload_session, complete_scoped_multipart_upload_session,
-    complete_scoped_upload_session, complete_scoped_upload_session_parts,
-    initiate_scoped_multipart_upload_session, prepare_scoped_direct_upload_session_write,
-    prepare_scoped_multipart_upload_session_part, prepare_scoped_upload_session,
-    upload_scoped_object, upload_scoped_upload_session_part,
+    DownloadRequest, UploadRequest, download_scoped_object, upload_scoped_object,
 };
 use crate::auth::UserRecord;
 use crate::object_upload::{ObjectUploadKind, ObjectUploadOwnerScope};
@@ -277,7 +267,7 @@ pub struct CreateTeamChannelRequest {
 }
 
 pub type TeamUploadRequest = UploadRequest;
-pub type TeamUploadSessionPrepareRequest = UploadSessionPrepareRequest;
+pub type TeamDownloadRequest = DownloadRequest;
 
 #[derive(Debug, Deserialize)]
 pub struct CompileTeamTaskRunPreviewRequest {
@@ -555,97 +545,17 @@ pub fn router(state: AppState) -> Router {
             get(list_team_channels).post(create_team_channel),
         )
         .route("/{id}/uploads", post(upload_team_object))
+        .route("/{id}/uploads/downloads", post(download_team_object))
         .route("/{id}/images", post(upload_team_image))
-        .route("/{id}/uploads/sessions", post(prepare_team_upload_session))
-        .route(
-            "/{id}/uploads/sessions/{session_id}/cancel",
-            post(cancel_team_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/complete",
-            post(complete_team_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/direct-write",
-            post(prepare_team_direct_upload_session_write),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/complete-direct",
-            post(complete_team_direct_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/multipart",
-            post(initiate_team_multipart_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/multipart/parts/{part_number}",
-            post(prepare_team_multipart_upload_session_part),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/multipart/complete",
-            post(complete_team_multipart_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/multipart/abort",
-            post(abort_team_multipart_upload_session),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/parts/{part_number}",
-            post(upload_team_upload_session_part),
-        )
-        .route(
-            "/{id}/uploads/sessions/{session_id}/complete-parts",
-            post(complete_team_upload_session_parts),
-        )
         .route(
             "/{id}/tasks/{task_id}/uploads",
             post(upload_team_task_object),
         )
+        .route(
+            "/{id}/tasks/{task_id}/uploads/downloads",
+            post(download_team_task_object),
+        )
         .route("/{id}/tasks/{task_id}/images", post(upload_team_task_image))
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions",
-            post(prepare_team_task_upload_session),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/cancel",
-            post(cancel_team_task_upload_session),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/complete",
-            post(complete_team_task_upload_session),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/direct-write",
-            post(prepare_team_task_direct_upload_session_write),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/complete-direct",
-            post(complete_team_task_direct_upload_session),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/multipart",
-            post(initiate_team_task_multipart_upload_session),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/multipart/parts/{part_number}",
-            post(prepare_team_task_multipart_upload_session_part),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/multipart/complete",
-            post(complete_team_task_multipart_upload_session),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/multipart/abort",
-            post(abort_team_task_multipart_upload_session),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/parts/{part_number}",
-            post(upload_team_task_upload_session_part),
-        )
-        .route(
-            "/{id}/tasks/{task_id}/uploads/sessions/{session_id}/complete-parts",
-            post(complete_team_task_upload_session_parts),
-        )
         .route("/{id}/channels/{channel_id}", delete(delete_team_channel))
         .route(
             "/{id}/tasks/{task_id}/compile_run_preview",
@@ -1196,6 +1106,23 @@ async fn upload_team_image(
     upload_team_scoped_object(state, headers, team_id, payload, ObjectUploadKind::Image).await
 }
 
+async fn download_team_object(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<TeamDownloadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    download_scoped_object(
+        State(state),
+        &user,
+        ObjectUploadOwnerScope::Team(team.id),
+        payload,
+    )
+    .await
+}
+
 async fn upload_team_scoped_object(
     state: AppState,
     headers: HeaderMap,
@@ -1211,187 +1138,6 @@ async fn upload_team_scoped_object(
         ObjectUploadOwnerScope::Team(team.id),
         payload,
         kind,
-    )
-    .await
-}
-
-async fn prepare_team_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(team_id): Path<String>,
-    Json(payload): Json<TeamUploadSessionPrepareRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    prepare_scoped_upload_session(
-        State(state),
-        &user,
-        ObjectUploadOwnerScope::Team(team.id),
-        payload,
-    )
-    .await
-}
-
-async fn cancel_team_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id)): Path<(String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    cancel_scoped_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-    )
-    .await
-}
-
-async fn complete_team_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id)): Path<(String, String)>,
-    bytes: Bytes,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    complete_scoped_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-        bytes,
-    )
-    .await
-}
-
-async fn prepare_team_direct_upload_session_write(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id)): Path<(String, String)>,
-    Json(payload): Json<UploadSessionDirectWriteRequest>,
-) -> Result<Json<UploadSessionDirectWriteResponse>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    prepare_scoped_direct_upload_session_write(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn complete_team_direct_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id)): Path<(String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    complete_scoped_direct_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-    )
-    .await
-}
-
-async fn initiate_team_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id)): Path<(String, String)>,
-) -> Result<Json<UploadSessionMultipartUploadResponse>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    initiate_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-    )
-    .await
-}
-
-async fn prepare_team_multipart_upload_session_part(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id, part_number)): Path<(String, String, u32)>,
-    Json(payload): Json<UploadSessionMultipartPartWriteRequest>,
-) -> Result<Json<UploadSessionMultipartPartWriteResponse>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    prepare_scoped_multipart_upload_session_part(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-        part_number,
-        payload,
-    )
-    .await
-}
-
-async fn complete_team_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id)): Path<(String, String)>,
-    Json(payload): Json<UploadSessionMultipartCompleteRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    complete_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn abort_team_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id)): Path<(String, String)>,
-    Json(payload): Json<UploadSessionMultipartAbortRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    abort_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn upload_team_upload_session_part(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id, part_number)): Path<(String, String, u32)>,
-    bytes: Bytes,
-) -> Result<Json<agenthub_db::ObjectUploadSessionPartRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    upload_scoped_upload_session_part(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
-        part_number,
-        bytes,
-    )
-    .await
-}
-
-async fn complete_team_upload_session_parts(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, session_id)): Path<(String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
-    complete_scoped_upload_session_parts(
-        State(state),
-        ObjectUploadOwnerScope::Team(team.id),
-        session_id,
     )
     .await
 }
@@ -1458,12 +1204,12 @@ async fn upload_team_task_scoped_object(
     .await
 }
 
-async fn prepare_team_task_upload_session(
+async fn download_team_task_object(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((team_id, task_id)): Path<(String, String)>,
-    Json(payload): Json<TeamUploadSessionPrepareRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
+    Json(payload): Json<TeamDownloadRequest>,
+) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
     let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
@@ -1474,255 +1220,11 @@ async fn prepare_team_task_upload_session(
     if task.team_id != team_id {
         return Err(ApiError::not_found("task not found"));
     }
-    prepare_scoped_upload_session(
+    download_scoped_object(
         State(state),
         &user,
         ObjectUploadOwnerScope::Task(task.id),
         payload,
-    )
-    .await
-}
-
-async fn cancel_team_task_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    cancel_scoped_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-    )
-    .await
-}
-
-async fn complete_team_task_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
-    bytes: Bytes,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    complete_scoped_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-        bytes,
-    )
-    .await
-}
-
-async fn prepare_team_task_direct_upload_session_write(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
-    Json(payload): Json<UploadSessionDirectWriteRequest>,
-) -> Result<Json<UploadSessionDirectWriteResponse>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    prepare_scoped_direct_upload_session_write(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn complete_team_task_direct_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    complete_scoped_direct_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-    )
-    .await
-}
-
-async fn initiate_team_task_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
-) -> Result<Json<UploadSessionMultipartUploadResponse>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    initiate_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-    )
-    .await
-}
-
-async fn prepare_team_task_multipart_upload_session_part(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id, part_number)): Path<(String, String, String, u32)>,
-    Json(payload): Json<UploadSessionMultipartPartWriteRequest>,
-) -> Result<Json<UploadSessionMultipartPartWriteResponse>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    prepare_scoped_multipart_upload_session_part(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-        part_number,
-        payload,
-    )
-    .await
-}
-
-async fn complete_team_task_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
-    Json(payload): Json<UploadSessionMultipartCompleteRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    complete_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn abort_team_task_multipart_upload_session(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
-    Json(payload): Json<UploadSessionMultipartAbortRequest>,
-) -> Result<Json<agenthub_db::ObjectUploadSessionRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    abort_scoped_multipart_upload_session(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-        payload,
-    )
-    .await
-}
-
-async fn upload_team_task_upload_session_part(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id, part_number)): Path<(String, String, String, u32)>,
-    bytes: Bytes,
-) -> Result<Json<agenthub_db::ObjectUploadSessionPartRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    upload_scoped_upload_session_part(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
-        part_number,
-        bytes,
-    )
-    .await
-}
-
-async fn complete_team_task_upload_session_parts(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((team_id, task_id, session_id)): Path<(String, String, String)>,
-) -> Result<Json<agenthub_db::ObjectUploadRecord>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let task = state
-        .teams
-        .get_task(&task_id)
-        .await
-        .map_err(|err| map_not_found_error(err, "task not found"))?;
-    if task.team_id != team_id {
-        return Err(ApiError::not_found("task not found"));
-    }
-    complete_scoped_upload_session_parts(
-        State(state),
-        ObjectUploadOwnerScope::Task(task.id),
-        session_id,
     )
     .await
 }
@@ -1993,7 +1495,7 @@ async fn compile_team_task_run_preview(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<CompileTeamTaskRunPreviewRequest>,
 ) -> Result<Json<TeamTaskRunCompilePreviewResponse>, ApiError> {
-    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
     ensure_team_execution_ready(&team.spec)?;
     let task = state

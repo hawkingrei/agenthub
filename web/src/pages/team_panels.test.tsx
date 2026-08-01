@@ -17,26 +17,13 @@ import {
   TeamTaskRecord,
 } from "../api";
 import { TeamEventsPanel } from "./team_events_panel";
-import {
-  areMailboxConversationMessageRowPropsEqual,
-  TeamMailboxPanel,
-  type MailboxConversationMessageRowProps,
-} from "./team_mailbox_panel";
+import { TeamMailboxPanel } from "./team_mailbox_panel";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
-import {
-  areTeamTaskActivityRowPropsEqual,
-  TeamTaskPanel,
-  TeamTaskPanelLoadingSkeleton,
-  type TeamTaskActivityRowProps,
-} from "./team_task_panel";
-import {
-  areTeamTaskBoardCardPropsEqual,
-  TeamTasksPanel,
-  type TeamTaskBoardCardProps,
-} from "./team_tasks_panel";
+import { TeamTaskPanel, TeamTaskPanelLoadingSkeleton } from "./team_task_panel";
+import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { buildTeamSidebarSearchResults, TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
@@ -53,9 +40,8 @@ import { TeamEditMemberDialog, type TeamModalChrome } from "./team/team_manageme
 import {
   TeamWorkspaceProvider,
   type TeamWorkspaceContextValue,
-  useTeamWorkbenchRuntime,
-  useTeamWorkspaceShell,
 } from "./team/team_workspace_context";
+import { resolveTeamSelectedMemberId } from "./team/team_route_helpers";
 import {
   MAILBOX_ADVANCED_PANEL_TITLE_CLASS,
   MAILBOX_CHAT_HEADER_CLASS,
@@ -513,166 +499,6 @@ function buildMemberLiveState(
   };
 }
 
-function buildTeamTaskActivityRowProps(
-  overrides: Partial<TeamTaskActivityRowProps> = {}
-): TeamTaskActivityRowProps {
-  const row: TeamTaskActivityRowProps["row"] = {
-    item: {
-      key: "conversation-101",
-      sequence: 101,
-      createdAt: 1713480000000,
-      createdAtLabel: "2026/4/19 00:00:00",
-      fromActorId: "worker-agent",
-      toActorId: "human",
-      routeOrStatus: "team_channel_message",
-      streamLabel: "conversation",
-      payload: { type: "chat_message", text: "Stable channel body" },
-      text: "Stable channel body",
-      permissionCardPayload: null,
-      canOpenThread: true,
-      threadReplyCount: 0,
-    },
-    state: buildMemberLiveState({
-      member_id: "worker-agent",
-      agent_name: "Worker Agent",
-    }),
-    isHumanAuthor: false,
-    isActiveThreadRoot: false,
-    authorLabel: "Worker Agent",
-    seenActorIds: [],
-    seenProgress: {
-      readActorIds: [],
-      unreadActorIds: ["human"],
-      totalCount: 1,
-      readCount: 0,
-      unreadCount: 1,
-      progress: 0,
-    },
-    shouldShowSeenMeta: true,
-    itemClassName: "activity-item",
-    contentClassName: "activity-content",
-    bubbleClassName: "activity-bubble",
-    threadButtonLabel: "Thread",
-    permissionCardPayload: null,
-    permissionBusy: false,
-  };
-  return {
-    row,
-    developerMode: false,
-    expanded: false,
-    isChannelConversation: true,
-    memberDisplayNamesById: { human: "You", "worker-agent": "Worker Agent" },
-    renderSanitizedHtml: (text: string) => text,
-    onMentionClick: vi.fn(),
-    onOpenThread: vi.fn(),
-    onRespondPermission: vi.fn(),
-    onRegisterActivityItem: vi.fn(),
-    onToggleDetails: vi.fn(),
-    ...overrides,
-  };
-}
-
-function buildMailboxConversationMessageRowProps(
-  overrides: Partial<MailboxConversationMessageRowProps> = {}
-): MailboxConversationMessageRowProps {
-  const message = buildMailboxMessage(201, {
-    payload: { type: "chat_message", text: "Stable mailbox body" },
-  });
-  return {
-    row: {
-      message,
-      isOutgoing: false,
-      htmlPayload: "Stable mailbox body",
-      payload: "Stable mailbox body",
-      fromLabel: "Coordinator Agent",
-      toLabel: "Worker Agent",
-      createdAtLabel: "2026/4/19 00:00:00",
-      canAccept: true,
-    },
-    busy: null,
-    onAcceptMessage: vi.fn(),
-    onOpenMention: vi.fn(),
-    ...overrides,
-  };
-}
-
-function buildTeamTaskBoardCardProps(
-  overrides: Partial<TeamTaskBoardCardProps> = {}
-): TeamTaskBoardCardProps {
-  const task = buildPanelTask("task-1", {
-    title: "Stabilize task board",
-    priority: "high",
-    assigned_member_id: "worker-agent",
-  });
-  return {
-    task,
-    active: false,
-    developerMode: false,
-    updatedAtLabel: "2026/4/19 00:01:40",
-    createdAtLabel: "2026/4/19 00:00:00",
-    assigneeLabel: "Worker Agent",
-    priority: "high",
-    priorityLabel: "High",
-    priorityClassName: "priority-high",
-    onSelectTask: vi.fn(),
-    ...overrides,
-  };
-}
-
-function buildWorkspaceContextValue(
-  overrides: Partial<TeamWorkspaceContextValue> = {}
-): TeamWorkspaceContextValue {
-  return {
-    workbench: {} as TeamWorkbenchRuntimeContext,
-    selectedConversation: null,
-    developerMode: false,
-    token: "token",
-    tasksLoading: false,
-    onRefreshTasks: vi.fn(),
-    taskMessageDraft: "",
-    setTaskMessageDraft: vi.fn(),
-    onSendTaskMessage: vi.fn(),
-    taskMessages: [],
-    conversationMailboxMessages: [],
-    snapshot: null,
-    mailboxDisplayNameByActorId: {},
-    selectedTeamMemberLiveStates: [],
-    taskConversationMemberIds: [],
-    activeConversationTitle: "# all",
-    selectedConversationMatchesChannelLane: false,
-    taskMessagesLoading: false,
-    busy: null,
-    routeThreadRootMessageId: null,
-    routeSelectedMemberId: "",
-    channelFocusMessageId: null,
-    setChannelFocusMessageId: vi.fn(),
-    effectiveSelectedTeamId: "team-1",
-    routeWorkspaceLens: "channels",
-    routeChannelId: "all",
-    activeChannelConversationTaskId: null,
-    navigateTeamRoute: vi.fn(),
-    isCompactWorkbench: false,
-    selectedChannelItem: undefined,
-    workspaceTasks: [],
-    selectedTaskId: "",
-    setSelectedTaskId: vi.fn(),
-    onSelectConversationSubject: vi.fn(),
-    runs: [],
-    onOpenTaskRun: vi.fn(),
-    compilePreviewContextId: "",
-    setCompilePreviewContextId: vi.fn(),
-    onCompileTaskRunPreview: vi.fn(),
-    canCompileTask: false,
-    compiledRunPreview: null,
-    onUseCompiledRunPayload: vi.fn(),
-    onCreateRunFromCompiledPreview: vi.fn(),
-    onSendThreadReply: vi.fn(),
-    threadReplyDraft: "",
-    setThreadReplyDraft: vi.fn(),
-    ...overrides,
-  };
-}
-
 describe("team panels interactions", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -690,174 +516,6 @@ describe("team panels interactions", () => {
       root.unmount();
     });
     container.remove();
-  });
-
-  it("TeamTaskPanel skips activity row updates when parent-only state changes", () => {
-    const props = buildTeamTaskActivityRowProps();
-
-    expect(
-      areTeamTaskActivityRowPropsEqual(props, {
-        ...props,
-        row: {
-          ...props.row,
-          item: { ...props.row.item },
-          seenActorIds: [...props.row.seenActorIds],
-          seenProgress: {
-            ...props.row.seenProgress,
-            readActorIds: [...props.row.seenProgress.readActorIds],
-            unreadActorIds: [...props.row.seenProgress.unreadActorIds],
-          },
-        },
-      })
-    ).toBe(true);
-  });
-
-  it("TeamTaskPanel updates activity rows for visible thread, receipt, and permission state", () => {
-    const props = buildTeamTaskActivityRowProps();
-
-    expect(
-      areTeamTaskActivityRowPropsEqual(props, {
-        ...props,
-        row: {
-          ...props.row,
-          isActiveThreadRoot: true,
-          itemClassName: "activity-item active",
-        },
-      })
-    ).toBe(false);
-    expect(
-      areTeamTaskActivityRowPropsEqual(props, {
-        ...props,
-        row: {
-          ...props.row,
-          seenActorIds: ["human"],
-          seenProgress: {
-            readActorIds: ["human"],
-            unreadActorIds: [],
-            totalCount: 1,
-            readCount: 1,
-            unreadCount: 0,
-            progress: 100,
-          },
-        },
-      })
-    ).toBe(false);
-    expect(
-      areTeamTaskActivityRowPropsEqual(props, {
-        ...props,
-        row: {
-          ...props.row,
-          permissionBusy: true,
-        },
-      })
-    ).toBe(false);
-  });
-
-  it("TeamMailboxPanel skips conversation row updates when parent-only state changes", () => {
-    const props = buildMailboxConversationMessageRowProps();
-
-    expect(
-      areMailboxConversationMessageRowPropsEqual(props, {
-        ...props,
-        row: {
-          ...props.row,
-          message: {
-            ...props.row.message,
-            payload: { type: "chat_message", text: "Stable mailbox body" },
-          },
-        },
-      })
-    ).toBe(true);
-  });
-
-  it("TeamMailboxPanel updates conversation rows for visible mailbox state changes", () => {
-    const props = buildMailboxConversationMessageRowProps();
-
-    expect(
-      areMailboxConversationMessageRowPropsEqual(props, {
-        ...props,
-        busy: "accept-message",
-      })
-    ).toBe(false);
-    expect(
-      areMailboxConversationMessageRowPropsEqual(props, {
-        ...props,
-        row: {
-          ...props.row,
-          canAccept: false,
-          message: {
-            ...props.row.message,
-            status: "delivered",
-          },
-        },
-      })
-    ).toBe(false);
-    expect(
-      areMailboxConversationMessageRowPropsEqual(props, {
-        ...props,
-        row: {
-          ...props.row,
-          htmlPayload: "Updated mailbox body",
-          payload: "Updated mailbox body",
-          message: {
-            ...props.row.message,
-            payload: { type: "chat_message", text: "Updated mailbox body" },
-          },
-        },
-      })
-    ).toBe(false);
-  });
-
-  it("TeamTasksPanel skips task board card updates when parent-only state changes", () => {
-    const props = buildTeamTaskBoardCardProps();
-
-    expect(
-      areTeamTaskBoardCardPropsEqual(props, {
-        ...props,
-        task: {
-          ...props.task,
-          context: { ignored: "card does not render context" },
-        },
-      })
-    ).toBe(true);
-  });
-
-  it("TeamTasksPanel updates task board cards for visible card state changes", () => {
-    const props = buildTeamTaskBoardCardProps();
-
-    expect(
-      areTeamTaskBoardCardPropsEqual(props, {
-        ...props,
-        active: true,
-      })
-    ).toBe(false);
-    expect(
-      areTeamTaskBoardCardPropsEqual(props, {
-        ...props,
-        task: {
-          ...props.task,
-          title: "Updated task title",
-        },
-      })
-    ).toBe(false);
-    expect(
-      areTeamTaskBoardCardPropsEqual(props, {
-        ...props,
-        assigneeLabel: "Coordinator Agent",
-      })
-    ).toBe(false);
-    expect(
-      areTeamTaskBoardCardPropsEqual(props, {
-        ...props,
-        priority: "critical",
-        priorityLabel: "Critical",
-        priorityClassName: "priority-critical",
-        task: {
-          ...props.task,
-          priority: "critical",
-        },
-      })
-    ).toBe(false);
   });
 
   it("TeamSidebar renders subject tabs as Notion-style icon-only tools", () => {
@@ -3709,48 +3367,6 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Original content is not available in chat text form.");
   });
 
-  it("TeamWorkspaceProvider keeps shell consumers cold for conversation-only updates", () => {
-    const workbench = {} as TeamWorkbenchRuntimeContext;
-    let shellRenderCount = 0;
-    let runtimeRenderCount = 0;
-    const ShellProbe = React.memo(function ShellProbe() {
-      shellRenderCount += 1;
-      useTeamWorkspaceShell();
-      return null;
-    });
-    const RuntimeProbe = React.memo(function RuntimeProbe() {
-      runtimeRenderCount += 1;
-      useTeamWorkbenchRuntime();
-      return null;
-    });
-    const renderContext = (value: TeamWorkspaceContextValue) => {
-      renderWithMantine(
-        root,
-        <TeamWorkspaceProvider value={value}>
-          <ShellProbe />
-          <RuntimeProbe />
-        </TeamWorkspaceProvider>
-      );
-    };
-    const baseContext = buildWorkspaceContextValue({ workbench, taskMessageDraft: "" });
-
-    renderContext(baseContext);
-    expect(shellRenderCount).toBe(1);
-    expect(runtimeRenderCount).toBe(1);
-
-    renderContext({ ...baseContext, taskMessageDraft: "draft change" });
-    expect(shellRenderCount).toBe(1);
-    expect(runtimeRenderCount).toBe(1);
-
-    renderContext({ ...baseContext, busy: "refresh" });
-    expect(shellRenderCount).toBe(2);
-    expect(runtimeRenderCount).toBe(1);
-
-    renderContext({ ...baseContext, busy: "refresh", workbench: {} as TeamWorkbenchRuntimeContext });
-    expect(shellRenderCount).toBe(2);
-    expect(runtimeRenderCount).toBe(2);
-  });
-
   it("TeamWorkbenchContainer fails fast when the workbench context slice is missing", () => {
     const suppressReactError = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -4297,7 +3913,7 @@ describe("team panels interactions", () => {
 
     await waitForCondition(() => container.textContent?.includes("Agent Profile") ?? false);
     const dock = required(
-      container.querySelector('[data-team-surface="thread-dock"]'),
+      container.querySelector(".team-thread-dock"),
       "profile dock missing"
     );
     expect(dock.textContent).toContain("Worker Agent");
@@ -4313,6 +3929,13 @@ describe("team panels interactions", () => {
 
   it("TeamConversationContainer routes clicked channel mentions to member overview", async () => {
     const navigateTeamRoute = vi.fn();
+    const setChannelFocusMessageId = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
     const workspaceContext: TeamWorkspaceContextValue = {
       selectedConversation: null,
       developerMode: false,
@@ -4346,8 +3969,8 @@ describe("team panels interactions", () => {
       busy: null,
       routeThreadRootMessageId: null,
       routeSelectedMemberId: "",
-      channelFocusMessageId: null,
-      setChannelFocusMessageId: vi.fn(),
+      channelFocusMessageId: 14,
+      setChannelFocusMessageId,
       effectiveSelectedTeamId: "team-1",
       routeWorkspaceLens: "channels",
       routeChannelId: "all",
@@ -4373,22 +3996,32 @@ describe("team panels interactions", () => {
       setThreadReplyDraft: vi.fn(),
     };
 
-    renderWithMantine(
-      root,
-      <TeamWorkspaceProvider value={workspaceContext}>
-        <TeamConversationContainer />
-      </TeamWorkspaceProvider>
-    );
+    try {
+      renderWithMantine(
+        root,
+        <TeamWorkspaceProvider value={workspaceContext}>
+          <TeamConversationContainer />
+        </TeamWorkspaceProvider>
+      );
 
-    await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
-    const mention = container.querySelector(
-      '[data-team-agent-mention-id="worker-agent"]'
-    ) as HTMLButtonElement | null;
-    expect(mention).not.toBeNull();
-    mention?.click();
-    expect(navigateTeamRoute).toHaveBeenCalledWith(
-      "/workspace/teams/team-1/channels/all/tasks/task-1/members/worker-agent"
-    );
+      await waitForCondition(() => container.textContent?.includes("@Worker Agent") ?? false);
+      await waitForCondition(() => setChannelFocusMessageId.mock.calls.length > 0);
+      expect(setChannelFocusMessageId).toHaveBeenCalledWith(null);
+      const mention = container.querySelector(
+        '[data-team-agent-mention-id="worker-agent"]'
+      ) as HTMLButtonElement | null;
+      expect(mention).not.toBeNull();
+      mention?.click();
+      expect(navigateTeamRoute).toHaveBeenCalledWith(
+        "/workspace/teams/team-1/channels/all/tasks/task-1/members/worker-agent"
+      );
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        writable: true,
+        value: originalScrollIntoView,
+      });
+    }
   });
 
   it("TeamConversationContainer ignores clicked channel mentions without a selected team", async () => {
@@ -4509,7 +4142,7 @@ describe("team panels interactions", () => {
       );
       const navigateTeamRoute = React.useCallback((path: string) => {
         const url = new URL(path, "http://localhost");
-        setSelectedMemberId(url.searchParams.get("member") ?? "");
+        setSelectedMemberId(resolveTeamSelectedMemberId(url.search, url.pathname));
       }, []);
       const workspaceContext: TeamWorkspaceContextValue = {
         selectedConversation: null,
@@ -7096,6 +6729,21 @@ describe("team panels interactions", () => {
     });
 
     expect(container.querySelector('[data-team-surface="kanban"]')).not.toBeNull();
+    const kanbanSurface = required(
+      container.querySelector('[data-team-surface="kanban"]') as HTMLDivElement | null,
+      "kanban surface missing"
+    );
+    expect(kanbanSurface.className).toContain("overflow-hidden");
+    expect(kanbanSurface.className).not.toContain("overflow-y-auto");
+    const taskDetailLayout = required(
+      container.querySelector('[data-team-surface="task-board-detail-layout"]') as HTMLDivElement | null,
+      "task board detail layout missing"
+    );
+    expect(taskDetailLayout.parentElement?.className).toContain("flex-1");
+    expect(taskDetailLayout.getAttribute("data-workspace-split-pane-layout")).toBe("true");
+    expect(taskDetailLayout.getAttribute("data-secondary-open")).toBe("true");
+    expect(taskDetailLayout.className).toContain("lg:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.9fr)]");
+    expect(taskDetailLayout.querySelector(".team-task-detail-dock")).not.toBeNull();
     expect(container.textContent).toContain("Wait for PR review");
     clickElement(findButtonByText(container, "Investigate bug"));
     await openTaskDetailModal(container, "Prepare rollout");
@@ -7159,7 +6807,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamTasksPanel
-            compactMode={false}
+            compactMode={true}
             developerMode={false}
             tasks={[
               buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
@@ -7360,7 +7008,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamTasksPanel
-            compactMode={false}
+            compactMode={true}
             developerMode={false}
             tasks={[
               buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
@@ -7632,6 +7280,7 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("Board lanes");
+    expect(container.querySelector('[data-team-surface="task-board-detail-layout"]')).toBeNull();
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 
     await openTaskDetailModal(container, "Prepare rollout");
@@ -9171,111 +8820,6 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("No members available.");
     expect(container.textContent).toContain("No conversation records yet for this pair.");
-  });
-
-  it("TeamMailboxPanel windows long mailbox conversations to the visible tail", () => {
-    const onAcceptVisibleMessages = vi.fn();
-    const messages = Array.from({ length: 18 }, (_, index) =>
-      buildMailboxMessage(index + 1, {
-        payload: { type: "chat_message", text: `mailbox message ${index + 1}` },
-      })
-    );
-    const renderMailbox = (chatStickToBottom: boolean) => {
-      act(() => {
-        root.render(
-          <MantineProvider>
-            <TeamMailboxPanel
-              developerMode={false}
-              snapshot={buildSnapshot({
-                members: [
-                  buildMemberSnapshot({ member_id: "coordinator-agent" }),
-                  buildMemberSnapshot({
-                    member_id: "worker-agent",
-                    role: "worker",
-                    pending_inbox_count: 18,
-                  }),
-                ],
-              })}
-              humanActorId="user"
-              displayNameByActorId={{
-                "coordinator-agent": "Coordinator Agent",
-                "worker-agent": "Worker Agent",
-              }}
-              selectedMemberId="worker-agent"
-              unreadByMemberId={{}}
-              onSelectMember={vi.fn()}
-              chatActors={{
-                fromActorId: "coordinator-agent",
-                toActorId: "worker-agent",
-                inboxActorId: "worker-agent",
-              }}
-              chatStickToBottom={chatStickToBottom}
-              chatMessagesRef={React.createRef<HTMLUListElement>()}
-              onConversationScroll={vi.fn()}
-              onJumpToBottom={vi.fn()}
-              conversationMessages={messages}
-              toPrettyJson={(value) => JSON.stringify(value)}
-              formatTs={(ts) => `ts-${String(ts)}`}
-              busy={null}
-              onAcceptMessage={vi.fn()}
-              onAcceptVisibleMessages={onAcceptVisibleMessages}
-              chatDraft=""
-              onChatDraftChange={vi.fn()}
-              onSendChatMessage={vi.fn()}
-              msgFromActorId="coordinator-agent"
-              onMsgFromActorIdChange={vi.fn()}
-              msgToActorId="worker-agent"
-              onMsgToActorIdChange={vi.fn()}
-              msgChannel="default"
-              onMsgChannelChange={vi.fn()}
-              msgTransport="local"
-              onMsgTransportChange={vi.fn()}
-              msgRoute="{}"
-              onMsgRouteChange={vi.fn()}
-              mailboxTemplateOptions={[
-                { value: "coordinator_task_assignment", label: "Coordinator Assignment" },
-              ]}
-              msgTemplate="coordinator_task_assignment"
-              onMsgTemplateChange={vi.fn()}
-              onApplyMessageTemplate={vi.fn()}
-              msgPayload="{}"
-              onMsgPayloadChange={vi.fn()}
-              msgIdempotencyKey=""
-              onMsgIdempotencyKeyChange={vi.fn()}
-              onSendMessage={vi.fn()}
-              inboxActorId="worker-agent"
-              onInboxActorIdChange={vi.fn()}
-              inboxLimit="20"
-              onInboxLimitChange={vi.fn()}
-              inboxAfterId=""
-              onInboxAfterIdChange={vi.fn()}
-              inboxIncludeDelivered={false}
-              onInboxIncludeDeliveredChange={vi.fn()}
-              onRefreshInbox={vi.fn()}
-            />
-          </MantineProvider>
-        );
-      });
-    };
-
-    renderMailbox(true);
-
-    expect(container.querySelector("[data-team-mailbox-top-spacer='true']")).not.toBeNull();
-    const tailIds = Array.from(container.querySelectorAll("[data-team-mailbox-message-id]")).map(
-      (node) => node.getAttribute("data-team-mailbox-message-id")
-    );
-    expect(tailIds).toEqual(["9", "10", "11", "12", "13", "14", "15", "16", "17", "18"]);
-
-    clickElement(findButtonByText(container, "Accept visible pending"));
-    expect(onAcceptVisibleMessages).toHaveBeenCalledWith(messages.slice(8));
-
-    renderMailbox(false);
-
-    expect(container.querySelector("[data-team-mailbox-top-spacer='true']")).toBeNull();
-    const allIds = Array.from(container.querySelectorAll("[data-team-mailbox-message-id]")).map(
-      (node) => node.getAttribute("data-team-mailbox-message-id")
-    );
-    expect(allIds).toEqual(messages.map((message) => String(message.message_id)));
   });
 
   it("TeamMailboxPanel falls back to member selection when opening a mention without profile routing", () => {

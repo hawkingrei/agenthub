@@ -38,15 +38,15 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs};
 use codex_protocol::protocol::{
-    AgentMessageContentDeltaEvent, AgentMessageEvent, ContextCompactedEvent,
+    AgentMessageContentDeltaEvent, AgentMessageEvent, CodexErrorInfo, ContextCompactedEvent,
     DeprecationNoticeEvent, EnteredReviewModeEvent, ErrorEvent, Event, EventMsg,
     ExecCommandBeginEvent, ExecCommandEndEvent, ExecCommandOutputDeltaEvent, ExecCommandSource,
     ExecCommandStatus, ExitedReviewModeEvent, FileChange, McpInvocation, McpToolCallBeginEvent,
-    McpToolCallEndEvent, ModelRerouteEvent, Op, PatchApplyBeginEvent, PatchApplyEndEvent,
-    PatchApplyStatus, ReviewDecision, ReviewOutputEvent, ReviewTarget, StreamErrorEvent,
-    TerminalInteractionEvent, TokenCountEvent, TokenUsage, TokenUsageInfo, TurnAbortReason,
-    TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, ViewImageToolCallEvent, WarningEvent,
-    WebSearchBeginEvent, WebSearchEndEvent,
+    McpToolCallEndEvent, ModelRerouteEvent, NonSteerableTurnKind, Op, PatchApplyBeginEvent,
+    PatchApplyEndEvent, PatchApplyStatus, ReviewDecision, ReviewOutputEvent, ReviewTarget,
+    StreamErrorEvent, TerminalInteractionEvent, TokenCountEvent, TokenUsage, TokenUsageInfo,
+    TurnAbortReason, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, ViewImageToolCallEvent,
+    WarningEvent, WebSearchBeginEvent, WebSearchEndEvent,
 };
 use codex_protocol::request_permissions::{
     PermissionGrantScope, RequestPermissionProfile, RequestPermissionsEvent,
@@ -550,6 +550,8 @@ impl AppServerCodexThread {
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 turn_id: String::new(),
                                 last_agent_message: None,
+                                error: None,
+                                started_at: None,
                                 completed_at: None,
                                 duration_ms: None,
                                 time_to_first_token_ms: None,
@@ -952,6 +954,8 @@ impl AppServerCodexThread {
                     id: submission_id,
                     msg: EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                         call_id: params.item_id,
+                        plugin_id: None,
+                        script_path: None,
                         approval_id: params.approval_id,
                         turn_id: params.turn_id,
                         environment_id: params.environment_id,
@@ -1134,7 +1138,10 @@ impl AppServerCodexThread {
             ServerNotification::ThreadNameUpdated(_)
             | ServerNotification::ThreadSettingsUpdated(_)
             | ServerNotification::ThreadDeleted(_)
-            | ServerNotification::TurnModerationMetadata(_) => Ok(None),
+            | ServerNotification::TurnModerationMetadata(_)
+            | ServerNotification::EnvironmentConnected(_)
+            | ServerNotification::EnvironmentDisconnected(_)
+            | ServerNotification::RawResponseCompleted(_) => Ok(None),
             ServerNotification::FileChangePatchUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
                 Ok(submission_id.map(|id| Event {
@@ -1223,6 +1230,10 @@ impl AppServerCodexThread {
                             total_token_usage: TokenUsage {
                                 input_tokens: payload.token_usage.total.input_tokens,
                                 cached_input_tokens: payload.token_usage.total.cached_input_tokens,
+                                cache_write_input_tokens: payload
+                                    .token_usage
+                                    .total
+                                    .cache_write_input_tokens,
                                 output_tokens: payload.token_usage.total.output_tokens,
                                 reasoning_output_tokens: payload
                                     .token_usage
@@ -1233,6 +1244,10 @@ impl AppServerCodexThread {
                             last_token_usage: TokenUsage {
                                 input_tokens: payload.token_usage.last.input_tokens,
                                 cached_input_tokens: payload.token_usage.last.cached_input_tokens,
+                                cache_write_input_tokens: payload
+                                    .token_usage
+                                    .last
+                                    .cache_write_input_tokens,
                                 output_tokens: payload.token_usage.last.output_tokens,
                                 reasoning_output_tokens: payload
                                     .token_usage
@@ -1348,40 +1363,18 @@ impl AppServerCodexThread {
                 Ok(match (submission_id, payload.item) {
                     (
                         Some(id),
-                        codex_app_server_protocol::ThreadItem::CommandExecution {
-                            id: call_id,
-                            command,
-                            cwd,
-                            process_id,
-                            source,
-                            ..
-                        },
+                        item @ codex_app_server_protocol::ThreadItem::CommandExecution { .. },
                     ) => {
-                        let command_vec = shell_command_vec(&command);
-                        // The app-server reports cwd as a `LegacyAppPathString`, but the
-                        // core exec events now require a `PathUri`. Fall back to the
-                        // agent's configured cwd if the legacy string cannot be parsed.
                         let fallback_cwd = self.state.lock().await.config.cwd.clone();
-                        let cwd = cwd.try_into().unwrap_or_else(|err| {
-                            tracing::warn!(
-                                ?err,
-                                "legacy exec cwd is not a parseable path; falling back to configured cwd"
-                            );
-                            fallback_cwd.into()
-                        });
-                        Some(Event {
+                        app_server_command_begin_event_from_item(
+                            payload.turn_id,
+                            payload.started_at_ms,
+                            item,
+                            &fallback_cwd,
+                        )
+                        .map(|event| Event {
                             id,
-                            msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
-                                call_id,
-                                process_id,
-                                turn_id: payload.turn_id,
-                                started_at_ms: payload.started_at_ms,
-                                command: command_vec.clone(),
-                                cwd,
-                                parsed_cmd: parse_command(&command_vec),
-                                source: app_server_command_source_to_core(source),
-                                interaction_input: None,
-                            }),
+                            msg: EventMsg::ExecCommandBegin(event),
                         })
                     }
                     (
@@ -1397,25 +1390,18 @@ impl AppServerCodexThread {
                             ..
                         },
                     ) => {
-                        let (
-                            connector_id,
-                            link_id,
-                            resource_uri,
-                            app_name,
-                            template_id,
-                            action_name,
-                        ) = app_context
-                            .map(|context| {
-                                (
-                                    Some(context.connector_id),
-                                    context.link_id,
-                                    context.resource_uri,
-                                    context.app_name,
-                                    context.template_id,
-                                    context.action_name,
-                                )
-                            })
-                            .unwrap_or_default();
+                        let (connector_id, link_id, resource_uri, app_name, action_name) =
+                            app_context
+                                .map(|context| {
+                                    (
+                                        Some(context.connector_id),
+                                        context.link_id,
+                                        context.resource_uri,
+                                        context.app_name,
+                                        context.action_name,
+                                    )
+                                })
+                                .unwrap_or_default();
                         Some(Event {
                             id,
                             msg: EventMsg::McpToolCallBegin(McpToolCallBeginEvent {
@@ -1429,7 +1415,6 @@ impl AppServerCodexThread {
                                 mcp_app_resource_uri: resource_uri.or(mcp_app_resource_uri),
                                 link_id,
                                 app_name,
-                                template_id,
                                 action_name,
                                 plugin_id,
                             }),
@@ -1560,54 +1545,18 @@ impl AppServerCodexThread {
                     }),
                     (
                         Some(id),
-                        codex_app_server_protocol::ThreadItem::CommandExecution {
-                            id: call_id,
-                            command,
-                            cwd,
-                            process_id,
-                            source,
-                            aggregated_output,
-                            exit_code,
-                            duration_ms,
-                            status,
-                            ..
-                        },
+                        item @ codex_app_server_protocol::ThreadItem::CommandExecution { .. },
                     ) => {
-                        let command_vec = shell_command_vec(&command);
-                        // The app-server reports cwd as a `LegacyAppPathString`, but the
-                        // core exec events now require a `PathUri`. Fall back to the
-                        // agent's configured cwd if the legacy string cannot be parsed.
                         let fallback_cwd = self.state.lock().await.config.cwd.clone();
-                        let cwd = cwd.try_into().unwrap_or_else(|err| {
-                            tracing::warn!(
-                                ?err,
-                                "legacy exec cwd is not a parseable path; falling back to configured cwd"
-                            );
-                            fallback_cwd.into()
-                        });
-                        Some(Event {
+                        app_server_command_end_event_from_item(
+                            payload.turn_id,
+                            payload.completed_at_ms,
+                            item,
+                            &fallback_cwd,
+                        )
+                        .map(|event| Event {
                             id,
-                            msg: EventMsg::ExecCommandEnd(ExecCommandEndEvent {
-                                call_id,
-                                process_id,
-                                turn_id: payload.turn_id,
-                                completed_at_ms: payload.completed_at_ms,
-                                command: command_vec.clone(),
-                                cwd,
-                                parsed_cmd: parse_command(&command_vec),
-                                source: app_server_command_source_to_core(source),
-                                interaction_input: None,
-                                stdout: String::new(),
-                                stderr: String::new(),
-                                aggregated_output: aggregated_output.unwrap_or_default(),
-                                exit_code: exit_code.unwrap_or_default(),
-                                duration: duration_ms
-                                    .and_then(|ms| u64::try_from(ms).ok())
-                                    .map(Duration::from_millis)
-                                    .unwrap_or_default(),
-                                formatted_output: String::new(),
-                                status: app_server_command_status_to_core(status),
-                            }),
+                            msg: EventMsg::ExecCommandEnd(event),
                         })
                     }
                     (
@@ -1651,25 +1600,18 @@ impl AppServerCodexThread {
                             ..
                         },
                     ) => {
-                        let (
-                            connector_id,
-                            link_id,
-                            resource_uri,
-                            app_name,
-                            template_id,
-                            action_name,
-                        ) = app_context
-                            .map(|context| {
-                                (
-                                    Some(context.connector_id),
-                                    context.link_id,
-                                    context.resource_uri,
-                                    context.app_name,
-                                    context.template_id,
-                                    context.action_name,
-                                )
-                            })
-                            .unwrap_or_default();
+                        let (connector_id, link_id, resource_uri, app_name, action_name) =
+                            app_context
+                                .map(|context| {
+                                    (
+                                        Some(context.connector_id),
+                                        context.link_id,
+                                        context.resource_uri,
+                                        context.app_name,
+                                        context.action_name,
+                                    )
+                                })
+                                .unwrap_or_default();
                         let result = match (result, error) {
                             (Some(result), None) => Ok(CallToolResult {
                                 content: result.content,
@@ -1698,7 +1640,6 @@ impl AppServerCodexThread {
                                 mcp_app_resource_uri: resource_uri.or(mcp_app_resource_uri),
                                 link_id,
                                 app_name,
-                                template_id,
                                 action_name,
                                 plugin_id,
                                 duration: duration_ms
@@ -1754,6 +1695,7 @@ impl AppServerCodexThread {
                                     .action
                                     .map(app_server_web_search_action_to_core)
                                     .unwrap_or(codex_protocol::models::WebSearchAction::Other),
+                                results: item.results,
                             }),
                         })
                     }
@@ -1954,7 +1896,7 @@ impl CodexThreadImpl for AppServerCodexThread {
                     cwd: thread_settings
                         .environments
                         .map(|environments| environments.legacy_fallback_cwd.to_path_buf()),
-                    workspace_roots: thread_settings.workspace_roots,
+                    workspace_roots: None,
                     profile_workspace_roots: thread_settings.profile_workspace_roots,
                     approval_policy: thread_settings.approval_policy,
                     approvals_reviewer: thread_settings.approvals_reviewer,
@@ -2036,6 +1978,7 @@ fn cancel_queued_submissions(state: &mut AppServerState) {
             msg: EventMsg::TurnAborted(TurnAbortedEvent {
                 turn_id: None,
                 reason: TurnAbortReason::Interrupted,
+                started_at: None,
                 completed_at: None,
                 duration_ms: None,
             }),
@@ -2729,7 +2672,7 @@ fn review_decision_to_app_server(decision: ReviewDecision) -> CommandExecutionAp
         } => CommandExecutionApprovalDecision::ApplyNetworkPolicyAmendment {
             network_policy_amendment: network_policy_amendment.into(),
         },
-        ReviewDecision::Denied => CommandExecutionApprovalDecision::Decline,
+        ReviewDecision::Denied { .. } => CommandExecutionApprovalDecision::Decline,
         ReviewDecision::TimedOut => CommandExecutionApprovalDecision::Decline,
         ReviewDecision::Abort => CommandExecutionApprovalDecision::Cancel,
     }
@@ -2739,7 +2682,7 @@ fn patch_review_decision_to_app_server(decision: ReviewDecision) -> FileChangeAp
     match decision {
         ReviewDecision::Approved => FileChangeApprovalDecision::Accept,
         ReviewDecision::ApprovedForSession => FileChangeApprovalDecision::AcceptForSession,
-        ReviewDecision::Denied => FileChangeApprovalDecision::Decline,
+        ReviewDecision::Denied { .. } => FileChangeApprovalDecision::Decline,
         ReviewDecision::TimedOut => FileChangeApprovalDecision::Decline,
         ReviewDecision::Abort => FileChangeApprovalDecision::Cancel,
         ReviewDecision::ApprovedExecpolicyAmendment { .. }
@@ -2763,7 +2706,7 @@ fn app_server_review_decision_to_core(
         } => ReviewDecision::NetworkPolicyAmendment {
             network_policy_amendment: network_policy_amendment.into_core(),
         },
-        CommandExecutionApprovalDecision::Decline => ReviewDecision::Denied,
+        CommandExecutionApprovalDecision::Decline => ReviewDecision::denied("declined"),
         CommandExecutionApprovalDecision::Cancel => ReviewDecision::Abort,
     }
 }
@@ -2782,6 +2725,145 @@ fn app_server_command_source_to_core(
         codex_app_server_protocol::CommandExecutionSource::UnifiedExecInteraction => {
             ExecCommandSource::UnifiedExecInteraction
         }
+    }
+}
+
+fn app_server_command_begin_event_from_item(
+    turn_id: String,
+    started_at_ms: i64,
+    item: codex_app_server_protocol::ThreadItem,
+    fallback_cwd: &codex_utils_absolute_path::AbsolutePathBuf,
+) -> Option<ExecCommandBeginEvent> {
+    let codex_app_server_protocol::ThreadItem::CommandExecution {
+        id: call_id,
+        plugin_id,
+        script_path,
+        command,
+        cwd,
+        process_id,
+        source,
+        ..
+    } = item
+    else {
+        return None;
+    };
+
+    let command_vec = shell_command_vec(&command);
+    Some(ExecCommandBeginEvent {
+        call_id,
+        plugin_id,
+        script_path,
+        process_id,
+        turn_id,
+        started_at_ms,
+        command: command_vec.clone(),
+        cwd: app_server_exec_cwd_to_core(cwd, fallback_cwd),
+        parsed_cmd: parse_command(&command_vec),
+        source: app_server_command_source_to_core(source),
+        interaction_input: None,
+    })
+}
+
+fn app_server_command_end_event_from_item(
+    turn_id: String,
+    completed_at_ms: i64,
+    item: codex_app_server_protocol::ThreadItem,
+    fallback_cwd: &codex_utils_absolute_path::AbsolutePathBuf,
+) -> Option<ExecCommandEndEvent> {
+    let codex_app_server_protocol::ThreadItem::CommandExecution {
+        id: call_id,
+        plugin_id,
+        script_path,
+        command,
+        cwd,
+        process_id,
+        source,
+        aggregated_output,
+        exit_code,
+        duration_ms,
+        status,
+        ..
+    } = item
+    else {
+        return None;
+    };
+
+    let command_vec = shell_command_vec(&command);
+    Some(ExecCommandEndEvent {
+        call_id,
+        plugin_id,
+        script_path,
+        process_id,
+        turn_id,
+        completed_at_ms,
+        command: command_vec.clone(),
+        cwd: app_server_exec_cwd_to_core(cwd, fallback_cwd),
+        parsed_cmd: parse_command(&command_vec),
+        source: app_server_command_source_to_core(source),
+        interaction_input: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        aggregated_output: aggregated_output.unwrap_or_default(),
+        exit_code: exit_code.unwrap_or_default(),
+        duration: duration_ms
+            .and_then(|ms| u64::try_from(ms).ok())
+            .map(Duration::from_millis)
+            .unwrap_or_default(),
+        formatted_output: String::new(),
+        status: app_server_command_status_to_core(status),
+    })
+}
+
+fn app_server_exec_cwd_to_core(
+    cwd: codex_utils_path_uri::LegacyAppPathString,
+    fallback_cwd: &codex_utils_absolute_path::AbsolutePathBuf,
+) -> codex_utils_path_uri::PathUri {
+    cwd.try_into().unwrap_or_else(|err| {
+        tracing::warn!(
+            ?err,
+            "legacy exec cwd is not a parseable path; falling back to configured cwd"
+        );
+        fallback_cwd.clone().into()
+    })
+}
+
+fn app_server_codex_error_info_to_core(error: AppServerCodexErrorInfo) -> CodexErrorInfo {
+    match error {
+        AppServerCodexErrorInfo::ContextWindowExceeded => CodexErrorInfo::ContextWindowExceeded,
+        AppServerCodexErrorInfo::SessionBudgetExceeded => CodexErrorInfo::SessionBudgetExceeded,
+        AppServerCodexErrorInfo::UsageLimitExceeded => CodexErrorInfo::UsageLimitExceeded,
+        AppServerCodexErrorInfo::ServerOverloaded => CodexErrorInfo::ServerOverloaded,
+        AppServerCodexErrorInfo::CyberPolicy => CodexErrorInfo::CyberPolicy,
+        AppServerCodexErrorInfo::HttpConnectionFailed { http_status_code } => {
+            CodexErrorInfo::HttpConnectionFailed { http_status_code }
+        }
+        AppServerCodexErrorInfo::ResponseStreamConnectionFailed { http_status_code } => {
+            CodexErrorInfo::ResponseStreamConnectionFailed { http_status_code }
+        }
+        AppServerCodexErrorInfo::InternalServerError => CodexErrorInfo::InternalServerError,
+        AppServerCodexErrorInfo::Unauthorized => CodexErrorInfo::Unauthorized,
+        AppServerCodexErrorInfo::BadRequest => CodexErrorInfo::BadRequest,
+        AppServerCodexErrorInfo::ThreadRollbackFailed => CodexErrorInfo::ThreadRollbackFailed,
+        AppServerCodexErrorInfo::SandboxError => CodexErrorInfo::SandboxError,
+        AppServerCodexErrorInfo::ResponseStreamDisconnected { http_status_code } => {
+            CodexErrorInfo::ResponseStreamDisconnected { http_status_code }
+        }
+        AppServerCodexErrorInfo::ResponseTooManyFailedAttempts { http_status_code } => {
+            CodexErrorInfo::ResponseTooManyFailedAttempts { http_status_code }
+        }
+        AppServerCodexErrorInfo::ActiveTurnNotSteerable { turn_kind } => {
+            CodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: match turn_kind {
+                    codex_app_server_protocol::NonSteerableTurnKind::Review => {
+                        NonSteerableTurnKind::Review
+                    }
+                    codex_app_server_protocol::NonSteerableTurnKind::Compact => {
+                        NonSteerableTurnKind::Compact
+                    }
+                },
+            }
+        }
+        AppServerCodexErrorInfo::Other => CodexErrorInfo::Other,
     }
 }
 
@@ -2820,6 +2902,14 @@ fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> 
         TurnStatus::Completed => EventMsg::TurnComplete(TurnCompleteEvent {
             turn_id: turn.id.clone(),
             last_agent_message,
+            error: turn.error.as_ref().map(|error| ErrorEvent {
+                message: error.message.clone(),
+                codex_error_info: error
+                    .codex_error_info
+                    .clone()
+                    .map(app_server_codex_error_info_to_core),
+            }),
+            started_at: turn.started_at,
             completed_at: turn.completed_at,
             duration_ms: turn.duration_ms,
             time_to_first_token_ms: None,
@@ -2827,6 +2917,7 @@ fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> 
         TurnStatus::Interrupted => EventMsg::TurnAborted(TurnAbortedEvent {
             turn_id: Some(turn.id.clone()),
             reason: TurnAbortReason::Interrupted,
+            started_at: turn.started_at,
             completed_at: turn.completed_at,
             duration_ms: turn.duration_ms,
         }),
@@ -3264,6 +3355,194 @@ mod tests {
             reason,
             codex_protocol::protocol::ModelRerouteReason::HighRiskCyberActivity
         );
+    }
+
+    #[test]
+    fn app_server_codex_error_info_translation_preserves_variants() {
+        let variants = [
+            (
+                AppServerCodexErrorInfo::ContextWindowExceeded,
+                CodexErrorInfo::ContextWindowExceeded,
+            ),
+            (
+                AppServerCodexErrorInfo::SessionBudgetExceeded,
+                CodexErrorInfo::SessionBudgetExceeded,
+            ),
+            (
+                AppServerCodexErrorInfo::UsageLimitExceeded,
+                CodexErrorInfo::UsageLimitExceeded,
+            ),
+            (
+                AppServerCodexErrorInfo::ServerOverloaded,
+                CodexErrorInfo::ServerOverloaded,
+            ),
+            (
+                AppServerCodexErrorInfo::CyberPolicy,
+                CodexErrorInfo::CyberPolicy,
+            ),
+            (
+                AppServerCodexErrorInfo::HttpConnectionFailed {
+                    http_status_code: Some(502),
+                },
+                CodexErrorInfo::HttpConnectionFailed {
+                    http_status_code: Some(502),
+                },
+            ),
+            (
+                AppServerCodexErrorInfo::ResponseStreamConnectionFailed {
+                    http_status_code: Some(503),
+                },
+                CodexErrorInfo::ResponseStreamConnectionFailed {
+                    http_status_code: Some(503),
+                },
+            ),
+            (
+                AppServerCodexErrorInfo::InternalServerError,
+                CodexErrorInfo::InternalServerError,
+            ),
+            (
+                AppServerCodexErrorInfo::Unauthorized,
+                CodexErrorInfo::Unauthorized,
+            ),
+            (
+                AppServerCodexErrorInfo::BadRequest,
+                CodexErrorInfo::BadRequest,
+            ),
+            (
+                AppServerCodexErrorInfo::ThreadRollbackFailed,
+                CodexErrorInfo::ThreadRollbackFailed,
+            ),
+            (
+                AppServerCodexErrorInfo::SandboxError,
+                CodexErrorInfo::SandboxError,
+            ),
+            (
+                AppServerCodexErrorInfo::ResponseStreamDisconnected {
+                    http_status_code: Some(504),
+                },
+                CodexErrorInfo::ResponseStreamDisconnected {
+                    http_status_code: Some(504),
+                },
+            ),
+            (
+                AppServerCodexErrorInfo::ResponseTooManyFailedAttempts {
+                    http_status_code: Some(429),
+                },
+                CodexErrorInfo::ResponseTooManyFailedAttempts {
+                    http_status_code: Some(429),
+                },
+            ),
+            (AppServerCodexErrorInfo::Other, CodexErrorInfo::Other),
+        ];
+
+        for (input, expected) in variants {
+            assert_eq!(app_server_codex_error_info_to_core(input), expected);
+        }
+    }
+
+    #[test]
+    fn app_server_codex_error_info_translation_preserves_nonsteerable_kind() {
+        let review =
+            app_server_codex_error_info_to_core(AppServerCodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: codex_app_server_protocol::NonSteerableTurnKind::Review,
+            });
+        assert!(matches!(
+            review,
+            CodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: NonSteerableTurnKind::Review
+            }
+        ));
+
+        let compact =
+            app_server_codex_error_info_to_core(AppServerCodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: codex_app_server_protocol::NonSteerableTurnKind::Compact,
+            });
+        assert!(matches!(
+            compact,
+            CodexErrorInfo::ActiveTurnNotSteerable {
+                turn_kind: NonSteerableTurnKind::Compact
+            }
+        ));
+    }
+
+    #[test]
+    fn turn_completed_event_msg_preserves_error_and_timing() {
+        let started_at = 100;
+        let completed_at = 101;
+        let turn = Turn {
+            id: "turn-1".to_string(),
+            items: Vec::new(),
+            items_view: codex_app_server_protocol::TurnItemsView::Full,
+            status: TurnStatus::Completed,
+            error: Some(AppServerTurnError {
+                message: "context window exceeded".to_string(),
+                codex_error_info: Some(AppServerCodexErrorInfo::ContextWindowExceeded),
+                additional_details: None,
+            }),
+            started_at: Some(started_at),
+            completed_at: Some(completed_at),
+            duration_ms: Some(250),
+        };
+
+        let event = turn_completed_event_msg(&turn, Some("done".to_string()));
+
+        let EventMsg::TurnComplete(event) = event else {
+            panic!("expected turn complete");
+        };
+        assert_eq!(event.turn_id, "turn-1");
+        assert_eq!(event.last_agent_message.as_deref(), Some("done"));
+        assert_eq!(event.started_at, Some(started_at));
+        assert_eq!(event.completed_at, Some(completed_at));
+        assert_eq!(event.duration_ms, Some(250));
+        let error = event.error.expect("completion error");
+        assert_eq!(error.message, "context window exceeded");
+        assert_eq!(
+            error.codex_error_info,
+            Some(CodexErrorInfo::ContextWindowExceeded)
+        );
+    }
+
+    #[test]
+    fn turn_completed_event_msg_preserves_interrupted_timing() {
+        let started_at = 200;
+        let completed_at = 201;
+        let turn = Turn {
+            id: "turn-2".to_string(),
+            items: Vec::new(),
+            items_view: codex_app_server_protocol::TurnItemsView::Full,
+            status: TurnStatus::Interrupted,
+            error: None,
+            started_at: Some(started_at),
+            completed_at: Some(completed_at),
+            duration_ms: Some(500),
+        };
+
+        let event = turn_completed_event_msg(&turn, None);
+
+        let EventMsg::TurnAborted(event) = event else {
+            panic!("expected turn aborted");
+        };
+        assert_eq!(event.turn_id.as_deref(), Some("turn-2"));
+        assert_eq!(event.reason, TurnAbortReason::Interrupted);
+        assert_eq!(event.started_at, Some(started_at));
+        assert_eq!(event.completed_at, Some(completed_at));
+        assert_eq!(event.duration_ms, Some(500));
+    }
+
+    #[test]
+    fn review_decision_translation_maps_denied_payloads() {
+        assert_eq!(
+            review_decision_to_app_server(ReviewDecision::denied("declined")),
+            CommandExecutionApprovalDecision::Decline
+        );
+        assert_eq!(
+            patch_review_decision_to_app_server(ReviewDecision::denied("declined")),
+            FileChangeApprovalDecision::Decline
+        );
+        assert!(matches!(
+            app_server_review_decision_to_core(CommandExecutionApprovalDecision::Decline),
+            ReviewDecision::Denied { .. }
+        ));
     }
 
     #[test]
@@ -3809,6 +4088,67 @@ mod tests {
             Some(FileChange::Update { unified_diff, move_path: None })
                 if unified_diff == "diff --git a/README.md b/README.md\n"
         ));
+    }
+
+    fn command_execution_item_with_plugin_fields(
+        cwd: &AbsolutePathBuf,
+    ) -> codex_app_server_protocol::ThreadItem {
+        codex_app_server_protocol::ThreadItem::CommandExecution {
+            id: "exec-1".to_string(),
+            plugin_id: Some("plugin-1".to_string()),
+            script_path: Some("scripts/run.sh".to_string()),
+            command: "echo done".to_string(),
+            cwd: codex_utils_path_uri::LegacyAppPathString::from_abs_path(cwd),
+            process_id: Some("pid-1".to_string()),
+            source: codex_app_server_protocol::CommandExecutionSource::Agent,
+            status: codex_app_server_protocol::CommandExecutionStatus::Completed,
+            command_actions: Vec::new(),
+            aggregated_output: Some("done\n".to_string()),
+            exit_code: Some(0),
+            duration_ms: Some(5),
+        }
+    }
+
+    #[test]
+    fn command_execution_begin_translation_preserves_plugin_fields() {
+        let cwd = AbsolutePathBuf::try_from(std::env::temp_dir()).expect("valid temp dir");
+        let event = app_server_command_begin_event_from_item(
+            "turn-1".to_string(),
+            100,
+            command_execution_item_with_plugin_fields(&cwd),
+            &cwd,
+        )
+        .expect("command begin event");
+
+        assert_eq!(event.call_id, "exec-1");
+        assert_eq!(event.plugin_id.as_deref(), Some("plugin-1"));
+        assert_eq!(event.script_path.as_deref(), Some("scripts/run.sh"));
+        assert_eq!(event.process_id.as_deref(), Some("pid-1"));
+        assert_eq!(event.turn_id, "turn-1");
+        assert_eq!(event.started_at_ms, 100);
+    }
+
+    #[test]
+    fn command_execution_end_translation_preserves_plugin_fields() {
+        let cwd = AbsolutePathBuf::try_from(std::env::temp_dir()).expect("valid temp dir");
+        let event = app_server_command_end_event_from_item(
+            "turn-1".to_string(),
+            200,
+            command_execution_item_with_plugin_fields(&cwd),
+            &cwd,
+        )
+        .expect("command end event");
+
+        assert_eq!(event.call_id, "exec-1");
+        assert_eq!(event.plugin_id.as_deref(), Some("plugin-1"));
+        assert_eq!(event.script_path.as_deref(), Some("scripts/run.sh"));
+        assert_eq!(event.process_id.as_deref(), Some("pid-1"));
+        assert_eq!(event.turn_id, "turn-1");
+        assert_eq!(event.completed_at_ms, 200);
+        assert_eq!(event.aggregated_output, "done\n");
+        assert_eq!(event.exit_code, 0);
+        assert_eq!(event.duration, Duration::from_millis(5));
+        assert_eq!(event.status, ExecCommandStatus::Completed);
     }
 
     #[test]

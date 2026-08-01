@@ -20,6 +20,7 @@ must stay explicit:
 - copy versus move semantics
 - Team ownership, runtime, and history contracts for adopted agents
 - UI expectations for `Add Existing Agent` versus `Create New Agent`
+- explicit reviewable extension modes for workspace content and memory/context seeding
 
 ## Non-Goals
 
@@ -28,6 +29,7 @@ must stay explicit:
 - Defining a full lineage/clone graph UI for copied agents
 - Solving multi-operator governance for agent ownership transfer
 - Replacing the existing `Create New Agent` Team forge flow in the same change
+- Silently expanding default copy semantics into filesystem snapshots or memory export/import
 
 ## Architecture
 
@@ -91,15 +93,12 @@ This path is more powerful, but it is also riskier because it touches:
 The product should land in this order:
 
 1. `copy` first
-2. explicit copy extensions later
-3. `move` later
+2. `move` later
 
 Reasoning:
 
 - `copy` is safer and easier to explain
 - `copy` does not mutate the source agent
-- workspace/content and memory/context copy need independent operator consent because they carry
-  different data and provenance risks than configuration copy
 - `move` needs stricter guardrails around running sessions, pending work, and ownership transfer
 
 ### 5) Coordinator Compatibility
@@ -109,6 +108,20 @@ Adoption must preserve the existing Team coordinator contract:
 - an empty Team adopts its first agent as `coordinator`
 - a Team that already has a coordinator adopts later agents as `worker`
 - the default adoption flow should not reintroduce a free role toggle
+
+### 6) Reviewable Extension Modes
+
+Anything beyond configuration-only copy must be an explicit mode, not a hidden default:
+
+1. `copy configuration only`
+2. `copy configuration and workspace content`
+3. `copy configuration and seed memory/context`
+4. `move stopped agent to Team`
+
+These modes may share the same source-agent picker, but they need separate confirmation text,
+validation, and rollback expectations. A later UI may present them as advanced options under `Copy
+into Team`; the backend contract should still receive a typed mode rather than inferring behavior
+from booleans scattered across the request.
 
 ## Contracts
 
@@ -153,9 +166,13 @@ Adoption must preserve the existing Team coordinator contract:
 The first move rollout should be conservative:
 
 - allow move only for stopped agents
+- define `stopped` as no active runtime process, no pending Team handoff, and no in-flight
+  permission or mailbox action that expects the standalone owner scope
 - reject agents with active Team/runtime execution dependencies
 - either rebind or restart runtime under Team ownership instead of pretending that the old session
   is unchanged
+- make ownership transfer atomic with Team membership creation, so a failed move leaves the source
+  agent standalone and unchanged
 
 ### 4) History Contract
 
@@ -165,6 +182,9 @@ The first move rollout should be conservative:
 - copied Team member starts with its own Team-scoped history
 - source filesystem memory and workspace-local context do not carry over into the copied Team
   member by default
+- optional memory/context seeding must record source provenance, seed timestamp, and seed scope
+- seeded memory/context is a starting hint for the new Team-owned member, not shared mutable state
+  with the source agent
 
 #### Move
 
@@ -208,58 +228,42 @@ Current status:
 
 `Move to Team` should remain specified but not required for the first delivery slice.
 
-### 7) Extension Mode Contract
+### 7) Workspace Content Copy Extension
 
-After the copy-first rollout, adoption extensions must stay separate reviewable modes. They are not
-implicit side effects of `Copy into Team`.
+Workspace content copy is an explicit later extension to `copy`, not part of default adoption.
 
-#### Stopped-Only Move
+Contract:
 
-`Move existing agent to Team` transfers the original agent identity into Team ownership. The first
-move rollout should be stopped-only:
+- source workspace files are copied into a new Team-owned workspace root or worktree
+- source workspace contents are never modified by the copy
+- ignore rules must exclude runtime sockets, provider credentials, caches, logs, lock files, and
+  other machine-local state
+- the copy operation must produce a manifest with source path, destination path, copied byte count,
+  excluded path classes, and failure state
+- partial copy failure must fail the adoption before the Team member becomes runnable, unless the
+  operator explicitly chooses a resume/repair flow in a later design
 
-- reject agents with an active runtime session
-- reject agents with active Team membership, pending permission reviews, or running task ownership
-  dependencies
-- require an explicit operator action that names the target Team
-- keep pre-move execution history attached to the same agent identity
-- start post-move runtime under Team ownership instead of pretending an old standalone session was
-  already Team-managed
+This extension should not preserve a running process, active PTY, ACP session, pending approval, or
+file watcher. Runtime starts fresh under Team ownership after the copied workspace is complete.
 
-The moved agent should stop appearing as a normal unattached global agent by default once the
-ownership transfer succeeds.
+### 8) Memory And Context Seeding Extension
 
-#### Workspace-Content Copy
+Memory/context seeding is a separate explicit extension to `copy`, not a workspace-copy side effect.
 
-Workspace-content copy is an optional extension to configuration copy. It should clone a source
-workspace snapshot into the new Team-owned member workspace without changing the source agent.
+Contract:
 
-This mode must:
+- the operator chooses the seed source and destination Team scope explicitly
+- copied seed entries must be provenance-marked as imported from the source agent
+- credentials, provider tokens, transient session state, local cache files, and private
+  non-selected memories are excluded
+- seed import must be idempotent across retry, using source entry identity plus destination Team
+  scope as the natural dedupe boundary
+- the new Team-owned member reads the seeded context as initial Team-local context; later source
+  agent memory changes do not automatically sync
 
-- be opt-in and distinct from default configuration copy
-- require an explicit destination workspace or generated destination workspace path
-- reject ambiguous self-copy cases where source and destination paths resolve to the same workspace
-- record source provenance for audit and troubleshooting
-- define collision behavior before copying files into an existing destination
-- avoid copying ignored build/cache artifacts unless a later contract explicitly allows them
-
-Workspace-content copy still creates a new Team-owned agent identity. It is not a move.
-
-#### Memory And Context Seeding
-
-Memory/context seeding is a narrower extension than workspace-content copy. It may seed selected
-workspace-local context into the new Team member without copying the whole filesystem.
-
-This mode must:
-
-- be opt-in and separately named from workspace-content copy
-- define which context sources are eligible before implementation
-- filter or reject secrets and machine-local cache state
-- record provenance and seed timestamp on the new Team-owned member
-- never link the new member to mutable source-agent memory in a way that can leak future updates
-
-Seeded memory/context should be a snapshot input for the copied Team member, not shared runtime
-state.
+This extension intentionally avoids a live shared memory binding between the source agent and the
+Team member. Shared memory, if needed later, belongs in the Team workspace memory contract rather
+than in adoption copy.
 
 ## Validation Matrix
 
@@ -283,10 +287,10 @@ state.
 
 - focused tests for:
   - stopped-only move guard
-  - active-runtime, pending permission-review, and running task dependency rejection
   - ownership transfer
   - Team visibility after move
-  - post-move runtime start under Team ownership
+  - active-runtime rejection behavior
+  - atomic rollback when membership creation fails after ownership validation
 
 ### Later Copy Enhancements
 
@@ -294,8 +298,8 @@ state.
   - workspace-content clone
   - memory/context seeding
   - explicit source-provenance display
-  - destination workspace collision handling
-  - secret/cache filtering for seeded context
+  - excluded-file class reporting for workspace copy
+  - idempotent retry for memory/context seed import
 
 ## Operational Notes
 
@@ -305,9 +309,9 @@ state.
   template or transferring ownership.
 - Do not silently expand default `copy` into workspace snapshot or memory cloning. Any later
   support for those behaviors should be explicit, reviewable, and separately validated.
-- Treat stopped-only move, workspace-content copy, and memory/context seeding as separate product
-  modes even if they share some implementation helpers.
 - Avoid mixing adoption semantics with unrelated Team runtime or multi-user administration concepts.
+- Keep extension modes typed at the API boundary so the UI, backend, and tests agree on the selected
+  adoption behavior.
 
 ## Open Risks
 
@@ -320,10 +324,13 @@ state.
 - runtime continuity for moved agents can become misleading if running sessions are silently
   preserved without a Team-specific rebinding contract
 - future "move back out of Team" behavior will need an explicit reversibility contract
+- workspace-copy manifests can expose sensitive path names if exclusion and redaction rules are not
+  deliberate
+- memory/context seeding can leak private source context into Team scope if the selected seed set is
+  not explicit and audited
 
 ## Source Journals
 
 - `docs/journal/2026-05-03-team-agent-adoption-contract.md`
 - `docs/journal/2026-05-03-team-add-existing-agent-copy.md`
 - `docs/journal/2026-05-06-team-adoption-move-deferred.md`
-- `docs/journal/2026-07-19-team-adoption-extension-contract.md`

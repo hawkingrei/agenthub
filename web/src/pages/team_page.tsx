@@ -1793,11 +1793,10 @@ export function TeamPage(props: TeamPageProps) {
 
   useEffect(() => {
     const memberId = routeSelectedMemberId.trim();
-    if (!memberId) {
-      return;
-    }
     setSelectedMemberId(memberId);
-    setFocusedAgentMemberId(memberId);
+    if (memberId) {
+      setFocusedAgentMemberId(memberId);
+    }
   }, [
     activeRunIdForSelectedTeam,
     knownSelectedTeamMemberIds,

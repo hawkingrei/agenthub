@@ -7,7 +7,9 @@ use axum::{
 };
 use serde_json::Value;
 
-use crate::api::authz::require_user;
+use agenthub_auth_domain::UserCapability;
+
+use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
 use crate::state::AppState;
 
@@ -25,7 +27,7 @@ async fn get_openapi_json(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    let _user = require_user(&headers, &state).await?;
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     Ok(Json(spec::openapi_spec()))
 }
 

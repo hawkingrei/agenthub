@@ -33,6 +33,16 @@ export const LoginView = React.memo(function LoginView({
   onLogin,
   onRegister,
 }: LoginViewProps) {
+  if (rootInitialized === null) {
+    return (
+      <div className={AUTH_FORM_CARD_CLASS} aria-busy="true">
+        <h2 className="text-xl font-bold tracking-tight text-notion-text">
+          Checking setup
+        </h2>
+      </div>
+    );
+  }
+
   const isFirstRun = rootInitialized === false;
 
   return (
@@ -40,41 +50,31 @@ export const LoginView = React.memo(function LoginView({
       className={AUTH_FORM_CARD_CLASS}
       onSubmit={(event) => {
         event.preventDefault();
-        void onLogin();
+        if (isFirstRun) {
+          void onRegister("root");
+        } else {
+          void onLogin();
+        }
       }}
     >
       <div className="space-y-2">
-        <p className="text-xs font-bold uppercase text-notion-text-muted">
-          {isFirstRun ? "First-run setup" : "AgentHub"}
-        </p>
-        <h2 className="text-xl font-bold tracking-tight text-notion-text">
-          {isFirstRun ? "Initialize this AgentHub instance" : "Login"}
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-bold tracking-tight text-notion-text">
+            {isFirstRun ? "First-run setup" : "Login"}
+          </h2>
+          {isFirstRun ? (
+            <span className="rounded-md border border-state-warning-border bg-state-warning-bg px-2 py-0.5 text-[10px] font-bold uppercase text-state-warning-text">
+              Root required
+            </span>
+          ) : null}
+        </div>
         {isFirstRun ? (
-          <p className="text-sm leading-6 text-notion-text-muted">
-            Create the root account that controls this web instance. Runtime
-            role, network listeners, and provider credentials stay in the local
-            instance configuration.
+          <p className="text-[13px] leading-relaxed text-notion-text-muted">
+            Create the first root operator for this AgentHub instance. Runtime role
+            and provider credentials still stay in the instance config.
           </p>
         ) : null}
       </div>
-      {isFirstRun ? (
-        <div className="space-y-3 border-y border-notion-border bg-notion-sidebar px-4 py-3 text-sm text-notion-text">
-          <div>
-            <p className="font-semibold">Root bootstrap</p>
-            <p className="mt-1 text-notion-text-muted">
-              This step creates the first operator account for browser access.
-            </p>
-          </div>
-          <div>
-            <p className="font-semibold">Instance configuration</p>
-            <p className="mt-1 text-notion-text-muted">
-              Use agenthub init or ~/.agenthub/config.toml for server role,
-              internal gRPC, and provider API endpoints or keys.
-            </p>
-          </div>
-        </div>
-      ) : null}
       <input
         className={AUTH_INPUT_CLASS}
         id="login-username"
@@ -96,20 +96,34 @@ export const LoginView = React.memo(function LoginView({
         autoComplete="current-password"
         onChange={(e) => setPassword(e.target.value)}
       />
-      {isFirstRun ? (
-        <input
-          className={AUTH_INPUT_CLASS}
-          id="login-display-name"
-          name="display_name"
-          placeholder="Display Name"
-          value={displayName}
-          disabled={authBusy !== null}
-          autoComplete="name"
-          onChange={(e) => setDisplayName(e.target.value)}
-        />
+      {rootInitialized === false ? (
+        <div className="space-y-3">
+          <input
+            className={AUTH_INPUT_CLASS}
+            id="login-display-name"
+            name="display_name"
+            placeholder="Display Name"
+            value={displayName}
+            disabled={authBusy !== null}
+            autoComplete="name"
+            onChange={(e) => setDisplayName(e.target.value)}
+          />
+          <dl className="grid gap-2 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3 text-[12px] leading-relaxed">
+            <div className="grid gap-1 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
+              <dt className="font-bold uppercase text-notion-text-muted">Scope</dt>
+              <dd className="text-notion-text">Root account bootstrap</dd>
+            </div>
+            <div className="grid gap-1 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
+              <dt className="font-bold uppercase text-notion-text-muted">Config</dt>
+              <dd className="text-notion-text">
+                Server role and provider credentials remain operator-managed.
+              </dd>
+            </div>
+          </dl>
+        </div>
       ) : null}
       <div className={AUTH_ACTIONS_CLASS}>
-        {isFirstRun ? (
+        {rootInitialized === false ? (
           <ActionButton
             tone="secondary"
             className={AUTH_SECONDARY_BUTTON_CLASS}

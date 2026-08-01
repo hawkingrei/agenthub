@@ -658,6 +658,8 @@ mod tests {
     use tower::util::ServiceExt;
     use uuid::Uuid;
 
+    use agenthub_auth_domain::UserRole;
+
     use crate::api::teams::tests::{
         build_test_state, build_test_state_with_message_archive, create_auth_token,
     };
@@ -674,10 +676,6 @@ mod tests {
 
         async fn append_documents(&self, _documents: &[MessageDocument]) -> anyhow::Result<()> {
             Ok(())
-        }
-
-        async fn contains_document(&self, _document_id: &str) -> anyhow::Result<bool> {
-            Ok(false)
         }
 
         async fn search(
@@ -735,7 +733,7 @@ mod tests {
         serde_json::from_slice(&bytes).expect("decode response body")
     }
 
-    async fn create_auth_token_with_role(state: &crate::state::AppState, role: &str) -> String {
+    async fn create_role_auth_token(state: &crate::state::AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp();
         sqlx::query(
@@ -745,19 +743,19 @@ mod tests {
             "#,
         )
         .bind(&user_id)
-        .bind(format!("{role}-{}", Uuid::new_v4()))
-        .bind("Admin Route Test User")
-        .bind(role)
+        .bind(format!("user-{}", Uuid::new_v4()))
+        .bind("User")
+        .bind(role.as_str())
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert user");
+        .expect("insert role user");
 
         state
             .auth
             .create_session(&user_id)
             .await
-            .expect("create token")
+            .expect("create role token")
     }
 
     fn slock_config_payload() -> Value {
@@ -907,8 +905,8 @@ mod tests {
     #[tokio::test]
     async fn slock_linker_routes_require_linkers_manage_and_do_not_expose_secrets() {
         let state = build_test_state().await;
-        let admin_token = create_auth_token_with_role(&state, "admin").await;
-        let operator_token = create_auth_token_with_role(&state, "operator").await;
+        let admin_token = create_role_auth_token(&state, UserRole::Admin).await;
+        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
         let app = super::router(state.clone());
 
         let unauthorized = app
@@ -919,7 +917,7 @@ mod tests {
                 Some(&operator_token),
             ))
             .await
-            .expect("execute operator list linkers request");
+            .expect("execute non-root list linkers request");
         assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
         let unauthorized_body = decode_json_body(unauthorized).await;
         assert_eq!(unauthorized_body["error"], json!("linkers:manage required"));

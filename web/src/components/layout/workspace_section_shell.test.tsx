@@ -63,7 +63,7 @@ describe("WorkspaceSectionShell", () => {
     expect(html).toContain('data-workspace-split-pane-layout="true"');
     expect(html).toContain('data-secondary-open="false"');
     expect(html).toContain("primary-pane");
-    expect(html).not.toContain("lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]");
+    expect(html).not.toContain("lg:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.9fr)]");
     expect(html).not.toContain("max-h-[40vh]");
   });
 
@@ -77,7 +77,7 @@ describe("WorkspaceSectionShell", () => {
     );
 
     expect(html).toContain('data-secondary-open="true"');
-    expect(html).toContain("lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]");
+    expect(html).toContain("lg:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.9fr)]");
     expect(html).toContain("max-h-[40vh]");
     expect(html).toContain("secondary-dock");
   });

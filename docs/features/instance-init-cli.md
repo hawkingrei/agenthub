@@ -1,31 +1,32 @@
-# Instance First-Run Setup
+# Instance Init And First-Run Setup
 
-## Problem
+## Goal
 
-AgentHub needs a first-run path that makes instance ownership and runtime role
-explicit before normal operation.
+Provide a first-run CLI bootstrap path for local operators who install
+`agenthub` through Homebrew or run the binary directly and do not yet have a
+`~/.agenthub/config.toml`, plus a narrow web first-run surface for instances
+that have started without a root operator.
 
-Two bootstrap surfaces are intentionally separate:
+The initial slice should make the instance identity explicit:
 
-- the local `agenthub init` CLI writes instance configuration for operators who
-  install `agenthub` through Homebrew or run the binary directly
-- the web login surface creates the first root account when the backend reports
-  that the instance has no root user
+- `main` control plane
+- `node` remote execution node
 
-This closes the gap where `brew services start ...` can launch AgentHub without
-clear role guidance, while also giving browser-first operators a reviewed setup
-surface for the root account.
+This closes the current gap where `brew services start ...` can launch AgentHub
+without any explicit guidance about which runtime role the machine should take,
+and where a first browser visit only showed a login form even when the instance
+needed root bootstrap.
 
 ## Scope
 
-The `agenthub init` command should:
+The new `agenthub init` command should:
 
 1. run as an interactive terminal wizard
 2. write `~/.agenthub/config.toml`
 3. ask for the minimal role-specific fields needed by the current runtime
 4. generate config that matches the existing `AppConfig` schema exactly
 
-The CLI slice covers:
+The first slice covers:
 
 - `[server]`
   - `role`
@@ -41,61 +42,67 @@ The CLI slice covers:
   - `auth.audience`
   - `bootstrap.token`
 
-The web slice covers:
-
-- showing a first-run setup surface when `rootInitialized === false`
-- explaining that the browser step creates the first root/operator account
-- keeping normal login compact once a root account already exists
-- pointing instance role, listener, and provider credential setup back to the
-  local instance configuration path
-
 ## Non-Goals
 
-The first-run setup contract deliberately does **not**:
+This slice does not attempt to solve every first-run setup concern.
+
+It deliberately does **not**:
 
 - add Homebrew-specific launch-time prompts
-- let the web UI write `~/.agenthub/config.toml`
-- invent provider config keys that do not exist in `AppConfig`
-- configure ACP provider API base URLs or API keys from the root bootstrap form
-- merge local instance configuration and root-account registration into one
-  wizard
+- invent new provider config keys that do not exist in `AppConfig`
+- configure ACP provider API base URLs or API keys
+- configure server role, internal gRPC, or provider credentials from the browser
 
-Provider API base URLs and API keys remain post-init operator guidance for now.
-They should become first-class config only after a separate reviewed config
-contract defines schema keys, storage expectations, redaction behavior, and
-migration rules.
+Provider/runtime credentials can be added in a later slice once they have a
+reviewed config contract.
 
 ## Architecture
 
-`agenthub init` owns local instance configuration. It is the canonical place to
-choose whether the machine runs as a `main` control plane or a `node` remote
-execution host, and it writes the existing TOML schema without introducing a
-parallel config model.
+There are two first-run entry points:
 
-The web login route owns root-account bootstrap. It consumes the existing auth
-status signal, renders the first-run state when `rootInitialized` is false, and
-submits the existing root registration action. It does not perform filesystem
-writes or mutate runtime/provider configuration.
+- `agenthub init` writes the local instance config before the server starts.
+- The web login view surfaces root-account bootstrap when `/api/auth/status`
+  reports `root_initialized: false`.
+
+The browser path reuses the existing root registration API. It is not a
+configuration writer, so it cannot change the instance role, internal gRPC
+settings, or provider credentials. Those values remain operator-managed through
+the config file until a separate provider config contract exists.
 
 ## Contracts
 
-- `agenthub init` requires an interactive terminal.
-- `agenthub init` warns before overwriting an existing config file.
-- `agenthub init` keeps prompt defaults explicit.
-- `agenthub init` emits a concrete post-write note about what was and was not
-  configured.
-- When the operator chooses `node`, the CLI reminds them that provider-specific
-  ACP credentials are still out of scope.
-- The web login surface renders first-run setup copy only when the instance has
-  no root account.
-- The web first-run action creates the root account through the existing
-  registration path.
-- The normal login state must not show first-run setup copy after the root
-  account exists.
+- A running instance with no root operator presents a distinct first-run setup
+  state instead of a generic login-only form.
+- The first-run web state creates only the initial root operator.
+- The first-run web state must state that server role and provider credentials
+  remain outside the browser bootstrap path.
+- Once a root operator exists, the login view returns to normal login language
+  and does not keep first-run setup guidance visible.
+- While root status is loading, the login view shows a neutral setup check
+  state. If the status endpoint cannot be loaded, the browser falls back to the
+  normal login shell instead of staying permanently blocked.
 
-## Validation Matrix
+## Interaction Model
 
-Focused validation for this contract:
+`agenthub init` should behave like a narrow bootstrap assistant:
+
+- require an interactive terminal
+- warn before overwriting an existing config file
+- keep defaults explicit in prompts
+- emit a concrete post-write note about what was and was not configured
+
+If the operator chooses `node`, the command should also remind them that
+provider-specific ACP credentials are still out of scope for this command.
+
+The web surface should behave like a narrow root bootstrap panel:
+
+- show first-run status only while no root operator exists;
+- collect username, password, and display name for the first root account;
+- keep role/provider configuration guidance explicit but non-interactive.
+
+## Validation
+
+Focused validation for this slice:
 
 - root CLI parsing recognizes `agenthub init`
 - `agenthub init --help` renders correctly
@@ -104,31 +111,26 @@ Focused validation for this contract:
 - interactive answer collection covers:
   - `main` without internal gRPC
   - `node` with required internal gRPC/bootstrap fields
-- SSR rendering for `LoginView` shows the reviewed first-run setup surface when
-  `rootInitialized` is false
-- SSR rendering for `LoginView` keeps normal login free of first-run setup copy
-  when `rootInitialized` is true
+- web login rendering shows first-run setup language only when root is missing
+- web login rendering keeps role/provider configuration outside root bootstrap
+- web login rendering covers setup loading while root status is unknown
+- auth status failure falls back to the normal login shell
 
 ## Operational Notes
 
-Operators should run `agenthub init` before service startup when they need to
-choose instance role or internal gRPC settings explicitly. If the backend starts
-without a root user, the browser setup surface is still valid for creating the
-first root account, but it is not a substitute for instance configuration.
-
-Provider credentials should continue to be documented as operator-managed
-configuration until the project accepts a first-class provider config schema.
+Operators that start the service before running `agenthub init` can still create
+the first root account from the browser. They must still use the config file for
+server role and provider/runtime credentials.
 
 ## Open Risks
 
-- The provider credential story is still guidance-only. A future config contract
-  must define schema, secret handling, redaction, and migration behavior before
-  the web UI can manage it.
-- The web first-run surface depends on the auth status endpoint returning
-  `rootInitialized` accurately.
-- Operators can still start a service before running `agenthub init`; service
-  manager packaging should keep pointing operators at this first-run contract.
+- Provider API base URLs and API keys still need a reviewed config contract
+  before they become first-class setup inputs. They are intentionally not
+  first-run web setup inputs.
+- Browser-side role/internal gRPC setup remains out of scope until there is a
+  safe write path for instance configuration.
 
 ## Source Journals
 
-- [2026-07-19 first-run web setup surface](../journal/2026-07-19-first-run-web-setup-surface.md)
+- [../journal/2026-07-20-first-run-web-setup-surface.md](../journal/2026-07-20-first-run-web-setup-surface.md)
+- [../journal/2026-07-22-first-run-setup-closeout.md](../journal/2026-07-22-first-run-setup-closeout.md)

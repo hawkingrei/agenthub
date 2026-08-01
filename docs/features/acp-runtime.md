@@ -82,37 +82,6 @@ Codex and Claude are special cases inside the provider adapter layer:
   - runtime metrics
   - raw events and jump/copy operations
 
-ACP conversation/debug UI rendering is part of the ACP contract because it determines whether long
-provider runs stay inspectable without exposing raw provider internals as the primary user surface.
-
-Stable rendering rules:
-
-- live tool calls stay open while active, then auto-collapse when they transition to a finished
-  state unless the operator manually toggled the finished call;
-- fold state should key off stable tool-call ids or event cursors so live list updates do not drift;
-- consecutive tool calls in one response turn may group into one `tool_call_group` bubble with a
-  shared collapse/expand control, while nested calls remain individually inspectable;
-- debug jump actions must still resolve nested grouped tool calls through stable
-  `data-tool-call-id` markers or equivalent semantic anchors;
-- structured tool payloads should render as human-readable key/value and nested fold views instead
-  of raw JSON-first blocks;
-- payload previews should summarize stable signals such as `query`, `cmd`, `path`, or `url` when
-  present, while hiding debug-noise keys such as `turn_id`, `process_id`, and `source`;
-- unified diff payloads should keep line-level add/remove/hunk semantics;
-- ASCII-like multiline output should preserve fixed-width alignment;
-- markdown output must render with raw HTML disabled and safe terminal/ANSI rendering;
-- long ACP timelines should preserve stick-bottom behavior, virtualization/progressive rendering,
-  and reduced-motion fallbacks.
-
-Debug shell rules:
-
-- ACP Debug may expose permission history, runtime metrics, raw events, jump/copy operations, and
-  session controls;
-- debug controls must remain visually and navigationally secondary to Conversation;
-- test-coupled semantic hooks for fold, payload, permission, and debug rows should remain stable
-  when Tailwind or component styling changes;
-- mobile ACP headers and debug controls should wrap or stack instead of causing horizontal overflow.
-
 ### 5) Transport Model
 
 - Streaming path uses SSE for near-real-time updates.
@@ -145,9 +114,6 @@ ACP permission requests are first-class runtime records:
 - Auto-stick should follow new tail updates when user is near bottom.
 - Manual scroll-up should disable forced jump until explicit return.
 - Long sessions should use bounded rendering/virtualization to control DOM/CPU cost.
-- ACP conversations use a two-stage long-history model: pinned views expose a bounded recent tail
-  window, while a real upward scroll restores the full source list and virtualizes the visible
-  viewport slice.
 - Text-dominant conversation rows may use a text-aware height estimator to reduce spacer drift, but
   non-text/tool rows may still fall back to coarse estimates and must never block rendering on DOM
   measurement.
@@ -271,14 +237,13 @@ ACP permission requests are first-class runtime records:
 - `cargo test -p agenthub-acp-adapter`
 - `cargo check -p agenthub-codex-acp-runtime`
 - `cargo test -p agenthub-codex-acp-runtime`
-- `cargo build -p agenthub-codex-acp-runtime --bin agenthub-codex-acp`
-- Focused `agenthub-codex-acp-runtime` tests for live-turn tool-call completeness:
+- Focused `agenthub-codex-acp` tests for live-turn tool-call completeness:
   - a `CustomToolCall` without matching `CustomToolCallOutput` is recorded as diagnostic state
     before turn completion/compaction can panic
   - orphan custom-tool outputs are reported without corrupting ACP event replay
   - ordinary Codex prompts are dispatched for app-server turn steering once permission gates clear,
     while ACP cancel remains dispatchable as an interrupt command
-- Focused `agenthub-codex-acp-runtime` permission-decision tests:
+- Focused `agenthub-codex-acp` permission-decision tests:
   - Codex exec approval options derived from upstream `Abort` are exposed to AgentHub as a deny
     option and submit `ReviewDecision::Denied`
   - patch approval rejection submits `ReviewDecision::Denied`, not `ReviewDecision::Abort`
@@ -296,13 +261,6 @@ ACP permission requests are first-class runtime records:
   - updating `codex_acp_default_mode` changes persisted agent configuration without restarting or
     controlling the active provider session
   - web create/edit controls send the startup mode and label it as restart-required configuration
-- Focused ACP UI rendering tests:
-  - live-to-finished tool calls auto-collapse without overriding manual finished-call toggles
-  - grouped tool calls preserve nested jump targets and individual details
-  - structured payloads render as human-readable folds instead of raw JSON-first blocks
-  - hidden debug-noise payload keys remain absent from rendered conversation HTML
-  - markdown output rejects raw HTML and keeps list/table/code typography stable
-  - mobile ACP header/debug controls do not overflow narrow viewports
 - Focused `agenthub-diagnostics` / `agenthub` tests:
   - `agent-trace` event summaries extract only allowlisted provider-native ids from persisted ACP
     JSON and mark body-like fields as redacted
@@ -378,9 +336,6 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-02-16-permission-history-agent-scope.md`
 - `docs/journal/2026-02-20-web-tailwind-ui-phase8-acp-panel-debug-shell.md`
 - `docs/journal/2026-02-20-web-tailwind-ui-phase9-acp-conversation-shell.md`
-- `docs/journal/2026-02-13-acp-ui-fold-markdown-mobile.md`
-- `docs/journal/2026-02-15-acp-tool-call-humanized-rendering.md`
-- `docs/journal/2026-02-17-acp-tool-call-group-fold-animation.md`
 - `docs/journal/2026-03-08-sse-stale-running-agent-reconciliation.md`
 - `docs/journal/2026-03-22-acp-provider-runtime-abstraction.md`
 - `docs/journal/2026-03-24-codex-acp-native-skill-injection.md`
@@ -394,5 +349,3 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-06-03-acp-provider-metadata-allowlist.md`
 - `docs/journal/2026-06-10-claude-acp-provider-support.md`
 - `docs/journal/2026-06-11-generic-codex-acp-entrypoint.md`
-- `docs/journal/2026-07-19-acp-conversation-long-history-guard.md`
-- `docs/journal/2026-07-19-acp-conversation-row-rerender-guard.md`

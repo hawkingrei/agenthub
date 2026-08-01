@@ -123,6 +123,33 @@ All four production probes still returned Cloudflare `HTTP/2 502` with a 16-byte
 Cloudflare error-response headers. Production PWA installability and cache-control behavior remain
 unverified until the deployed entrypoint is healthy.
 
+Production-domain retry on 2026-07-19 at 14:12 UTC:
+
+```bash
+/usr/bin/curl -sS -I --max-time 15 https://agenthub.hawkingrei.com/workspace/teams
+/usr/bin/curl -sS -I --max-time 15 https://agenthub.hawkingrei.com/sw.js
+/usr/bin/curl -sS -I --max-time 15 https://agenthub.hawkingrei.com/manifest.webmanifest
+/usr/bin/curl -sS -I --max-time 15 https://agenthub.hawkingrei.com/assets/__agenthub_missing_probe_20260719_1410__.js
+```
+
+All four production probes still returned Cloudflare `HTTP/2 502` with a 16-byte body and
+Cloudflare error-response headers. This remains an entrypoint availability issue, not evidence that
+the deployed AgentHub router or CDN cache-control contract passed or failed.
+
+Production-domain retry on 2026-07-20 at 20:08 UTC:
+
+```bash
+curl -L -I --max-time 20 https://agenthub.hawkingrei.com/workspace/teams
+curl -L -I --max-time 20 https://agenthub.hawkingrei.com/sw.js
+curl -L -I --max-time 20 https://agenthub.hawkingrei.com/manifest.webmanifest
+curl -L -I --max-time 20 https://agenthub.hawkingrei.com/assets/__missing-agenthub-probe__.js
+```
+
+All four production probes still returned Cloudflare `HTTP/2 502` with a 16-byte body and
+Cloudflare private/no-store error-response headers. This keeps the production-domain PWA
+installability and cache-control TODO open until the deployed entrypoint is healthy enough to test
+the AgentHub router and CDN headers.
+
 ## Follow-Ups
 
 - Retry production response-header validation after the deployed entrypoint is healthy before

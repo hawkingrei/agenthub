@@ -44,180 +44,101 @@ Align the GitHub release workflow with two concrete requirements:
 
 Planned validation for the next release-tag or preview-tag run:
 
-### 2026-07-12 Semver Release Verification
+- confirm `Build x86_64-unknown-linux-gnu` and `Build aarch64-unknown-linux-gnu` no longer panic in `openssl-sys`;
+- confirm Linux `agenthub-acp` release/prebuild links no longer fail on V8 / libc compatibility
+  symbols;
+- confirm a failing matrix leg no longer suppresses successful release assets from the GitHub Release page;
+- confirm `Release Prebuild` catches the same cross-build regressions on `push` to `main` before a
+  tag is cut;
+- record the release workflow run IDs and the resulting release URLs in this note before closing the follow-up TODO item.
 
-- Observed semver release run `29194967848` for tag `v0.0.11` at commit
-  `53edfc9cb8bb3f73b2efa9807e8462fcc664edd7`.
-- Confirmed all build-matrix jobs completed successfully:
-  - `Build x86_64-unknown-linux-gnu`
-  - `Build aarch64-unknown-linux-gnu`
-  - `Build aarch64-apple-darwin`
-- Confirmed both Linux release legs used `release-vendored-openssl`:
+### 2026-07-20 Release Prebuild Scope Audit
+
+- Observed main `Release Prebuild` run `29694176620` after merge commit
+  `909b1fb3f8eb8a90ebf02e3724afdf9e95148b9c`.
+- Confirmed the run completed successfully and uploaded exactly three matrix artifacts:
+  - `release-prebuild-aarch64-apple-darwin`
+  - `release-prebuild-x86_64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-unknown-linux-gnu`
+- Confirmed package logs still called `package_binary "agenthub"` and `package_binary
+  "agenthub-acp"` only, so the prebuild artifact contents stayed on the canonical release
+  entrypoints.
+- Confirmed the same run still compiled the internal package as `agenthub-codex-acp v0.10.0`
+  through the `agenthub-acp-adapter` release build. That means the artifact trimming had landed, but
+  the release build scope still exposed the old package identity.
+- Renamed the internal package to `agenthub-codex-acp-runtime` while preserving the compatibility
+  binary name `agenthub-codex-acp` and keeping `agenthub-acp` as the canonical packaged ACP
+  entrypoint.
+- Local validation:
+
+```bash
+cargo check -p agenthub-acp-adapter
+```
+
+Remaining validation before closing the TODO:
+
+- confirm the next `Release Prebuild` push-to-main run compiles `agenthub-codex-acp-runtime`
+  instead of `agenthub-codex-acp`;
+- confirm the same run still uploads only `release-prebuild-{target}` artifacts whose package logs
+  include `agenthub` and `agenthub-acp` archives plus Linux `.deb` packages;
+- confirm the next semver release or preview release still publishes successful binary assets even
+  if one matrix target fails.
+
+### 2026-07-20 Release Prebuild Runtime Package Verification
+
+- Observed main `Release Prebuild` run `29748545683` after merge commit
+  `676230bf6d664eb56559d5ed96fa3fa4ca44a136`.
+- Confirmed the run completed successfully:
+  - `Prebuild x86_64-unknown-linux-gnu`: success, 1h10m59s.
+  - `Prebuild aarch64-unknown-linux-gnu`: success, 1h16m38s.
+  - `Prebuild aarch64-apple-darwin`: success, 43m53s.
+- Confirmed the release/prebuild matrix still exercised the canonical release build commands:
   - `cross build --locked --release --target x86_64-unknown-linux-gnu --bin agenthub --features release-vendored-openssl,release-lance-fp16,rocksdb`
   - `cross build --locked --release --target x86_64-unknown-linux-gnu -p agenthub-acp-adapter --features release-vendored-openssl`
   - `cross build --locked --release --target aarch64-unknown-linux-gnu --bin agenthub --features release-vendored-openssl,rocksdb`
   - `cross build --locked --release --target aarch64-unknown-linux-gnu -p agenthub-acp-adapter --features release-vendored-openssl`
-- Confirmed the stale cross-sysroot OpenSSL panic did not recur; `openssl-sys v0.9.117` compiled in
-  both Linux release legs.
-- Confirmed release `v0.0.11` published Linux and macOS assets for both canonical binaries:
-  - `agenthub-0.0.11-darwin-arm64.tar.gz`
-  - `agenthub-0.0.11-linux-amd64.tar.gz`
-  - `agenthub-0.0.11-linux-arm64.tar.gz`
-  - `agenthub-acp-0.0.11-darwin-arm64.tar.gz`
-  - `agenthub-acp-0.0.11-linux-amd64.tar.gz`
-  - `agenthub-acp-0.0.11-linux-arm64.tar.gz`
-- Confirmed release `v0.0.11` did not publish `agenthub-codex-acp` release assets.
-- Confirmed the semver release completed successfully, so it does not by itself prove partial-asset
-  behavior under a failing matrix leg.
-
-Remaining validation before closing the release follow-up TODO:
-
-- verify a preview release run publishes successful binary assets even if one release matrix target
-  fails;
-- record the preview release workflow run ID and release URL.
-
-### 2026-07-18 Release Prebuild Trim Check
-
-- Observed `Release Prebuild` run `29639782865` on `main` after PR `#890`.
-- Confirmed the current workflow package script calls only:
+  - `cargo build --locked --release --target aarch64-apple-darwin --bin agenthub --features rocksdb`
+  - `cargo build --locked --release --target aarch64-apple-darwin -p agenthub-acp-adapter`
+- Confirmed all ACP adapter release legs compiled the renamed internal package:
+  `agenthub-codex-acp-runtime v0.10.0`.
+- Confirmed the run logs no longer compiled package `agenthub-codex-acp v0.10.0`.
+- Confirmed package logs still called only:
   - `package_binary "agenthub"`
   - `package_binary "agenthub-acp"`
-- Confirmed the run uploaded the expected prebuild artifact bundles:
+- Confirmed the run uploaded the expected matrix artifact bundles:
   - `release-prebuild-x86_64-unknown-linux-gnu`
   - `release-prebuild-aarch64-unknown-linux-gnu`
   - `release-prebuild-aarch64-apple-darwin`
-- Did not close the trimmed prebuild follow-up because the run log still shows
-  `agenthub-codex-acp v0.10.0` being compiled in release/prebuild legs through the ACP adapter
-  dependency path. The final published archives are trimmed, but the actual release-build scope is
-  not yet proven to be trimmed to only `agenthub` and `agenthub-acp`.
 
-### 2026-07-19 Local Dependency Path Check And Runtime Boundary Split
+This closes the trimmed `Release Prebuild` runtime package follow-up: push-to-main prebuild now
+proves the release matrix builds through the `agenthub-codex-acp-runtime` package identity while
+still publishing only the canonical `agenthub` and `agenthub-acp` archive bundles.
 
-- Confirmed the remaining build-scope leak is structural rather than a packaging-script-only issue:
-  `crates/agenthub-acp-adapter/Cargo.toml` still has a direct dependency on
-  `agenthub-codex-acp`, and `crates/agenthub-acp-adapter/src/lib.rs` dispatches
-  `agenthub-acp codex` to `agenthub_codex_acp::run_main(...)`.
-- Split the Cargo package/library boundary without moving the implementation files:
-  - the package is now `agenthub-codex-acp-runtime`;
-  - the library crate is now `agenthub_codex_acp_runtime`;
-  - the compatibility binary target remains `agenthub-codex-acp`;
-  - `agenthub-acp-adapter` now depends on `agenthub-codex-acp-runtime` for the Codex provider.
-- Kept the trimmed prebuild follow-up open because local manifest checks cannot replace a real
-  release/prebuild run. The next validation step is a `Release Prebuild` run whose logs no longer
-  compile package `agenthub-codex-acp`.
-- Added a local release-feature guard so `src/lib.rs` rejects a regression back to the legacy
-  `agenthub-acp-adapter -> agenthub-codex-acp` package dependency while still requiring real
-  release/prebuild evidence before the TODO closes.
-- Extended the same local guard to reject release and release-prebuild workflow regressions that
-  package the legacy `agenthub-codex-acp` compatibility binary instead of only the canonical
-  `agenthub` and `agenthub-acp` binary archives.
-- Updated active local build and feature-spec validation commands to use
-  `agenthub-codex-acp-runtime`, with an explicit compatibility binary build for
-  `agenthub-codex-acp`.
+### 2026-07-21 Release Prebuild Post-Dependency Verification
 
-Focused validation for this local check:
+- Observed main `Release Prebuild` run `29826619176` after merge commit
+  `1603ff5fe00137481467c918a066e21decec601f`.
+- Confirmed the run completed successfully:
+  - `Prebuild x86_64-unknown-linux-gnu`: success, artifact ID `8495483949`.
+  - `Prebuild aarch64-unknown-linux-gnu`: success, artifact ID `8495640365`.
+  - `Prebuild aarch64-apple-darwin`: success, artifact ID `8494697950`.
+- Confirmed the release/prebuild matrix still exercised the canonical build commands after the
+  dependency update:
+  - Linux `agenthub` builds used `cross build --locked --release --target ... --bin agenthub`
+    with release feature sets.
+  - Linux `agenthub-acp` builds used
+    `cross build --locked --release --target ... -p agenthub-acp-adapter --features release-vendored-openssl`.
+  - macOS builds used `cargo build --locked --release --target aarch64-apple-darwin` for
+    `agenthub` and `agenthub-acp-adapter`.
+- Confirmed ACP adapter release legs compiled the internal package as
+  `agenthub-codex-acp-runtime v0.10.0`.
+- Confirmed package logs still called only:
+  - `package_binary "agenthub"`
+  - `package_binary "agenthub-acp"`
+- Confirmed all three matrix artifacts were uploaded:
+  - `release-prebuild-x86_64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-unknown-linux-gnu`
+  - `release-prebuild-aarch64-apple-darwin`
 
-```bash
-cargo test release_prebuild_trim_todo_stays_open_until_real_prebuild_proves_legacy_crate_is_gone --lib
-cargo test -p agenthub-codex-acp-runtime resolve_agenthub_codex_acp_otel_enabled_defaults_to_false
-cargo test -p agenthub-acp-adapter maps_codex_config_overrides
-cargo build -p agenthub-codex-acp-runtime --bin agenthub-codex-acp
-cargo metadata --no-deps --format-version 1
-bazel query //agenthub-codex-acp:agenthub_codex_acp_runtime
-bazel query //crates/agenthub-acp-adapter:agenthub_acp_adapter
-```
-
-Local Bazel build caveat:
-
-```bash
-bazel build //crates/agenthub-acp-adapter:agenthub_acp_adapter_bin //agenthub-codex-acp:agenthub_codex_acp_bin
-```
-
-On the local macOS host this reached the new
-`//agenthub-codex-acp:agenthub_codex_acp_runtime` dependency path but failed during analysis because
-the existing Codex `codex-linux-sandbox` transitive dependency requires the Linux-only
-`//third_party/codex_linux_sandbox:vendored_bwrap_ffi` target. This does not prove release/prebuild
-success; the authoritative closure evidence remains a real `Release Prebuild` run.
-
-### 2026-07-19 External Workflow Evidence Audit
-
-- Checked GitHub Actions workflow inventory and confirmed the relevant active workflows are still
-  `Release Prebuild` (`.github/workflows/release-prebuild.yml`) and `Release`
-  (`.github/workflows/release.yml`).
-- Checked the latest `Release Prebuild` runs. The newest run remains `29639782865`, created
-  `2026-07-18T09:48:34Z`, before the local `agenthub-codex-acp-runtime` split had external
-  workflow evidence.
-- Re-read run `29639782865` logs and confirmed they still compile package
-  `agenthub-codex-acp v0.10.0` in all release/prebuild legs while packaging only `agenthub` and
-  `agenthub-acp`.
-- Checked the latest `Release` workflow runs. The newest semver release run remains `29194967848`
-  for `v0.0.11`; it completed with every matrix leg successful, so it still does not prove preview
-  partial-asset behavior under a failing release target.
-- Refreshed the workflow inventory on 2026-07-19 at 11:15 UTC. The newest `Release Prebuild` run
-  was still `29639782865`, and the newest `Release` run was still `29194967848`.
-- Kept both release TODOs open. Closing them still requires:
-  - a newer `Release Prebuild` run whose logs prove the build scope no longer compiles package
-    `agenthub-codex-acp`; and
-  - a preview release run proving successful binary assets publish when at least one release matrix
-    target fails.
-
-### 2026-07-19 Partial Release Historical Failure Audit
-
-- Refreshed the workflow inventory on 2026-07-19 at 12:42 UTC. The newest `Release` run remained
-  `29194967848` for tag `v0.0.11`, and the newest `Release Prebuild` run remained `29639782865`.
-- Checked historical failed release run `25605747548` for tag `v0.0.3` as a possible partial-asset
-  proof.
-- Found that successful build jobs in that run uploaded workflow artifacts for
-  `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, and `aarch64-apple-darwin`, but the
-  `Publish npm packages` job failed and the dependent `Create Release` job was skipped.
-- Checked release `v0.0.3` and confirmed its GitHub release asset list is empty.
-- Kept the partial-asset release TODO open because `v0.0.3` proves only that build artifacts can
-  exist inside a failed workflow run; it does not prove that a release publishes successful binary
-  assets when another release matrix target fails.
-
-### 2026-07-19 Follow-Up Workflow Inventory Audit
-
-- Refreshed the workflow inventory on 2026-07-19 at 13:23 UTC.
-- The newest `Release` run remained `29194967848` for tag `v0.0.11`; it is still a fully successful
-  semver release and still does not prove partial release publication under a failing matrix leg.
-- The newest `Release Prebuild` run remained `29639782865`; it still predates external evidence for
-  the local `agenthub-codex-acp-runtime` package split.
-- Kept both release TODOs open because there was no newer workflow evidence to inspect.
-
-### 2026-07-19 13:44 UTC Workflow Inventory Audit
-
-- Refreshed the workflow inventory again on 2026-07-19 at 13:44 UTC.
-- The newest `Release` run remained `29194967848` for tag `v0.0.11`; it is still a fully successful
-  semver release and still does not prove partial release publication under a failing matrix leg.
-- The newest `Release Prebuild` run remained `29639782865`, created
-  `2026-07-18T09:48:34Z`.
-- Re-read run `29639782865` logs and confirmed it still compiles package
-  `agenthub-codex-acp v0.10.0` in release/prebuild legs while packaging only `agenthub` and
-  `agenthub-acp`.
-- Kept both release TODOs open because there was no newer workflow evidence after the local runtime
-  package split and no preview release run demonstrating partial binary publication.
-
-### 2026-07-19 Local Partial-Asset Workflow Guard
-
-- Added a local release workflow structure guard so `src/lib.rs` fails if the release matrix
-  re-enables `fail-fast`, if the `Create Release` job stops using `always()`, if it requires a fully
-  successful build matrix before collecting artifacts, if it stops downloading `release-*`
-  artifacts with `merge-multiple`, or if it drops the fail-closed check for zero binary assets.
-- The same guard requires the release body to keep the partial-build warning and requires the active
-  TODO to remain open until a real preview release run proves successful binary assets publish when
-  one matrix target fails.
-- Kept the partial-asset TODO open because this is a static workflow guard; it does not provide the
-  required live preview release evidence.
-
-Focused validation for this external audit:
-
-```bash
-gh run list --workflow release-prebuild.yml --limit 20 --json databaseId,displayTitle,event,headBranch,status,conclusion,createdAt,updatedAt,url
-gh run list --workflow release.yml --limit 20 --json databaseId,displayTitle,event,headBranch,status,conclusion,createdAt,updatedAt,url
-gh run view 29639782865 --log | rg -n "agenthub-codex-acp v|agenthub-codex-acp-runtime|package_binary|release-prebuild-|Uploading artifact|Artifact name|cross build|cargo build|failed|error"
-gh run view 29194967848 --log | rg -n "agenthub-codex-acp|agenthub-acp-|agenthub-|Uploading artifact|Artifact name|failed|failure|cancelled|cross build|gh release|softprops|release"
-gh run view 25605747548 --repo hawkingrei/agenthub --json databaseId,name,event,headBranch,headSha,status,conclusion,createdAt,updatedAt,jobs,url
-gh release view v0.0.3 --repo hawkingrei/agenthub --json tagName,name,publishedAt,isDraft,isPrerelease,assets,url
-cargo test release_workflow_keeps_partial_asset_publication_path_open --lib -- --nocapture
-cargo test release_prebuild_trim_todo_stays_open_until_real_prebuild_proves_legacy_crate_is_gone --lib -- --nocapture
-```
+The broader partial release validation remains open until a semver or preview release run proves
+successful binary assets are published when one release matrix target fails.

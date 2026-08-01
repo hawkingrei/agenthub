@@ -194,7 +194,7 @@ describe("team_workbench_content", () => {
     );
     expect(withoutThread).not.toContain("max-h-[40vh]");
     expect(withoutThread).not.toContain("lg:grid");
-    expect(withoutThread).not.toContain("lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]");
+    expect(withoutThread).not.toContain("lg:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.9fr)]");
 
     const withThread = renderToStaticMarkup(
       <TeamWorkbenchContent
@@ -204,7 +204,7 @@ describe("team_workbench_content", () => {
     );
     expect(withThread).toContain("data-testid=\"thread-pane\"");
     expect(withThread).toContain("max-h-[40vh]");
-    expect(withThread).toContain("lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]");
+    expect(withThread).toContain("lg:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.9fr)]");
     expect(withThread).toContain("w-full");
     expect(withThread).toContain("lg:h-full");
     expect(withThread).toContain("lg:min-w-0");

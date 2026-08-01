@@ -100,24 +100,19 @@ Delivery index column family (`cf_index`)
   - `authority_message_id`;
   - `correlation_id`;
   - optional `group_id`, `run_id`, `conversation_id`, `agent_id`;
-  - compact delivery state when the key is ack/cursor scoped.
-- implemented as an opt-in backend boundary in `agenthub-message-store`: `MessageIndexStore` stores
-  body-free refs, `repair_index_from_authority` rewrites refs from SQLite-derived projections,
-  `check_index_freshness` compares per-stream high-water marks against SQLite authority, and the
-  RocksDB backend creates `cf_index` alongside `cf_body` without changing normal read routing.
-- the first Team authority extractor derives `team_conversation_messages` refs from SQLite rows under
-  the `test`/`rocksdb` build path, using `conversation_id` as the ordered channel id and the persisted
-  group scope as the channel group id.
-- the Team actor-mailbox extractor derives `team_actor_messages` refs from SQLite rows under the same
-  guarded build path, writing run, recipient-agent, actor-inbox, and id lookup projections while
-  preserving `run_id`, recipient actor, correlation id, and group scope.
-- the Team run-event extractor derives `team_run_events` refs from SQLite rows under the same guarded
-  build path, writing run and id lookup projections while preserving run, conversation, agent,
-  correlation, and group scope metadata.
-- the agent-event extractors derive main `agent_events` refs and per-agent event database refs under
-  distinct source kinds (`agent_events` and `per_agent_agent_events`) in the guarded build path,
-  writing agent, run-when-scoped, and id lookup projections while preserving session, agent, run,
-  conversation, and correlation metadata.
+- compact delivery state when the key is ack/cursor scoped.
+
+The message-store foundation exposes `MessageIndexProjection` as the typed boundary for writing these
+body-free refs. A projection always writes the direct `msg/by_id/<message_id>` lookup and may write
+channel, agent, run, and actor-inbox ordered prefixes for the same `MessageRef`. This API is the
+storage boundary only: callers must still derive projections from SQLite authority metadata, and
+authority-derived rebuild/repair remains the correctness boundary before ordered reads can become
+production-facing.
+
+The repair foundation accepts those authority-derived projections as input and can verify/replay the
+expected index refs idempotently. Its body check is intentionally report-only: `cf_body` is primary
+data after migration, so missing bodies are surfaced as durability failures and are never rebuilt from
+index rows.
 
 Body column family (`cf_body`)
 
@@ -149,7 +144,6 @@ msg/by_id/<message_id> -> MessageRef
 inbox/by_actor/<actor_id>/<sort_id> -> MessageRef
 ack/by_actor/<actor_id>/<channel_id>/<sort_id> -> AckState
 cursor/by_actor/<actor_id>/<channel_id> -> CursorState
-meta/high_water/<stream_id> -> u64_be
 ```
 
 Body column family (`cf_body`):
@@ -171,31 +165,6 @@ wall-clock timestamp, because multiple authority tables and (later) multiple nod
 ordering. The preferred shape is a fixed-width encoding of an authority sequence per logical stream
 (for example `authority_seq:source_kind:source_row_id`); a UUIDv7-derived tuple is acceptable for
 single-node single-source streams. String keys must use a bytewise-order-preserving encoding.
-
-`meta/high_water/<stream_id>` records the highest SQLite authority row projected for one rebuildable
-stream. The marker is monotonic: replaying an older repair pass must not lower it. Ordered reads that
-eventually opt into `cf_index` must first compare the stream high-water mark with SQLite's authority
-maximum; a lagging or missing marker means the caller must keep serving SQLite and enqueue
-read-repair before trusting the index result.
-
-`list_task_conversation_messages`, `list_run_events`, actor inbox history and include-delivered
-first-page reads, `AgentManager::list_events`, and `AgentManager::list_events_for_session` are the
-first guarded ordered-index consumers. When a message index store is configured, they check the
-relevant high-water mark (`team_conversation_messages`, `team_run_events`, `team_actor_messages`, or
-`agent_events:agent:<agent_id>`) against the maximum SQLite row id eligible for the requested page.
-Only a fresh projection is scanned; the resulting delivery ids are still hydrated from SQLite so
-Phase 1 continues to use SQLite for compatibility bodies and row authority. Per-agent event consumers
-also require the eligible per-agent index ref count to match SQLite authority before trusting a page,
-so mixed-source agent prefixes cannot hide missing rows. Missing, malformed, incomplete, or lagging
-index state falls back to the original SQLite query. Lagging projections schedule an
-`IndexReadRepairRequest` through the configured `IndexReadRepairScheduler`; the request records the
-stream id, the SQLite authority maximum that must be reached, and the observed indexed-through
-watermark. Scheduling is best-effort and never performs inline repair on the read path.
-Include-delivered actor inbox first pages may use `inbox/by_actor` only when the hydrated indexed page
-preserves the pending-first rule: if any untriaged pending message exists and the indexed first page
-does not include one, the read falls back to the original SQLite pending-first query. Pending-only
-reads stay on SQLite because pending status and handling disposition are mutable authority fields,
-not immutable index ordering keys.
 
 `message_id` is the per-delivery id used in index rows; `authority_message_id` is the canonical
 logical-message identity and the `cf_body` key; `archive_document_id` points to the LanceDB document.
@@ -241,8 +210,8 @@ Failure handling:
 - The delivery **index** is derived. If the `cf_index` write fails after the authority commit, the
   authority write is not rolled back; the index is re-derived from SQLite metadata. To bound the
   window, each ordered prefix tracks the authority sequence it has been indexed up to (a per-prefix
-  high-water mark); a read that sees the index lagging the authority sequence falls back to SQLite
-  and schedules read-repair, so a freshly written message is never silently missing from the hot path.
+  high-water mark); a read that sees the index lagging the authority sequence falls back to SQLite or
+  triggers read-repair, so a freshly written message is never silently missing from the hot path.
 - The message **body** is primary. A `cf_body` write failure is a hard failure for the body path, but
   it still does not roll back the metadata commit, because the body survives in the SQLite outbox. A
   background drainer retries outbox rows into `cf_body` and clears them on durable ack. The outbox is
@@ -274,10 +243,8 @@ Search APIs continue to use LanceDB. Search results may optionally hydrate deliv
 index when the UI needs unread/ack/cursor hints, but search ranking and body matching stay in the
 archive layer.
 
-SQLite remains the body read path throughout Phase 1. Guarded RocksDB ordered-index consumers may use
-`cf_index` to select row ids only after a high-water freshness check, then hydrate those rows from
-SQLite. Direct body hydration from `cf_body` remains future work until the backend has been validated
-and the SQLite body column can be dropped.
+SQLite remains the body read path throughout Phase 1. RocksDB ordered-index reads and body hydration
+remain future work until the backend has been validated and the SQLite body column can be dropped.
 
 ### 7) Rebuild And Repair
 
@@ -296,21 +263,13 @@ Index rebuild inputs:
 Required operations:
 
 - dry-run index scan that reports expected key counts per namespace;
+- replay expected projections derived from SQLite metadata into the index idempotently;
 - rebuild index namespace for one team, channel, agent, run, or actor from SQLite metadata;
 - rebuild all delivery indexes from SQLite metadata;
-- integrity check (not rebuild): the backend-agnostic `check_index_refs_have_bodies` primitive scans
-  selected index prefixes and reports refs whose `authority_message_id` has no matching body-store
-  entry;
-- archive check (not authority): `MessageArchiveStore::contains_document` provides exact
-  `document_id` existence checks, and `check_archive_documents_exist` reports missing archive
-  documents for deterministic ids derived from SQLite/index metadata; archive rows remain
-  rebuildable projections, not body or delivery authority;
-- orphan check (not prune): the backend-agnostic `check_index_refs_have_authority` primitive scans
-  selected index prefixes and reports refs whose `authority_message_id` is absent from the
-  caller-supplied SQLite authority id set;
-- explicit orphan prune: `prune_index_refs_without_authority` uses the same caller-supplied SQLite
-  authority id set, but deletes only the exact orphan `cf_index` keys it scanned. It does not inspect
-  `cf_body` or archive rows, and it does not lower high-water markers;
+- integrity check (not rebuild): verify each expected index ref has a matching `cf_body` entry and,
+  when archive is enabled, an existing archive document id;
+- detect and report orphan index refs, with an explicit prune mode that deletes refs not backed by
+  authority rows;
 - detect index refs whose `cf_body` entry is missing (a body-loss signal that the SQLite body outbox or
   a backup restore must resolve; LanceDB archive may be used as a best-effort body recovery source but
   is not authoritative and may be incomplete).
@@ -343,13 +302,6 @@ it must not authorize or redefine message authority.
   idempotency.
 - RocksDB `cf_index` rows are projections derived from SQLite authority rows; conflicts are resolved by
   rebuilding the index from SQLite metadata alone (`cf_body` is never an index-rebuild input).
-- The shared repair primitive accepts deterministic authority projections and writes only `cf_index`.
-  It must remain independent of `MessageBodyStore`, so a missing body can be reported by integrity
-  checks without blocking index reconstruction.
-- The read-repair scheduler is a queueing boundary for lagging ordered streams, not a second read
-  engine. The Phase 1 in-memory implementation coalesces repeated requests by stream and keeps the
-  highest requested authority bound, while consumers continue serving SQLite until a later repair pass
-  makes the high-water mark fresh.
 - RocksDB `cf_body` is the authoritative store of message body bytes after migration; it is primary
   data, must be backed up, and is not rebuildable from SQLite metadata alone. Until `cf_body` durably
   acknowledges a body, that body remains in the SQLite `message_body_outbox`, so an authority commit
@@ -449,6 +401,8 @@ it must not authorize or redefine message authority.
   - SQLite authority write still succeeds when a RocksDB write fails after commit;
   - read-repair / high-water-mark guard surfaces a freshly written message rather than dropping it;
   - repair job rebuilds missing index keys from SQLite metadata alone (no `cf_body` dependency).
+  - missing `cf_body` entries are reported as body durability failures rather than rebuilt from index
+    rows.
 - Body durability tests:
   - the body is committed to `message_body_outbox` inside the authority transaction;
   - a `cf_body` write failure after the authority commit leaves the body recoverable from the outbox,
@@ -465,63 +419,6 @@ it must not authorize or redefine message authority.
   - rollback before Phase 2 reads the body from SQLite without data loss.
   - fixtures include every authority table, durable outbox, and checkpoint touched by the exercised
     path, following [test-regression-guardrails.md](test-regression-guardrails.md).
-- Foundation crate tests:
-  - `cargo test -p agenthub-message-store --locked` verifies key ordering, body-free refs, and the
-    authority-derived repair, body-presence integrity, orphan-ref integrity, and explicit orphan
-    prune primitives without enabling native RocksDB;
-  - `cargo test -p agenthub-message-store explicit_orphan_prune_deletes_only_refs_without_authority --locked`
-    verifies that diagnostic orphan checks do not delete refs, while explicit prune deletes only refs
-    missing from the caller-supplied authority set and leaves high-water markers unchanged;
-  - `cargo test -p agenthub-message-store --features rocksdb --locked` verifies that RocksDB opens
-    `cf_index`/`cf_body`, stores index refs in prefix order, writes body plus refs in one batch, and
-    can scan `cf_index` refs against `cf_body` presence and caller-supplied authority ids;
-  - `cargo test -p agenthub-message-store --features rocksdb index_authority_prune_deletes_orphan_cf_index_refs --locked`
-    verifies that explicit orphan prune deletes exact keys from the real `cf_index` column family
-    without mutating the stream high-water marker.
-  - `cargo test -p agenthub-message-store --features rocksdb checkpoint_restore_preserves_cf_body_cf_index_and_high_water --locked`
-    verifies that a RocksDB checkpoint can be reopened as a restored message store with `cf_body`,
-    `cf_index`, and stream high-water markers intact.
-- Archive projection tests:
-  - `cargo test -p agenthub-message-archive --locked` verifies exact `document_id` existence checks in
-    the LanceDB backend and the backend-agnostic missing archive document report.
-- Team authority projection tests:
-  - `cargo test repair_team_conversation_message_index_derives_refs_from_sqlite_authority --locked`
-    verifies that `team_conversation_messages` can rebuild channel and id refs from SQLite authority
-    rows without switching normal reads away from SQLite.
-  - `cargo test repair_team_actor_message_index_derives_refs_from_sqlite_authority --locked`
-    verifies that `team_actor_messages` can rebuild run, agent, inbox, and id refs from SQLite
-    authority rows.
-  - `cargo test repair_team_run_event_index_derives_refs_from_sqlite_authority --locked` verifies
-    that `team_run_events` can rebuild run and id refs from SQLite authority rows.
-  - `cargo test repair_main_agent_event_index_derives_refs_from_sqlite_authority --locked` verifies
-    that main `agent_events` rows can rebuild agent, run, and id refs from SQLite authority rows.
-  - `cargo test repair_per_agent_event_index_derives_refs_from_agent_event_db --locked` verifies that
-    per-agent event database rows can rebuild the same projection shape with the agent id supplied by
-    the event DB owner.
-- Guarded read-path tests:
-  - `cargo test -p agenthub-message-store read_repair_scheduler_keeps_highest_requested_authority_bound --locked`
-    verifies that repeated lagging-read repair requests coalesce per stream without lowering the
-    target authority bound.
-  - `cargo test list_task_conversation_messages_uses_fresh_index_and_falls_back_when_lagging --locked`
-    verifies that task conversation history can use a fresh channel projection, schedules repair for
-    lagging high-water, and falls back when the high-water mark is lagging or the projection is
-    incomplete.
-  - `cargo test list_run_events_uses_fresh_index_and_falls_back_when_lagging --locked` verifies that
-    run timelines can use a fresh run projection while filtering out other refs that share the run
-    prefix.
-  - `cargo test list_actor_inbox_history_uses_fresh_index_and_falls_back_when_lagging --locked`
-    verifies that cursor-based actor inbox history can use a fresh inbox projection while pending-only
-    reads stay on SQLite.
-  - `cargo test list_actor_inbox_first_page_uses_index_without_hiding_pending --locked` verifies that
-    include-delivered actor inbox first pages can use a fresh inbox projection for history-only pages
-    and fall back to SQLite when the indexed first page would hide an untriaged pending message.
-  - `cargo test list_agent_events_uses_fresh_index_and_falls_back_when_lagging --locked` verifies
-    that per-agent event history uses a fresh `msg/by_agent/<agent_id>` projection without changing
-    SQLite tail-page ordering, schedules repair for lagging high-water, and falls back when
-    high-water, source-kind, or index completeness is insufficient.
-  - `cargo test list_agent_events_for_session_uses_fresh_index_with_before_cursor --locked` verifies
-    that session-scoped agent event pages preserve `before_id` cursor semantics through the same
-    guarded index path.
 - Distributed tests:
   - node-local cache preserves `source_node_id`, `target_node_id`, and `idempotency_key`;
   - rebuilding a node-local index from main authority rows plus body restores the same delivery window.
@@ -547,10 +444,8 @@ it must not authorize or redefine message authority.
 
 - RocksDB build and packaging may add platform-specific CI/prebuild work; this is the main cost of the
   native dependency and is amplified by the existing cross-compiled release targets.
-- Body durability depends on RocksDB backups after Phase 2, since the SQLite body column is dropped;
-  the storage crate now validates checkpoint restore for `cf_body`, `cf_index`, and high-water
-  markers, but every release target still needs operational backup wiring before SQLite bodies can be
-  removed.
+- Body durability now depends on RocksDB backups after Phase 2, since the SQLite body column is dropped;
+  weak backup/restore discipline turns a lost RocksDB into lost message bodies.
 - LanceDB is eventually consistent and may be incomplete, so it is only a best-effort body-recovery
   source, not a guarantee.
 - Single-message random reads decompress a whole body block; poor `block_size` tuning trades footprint
@@ -566,6 +461,3 @@ it must not authorize or redefine message authority.
 - [docs/journal/2026-05-06-message-archive-step-lifecycle-run-events.md](../journal/2026-05-06-message-archive-step-lifecycle-run-events.md)
 - [docs/journal/2026-05-06-task-message-correlation-authority.md](../journal/2026-05-06-task-message-correlation-authority.md)
 - [docs/journal/2026-05-06-team-actor-message-group-id.md](../journal/2026-05-06-team-actor-message-group-id.md)
-- [docs/journal/2026-06-10-message-store-foundation-crate.md](../journal/2026-06-10-message-store-foundation-crate.md)
-- [docs/journal/2026-07-13-message-body-store-phase1-dual-write.md](../journal/2026-07-13-message-body-store-phase1-dual-write.md)
-- [docs/journal/2026-07-18-message-index-cf-index-foundation.md](../journal/2026-07-18-message-index-cf-index-foundation.md)

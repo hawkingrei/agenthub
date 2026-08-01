@@ -60,6 +60,31 @@ that can install, enable, and start AgentHub consistently.
   - `SHA256SUMS.txt` includes `agenthub_0.0.11_amd64.deb`
   - `SHA256SUMS.txt` includes `agenthub_0.0.11_arm64.deb`
 
+### 2026-07-20 Release Prebuild Verification
+
+- Observed main `Release Prebuild` run `29748545683` after merge commit
+  `676230bf6d664eb56559d5ed96fa3fa4ca44a136`.
+- Confirmed the Linux prebuild package steps produced Debian packages:
+  - `dist/agenthub_0.0.0+main_amd64.deb`
+  - `dist/agenthub_0.0.0+main_arm64.deb`
+- Confirmed both Linux artifact upload steps included `dist/*.deb` in the release-prebuild matrix
+  bundles.
+
+### 2026-07-28 Release Tag Verification
+
+- Observed successful `Release` run `29194967848` for tag `v0.0.11`.
+- Confirmed release `v0.0.11` published both Debian assets:
+  - `agenthub_0.0.11_amd64.deb`
+  - `agenthub_0.0.11_arm64.deb`
+- Confirmed `SHA256SUMS.txt` includes both `.deb` files with checksums:
+  - `fd7dce09d1b791cbc2d405508a5a2fd83f58236510c55408dc5af79c031a3ac0  agenthub_0.0.11_amd64.deb`
+  - `171e513b3a46f3819e6fb5a8c4986c26b1ec52650d9e0bd0634c3c567a56fcd2  agenthub_0.0.11_arm64.deb`
+
+Validation:
+
+- `gh release view --json tagName,name,isDraft,isPrerelease,publishedAt,url,assets`
+- `curl -L https://github.com/hawkingrei/agenthub/releases/download/v0.0.11/SHA256SUMS.txt`
+
 ## Follow-Ups
 
 - Decide separately whether to add signed apt repository publication.

@@ -774,8 +774,8 @@ impl PromptState {
                     }) => option_map
                         .get(option_id.0.as_ref())
                         .cloned()
-                        .unwrap_or(ReviewDecision::Denied),
-                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Denied,
+                        .unwrap_or_else(|| ReviewDecision::denied("unknown option")),
+                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::denied("cancelled"),
                 };
 
                 self.thread
@@ -801,8 +801,8 @@ impl PromptState {
                     }) => option_map
                         .get(option_id.0.as_ref())
                         .cloned()
-                        .unwrap_or(ReviewDecision::Denied),
-                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::Denied,
+                        .unwrap_or_else(|| ReviewDecision::denied("unknown option")),
+                    RequestPermissionOutcome::Cancelled | _ => ReviewDecision::denied("cancelled"),
                 };
 
                 self.thread
@@ -1025,6 +1025,7 @@ impl PromptState {
                 call_id,
                 query,
                 action,
+                results: _,
             }) => {
                 info!("Web search query received: call_id={call_id}, query={query}");
                 // Send update that the search is in progress with the query
@@ -1148,6 +1149,7 @@ impl PromptState {
                 turn_id,
                 item,
                 completed_at_ms: _,
+                started_at_ms: _,
             }) => {
                 info!("Item completed: thread_id={}, turn_id={}, item={:?}", thread_id, turn_id, item);
             }
@@ -1187,6 +1189,7 @@ impl PromptState {
             EventMsg::TurnAborted(TurnAbortedEvent {
                 reason,
                 turn_id,
+                started_at: _,
                 completed_at: _,
                 duration_ms: _,
             }) => {
@@ -1322,7 +1325,10 @@ impl PromptState {
             | EventMsg::CollabCloseBegin(..)
             | EventMsg::CollabCloseEnd(..)
             | EventMsg::SubAgentActivity(..)
-            | EventMsg::PlanDelta(..) => {}
+            | EventMsg::PlanDelta(..)
+            | EventMsg::EnvironmentConnected(..)
+            | EventMsg::EnvironmentDisconnected(..)
+            | EventMsg::RawResponseCompleted(..) => {}
             EventMsg::GuardianAssessment(..) => {}
         }
     }
@@ -1430,7 +1436,7 @@ impl PromptState {
                 call_id: call_id.clone(),
                 option_map: HashMap::from([
                     ("approved".to_string(), ReviewDecision::Approved),
-                    ("denied".to_string(), ReviewDecision::Denied),
+                    ("denied".to_string(), ReviewDecision::denied("denied")),
                 ]),
             },
             ToolCallUpdate::new(
@@ -1604,6 +1610,14 @@ impl PromptState {
                                         )),
                                     ))
                                 }
+                                DynamicToolCallOutputContentItem::InputAudio { audio_url } => {
+                                    ToolCallContent::Content(Content::new(
+                                        ContentBlock::ResourceLink(ResourceLink::new(
+                                            audio_url.clone(),
+                                            audio_url,
+                                        )),
+                                    ))
+                                }
                             })
                             .chain(error.map(|e| ToolCallContent::Content(Content::new(e))))
                             .collect::<Vec<_>>(),
@@ -1665,6 +1679,8 @@ impl PromptState {
         let raw_input = serde_json::json!(&event);
         let ExecApprovalRequestEvent {
             call_id,
+            plugin_id: _,
+            script_path: _,
             command,
             turn_id,
             environment_id: _,
@@ -1809,6 +1825,8 @@ impl PromptState {
         let raw_input = serde_json::json!(&event);
         let ExecCommandBeginEvent {
             turn_id: _,
+            plugin_id: _,
+            script_path: _,
             source: _,
             interaction_input: _,
             call_id,
@@ -1919,6 +1937,8 @@ impl PromptState {
         let raw_output = serde_json::json!(&event);
         let ExecCommandEndEvent {
             turn_id: _,
+            plugin_id: _,
+            script_path: _,
             command: _,
             cwd: _,
             parsed_cmd: _,
@@ -2186,14 +2206,14 @@ impl PromptState {
             content.push(reason.clone());
         }
         if let Some(file_system) = permissions.file_system.as_ref() {
-            if let Some((read, write)) = file_system.legacy_read_write_roots() {
-                if let Some(read) = read {
+            if let Some(roots) = file_system.legacy_read_write_roots() {
+                if let Some(read) = roots.read {
                     content.push(format!(
                         "File System Read Access: {}",
                         read.iter().map(|p| p.display()).join(", ")
                     ));
                 }
-                if let Some(write) = write {
+                if let Some(write) = roots.write {
                     content.push(format!(
                         "File System Write Access: {}",
                         write.iter().map(|p| p.display()).join(", ")
@@ -2422,14 +2442,14 @@ fn build_exec_permission_options(
                     },
                 }
             }),
-            ReviewDecision::Denied => Some(ExecPermissionOption {
+            ReviewDecision::Denied { .. } => Some(ExecPermissionOption {
                 option_id: "denied",
                 permission_option: PermissionOption::new(
                     "denied",
                     "No, continue without running it",
                     PermissionOptionKind::RejectOnce,
                 ),
-                decision: ReviewDecision::Denied,
+                decision: ReviewDecision::denied("denied"),
             }),
             ReviewDecision::TimedOut => None,
             ReviewDecision::Abort => Some(ExecPermissionOption {
@@ -2439,7 +2459,7 @@ fn build_exec_permission_options(
                     "No, continue without running it",
                     PermissionOptionKind::RejectOnce,
                 ),
-                decision: ReviewDecision::Denied,
+                decision: ReviewDecision::denied("aborted"),
             }),
         })
         .collect::<Vec<_>>();
@@ -3951,7 +3971,7 @@ impl<A: Auth> ThreadActor<A> {
             }
             ResponseItem::WebSearchCall { id, action, .. } => {
                 let (title, call_id) = if let Some(action) = action {
-                    web_search_action_to_title_and_id(id, action)
+                    web_search_action_to_title_and_id(id.as_ref().map(|id| id.as_ref()), action)
                 } else {
                     ("Web Search".into(), generate_fallback_id("web_search"))
                 };
@@ -4593,7 +4613,7 @@ fn mcp_tool_call_content(
 
 /// Extract title and call_id from a WebSearchAction (used for replay)
 fn web_search_action_to_title_and_id(
-    id: &Option<String>,
+    id: Option<&str>,
     action: &codex_protocol::models::WebSearchAction,
 ) -> (String, String) {
     match action {
@@ -4604,14 +4624,14 @@ fn web_search_action_to_title_and_id(
                 .or_else(|| query.clone())
                 .unwrap_or_else(|| "Web search".to_string());
             let call_id = id
-                .clone()
+                .map(ToString::to_string)
                 .unwrap_or_else(|| generate_fallback_id("web_search"));
             (title, call_id)
         }
         codex_protocol::models::WebSearchAction::OpenPage { url } => {
             let title = url.clone().unwrap_or_else(|| "Open page".to_string());
             let call_id = id
-                .clone()
+                .map(ToString::to_string)
                 .unwrap_or_else(|| generate_fallback_id("web_open"));
             (title, call_id)
         }
@@ -4620,7 +4640,7 @@ fn web_search_action_to_title_and_id(
                 .clone()
                 .unwrap_or_else(|| "Find in page".to_string());
             let call_id = id
-                .clone()
+                .map(ToString::to_string)
                 .unwrap_or_else(|| generate_fallback_id("web_find"));
             (title, call_id)
         }
@@ -4669,6 +4689,18 @@ mod tests {
 
     use super::*;
 
+    fn test_turn_complete_event(turn_id: impl Into<String>) -> TurnCompleteEvent {
+        TurnCompleteEvent {
+            last_agent_message: None,
+            turn_id: turn_id.into(),
+            error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+            time_to_first_token_ms: None,
+        }
+    }
+
     #[test]
     fn render_model_verification_message_lists_verifications() {
         let message = render_model_verification_message(&[
@@ -4709,6 +4741,60 @@ mod tests {
         );
 
         assert_eq!(resolved, preset.default_reasoning_effort);
+    }
+
+    #[test]
+    fn build_exec_permission_options_maps_denied_and_abort_to_reject_once() {
+        let options = build_exec_permission_options(
+            &[ReviewDecision::denied("declined"), ReviewDecision::Abort],
+            None,
+            None,
+        );
+
+        assert_eq!(options.len(), 1);
+        let option = &options[0];
+        assert_eq!(option.option_id, "denied");
+        assert!(matches!(
+            option.permission_option.kind,
+            PermissionOptionKind::RejectOnce
+        ));
+        assert!(matches!(option.decision, ReviewDecision::Denied { .. }));
+    }
+
+    #[test]
+    fn web_search_action_to_title_and_id_preserves_existing_id() {
+        let (title, call_id) = web_search_action_to_title_and_id(
+            Some("call-1"),
+            &WebSearchAction::Search {
+                query: Some("rust codex".to_string()),
+                queries: None,
+            },
+        );
+
+        assert_eq!(title, "rust codex");
+        assert_eq!(call_id, "call-1");
+    }
+
+    #[test]
+    fn web_search_action_to_title_and_id_generates_kind_specific_fallbacks() {
+        let (open_title, open_id) = web_search_action_to_title_and_id(
+            None,
+            &WebSearchAction::OpenPage {
+                url: Some("https://example.com".to_string()),
+            },
+        );
+        assert_eq!(open_title, "https://example.com");
+        assert!(open_id.starts_with("web_open_"));
+
+        let (find_title, find_id) = web_search_action_to_title_and_id(
+            None,
+            &WebSearchAction::FindInPage {
+                pattern: Some("needle".to_string()),
+                url: None,
+            },
+        );
+        assert_eq!(find_title, "needle");
+        assert!(find_id.starts_with("web_find_"));
     }
 
     struct TempManagedSkillsHome {
@@ -5247,13 +5333,9 @@ mod tests {
                 })?;
                 let second_stop_rx = second_response_rx.await??;
 
-                thread.emit(EventMsg::TurnComplete(TurnCompleteEvent {
-                    last_agent_message: Some("done".to_string()),
-                    turn_id: "shared-turn".to_string(),
-                    completed_at: None,
-                    duration_ms: None,
-                    time_to_first_token_ms: None,
-                }));
+                let mut event = test_turn_complete_event("shared-turn");
+                event.last_agent_message = Some("done".to_string());
+                thread.emit(EventMsg::TurnComplete(event));
 
                 assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
                 assert_eq!(second_stop_rx.await??, StopReason::EndTurn);
@@ -5315,13 +5397,11 @@ mod tests {
                 actor
                     .handle_event(Event {
                         id: "resumed-turn".to_string(),
-                        msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                            last_agent_message: Some("resumed output".to_string()),
-                            turn_id: "resumed-turn".to_string(),
-                            completed_at: None,
-                            duration_ms: None,
-                            time_to_first_token_ms: None,
-                        }),
+                        msg: {
+                            let mut event = test_turn_complete_event("resumed-turn");
+                            event.last_agent_message = Some("resumed output".to_string());
+                            EventMsg::TurnComplete(event)
+                        },
                     })
                     .await;
 
@@ -5623,13 +5703,9 @@ mod tests {
                     }));
                 }
 
-                thread.emit(EventMsg::TurnComplete(TurnCompleteEvent {
-                    last_agent_message: Some("done".to_string()),
-                    turn_id: "shared-turn".to_string(),
-                    completed_at: None,
-                    duration_ms: None,
-                    time_to_first_token_ms: None,
-                }));
+                let mut event = test_turn_complete_event("shared-turn");
+                event.last_agent_message = Some("done".to_string());
+                thread.emit(EventMsg::TurnComplete(event));
 
                 assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
                 assert_eq!(answer_stop_rx.await??, StopReason::EndTurn);
@@ -5797,6 +5873,8 @@ mod tests {
                         };
                         send(EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                             call_id: "call-a".into(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "a".into()],
@@ -5810,6 +5888,8 @@ mod tests {
                         }));
                         send(EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                             call_id: "call-b".into(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "b".into()],
@@ -5823,6 +5903,8 @@ mod tests {
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-a".into(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "a".into()],
@@ -5841,6 +5923,8 @@ mod tests {
                         }));
                         send(EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-b".into(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: turn_id.clone(),
                             command: vec!["echo".into(), "b".into()],
@@ -5857,19 +5941,15 @@ mod tests {
                             status: ExecCommandStatus::Completed,
                             completed_at_ms: 0,
                         }));
-                        send(EventMsg::TurnComplete(TurnCompleteEvent {
-                            last_agent_message: None,
-                            turn_id,
-                            completed_at: None,
-                            duration_ms: None,
-                            time_to_first_token_ms: None,
-                        }));
+                        send(EventMsg::TurnComplete(test_turn_complete_event(turn_id)));
                     } else if prompt == "hanging-exec" {
                         self.op_tx
                             .send(Event {
                                 id: submission_id.clone(),
                                 msg: EventMsg::ExecCommandBegin(ExecCommandBeginEvent {
                                     call_id: "call-hanging".into(),
+                                    plugin_id: None,
+                                    script_path: None,
                                     process_id: None,
                                     turn_id: id.to_string(),
                                     command: vec!["sleep".into(), "999".into()],
@@ -5889,6 +5969,8 @@ mod tests {
                                 id: submission_id.clone(),
                                 msg: EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                                     call_id: "call-id".to_string(),
+                                    plugin_id: None,
+                                    script_path: None,
                                     approval_id: Some("approval-id".to_string()),
                                     environment_id: None,
                                     turn_id: id.to_string(),
@@ -5938,13 +6020,9 @@ mod tests {
                         self.op_tx
                             .send(Event {
                                 id: submission_id.clone(),
-                                msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                    last_agent_message: None,
-                                    turn_id: id.to_string(),
-                                    completed_at: None,
-                                    duration_ms: None,
-                                    time_to_first_token_ms: None,
-                                }),
+                                msg: EventMsg::TurnComplete(test_turn_complete_event(
+                                    id.to_string(),
+                                )),
                             })
                             .unwrap();
                     }
@@ -5978,13 +6056,7 @@ mod tests {
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                last_agent_message: None,
-                                turn_id: id.to_string(),
-                                completed_at: None,
-                                duration_ms: None,
-                                time_to_first_token_ms: None,
-                            }),
+                            msg: EventMsg::TurnComplete(test_turn_complete_event(id.to_string())),
                         })
                         .unwrap();
                 }
@@ -6015,13 +6087,7 @@ mod tests {
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                last_agent_message: None,
-                                turn_id: id.to_string(),
-                                completed_at: None,
-                                duration_ms: None,
-                                time_to_first_token_ms: None,
-                            }),
+                            msg: EventMsg::TurnComplete(test_turn_complete_event(id.to_string())),
                         })
                         .unwrap();
                 }
@@ -6061,13 +6127,7 @@ mod tests {
                         .send(Event {
                             id: submission_id.clone(),
 
-                            msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                                last_agent_message: None,
-                                turn_id: id.to_string(),
-                                completed_at: None,
-                                duration_ms: None,
-                                time_to_first_token_ms: None,
-                            }),
+                            msg: EventMsg::TurnComplete(test_turn_complete_event(id.to_string())),
                         })
                         .unwrap();
                 }
@@ -6085,6 +6145,7 @@ mod tests {
                                 msg: EventMsg::TurnAborted(TurnAbortedEvent {
                                     turn_id: Some(active_prompt_id),
                                     reason: codex_protocol::protocol::TurnAbortReason::Interrupted,
+                                    started_at: None,
                                     completed_at: None,
                                     duration_ms: None,
                                 }),
@@ -6322,6 +6383,8 @@ mod tests {
                         &session_client,
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -6335,7 +6398,7 @@ mod tests {
                             additional_permissions: None,
                             available_decisions: Some(vec![
                                 ReviewDecision::Approved,
-                                ReviewDecision::Denied,
+                                ReviewDecision::denied("denied"),
                             ]),
                             parsed_cmd: vec![ParsedCommand::Unknown {
                                 cmd: "echo hi".to_string(),
@@ -6372,7 +6435,7 @@ mod tests {
                     Some(Op::ExecApproval {
                         id,
                         turn_id,
-                        decision: ReviewDecision::Denied,
+                        decision: ReviewDecision::Denied { .. },
                     }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
                 ));
 
@@ -6410,6 +6473,8 @@ mod tests {
                         &session_client,
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -6460,7 +6525,7 @@ mod tests {
                     Some(Op::ExecApproval {
                         id,
                         turn_id,
-                        decision: ReviewDecision::Denied,
+                        decision: ReviewDecision::Denied { .. },
                     }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
                 ));
 
@@ -6621,7 +6686,7 @@ mod tests {
                     ops.last(),
                     Some(Op::PatchApproval {
                         id,
-                        decision: ReviewDecision::Denied,
+                        decision: ReviewDecision::Denied { .. },
                     }) if id == "patch-call"
                 ));
 
@@ -6738,6 +6803,8 @@ mod tests {
                         &session_client,
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -6820,6 +6887,8 @@ mod tests {
                         &session_client,
                         ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -7082,6 +7151,8 @@ mod tests {
                         &session_client,
                         EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                             call_id: "call-id".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             approval_id: Some("approval-id".to_string()),
                             environment_id: None,
                             turn_id: "turn-id".to_string(),
@@ -7320,7 +7391,6 @@ mod tests {
                             mcp_app_resource_uri: Some(resource_uri.clone()),
                             link_id: None,
                             app_name: None,
-                            template_id: None,
                             action_name: None,
                             plugin_id: None,
                         }),
@@ -7337,7 +7407,6 @@ mod tests {
                             mcp_app_resource_uri: Some(resource_uri.clone()),
                             link_id: None,
                             app_name: None,
-                            template_id: None,
                             action_name: None,
                             plugin_id: None,
                             duration: Duration::from_millis(5),
@@ -7557,6 +7626,8 @@ mod tests {
                         &session_client,
                         EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-1".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: "turn-1".to_string(),
                             command: vec!["cargo".to_string(), "test".to_string()],
@@ -7664,6 +7735,8 @@ mod tests {
                         &session_client,
                         EventMsg::ExecCommandEnd(ExecCommandEndEvent {
                             call_id: "call-1".to_string(),
+                            plugin_id: None,
+                            script_path: None,
                             process_id: None,
                             turn_id: "turn-1".to_string(),
                             command: vec!["cargo".to_string(), "test".to_string()],

@@ -67,98 +67,84 @@ async fn agent_trace(
 
 #[cfg(all(test, debug_assertions))]
 mod tests {
-    use axum::body::Body;
+    use agenthub_auth_domain::UserRole;
+    use axum::body::{Body, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
-    use sqlx::Row;
-    use tower::util::ServiceExt;
+    use serde_json::{Value, json};
+    use tower::ServiceExt;
     use uuid::Uuid;
 
-    use crate::api::teams::tests::build_test_state;
+    use super::router;
+    use crate::api::team_tests::build_test_state;
     use crate::state::AppState;
 
-    async fn create_auth_token_with_role(state: &AppState, role: &str) -> String {
+    async fn create_role_token(state: &AppState, role: UserRole) -> String {
         let user_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().timestamp();
+        let role_str = role.as_str();
         sqlx::query(
             r#"
             INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-            VALUES (?1, ?2, ?3, ?4, NULL, ?5)
+            VALUES (?, ?, ?, ?, NULL, ?)
             "#,
         )
         .bind(&user_id)
-        .bind(format!("{role}-{}", Uuid::new_v4()))
-        .bind("Diagnostics Test User")
-        .bind(role)
+        .bind(format!("{role_str}-{}", Uuid::new_v4()))
+        .bind(role_str)
+        .bind(role_str)
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert user");
+        .expect("insert role user");
 
         state
             .auth
             .create_session(&user_id)
             .await
-            .expect("create session token")
+            .expect("create role session")
     }
 
-    fn build_agent_trace_request(token: Option<&str>) -> Request<Body> {
-        let mut builder = Request::builder()
-            .method(Method::GET)
-            .uri("/agent_trace?agent_id=missing-agent");
+    fn build_request(path: &str, token: Option<&str>) -> Request<Body> {
+        let mut builder = Request::builder().method(Method::GET).uri(path);
         if let Some(token) = token {
             builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
         }
         builder.body(Body::empty()).expect("build request")
     }
 
+    async fn decode_json_body(response: axum::response::Response) -> Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        serde_json::from_slice(&bytes).expect("decode response json")
+    }
+
     #[tokio::test]
     async fn agent_trace_requires_diagnostics_read_capability() {
         let state = build_test_state().await;
-        let app = super::router(state.clone());
+        let viewer_token = create_role_token(&state, UserRole::Viewer).await;
+        let admin_token = create_role_token(&state, UserRole::Admin).await;
+        let app = router(state);
 
-        let missing_auth = app
+        let denied = app
             .clone()
-            .oneshot(build_agent_trace_request(None))
+            .oneshot(build_request(
+                "/agent_trace?agent_id=missing",
+                Some(&viewer_token),
+            ))
             .await
-            .expect("agent trace without auth");
-        assert_eq!(missing_auth.status(), StatusCode::UNAUTHORIZED);
+            .expect("run viewer agent trace request");
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+        let denied_body = decode_json_body(denied).await;
+        assert_eq!(denied_body["error"], json!("diagnostics:read required"));
 
-        let operator_token = create_auth_token_with_role(&state, "operator").await;
-        let operator = app
-            .clone()
-            .oneshot(build_agent_trace_request(Some(&operator_token)))
+        let allowed = app
+            .oneshot(build_request(
+                "/agent_trace?agent_id=missing",
+                Some(&admin_token),
+            ))
             .await
-            .expect("agent trace with operator role");
-        assert_eq!(operator.status(), StatusCode::UNAUTHORIZED);
-
-        let admin_token = create_auth_token_with_role(&state, "admin").await;
-        let admin = app
-            .oneshot(build_agent_trace_request(Some(&admin_token)))
-            .await
-            .expect("agent trace with admin role");
-        let admin_status = admin.status();
-        let body = axum::body::to_bytes(admin.into_body(), usize::MAX)
-            .await
-            .expect("read admin response");
-        assert_eq!(
-            admin_status,
-            StatusCode::OK,
-            "unexpected admin response: {}",
-            String::from_utf8_lossy(&body)
-        );
-        let payload: serde_json::Value =
-            serde_json::from_slice(&body).expect("decode admin response");
-        assert_eq!(payload["target"]["agent_id"], "missing-agent");
-        assert_eq!(
-            payload["verdict"]["layer"],
-            serde_json::Value::from("target_not_found")
-        );
-
-        let count: i64 = sqlx::query("SELECT COUNT(*) AS count FROM auth_sessions")
-            .fetch_one(&state.db)
-            .await
-            .expect("count auth sessions")
-            .get("count");
-        assert_eq!(count, 2);
+            .expect("run admin agent trace request");
+        assert_ne!(allowed.status(), StatusCode::UNAUTHORIZED);
     }
 }

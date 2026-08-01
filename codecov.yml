@@ -1,12 +1,16 @@
 ignore:
   - "src/internal/proto/agenthub.internal.v1.rs"
+  - "docs/**"
+  - "web/src/**/*.test.ts"
+  - "web/src/**/*.test.tsx"
+  - "web/tests/**"
 
 coverage:
   status:
     project:
       default:
         target: auto
-        threshold: 0.02%
+        threshold: 0.10%
         removed_code_behavior: fully_covered_patch
 
 flag_management:

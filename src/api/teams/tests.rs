@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use agenthub_auth_domain::UserRole;
 use axum::Json;
 use axum::body::{Body, to_bytes};
 use axum::extract::{Path, Query, State};
@@ -44,6 +45,8 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
 
+use crate::api::authz::require_user;
+
 use super::{
     AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
     CreateTeamChannelRequest, CreateTeamRequest, CreateTeamRunRequest, CreateTeamTaskRequest,
@@ -52,11 +55,12 @@ use super::{
     ListTeamTasksQuery, ReplyTeamThreadRequest, ResumeTeamRunStepRequest, SearchTeamMessagesQuery,
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TakeoverTeamRunMessageRequest,
-    TeamMemberSpec, TeamMessageSearchHitResponse, TeamRunSnapshotQuery, TeamTaskDetailResponse,
-    TeamUploadRequest, TransferTeamRunMessageRequest, TriageTeamRunMessageRequest,
-    UpdateTeamSpecRequest, UpdateTeamTaskRequest, ack_team_run_message, cancel_team_run,
-    compile_team_task_run_preview, complete_team_run_step, create_team, create_team_channel,
-    create_team_run, delete_team, delete_team_channel, ensure_team_shared_thread,
+    TeamDownloadRequest, TeamMemberSpec, TeamMessageSearchHitResponse, TeamRunSnapshotQuery,
+    TeamTaskDetailResponse, TeamUploadRequest, TransferTeamRunMessageRequest,
+    TriageTeamRunMessageRequest, UpdateTeamSpecRequest, UpdateTeamTaskRequest,
+    ack_team_run_message, cancel_team_run, compile_team_task_run_preview, complete_team_run_step,
+    create_team, create_team_channel, create_team_run, delete_team, delete_team_channel,
+    download_team_object, download_team_task_object, ensure_team_shared_thread,
     escalate_team_run_message, fail_team_run_step, flush_team_run_context,
     force_new_session_for_team_member, get_team, get_team_run, get_team_run_snapshot,
     get_team_runtime, get_team_shared_thread, get_team_task, hex_encode, list_team_channels,
@@ -426,6 +430,15 @@ fn test_object_upload_service(db: SqlitePool) -> ObjectUploadService {
             region: None,
             access_key_id_env: None,
             secret_access_key_env: None,
+            download_max_bytes: Some(1024 * 1024),
+            download_max_redirects: Some(3),
+            download_timeout_seconds: Some(10),
+            download_retry_attempts: Some(1),
+            download_retry_backoff_millis: Some(0),
+            download_max_concurrent_per_host: Some(4),
+            download_allow_private_networks: Some(true),
+            download_allowed_hosts: None,
+            download_denied_hosts: None,
         }),
         ..Default::default()
     };
@@ -1437,6 +1450,48 @@ pub(crate) async fn create_auth_token_with_role_and_user_id(
         .await
         .expect("create token");
     (user_id, token)
+}
+
+async fn create_auth_token_with_role(state: &AppState, role: UserRole) -> String {
+    let user_id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO users (id, username, display_name, role, password_hash, created_at)
+        VALUES (?1, ?2, ?3, ?4, NULL, ?5)
+        "#,
+    )
+    .bind(&user_id)
+    .bind(format!("{}-{}", role.as_str(), Uuid::new_v4()))
+    .bind("Role Test User")
+    .bind(role.as_str())
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert role user");
+
+    if role == UserRole::Device {
+        sqlx::query(
+            r#"
+            INSERT INTO devices (id, user_id, name, user_agent, status, created_at)
+            VALUES (?1, ?2, ?3, ?4, 'active', ?5)
+            "#,
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&user_id)
+        .bind("Role Test Device")
+        .bind("role-test")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert role device");
+    }
+
+    state
+        .auth
+        .create_session(&user_id)
+        .await
+        .expect("create role token")
 }
 
 fn build_json_request(

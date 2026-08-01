@@ -73,6 +73,30 @@ fn assert_forced_restart_runtime(
     assert_ne!(runtime.members[0].session_id, original_session_id);
 }
 
+async fn spawn_download_source(bytes: Vec<u8>) -> String {
+    let bytes = Arc::new(bytes);
+    let app = axum::Router::new().route(
+        "/artifact",
+        axum::routing::get({
+            let bytes = Arc::clone(&bytes);
+            move || {
+                let bytes = Arc::clone(&bytes);
+                async move { bytes.as_ref().clone() }
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind download source");
+    let address = listener.local_addr().expect("read download source address");
+    tokio::spawn(async move {
+        axum::serve(listener, app)
+            .await
+            .expect("serve download source");
+    });
+    format!("http://{address}/artifact")
+}
+
 #[tokio::test]
 async fn teams_api_requires_authorization() {
     let state = build_test_state().await;
@@ -159,251 +183,116 @@ async fn team_upload_api_requires_team_access_and_publishes_metadata() {
 }
 
 #[tokio::test]
-async fn team_upload_session_api_prepares_and_cancels_team_scope() {
+async fn team_download_api_streams_remote_object_and_publishes_metadata() {
     let state = build_test_state().await;
-    let token = create_auth_token(&state).await;
-    let outsider_token = create_auth_token(&state).await;
-    let headers = headers_for_token(&token);
+    let headers = auth_headers(&state).await;
 
     let Json(created) = create_team(
         State(state.clone()),
-        headers,
+        headers.clone(),
         Json(CreateTeamRequest {
-            name: "upload-session-team".to_string(),
+            name: "download-team".to_string(),
             description: None,
             spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
-    .expect("create upload session team");
-    let app = super::router(state);
+    .expect("create download team");
 
-    let forbidden = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/uploads/sessions", created.id),
-            Some(&outsider_token),
-            Some(json!({
-                "file_name": "large.bin",
-                "content_type": "application/octet-stream",
-                "object_kind": "object",
-                "expected_size_bytes": 64,
-                "ttl_seconds": 60
-            })),
-        ))
-        .await
-        .expect("prepare session as outsider");
-    assert_eq!(forbidden.status(), StatusCode::NOT_FOUND);
+    let bytes = b"downloaded evidence";
+    let sha256 = hex_encode(&Sha256::digest(bytes));
+    let source_url = spawn_download_source(bytes.to_vec()).await;
+    let request = TeamDownloadRequest {
+        source_url,
+        file_name: " evidence.txt ".to_string(),
+        content_type: " Text/Plain ".to_string(),
+        expected_size_bytes: Some(bytes.len() as u64),
+        expected_sha256: Some(sha256.clone()),
+    };
 
-    let prepared = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/uploads/sessions", created.id),
-            Some(&token),
-            Some(json!({
-                "file_name": "large.bin",
-                "content_type": "application/octet-stream",
-                "object_kind": "object",
-                "expected_size_bytes": 64,
-                "ttl_seconds": 60
-            })),
-        ))
-        .await
-        .expect("prepare team upload session");
-    let prepared_status = prepared.status();
-    let session = decode_json_body(prepared).await;
-    assert_eq!(
-        prepared_status,
-        StatusCode::OK,
-        "unexpected prepare body: {session}"
-    );
-    assert_eq!(session["owner_scope"], Value::from(format!("teams/{}", created.id)));
-    assert_eq!(session["status"], Value::from("prepared"));
-    assert_eq!(session["object_kind"], Value::from("object"));
-    assert!(
-        session["object_key"]
-            .as_str()
-            .is_some_and(|value| value.starts_with(&format!("uploads/teams/{}/", created.id)))
-    );
-    let session_id = session["id"].as_str().expect("session id").to_string();
+    let Json(upload) = download_team_object(
+        State(state.clone()),
+        headers,
+        Path(created.id.clone()),
+        Json(request),
+    )
+    .await
+    .expect("download team object");
 
-    let canceled = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/uploads/sessions/{session_id}/cancel", created.id),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("cancel team upload session");
-    let canceled_status = canceled.status();
-    let canceled_body = decode_json_body(canceled).await;
-    assert_eq!(
-        canceled_status,
-        StatusCode::OK,
-        "unexpected cancel body: {canceled_body}"
-    );
-    assert_eq!(canceled_body["status"], Value::from("canceled"));
-    assert!(canceled_body["canceled_at"].is_number());
+    assert_eq!(upload.owner_scope, format!("teams/{}", created.id));
+    assert!(upload.object_key.starts_with(&format!(
+        "uploads/teams/{}/",
+        created.id
+    )));
+    assert!(upload.object_key.ends_with("/evidence.txt"));
+    assert_eq!(upload.original_filename, "evidence.txt");
+    assert_eq!(upload.content_type, "text/plain");
+    assert_eq!(upload.size_bytes, bytes.len() as i64);
+    assert_eq!(upload.sha256, sha256);
+    assert_eq!(upload.publish_state, "published");
 
-    let prepared_for_multipart = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/uploads/sessions", created.id),
-            Some(&token),
-            Some(json!({
-                "file_name": "multipart.bin",
-                "content_type": "application/octet-stream",
-                "object_kind": "object",
-                "expected_size_bytes": 16
-            })),
-        ))
+    let persisted = agenthub_db::object_uploads::get_object_upload(&state.db, &upload.id)
         .await
-        .expect("prepare team multipart upload session");
-    assert_eq!(prepared_for_multipart.status(), StatusCode::OK);
-    let multipart_session = decode_json_body(prepared_for_multipart).await;
-    let multipart_session_id = multipart_session["id"]
-        .as_str()
-        .expect("multipart session id")
-        .to_string();
-    let multipart_upload = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/uploads/sessions/{multipart_session_id}/multipart",
-                created.id
-            ),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("initiate direct multipart team upload session");
-    assert_eq!(multipart_upload.status(), StatusCode::BAD_REQUEST);
+        .expect("load persisted download");
+    assert_eq!(persisted, upload);
+}
 
-    let complete_bytes = b"team large object";
-    let prepared_for_complete = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/uploads/sessions", created.id),
-            Some(&token),
-            Some(json!({
-                "file_name": "complete.bin",
-                "content_type": "application/octet-stream",
-                "object_kind": "object",
-                "expected_size_bytes": complete_bytes.len()
-            })),
-        ))
-        .await
-        .expect("prepare second team upload session");
-    assert_eq!(prepared_for_complete.status(), StatusCode::OK);
-    let complete_session = decode_json_body(prepared_for_complete).await;
-    let complete_session_id = complete_session["id"]
-        .as_str()
-        .expect("complete session id")
-        .to_string();
+#[tokio::test]
+async fn team_task_download_api_publishes_task_scoped_metadata() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
 
-    let completed = app
-        .clone()
-        .oneshot(build_binary_request(
-            Method::POST,
-            &format!(
-                "/{}/uploads/sessions/{complete_session_id}/complete",
-                created.id
-            ),
-            Some(&token),
-            complete_bytes.to_vec(),
-        ))
-        .await
-        .expect("complete team upload session");
-    let completed_status = completed.status();
-    let upload = decode_json_body(completed).await;
-    assert_eq!(
-        completed_status,
-        StatusCode::OK,
-        "unexpected complete body: {upload}"
-    );
-    assert_eq!(upload["owner_scope"], Value::from(format!("teams/{}", created.id)));
-    assert_eq!(upload["publish_state"], Value::from("published"));
-    assert_eq!(upload["size_bytes"], Value::from(complete_bytes.len() as i64));
+    let Json(created) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "download-task-team".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create download task team");
+    let task = create_team_task(
+        &state,
+        &headers,
+        &created.id,
+        CreateTeamTaskRequest {
+            title: "Collect artifact".to_string(),
+            priority: "high".to_string(),
+            assigned_member_id: "planner".to_string(),
+            created_by_actor_id: None,
+            context: None,
+            conversation_mode: None,
+            topic: None,
+        },
+    )
+    .await
+    .expect("create download task");
 
-    let part_bytes = b"team resumable object";
-    let prepared_for_parts = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/uploads/sessions", created.id),
-            Some(&token),
-            Some(json!({
-                "file_name": "resumable.bin",
-                "content_type": "application/octet-stream",
-                "object_kind": "object",
-                "expected_size_bytes": part_bytes.len()
-            })),
-        ))
-        .await
-        .expect("prepare team parts upload session");
-    assert_eq!(prepared_for_parts.status(), StatusCode::OK);
-    let parts_session = decode_json_body(prepared_for_parts).await;
-    let parts_session_id = parts_session["id"]
-        .as_str()
-        .expect("parts session id")
-        .to_string();
-    for (part_number, chunk) in [(1, b"team ".as_slice()), (2, b"resumable object".as_slice())] {
-        let part = app
-            .clone()
-            .oneshot(build_binary_request(
-                Method::POST,
-                &format!(
-                    "/{}/uploads/sessions/{parts_session_id}/parts/{part_number}",
-                    created.id
-                ),
-                Some(&token),
-                chunk.to_vec(),
-            ))
-            .await
-            .expect("upload team session part");
-        let part_status = part.status();
-        let part_body = decode_json_body(part).await;
-        assert_eq!(
-            part_status,
-            StatusCode::OK,
-            "unexpected part body: {part_body}"
-        );
-        assert_eq!(part_body["part_number"], Value::from(part_number));
-    }
-    let completed_parts = app
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/uploads/sessions/{parts_session_id}/complete-parts",
-                created.id
-            ),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("complete team upload session from parts");
-    let completed_parts_status = completed_parts.status();
-    let completed_parts_upload = decode_json_body(completed_parts).await;
-    assert_eq!(
-        completed_parts_status,
-        StatusCode::OK,
-        "unexpected complete-parts body: {completed_parts_upload}"
-    );
-    assert_eq!(
-        completed_parts_upload["owner_scope"],
-        Value::from(format!("teams/{}", created.id))
-    );
-    assert_eq!(
-        completed_parts_upload["size_bytes"],
-        Value::from(part_bytes.len() as i64)
-    );
+    let bytes = b"task download evidence";
+    let source_url = spawn_download_source(bytes.to_vec()).await;
+    let Json(upload) = download_team_task_object(
+        State(state.clone()),
+        headers,
+        Path((created.id.clone(), task.task.id.clone())),
+        Json(TeamDownloadRequest {
+            source_url,
+            file_name: "task-evidence.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            expected_size_bytes: Some(bytes.len() as u64),
+            expected_sha256: Some(hex_encode(&Sha256::digest(bytes))),
+        }),
+    )
+    .await
+    .expect("download task object");
+
+    assert_eq!(upload.owner_scope, format!("tasks/{}", task.task.id));
+    assert!(upload.object_key.starts_with(&format!(
+        "uploads/tasks/{}/",
+        task.task.id
+    )));
+    assert_eq!(upload.size_bytes, bytes.len() as i64);
 }
 
 #[tokio::test]
@@ -597,286 +486,6 @@ async fn team_task_upload_api_authorizes_parent_team_and_publishes_task_scope() 
     )));
     assert!(image_upload.object_key.ends_with(".png"));
     assert_eq!(image_upload.sha256, image_sha256);
-}
-
-#[tokio::test]
-async fn team_task_upload_session_api_derives_task_scope() {
-    let state = build_test_state().await;
-    let token = create_auth_token(&state).await;
-    let headers = headers_for_token(&token);
-
-    let Json(team) = create_team(
-        State(state.clone()),
-        headers,
-        Json(CreateTeamRequest {
-            name: "task-upload-session-team".to_string(),
-            description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
-        }),
-    )
-    .await
-    .expect("create task upload session team");
-    let created = create_team_task(
-        &state,
-        &headers_for_token(&token),
-        &team.id,
-        CreateTeamTaskRequest {
-            title: "Collect large evidence".to_string(),
-            priority: "high".to_string(),
-            assigned_member_id: "planner".to_string(),
-            created_by_actor_id: None,
-            context: None,
-            conversation_mode: None,
-            topic: None,
-        },
-    )
-    .await
-    .expect("create upload session task");
-    let app = super::router(state);
-
-    let prepared = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/tasks/{}/uploads/sessions",
-                team.id, created.task.id
-            ),
-            Some(&token),
-            Some(json!({
-                "file_name": "screenshot.png",
-                "content_type": "image/png",
-                "object_kind": "image",
-                "expected_size_bytes": 4
-            })),
-        ))
-        .await
-        .expect("prepare task upload session");
-    let prepared_status = prepared.status();
-    let session = decode_json_body(prepared).await;
-    assert_eq!(
-        prepared_status,
-        StatusCode::OK,
-        "unexpected prepare body: {session}"
-    );
-    assert_eq!(
-        session["owner_scope"],
-        Value::from(format!("tasks/{}", created.task.id))
-    );
-    assert_eq!(session["object_kind"], Value::from("image"));
-    assert!(
-        session["object_key"].as_str().is_some_and(|value| {
-            value.starts_with(&format!("images/tasks/{}/", created.task.id))
-                && value.ends_with(".png")
-        })
-    );
-    let session_id = session["id"].as_str().expect("session id").to_string();
-
-    let canceled = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/tasks/{}/uploads/sessions/{session_id}/cancel",
-                team.id, created.task.id
-            ),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("cancel task upload session");
-    assert_eq!(canceled.status(), StatusCode::OK);
-
-    let prepared_for_multipart = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/tasks/{}/uploads/sessions",
-                team.id, created.task.id
-            ),
-            Some(&token),
-            Some(json!({
-                "file_name": "multipart.bin",
-                "content_type": "application/octet-stream",
-                "object_kind": "object",
-                "expected_size_bytes": 16
-            })),
-        ))
-        .await
-        .expect("prepare task multipart upload session");
-    assert_eq!(prepared_for_multipart.status(), StatusCode::OK);
-    let multipart_session = decode_json_body(prepared_for_multipart).await;
-    let multipart_session_id = multipart_session["id"]
-        .as_str()
-        .expect("multipart session id")
-        .to_string();
-    let multipart_upload = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/tasks/{}/uploads/sessions/{multipart_session_id}/multipart",
-                team.id, created.task.id
-            ),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("initiate direct multipart task upload session");
-    assert_eq!(multipart_upload.status(), StatusCode::BAD_REQUEST);
-
-    let complete_bytes = b"task large evidence";
-    let prepared_for_complete = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/tasks/{}/uploads/sessions",
-                team.id, created.task.id
-            ),
-            Some(&token),
-            Some(json!({
-                "file_name": "evidence.bin",
-                "content_type": "application/octet-stream",
-                "object_kind": "object",
-                "expected_size_bytes": complete_bytes.len()
-            })),
-        ))
-        .await
-        .expect("prepare task complete upload session");
-    assert_eq!(prepared_for_complete.status(), StatusCode::OK);
-    let complete_session = decode_json_body(prepared_for_complete).await;
-    let complete_session_id = complete_session["id"]
-        .as_str()
-        .expect("complete session id")
-        .to_string();
-    let completed = app
-        .clone()
-        .oneshot(build_binary_request(
-            Method::POST,
-            &format!(
-                "/{}/tasks/{}/uploads/sessions/{complete_session_id}/complete",
-                team.id, created.task.id
-            ),
-            Some(&token),
-            complete_bytes.to_vec(),
-        ))
-        .await
-        .expect("complete task upload session");
-    let completed_status = completed.status();
-    let upload = decode_json_body(completed).await;
-    assert_eq!(
-        completed_status,
-        StatusCode::OK,
-        "unexpected task complete body: {upload}"
-    );
-    assert_eq!(
-        upload["owner_scope"],
-        Value::from(format!("tasks/{}", created.task.id))
-    );
-    assert_eq!(upload["publish_state"], Value::from("published"));
-
-    let part_bytes = b"task resumable evidence";
-    let prepared_for_parts = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/tasks/{}/uploads/sessions",
-                team.id, created.task.id
-            ),
-            Some(&token),
-            Some(json!({
-                "file_name": "resumable.bin",
-                "content_type": "application/octet-stream",
-                "object_kind": "object",
-                "expected_size_bytes": part_bytes.len()
-            })),
-        ))
-        .await
-        .expect("prepare task parts upload session");
-    assert_eq!(prepared_for_parts.status(), StatusCode::OK);
-    let parts_session = decode_json_body(prepared_for_parts).await;
-    let parts_session_id = parts_session["id"]
-        .as_str()
-        .expect("parts session id")
-        .to_string();
-    for (part_number, chunk) in [(1, b"task ".as_slice()), (2, b"resumable evidence".as_slice())] {
-        let part = app
-            .clone()
-            .oneshot(build_binary_request(
-                Method::POST,
-                &format!(
-                    "/{}/tasks/{}/uploads/sessions/{parts_session_id}/parts/{part_number}",
-                    team.id, created.task.id
-                ),
-                Some(&token),
-                chunk.to_vec(),
-            ))
-            .await
-            .expect("upload task session part");
-        let part_status = part.status();
-        let part_body = decode_json_body(part).await;
-        assert_eq!(
-            part_status,
-            StatusCode::OK,
-            "unexpected task part body: {part_body}"
-        );
-        assert_eq!(part_body["part_number"], Value::from(part_number));
-    }
-    let completed_parts = app
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{}/tasks/{}/uploads/sessions/{parts_session_id}/complete-parts",
-                team.id, created.task.id
-            ),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("complete task upload session from parts");
-    let completed_parts_status = completed_parts.status();
-    let completed_parts_upload = decode_json_body(completed_parts).await;
-    assert_eq!(
-        completed_parts_status,
-        StatusCode::OK,
-        "unexpected task complete-parts body: {completed_parts_upload}"
-    );
-    assert_eq!(
-        completed_parts_upload["owner_scope"],
-        Value::from(format!("tasks/{}", created.task.id))
-    );
-    assert_eq!(
-        completed_parts_upload["size_bytes"],
-        Value::from(part_bytes.len() as i64)
-    );
-}
-
-fn build_binary_request(
-    method: Method,
-    path: &str,
-    token: Option<&str>,
-    bytes: Vec<u8>,
-) -> Request<Body> {
-    let mut builder = Request::builder()
-        .method(method)
-        .uri(path)
-        .header(header::CONTENT_TYPE, "application/octet-stream");
-    if let Some(token) = token {
-        builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
-    }
-    builder.body(Body::from(bytes)).expect("build binary request")
-}
-
-fn headers_for_token(token: &str) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {token}")).expect("auth header"),
-    );
-    headers
 }
 
 #[tokio::test]
@@ -8440,6 +8049,10 @@ async fn team_task_messages_api_routes_single_remote_mention_over_p2p_and_preser
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
+    sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
+        .execute(&state.db)
+        .await
+        .expect("add target_node_id");
     sqlx::query(
         r#"
         CREATE TABLE agent_nodes (

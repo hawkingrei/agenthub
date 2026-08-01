@@ -84,6 +84,9 @@ describe("team route helpers", () => {
     expect(buildTeamChannelProfilePath("team-1", "review", "worker-1")).toBe(
       "/workspace/teams/team-1/channels/review/members/worker-1"
     );
+    expect(buildTeamChannelProfilePath("team/1", "review/triage", "worker/1")).toBe(
+      "/workspace/teams/team%2F1/channels/review%2Ftriage/members/worker%2F1"
+    );
     expect(buildTeamChannelProfilePath("team-1", "all", "worker-1", "task-9")).toBe(
       "/workspace/teams/team-1/channels/all/tasks/task-9/members/worker-1"
     );
@@ -97,6 +100,9 @@ describe("team route helpers", () => {
     expect(buildTeamTabCompatibilityPath("/workspace/teams/team-1/channels/review", "runs")).toBe(
       "/workspace/teams/team-1/channels/review?tab=runs"
     );
+    expect(
+      buildTeamTabCompatibilityPath("/workspace/teams/team-1/members/worker-1", "mailbox")
+    ).toBe("/workspace/teams/team-1/members/worker-1?tab=mailbox");
     expect(
       buildTeamTabCompatibilityPath("/workspace/teams/team-1/members/worker-1", "agent_acp")
     ).toBe("/workspace/teams/team-1/members/worker-1?tab=thread");
@@ -125,14 +131,24 @@ describe("team route helpers", () => {
     expect(buildTeamLensNavigationPath("team-1", "channels", "review", "task-9")).toBe(
       "/workspace/teams/team-1/channels/review/tasks/task-9"
     );
+    expect(buildTeamLensNavigationPath("team-1", "channels", "review")).toBe(
+      "/workspace/teams/team-1/channels/review"
+    );
+    expect(buildTeamLensNavigationPath("team-1", "channels")).toBe("/workspace/teams/team-1");
     expect(buildTeamLensNavigationPath("team-1", "members", null, "task-9")).toBe(
       "/workspace/teams/team-1?lens=members"
+    );
+    expect(buildTeamLensNavigationPath("team-1", "nodes", null, "task-9")).toBe(
+      "/workspace/teams/team-1?lens=nodes"
     );
     expect(buildTeamWorkspaceLensPath("team-1", "search", "review")).toBe(
       "/workspace/teams/team-1/channels/review"
     );
     expect(buildTeamWorkspaceLensPath("team-1", "tasks", "review")).toBe(
       "/workspace/teams/team-1?lens=tasks"
+    );
+    expect(buildTeamWorkspaceLensPath("team-1", "members", "review")).toBe(
+      "/workspace/teams/team-1?lens=members"
     );
   });
 
@@ -153,6 +169,10 @@ describe("team route helpers", () => {
     expect(splitTeamRoutePath(buildTeamChannelPath("team-1", "review"))).toEqual({
       pathname: "/workspace/teams/team-1/channels/review",
       search: "",
+    });
+    expect(splitTeamRoutePath(buildTeamSearchCompatibilityPath("team-1"))).toEqual({
+      pathname: "/workspace/teams/team-1",
+      search: "?lens=search",
     });
   });
 
@@ -208,6 +228,9 @@ describe("team route helpers", () => {
       )
     ).toBe("mailbox");
     expect(resolveTeamWorkspaceTab("?tab=overview")).toBeNull();
+    expect(resolveTeamSelectedMemberId("", "/workspace/teams/team-1/members/%E0%A4%A")).toBe(
+      "%E0%A4%A"
+    );
   });
 
   it("maps route workspace lenses to Team tabs without promoting search to a content tab", () => {
@@ -278,6 +301,19 @@ describe("team route helpers", () => {
       selectedMemberId: "worker-2",
       selectedTaskId: "",
     });
+    expect(
+      resolveTeamRouteSelection(
+        "/workspace/teams/team-1/members/path-worker/member_console",
+        "?member=query-worker&tab=mailbox"
+      )
+    ).toEqual({
+      workspaceLens: "members",
+      workspaceTab: "mailbox",
+      channelId: "all",
+      threadRootMessageId: null,
+      selectedMemberId: "query-worker",
+      selectedTaskId: "",
+    });
   });
 
   it("resolves active Team workspace lenses from explicit routes before tab fallback", () => {
@@ -346,5 +382,11 @@ describe("team route helpers", () => {
         activeWorkspaceLens: "search",
       })
     ).toBe("channels");
+    expect(
+      resolveTeamSidebarSubjectPane({
+        tab: "mailbox",
+        activeWorkspaceLens: null,
+      })
+    ).toBe("agents");
   });
 });

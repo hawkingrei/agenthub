@@ -129,8 +129,10 @@ Authorization changes should include three guardrails:
    - Prove a lower role is denied for a protected route.
    - Prove the nearest allowed role succeeds.
 3. Bypass guard
-   - Add a static or focused test that fails when new route/service code performs direct role checks
+   - Keep static or focused tests that fail when new route/service code performs direct role checks
      outside the canonical authz module.
+   - Keep a route-source guard that fails when production API route modules use `require_user` as an
+     authentication-only route gate instead of `require_capability` or documented `require_root`.
 
 ## Contracts
 
@@ -188,7 +190,8 @@ result.
 ## Open Risks
 
 - Existing root-only routes mix true security settings with normal operator actions; migration needs
-  careful classification.
+  careful classification. The 2026-07-22 closeout guard now locks the reviewed
+  `require_root` route callsites to security-sensitive boundaries.
 - Adding roles without UI management can make tests pass while operators still cannot administer
   users conveniently.
 - Bypass guard patterns can produce false positives; keep the baseline small and explicit.
@@ -197,3 +200,22 @@ result.
 ## Source Journals
 
 - [2026-07-16 Access Control Roles](../journal/2026-07-16-access-control-roles.md)
+- [2026-07-21 Linker Capability Gate](../journal/2026-07-21-linker-capability-gate.md)
+- [2026-07-21 Agent Inspect Capability Gate](../journal/2026-07-21-agent-inspect-capability-gate.md)
+- [2026-07-21 Agent Runtime Capability Gate](../journal/2026-07-21-agent-runtime-capability-gate.md)
+- [2026-07-21 Agent Management Capability Gate](../journal/2026-07-21-agent-management-capability-gate.md)
+- [2026-07-21 Agent Upload Capability Gate](../journal/2026-07-21-agent-upload-capability-gate.md)
+- [2026-07-21 OpenAPI Capability Gate](../journal/2026-07-21-openapi-capability-gate.md)
+- [2026-07-21 Auth Route Capability Guard](../journal/2026-07-21-auth-route-capability-guard.md)
+- [2026-07-21 Settings Runtime Defaults Capability Gate](../journal/2026-07-21-settings-runtime-defaults-capability-gate.md)
+- [2026-07-21 Team Prompt Defaults Capability Gate](../journal/2026-07-21-team-prompt-defaults-capability-gate.md)
+- [2026-07-21 Team Management Capability Gate](../journal/2026-07-21-team-management-capability-gate.md)
+- [2026-07-21 Team Runtime Control Capability Gate](../journal/2026-07-21-team-runtime-control-capability-gate.md)
+- [2026-07-21 Team Run Step Capability Gate](../journal/2026-07-21-team-run-step-capability-gate.md)
+- [2026-07-21 Team Upload Capability Gate](../journal/2026-07-21-team-upload-capability-gate.md)
+- [2026-07-21 Team Mailbox Capability Gate](../journal/2026-07-21-team-mailbox-capability-gate.md)
+- [2026-07-21 Team Task Capability Gate](../journal/2026-07-21-team-task-capability-gate.md)
+- [2026-07-21 Team Thread Reply Capability Gate](../journal/2026-07-21-team-thread-reply-capability-gate.md)
+- [2026-07-21 Team Read Preview Capability Gate](../journal/2026-07-21-team-read-preview-capability-gate.md)
+- [2026-07-21 Team Shared Thread Capability Gate](../journal/2026-07-21-team-shared-thread-capability-gate.md)
+- [2026-07-22 Access Control Root-Only Closeout](../journal/2026-07-22-access-control-root-only-closeout.md)

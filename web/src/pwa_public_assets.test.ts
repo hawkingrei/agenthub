@@ -52,8 +52,8 @@ describe("PWA public assets", () => {
     expect(serviceWorkerRaw).toContain('self.addEventListener("activate"');
     expect(serviceWorkerRaw).toContain('self.addEventListener("push"');
     expect(serviceWorkerRaw).toContain('self.addEventListener("notificationclick"');
-    expect(serviceWorkerRaw).not.toMatch(/addEventListener\(\s*["']fetch["']/);
-    expect(serviceWorkerRaw).not.toMatch(/\bcaches\./);
+    expect(serviceWorkerRaw).not.toMatch(/addEventListener\(\s*["'`]fetch["'`]/);
+    expect(serviceWorkerRaw).not.toMatch(/\bonfetch\b/);
     expect(serviceWorkerRaw).not.toMatch(/\bcaches\b/);
     expect(serviceWorkerRaw).not.toMatch(/\bprecache\b/i);
   });

@@ -14,7 +14,7 @@ build:
 run: run-server
 
 run-server: build-web
-	cargo build -p agenthub-codex-acp-runtime --bin agenthub-codex-acp
+	cargo build -p agenthub-codex-acp-runtime
 	cargo build -p agenthub-acp-adapter
 	cargo run -p agenthub --
 

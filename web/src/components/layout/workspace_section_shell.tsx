@@ -5,6 +5,8 @@ const WORKSPACE_SECTION_SHELL_BASE_CLASS =
   "min-w-0 rounded-xl border border-notion-border bg-white shadow-sm";
 const WORKSPACE_CONTENT_STACK_BASE_CLASS =
   "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
+const WORKSPACE_SPLIT_WITH_CONTEXT_CLASS =
+  "lg:grid lg:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.9fr)]";
 
 type WorkspaceSectionShellProps = React.ComponentPropsWithoutRef<"div"> & {
   compact?: boolean;
@@ -71,7 +73,7 @@ export const WorkspaceSplitPaneLayout = React.memo(function WorkspaceSplitPaneLa
     <div
       className={cx(
         "flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden",
-        hasSecondary ? "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(22rem,1fr)]" : null,
+        hasSecondary ? WORKSPACE_SPLIT_WITH_CONTEXT_CLASS : null,
         className
       )}
       data-workspace-split-pane-layout="true"

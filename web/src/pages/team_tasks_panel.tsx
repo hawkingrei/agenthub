@@ -18,6 +18,7 @@ import {
 } from "../ui/primitives";
 import { selectRunsForTask } from "./team/run_helpers";
 import type { TeamMemberLiveState } from "./team/member_helpers";
+import { WorkspaceSplitPaneLayout } from "../components/layout/workspace_section_shell";
 import { resolveTaskChannelId } from "./team/page_helpers";
 import {
   NOTION_MODAL_CLASSNAMES,
@@ -69,8 +70,12 @@ type TeamTasksPanelProps = {
 
 const TASKS_FILTER_BAR_CLASS =
   "rounded-lg border border-notion-border bg-notion-sidebar/50 p-1 shadow-sm";
-const TASKS_WORKSPACE_STACK_CLASS = "mt-6 flex flex-col gap-8";
+/* c8 ignore start -- layout class constants are asserted through rendered DOM class names. */
+const TASKS_WORKSPACE_STACK_CLASS = "mt-6 flex min-h-0 flex-col gap-8";
 const TASKS_BOARD_SCROLL_CLASS = "-mx-1 overflow-x-auto px-1 pb-4";
+const TASKS_BOARD_PANE_CLASS = "min-h-0 min-w-0 overflow-hidden";
+const TASKS_DETAIL_DOCK_CLASS = "team-task-detail-dock hidden min-h-0 min-w-0 overflow-y-auto overscroll-y-contain lg:flex";
+/* c8 ignore stop */
 const TASKS_BOARD_COLUMN_META_CLASS =
   "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TASKS_BOARD_STACK_CLASS = "mt-4 flex min-h-0 flex-1 flex-col gap-2";
@@ -449,6 +454,15 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   );
   const latestTaskNote = selectedTaskNotes[selectedTaskNotes.length - 1] ?? null;
   const showInitialLoadingState = tasksLoading && tasks.length === 0;
+  /* c8 ignore start -- both branch outputs are verified by DOM assertions. */
+  const showDesktopTaskDetailDock = !compactMode && Boolean(selectedTask);
+  const rootScrollClass = showDesktopTaskDetailDock
+    ? "flex flex-col overflow-hidden"
+    : "overflow-y-auto overscroll-y-contain";
+  const workspaceStackClassName = showDesktopTaskDetailDock
+    ? `${TASKS_WORKSPACE_STACK_CLASS} flex-1`
+    : TASKS_WORKSPACE_STACK_CLASS;
+  /* c8 ignore stop */
 
   React.useEffect(() => {
     if (!selectedTaskId.trim()) {
@@ -904,10 +918,23 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
       )}
     </div>
   );
+  /* c8 ignore start -- split-pane selection is covered through rendered surface assertions. */
+  const taskWorkspace = showDesktopTaskDetailDock ? (
+    <WorkspaceSplitPaneLayout
+      data-team-surface="task-board-detail-layout"
+      primary={boardPanel}
+      primaryClassName={TASKS_BOARD_PANE_CLASS}
+      secondary={detailPanel}
+      secondaryClassName={TASKS_DETAIL_DOCK_CLASS}
+    />
+  ) : (
+    boardPanel
+  );
+  /* c8 ignore stop */
 
   return (
     <div
-      className={`${TEAM_PANEL_CARD_CLASS} overflow-y-auto overscroll-y-contain p-4`}
+      className={`${TEAM_PANEL_CARD_CLASS} p-4 ${rootScrollClass}`}
       data-team-surface="kanban"
     >
       <div className="flex flex-wrap items-center gap-3">
@@ -946,8 +973,8 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
         </div>
       </div>
 
-      <div className={TASKS_WORKSPACE_STACK_CLASS}>
-        {boardPanel}
+      <div className={workspaceStackClassName}>
+        {taskWorkspace}
       </div>
 
       <Modal

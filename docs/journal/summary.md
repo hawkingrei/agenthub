@@ -31,7 +31,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 | Team collaboration, channels, and tasks | `docs/features/agents-teams.md`, `docs/features/team-channels-threads.md`, `docs/features/team-execution-vocabulary.md` | `*-team-*.md`, `*-teams-*.md` |
 | Team mailbox and actor runtime | `docs/features/team-mailbox-intake-and-ownership.md`, `docs/features/actor-foundation.md` | `*-team-mailbox-*.md`, `*-actor-*.md` |
 | Workspace memory and continuity | `docs/features/team-workspace-memory-contract.md`, `docs/features/workspace-unified-ia.md` | `*-workspace-*.md`, `*-context-*.md`, `*-memory-*.md` |
-| Frontend, UI, and mobile surfaces | `docs/features/frontend-design.md`, `docs/features/workspace-unified-ia.md`, `docs/features/web-static-assets-and-pwa.md` | `*-web-*.md`, `*-frontend-*.md`, `*-mobile-*.md`, `*-ui-*.md`, `*-pwa-*.md` |
+| Frontend, UI, and mobile surfaces | `docs/features/frontend-design.md`, `docs/features/workspace-unified-ia.md` | `*-web-*.md`, `*-frontend-*.md`, `*-mobile-*.md`, `*-ui-*.md` |
 | Agent nodes and distributed execution | `docs/features/agent-nodes.md`, `docs/features/distributed-node-architecture.md` | `*-node-*.md`, `*-distributed-*.md`, `*-p2p-*.md` |
 | Release, packaging, and install paths | `docs/features/npm-binary-distribution.md`, `docs/features/debian-systemd-distribution.md` | `*-release-*.md`, `*-npm-*.md`, `*-debian-*.md`, `*-homebrew-*.md` |
 | CI, Bazel, coverage, and dependencies | `docs/developer-setup.md` | `*-ci-*.md`, `*-bazel-*.md`, `*-codecov-*.md`, `*-dependabot-*.md` |
@@ -141,8 +141,6 @@ Main shape:
 
 - Phase 1 message-body storage now keeps SQLite compatibility bodies while asynchronously staging
   compressed RocksDB copies through a durable outbox and checkpointed backfill.
-- The message-store foundation now includes a body-free `cf_index` projection boundary, authority
-  repair primitive, and RocksDB `cf_index` tests while keeping SQLite as the normal read path.
 - Agent workflow organization now defines project-owned SOP, skill, checklist, testing, and
   observability workflow contracts without copying another project's process taxonomy.
 - Team system prompt organization now defines prompt layers, pointer-first runtime tails,
@@ -151,77 +149,24 @@ Main shape:
   guardrails for moving beyond root-only checks.
 - Object storage now has an OpenDAL-backed foundation, stable metadata/object-byte boundary,
   owner-scoped Team/task/agent upload API checkpoints, and a MinIO-backed S3-compatible fixture.
-- PWA/static asset routing now has a canonical cache-control contract and local app-router coverage
-  for shell fallbacks, manifest, service worker, immutable hashed assets, and missing asset paths.
-- First-run setup now separates local instance configuration from browser root-account bootstrap:
-  `agenthub init` owns runtime role/config, while the web login route owns the initial root account.
-- Team adoption extensions now keep stopped-only move, workspace-content copy, and memory/context
-  seeding as separate post-copy-first modes with explicit ownership, runtime, and provenance gates.
-- Workspace UI compaction wave 2 moved shell-density and channel-first lens rules from four April
-  micro-journals into the canonical unified workspace IA spec.
-- Team conversation/composer compaction wave 2 moved chat-style composer, visible payload,
-  selection resilience, message-row, and rich-text rules into canonical Team/frontend specs.
-- Team conversation/composer closeout adds component evidence that the ACP input dock shares the
-  same lightweight editor row, actions row, helper text, and send-button language as Team
-  channel/thread composers.
-- ACP UI compaction wave 2 moved tool-call folding/grouping, humanized payload, markdown safety,
-  mobile header, debug-shell, semantic-class, and virtualization rules into canonical ACP/frontend
-  specs.
-- ACP conversation long-history guard now explicitly covers the pinned recent-tail state and the
-  scroll-up full-source virtualization state at the hook boundary.
-- ACP conversation row rerender guard memoizes row wrappers so tool-call focus changes rerender only
-  rows whose focused state changes.
-- Team thread row rerender guard memoizes root/reply rows so composer-local state changes do not
-  rebuild unchanged visible thread messages.
-- Team thread reply windows keep extremely long reply panes bounded on first render while preserving
-  an explicit expansion path for earlier replies.
-- Team channel activity row rerender guard memoizes visible channel rows so composer-local state
-  changes and polling refreshes skip unchanged row inputs.
-- Team channel timelines already render a bounded visible tail while pinned to the bottom and expand
-  the full source list after user scroll-up.
-- Team mailbox conversation row rerender guard memoizes mailbox message rows so draft changes and
-  polling refreshes skip unchanged visible row inputs.
-- Team mailbox conversation tail windows keep pinned mailbox chats bounded and keep visible bulk
-  actions scoped to the rendered window.
-- Team task board card rerender guard memoizes kanban task cards so filter/detail state changes
-  skip unchanged visible card inputs.
-- Team workspace context rerender split removes the full workbench runtime object from the shell
-  context so conversation-only updates do not wake shell consumers.
-- Frontend performance browser baseline records an unauthenticated local workspace-shell trace with
-  healthy login-shell LCP/CLS plus authenticated Playwright long-history windowing coverage for Team
-  channel and Team-member ACP surfaces.
-- Team self-maintenance/deferred follow-up closeout records local coverage for profile patch,
-  one-shot time triggers, and operator-controlled agent loop behavior.
+- Codecov project coverage gating now tolerates small multi-flag aggregation movement while keeping
+  patch coverage and upload fail-fast checks strict.
 
 Start with:
 
 - `2026-07-13-message-body-store-phase1-dual-write.md`
-- `2026-07-18-message-index-cf-index-foundation.md`
-- `2026-07-19-pwa-cache-control-router-guard.md`
-- `2026-07-19-first-run-web-setup-surface.md`
-- `2026-07-19-team-adoption-extension-contract.md`
-- `2026-07-19-workspace-ui-compaction-wave2.md`
-- `2026-07-19-team-conversation-composer-compaction-wave2.md`
-- `2026-07-19-team-conversation-composer-closeout.md`
-- `2026-07-19-acp-ui-compaction-wave2.md`
-- `2026-07-19-acp-conversation-long-history-guard.md`
-- `2026-07-19-acp-conversation-row-rerender-guard.md`
-- `2026-07-19-team-thread-row-rerender-guard.md`
-- `2026-07-19-team-thread-reply-window.md`
-- `2026-07-19-team-channel-activity-row-rerender-guard.md`
-- `2026-07-19-team-channel-conversation-tail-window.md`
-- `2026-07-19-team-mailbox-conversation-row-rerender-guard.md`
-- `2026-07-19-team-mailbox-conversation-tail-window.md`
-- `2026-07-19-team-task-board-card-rerender-guard.md`
-- `2026-07-19-team-workspace-context-rerender-split.md`
-- `2026-07-19-frontend-performance-browser-baseline.md`
-- `2026-07-19-team-self-maintenance-deferred-followup-closeout.md`
 - `2026-07-15-agent-operating-workflows.md`
 - `2026-07-15-team-system-prompt-contract.md`
 - `2026-07-16-access-control-roles.md`
 - `2026-07-16-object-storage-opendal.md`
 - `2026-07-18-object-upload-owner-scopes.md`
 - `2026-07-18-object-store-s3-minio-fixture.md`
+- `2026-07-20-codecov-project-threshold.md`
+- `2026-07-22-access-control-root-only-closeout.md`
+- `2026-07-22-first-run-setup-closeout.md`
+- `2026-07-22-object-storage-download-ingest.md`
+- `2026-07-23-object-storage-download-ingest-implementation.md`
+- `2026-07-28-codex-145-upgrade.md`
 
 ## Compaction Rules
 

@@ -2,8 +2,30 @@
 async fn teams_router_http_contract() {
     let state = build_test_state().await;
     let token = create_auth_token(&state).await;
+    let operator_token = create_auth_token_with_role(&state, UserRole::Operator).await;
+    let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
+    let device_token = create_auth_token_with_role(&state, UserRole::Device).await;
     let outsider_token = create_auth_token(&state).await;
     let app = super::router(state.clone());
+
+    macro_rules! assert_device_runtime_inspect_required {
+        ($method:expr, $path:expr, $payload:expr, $label:expr) => {{
+            let path = $path;
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    $method,
+                    path.as_str(),
+                    Some(&device_token),
+                    $payload,
+                ))
+                .await
+                .unwrap_or_else(|err| panic!("device {} request failed: {err}", $label));
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            let body = decode_json_body(response).await;
+            assert_eq!(body["error"], Value::from("runtime:inspect required"));
+        }};
+    }
 
     let unauthorized = app
         .clone()
@@ -24,12 +46,29 @@ async fn teams_router_http_contract() {
         .expect("run unauthorized prompt defaults request");
     assert_eq!(prompt_defaults_unauthorized.status(), StatusCode::UNAUTHORIZED);
 
+    let prompt_defaults_device = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            "/prompt_defaults",
+            Some(&device_token),
+            None,
+        ))
+        .await
+        .expect("run device prompt defaults request");
+    assert_eq!(prompt_defaults_device.status(), StatusCode::UNAUTHORIZED);
+    let prompt_defaults_device_body = decode_json_body(prompt_defaults_device).await;
+    assert_eq!(
+        prompt_defaults_device_body["error"],
+        Value::from("runtime:inspect required")
+    );
+
     let prompt_defaults_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::GET,
             "/prompt_defaults",
-            Some(&token),
+            Some(&viewer_token),
             None,
         ))
         .await
@@ -50,6 +89,254 @@ async fn teams_router_http_contract() {
         "unexpected worker prompt contract: {}",
         prompt_defaults["worker_prompt"]
     );
+
+    let create_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&viewer_token),
+            Some(json!({
+                "name": "viewer-create-team",
+                "description": null,
+                "spec": {"entrypoint":"planner","members":[]}
+            })),
+        ))
+        .await
+        .expect("viewer create team request");
+    assert_eq!(create_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let create_team_viewer_err = decode_json_body(create_team_viewer_resp).await;
+    assert_eq!(
+        create_team_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
+
+    let create_team_operator_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&operator_token),
+            Some(json!({
+                "name": "operator-managed-team",
+                "description": null,
+                "spec": {"entrypoint":"planner","members":[]}
+            })),
+        ))
+        .await
+        .expect("operator create team request");
+    assert_eq!(create_team_operator_resp.status(), StatusCode::OK);
+    let operator_team = decode_json_body(create_team_operator_resp).await;
+    let operator_team_id = operator_team["id"].as_str().expect("operator team id");
+
+    let operator_runtime_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            "/",
+            Some(&operator_token),
+            Some(json!({
+                "name": "operator-runtime-team",
+                "description": null,
+                "spec": {
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }
+            })),
+        ))
+        .await
+        .expect("operator create runtime team request");
+    assert_eq!(operator_runtime_team_resp.status(), StatusCode::OK);
+    let operator_runtime_team = decode_json_body(operator_runtime_team_resp).await;
+    let operator_runtime_team_id = operator_runtime_team["id"]
+        .as_str()
+        .expect("operator runtime team id");
+    let operator_stop_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{operator_runtime_team_id}/stop"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator stop team request");
+    assert_eq!(operator_stop_team_resp.status(), StatusCode::OK);
+    let operator_start_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{operator_runtime_team_id}/start"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator start team request");
+    assert_eq!(operator_start_team_resp.status(), StatusCode::OK);
+    let operator_create_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{operator_runtime_team_id}/runs"),
+            Some(&operator_token),
+            Some(json!({
+                "context_id": "ctx-operator-run",
+                "input": {"prompt":"operator run capability"}
+            })),
+        ))
+        .await
+        .expect("operator create run request");
+    assert_eq!(operator_create_run_resp.status(), StatusCode::OK);
+    let operator_run = decode_json_body(operator_create_run_resp).await;
+    let operator_run_id = operator_run["id"].as_str().expect("operator run id");
+    let operator_submit_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/steps"),
+            Some(&operator_token),
+            Some(json!({
+                "step_key": "operator-step",
+                "member_id": "planner",
+                "depends_on": [],
+                "input": {"goal":"operator"}
+            })),
+        ))
+        .await
+        .expect("operator submit step request");
+    assert_eq!(operator_submit_step_resp.status(), StatusCode::OK);
+    let operator_step = decode_json_body(operator_submit_step_resp).await;
+    let operator_step_id = operator_step["id"].as_str().expect("operator step id");
+    let operator_start_step_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/steps/{operator_step_id}/start"),
+            Some(&operator_token),
+            Some(json!({"runtime_handle_id":"operator-remote-task"})),
+        ))
+        .await
+        .expect("operator start step request");
+    assert_eq!(operator_start_step_resp.status(), StatusCode::OK);
+    let operator_send_mailbox_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/messages/send"),
+            Some(&operator_token),
+            Some(json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"operator mailbox capability"}
+            })),
+        ))
+        .await
+        .expect("operator send mailbox message request");
+    assert_eq!(operator_send_mailbox_resp.status(), StatusCode::OK);
+    let operator_mailbox_message = decode_json_body(operator_send_mailbox_resp).await;
+    let operator_mailbox_message_id = operator_mailbox_message["message_id"]
+        .as_i64()
+        .expect("operator mailbox message id");
+    let operator_ack_mailbox_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/messages/{operator_mailbox_message_id}/ack"),
+            Some(&operator_token),
+            Some(json!({"actor_id":"planner"})),
+        ))
+        .await
+        .expect("operator ack mailbox message request");
+    assert_eq!(operator_ack_mailbox_resp.status(), StatusCode::OK);
+    let mut operator_token_headers = HeaderMap::new();
+    operator_token_headers.insert(
+        header::AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {operator_token}")).expect("operator auth header"),
+    );
+    let operator_task = create_team_task(
+        &state,
+        &operator_token_headers,
+        operator_runtime_team_id,
+        CreateTeamTaskRequest {
+            title: "operator task capability".to_string(),
+            priority: "medium".to_string(),
+            assigned_member_id: "planner".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("operator-task".to_string()),
+        },
+    )
+    .await
+    .expect("seed operator task for router contract");
+    let operator_task_id = operator_task.task.id;
+    let operator_task_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{operator_runtime_team_id}/tasks/{operator_task_id}/messages"),
+            Some(&operator_token),
+            Some(json!({
+                "route": "group_chat",
+                "payload": {"text":"operator task capability"}
+            })),
+        ))
+        .await
+        .expect("operator send task message request");
+    assert_eq!(operator_task_message_resp.status(), StatusCode::OK);
+    let operator_patch_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PATCH,
+            &format!("/{operator_runtime_team_id}/tasks/{operator_task_id}"),
+            Some(&operator_token),
+            Some(json!({
+                "status": "in_progress"
+            })),
+        ))
+        .await
+        .expect("operator patch task request");
+    assert_eq!(operator_patch_task_resp.status(), StatusCode::FORBIDDEN);
+    let operator_cancel_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/runs/{operator_run_id}/cancel"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator cancel run request");
+    assert_eq!(operator_cancel_run_resp.status(), StatusCode::OK);
+    let delete_operator_runtime_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{operator_runtime_team_id}"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator delete runtime team request");
+    assert_eq!(delete_operator_runtime_team_resp.status(), StatusCode::OK);
+
+    let delete_operator_team_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{operator_team_id}"),
+            Some(&operator_token),
+            None,
+        ))
+        .await
+        .expect("operator delete team request");
+    assert_eq!(delete_operator_team_resp.status(), StatusCode::OK);
 
     let empty_team_resp = app
         .clone()
@@ -102,6 +389,141 @@ async fn teams_router_http_contract() {
     let created_team = decode_json_body(create_team_resp).await;
     let team_id = created_team["id"].as_str().expect("team id").to_string();
     assert_eq!(created_team["spec"]["spec_version"], Value::from(1));
+
+    let stop_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/stop"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer stop team request");
+    assert_eq!(stop_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let stop_team_viewer_err = decode_json_body(stop_team_viewer_resp).await;
+    assert_eq!(
+        stop_team_viewer_err["error"],
+        Value::from("runtime:operate required")
+    );
+
+    let start_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/start"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer start team request");
+    assert_eq!(start_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let start_team_viewer_err = decode_json_body(start_team_viewer_resp).await;
+    assert_eq!(
+        start_team_viewer_err["error"],
+        Value::from("runtime:operate required")
+    );
+
+    let force_session_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/members/planner/force_new_session"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer force new session request");
+    assert_eq!(force_session_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let force_session_viewer_err = decode_json_body(force_session_viewer_resp).await;
+    assert_eq!(
+        force_session_viewer_err["error"],
+        Value::from("runtime:operate required")
+    );
+
+    let update_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PUT,
+            &format!("/{team_id}/spec"),
+            Some(&viewer_token),
+            Some(json!({
+                "expected_updated_at": created_team["updated_at"],
+                "spec": {
+                    "entrypoint": "planner",
+                    "members": [
+                        {"member_id":"planner","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"}
+                    ]
+                }
+            })),
+        ))
+        .await
+        .expect("viewer update team spec request");
+    assert_eq!(update_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let update_team_viewer_err = decode_json_body(update_team_viewer_resp).await;
+    assert_eq!(
+        update_team_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
+
+    for (label, path) in [
+        ("list teams", "/".to_string()),
+        ("get team", format!("/{team_id}")),
+        ("get team runtime", format!("/{team_id}/runtime")),
+        ("get team shared thread", format!("/{team_id}/shared_thread")),
+        ("list team channels", format!("/{team_id}/channels")),
+    ] {
+        assert_device_runtime_inspect_required!(Method::GET, path, None, label);
+    }
+
+    let viewer_ensure_shared_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/shared_thread"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer ensure shared thread request");
+    assert_eq!(
+        viewer_ensure_shared_thread_resp.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let viewer_ensure_shared_thread_err = decode_json_body(viewer_ensure_shared_thread_resp).await;
+    assert_eq!(
+        viewer_ensure_shared_thread_err["error"],
+        Value::from("teams:manage required")
+    );
+
+    let ensure_shared_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/shared_thread"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("ensure shared thread via router");
+    assert_eq!(ensure_shared_thread_resp.status(), StatusCode::OK);
+    let ensured_shared_thread = decode_json_body(ensure_shared_thread_resp).await;
+    assert_eq!(ensured_shared_thread["task"]["title"], Value::from("all"));
+
+    let get_shared_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/{team_id}/shared_thread"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get shared thread via router");
+    assert_eq!(get_shared_thread_resp.status(), StatusCode::OK);
+    let shared_thread = decode_json_body(get_shared_thread_resp).await;
+    assert_eq!(shared_thread["task"]["id"], ensured_shared_thread["task"]["id"]);
 
     let list_teams_resp = app
         .clone()
@@ -236,6 +658,33 @@ async fn teams_router_http_contract() {
     .expect("seed canonical task for router contract");
     let task_id = seeded_task.task.id.clone();
 
+    for (label, path, payload) in [
+        ("list team tasks", format!("/{team_id}/tasks?limit=20"), None),
+        ("get team task", format!("/{team_id}/tasks/{task_id}"), None),
+        (
+            "list task messages",
+            format!("/{team_id}/tasks/{task_id}/messages?limit=20"),
+            None,
+        ),
+        (
+            "search team messages",
+            format!("/{team_id}/messages/search?query=assign"),
+            None,
+        ),
+        (
+            "compile task run preview",
+            format!("/{team_id}/tasks/{task_id}/compile_run_preview"),
+            Some(json!({})),
+        ),
+    ] {
+        let method = if payload.is_some() {
+            Method::POST
+        } else {
+            Method::GET
+        };
+        assert_device_runtime_inspect_required!(method, path, payload, label);
+    }
+
     let list_tasks_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -270,9 +719,28 @@ async fn teams_router_http_contract() {
     assert_eq!(get_task_body["latest_run"], Value::Null);
     assert!(
         get_task_body["task"]["created_by_actor_id"]
-            .as_str()
-            .map(|value| value.starts_with("user:"))
-            .unwrap_or(false)
+        .as_str()
+        .map(|value| value.starts_with("user:"))
+        .unwrap_or(false)
+    );
+
+    let viewer_update_task_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::PATCH,
+            &format!("/{team_id}/tasks/{task_id}"),
+            Some(&viewer_token),
+            Some(json!({
+                "status": "in_progress"
+            })),
+        ))
+        .await
+        .expect("viewer update task request");
+    assert_eq!(viewer_update_task_resp.status(), StatusCode::UNAUTHORIZED);
+    let viewer_update_task_err = decode_json_body(viewer_update_task_resp).await;
+    assert_eq!(
+        viewer_update_task_err["error"],
+        Value::from("teams:manage required")
     );
 
     let update_task_resp = app
@@ -310,6 +778,29 @@ async fn teams_router_http_contract() {
         .expect("invalid task status via router");
     assert_eq!(invalid_update_task_resp.status(), StatusCode::FORBIDDEN);
 
+    let viewer_send_task_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/tasks/{task_id}/messages"),
+            Some(&viewer_token),
+            Some(json!({
+                "route": "group_chat",
+                "payload": {"text":"viewer should not write task messages"}
+            })),
+        ))
+        .await
+        .expect("viewer send task message request");
+    assert_eq!(
+        viewer_send_task_message_resp.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let viewer_send_task_message_err = decode_json_body(viewer_send_task_message_resp).await;
+    assert_eq!(
+        viewer_send_task_message_err["error"],
+        Value::from("runtime:operate required")
+    );
+
     let send_human_task_message_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -338,6 +829,26 @@ async fn teams_router_http_contract() {
             .unwrap_or(false)
     );
 
+    let create_channel_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels"),
+            Some(&viewer_token),
+            Some(json!({
+                "channel_id": "viewer-review",
+                "description": "Viewer should not create channels"
+            })),
+        ))
+        .await
+        .expect("viewer create channel request");
+    assert_eq!(create_channel_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let create_channel_viewer_err = decode_json_body(create_channel_viewer_resp).await;
+    assert_eq!(
+        create_channel_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
+
     let create_channel_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -357,6 +868,24 @@ async fn teams_router_http_contract() {
         .as_str()
         .expect("channel task id")
         .to_string();
+
+    let delete_channel_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{team_id}/channels/review"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer delete channel request");
+    assert_eq!(delete_channel_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let delete_channel_viewer_err = decode_json_body(delete_channel_viewer_resp).await;
+    assert_eq!(
+        delete_channel_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
+
     let source_message_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -375,6 +904,65 @@ async fn teams_router_http_contract() {
     let source_message_id = source_message["message_id"]
         .as_i64()
         .expect("source message id");
+    let viewer_reply_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels/review/threads/{source_message_id}/replies"),
+            Some(&viewer_token),
+            Some(json!({
+                "text": "viewer should not reply"
+            })),
+        ))
+        .await
+        .expect("viewer reply thread request");
+    assert_eq!(viewer_reply_thread_resp.status(), StatusCode::UNAUTHORIZED);
+    let viewer_reply_thread_err = decode_json_body(viewer_reply_thread_resp).await;
+    assert_eq!(
+        viewer_reply_thread_err["error"],
+        Value::from("runtime:operate required")
+    );
+    let reply_thread_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels/review/threads/{source_message_id}/replies"),
+            Some(&token),
+            Some(json!({
+                "text": "thread reply from operator path",
+                "mention_actor_ids": ["worker-1"]
+            })),
+        ))
+        .await
+        .expect("reply thread via router");
+    assert_eq!(reply_thread_resp.status(), StatusCode::OK);
+    let reply_thread = decode_json_body(reply_thread_resp).await;
+    assert_eq!(
+        reply_thread["message"]["payload"]["text"],
+        Value::from("thread reply from operator path")
+    );
+    let viewer_create_from_message_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/channels/review/messages/{source_message_id}/tasks"),
+            Some(&viewer_token),
+            Some(json!({
+                "priority": "high",
+                "context": {"token":"viewer"}
+            })),
+        ))
+        .await
+        .expect("viewer create task from channel message request");
+    assert_eq!(
+        viewer_create_from_message_resp.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let viewer_create_from_message_err = decode_json_body(viewer_create_from_message_resp).await;
+    assert_eq!(
+        viewer_create_from_message_err["error"],
+        Value::from("teams:manage required")
+    );
     let create_from_message_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -555,6 +1143,75 @@ async fn teams_router_http_contract() {
     let run = decode_json_body(create_run_resp).await;
     let run_id = run["id"].as_str().expect("run id").to_string();
     assert_eq!(run["status"], "submitted");
+
+    for (label, path) in [
+        ("list team runs", format!("/{team_id}/runs?limit=100")),
+        ("get team run", format!("/runs/{run_id}")),
+        (
+            "get team run snapshot",
+            format!("/runs/{run_id}/snapshot?event_limit=100&message_limit=100"),
+        ),
+        ("list team run events", format!("/runs/{run_id}/events?limit=100")),
+    ] {
+        assert_device_runtime_inspect_required!(Method::GET, path, None, label);
+    }
+
+    let viewer_create_run_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::POST,
+            &format!("/{team_id}/runs"),
+            Some(&viewer_token),
+            Some(json!({
+                "context_id": "ctx-viewer-denied",
+                "input": {"prompt":"viewer should not create runs"}
+            })),
+        ))
+        .await
+        .expect("viewer create run request");
+    assert_eq!(viewer_create_run_resp.status(), StatusCode::UNAUTHORIZED);
+    let viewer_create_run_err = decode_json_body(viewer_create_run_resp).await;
+    assert_eq!(
+        viewer_create_run_err["error"],
+        Value::from("runtime:operate required")
+    );
+
+    for (label, path, body) in [
+        (
+            "cancel run",
+            format!("/runs/{run_id}/cancel"),
+            None,
+        ),
+        (
+            "resume run",
+            format!("/runs/{run_id}/resume"),
+            None,
+        ),
+        (
+            "restart run",
+            format!("/runs/{run_id}/restart"),
+            None,
+        ),
+        (
+            "flush run context",
+            format!("/runs/{run_id}/context/flush"),
+            Some(json!({"member_id":"planner","trigger":"manual"})),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &path,
+                Some(&viewer_token),
+                body,
+            ))
+            .await
+            .unwrap_or_else(|err| panic!("viewer {label} request failed: {err}"));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], Value::from("runtime:operate required"));
+    }
 
     let snapshot_resp = app
         .clone()
@@ -772,6 +1429,65 @@ async fn teams_router_http_contract() {
     assert_eq!(submitted_step["step_key"], "router-step");
     assert_eq!(submitted_step["member_id"], "planner");
 
+    assert_device_runtime_inspect_required!(
+        Method::GET,
+        format!("/runs/{step_run_id}/steps"),
+        None,
+        "list team run steps"
+    );
+
+    for (label, path, body) in [
+        (
+            "submit step",
+            format!("/runs/{step_run_id}/steps"),
+            Some(json!({
+                "step_key": "viewer-step",
+                "member_id": "planner",
+                "depends_on": [],
+                "input": {"goal":"viewer"}
+            })),
+        ),
+        (
+            "start step",
+            format!("/runs/{step_run_id}/steps/{step_id}/start"),
+            Some(json!({"runtime_handle_id":"viewer-remote-task"})),
+        ),
+        (
+            "set step input required",
+            format!("/runs/{step_run_id}/steps/{step_id}/input_required"),
+            Some(json!({"reason":"viewer denied","input":null})),
+        ),
+        (
+            "resume step",
+            format!("/runs/{step_run_id}/steps/{step_id}/resume"),
+            Some(json!({"input":{"answer":"viewer"}})),
+        ),
+        (
+            "complete step",
+            format!("/runs/{step_run_id}/steps/{step_id}/complete"),
+            Some(json!({"output":{"result":"viewer"}})),
+        ),
+        (
+            "fail step",
+            format!("/runs/{step_run_id}/steps/{step_id}/fail"),
+            Some(json!({"error_text":"viewer denied"})),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &path,
+                Some(&viewer_token),
+                body,
+            ))
+            .await
+            .unwrap_or_else(|err| panic!("viewer {label} request failed: {err}"));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], Value::from("runtime:operate required"));
+    }
+
     let list_steps_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -913,6 +1629,67 @@ async fn teams_router_http_contract() {
         .as_str()
         .expect("message run id")
         .to_string();
+
+    assert_device_runtime_inspect_required!(
+        Method::GET,
+        format!("/runs/{message_run_id}/messages/inbox?actor_id=planner&limit=100"),
+        None,
+        "list team run inbox"
+    );
+
+    for (label, path, body) in [
+        (
+            "send mailbox message",
+            format!("/runs/{message_run_id}/messages/send"),
+            json!({
+                "from_actor_id":"planner",
+                "to_actor_id":"planner",
+                "channel":"coordination",
+                "transport":"local",
+                "route":null,
+                "payload":{"text":"viewer should not send"}
+            }),
+        ),
+        (
+            "ack mailbox message",
+            format!("/runs/{message_run_id}/messages/1/ack"),
+            json!({"actor_id":"planner"}),
+        ),
+        (
+            "triage mailbox message",
+            format!("/runs/{message_run_id}/messages/1/triage"),
+            json!({"actor_id":"planner","disposition":"ignored","reason":"viewer denied"}),
+        ),
+        (
+            "escalate mailbox message",
+            format!("/runs/{message_run_id}/messages/1/escalate"),
+            json!({"actor_id":"planner"}),
+        ),
+        (
+            "transfer mailbox message",
+            format!("/runs/{message_run_id}/messages/1/transfer"),
+            json!({"actor_id":"planner","target_actor_id":"worker-1"}),
+        ),
+        (
+            "takeover mailbox message",
+            format!("/runs/{message_run_id}/messages/1/takeover"),
+            json!({"actor_id":"planner","target_actor_id":"worker-1"}),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                &path,
+                Some(&viewer_token),
+                Some(body),
+            ))
+            .await
+            .unwrap_or_else(|err| panic!("viewer {label} request failed: {err}"));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], Value::from("runtime:operate required"));
+    }
 
     let send_local_message_resp = app
         .clone()
@@ -1247,6 +2024,23 @@ async fn teams_router_http_contract() {
         .expect("unsupported version request");
     assert_eq!(unsupported_version_resp.status(), StatusCode::BAD_REQUEST);
 
+    let delete_team_viewer_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::DELETE,
+            &format!("/{team_id}"),
+            Some(&viewer_token),
+            None,
+        ))
+        .await
+        .expect("viewer delete team request");
+    assert_eq!(delete_team_viewer_resp.status(), StatusCode::UNAUTHORIZED);
+    let delete_team_viewer_err = decode_json_body(delete_team_viewer_resp).await;
+    assert_eq!(
+        delete_team_viewer_err["error"],
+        Value::from("teams:manage required")
+    );
+
     let delete_team_resp = app
         .clone()
         .oneshot(build_json_request(
@@ -1296,1243 +2090,6 @@ async fn teams_router_http_contract() {
         .await
         .expect("delete missing team via router");
     assert_eq!(delete_missing_team_resp.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn team_management_routes_require_teams_manage_capability() {
-    let state = build_test_state().await;
-    let operator_token = create_auth_token_with_role(&state, UserRole::Operator).await;
-    let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
-    let app = super::router(state.clone());
-
-    let viewer_create = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            "/",
-            Some(&viewer_token),
-            Some(json!({
-                "name": "viewer-team",
-                "description": null,
-                "spec": {"entrypoint":"planner","members":[]}
-            })),
-        ))
-        .await
-        .expect("viewer create team request");
-    assert_eq!(viewer_create.status(), StatusCode::UNAUTHORIZED);
-
-    let create_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            "/",
-            Some(&operator_token),
-            Some(json!({
-                "name": "managed-team",
-                "description": null,
-                "spec": {"entrypoint":"planner","members":[]}
-            })),
-        ))
-        .await
-        .expect("operator create team request");
-    assert_eq!(create_resp.status(), StatusCode::OK);
-    let created = decode_json_body(create_resp).await;
-    let team_id = created["id"].as_str().expect("team id").to_string();
-    let expected_updated_at = created["updated_at"].as_i64().expect("updated_at");
-
-    let viewer_update = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::PUT,
-            &format!("/{team_id}/spec"),
-            Some(&viewer_token),
-            Some(json!({
-                "expected_updated_at": expected_updated_at,
-                "spec": {"entrypoint":"planner","members":[]}
-            })),
-        ))
-        .await
-        .expect("viewer update team spec request");
-    assert_eq!(viewer_update.status(), StatusCode::UNAUTHORIZED);
-
-    let update_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::PUT,
-            &format!("/{team_id}/spec"),
-            Some(&operator_token),
-            Some(json!({
-                "expected_updated_at": expected_updated_at,
-                "spec": {"entrypoint":"planner","members":[]}
-            })),
-        ))
-        .await
-        .expect("operator update team spec request");
-    assert_eq!(update_resp.status(), StatusCode::OK);
-
-    let viewer_create_channel = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/channels"),
-            Some(&viewer_token),
-            Some(json!({
-                "channel_id": "triage",
-                "description": "triage channel"
-            })),
-        ))
-        .await
-        .expect("viewer create channel request");
-    assert_eq!(viewer_create_channel.status(), StatusCode::UNAUTHORIZED);
-
-    let create_channel_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/channels"),
-            Some(&operator_token),
-            Some(json!({
-                "channel_id": "triage",
-                "description": "triage channel"
-            })),
-        ))
-        .await
-        .expect("operator create channel request");
-    assert_eq!(create_channel_resp.status(), StatusCode::OK);
-
-    let viewer_delete_channel = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::DELETE,
-            &format!("/{team_id}/channels/triage"),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer delete channel request");
-    assert_eq!(viewer_delete_channel.status(), StatusCode::UNAUTHORIZED);
-
-    let delete_channel_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::DELETE,
-            &format!("/{team_id}/channels/triage"),
-            Some(&operator_token),
-            None,
-        ))
-        .await
-        .expect("operator delete channel request");
-    assert_eq!(delete_channel_resp.status(), StatusCode::OK);
-
-    let viewer_delete = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::DELETE,
-            &format!("/{team_id}"),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer delete team request");
-    assert_eq!(viewer_delete.status(), StatusCode::UNAUTHORIZED);
-
-    let delete_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::DELETE,
-            &format!("/{team_id}"),
-            Some(&operator_token),
-            None,
-        ))
-        .await
-        .expect("operator delete team request");
-    assert_eq!(delete_resp.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn team_runtime_inspect_routes_require_runtime_inspect_capability() {
-    let state = build_test_state().await;
-    let (viewer_user_id, viewer_token) =
-        create_auth_token_with_role_and_user_id(&state, UserRole::Viewer).await;
-    let device_token = create_auth_token_with_role(&state, UserRole::Device).await;
-    let team = state
-        .teams
-        .create_team_with_owner(
-            TeamDefinitionConfig {
-                name: "viewer-owned-team".to_string(),
-                description: None,
-                spec: json!({"spec_version":1,"members":[]}),
-            },
-            Some(&viewer_user_id),
-        )
-        .await
-        .expect("create viewer-owned team");
-    state
-        .teams
-        .create_channel(
-            &team.id,
-            "read-only",
-            Some("read-only channel"),
-            &format!("user:{viewer_user_id}"),
-        )
-        .await
-        .expect("create viewer-owned channel");
-    let app = super::router(state.clone());
-
-    let device_prompt_defaults = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            "/prompt_defaults",
-            Some(&device_token),
-            None,
-        ))
-        .await
-        .expect("device prompt defaults request");
-    assert_eq!(device_prompt_defaults.status(), StatusCode::UNAUTHORIZED);
-
-    let viewer_prompt_defaults = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            "/prompt_defaults",
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer prompt defaults request");
-    assert_eq!(viewer_prompt_defaults.status(), StatusCode::OK);
-
-    let device_list = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            "/",
-            Some(&device_token),
-            None,
-        ))
-        .await
-        .expect("device list teams request");
-    assert_eq!(device_list.status(), StatusCode::UNAUTHORIZED);
-
-    let viewer_list = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            "/",
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer list teams request");
-    assert_eq!(viewer_list.status(), StatusCode::OK);
-    let listed = decode_json_body(viewer_list).await;
-    assert_eq!(listed.as_array().map(Vec::len), Some(1));
-    assert_eq!(listed[0]["id"], Value::from(team.id.clone()));
-
-    let device_get = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}", team.id),
-            Some(&device_token),
-            None,
-        ))
-        .await
-        .expect("device get team request");
-    assert_eq!(device_get.status(), StatusCode::UNAUTHORIZED);
-
-    let viewer_get = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}", team.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer get team request");
-    assert_eq!(viewer_get.status(), StatusCode::OK);
-
-    let viewer_runtime = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/runtime", team.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer get runtime request");
-    assert_eq!(viewer_runtime.status(), StatusCode::OK);
-
-    let device_channels = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/channels", team.id),
-            Some(&device_token),
-            None,
-        ))
-        .await
-        .expect("device list channels request");
-    assert_eq!(device_channels.status(), StatusCode::UNAUTHORIZED);
-
-    let viewer_channels = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/channels", team.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer list channels request");
-    assert_eq!(viewer_channels.status(), StatusCode::OK);
-    let channels = decode_json_body(viewer_channels).await;
-    assert_eq!(channels.as_array().map(Vec::len), Some(1));
-    assert_eq!(channels[0]["channel_id"], Value::from("read-only"));
-}
-
-#[tokio::test]
-async fn team_runtime_detail_read_routes_require_runtime_inspect_capability() {
-    let state = build_test_state().await;
-    let (viewer_user_id, viewer_token) =
-        create_auth_token_with_role_and_user_id(&state, UserRole::Viewer).await;
-    let device_token = create_auth_token_with_role(&state, UserRole::Device).await;
-    let team = state
-        .teams
-        .create_team_with_owner(
-            TeamDefinitionConfig {
-                name: "viewer-runtime-detail-team".to_string(),
-                description: None,
-                spec: json!({
-                    "entrypoint":"planner",
-                    "members":[{"member_id":"planner","role":"coordinator"}]
-                }),
-            },
-            Some(&viewer_user_id),
-        )
-        .await
-        .expect("create viewer-owned team");
-    let mut viewer_headers = HeaderMap::new();
-    viewer_headers.insert(
-        header::AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {viewer_token}")).expect("viewer auth header"),
-    );
-    let created = create_team_task(
-        &state,
-        &viewer_headers,
-        &team.id,
-        CreateTeamTaskRequest {
-            title: "inspect task".to_string(),
-            priority: "medium".to_string(),
-            assigned_member_id: "planner".to_string(),
-            created_by_actor_id: Some("user".to_string()),
-            context: Some(json!({})),
-            conversation_mode: Some("group_chat".to_string()),
-            topic: Some("inspect topic".to_string()),
-        },
-    )
-    .await
-    .expect("create inspect task");
-    let message = state
-        .teams
-        .append_task_conversation_message(
-            &created.task.id,
-            &format!("user:{viewer_user_id}"),
-            None,
-            "group_chat",
-            json!({"type":"chat_message","text":"inspect me"}),
-        )
-        .await
-        .expect("append inspect message");
-    let run = state
-        .teams
-        .create_run(&team.id, Some("inspect-context"), json!({"input":"inspect"}))
-        .await
-        .expect("create inspect run");
-    let step = state
-        .teams
-        .submit_step(&run.id, "inspect-step", "planner", Vec::new(), None)
-        .await
-        .expect("submit inspect step");
-    sqlx::query(
-        r#"
-        INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
-        VALUES (?1, ?2, 'run_submitted', ?3, ?4)
-        "#,
-    )
-    .bind(&run.id)
-    .bind(&step.id)
-    .bind(Utc::now().timestamp())
-    .bind("{\"source\":\"inspect-test\"}")
-    .execute(&state.db)
-    .await
-    .expect("insert inspect run event");
-    let app = super::router(state.clone());
-
-    let device_list_tasks = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/tasks", team.id),
-            Some(&device_token),
-            None,
-        ))
-        .await
-        .expect("device list tasks request");
-    assert_eq!(device_list_tasks.status(), StatusCode::UNAUTHORIZED);
-
-    let viewer_list_tasks = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/tasks", team.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer list tasks request");
-    assert_eq!(viewer_list_tasks.status(), StatusCode::OK);
-    let tasks = decode_json_body(viewer_list_tasks).await;
-    assert_eq!(tasks.as_array().map(Vec::len), Some(1));
-
-    let viewer_get_task = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/tasks/{}", team.id, created.task.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer get task request");
-    assert_eq!(viewer_get_task.status(), StatusCode::OK);
-
-    let viewer_task_messages = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/tasks/{}/messages", team.id, created.task.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer list task messages request");
-    assert_eq!(viewer_task_messages.status(), StatusCode::OK);
-    let messages = decode_json_body(viewer_task_messages).await;
-    assert_eq!(messages.as_array().map(Vec::len), Some(1));
-    assert_eq!(messages[0]["message_id"], Value::from(message.message_id));
-
-    let device_list_runs = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/runs", team.id),
-            Some(&device_token),
-            None,
-        ))
-        .await
-        .expect("device list runs request");
-    assert_eq!(device_list_runs.status(), StatusCode::UNAUTHORIZED);
-
-    let viewer_list_runs = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/{}/runs", team.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer list runs request");
-    assert_eq!(viewer_list_runs.status(), StatusCode::OK);
-
-    let viewer_get_run = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/runs/{}", run.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer get run request");
-    assert_eq!(viewer_get_run.status(), StatusCode::OK);
-
-    let viewer_run_events = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/runs/{}/events", run.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer list run events request");
-    assert_eq!(viewer_run_events.status(), StatusCode::OK);
-
-    let viewer_run_steps = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/runs/{}/steps", run.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer list run steps request");
-    assert_eq!(viewer_run_steps.status(), StatusCode::OK);
-
-    let viewer_snapshot = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/runs/{}/snapshot", run.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer run snapshot request");
-    assert_eq!(viewer_snapshot.status(), StatusCode::OK);
-
-    let device_inbox = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/runs/{}/messages/inbox?actor_id=user", run.id),
-            Some(&device_token),
-            None,
-        ))
-        .await
-        .expect("device run inbox request");
-    assert_eq!(device_inbox.status(), StatusCode::UNAUTHORIZED);
-
-    let viewer_inbox = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/runs/{}/messages/inbox?actor_id=user", run.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer run inbox request");
-    assert_eq!(viewer_inbox.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn team_runtime_operate_routes_require_runtime_operate_capability() {
-    let state = build_test_state().await;
-    let (operator_user_id, operator_token) =
-        create_auth_token_with_role_and_user_id(&state, UserRole::Operator).await;
-    let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
-    let team = state
-        .teams
-        .create_team_with_owner(
-            TeamDefinitionConfig {
-                name: "operator-runtime-team".to_string(),
-                description: None,
-                spec: json!({
-                    "entrypoint":"planner",
-                    "members":[{"member_id":"planner","role":"coordinator"}]
-                }),
-            },
-            Some(&operator_user_id),
-        )
-        .await
-        .expect("create operator-owned team");
-    let run = state
-        .teams
-        .create_run(&team.id, Some("runtime-context"), json!({"input":"run"}))
-        .await
-        .expect("create runtime run");
-    let app = super::router(state.clone());
-
-    let viewer_start = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/start", team.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer start team request");
-    assert_eq!(viewer_start.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_start = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/start", team.id),
-            Some(&operator_token),
-            None,
-        ))
-        .await
-        .expect("operator start team request");
-    assert_eq!(operator_start.status(), StatusCode::OK);
-
-    let viewer_stop = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/stop", team.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer stop team request");
-    assert_eq!(viewer_stop.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_stop = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/stop", team.id),
-            Some(&operator_token),
-            None,
-        ))
-        .await
-        .expect("operator stop team request");
-    assert_eq!(operator_stop.status(), StatusCode::OK);
-
-    let viewer_create_run = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/runs", team.id),
-            Some(&viewer_token),
-            Some(json!({"context_id":"viewer-context","input":{}})),
-        ))
-        .await
-        .expect("viewer create run request");
-    assert_eq!(viewer_create_run.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_create_run = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{}/runs", team.id),
-            Some(&operator_token),
-            Some(json!({"context_id":"operator-context","input":{}})),
-        ))
-        .await
-        .expect("operator create run request");
-    assert_eq!(operator_create_run.status(), StatusCode::OK);
-
-    let viewer_cancel = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/cancel", run.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer cancel run request");
-    assert_eq!(viewer_cancel.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_cancel = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/cancel", run.id),
-            Some(&operator_token),
-            None,
-        ))
-        .await
-        .expect("operator cancel run request");
-    assert_eq!(operator_cancel.status(), StatusCode::OK);
-
-    let viewer_resume = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/resume", run.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer resume run request");
-    assert_eq!(viewer_resume.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_resume = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/resume", run.id),
-            Some(&operator_token),
-            None,
-        ))
-        .await
-        .expect("operator resume run request");
-    assert_eq!(operator_resume.status(), StatusCode::OK);
-
-    let viewer_restart = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/restart", run.id),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer restart run request");
-    assert_eq!(viewer_restart.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_restart = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/restart", run.id),
-            Some(&operator_token),
-            None,
-        ))
-        .await
-        .expect("operator restart run request");
-    assert_eq!(operator_restart.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn team_run_step_operation_routes_require_runtime_operate_capability() {
-    let state = build_test_state().await;
-    let (operator_user_id, operator_token) =
-        create_auth_token_with_role_and_user_id(&state, UserRole::Operator).await;
-    let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
-    let team = state
-        .teams
-        .create_team_with_owner(
-            TeamDefinitionConfig {
-                name: "operator-step-team".to_string(),
-                description: None,
-                spec: json!({
-                    "entrypoint":"planner",
-                    "members":[{"member_id":"planner","role":"coordinator"}]
-                }),
-            },
-            Some(&operator_user_id),
-        )
-        .await
-        .expect("create operator-owned step team");
-    let run = state
-        .teams
-        .create_run(&team.id, Some("step-context"), json!({"input":"step"}))
-        .await
-        .expect("create step run");
-    let app = super::router(state.clone());
-
-    let viewer_submit = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps", run.id),
-            Some(&viewer_token),
-            Some(json!({
-                "step_key": "viewer-step",
-                "member_id": "planner",
-                "depends_on": [],
-                "input": {}
-            })),
-        ))
-        .await
-        .expect("viewer submit step request");
-    assert_eq!(viewer_submit.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_submit = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps", run.id),
-            Some(&operator_token),
-            Some(json!({
-                "step_key": "operator-step",
-                "member_id": "planner",
-                "depends_on": [],
-                "input": {}
-            })),
-        ))
-        .await
-        .expect("operator submit step request");
-    assert_eq!(operator_submit.status(), StatusCode::OK);
-    let submitted = decode_json_body(operator_submit).await;
-    let step_id = submitted["id"].as_str().expect("step id").to_string();
-
-    let viewer_start = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{step_id}/start", run.id),
-            Some(&viewer_token),
-            Some(json!({"runtime_handle_id":"viewer-runtime"})),
-        ))
-        .await
-        .expect("viewer start step request");
-    assert_eq!(viewer_start.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_start = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{step_id}/start", run.id),
-            Some(&operator_token),
-            Some(json!({"runtime_handle_id":"operator-runtime"})),
-        ))
-        .await
-        .expect("operator start step request");
-    assert_eq!(operator_start.status(), StatusCode::OK);
-
-    let viewer_input_required = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{step_id}/input_required", run.id),
-            Some(&viewer_token),
-            Some(json!({"reason":"needs input","input":{}})),
-        ))
-        .await
-        .expect("viewer input required request");
-    assert_eq!(viewer_input_required.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_input_required = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{step_id}/input_required", run.id),
-            Some(&operator_token),
-            Some(json!({"reason":"needs input","input":{}})),
-        ))
-        .await
-        .expect("operator input required request");
-    assert_eq!(operator_input_required.status(), StatusCode::OK);
-
-    let viewer_resume = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{step_id}/resume", run.id),
-            Some(&viewer_token),
-            Some(json!({"input":{}})),
-        ))
-        .await
-        .expect("viewer resume step request");
-    assert_eq!(viewer_resume.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_resume = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{step_id}/resume", run.id),
-            Some(&operator_token),
-            Some(json!({"input":{}})),
-        ))
-        .await
-        .expect("operator resume step request");
-    assert_eq!(operator_resume.status(), StatusCode::OK);
-
-    let viewer_complete = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{step_id}/complete", run.id),
-            Some(&viewer_token),
-            Some(json!({"output":{"ok":true}})),
-        ))
-        .await
-        .expect("viewer complete step request");
-    assert_eq!(viewer_complete.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_complete = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{step_id}/complete", run.id),
-            Some(&operator_token),
-            Some(json!({"output":{"ok":true}})),
-        ))
-        .await
-        .expect("operator complete step request");
-    assert_eq!(operator_complete.status(), StatusCode::OK);
-
-    let fail_step = state
-        .teams
-        .submit_step(&run.id, "operator-fail-step", "planner", Vec::new(), None)
-        .await
-        .expect("submit fail step");
-    let viewer_fail = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{}/fail", run.id, fail_step.id),
-            Some(&viewer_token),
-            Some(json!({"error_text":"viewer failure"})),
-        ))
-        .await
-        .expect("viewer fail step request");
-    assert_eq!(viewer_fail.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_fail = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/steps/{}/fail", run.id, fail_step.id),
-            Some(&operator_token),
-            Some(json!({"error_text":"operator failure"})),
-        ))
-        .await
-        .expect("operator fail step request");
-    assert_eq!(operator_fail.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn team_mailbox_operation_routes_require_runtime_operate_capability() {
-    let state = build_test_state().await;
-    let (operator_user_id, operator_token) =
-        create_auth_token_with_role_and_user_id(&state, UserRole::Operator).await;
-    let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
-    let team = state
-        .teams
-        .create_team_with_owner(
-            TeamDefinitionConfig {
-                name: "operator-mailbox-team".to_string(),
-                description: None,
-                spec: json!({
-                    "entrypoint":"planner",
-                    "members":[
-                        {"member_id":"planner","role":"coordinator"},
-                        {"member_id":"reviewer","role":"worker"}
-                    ]
-                }),
-            },
-            Some(&operator_user_id),
-        )
-        .await
-        .expect("create operator-owned mailbox team");
-    let run = state
-        .teams
-        .create_run(&team.id, Some("mailbox-context"), json!({"input":"mailbox"}))
-        .await
-        .expect("create mailbox run");
-    let app = super::router(state.clone());
-
-    let send_payload = json!({
-        "from_actor_id": "planner",
-        "to_actor_id": "reviewer",
-        "channel": "coordination",
-        "transport": "local",
-        "payload": {"text":"review this"}
-    });
-    let viewer_send = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/messages/send", run.id),
-            Some(&viewer_token),
-            Some(send_payload.clone()),
-        ))
-        .await
-        .expect("viewer send run message request");
-    assert_eq!(viewer_send.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_send = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/messages/send", run.id),
-            Some(&operator_token),
-            Some(send_payload),
-        ))
-        .await
-        .expect("operator send run message request");
-    assert_eq!(operator_send.status(), StatusCode::OK);
-    let sent = decode_json_body(operator_send).await;
-    let message_id = sent["message_id"].as_i64().expect("message id");
-
-    let viewer_ack = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/messages/{message_id}/ack", run.id),
-            Some(&viewer_token),
-            Some(json!({"actor_id":"reviewer"})),
-        ))
-        .await
-        .expect("viewer ack run message request");
-    assert_eq!(viewer_ack.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_ack = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/messages/{message_id}/ack", run.id),
-            Some(&operator_token),
-            Some(json!({"actor_id":"reviewer"})),
-        ))
-        .await
-        .expect("operator ack run message request");
-    assert_eq!(operator_ack.status(), StatusCode::OK);
-
-    let triage_send = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/messages/send", run.id),
-            Some(&operator_token),
-            Some(json!({
-                "from_actor_id": "planner",
-                "to_actor_id": "reviewer",
-                "channel": "coordination",
-                "transport": "local",
-                "payload": {"type":"reply_required","text":"triage this"}
-            })),
-        ))
-        .await
-        .expect("operator send triage message request");
-    assert_eq!(triage_send.status(), StatusCode::OK);
-    let triage_message = decode_json_body(triage_send).await;
-    let triage_message_id = triage_message["message_id"]
-        .as_i64()
-        .expect("triage message id");
-
-    let viewer_triage = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/messages/{triage_message_id}/triage", run.id),
-            Some(&viewer_token),
-            Some(json!({"actor_id":"reviewer","disposition":"watching"})),
-        ))
-        .await
-        .expect("viewer triage run message request");
-    assert_eq!(viewer_triage.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_triage = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/runs/{}/messages/{triage_message_id}/triage", run.id),
-            Some(&operator_token),
-            Some(json!({"actor_id":"reviewer","disposition":"watching"})),
-        ))
-        .await
-        .expect("operator triage run message request");
-    assert_eq!(operator_triage.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn team_mutation_routes_require_explicit_capabilities() {
-    let state = build_test_state().await;
-    let (operator_user_id, operator_token) =
-        create_auth_token_with_role_and_user_id(&state, UserRole::Operator).await;
-    let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
-    let app = super::router(state.clone());
-
-    let create_team_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            "/",
-            Some(&operator_token),
-            Some(json!({
-                "name": "operator-mutation-team",
-                "description": null,
-                "spec": {
-                    "entrypoint":"planner",
-                    "members":[
-                        {"member_id":"planner","role":"coordinator"},
-                        {"member_id":"reviewer","role":"worker"}
-                    ]
-                }
-            })),
-        ))
-        .await
-        .expect("create mutation team");
-    assert_eq!(create_team_resp.status(), StatusCode::OK);
-    let created_team = decode_json_body(create_team_resp).await;
-    let team_id = created_team["id"].as_str().expect("team id").to_string();
-
-    let viewer_ensure_shared = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/shared_thread"),
-            Some(&viewer_token),
-            None,
-        ))
-        .await
-        .expect("viewer ensure shared thread request");
-    assert_eq!(viewer_ensure_shared.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_ensure_shared = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/shared_thread"),
-            Some(&operator_token),
-            None,
-        ))
-        .await
-        .expect("operator ensure shared thread request");
-    assert_eq!(operator_ensure_shared.status(), StatusCode::OK);
-    let shared = decode_json_body(operator_ensure_shared).await;
-    let task_id = shared["task"]["id"].as_str().expect("shared task id");
-
-    let viewer_update_task = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::PATCH,
-            &format!("/{team_id}/tasks/{task_id}"),
-            Some(&viewer_token),
-            Some(json!({"status":"in_progress"})),
-        ))
-        .await
-        .expect("viewer update task request");
-    assert_eq!(viewer_update_task.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_update_task = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::PATCH,
-            &format!("/{team_id}/tasks/{task_id}"),
-            Some(&operator_token),
-            Some(json!({"status":"in_progress"})),
-        ))
-        .await
-        .expect("operator update task request");
-    assert_eq!(operator_update_task.status(), StatusCode::FORBIDDEN);
-
-    let viewer_send_task_message = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/tasks/{task_id}/messages"),
-            Some(&viewer_token),
-            Some(json!({
-                "route": "group_chat",
-                "payload": {"text":"viewer blocked"}
-            })),
-        ))
-        .await
-        .expect("viewer send task message request");
-    assert_eq!(viewer_send_task_message.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_send_task_message = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/tasks/{task_id}/messages"),
-            Some(&operator_token),
-            Some(json!({
-                "route": "group_chat",
-                "payload": {"type":"chat_message","text":"operator message"}
-            })),
-        ))
-        .await
-        .expect("operator send task message request");
-    assert_eq!(operator_send_task_message.status(), StatusCode::OK);
-    let root_message = decode_json_body(operator_send_task_message).await;
-    let root_message_id = root_message["message_id"].as_i64().expect("message id");
-
-    let viewer_reply = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/channels/all/threads/{root_message_id}/replies"),
-            Some(&viewer_token),
-            Some(json!({"text":"viewer reply","mention_actor_ids":[]})),
-        ))
-        .await
-        .expect("viewer reply thread request");
-    assert_eq!(viewer_reply.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_reply = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/channels/all/threads/{root_message_id}/replies"),
-            Some(&operator_token),
-            Some(json!({"text":"operator reply","mention_actor_ids":[]})),
-        ))
-        .await
-        .expect("operator reply thread request");
-    assert_eq!(operator_reply.status(), StatusCode::OK);
-
-    let viewer_preview = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/tasks/{task_id}/compile_run_preview"),
-            Some(&viewer_token),
-            Some(json!({})),
-        ))
-        .await
-        .expect("viewer compile preview request");
-    assert_eq!(viewer_preview.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_preview = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/tasks/{task_id}/compile_run_preview"),
-            Some(&operator_token),
-            Some(json!({})),
-        ))
-        .await
-        .expect("operator compile preview request");
-    assert_eq!(operator_preview.status(), StatusCode::OK);
-
-    let channel = state
-        .teams
-        .create_channel(
-            &team_id,
-            "requests",
-            Some("Requests"),
-            &format!("user:{operator_user_id}"),
-        )
-        .await
-        .expect("create requests channel");
-    let source_message = state
-        .teams
-        .append_task_conversation_message(
-            &channel.task_id,
-            &format!("user:{operator_user_id}"),
-            None,
-            "group_chat",
-            json!({"type":"chat_message","text":"make a task request"}),
-        )
-        .await
-        .expect("append channel source message");
-
-    let viewer_create_from_message = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{team_id}/channels/{}/messages/{}/tasks",
-                channel.channel_id, source_message.message_id
-            ),
-            Some(&viewer_token),
-            Some(json!({"title":"viewer task","priority":"medium"})),
-        ))
-        .await
-        .expect("viewer create task from message request");
-    assert_eq!(viewer_create_from_message.status(), StatusCode::UNAUTHORIZED);
-
-    let operator_create_from_message = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!(
-                "/{team_id}/channels/{}/messages/{}/tasks",
-                channel.channel_id, source_message.message_id
-            ),
-            Some(&operator_token),
-            Some(json!({"title":"operator task","priority":"medium"})),
-        ))
-        .await
-        .expect("operator create task from message request");
-    assert_eq!(operator_create_from_message.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -2976,8 +2533,7 @@ async fn teams_router_resume_restart_strategy_survives_state_reopen() {
 #[tokio::test]
 async fn teams_router_accepts_team_upload_route() {
     let state = build_test_state().await;
-    let (operator_user_id, token) =
-        create_auth_token_with_role_and_user_id(&state, UserRole::Operator).await;
+    let operator_token = create_auth_token_with_role(&state, UserRole::Operator).await;
     let viewer_token = create_auth_token_with_role(&state, UserRole::Viewer).await;
     let app = super::router(state.clone());
 
@@ -2986,7 +2542,7 @@ async fn teams_router_accepts_team_upload_route() {
         .oneshot(build_json_request(
             Method::POST,
             "/",
-            Some(&token),
+            Some(&operator_token),
             Some(json!({
                 "name": "router-upload-team",
                 "description": null,
@@ -3020,13 +2576,18 @@ async fn teams_router_accepts_team_upload_route() {
         .await
         .expect("viewer upload via router");
     assert_eq!(viewer_response.status(), StatusCode::UNAUTHORIZED);
+    let viewer_body = decode_json_body(viewer_response).await;
+    assert_eq!(
+        viewer_body["error"],
+        Value::from("teams:manage required")
+    );
 
     let response = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
             &format!("/{team_id}/uploads"),
-            Some(&token),
+            Some(&operator_token),
             Some(json!({
                 "file_name": "router.txt",
                 "content_type": "text/plain",
@@ -3047,63 +2608,73 @@ async fn teams_router_accepts_team_upload_route() {
     let mut operator_headers = HeaderMap::new();
     operator_headers.insert(
         header::AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {token}")).expect("operator auth header"),
+        HeaderValue::from_str(&format!("Bearer {operator_token}"))
+            .expect("operator auth header"),
     );
-    let created_task = create_team_task(
+    let task = create_team_task(
         &state,
         &operator_headers,
         team_id,
         CreateTeamTaskRequest {
-            title: "upload task".to_string(),
-            priority: "medium".to_string(),
+            title: "router upload task".to_string(),
+            priority: "high".to_string(),
             assigned_member_id: "planner".to_string(),
-            created_by_actor_id: Some(format!("user:{operator_user_id}")),
+            created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
-            topic: Some("upload topic".to_string()),
+            topic: Some("uploads".to_string()),
         },
     )
     .await
-    .expect("create upload task");
+    .expect("seed upload task");
+    let task_id = task.task.id;
 
     let viewer_task_response = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
-            &format!("/{team_id}/tasks/{}/uploads", created_task.task.id),
+            &format!("/{team_id}/tasks/{task_id}/images"),
             Some(&viewer_token),
             Some(json!({
-                "file_name": "viewer-task.txt",
-                "content_type": "text/plain",
+                "file_name": "viewer-task.png",
+                "content_type": "image/png",
                 "bytes_base64": STANDARD.encode(bytes),
                 "expected_size_bytes": bytes.len(),
                 "expected_sha256": hex_encode(&Sha256::digest(bytes))
             })),
         ))
         .await
-        .expect("viewer task upload via router");
+        .expect("viewer task image upload via router");
     assert_eq!(viewer_task_response.status(), StatusCode::UNAUTHORIZED);
+    let viewer_task_body = decode_json_body(viewer_task_response).await;
+    assert_eq!(
+        viewer_task_body["error"],
+        Value::from("teams:manage required")
+    );
 
     let task_response = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
-            &format!("/{team_id}/tasks/{}/uploads", created_task.task.id),
-            Some(&token),
+            &format!("/{team_id}/tasks/{task_id}/images"),
+            Some(&operator_token),
             Some(json!({
-                "file_name": "router-task.txt",
-                "content_type": "text/plain",
+                "file_name": "router-task.png",
+                "content_type": "image/png",
                 "bytes_base64": STANDARD.encode(bytes),
                 "expected_size_bytes": bytes.len(),
                 "expected_sha256": hex_encode(&Sha256::digest(bytes))
             })),
         ))
         .await
-        .expect("upload task object via router");
+        .expect("task image upload via router");
     assert_eq!(task_response.status(), StatusCode::OK);
     let task_body = decode_json_body(task_response).await;
+    assert_eq!(task_body["owner_scope"], Value::from(format!("tasks/{task_id}")));
     assert_eq!(
-        task_body["owner_scope"],
-        Value::from(format!("tasks/{}", created_task.task.id))
+        task_body["original_filename"],
+        Value::from("router-task.png")
     );
+    assert_eq!(task_body["content_type"], Value::from("image/png"));
+    assert_eq!(task_body["size_bytes"], Value::from(bytes.len() as i64));
 }
