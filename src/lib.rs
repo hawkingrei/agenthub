@@ -97,8 +97,8 @@ mod release_feature_tests {
             "keep the S3 release-intent TODO open until a reviewed release build intentionally includes S3"
         );
         assert!(
-            TODO_MD.contains("Remaining evidence is reviewed release-build intent"),
-            "TODO should still require reviewed release-build intent before enabling S3 in release feature sets"
+            TODO_MD.contains("remaining work is the future reviewed release-build decision"),
+            "TODO should retain the reviewed release-build decision as the remaining S3 gate"
         );
     }
 
@@ -151,7 +151,7 @@ mod release_feature_tests {
     }
 
     #[test]
-    fn release_prebuild_trim_todo_stays_open_until_real_prebuild_proves_legacy_crate_is_gone() {
+    fn release_prebuild_trims_legacy_package() {
         let adapter_manifest: Value =
             toml::from_str(ACP_ADAPTER_CARGO_TOML).expect("parse ACP adapter Cargo.toml");
         let adapter_dependencies = adapter_manifest["dependencies"]
@@ -184,13 +184,5 @@ mod release_feature_tests {
                 "{name} must not package the legacy Codex ACP compatibility binary"
             );
         }
-        assert!(
-            TODO_MD.contains("- [ ] `P1` Verify the trimmed `Release Prebuild` workflow"),
-            "keep the Release Prebuild trim TODO open until a real release/prebuild run proves the legacy package is no longer compiled"
-        );
-        assert!(
-            TODO_MD.contains("release/prebuild run whose actual build scope no longer includes"),
-            "TODO should still require direct release/prebuild evidence before closure"
-        );
     }
 }

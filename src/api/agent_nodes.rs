@@ -292,11 +292,6 @@ mod tests {
         .execute(&state.db)
         .await
         .expect("create agent_nodes table");
-        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
-            .execute(&state.db)
-            .await
-            .expect("add agents.target_node_id column");
-
         state
             .agents
             .create_agent_node(crate::agent::AgentNodeConfig {

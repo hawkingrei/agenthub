@@ -933,10 +933,6 @@ mod tests {
         let (agent_id, session_id) =
             insert_agent_and_session(&state.db, "list-agents-remote-target").await;
 
-        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
-            .execute(&state.db)
-            .await
-            .expect("add target_node_id column");
         sqlx::query("UPDATE agents SET target_node_id = ?1 WHERE id = ?2")
             .bind("node-east")
             .bind(&agent_id)
@@ -1166,10 +1162,6 @@ mod tests {
         let state = crate::api::team_tests::build_test_state().await;
         let (agent_id, _) = insert_agent_and_session(&state.db, "delete-agent-remote").await;
 
-        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
-            .execute(&state.db)
-            .await
-            .expect("add target_node_id column");
         sqlx::query("UPDATE agents SET target_node_id = ?1 WHERE id = ?2")
             .bind("node-east")
             .bind(&agent_id)
@@ -1348,10 +1340,6 @@ mod tests {
         let (agent_id, session_id) =
             insert_agent_and_session(&state.db, "reconcile-runtime-batch-remote").await;
 
-        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
-            .execute(&state.db)
-            .await
-            .expect("add target_node_id column");
         sqlx::query("UPDATE agents SET target_node_id = ?1 WHERE id = ?2")
             .bind("node-east")
             .bind(&agent_id)
