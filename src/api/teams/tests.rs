@@ -1413,6 +1413,10 @@ fn run_git(repo_dir: &StdPath, args: &[&str]) {
 
 async fn auth_headers(state: &AppState) -> HeaderMap {
     let token = create_auth_token(state).await;
+    auth_headers_for_token(&token)
+}
+
+fn auth_headers_for_token(token: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(
         header::AUTHORIZATION,
@@ -1507,7 +1511,8 @@ async fn team_upload_session_s3_multipart_route_fixture_publishes_metadata() {
         return;
     };
     let state = build_test_state_with_object_store(object_store).await;
-    let headers = auth_headers(&state).await;
+    let token = create_auth_token(&state).await;
+    let headers = auth_headers_for_token(&token);
 
     let Json(created) = create_team(
         State(state.clone()),

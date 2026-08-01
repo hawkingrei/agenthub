@@ -241,7 +241,8 @@ test("team and ACP heavy browser surfaces keep initial long histories windowed",
     node.dispatchEvent(new Event("scroll", { bubbles: true }));
   });
   await expect(page.getByLabel("Jump to bottom")).toBeVisible();
-  await expect(page.getByText("Long channel browser item 160", { exact: true })).toBeVisible();
+  await expect(page.getByText("Long channel browser item 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("Long channel browser item 160", { exact: true })).toHaveCount(1);
 
   await page.evaluate(() => performance.mark("team-acp-open-start"));
   await selectAgentFromSidebar(page, "Worker Agent");

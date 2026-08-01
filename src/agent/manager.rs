@@ -1685,9 +1685,6 @@ impl AgentManager {
         if authority_max == 0 {
             return Ok(Some(Vec::new()));
         }
-        let authority_count = self
-            .count_agent_events_for_page(event_db, session_id, before_id)
-            .await?;
         let stream_id = format!("agent_events:agent:{agent_id}");
         let freshness =
             agenthub_message_store::check_index_freshness(index, &stream_id, authority_max as u64)?;
@@ -1721,11 +1718,15 @@ impl AgentManager {
             }
             ids.push(event_id);
         }
-        if !ids.contains(&authority_max) || ids.len() < authority_count {
-            return Ok(None);
-        }
         if ids.len() > limit {
             ids.drain(0..ids.len() - limit);
+        }
+        if ids
+            != self
+                .expected_agent_event_ids(event_db, limit, session_id, before_id)
+                .await?
+        {
+            return Ok(None);
         }
 
         self.load_agent_events_by_ids(agent_id, event_db, &ids)
@@ -1753,14 +1754,14 @@ impl AgentManager {
         Ok(builder.build_query_scalar().fetch_one(event_db).await?)
     }
 
-    async fn count_agent_events_for_page(
+    async fn expected_agent_event_ids(
         &self,
         event_db: &SqlitePool,
+        limit: usize,
         session_id: Option<&str>,
         before_id: Option<i64>,
-    ) -> anyhow::Result<usize> {
-        let mut builder =
-            QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM agent_events WHERE 1 = 1");
+    ) -> anyhow::Result<Vec<i64>> {
+        let mut builder = QueryBuilder::<Sqlite>::new("SELECT id FROM agent_events WHERE 1 = 1");
         if let Some(session_id) = session_id {
             builder.push(" AND session_id = ");
             builder.push_bind(session_id);
@@ -1769,8 +1770,11 @@ impl AgentManager {
             builder.push(" AND id < ");
             builder.push_bind(before_id);
         }
-        let count: i64 = builder.build_query_scalar().fetch_one(event_db).await?;
-        Ok(count.max(0) as usize)
+        builder.push(" ORDER BY id DESC LIMIT ");
+        builder.push_bind(limit as i64);
+        let mut ids = builder.build_query_scalar().fetch_all(event_db).await?;
+        ids.reverse();
+        Ok(ids)
     }
 
     async fn load_agent_events_by_ids(

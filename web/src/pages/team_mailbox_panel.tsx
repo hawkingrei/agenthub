@@ -327,10 +327,17 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
     snapshot?.members,
     unreadByMemberId,
   ]);
+  const visibleConversationMessages = React.useMemo(
+    () =>
+      chatStickToBottom && conversationMessages.length > 32
+        ? conversationMessages.slice(-32)
+        : conversationMessages,
+    [chatStickToBottom, conversationMessages]
+  );
   const conversationRows = React.useMemo<MailboxConversationRow[]>(() => {
     // Precompute mailbox row presentation so long conversations do not repeatedly
     // re-parse payload text and actor labels during every list render.
-    return conversationMessages.map((message) => {
+    return visibleConversationMessages.map((message) => {
       const isOutgoing = message.from_actor_id === chatActors.fromActorId;
       const chatText = resolveVisibleTeamPayloadText(message.payload);
       const payload = chatText ?? toPrettyJson(message.payload);
@@ -363,17 +370,13 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   }, [
     chatActors.fromActorId,
     chatActors.inboxActorId,
-    conversationMessages,
     displayNameByActorId,
     normalizedHumanActorId,
     toPrettyJson,
+    visibleConversationMessages,
   ]);
   const acceptVisibleMessages = React.useMemo(
     () => conversationRows.filter((row) => row.canAccept).map((row) => row.message),
-    [conversationRows]
-  );
-  const visibleConversationRows = React.useMemo(
-    () => (conversationRows.length > 32 ? conversationRows.slice(-32) : conversationRows),
     [conversationRows]
   );
 
@@ -763,7 +766,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               ref={chatMessagesRef as React.Ref<HTMLUListElement>}
               onScroll={() => onConversationScroll()}
             >
-              {visibleConversationRows.map((row) => {
+              {conversationRows.map((row) => {
                 return (
                   <li
                     key={row.message.message_id}
