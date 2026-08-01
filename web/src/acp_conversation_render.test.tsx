@@ -37,6 +37,15 @@ async function renderConversation(
   return (await new Response(stream).text()).split("<!-- -->").join("");
 }
 
+function bubbleClassName(html: string, role: "agent" | "user"): string {
+  const element = html.match(
+    new RegExp(`<[^>]*data-acp-message-bubble="${role}"[^>]*>`)
+  )?.[0];
+  const className = element?.match(/\bclass="([^"]*)"/)?.[1];
+  expect(className).toBeDefined();
+  return className ?? "";
+}
+
 describe("AcpConversation rendering", () => {
   beforeAll(async () => {
     await preloadThreadMarkdownAssets();
@@ -305,8 +314,11 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain('data-acp-message-bubble="agent"');
     expect(html).toContain('data-acp-message-bubble="user"');
-    for (const token of CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS.split(" ")) {
-      expect(html).toContain(token);
+    for (const role of ["agent", "user"] as const) {
+      const className = bubbleClassName(html, role);
+      for (const token of CONVERSATION_MESSAGE_BUBBLE_NEUTRAL_CLASS.split(" ")) {
+        expect(className).toContain(token);
+      }
     }
   });
 

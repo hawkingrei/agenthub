@@ -8601,12 +8601,15 @@ describe("team panels interactions", () => {
     expect(required(container.querySelector("pre"), "pretty JSON fallback missing").className).toContain(
       MAILBOX_MESSAGE_PRE_CLASS
     );
-    expect(
-      required(
-        container.querySelector(".teams-message-bubble-incoming"),
-        "mailbox incoming bubble missing"
-      ).className
-    ).toContain("rounded-[16px]");
+    const incomingBubble = required(
+      container.querySelector(".teams-message-bubble-incoming"),
+      "mailbox incoming bubble missing"
+    );
+    expect(incomingBubble.className).toContain("rounded-[16px]");
+    expect(incomingBubble.className).toContain("bg-white/96");
+    expect(incomingBubble.className).toContain("border-black/6");
+    expect(incomingBubble.className).toContain("shadow-none");
+    expect(incomingBubble.className).not.toContain("border-notion-border");
     const outgoingBubble = required(
       container.querySelector(".teams-message-bubble-outgoing"),
       "mailbox outgoing bubble missing"
