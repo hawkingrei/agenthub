@@ -462,6 +462,13 @@ describe("useAcpConversation viewport width initialization", () => {
       root.render(<HookHarness onSnapshot={onSnapshot} acpView={acpView} />);
     });
 
+    expect(snapshot?.conversationStickToBottom).toBe(true);
+    expect(snapshot?.conversationVirtualized).toBe(false);
+    expect(snapshot?.conversationTotalItems).toBe(221);
+    expect(snapshot?.conversationSourceItems).toBe(10);
+    expect(snapshot?.conversationRenderedItems).toBe(10);
+    expect(snapshot?.conversationWindowOffset).toBe(211);
+
     scrollTop = 11_580;
     act(() => {
       snapshot?.handleConversationScroll();
@@ -473,6 +480,9 @@ describe("useAcpConversation viewport width initialization", () => {
     });
 
     expect(snapshot?.conversationVirtualized).toBe(true);
+    expect(snapshot?.conversationStickToBottom).toBe(false);
+    expect(snapshot?.conversationTotalItems).toBe(221);
+    expect(snapshot?.conversationSourceItems).toBe(221);
     expect(snapshot?.conversationRenderedItems ?? 0).toBeLessThan(
       snapshot?.conversationSourceItems ?? 0
     );

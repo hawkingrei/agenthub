@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  areAcpConversationItemRowPropsEqual,
   deriveToolCallOpenState,
   getAcpConversationCacheStats,
   isToolCallEffectivelyLive,
@@ -10,6 +11,7 @@ import {
   shouldCollapseToolFoldWhenOutOfView,
 } from "./components/acp_conversation";
 import { preloadThreadMarkdownAssets } from "./components/thread_rich_text";
+import type { ConversationItem } from "./conversation";
 
 beforeAll(async () => {
   await preloadThreadMarkdownAssets();
@@ -117,6 +119,72 @@ describe("shouldAutoCollapseConversationItem", () => {
           collapseCutoff: 0,
           isFrozenView: false,
         }
+      )
+    ).toBe(false);
+  });
+});
+
+describe("areAcpConversationItemRowPropsEqual", () => {
+  const ansi = (input: string) => input;
+  const toolCall: ConversationItem = {
+    kind: "tool_call",
+    id: "call-1",
+    title: "Read",
+  };
+  const unrelatedToolCall: ConversationItem = {
+    kind: "tool_call",
+    id: "call-2",
+    title: "Write",
+  };
+
+  function rowProps(
+    msg: ConversationItem,
+    overrides: Partial<Parameters<typeof areAcpConversationItemRowPropsEqual>[0]> = {}
+  ): Parameters<typeof areAcpConversationItemRowPropsEqual>[0] {
+    return {
+      msg,
+      globalIndex: 3,
+      latestVisibleGlobalIndex: 4,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      isFrozenView: false,
+      runStatus: "running",
+      ansi,
+      markdownRenderVersion: 1,
+      focusedToolCallId: null,
+      ...overrides,
+    };
+  }
+
+  it("skips row updates when focus changes only affect another tool call", () => {
+    expect(
+      areAcpConversationItemRowPropsEqual(
+        rowProps(toolCall, { focusedToolCallId: null }),
+        rowProps(toolCall, { focusedToolCallId: "call-2" })
+      )
+    ).toBe(true);
+  });
+
+  it("updates the row when focus enters or leaves the row tool call", () => {
+    expect(
+      areAcpConversationItemRowPropsEqual(
+        rowProps(toolCall, { focusedToolCallId: null }),
+        rowProps(toolCall, { focusedToolCallId: "call-1" })
+      )
+    ).toBe(false);
+    expect(
+      areAcpConversationItemRowPropsEqual(
+        rowProps(toolCall, { focusedToolCallId: "call-1" }),
+        rowProps(toolCall, { focusedToolCallId: "call-2" })
+      )
+    ).toBe(false);
+  });
+
+  it("updates rows when render-affecting props change", () => {
+    expect(
+      areAcpConversationItemRowPropsEqual(
+        rowProps(unrelatedToolCall, { runStatus: "running" }),
+        rowProps(unrelatedToolCall, { runStatus: "completed" })
       )
     ).toBe(false);
   });

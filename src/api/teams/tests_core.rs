@@ -8049,10 +8049,6 @@ async fn team_task_messages_api_routes_single_remote_mention_over_p2p_and_preser
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
-    sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
-        .execute(&state.db)
-        .await
-        .expect("add target_node_id");
     sqlx::query(
         r#"
         CREATE TABLE agent_nodes (

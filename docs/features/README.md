@@ -97,6 +97,8 @@ when adding or compacting specs so this directory stays navigable.
 - `docs/features/team-system-prompt-contract.md`
 - `docs/features/test-regression-guardrails.md`
 - `docs/features/pyroscope-profiling.md`
+- `docs/features/instance-init-cli.md`
+- `docs/features/web-static-assets-and-pwa.md`
 - `docs/features/npm-binary-distribution.md`
 - `docs/features/debian-systemd-distribution.md`
 - `docs/features/app-linkers.md`

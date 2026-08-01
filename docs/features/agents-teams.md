@@ -372,6 +372,9 @@ For the full execution vocabulary and boundary rules, see
 - Large evidence handoffs should be summary-first: send the concise summary in the mailbox/chat
   payload and attach a stable `detail_ref` / artifact pointer for the full content instead of
   pasting large logs or copied context into routine messages.
+- Remote mailbox relay envelopes must preserve the addressing and semantic message envelope,
+  including actor ids, peer ids, `message_kind`, channel, transport, and the summary-first payload
+  fields used for handoffs.
 - Conversation input should allow omission of `run_id`/`from_actor_id`; backend should enrich sender identity and routing from session + mention context.
 - Execution-command semantics (`assignment`/`approval`/`step_action`) should still route through mailbox, not event-bus-only transport.
 - Manual `compile preview` and `Create Run` actions are debug/advanced tools, not the primary Team workflow.
@@ -413,3 +416,4 @@ For the full execution vocabulary and boundary rules, see
 - `docs/journal/2026-03-20-team-acp-permission-review-routing.md`
 - `docs/journal/2026-05-19-team-task-priority-note-governance.md`
 - `docs/journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md`
+- `docs/journal/2026-07-19-team-self-maintenance-deferred-followup-closeout.md`

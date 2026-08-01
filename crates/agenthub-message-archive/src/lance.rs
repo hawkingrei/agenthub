@@ -259,6 +259,30 @@ impl MessageArchiveStore for LanceDbMessageArchive {
         Ok(())
     }
 
+    async fn contains_document(&self, document_id: &str) -> Result<bool> {
+        let document_id = document_id.trim();
+        if document_id.is_empty() {
+            return Ok(false);
+        }
+        let table = self.ensure_table().await?;
+        let mut stream = table
+            .query()
+            .select(Select::columns(&["document_id"]))
+            .only_if(format!(
+                "document_id = '{}'",
+                escape_sql_literal(document_id)
+            ))
+            .limit(1)
+            .execute()
+            .await?;
+        while let Some(batch) = stream.try_next().await? {
+            if batch.num_rows() > 0 {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     async fn search(&self, query: &MessageSearchQuery) -> Result<Vec<MessageSearchHit>> {
         let query_text = query.query_text.trim();
         if query_text.is_empty() || query.limit == 0 {
@@ -501,6 +525,19 @@ mod tests {
         assert_eq!(hits[0].conversation_id.as_deref(), Some("conv-1"));
         assert_eq!(hits[0].task_id.as_deref(), Some("task-1"));
         assert!(hits[0].score.is_some());
+
+        assert!(
+            archive
+                .contains_document("team_conversation_message:conv-1:1")
+                .await
+                .expect("contains existing document")
+        );
+        assert!(
+            !archive
+                .contains_document("team_conversation_message:conv-1:missing")
+                .await
+                .expect("contains missing document")
+        );
 
         archive
             .ensure_ready()

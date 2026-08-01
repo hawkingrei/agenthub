@@ -12,6 +12,13 @@ hard to scan, especially on mobile and tablet layouts.
 - Keep existing fold behavior and terminal ANSI rendering unchanged.
 - Avoid JSON-first display while preserving nested payload visibility.
 
+## Supersession
+
+Stable ACP tool-payload humanization rules from this note now live in
+`docs/features/acp-runtime.md#4-conversationdebug-surfaces` and
+`docs/features/frontend-design.md#42-acp-heavy-output-visual-contract`. This journal remains the
+rollout evidence for the humanized rendering pass.
+
 ## Key Decisions
 
 - Introduce payload normalization for tool call Input/Output:

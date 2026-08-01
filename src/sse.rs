@@ -1292,6 +1292,8 @@ mod tests {
             agent_node_join_bootstrap: crate::agent::AgentNodeJoinBootstrapInfo::disabled(),
             default_worktree_root: config.default_worktree_root(),
             body_store: None,
+            message_index: None,
+            message_read_repair: None,
         }
     }
 

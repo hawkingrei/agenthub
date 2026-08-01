@@ -437,3 +437,4 @@ Kind projections:
 - `docs/features/agents-teams.md`
 - `docs/features/actor-foundation.md`
 - `docs/features/backend-runtime-logic.md`
+- `docs/journal/2026-07-19-team-self-maintenance-deferred-followup-closeout.md`

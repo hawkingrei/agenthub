@@ -264,6 +264,8 @@ impl TeamManager {
         ActorMailbox::new(SqlActorMailboxStore {
             db: self.db.clone(),
             message_archive: self.message_archive.clone(),
+            message_index: self.message_index.clone(),
+            read_repair: self.read_repair.clone(),
         })
     }
 }

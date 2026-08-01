@@ -25,6 +25,8 @@ impl TeamActorMailboxService {
         let snapshot = SqlActorMailboxStore {
             db: self.manager.db.clone(),
             message_archive: None,
+            message_index: self.manager.message_index.clone(),
+            read_repair: self.manager.read_repair.clone(),
         }
         .read_inbox_snapshot(&ListActorInboxQuery {
             run_id: run_id.to_string(),

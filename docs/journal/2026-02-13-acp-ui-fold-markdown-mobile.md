@@ -14,6 +14,13 @@ Three regressions were observed in ACP conversation UI:
 - Improve markdown typography and prevent admin list styles from leaking into ACP markdown.
 - Improve mobile layout alignment for ACP controls and panel safe-area behavior.
 
+## Supersession
+
+Stable ACP fold, markdown-safety, terminal-rendering, and mobile-header rules from this note now
+live in `docs/features/acp-runtime.md#4-conversationdebug-surfaces` and
+`docs/features/frontend-design.md#42-acp-heavy-output-visual-contract`. This journal remains the
+rollout evidence for the 2026-02-13 UI fix pass.
+
 ## Key Decisions
 
 - Add a tool call fold state transition helper to ensure:

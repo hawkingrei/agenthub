@@ -398,7 +398,7 @@ async fn actor_mailbox_service_channel_send_auto_routes_remote_recipients_over_p
 }
 
 #[tokio::test]
-async fn remote_actor_messages_relay_success_marks_message_delivered() {
+async fn remote_actor_messages_relay_success_preserves_payload_metadata() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
     let (endpoint, captures, server_handle) = spawn_relay_http_server(StatusCode::OK).await;
@@ -449,7 +449,18 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
                     "timestamp_header": "x-agenthub-timestamp"
                 }
             })),
-            payload: json!({"text":"review this"}),
+            payload: json!({
+                "text": "@remote-reviewer review this",
+                "summary": "Review handoff is ready",
+                "detail_ref": {
+                    "uri": "artifact://remote-review/full-review-1",
+                    "label": "Full review",
+                    "kind": "artifact",
+                    "content_type": "text/markdown"
+                },
+                "mention_actor_ids": ["remote-reviewer"],
+                "mentioned_actor_ids": ["remote-reviewer"]
+            }),
             idempotency_key: None,
             message_kind: None,
         })
@@ -522,10 +533,35 @@ async fn remote_actor_messages_relay_success_marks_message_delivered() {
     assert_eq!(captured[0].body["from_actor_kind"], "agent");
     assert_eq!(captured[0].body["to_actor_id"], "remote-reviewer");
     assert_eq!(captured[0].body["to_actor_kind"], "agent");
+    assert_eq!(captured[0].body["message_kind"], "coordination_request");
     assert_eq!(captured[0].body["scope"], json!(["node:p2p"]));
     assert_eq!(captured[0].body["kid"], "phase1-shared-key");
     assert!(captured[0].body["payload_digest"].is_string());
-    assert_eq!(captured[0].body["payload"]["text"], "review this");
+    assert_eq!(
+        captured[0].body["payload"]["text"],
+        "@remote-reviewer review this"
+    );
+    assert_eq!(
+        captured[0].body["payload"]["summary"],
+        "Review handoff is ready"
+    );
+    assert_eq!(
+        captured[0].body["payload"]["detail_ref"],
+        json!({
+            "uri": "artifact://remote-review/full-review-1",
+            "label": "Full review",
+            "kind": "artifact",
+            "content_type": "text/markdown"
+        })
+    );
+    assert_eq!(
+        captured[0].body["payload"]["mention_actor_ids"],
+        json!(["remote-reviewer"])
+    );
+    assert_eq!(
+        captured[0].body["payload"]["mentioned_actor_ids"],
+        json!(["remote-reviewer"])
+    );
     drop(captured);
     server_handle.abort();
 }

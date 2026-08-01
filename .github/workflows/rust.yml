@@ -56,7 +56,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y curl
+        run: sudo apt-get update && sudo apt-get install -y curl protobuf-compiler
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.96.0
         with:
@@ -86,7 +86,9 @@ jobs:
           /tmp/mc alias set local "${AGENTHUB_OBJECT_STORE_S3_TEST_ENDPOINT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
           /tmp/mc mb --ignore-existing "local/${AGENTHUB_OBJECT_STORE_S3_TEST_BUCKET}"
       - name: Cargo test object store S3 fixture
-        run: cargo test -p agenthub-object-store --features s3 --locked s3_compatible_store_writes_reads_and_deletes_bytes -- --nocapture
+        run: cargo test -p agenthub-object-store --features s3 --locked s3_compatible_store_exercises_bytes_and_hosted_images -- --nocapture
+      - name: Cargo test API S3 team upload route fixture
+        run: cargo test --features object-store-s3 --locked team_upload_s3_route_fixture_publishes_metadata -- --nocapture
 
   rust-message-store-rocksdb:
     name: Rust (Message Store RocksDB)

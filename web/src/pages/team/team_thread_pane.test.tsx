@@ -4,13 +4,18 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TeamThreadPane } from "./team_thread_pane";
+import {
+  areTeamThreadMessageRowPropsEqual,
+  TeamThreadPane,
+  type TeamThreadMessageRowProps,
+} from "./team_thread_pane";
 import {
   TEAM_THREAD_CHANNEL_BADGE_CLASS,
   TEAM_THREAD_BODY_CLASS,
   TEAM_THREAD_MESSAGE_AVATAR_CLASS,
   TEAM_THREAD_MESSAGE_BUBBLE_CLASS,
   TEAM_THREAD_PANE_CLASS,
+  TEAM_THREAD_REPLIES_WINDOW_NOTICE_CLASS,
   TEAM_THREAD_SOURCE_CARD_CLASS,
 } from "../../ui/tailwind_classes";
 
@@ -165,6 +170,60 @@ describe("TeamThreadPane", () => {
     expect(scrollRegion?.className).toContain("overscroll-contain");
     expect(container.textContent).toContain("24 replies");
     expect(container.textContent).toContain("Long thread reply 24.");
+  });
+
+  it("windows extremely long reply threads until earlier replies are requested", () => {
+    const replies = Array.from({ length: 36 }, (_, index) => ({
+      messageId: index + 100,
+      authorLabel: `worker-${index + 1}`,
+      createdAt: 1713480060000 + index,
+      text: `Windowed thread reply ${index + 1}.`,
+    }));
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# all"
+            rootMessageId={42}
+            rootAuthorLabel="coordinator"
+            rootCreatedAt={1713480000000}
+            rootText="Investigate the regression in a focused thread."
+            replies={replies}
+            replyDraft=""
+            onReplyDraftChange={vi.fn()}
+            onSendReply={vi.fn()}
+            replyBusy={false}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const notice = container.querySelector(
+      '[data-team-surface="thread-replies-window-notice"]'
+    );
+    expect(notice?.className).toContain(
+      TEAM_THREAD_REPLIES_WINDOW_NOTICE_CLASS.split(/\s+/)[0]
+    );
+    expect(container.textContent).toContain("Showing latest 10 of 36 replies.");
+    expect(container.textContent).not.toContain("Windowed thread reply 1.");
+    expect(container.textContent).toContain("Windowed thread reply 27.");
+    expect(container.textContent).toContain("Windowed thread reply 36.");
+
+    const expandButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Show earlier replies"
+    );
+    expect(expandButton).toBeTruthy();
+    act(() => {
+      expandButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.textContent).not.toContain("Showing latest 10 of 36 replies.");
+    expect(container.textContent).toContain("Windowed thread reply 1.");
+    expect(container.textContent).toContain("Windowed thread reply 36.");
   });
 
   it("keeps the reply composer available when the root has no chat text body", () => {
@@ -560,5 +619,56 @@ describe("TeamThreadPane", () => {
     });
 
     expect(onReplyDraftChange).toHaveBeenCalledWith("@Writer Agent");
+  });
+
+  it("skips thread message row updates when parent-only state changes", () => {
+    const renderSanitizedHtml = (text: string) => text;
+    const props: TeamThreadMessageRowProps = {
+      message: {
+        messageId: 101,
+        authorLabel: "worker-agent",
+        createdAtLabel: "2026/4/19 00:00:00",
+        text: "Stable reply body",
+      },
+      avatarStableId: "worker-agent",
+      renderSanitizedHtml,
+    };
+
+    expect(
+      areTeamThreadMessageRowPropsEqual(props, {
+        ...props,
+        message: { ...props.message },
+      })
+    ).toBe(true);
+  });
+
+  it("updates thread message rows when rendered body inputs change", () => {
+    const renderSanitizedHtml = (text: string) => text;
+    const props: TeamThreadMessageRowProps = {
+      message: {
+        messageId: 101,
+        authorLabel: "worker-agent",
+        createdAtLabel: "2026/4/19 00:00:00",
+        text: "Stable reply body",
+      },
+      avatarStableId: "worker-agent",
+      renderSanitizedHtml,
+    };
+
+    expect(
+      areTeamThreadMessageRowPropsEqual(props, {
+        ...props,
+        message: {
+          ...props.message,
+          text: "Updated reply body",
+        },
+      })
+    ).toBe(false);
+    expect(
+      areTeamThreadMessageRowPropsEqual(props, {
+        ...props,
+        renderSanitizedHtml: (text: string) => text.toUpperCase(),
+      })
+    ).toBe(false);
   });
 });

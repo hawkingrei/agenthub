@@ -13,6 +13,12 @@
   - removed Team sidebar section counts from the `Teams` toggle label
   - rewrote Team selector rows as plain directory buttons instead of reusing the heavier selectable card shell
 
+## Supersession
+
+Stable density and directory-shell rules from this note now live in
+`docs/features/workspace-unified-ia.md#81-shell-density-and-chrome-contract`. This journal remains
+the rollout evidence for the Slock/Notion density pass.
+
 ## Validation
 
 ```bash

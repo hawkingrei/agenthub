@@ -30,3 +30,159 @@ mod web;
 
 pub use app::run;
 pub use cli_error::report_cli_error;
+
+#[cfg(test)]
+mod release_feature_tests {
+    use toml::Value;
+
+    const ROOT_CARGO_TOML: &str = include_str!("../Cargo.toml");
+    const OBJECT_STORE_CARGO_TOML: &str =
+        include_str!("../crates/agenthub-object-store/Cargo.toml");
+    const ACP_ADAPTER_CARGO_TOML: &str = include_str!("../crates/agenthub-acp-adapter/Cargo.toml");
+    const RELEASE_WORKFLOW: &str = include_str!("../.github/workflows/release.yml");
+    const RELEASE_PREBUILD_WORKFLOW: &str =
+        include_str!("../.github/workflows/release-prebuild.yml");
+    const TODO_MD: &str = include_str!("../docs/todo.md");
+
+    #[test]
+    fn object_store_s3_stays_out_of_default_and_release_feature_sets() {
+        let root_manifest: Value = toml::from_str(ROOT_CARGO_TOML).expect("parse root Cargo.toml");
+        let object_store_manifest: Value =
+            toml::from_str(OBJECT_STORE_CARGO_TOML).expect("parse object-store Cargo.toml");
+
+        assert_eq!(
+            root_manifest["features"]["default"],
+            Value::Array(Vec::new()),
+            "root default features must stay empty"
+        );
+        assert_eq!(
+            object_store_manifest["features"]["default"],
+            Value::Array(Vec::new()),
+            "object-store default features must stay empty"
+        );
+        assert!(
+            root_manifest["features"]["object-store-s3"].is_array(),
+            "root manifest must keep S3 behind the explicit object-store-s3 feature"
+        );
+        assert!(
+            object_store_manifest["features"]["s3"].is_array(),
+            "object-store manifest must keep S3 behind the explicit s3 feature"
+        );
+        assert_eq!(
+            root_manifest["features"]["object-store-s3"],
+            Value::Array(vec![Value::String("agenthub-object-store/s3".to_string())]),
+            "root S3 feature must stay as the explicit bridge to agenthub-object-store/s3"
+        );
+
+        for (name, workflow) in [
+            ("release.yml", RELEASE_WORKFLOW),
+            ("release-prebuild.yml", RELEASE_PREBUILD_WORKFLOW),
+        ] {
+            assert!(
+                !workflow.contains("--all-features"),
+                "{name} must not use --all-features in release builds while S3 is opt-in"
+            );
+            assert!(
+                !workflow.contains("object-store-s3"),
+                "{name} must not include object-store-s3 in release feature sets until reviewed"
+            );
+            assert!(
+                !workflow.contains("agenthub-object-store/s3"),
+                "{name} must not enable the object-store S3 crate feature directly"
+            );
+        }
+        assert!(
+            TODO_MD
+                .contains("- [ ] `P1` Keep `agenthub-object-store/s3` out of release feature sets"),
+            "keep the S3 release-intent TODO open until a reviewed release build intentionally includes S3"
+        );
+        assert!(
+            TODO_MD.contains("remaining work is the future reviewed release-build decision"),
+            "TODO should retain the reviewed release-build decision as the remaining S3 gate"
+        );
+    }
+
+    #[test]
+    fn release_workflow_keeps_partial_asset_publication_path_open() {
+        assert!(
+            RELEASE_WORKFLOW.contains("fail-fast: false"),
+            "release build matrix must keep fail-fast disabled so successful targets can upload artifacts"
+        );
+        assert!(
+            RELEASE_WORKFLOW.contains("name: Create Release"),
+            "release workflow must keep a Create Release job"
+        );
+        assert!(
+            RELEASE_WORKFLOW.contains("needs: [build, publish_npm]"),
+            "Create Release must wait for build and npm jobs before publishing collected artifacts"
+        );
+        assert!(
+            RELEASE_WORKFLOW.contains(
+                "if: ${{ always() && !cancelled() && (needs.publish_npm.result == 'success' || needs.publish_npm.result == 'skipped') }}"
+            ),
+            "Create Release must not require the build matrix to be fully successful before collecting partial artifacts"
+        );
+        assert!(
+            RELEASE_WORKFLOW.contains("pattern: release-*"),
+            "Create Release must download successful matrix artifacts by release-* pattern"
+        );
+        assert!(
+            RELEASE_WORKFLOW.contains("merge-multiple: true"),
+            "Create Release must merge matrix artifacts before publishing"
+        );
+        assert!(
+            RELEASE_WORKFLOW
+                .contains("No binary release assets were produced by the build matrix."),
+            "Create Release must fail closed when every binary target failed"
+        );
+        assert!(
+            RELEASE_WORKFLOW.contains("One or more release targets failed in the build matrix."),
+            "release body must warn when publishing a partial build result"
+        );
+        assert!(
+            TODO_MD.contains("- [ ] `P1` Verify preview release partial-asset behavior"),
+            "keep the preview partial-asset TODO open until a real preview run proves partial publication"
+        );
+        assert!(
+            TODO_MD
+                .contains("successful binary assets publish when one release matrix target fails"),
+            "TODO should still require direct preview release evidence before closure"
+        );
+    }
+
+    #[test]
+    fn release_prebuild_trims_legacy_package() {
+        let adapter_manifest: Value =
+            toml::from_str(ACP_ADAPTER_CARGO_TOML).expect("parse ACP adapter Cargo.toml");
+        let adapter_dependencies = adapter_manifest["dependencies"]
+            .as_table()
+            .expect("ACP adapter dependencies");
+        assert!(
+            adapter_dependencies.get("agenthub-codex-acp").is_none(),
+            "agenthub-acp-adapter must not depend on the legacy agenthub-codex-acp package"
+        );
+        assert!(
+            adapter_dependencies
+                .get("agenthub-codex-acp-runtime")
+                .is_some(),
+            "agenthub-acp-adapter should depend on the non-legacy Codex ACP runtime package"
+        );
+        for (name, workflow) in [
+            ("release.yml", RELEASE_WORKFLOW),
+            ("release-prebuild.yml", RELEASE_PREBUILD_WORKFLOW),
+        ] {
+            assert!(
+                workflow.contains("package_binary \"agenthub\""),
+                "{name} must package the canonical agenthub binary"
+            );
+            assert!(
+                workflow.contains("package_binary \"agenthub-acp\""),
+                "{name} must package the canonical agenthub-acp binary"
+            );
+            assert!(
+                !workflow.contains("package_binary \"agenthub-codex-acp\""),
+                "{name} must not package the legacy Codex ACP compatibility binary"
+            );
+        }
+    }
+}

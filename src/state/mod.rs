@@ -39,9 +39,15 @@ pub struct AppState {
     pub agent_node_join_bootstrap: AgentNodeJoinBootstrapInfo,
     pub default_worktree_root: String,
     /// Tiered message body store, when enabled and compiled in. Held here so the read path can fetch
-    /// bodies from it; the write/read wiring lands in a follow-up.
+    /// bodies from it.
     #[allow(dead_code)]
     pub body_store: Option<crate::message_body_store::SharedBodyStore>,
+    /// Rebuildable message index store, when enabled and compiled in.
+    #[allow(dead_code)]
+    pub message_index: Option<crate::message_body_store::SharedIndexStore>,
+    /// Queue for lagging index projections discovered by guarded reads.
+    #[allow(dead_code)]
+    pub message_read_repair: Option<crate::message_body_store::SharedReadRepairScheduler>,
 }
 
 impl AppState {
@@ -56,12 +62,18 @@ impl AppState {
         let linker_http = crate::linkers::AppLinkerService::default_http_client();
         let event_dbs = agenthub_db::AgentEventDbRouter::with_default_base_dir();
 
-        let body_store = crate::message_body_store::init_body_store(&config);
+        let message_stores = crate::message_body_store::init_message_stores(&config);
+        let body_store = message_stores.body.clone();
+        let message_read_repair = message_stores.read_repair.clone();
         let object_uploads = Arc::new(ObjectUploadService::from_config(db.clone(), &config)?);
 
-        let (agents, teams, push, auth, acp_permissions) =
-            Self::initialize_services(&config, db.clone(), event_dbs.clone(), body_store.clone())
-                .await?;
+        let (agents, teams, push, auth, acp_permissions) = Self::initialize_services(
+            &config,
+            db.clone(),
+            event_dbs.clone(),
+            message_stores.clone(),
+        )
+        .await?;
         let agent_node_join_bootstrap = Self::build_agent_node_join_bootstrap(&config)?;
 
         Self::run_startup_cleanup(&agents, &teams).await?;
@@ -87,6 +99,8 @@ impl AppState {
             agent_node_join_bootstrap,
             default_worktree_root,
             body_store,
+            message_index: message_stores.index,
+            message_read_repair,
         })
     }
 

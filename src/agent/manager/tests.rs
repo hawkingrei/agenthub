@@ -18,10 +18,66 @@ use crate::acp::{
     AcpRuntimeLocation, AcpStalePromptDiagnostic, AcpToolCallDiagnostic,
 };
 use crate::path_utils::expand_tilde;
+use agenthub_message_store::{
+    AuthorityMessageId, DeliveryMessageId, InMemoryIndexReadRepairScheduler, InMemoryIndexStore,
+    IndexStoreError, MessageIndexStore, MessageKind, MessageRef, keys,
+};
+use sqlx::SqlitePool;
 use std::sync::Mutex;
 use uuid::Uuid;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Debug, Default)]
+struct CountingIndexStore {
+    inner: InMemoryIndexStore,
+    scan_count: std::sync::atomic::AtomicUsize,
+}
+
+impl CountingIndexStore {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn scan_count(&self) -> usize {
+        self.scan_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl MessageIndexStore for CountingIndexStore {
+    fn put_ref(&self, key: &[u8], message_ref: &MessageRef) -> Result<(), IndexStoreError> {
+        self.inner.put_ref(key, message_ref)
+    }
+
+    fn get_ref(&self, key: &[u8]) -> Result<Option<MessageRef>, IndexStoreError> {
+        self.inner.get_ref(key)
+    }
+
+    fn delete_ref(&self, key: &[u8]) -> Result<(), IndexStoreError> {
+        self.inner.delete_ref(key)
+    }
+
+    fn scan_prefix(&self, prefix: &[u8]) -> Result<Vec<MessageRef>, IndexStoreError> {
+        self.scan_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.scan_prefix(prefix)
+    }
+
+    fn scan_prefix_entries(
+        &self,
+        prefix: &[u8],
+    ) -> Result<Vec<agenthub_message_store::IndexedMessageRef>, IndexStoreError> {
+        self.inner.scan_prefix_entries(prefix)
+    }
+
+    fn put_high_water(&self, stream_id: &str, seq: u64) -> Result<(), IndexStoreError> {
+        self.inner.put_high_water(stream_id, seq)
+    }
+
+    fn get_high_water(&self, stream_id: &str) -> Result<Option<u64>, IndexStoreError> {
+        self.inner.get_high_water(stream_id)
+    }
+}
 
 #[test]
 fn expand_tilde_uses_home() {
@@ -72,6 +128,262 @@ fn stream_roundtrip() {
         let parsed = stream_from_str(s);
         assert_eq!(stream, parsed);
     }
+}
+
+async fn build_agent_manager_with_counting_index() -> (
+    crate::agent::AgentManager,
+    std::sync::Arc<CountingIndexStore>,
+    std::sync::Arc<InMemoryIndexReadRepairScheduler>,
+) {
+    let state = crate::api::team_tests::build_test_state().await;
+    let index = std::sync::Arc::new(CountingIndexStore::new());
+    let read_repair = std::sync::Arc::new(InMemoryIndexReadRepairScheduler::new());
+    let agents = crate::agent::AgentManager::new(
+        state.db.clone(),
+        state.agents.event_dbs.clone(),
+        None,
+        state.push.clone(),
+        Vec::new(),
+        "agenthub-codex-acp".to_string(),
+        None,
+        true,
+        state.acp_permissions.clone(),
+        state.auth.clone(),
+    )
+    .with_message_index(Some(
+        index.clone() as crate::message_body_store::SharedIndexStore
+    ))
+    .with_read_repair_scheduler(Some(
+        read_repair.clone() as crate::message_body_store::SharedReadRepairScheduler
+    ));
+    (agents, index, read_repair)
+}
+
+async fn insert_agent_with_sessions(db: &SqlitePool, suffix: &str, sessions: &[&str]) -> String {
+    let now = chrono::Utc::now().timestamp();
+    let agent_id = format!("agent-index-{suffix}-{}", Uuid::new_v4());
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, 0, NULL, NULL, ?7, ?8, ?9)
+        "#,
+    )
+    .bind(&agent_id)
+    .bind(format!("index-{suffix}"))
+    .bind("/tmp")
+    .bind("cat")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("stopped")
+    .bind(now)
+    .bind(now)
+    .execute(db)
+    .await
+    .expect("insert indexed test agent");
+
+    for session_id in sessions {
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'stopped', ?3, ?4)
+            "#,
+        )
+        .bind(session_id)
+        .bind(&agent_id)
+        .bind(now)
+        .bind(now + 1)
+        .execute(db)
+        .await
+        .expect("insert indexed test session");
+    }
+    agent_id
+}
+
+async fn insert_agent_event(
+    event_db: &SqlitePool,
+    session_id: &str,
+    seq: &str,
+    ts: i64,
+    message: &str,
+) -> i64 {
+    let result = sqlx::query(
+        r#"
+        INSERT INTO agent_events (session_id, seq, ts, stream, message)
+        VALUES (?1, ?2, ?3, 'stdout', ?4)
+        "#,
+    )
+    .bind(session_id)
+    .bind(seq)
+    .bind(ts)
+    .bind(message.as_bytes())
+    .execute(event_db)
+    .await
+    .expect("insert indexed agent event");
+    result.last_insert_rowid()
+}
+
+fn put_agent_event_ref(
+    index: &CountingIndexStore,
+    agent_id: &str,
+    session_id: &str,
+    event_id: i64,
+    created_at: i64,
+) {
+    let message_id = format!("agent_event:{agent_id}:{session_id}:{event_id}");
+    index
+        .put_ref(
+            &keys::agent_key(agent_id, event_id as u64),
+            &MessageRef {
+                message_id: DeliveryMessageId::new(message_id.clone()),
+                authority_message_id: AuthorityMessageId::new(format!(
+                    "agent_event:{agent_id}:{event_id}"
+                )),
+                archive_document_id: None,
+                created_at,
+                source_kind: "per_agent_agent_events".to_string(),
+                message_kind: MessageKind::Event,
+                correlation_id: None,
+                group_id: None,
+                run_id: None,
+                conversation_id: None,
+                agent_id: Some(agent_id.to_string()),
+            },
+        )
+        .expect("put agent event ref");
+}
+
+#[tokio::test]
+async fn list_agent_events_uses_fresh_index_and_falls_back_when_lagging() {
+    let (agents, index, read_repair) = build_agent_manager_with_counting_index().await;
+    let agent_id =
+        insert_agent_with_sessions(&agents.db, "all-events", &["session-index-all"]).await;
+    let event_db = agents
+        .test_event_pool_for_agent(&agent_id)
+        .await
+        .expect("event pool");
+    let mut event_ids = Vec::new();
+    for offset in 0..5 {
+        event_ids.push(
+            insert_agent_event(
+                &event_db,
+                "session-index-all",
+                &format!("seq-{offset}"),
+                100 + offset,
+                &format!("event-{offset}"),
+            )
+            .await,
+        );
+    }
+
+    let lagging_events = agents
+        .list_events(&agent_id, 2, None)
+        .await
+        .expect("lagging list should fall back");
+    assert_eq!(index.scan_count(), 0);
+    assert_eq!(
+        read_repair.pending_repairs(),
+        vec![agenthub_message_store::IndexReadRepairRequest {
+            stream_id: format!("agent_events:agent:{agent_id}"),
+            authority_max: *event_ids.last().unwrap() as u64,
+            reason: agenthub_message_store::IndexReadRepairReason::Lagging {
+                indexed_through: None,
+            },
+        }]
+    );
+    assert_eq!(
+        lagging_events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect::<Vec<_>>(),
+        vec!["event-3", "event-4"]
+    );
+
+    let stream_id = format!("agent_events:agent:{agent_id}");
+    index
+        .put_high_water(&stream_id, *event_ids.last().unwrap() as u64)
+        .expect("mark high-water");
+    let incomplete_events = agents
+        .list_events(&agent_id, 2, None)
+        .await
+        .expect("incomplete fresh index should fall back");
+    assert_eq!(index.scan_count(), 1);
+    assert_eq!(
+        incomplete_events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect::<Vec<_>>(),
+        vec!["event-3", "event-4"]
+    );
+
+    for (offset, event_id) in event_ids.iter().enumerate() {
+        put_agent_event_ref(
+            &index,
+            &agent_id,
+            "session-index-all",
+            *event_id,
+            100 + offset as i64,
+        );
+    }
+    let indexed_events = agents
+        .list_events(&agent_id, 2, None)
+        .await
+        .expect("fresh indexed list");
+    assert_eq!(index.scan_count(), 2);
+    assert_eq!(
+        indexed_events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect::<Vec<_>>(),
+        vec!["event-3", "event-4"]
+    );
+}
+
+#[tokio::test]
+async fn list_agent_events_for_session_uses_fresh_index_with_before_cursor() {
+    let (agents, index, _read_repair) = build_agent_manager_with_counting_index().await;
+    let agent_id = insert_agent_with_sessions(
+        &agents.db,
+        "session-events",
+        &["session-index-a", "session-index-b"],
+    )
+    .await;
+    let event_db = agents
+        .test_event_pool_for_agent(&agent_id)
+        .await
+        .expect("event pool");
+    let first_a = insert_agent_event(&event_db, "session-index-a", "seq-a-1", 101, "a-1").await;
+    let first_b = insert_agent_event(&event_db, "session-index-b", "seq-b-1", 102, "b-1").await;
+    let second_a = insert_agent_event(&event_db, "session-index-a", "seq-a-2", 103, "a-2").await;
+    let second_b = insert_agent_event(&event_db, "session-index-b", "seq-b-2", 104, "b-2").await;
+    let third_a = insert_agent_event(&event_db, "session-index-a", "seq-a-3", 105, "a-3").await;
+
+    for (event_id, session_id, created_at) in [
+        (first_a, "session-index-a", 101),
+        (first_b, "session-index-b", 102),
+        (second_a, "session-index-a", 103),
+        (second_b, "session-index-b", 104),
+        (third_a, "session-index-a", 105),
+    ] {
+        put_agent_event_ref(&index, &agent_id, session_id, event_id, created_at);
+    }
+    index
+        .put_high_water(&format!("agent_events:agent:{agent_id}"), third_a as u64)
+        .expect("mark high-water");
+
+    let indexed_events = agents
+        .list_events_for_session(&agent_id, "session-index-a", 1, Some(third_a))
+        .await
+        .expect("fresh indexed session list");
+    assert_eq!(index.scan_count(), 1);
+    assert_eq!(
+        indexed_events
+            .iter()
+            .map(|event| event.message.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a-2"]
+    );
 }
 
 #[test]

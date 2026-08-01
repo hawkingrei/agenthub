@@ -60,6 +60,8 @@ mod memory_flush_request;
 mod message_archive;
 mod message_archive_batches;
 mod message_archive_support;
+#[cfg(any(test, feature = "rocksdb"))]
+mod message_index_projection;
 mod payload_utils;
 mod remote_relay;
 mod remote_relay_delivery;
@@ -189,6 +191,11 @@ pub struct TeamManager {
     /// outbox while SQLite remains the Phase 1 compatibility source of truth. Legacy sentinel rows
     /// are still rehydrated until the migration restores them.
     body_store: Option<crate::message_body_store::SharedBodyStore>,
+    /// Rebuildable ordered message index. It is used only behind freshness guards and falls back to
+    /// SQLite whenever the projection is missing, lagging, or incomplete.
+    message_index: Option<crate::message_body_store::SharedIndexStore>,
+    /// Read-repair scheduler for lagging ordered-index projections. Reads still serve SQLite.
+    read_repair: Option<crate::message_body_store::SharedReadRepairScheduler>,
     conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
     remote_relay_adapter: Arc<TeamRemoteRelayAdapter>,
     agents_target_node_id_column: Arc<Mutex<Option<bool>>>,

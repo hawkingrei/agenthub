@@ -5,6 +5,13 @@
 Aligned the unified Workspace shell away from `Chat / Threads` language and back to a
 channel-first information architecture.
 
+## Supersession
+
+Stable channel-first lens rules from this note now live in
+`docs/features/workspace-unified-ia.md#81-shell-density-and-chrome-contract` and the route grammar
+sections of the same spec. This journal remains the rollout evidence for the 2026-04-19 language
+alignment.
+
 ## Decisions
 
 - The top-level Workspace lens bar should use `Channels / Tasks / Members / Search`.

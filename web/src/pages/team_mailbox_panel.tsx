@@ -327,10 +327,17 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
     snapshot?.members,
     unreadByMemberId,
   ]);
+  const visibleConversationMessages = React.useMemo(
+    () =>
+      chatStickToBottom && conversationMessages.length > 32
+        ? conversationMessages.slice(-32)
+        : conversationMessages,
+    [chatStickToBottom, conversationMessages]
+  );
   const conversationRows = React.useMemo<MailboxConversationRow[]>(() => {
     // Precompute mailbox row presentation so long conversations do not repeatedly
     // re-parse payload text and actor labels during every list render.
-    return conversationMessages.map((message) => {
+    return visibleConversationMessages.map((message) => {
       const isOutgoing = message.from_actor_id === chatActors.fromActorId;
       const chatText = resolveVisibleTeamPayloadText(message.payload);
       const payload = chatText ?? toPrettyJson(message.payload);
@@ -363,10 +370,10 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   }, [
     chatActors.fromActorId,
     chatActors.inboxActorId,
-    conversationMessages,
     displayNameByActorId,
     normalizedHumanActorId,
     toPrettyJson,
+    visibleConversationMessages,
   ]);
   const acceptVisibleMessages = React.useMemo(
     () => conversationRows.filter((row) => row.canAccept).map((row) => row.message),
@@ -763,6 +770,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                 return (
                   <li
                     key={row.message.message_id}
+                    data-team-mailbox-message-id={row.message.message_id}
                     className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${row.isOutgoing ? "items-end" : "items-start"}`}
                   >
                     <div className={row.isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}>

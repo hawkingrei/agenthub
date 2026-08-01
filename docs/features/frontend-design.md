@@ -54,6 +54,14 @@ state labels, and panel behaviors diverged.
 - Shared conversation and ACP views are intentionally bounded recent windows by
   default (current product baseline: recent-10) instead of infinite in-memory
   scrollback.
+- Browser long-history fixtures should verify both bounded mounted row counts and the presence of
+  browser performance measures for the exercised Team channel, mailbox, and ACP open paths; missing
+  measures should fail the fixture instead of being treated as zero-duration success.
+- Team thread panes keep the selected root message visible and may render a
+  bounded recent reply window for very long threads, with an explicit action to
+  expand earlier replies.
+- Team mailbox conversations may render a bounded recent tail window while pinned to the bottom;
+  visible bulk actions such as `Accept visible pending` apply only to the rendered window.
 - Default response routing is team-wide when no `@mention` is provided, with coordinator-first speaking priority.
 - `@member_id` marks people in the same shared stream and should be surfaced back to agents/UI as mention metadata, without changing group-chat fan-out.
 - `Runs` is the dedicated run-entry tab (run browser + `Start Team` + run selection).
@@ -76,6 +84,60 @@ state labels, and panel behaviors diverged.
   - `idle`
   - `stopped`
   - `missing`
+
+### 4.1) Conversation And Composer Visual Contract
+
+Team channel, Team thread, and embedded ACP conversation surfaces should read as one chat system,
+not three unrelated panels.
+
+Message-row rules:
+
+- prefer a full-width content lane after the avatar/identity lane instead of fixed narrow reading
+  columns for routine chat;
+- keep author, timestamp, delivery, and read metadata visually lighter than message text;
+- keep hover and focus rhythm consistent between channel rows, thread rows, and ACP rows;
+- keep human and agent bubbles neutral and content-first; do not rely on heavy author-color fills
+  to communicate message identity;
+- keep seen/delivery affordances compact and secondary, for example `Pending` or `Seen x/y`;
+- render rich text as chat-native markdown using stable semantic classes instead of document-card
+  styling.
+
+Composer rules:
+
+- channel, thread, and ACP composers should share one lightweight shell/editor-row/send-button
+  language;
+- mention menu, helper row, and send-button structure should live in shared components or shared
+  class presets when they appear on more than one surface;
+- helper copy should stay short enough to read as an input hint, not as product onboarding;
+- mobile Team pages should prioritize the message stream and primary input over runtime badges,
+  technical context, or stacked sidebar sections.
+
+Markdown rendering contract:
+
+- chat markdown renderers should emit stable structure classes for links, paragraphs, blockquotes,
+  lists, inline code, code blocks, and tables so style changes do not require parser-specific
+  selectors in page-local CSS.
+
+### 4.2) ACP Heavy Output Visual Contract
+
+ACP-heavy pages must make tool output inspectable without turning the primary timeline into a raw
+debug console.
+
+Required visual behavior:
+
+- tool-call groups should read as one bounded conversation item with nested inspectable details;
+- fold controls should be lightweight and predictable, with subtle motion that respects
+  `prefers-reduced-motion`;
+- tool statuses should use humanized labels such as `In Progress` instead of raw enum strings;
+- structured payload rows may use a two-column key/value layout on wider screens and stacked rows
+  on narrow screens;
+- diff payloads should use stable visual classes for metadata, hunks, additions, and removals;
+- fixed-width terminal or ASCII output should preserve shape while staying horizontally scrollable;
+- debug panels should keep raw events, permission history, copy, and jump tools visually distinct
+  from the primary conversation lane;
+- ACP mobile headers and action rows should wrap or stack before they overflow;
+- semantic classes required by tests and legacy selectors should remain available when Tailwind
+  utilities are layered on top.
 
 ### 5) Accessibility And Mobile Guardrails
 
@@ -182,6 +244,11 @@ Expected validation style:
 - `pnpm -C web run build`
 - `pnpm -C web exec vitest run src/pages/team_panels.test.tsx src/pages/team_page.runs.test.ts src/pages/team/state.test.ts`
 - `pnpm -C web exec vitest run src/pages/team_member_status_strip.test.tsx`
+- `pnpm -C web exec vitest run src/pages/team/team_message_composer.test.tsx src/pages/team/team_thread_pane.test.tsx src/components/input_dock.test.tsx`
+- `pnpm -C web exec vitest run src/pages/team/team_conversation_viewport.test.ts`
+- `pnpm -C web exec vitest run src/hooks/use_acp_conversation.interaction.test.tsx src/hooks/use_acp_conversation.test.ts src/conversation_window.test.ts`
+- `pnpm -C web exec vitest run src/markdown.test.ts src/pages/team/team_markdown.test.ts`
+- `pnpm -C web exec vitest run src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx src/acp_debug.test.tsx src/acp_debug.interaction.test.tsx`
 - focused narrow-screen / mobile integration coverage for Team, Agents, and Nodes critical flows
 - Chrome DevTools MCP regression checks for desktop and narrow-screen layouts after significant UI
   changes
@@ -239,3 +306,21 @@ Expected validation style:
 - `docs/journal/2026-02-23-team-top-member-status-strip.md`
 - `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`
 - `docs/journal/2026-05-02-workspace-mobile-shell-hardening.md`
+- `docs/journal/2026-04-03-team-channel-conversation-alignment.md`
+- `docs/journal/2026-04-24-team-conversation-slock-polish.md`
+- `docs/journal/2026-07-19-team-conversation-composer-compaction-wave2.md`
+- `docs/journal/2026-07-19-team-conversation-composer-closeout.md`
+- `docs/journal/2026-02-20-web-tailwind-ui-phase8-acp-panel-debug-shell.md`
+- `docs/journal/2026-02-20-web-tailwind-ui-phase9-acp-conversation-shell.md`
+- `docs/journal/2026-07-19-acp-ui-compaction-wave2.md`
+- `docs/journal/2026-07-19-acp-conversation-long-history-guard.md`
+- `docs/journal/2026-07-19-acp-conversation-row-rerender-guard.md`
+- `docs/journal/2026-07-19-team-thread-row-rerender-guard.md`
+- `docs/journal/2026-07-19-team-thread-reply-window.md`
+- `docs/journal/2026-07-19-team-channel-activity-row-rerender-guard.md`
+- `docs/journal/2026-07-19-team-channel-conversation-tail-window.md`
+- `docs/journal/2026-07-19-team-mailbox-conversation-row-rerender-guard.md`
+- `docs/journal/2026-07-19-team-mailbox-conversation-tail-window.md`
+- `docs/journal/2026-07-19-team-task-board-card-rerender-guard.md`
+- `docs/journal/2026-07-19-team-workspace-context-rerender-split.md`
+- `docs/journal/2026-07-19-frontend-performance-browser-baseline.md`

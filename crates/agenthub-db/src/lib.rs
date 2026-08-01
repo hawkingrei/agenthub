@@ -20,7 +20,14 @@ use agenthub_config::path_utils::expand_tilde;
 pub mod message_body_outbox;
 pub mod object_uploads;
 
-pub use object_uploads::{NewObjectUpload, ObjectUploadRecord, insert_object_upload};
+pub use object_uploads::{
+    NewObjectUpload, NewObjectUploadSession, NewObjectUploadSessionPart, ObjectUploadRecord,
+    ObjectUploadSessionCleanupResult, ObjectUploadSessionPartRecord, ObjectUploadSessionRecord,
+    cancel_object_upload_session, cleanup_expired_object_upload_sessions, get_object_upload,
+    get_object_upload_session, insert_object_upload, insert_object_upload_session,
+    list_object_upload_session_parts, publish_object_upload_session,
+    upsert_object_upload_session_part,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentEventCleanupResult {
@@ -823,6 +830,49 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS object_upload_sessions (
+            id TEXT PRIMARY KEY,
+            owner_scope TEXT NOT NULL,
+            backend TEXT NOT NULL,
+            object_key TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            object_kind TEXT NOT NULL,
+            expected_size_bytes INTEGER NOT NULL,
+            expected_sha256 TEXT,
+            created_by_actor_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            canceled_at INTEGER,
+            published_upload_id TEXT,
+            FOREIGN KEY(published_upload_id) REFERENCES object_uploads(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS object_upload_session_parts (
+            session_id TEXT NOT NULL,
+            part_number INTEGER NOT NULL,
+            object_key TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            uploaded_at INTEGER NOT NULL,
+            PRIMARY KEY(session_id, part_number),
+            FOREIGN KEY(session_id) REFERENCES object_upload_sessions(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS agent_time_triggers (
             id TEXT PRIMARY KEY,
             agent_id TEXT NOT NULL,
@@ -1181,6 +1231,48 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_object_uploads_object_key: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_object_upload_sessions_owner_status
+        ON object_upload_sessions(owner_scope, status, expires_at);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_object_upload_sessions_owner_status: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_object_upload_sessions_object_key
+        ON object_upload_sessions(object_key);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_object_upload_sessions_object_key: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_object_upload_session_parts_session
+        ON object_upload_session_parts(session_id, part_number);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_object_upload_session_parts_session: {}",
             err
         );
     }
@@ -2858,8 +2950,12 @@ async fn backfill_team_channel_message_replica_group_ids(pool: &SqlitePool) -> a
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentEventDbRouter, AgentEventIdleGc, NewObjectUpload, cleanup_agent_event_history,
-        create_parent_dir, init_db_at_path, insert_object_upload, try_connect,
+        AgentEventDbRouter, AgentEventIdleGc, NewObjectUpload, NewObjectUploadSession,
+        NewObjectUploadSessionPart, cancel_object_upload_session, cleanup_agent_event_history,
+        cleanup_expired_object_upload_sessions, create_parent_dir, get_object_upload,
+        get_object_upload_session, init_db_at_path, insert_object_upload,
+        insert_object_upload_session, list_object_upload_session_parts,
+        publish_object_upload_session, try_connect, upsert_object_upload_session_part,
     };
     use agenthub_config::path_utils::expand_tilde;
     use serde_json::json;
@@ -2898,14 +2994,16 @@ mod tests {
                 'team_member_continuity_state',
                 'team_context_artifacts',
                 'team_context_flush_checkpoint',
-                'object_uploads'
+                'object_uploads',
+                'object_upload_sessions',
+                'object_upload_session_parts'
               )
             "#,
         )
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 12);
+        assert_eq!(table_count, 14);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)
@@ -2985,6 +3083,376 @@ mod tests {
         assert_eq!(upload.created_by_actor_id, "worker");
         assert_eq!(upload.publish_state, "published");
         assert_eq!(upload.published_at, Some(100));
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn object_upload_session_lifecycle_persists_prepared_and_canceled_states() {
+        let dir = unique_temp_dir("object-upload-session");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        let session = insert_object_upload_session(
+            &pool,
+            &NewObjectUploadSession {
+                id: "session-1",
+                owner_scope: "teams/team-1",
+                backend: "fs",
+                object_key: "uploads/teams/team-1/session-1/report.json",
+                original_filename: "report.json",
+                content_type: "application/json",
+                object_kind: "object",
+                expected_size_bytes: 42,
+                expected_sha256: Some("abc123"),
+                created_by_actor_id: "user:user-1",
+                status: "prepared",
+                created_at: 100,
+                expires_at: 1000,
+                completed_at: None,
+                canceled_at: None,
+                published_upload_id: None,
+            },
+        )
+        .await
+        .expect("insert upload session");
+
+        assert_eq!(session.status, "prepared");
+        assert_eq!(session.expected_size_bytes, 42);
+        assert_eq!(session.expected_sha256.as_deref(), Some("abc123"));
+        let loaded = get_object_upload_session(&pool, "session-1")
+            .await
+            .expect("load upload session");
+        assert_eq!(loaded, session);
+
+        let canceled = cancel_object_upload_session(&pool, "session-1", 150)
+            .await
+            .expect("cancel upload session");
+        assert_eq!(canceled.status, "canceled");
+        assert_eq!(canceled.canceled_at, Some(150));
+        let err = cancel_object_upload_session(&pool, "session-1", 151)
+            .await
+            .expect_err("second cancel should reject");
+        assert!(err.to_string().contains("not cancelable"));
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn object_upload_session_parts_upsert_and_list_in_order() {
+        let dir = unique_temp_dir("object-upload-session-parts");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        insert_object_upload_session(
+            &pool,
+            &NewObjectUploadSession {
+                id: "session-1",
+                owner_scope: "teams/team-1",
+                backend: "fs",
+                object_key: "uploads/teams/team-1/session-1/report.json",
+                original_filename: "report.json",
+                content_type: "application/json",
+                object_kind: "object",
+                expected_size_bytes: 7,
+                expected_sha256: None,
+                created_by_actor_id: "user:user-1",
+                status: "prepared",
+                created_at: 100,
+                expires_at: 1000,
+                completed_at: None,
+                canceled_at: None,
+                published_upload_id: None,
+            },
+        )
+        .await
+        .expect("insert upload session");
+
+        upsert_object_upload_session_part(
+            &pool,
+            &NewObjectUploadSessionPart {
+                session_id: "session-1",
+                part_number: 2,
+                object_key: "uploads/teams/team-1/session-1/.parts/2",
+                size_bytes: 4,
+                sha256: "part-2",
+                uploaded_at: 150,
+            },
+        )
+        .await
+        .expect("insert part 2");
+        upsert_object_upload_session_part(
+            &pool,
+            &NewObjectUploadSessionPart {
+                session_id: "session-1",
+                part_number: 1,
+                object_key: "uploads/teams/team-1/session-1/.parts/1",
+                size_bytes: 3,
+                sha256: "part-1",
+                uploaded_at: 151,
+            },
+        )
+        .await
+        .expect("insert part 1");
+        let replaced = upsert_object_upload_session_part(
+            &pool,
+            &NewObjectUploadSessionPart {
+                session_id: "session-1",
+                part_number: 2,
+                object_key: "uploads/teams/team-1/session-1/.parts/2",
+                size_bytes: 5,
+                sha256: "part-2b",
+                uploaded_at: 152,
+            },
+        )
+        .await
+        .expect("replace part 2");
+        assert_eq!(replaced.size_bytes, 5);
+        assert_eq!(replaced.sha256, "part-2b");
+
+        let parts = list_object_upload_session_parts(&pool, "session-1")
+            .await
+            .expect("list upload session parts");
+        assert_eq!(
+            parts
+                .iter()
+                .map(|part| part.part_number)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(parts[1].size_bytes, 5);
+        assert_eq!(parts[1].sha256, "part-2b");
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn cleanup_expired_object_upload_sessions_marks_only_expired_prepared_sessions() {
+        let dir = unique_temp_dir("object-upload-session-expiry-cleanup");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        for (id, status, expires_at, canceled_at) in [
+            ("expired-a", "prepared", 90, None),
+            ("expired-b", "prepared", 99, None),
+            ("future", "prepared", 101, None),
+            ("already-canceled", "canceled", 80, Some(81)),
+            ("already-completed", "completed", 70, None),
+        ] {
+            let object_key = format!("uploads/teams/team-1/{id}/report.json");
+            insert_object_upload_session(
+                &pool,
+                &NewObjectUploadSession {
+                    id,
+                    owner_scope: "teams/team-1",
+                    backend: "fs",
+                    object_key: &object_key,
+                    original_filename: "report.json",
+                    content_type: "application/json",
+                    object_kind: "object",
+                    expected_size_bytes: 42,
+                    expected_sha256: None,
+                    created_by_actor_id: "user:user-1",
+                    status,
+                    created_at: 10,
+                    expires_at,
+                    completed_at: None,
+                    canceled_at,
+                    published_upload_id: None,
+                },
+            )
+            .await
+            .expect("insert upload session");
+        }
+
+        let result = cleanup_expired_object_upload_sessions(&pool, 100, 1)
+            .await
+            .expect("cleanup expired upload sessions");
+
+        assert_eq!(result.cutoff_ts, 100);
+        assert_eq!(result.expired_sessions, 2);
+        assert_eq!(result.expire_batches, 2);
+        for id in ["expired-a", "expired-b"] {
+            let session = get_object_upload_session(&pool, id)
+                .await
+                .expect("load expired session");
+            assert_eq!(session.status, "expired");
+            assert_eq!(session.canceled_at, Some(100));
+        }
+        assert_eq!(
+            get_object_upload_session(&pool, "future")
+                .await
+                .expect("load future session")
+                .status,
+            "prepared"
+        );
+        assert_eq!(
+            get_object_upload_session(&pool, "already-canceled")
+                .await
+                .expect("load canceled session")
+                .status,
+            "canceled"
+        );
+        assert_eq!(
+            get_object_upload_session(&pool, "already-completed")
+                .await
+                .expect("load completed session")
+                .status,
+            "completed"
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn publish_object_upload_session_inserts_upload_and_marks_session_completed() {
+        let dir = unique_temp_dir("object-upload-session-publish");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        insert_object_upload_session(
+            &pool,
+            &NewObjectUploadSession {
+                id: "session-1",
+                owner_scope: "teams/team-1",
+                backend: "fs",
+                object_key: "uploads/teams/team-1/session-1/report.json",
+                original_filename: "report.json",
+                content_type: "application/json",
+                object_kind: "object",
+                expected_size_bytes: 42,
+                expected_sha256: Some("abc123"),
+                created_by_actor_id: "user:user-1",
+                status: "prepared",
+                created_at: 100,
+                expires_at: 1000,
+                completed_at: None,
+                canceled_at: None,
+                published_upload_id: None,
+            },
+        )
+        .await
+        .expect("insert upload session");
+
+        let upload = publish_object_upload_session(
+            &pool,
+            "session-1",
+            &NewObjectUpload {
+                id: "upload-1",
+                owner_scope: "teams/team-1",
+                backend: "fs",
+                object_key: "uploads/teams/team-1/session-1/report.json",
+                original_filename: "report.json",
+                content_type: "application/json",
+                size_bytes: 42,
+                sha256: "abc123",
+                public_url: None,
+                created_by_actor_id: "user:user-1",
+                publish_state: "published",
+                created_at: 150,
+                published_at: Some(150),
+                cleanup_after: None,
+            },
+            150,
+        )
+        .await
+        .expect("publish upload session");
+
+        assert_eq!(upload.id, "upload-1");
+        assert_eq!(upload.publish_state, "published");
+        let session = get_object_upload_session(&pool, "session-1")
+            .await
+            .expect("load completed session");
+        assert_eq!(session.status, "completed");
+        assert_eq!(session.completed_at, Some(150));
+        assert_eq!(session.published_upload_id.as_deref(), Some("upload-1"));
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn publish_object_upload_session_rejects_owner_scope_mismatch() {
+        let dir = unique_temp_dir("object-upload-session-owner-scope");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        insert_object_upload_session(
+            &pool,
+            &NewObjectUploadSession {
+                id: "session-1",
+                owner_scope: "teams/team-1",
+                backend: "fs",
+                object_key: "uploads/teams/team-1/session-1/report.json",
+                original_filename: "report.json",
+                content_type: "application/json",
+                object_kind: "object",
+                expected_size_bytes: 42,
+                expected_sha256: Some("abc123"),
+                created_by_actor_id: "user:user-1",
+                status: "prepared",
+                created_at: 100,
+                expires_at: 1000,
+                completed_at: None,
+                canceled_at: None,
+                published_upload_id: None,
+            },
+        )
+        .await
+        .expect("insert upload session");
+
+        let err = publish_object_upload_session(
+            &pool,
+            "session-1",
+            &NewObjectUpload {
+                id: "upload-1",
+                owner_scope: "teams/team-2",
+                backend: "fs",
+                object_key: "uploads/teams/team-1/session-1/report.json",
+                original_filename: "report.json",
+                content_type: "application/json",
+                size_bytes: 42,
+                sha256: "abc123",
+                public_url: None,
+                created_by_actor_id: "user:user-1",
+                publish_state: "published",
+                created_at: 150,
+                published_at: Some(150),
+                cleanup_after: None,
+            },
+            150,
+        )
+        .await
+        .expect_err("owner scope mismatch should reject publish");
+
+        assert!(err.to_string().contains("not completable"));
+        let session = get_object_upload_session(&pool, "session-1")
+            .await
+            .expect("load session after failed publish");
+        assert_eq!(session.status, "prepared");
+        assert_eq!(session.published_upload_id, None);
+        let missing_upload = get_object_upload(&pool, "upload-1")
+            .await
+            .expect_err("failed publish should roll back upload insert");
+        assert!(
+            missing_upload
+                .to_string()
+                .contains("load object upload upload-1")
+        );
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

@@ -10,11 +10,14 @@ const enableSystemChrome = process.env.PLAYWRIGHT_SYSTEM_CHROME === "1";
 const enableE2eCoverage = process.env.PLAYWRIGHT_E2E_COVERAGE === "1";
 const mobileOnly = process.env.PLAYWRIGHT_MOBILE_ONLY === "1";
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+const webServerCommand =
+  process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ??
+  `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`;
 
 const webServer = disableWebServer
   ? undefined
   : {
-      command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
+      command: webServerCommand,
       cwd: configDir,
       url: baseURL,
       reuseExistingServer: !process.env.CI,
