@@ -56,7 +56,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y curl
+        run: sudo apt-get update && sudo apt-get install -y curl protobuf-compiler
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.96.0
         with:

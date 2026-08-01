@@ -83,13 +83,6 @@ impl ApiError {
             error: anyhow::anyhow!(msg.to_string()),
         }
     }
-
-    pub fn payload_too_large(msg: &str) -> Self {
-        Self {
-            status: StatusCode::PAYLOAD_TOO_LARGE,
-            error: anyhow::anyhow!(msg.to_string()),
-        }
-    }
 }
 
 pub fn ok_response() -> Json<serde_json::Value> {

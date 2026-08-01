@@ -678,6 +678,10 @@ mod tests {
             Ok(())
         }
 
+        async fn contains_document(&self, _document_id: &str) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+
         async fn search(
             &self,
             _query: &MessageSearchQuery,

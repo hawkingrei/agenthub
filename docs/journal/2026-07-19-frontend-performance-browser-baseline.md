@@ -55,8 +55,9 @@ cover deployed pages or profiler traces for live data.
 ## Validation
 
 ```bash
+cd web
 npm run dev -- --host 127.0.0.1 --port 5173
-PLAYWRIGHT_SYSTEM_CHROME=1 npx playwright test web/tests/e2e/team_page_performance.e2e.ts --project=system-chrome
+PLAYWRIGHT_SYSTEM_CHROME=1 npx playwright test tests/e2e/team_page_performance.e2e.ts --project=system-chrome
 npm run build
 PLAYWRIGHT_PORT=4173 PLAYWRIGHT_WEB_SERVER_COMMAND="npm run preview -- --host 127.0.0.1 --port 4173 --strictPort" PLAYWRIGHT_SYSTEM_CHROME=1 npx playwright test tests/e2e/team_page_performance.e2e.ts --project=system-chrome
 ```

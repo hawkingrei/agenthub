@@ -29,7 +29,15 @@ rust_library(
     ),
     crate_name = "agenthub",
     crate_root = "src/lib.rs",
-    compile_data = ["web/index.html"] + glob(
+    compile_data = [
+        "Cargo.toml",
+        "crates/agenthub-acp-adapter/Cargo.toml",
+        "crates/agenthub-object-store/Cargo.toml",
+        ".github/workflows/release.yml",
+        ".github/workflows/release-prebuild.yml",
+        "docs/todo.md",
+        "web/index.html",
+    ] + glob(
         ["web/dist/**"],
         allow_empty = True,
     ),

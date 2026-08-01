@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use agenthub_auth_domain::UserRole;
 use axum::Json;
 use axum::body::{Body, to_bytes};
 use axum::extract::{Path, Query, State};
@@ -24,7 +23,6 @@ use crate::acp::DEFAULT_ACTOR_CHANNEL;
 use crate::agent::AgentManager;
 use crate::agent::WorktreeMode;
 use crate::agenthub_binary::resolve_agenthub_binary_path;
-use crate::api::authz::require_user;
 use crate::auth::AuthService;
 use crate::object_upload::ObjectUploadService;
 use crate::push::PushService;
@@ -1444,38 +1442,9 @@ pub(crate) async fn create_auth_token_with_role_and_user_id(
     .await
     .expect("insert user");
 
-    let token = state
-        .auth
-        .create_session(&user_id)
-        .await
-        .expect("create token");
-    (user_id, token)
-}
-
-async fn create_auth_token_with_role(state: &AppState, role: UserRole) -> String {
-    let user_id = Uuid::new_v4().to_string();
-    let now = Utc::now().timestamp();
-    sqlx::query(
-        r#"
-        INSERT INTO users (id, username, display_name, role, password_hash, created_at)
-        VALUES (?1, ?2, ?3, ?4, NULL, ?5)
-        "#,
-    )
-    .bind(&user_id)
-    .bind(format!("{}-{}", role.as_str(), Uuid::new_v4()))
-    .bind("Role Test User")
-    .bind(role.as_str())
-    .bind(now)
-    .execute(&state.db)
-    .await
-    .expect("insert role user");
-
     if role == UserRole::Device {
         sqlx::query(
-            r#"
-            INSERT INTO devices (id, user_id, name, user_agent, status, created_at)
-            VALUES (?1, ?2, ?3, ?4, 'active', ?5)
-            "#,
+            "INSERT INTO devices (id, user_id, name, user_agent, status, created_at) VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&user_id)
@@ -1487,11 +1456,12 @@ async fn create_auth_token_with_role(state: &AppState, role: UserRole) -> String
         .expect("insert role device");
     }
 
-    state
+    let token = state
         .auth
         .create_session(&user_id)
         .await
-        .expect("create role token")
+        .expect("create token");
+    (user_id, token)
 }
 
 fn build_json_request(

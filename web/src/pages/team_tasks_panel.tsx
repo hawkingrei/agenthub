@@ -544,8 +544,9 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                     />
                   )}
                   {!showInitialLoadingState &&
-                    laneTasks.map((task) => (
-                      <TeamTaskBoardCard
+                    laneTasks.map((task) => {
+                      const priority = normalizeTaskPriority(task.priority);
+                      return <TeamTaskBoardCard
                         key={task.id}
                         task={task}
                         active={task.id === selectedTask?.id}
@@ -553,16 +554,12 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                         updatedAtLabel={formatTs(task.updated_at)}
                         createdAtLabel={formatTs(task.created_at)}
                         assigneeLabel={resolveTaskAssigneeLabel(task, assigneeLabelById)}
-                        priority={normalizeTaskPriority(task.priority)}
-                        priorityLabel={resolveTaskPriorityLabel(
-                          normalizeTaskPriority(task.priority)
-                        )}
-                        priorityClassName={resolveTaskPriorityBadgeClass(
-                          normalizeTaskPriority(task.priority)
-                        )}
+                        priority={priority}
+                        priorityLabel={resolveTaskPriorityLabel(priority)}
+                        priorityClassName={resolveTaskPriorityBadgeClass(priority)}
                         onSelectTask={onSelectTask}
-                      />
-                    ))}
+                      />;
+                    })}
                 </div>
               </section>
             );

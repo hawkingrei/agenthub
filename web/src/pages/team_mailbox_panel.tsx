@@ -763,6 +763,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                 return (
                   <li
                     key={row.message.message_id}
+                    data-team-mailbox-message-id={row.message.message_id}
                     className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${row.isOutgoing ? "items-end" : "items-start"}`}
                   >
                     <div className={row.isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}>
