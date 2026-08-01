@@ -33,6 +33,7 @@ use uuid::Uuid;
 
 use agenthub_auth_domain::UserCapability;
 
+use crate::agent::AgentStatus;
 use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
 use crate::api::uploads::{
@@ -156,6 +157,13 @@ pub struct CreateTeamRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateTeamSpecRequest {
+    pub spec: Value,
+    pub expected_updated_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MoveExistingAgentRequest {
+    pub agent_id: String,
     pub spec: Value,
     pub expected_updated_at: i64,
 }
@@ -511,6 +519,7 @@ pub fn router(state: AppState) -> Router {
         .route("/prompt_defaults", get(get_team_prompt_defaults))
         .route("/{id}", get(get_team).delete(delete_team))
         .route("/{id}/spec", put(update_team_spec))
+        .route("/{id}/members/move", post(move_existing_agent_to_team))
         .route("/{id}/runtime", get(get_team_runtime))
         .route(
             "/{id}/shared_thread",
@@ -688,6 +697,69 @@ async fn update_team_spec(
     for removed_member_id in previous_member_ids.difference(&next_member_ids) {
         let _ = state.agents.stop_agent(removed_member_id).await;
     }
+    if has_configured_team_members(&updated.spec)? {
+        ensure_team_runtime_started(state.agents.as_ref(), &updated)
+            .await
+            .map_err(map_runtime_start_error)?;
+    }
+    Ok(Json(sanitize_team_definition_for_response(updated)))
+}
+
+async fn move_existing_agent_to_team(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<MoveExistingAgentRequest>,
+) -> Result<Json<TeamDefinitionRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let current = load_team_for_user(&state, &team_id, &user).await?;
+    let agent_id = payload.agent_id.trim();
+    if agent_id.is_empty() {
+        return Err(ApiError::bad_request("agent_id is required"));
+    }
+
+    let agent = state
+        .agents
+        .get_agent(agent_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "agent not found"))?;
+    if !matches!(agent.status, AgentStatus::Created | AgentStatus::Stopped) {
+        return Err(ApiError::conflict(
+            "agent must be stopped before moving it into a team",
+        ));
+    }
+    if !state
+        .teams
+        .list_teams_referencing_member(agent_id)
+        .await
+        .map_err(map_team_internal_error)?
+        .is_empty()
+    {
+        return Err(ApiError::conflict("agent already belongs to a team"));
+    }
+
+    let previous_member_ids = parse_member_ids(current.spec.get("members"))?;
+    let mut spec = payload.spec;
+    normalize_team_spec(&mut spec)?;
+    validate_team_spec(&spec)?;
+    let next_member_ids = parse_member_ids(spec.get("members"))?;
+    let added_member_ids = next_member_ids
+        .difference(&previous_member_ids)
+        .collect::<Vec<_>>();
+    if added_member_ids.len() != 1 || added_member_ids[0].as_str() != agent_id {
+        return Err(ApiError::bad_request(
+            "move must add exactly the selected agent to the current team spec",
+        ));
+    }
+
+    let updated = state
+        .teams
+        .update_team_spec_if_unchanged(&current.id, payload.expected_updated_at, spec)
+        .await
+        .map_err(map_team_internal_error)?
+        .ok_or_else(|| {
+            ApiError::conflict("team definition changed concurrently; reload and retry")
+        })?;
     if has_configured_team_members(&updated.spec)? {
         ensure_team_runtime_started(state.agents.as_ref(), &updated)
             .await
