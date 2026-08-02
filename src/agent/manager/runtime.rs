@@ -91,50 +91,6 @@ impl AgentManager {
                 let repo =
                     worktree_repo.ok_or_else(|| anyhow::anyhow!("worktree_repo required"))?;
                 let ref_name = agent.worktree_ref.as_deref().unwrap_or("HEAD");
-                if let Err(err) = self.ensure_safe_path(repo).await {
-                    let detail = serde_json::json!({
-                        "agent_id": agent.id,
-                        "mode": "create_worktree",
-                        "repo": repo,
-                        "workdir": workdir,
-                        "error": err.to_string(),
-                    })
-                    .to_string();
-                    let _ = self
-                        .auth
-                        .record_audit(
-                            None,
-                            None,
-                            "worktree_create_failed",
-                            Some(&detail),
-                            None,
-                            None,
-                        )
-                        .await;
-                    return Err(err);
-                }
-                if let Err(err) = self.ensure_safe_path(workdir).await {
-                    let detail = serde_json::json!({
-                        "agent_id": agent.id,
-                        "mode": "create_worktree",
-                        "repo": repo,
-                        "workdir": workdir,
-                        "error": err.to_string(),
-                    })
-                    .to_string();
-                    let _ = self
-                        .auth
-                        .record_audit(
-                            None,
-                            None,
-                            "worktree_create_failed",
-                            Some(&detail),
-                            None,
-                            None,
-                        )
-                        .await;
-                    return Err(err);
-                }
                 let workdir_path = Path::new(workdir);
                 if workdir_path.exists() && !is_dir_empty(workdir_path)? {
                     let existing_worktree = match repo_find_worktree_entry(repo, workdir).await {
@@ -487,10 +443,6 @@ impl AgentManager {
     ) -> anyhow::Result<()> {
         let normalized_workdir = expand_tilde(workdir);
         let normalized_worktree_repo = worktree_repo.map(expand_tilde);
-        self.ensure_safe_path(&normalized_workdir).await?;
-        if let Some(repo) = normalized_worktree_repo.as_deref() {
-            self.ensure_safe_path(repo).await?;
-        }
         let now = Utc::now().timestamp();
         sqlx::query(
             r#"

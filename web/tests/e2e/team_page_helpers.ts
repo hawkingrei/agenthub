@@ -51,6 +51,7 @@ const TEAM_MEMBER_WORKSPACE_LABEL_PATTERN =
 const TEAM_SELECTOR_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/?$/;
 const TEAM_DETAIL_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/[^/]+$/;
 const TEAM_DETAIL_READY_TIMEOUT_MS = 15_000;
+const TEAM_SELECTOR_NAVIGATION_TIMEOUT_MS = 2_000;
 
 function isTeamSelectorPath(pathname: string): boolean {
   return TEAM_SELECTOR_ROUTE_PATTERN.test(pathname);
@@ -58,6 +59,14 @@ function isTeamSelectorPath(pathname: string): boolean {
 
 function isTeamDetailPath(pathname: string): boolean {
   return TEAM_DETAIL_ROUTE_PATTERN.test(pathname);
+}
+
+function isTeamDetailUrl(url: URL, teamId: string): boolean {
+  return url.pathname === buildTeamDetailPath(teamId);
+}
+
+function hasTeamDetailPath(page: import("@playwright/test").Page, teamId: string): boolean {
+  return isTeamDetailUrl(new URL(page.url()), teamId);
 }
 export async function createTeamFromModal(
   page: import("@playwright/test").Page,
@@ -289,24 +298,25 @@ export async function openTeamFromSelector(
     await filterInput.fill(teamName);
   }
   const selectorTeamButton = selectorPanel
-    .locator('[data-team-selector-entry="true"]', { hasText: teamName })
+    .locator(`[data-team-selector-entry="true"][data-team-name="${escapeCssAttributeValue(teamName)}"]`)
     .first();
   await expect(selectorTeamButton).toBeVisible();
   const selectorTeamId = await selectorTeamButton.getAttribute("data-team-id");
   expect(selectorTeamId).toBeTruthy();
   const selectedTeamId = selectorTeamId ?? "";
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await selectorTeamButton.click({ timeout: 1_500, force: attempt > 0 });
-    } catch {
+  try {
+    await Promise.all([
+      page.waitForURL(
+        (url) => isTeamDetailUrl(url, selectedTeamId),
+        { timeout: TEAM_SELECTOR_NAVIGATION_TIMEOUT_MS }
+      ),
+      selectorTeamButton.click(),
+    ]);
+  } catch {
+    if (!hasTeamDetailPath(page, selectedTeamId)) {
       await page.goto(buildTeamDetailPath(selectedTeamId), { waitUntil: "domcontentloaded" });
     }
-    await page.waitForTimeout(150);
-    if (await isTeamDetailReady(page, teamName)) {
-      return;
-    }
   }
-  await page.goto(buildTeamDetailPath(selectedTeamId), { waitUntil: "domcontentloaded" });
   await expect
     .poll(() => isTeamDetailReady(page, teamName), {
       timeout: TEAM_DETAIL_READY_TIMEOUT_MS,

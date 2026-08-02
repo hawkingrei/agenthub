@@ -2719,18 +2719,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_agent_treats_main_target_node_as_local() {
+    async fn create_agent_treats_main_target_node_as_local_without_safe_path() {
         let db = create_test_db().await;
         init_test_schema(&db).await;
         add_agent_node_support(&db).await;
         let state = build_test_state_with_db(db).await;
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind("/tmp/main-target-normalizes-local")
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
 
         let agent = state
             .agents
@@ -4148,7 +4141,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn start_route_accepts_empty_body_with_json_content_type() {
+    async fn start_route_accepts_empty_body_without_safe_path() {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
@@ -4156,13 +4149,6 @@ mod tests {
         let workdir =
             std::env::temp_dir().join(format!("agenthub-start-empty-json-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&workdir).expect("create workdir");
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(workdir.to_string_lossy().to_string())
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
 
         let create_resp = app
             .clone()
