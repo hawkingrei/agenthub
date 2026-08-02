@@ -841,12 +841,43 @@ impl AgentManager {
         let Some(scheduler) = self.read_repair.as_deref() else {
             return;
         };
-        let stream_id = stream_id.into();
+        self.schedule_index_read_repair_request(
+            scheduler,
+            stream_id.into(),
+            authority_max,
+            agenthub_message_store::IndexReadRepairReason::Lagging { indexed_through },
+        );
+    }
+
+    fn schedule_incomplete_index_repair(
+        &self,
+        stream_id: impl Into<String>,
+        authority_max: u64,
+        indexed_through: u64,
+    ) {
+        let Some(scheduler) = self.read_repair.as_deref() else {
+            return;
+        };
+        self.schedule_index_read_repair_request(
+            scheduler,
+            stream_id.into(),
+            authority_max,
+            agenthub_message_store::IndexReadRepairReason::Incomplete { indexed_through },
+        );
+    }
+
+    fn schedule_index_read_repair_request(
+        &self,
+        scheduler: &dyn crate::message_body_store::IndexReadRepairScheduler,
+        stream_id: String,
+        authority_max: u64,
+        reason: agenthub_message_store::IndexReadRepairReason,
+    ) {
         if let Err(error) =
             scheduler.schedule_read_repair(agenthub_message_store::IndexReadRepairRequest {
                 stream_id: stream_id.clone(),
                 authority_max,
-                reason: agenthub_message_store::IndexReadRepairReason::Lagging { indexed_through },
+                reason,
             })
         {
             tracing::warn!(
@@ -1688,10 +1719,7 @@ impl AgentManager {
         let stream_id = format!("agent_events:agent:{agent_id}");
         let freshness =
             agenthub_message_store::check_index_freshness(index, &stream_id, authority_max as u64)?;
-        if !matches!(
-            freshness,
-            agenthub_message_store::IndexFreshness::Fresh { .. }
-        ) {
+        if !freshness.is_fresh() {
             self.schedule_index_read_repair(stream_id, authority_max as u64, freshness);
             return Ok(None);
         }
@@ -1708,6 +1736,11 @@ impl AgentManager {
             let Some((delivery_session_id, event_id)) =
                 agent_event_id_from_delivery_id(agent_id, message_ref.message_id.as_str())
             else {
+                self.schedule_incomplete_index_repair(
+                    stream_id.clone(),
+                    authority_max as u64,
+                    authority_max as u64,
+                );
                 return Ok(None);
             };
             if session_id.is_some_and(|session_id| session_id != delivery_session_id) {
@@ -1726,6 +1759,11 @@ impl AgentManager {
                 .expected_agent_event_ids(event_db, limit, session_id, before_id)
                 .await?
         {
+            self.schedule_incomplete_index_repair(
+                stream_id,
+                authority_max as u64,
+                authority_max as u64,
+            );
             return Ok(None);
         }
 

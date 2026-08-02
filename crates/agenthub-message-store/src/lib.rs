@@ -340,6 +340,15 @@ mod tests {
             .expect("schedule older repair");
         scheduler
             .schedule_read_repair(IndexReadRepairRequest {
+                stream_id: "team_actor_messages".to_string(),
+                authority_max: 12,
+                reason: IndexReadRepairReason::Incomplete {
+                    indexed_through: 12,
+                },
+            })
+            .expect("refresh repair reason at the same authority bound");
+        scheduler
+            .schedule_read_repair(IndexReadRepairRequest {
                 stream_id: "team_run_events".to_string(),
                 authority_max: 3,
                 reason: IndexReadRepairReason::Lagging {
@@ -353,8 +362,8 @@ mod tests {
         assert!(repairs.contains(&IndexReadRepairRequest {
             stream_id: "team_actor_messages".to_string(),
             authority_max: 12,
-            reason: IndexReadRepairReason::Lagging {
-                indexed_through: Some(7),
+            reason: IndexReadRepairReason::Incomplete {
+                indexed_through: 12,
             },
         }));
         assert!(repairs.contains(&IndexReadRepairRequest {

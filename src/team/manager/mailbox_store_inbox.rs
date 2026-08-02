@@ -123,10 +123,7 @@ impl SqlActorMailboxStore {
             authority_max as u64,
         )
         .map_err(|err| sqlx::Error::Protocol(err.to_string()))?;
-        if !matches!(
-            freshness,
-            agenthub_message_store::IndexFreshness::Fresh { .. }
-        ) {
+        if !freshness.is_fresh() {
             self.schedule_index_read_repair("team_actor_messages", authority_max as u64, freshness);
             return Ok(None);
         }
@@ -147,6 +144,11 @@ impl SqlActorMailboxStore {
             let Some(message_id) =
                 actor_message_id_from_delivery_id(&query.run_id, message_ref.message_id.as_str())
             else {
+                self.schedule_incomplete_index_repair(
+                    "team_actor_messages",
+                    authority_max as u64,
+                    authority_max as u64,
+                );
                 return Ok(None);
             };
             if message_id <= after_id {
@@ -158,6 +160,11 @@ impl SqlActorMailboxStore {
             }
         }
         if ids != self.expected_actor_inbox_message_ids(query, limit).await? {
+            self.schedule_incomplete_index_repair(
+                "team_actor_messages",
+                authority_max as u64,
+                authority_max as u64,
+            );
             return Ok(None);
         }
 

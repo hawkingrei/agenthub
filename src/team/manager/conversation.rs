@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use agenthub_message_store::{IndexFreshness, keys};
+use agenthub_message_store::keys;
 use sqlx::{QueryBuilder, Sqlite};
 
 use super::TEAM_CHANNEL_BOOTSTRAP_KIND;
@@ -123,7 +123,7 @@ impl TeamManager {
             "team_conversation_messages",
             authority_max as u64,
         )?;
-        if !matches!(freshness, IndexFreshness::Fresh { .. }) {
+        if !freshness.is_fresh() {
             self.schedule_index_read_repair(
                 "team_conversation_messages",
                 authority_max as u64,
@@ -143,6 +143,11 @@ impl TeamManager {
                 &conversation.id,
                 message_ref.message_id.as_str(),
             ) else {
+                self.schedule_incomplete_index_repair(
+                    "team_conversation_messages",
+                    authority_max as u64,
+                    authority_max as u64,
+                );
                 return Ok(None);
             };
             if before_id.is_some_and(|before_id| message_id >= before_id) {
@@ -159,6 +164,11 @@ impl TeamManager {
                 .expected_conversation_message_ids(&conversation.id, limit, before_id)
                 .await?
         {
+            self.schedule_incomplete_index_repair(
+                "team_conversation_messages",
+                authority_max as u64,
+                authority_max as u64,
+            );
             return Ok(None);
         }
         self.load_conversation_messages_by_ids(&conversation.id, &ids)

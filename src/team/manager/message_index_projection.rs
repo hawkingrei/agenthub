@@ -1,9 +1,9 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 use agenthub_message_store::{
-    AuthorityIndexProjection, AuthorityMessageId, DeliveryMessageId, IndexRepairReport,
-    MessageIndexStore, MessageKind, MessageRef, keys, mark_index_repaired_through,
-    repair_index_from_authority,
+    AuthorityIndexProjection, AuthorityMessageId, DeliveryMessageId, IndexReadRepairScheduler,
+    IndexRepairReport, MessageIndexStore, MessageKind, MessageRef, keys,
+    mark_index_repaired_through, repair_index_from_authority,
 };
 use serde_json::Value;
 use sqlx::Row;
@@ -144,10 +144,95 @@ fn agent_event_kind(stream: &str, parsed_message: Option<&Value>) -> MessageKind
 }
 
 impl TeamManager {
+    /// Rebuild queued SQLite-derived index streams after guarded reads fall back to authority.
+    ///
+    /// The scheduler is intentionally drained before rebuilding. A failed request is put back so
+    /// newer guarded reads can raise its target high-water while the worker is retrying later.
+    pub(crate) async fn drain_message_index_read_repairs(
+        &self,
+        index: &dyn MessageIndexStore,
+        scheduler: &dyn IndexReadRepairScheduler,
+        batch_limit: i64,
+    ) -> anyhow::Result<usize> {
+        let requests = scheduler.take_pending_repairs()?;
+        let mut repaired_streams = 0;
+
+        for request in requests {
+            let repair_result = match request.stream_id.as_str() {
+                TEAM_CONVERSATION_MESSAGE_SOURCE => {
+                    self.repair_team_conversation_message_index(
+                        index,
+                        batch_limit,
+                        request.authority_max as i64,
+                    )
+                    .await
+                }
+                TEAM_ACTOR_MESSAGE_SOURCE => {
+                    self.repair_team_actor_message_index(
+                        index,
+                        batch_limit,
+                        request.authority_max as i64,
+                    )
+                    .await
+                }
+                TEAM_RUN_EVENT_SOURCE => {
+                    self.repair_team_run_event_index(
+                        index,
+                        batch_limit,
+                        request.authority_max as i64,
+                    )
+                    .await
+                }
+                MAIN_AGENT_EVENT_INDEX_STREAM => {
+                    self.repair_main_agent_event_index(
+                        index,
+                        batch_limit,
+                        request.authority_max as i64,
+                    )
+                    .await
+                }
+                stream_id => match stream_id.strip_prefix("agent_events:agent:") {
+                    Some(agent_id) if !agent_id.is_empty() => {
+                        self.repair_per_agent_event_index(
+                            index,
+                            agent_id,
+                            batch_limit,
+                            request.authority_max as i64,
+                        )
+                        .await
+                    }
+                    _ => Err(anyhow::anyhow!(
+                        "unsupported message index repair stream `{stream_id}`"
+                    )),
+                },
+            };
+
+            match repair_result {
+                Ok(_) => repaired_streams += 1,
+                Err(error) => {
+                    tracing::warn!(
+                        ?error,
+                        stream_id = %request.stream_id,
+                        authority_max = request.authority_max,
+                        "message index read repair failed; scheduling retry"
+                    );
+                    if let Err(schedule_error) = scheduler.schedule_read_repair(request) {
+                        tracing::warn!(
+                            ?schedule_error,
+                            "failed to reschedule message index read repair"
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(repaired_streams)
+    }
+
     /// Rebuild the body-free delivery index for `team_conversation_messages` from SQLite authority.
     ///
-    /// This is a projection repair primitive only. Normal reads still use SQLite until the ordered
-    /// index read path, lag guards, and backup validation are in place.
+    /// This is a projection repair primitive only. Ordered reads remain guarded and fall back to
+    /// SQLite whenever the index is missing, lagging, or incomplete.
     pub(crate) async fn repair_team_conversation_message_index(
         &self,
         index: &dyn MessageIndexStore,

@@ -406,6 +406,7 @@ async fn list_task_conversation_messages_uses_fresh_index_and_falls_back_when_la
             },
         }]
     );
+    assert_eq!(repair_scheduler.take_pending_repairs().len(), 1);
 
     agenthub_message_store::mark_index_repaired_through(
         index.as_ref(),
@@ -429,11 +430,40 @@ async fn list_task_conversation_messages_uses_fresh_index_and_falls_back_when_la
         1,
         "fresh but incomplete index is scanned once before falling back"
     );
+    assert_eq!(
+        repair_scheduler.pending_repairs(),
+        vec![agenthub_message_store::IndexReadRepairRequest {
+            stream_id: "team_conversation_messages".to_string(),
+            authority_max: second.message_id as u64,
+            reason: agenthub_message_store::IndexReadRepairReason::Incomplete {
+                indexed_through: second.message_id as u64,
+            },
+        }]
+    );
 
+    assert_eq!(
+        manager
+            .drain_message_index_read_repairs(index.as_ref(), repair_scheduler.as_ref(), 16)
+            .await
+            .expect("drain queued index repair"),
+        1
+    );
+    assert!(repair_scheduler.pending_repairs().is_empty());
+    assert_eq!(
+        agenthub_message_store::check_index_freshness(
+            index.as_ref(),
+            "team_conversation_messages",
+            second.message_id as u64,
+        )
+        .expect("check repaired high-water"),
+        agenthub_message_store::IndexFreshness::Fresh {
+            indexed_through: second.message_id as u64
+        }
+    );
     manager
         .repair_team_conversation_message_index(index.as_ref(), 16, second.message_id)
         .await
-        .expect("repair index");
+        .expect("idempotent repair index");
     let last = manager
         .list_task_conversation_messages(&task.id, 1, None)
         .await
