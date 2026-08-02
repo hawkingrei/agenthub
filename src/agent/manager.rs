@@ -53,7 +53,7 @@ use crate::internal::p2p::{
     MembershipView, ResolvedNodeEndpoint, derive_cluster_id,
     resolved_node_endpoint_from_agent_node_record,
 };
-use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
+use crate::path_utils::expand_tilde;
 use crate::push::PushService;
 use agenthub_config::{
     normalize_codex_acp_mode_id, normalize_optional_codex_acp_mode_id,
@@ -1249,9 +1249,6 @@ impl AgentManager {
                 path.trim().to_string()
             }
         });
-        if is_local_target {
-            self.ensure_safe_path(&workdir).await?;
-        }
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp();
         let args_json = serde_json::to_string(&config.args)?;
@@ -1326,8 +1323,6 @@ impl AgentManager {
 
         let workdir = expand_tilde(&config.workdir);
         let worktree_repo = config.worktree_repo.as_deref().map(expand_tilde);
-        self.ensure_safe_path(&workdir).await?;
-
         let args_json = serde_json::to_string(&config.args)?;
         let now = Utc::now().timestamp();
         let existing = self.get_agent(agent_id).await.ok();
@@ -2022,33 +2017,6 @@ impl AgentManager {
             workdir,
             stderr
         );
-    }
-
-    async fn ensure_safe_path(&self, workdir: &str) -> anyhow::Result<()> {
-        let allow = sqlx::query(
-            r#"
-            SELECT path
-            FROM safe_paths
-            ORDER BY id ASC
-            "#,
-        )
-        .fetch_all(&self.db)
-        .await?;
-
-        if allow.is_empty() {
-            anyhow::bail!("no safe paths configured");
-        }
-
-        let target = normalize_path(workdir);
-        for row in allow {
-            let path: String = row.get("path");
-            let allowed = normalize_path(&expand_tilde(&path));
-            if is_path_allowed(&target, &allowed) {
-                return Ok(());
-            }
-        }
-
-        anyhow::bail!("workdir not allowed")
     }
 
     pub async fn subscribe_output(

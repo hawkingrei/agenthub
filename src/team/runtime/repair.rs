@@ -5,7 +5,7 @@ use anyhow::Context;
 use sqlx::Error as SqlxError;
 
 use crate::agent::{AgentManager, AgentRecord, WorktreeMode, normalize_target_node_id};
-use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
+use crate::path_utils::expand_tilde;
 
 use super::spec::{TeamRuntimeMemberRuntimeHint, TeamRuntimeMemberSpec, trimmed_opt};
 use super::types::TeamRuntimeStartError;
@@ -80,51 +80,6 @@ fn collect_repo_candidates(safe_paths: &[String]) -> Vec<String> {
     candidates
 }
 
-fn safe_paths_allow(safe_paths: &[String], target: &str) -> bool {
-    let expanded_target = expand_tilde(target);
-    safe_paths.iter().any(|allowed| {
-        let expanded_allowed = expand_tilde(allowed);
-        is_path_allowed(&expanded_target, &expanded_allowed)
-    })
-}
-
-pub(super) fn adjust_worker_runtime_workdir_for_safe_paths(
-    mut config: WorkerRuntimeRepairConfig,
-    safe_paths: &[String],
-) -> anyhow::Result<WorkerRuntimeRepairConfig> {
-    let derived_root = Path::new(&config.workdir)
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .map(|parent| parent.to_string_lossy().to_string())
-        .unwrap_or_else(|| config.workdir.clone());
-    if safe_paths_allow(safe_paths, &derived_root) {
-        return Ok(config);
-    }
-
-    if safe_paths_allow(safe_paths, &config.workdir) {
-        let normalized_repo = normalize_path(&expand_tilde(&config.worktree_repo));
-        let normalized_workdir = normalize_path(&expand_tilde(&config.workdir));
-        if is_path_allowed(&normalized_workdir, &normalized_repo) {
-            return Err(TeamRuntimeStartError::InvalidConfig(format!(
-                "legacy worker runtime workdir '{}' is inside repo '{}' and cannot derive a safe worktree root",
-                config.workdir, config.worktree_repo
-            ))
-            .into());
-        }
-        config.workdir = Path::new(&config.workdir)
-            .join(".agenthub-worker-root")
-            .to_string_lossy()
-            .to_string();
-        return Ok(config);
-    }
-
-    Err(TeamRuntimeStartError::InvalidConfig(format!(
-        "legacy worker runtime workdir '{}' is outside safe paths and cannot derive a safe worktree root",
-        config.workdir
-    ))
-    .into())
-}
-
 fn infer_repo_from_member_text(
     candidates: &[String],
     member: &TeamRuntimeMemberSpec,
@@ -165,27 +120,24 @@ async fn resolve_worker_runtime_repair(
     member: &TeamRuntimeMemberSpec,
     agent: &AgentRecord,
 ) -> anyhow::Result<Option<WorkerRuntimeRepairConfig>> {
-    let safe_paths = agents.list_safe_paths().await?;
     if let Some(hint) = member.runtime.as_ref()
         && let Some(config) = build_worker_runtime_hint_config(agent, hint)
     {
-        let config = adjust_worker_runtime_workdir_for_safe_paths(config, &safe_paths)?;
         return Ok(Some(config));
     }
     if let Some(config) = build_worker_runtime_agent_config(agent) {
-        let config = adjust_worker_runtime_workdir_for_safe_paths(config, &safe_paths)?;
         return Ok(Some(config));
     }
+    let safe_paths = agents.list_safe_paths().await?;
     let candidates = collect_repo_candidates(&safe_paths);
     let inferred_repo = infer_repo_from_member_text(&candidates, member, agent);
-    inferred_repo
-        .map(|worktree_repo| WorkerRuntimeRepairConfig {
+    Ok(
+        inferred_repo.map(|worktree_repo| WorkerRuntimeRepairConfig {
             workdir: agent.workdir.clone(),
             worktree_repo,
             worktree_ref: Some("HEAD".to_string()),
-        })
-        .map(|config| adjust_worker_runtime_workdir_for_safe_paths(config, &safe_paths))
-        .transpose()
+        }),
+    )
 }
 
 pub(super) async fn reconcile_team_member_runtime(

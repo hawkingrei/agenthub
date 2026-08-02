@@ -1,7 +1,4 @@
-use super::repair::{
-    WorkerRuntimeRepairConfig, adjust_worker_runtime_workdir_for_safe_paths,
-    map_member_agent_lookup_error, runtime_target_node_hint_is_present,
-};
+use super::repair::{map_member_agent_lookup_error, runtime_target_node_hint_is_present};
 use super::types::TeamRuntimeStartError;
 use crate::path_utils::expand_tilde;
 use core::assert_matches;
@@ -17,23 +14,6 @@ fn expand_tilde_uses_path_join_for_home_relative_paths() {
             .to_string_lossy()
             .to_string()
     );
-}
-
-#[test]
-fn worker_runtime_adjust_rejects_workdir_outside_safe_paths() {
-    let err = adjust_worker_runtime_workdir_for_safe_paths(
-        WorkerRuntimeRepairConfig {
-            workdir: "/tmp/agenthub-worker".to_string(),
-            worktree_repo: "/repo".to_string(),
-            worktree_ref: Some("HEAD".to_string()),
-        },
-        &[String::from("/safe/root")],
-    )
-    .expect_err("workdir outside safe paths should fail");
-    let typed = err
-        .downcast_ref::<TeamRuntimeStartError>()
-        .expect("typed runtime error");
-    assert_matches!(typed, TeamRuntimeStartError::InvalidConfig(_));
 }
 
 #[test]

@@ -488,31 +488,6 @@ impl AgentManager {
             }
             return Err(err);
         }
-        if let Err(err) = self.ensure_safe_path(&start_policy.workdir).await {
-            if let Err(record_err) = self
-                .record_failed_session(&agent.id, &session_id, &err.to_string())
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %record_err,
-                    "failed to record safe-path startup failure"
-                );
-            }
-            if let Err(status_err) = self
-                .update_agent_status(&agent.id, AgentStatus::Failed)
-                .await
-            {
-                tracing::error!(
-                    agent_id = %agent.id,
-                    session_id = %session_id,
-                    error = %status_err,
-                    "failed to update agent status after safe-path failure"
-                );
-            }
-            return Err(err);
-        }
         if let Err(err) =
             ensure_team_runtime_workspace_layout(actor_context.as_ref(), &start_policy.workdir)
                 .await
