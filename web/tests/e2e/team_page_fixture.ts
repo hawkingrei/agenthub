@@ -744,6 +744,38 @@ export async function mockTeamPageApis(
     await route.fulfill(jsonResponse(updated));
   });
 
+  await page.route(/\/api\/teams\/[^/]+\/members\/adopt$/, async (route, request) => {
+    if (request.method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const teamId = request.url().match(/\/api\/teams\/([^/]+)\/members\/adopt$/)?.[1] ?? "";
+    const index = teams.findIndex((team) => team.id === teamId);
+    if (index < 0) {
+      await route.fulfill(jsonResponse({ error: "team not found" }, 404));
+      return;
+    }
+    const payload = request.postDataJSON() as UpdateTeamSpecPayload & { name: string };
+    if (payload.expected_updated_at !== teams[index].updated_at) {
+      await route.fulfill(jsonResponse({ error: "team spec changed" }, 409));
+      return;
+    }
+    const memberId = `agent-forge-${agents.length + 1}`;
+    const spec = JSON.parse(JSON.stringify(payload.spec).replaceAll("__agenthub_adopted_member__", memberId));
+    const source = agents.find((agent) => agent.id === (payload as { source_agent_id: string }).source_agent_id);
+    if (!source) {
+      await route.fulfill(jsonResponse({ error: "agent not found" }, 404));
+      return;
+    }
+    const agent: E2eAgentRecord = { ...source, id: memberId, name: payload.name, status: "idle", created_at: now, updated_at: now };
+    agents.push(agent);
+    const updated: TeamDefinitionRecord = { ...teams[index], spec, updated_at: now + updateSpecPayloads.length + 1 };
+    teams[index] = updated;
+    updateSpecPayloads.push({ teamId, payload: { spec, expected_updated_at: payload.expected_updated_at } });
+    teamRuntimeStateById.set(teamId, { status: spec.members.length > 0 ? "running" : "stopped" });
+    await route.fulfill(jsonResponse({ agent, team: updated }));
+  });
+
   await page.route(/\/api\/teams\/[^/]+\/runtime$/, async (route, request) => {
     const url = new URL(request.url());
     const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/runtime$/)?.[1] ?? "";
