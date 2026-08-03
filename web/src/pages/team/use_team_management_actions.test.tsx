@@ -17,6 +17,31 @@ vi.mock("../../api", async () => {
       createTeam: vi.fn(),
       createAgent: vi.fn(),
       deleteAgent: vi.fn(),
+      adoptExistingAgentToTeam: vi.fn(async (token, teamId, payload) => {
+        const agent = await api.createAgent(token, {
+          name: payload.name,
+          workdir: "/repo/source",
+          command: "agenthub-codex-acp",
+          args: [],
+          target_node_id: null,
+          source: "team_forge",
+          worktree_mode: "use_existing",
+          worktree_repo: null,
+          worktree_ref: null,
+          code_mode: true,
+          codex_acp_default_mode: "full-access",
+        });
+        const spec = JSON.parse(
+          JSON.stringify(payload.spec)
+            .split("__agenthub_adopted_member__")
+            .join(agent.id)
+        );
+        const team = await api.updateTeamSpec(token, teamId, {
+          spec,
+          expected_updated_at: payload.expected_updated_at,
+        });
+        return { agent, team };
+      }),
       setAgentCodexAcpDefaultMode: vi.fn(),
       setAgentRuntimeProfile: vi.fn(),
       setAgentLoop: vi.fn(),
@@ -758,7 +783,7 @@ describe("useTeamManagementActions", () => {
     }
   });
 
-  it("cleans up a copied agent when the team spec update conflicts", async () => {
+  it("surfaces adoption conflicts without client-side cleanup", async () => {
     mockedApi.createAgent.mockResolvedValueOnce({
       id: "agent-copy-conflict",
       name: "source-agent-worker-1",
@@ -785,7 +810,7 @@ describe("useTeamManagementActions", () => {
         await mounted.getSnapshot()?.onCopyExistingTeamAgent("agent-source-1");
       });
 
-      expect(mockedApi.deleteAgent).toHaveBeenCalledWith("token-1", "agent-copy-conflict");
+      expect(mockedApi.deleteAgent).not.toHaveBeenCalled();
       expect(params.setError).toHaveBeenCalledWith("team spec changed");
       expect(params.setShowCopyExistingAgentModal).not.toHaveBeenCalledWith(false);
     } finally {
@@ -793,7 +818,7 @@ describe("useTeamManagementActions", () => {
     }
   });
 
-  it("keeps the original copy conflict error when cleanup deletion fails", async () => {
+  it("keeps the original adoption conflict error", async () => {
     mockedApi.createAgent.mockResolvedValueOnce({
       id: "agent-copy-delete-fails",
       name: "source-agent-worker-1",
@@ -811,7 +836,6 @@ describe("useTeamManagementActions", () => {
     mockedApi.updateTeamSpec.mockRejectedValueOnce(
       Object.assign(new Error("team spec changed"), { status: 409 })
     );
-    mockedApi.deleteAgent.mockRejectedValueOnce(new Error("delete failed"));
 
     const params = createParams();
     const mounted = await mountHook(params);
@@ -820,14 +844,14 @@ describe("useTeamManagementActions", () => {
         await mounted.getSnapshot()?.onCopyExistingTeamAgent("agent-source-1");
       });
 
-      expect(mockedApi.deleteAgent).toHaveBeenCalledWith("token-1", "agent-copy-delete-fails");
+      expect(mockedApi.deleteAgent).not.toHaveBeenCalled();
       expect(params.setError).toHaveBeenCalledWith("team spec changed");
     } finally {
       mounted.cleanup();
     }
   });
 
-  it("does not clean up a copied agent for non-conflict team spec failures", async () => {
+  it("does not clean up locally for adoption failures", async () => {
     mockedApi.createAgent.mockResolvedValueOnce({
       id: "agent-copy-server-error",
       name: "source-agent-worker-1",

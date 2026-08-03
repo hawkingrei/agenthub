@@ -540,7 +540,13 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     refreshTeamRuntime,
   ]);
 
-  const onCopyExistingTeamAgent = useCallback(async (sourceAgentId: string) => {
+  const onCopyExistingTeamAgent = useCallback(async (
+    sourceAgentId: string,
+    options: { workspaceCopyDestination: string; memorySeed: string } = {
+      workspaceCopyDestination: "",
+      memorySeed: "",
+    }
+  ) => {
     if (busy === "copy-team-agent") {
       return;
     }
@@ -580,48 +586,24 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       thinking_level: sourceAgent.thinking_level ?? "",
     };
 
-    const copiedWorktreeMode = role === "coordinator" ? "use_existing" : sourceAgent.worktree_mode;
-    const copiedWorktreeRepo = role === "coordinator" ? null : sourceAgent.worktree_repo ?? null;
-    const copiedWorktreeRef = role === "coordinator" ? null : sourceAgent.worktree_ref ?? null;
-    const copiedCodexAcpDefaultMode =
-      resolveAcpProviderForAgent(sourceAgent.command, sourceAgent.args) === "codex"
-        ? normalizeCodexAcpModeId(sourceAgent.codex_acp_default_mode)
-        : null;
-
     setBusy("copy-team-agent");
     setError(null);
     setWarning(null);
-    let createdAgentId: string | null = null;
     try {
-      const created = await api.createAgent(token, {
+      const adopted = await api.adoptExistingAgentToTeam(token, selectedTeam.id, {
+        source_agent_id: sourceAgent.id,
         name: copiedAgentName,
-        workdir: sourceAgent.workdir,
-        command: sourceAgent.command,
-        args: sourceAgent.args.slice(),
-        target_node_id: sourceAgent.target_node_id ?? null,
-        source: AGENT_SOURCE_TEAM_FORGE,
-        worktree_mode: copiedWorktreeMode,
-        worktree_repo: copiedWorktreeRepo,
-        worktree_ref: copiedWorktreeRef,
-        code_mode: sourceAgent.code_mode,
-        codex_acp_default_mode: copiedCodexAcpDefaultMode,
-        ...(sourceAgent.runtime_model != null || sourceAgent.thinking_level != null
-          ? {
-              runtime_model: sourceAgent.runtime_model ?? null,
-              thinking_level: sourceAgent.thinking_level ?? null,
-            }
-          : {}),
-      });
-      createdAgentId = created.id;
-      const updated = await api.updateTeamSpec(token, selectedTeam.id, {
         spec: appendTeamMemberToSpec(
           selectedTeam.spec,
-          { ...copiedDraft, member_id: created.id },
-          created,
+          { ...copiedDraft, member_id: "__agenthub_adopted_member__" },
+          { ...sourceAgent, id: "__agenthub_adopted_member__" },
           teamPromptDefaults
         ),
         expected_updated_at: selectedTeam.updated_at,
+        workspace_copy_destination: options.workspaceCopyDestination.trim() || null,
+        memory_seed: options.memorySeed.trim() || null,
       });
+      const { agent: created, team: updated } = adopted;
       setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
       setTeams((prev) =>
         [...prev.filter((team) => team.id !== updated.id), updated].sort((left, right) =>
@@ -632,9 +614,6 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setShowCopyExistingAgentModal(false);
       void refreshTeamRuntime(updated.id).catch(() => undefined);
     } catch (err) {
-      if (createdAgentId && (err as { status?: number })?.status === 409) {
-        void api.deleteAgent(token, createdAgentId).catch(() => undefined);
-      }
       setError(formatTeamForgeWorktreeError(err) ?? parseErrorMessage(err));
     } finally {
       setBusy(null);
