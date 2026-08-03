@@ -445,18 +445,22 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
   busy: boolean;
   selectedTeamHasCoordinator: boolean;
   candidateAgents: AgentRecord[];
-  onCopy: (agentId: string) => void;
+  onCopy: (agentId: string, options: { workspaceCopyDestination: string; memorySeed: string }) => void;
   onMove?: (agentId: string) => void;
   onClose: () => void;
   chrome: TeamModalChrome;
 }) {
   const [filter, setFilter] = React.useState("");
   const [selectedAgentId, setSelectedAgentId] = React.useState("");
+  const [workspaceCopyDestination, setWorkspaceCopyDestination] = React.useState("");
+  const [memorySeed, setMemorySeed] = React.useState("");
 
   React.useEffect(() => {
     if (!open) {
       setFilter("");
       setSelectedAgentId("");
+      setWorkspaceCopyDestination("");
+      setMemorySeed("");
     }
   }, [open]);
 
@@ -607,6 +611,10 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
             sessions, or workspace-local memory/context. Those must remain explicit opt-in
             follow-ups.
           </Alert>
+          <SurfaceCard className={TEAM_CREATE_PANEL_CARD_CLASS}>
+            <TextInput label="Copy workspace contents to" placeholder="Optional new local directory" value={workspaceCopyDestination} onChange={(event) => setWorkspaceCopyDestination(event.currentTarget.value)} />
+            <Textarea className="mt-3" label="Seed memory/context" placeholder="Optional operator-provided seed. Stored with source-agent provenance in the new workspace." value={memorySeed} onChange={(event) => setMemorySeed(event.currentTarget.value)} disabled={!workspaceCopyDestination.trim()} />
+          </SurfaceCard>
           <Alert
             radius="md"
             color="yellow"
@@ -633,8 +641,8 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
           </ActionButton>
           <ActionButton
             className={chrome.accentButtonClassName}
-            onClick={() => onCopy(selectedAgentId)}
-            disabled={busy || !selectedAgentId}
+            onClick={() => onCopy(selectedAgentId, { workspaceCopyDestination, memorySeed })}
+            disabled={busy || !selectedAgentId || (memorySeed.trim().length > 0 && !workspaceCopyDestination.trim())}
             size="md"
             tone="primary"
             type="button"

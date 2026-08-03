@@ -967,6 +967,15 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+  adoptExistingAgentToTeam: (
+    token: string,
+    id: string,
+    payload: { source_agent_id: string; name: string; spec: unknown; expected_updated_at: number; workspace_copy_destination?: string | null; memory_seed?: string | null }
+  ) =>
+    apiFetch<{ agent: AgentRecord; team: TeamDefinitionRecord }>(
+      `/api/teams/${encodePathSegment(id)}/members/adopt`, token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
   moveExistingAgentToTeam: (
     token: string,
     id: string,

@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
+use std::path::{Path as StdPath, PathBuf};
 
 mod errors;
 
@@ -33,7 +35,7 @@ use uuid::Uuid;
 
 use agenthub_auth_domain::UserCapability;
 
-use crate::agent::AgentStatus;
+use crate::agent::{AgentConfig, AgentStatus, WorktreeMode};
 use crate::api::authz::require_capability;
 use crate::api::error::ApiError;
 use crate::api::uploads::{
@@ -75,6 +77,7 @@ const TEAM_MESSAGE_SUMMARY_MAX_CHARS: usize = 240;
 const TEAM_MEMORY_FLUSH_TRIGGER_VALUES: [&str; 3] = ["manual", "soft_threshold", "hard_error"];
 const TEAM_TASK_COMPILE_MAX_TEXT_LEN: usize = 280;
 const TEAM_TASK_COMPILE_MAX_DEADLINE_LEN: usize = 40;
+const ADOPTED_MEMBER_ID_PLACEHOLDER: &str = "__agenthub_adopted_member__";
 
 fn team_owner_matches_user(team: &TeamDefinitionRecord, user: &UserRecord) -> bool {
     match team.owner_user_id.as_deref() {
@@ -166,6 +169,22 @@ pub struct MoveExistingAgentRequest {
     pub agent_id: String,
     pub spec: Value,
     pub expected_updated_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdoptExistingAgentRequest {
+    pub source_agent_id: String,
+    pub name: String,
+    pub spec: Value,
+    pub expected_updated_at: i64,
+    pub workspace_copy_destination: Option<String>,
+    pub memory_seed: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdoptExistingAgentResponse {
+    pub agent: crate::agent::AgentRecord,
+    pub team: TeamDefinitionRecord,
 }
 
 #[derive(Debug, Deserialize)]
@@ -519,6 +538,7 @@ pub fn router(state: AppState) -> Router {
         .route("/prompt_defaults", get(get_team_prompt_defaults))
         .route("/{id}", get(get_team).delete(delete_team))
         .route("/{id}/spec", put(update_team_spec))
+        .route("/{id}/members/adopt", post(adopt_existing_agent_to_team))
         .route("/{id}/members/move", post(move_existing_agent_to_team))
         .route("/{id}/runtime", get(get_team_runtime))
         .route(
@@ -771,6 +791,212 @@ async fn move_existing_agent_to_team(
             .map_err(map_runtime_start_error)?;
     }
     Ok(Json(sanitize_team_definition_for_response(updated)))
+}
+
+async fn adopt_existing_agent_to_team(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<AdoptExistingAgentRequest>,
+) -> Result<Json<AdoptExistingAgentResponse>, ApiError> {
+    let _user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let current = load_team_for_user(&state, &team_id, &_user).await?;
+    let source_id = payload.source_agent_id.trim();
+    if source_id.is_empty() || payload.name.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "source_agent_id and name are required",
+        ));
+    }
+    let source = state
+        .agents
+        .get_agent(source_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "agent not found"))?;
+    if !state
+        .teams
+        .list_teams_referencing_member(source_id)
+        .await
+        .map_err(map_team_internal_error)?
+        .is_empty()
+    {
+        return Err(ApiError::conflict("agent already belongs to a team"));
+    }
+    if source.target_node_id.is_some() && payload.workspace_copy_destination.is_some() {
+        return Err(ApiError::bad_request(
+            "workspace-content copy is only available for local agents",
+        ));
+    }
+    let destination = payload
+        .workspace_copy_destination
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let seed = payload
+        .memory_seed
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if seed.is_some() && destination.is_none() {
+        return Err(ApiError::bad_request(
+            "memory seed requires a copied workspace destination",
+        ));
+    }
+    let workdir = destination.unwrap_or(&source.workdir).to_string();
+    let mut spec = payload.spec;
+    let member_id = Uuid::new_v4().to_string();
+    replace_adopted_member_placeholder(&mut spec, &member_id);
+    normalize_team_spec(&mut spec)?;
+    validate_team_spec(&spec)?;
+    let previous_member_ids = parse_member_ids(current.spec.get("members"))?;
+    let next_member_ids = parse_member_ids(spec.get("members"))?;
+    if !previous_member_ids.is_subset(&next_member_ids)
+        || next_member_ids
+            .difference(&previous_member_ids)
+            .collect::<Vec<_>>()
+            != vec![&member_id]
+    {
+        return Err(ApiError::bad_request(
+            "adoption must add exactly one new member",
+        ));
+    }
+    if let Some(destination) = destination {
+        copy_adoption_workspace(&source.workdir, destination, &source.id, &current.id, seed)?;
+    }
+    let agent_result = state
+        .agents
+        .create_agent_with_source(
+            AgentConfig {
+                name: payload.name.trim().to_string(),
+                workdir,
+                command: source.command.clone(),
+                args: source.args.clone(),
+                target_node_id: source.target_node_id.clone(),
+                worktree_mode: WorktreeMode::UseExisting,
+                worktree_repo: None,
+                worktree_ref: None,
+                code_mode: source.code_mode,
+                codex_acp_default_mode: source.codex_acp_default_mode.clone(),
+                runtime_model: source.runtime_model.clone(),
+                thinking_level: source.thinking_level.clone(),
+                agent_loop_enabled: false,
+                agent_loop_idle_seconds: None,
+                agent_loop_prompt: None,
+            },
+            "team_forge",
+        )
+        .await;
+    let agent = match agent_result {
+        Ok(agent) => agent,
+        Err(err) => {
+            if let Some(destination) = destination {
+                let _ = fs::remove_dir_all(destination);
+            }
+            return Err(map_team_internal_error(err));
+        }
+    };
+    let updated = match state
+        .teams
+        .update_team_spec_if_unchanged(&current.id, payload.expected_updated_at, spec)
+        .await
+        .map_err(map_team_internal_error)?
+    {
+        Some(team) => team,
+        None => {
+            let _ = state.agents.delete_agent(&agent.id).await;
+            if let Some(destination) = destination {
+                let _ = fs::remove_dir_all(destination);
+            }
+            return Err(ApiError::conflict(
+                "team definition changed concurrently; reload and retry",
+            ));
+        }
+    };
+    if let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &updated).await {
+        let _ = state.agents.stop_agent(&agent.id).await;
+        return Err(map_runtime_start_error(err));
+    }
+    Ok(Json(AdoptExistingAgentResponse {
+        agent,
+        team: sanitize_team_definition_for_response(updated),
+    }))
+}
+
+fn replace_adopted_member_placeholder(value: &mut Value, member_id: &str) {
+    match value {
+        Value::String(current) if current == ADOPTED_MEMBER_ID_PLACEHOLDER => {
+            *current = member_id.to_string()
+        }
+        Value::Array(values) => values
+            .iter_mut()
+            .for_each(|value| replace_adopted_member_placeholder(value, member_id)),
+        Value::Object(values) => values
+            .values_mut()
+            .for_each(|value| replace_adopted_member_placeholder(value, member_id)),
+        _ => {}
+    }
+}
+
+fn copy_adoption_workspace(
+    source: &str,
+    destination: &str,
+    source_agent_id: &str,
+    team_id: &str,
+    seed: Option<&str>,
+) -> Result<(), ApiError> {
+    let source = fs::canonicalize(source)
+        .map_err(|_| ApiError::bad_request("source workspace must exist"))?;
+    let destination = PathBuf::from(destination);
+    if destination.exists() {
+        return Err(ApiError::conflict(
+            "workspace copy destination must not already exist",
+        ));
+    }
+    let parent = destination.parent().ok_or_else(|| {
+        ApiError::bad_request("workspace copy destination must have a parent directory")
+    })?;
+    fs::create_dir_all(parent).map_err(ApiError::from)?;
+    let temporary = parent.join(format!(".agenthub-adoption-{}", Uuid::new_v4()));
+    let result = (|| {
+        copy_adoption_directory(&source, &temporary)?;
+        let manifest = serde_json::json!({"source_agent_id": source_agent_id, "team_id": team_id, "source": source, "destination": destination, "excluded": [".git", ".agenthub", ".agenthubmemory", ".cache", ".env", "*.sock", "*.lock"]});
+        fs::write(
+            temporary.join(".agenthub-adoption-manifest.json"),
+            serde_json::to_vec_pretty(&manifest).map_err(ApiError::from)?,
+        )
+        .map_err(ApiError::from)?;
+        if let Some(seed) = seed {
+            fs::write(temporary.join(".agenthub-team-seed.json"), serde_json::to_vec_pretty(&serde_json::json!({"source_agent_id": source_agent_id, "team_id": team_id, "seed": seed})).map_err(ApiError::from)?).map_err(ApiError::from)?;
+        }
+        fs::rename(&temporary, &destination).map_err(ApiError::from)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&temporary);
+    }
+    result
+}
+
+fn copy_adoption_directory(source: &StdPath, destination: &StdPath) -> Result<(), ApiError> {
+    fs::create_dir_all(destination).map_err(ApiError::from)?;
+    for entry in fs::read_dir(source).map_err(ApiError::from)? {
+        let entry = entry.map_err(ApiError::from)?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if [".git", ".agenthub", ".agenthubmemory", ".cache", ".env"].contains(&name.as_ref())
+            || name.ends_with(".sock")
+            || name.ends_with(".lock")
+        {
+            continue;
+        }
+        let target = destination.join(entry.file_name());
+        let file_type = entry.file_type().map_err(ApiError::from)?;
+        if file_type.is_dir() {
+            copy_adoption_directory(&path, &target)?;
+        } else if file_type.is_file() {
+            fs::copy(&path, target).map_err(ApiError::from)?;
+        }
+    }
+    Ok(())
 }
 
 async fn start_team(
