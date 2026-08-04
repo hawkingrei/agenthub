@@ -15932,9 +15932,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "superboring"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ad752f6ecf1cde1cd92cff4400137c5d92d376f78bb901d2807a35dba5872a7"
+checksum = "32799c1e73c2c5467e43bfaab8a9e28c5feed8b5ea59beb53376977f39971ead"
 dependencies = [
  "aes-gcm",
  "aes-keywrap",
