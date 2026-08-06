@@ -164,6 +164,39 @@ pub enum TeamTaskAssignmentUpdate {
     Assigned(String),
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct TeamspaceMemberRecord {
+    pub team_id: String,
+    pub user_id: String,
+    pub role: String,
+    pub created_by_user_id: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct TeamspaceInviteRecord {
+    pub id: String,
+    pub team_id: String,
+    pub role: String,
+    pub created_by_user_id: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub accepted_at: Option<i64>,
+    pub revoked_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct TeamExecutionClaimRecord {
+    pub entity_kind: String,
+    pub entity_id: String,
+    pub team_id: String,
+    pub owner_member_id: String,
+    pub lease_generation: i64,
+    pub claimed_at: i64,
+    pub expires_at: i64,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct TeamTaskListQuery {
     pub team_id: Option<String>,

@@ -10,6 +10,7 @@ without preempting the task owner, and coordinator planning must keep active wor
 - task-backed goal leases, recovery, and terminal state
 - short-lived read-only research forks attached to active goals
 - conflict escalation, non-preemptive informational messages, and concurrency budgets
+- single-owner Task and Step execution; dependency-based splitting instead of shared execution
 
 ## Non-Goals
 
@@ -22,6 +23,10 @@ without preempting the task owner, and coordinator planning must keep active wor
 A canonical Task becomes a goal only when the backend atomically reserves Team and member capacity.
 Its assigned member holds the lease until `completed`, `blocked`, `cancelled`, or explicit handoff.
 Ordinary mailbox messages are recorded without interrupting that lease.
+
+One Task and one Step each have one active responsible member. Collaboration is modeled through
+messages, evidence, review, dependency-linked child Tasks, or read-only forks; it never creates a
+second concurrent owner for the same executable work.
 
 A fork is a child of one active goal with a narrow question, deadline, acceptance criteria, and a
 fixed read-only profile. It returns immutable evidence to its parent and cannot change task state,
@@ -36,6 +41,8 @@ declared external-operation claims decide whether queued work can start.
 
 - States are `queued`, `active`, `waiting`, `blocked`, `completed`, and `cancelled`.
 - An active goal has exactly one owner and one fenced lease generation.
+- A canonical executable Task must have exactly one assigned member before it can become active.
+- An executable Step has exactly one responsible member and cannot add a multi-owner execution path.
 - Reconnect resumes from persisted goal state and latest task evidence, never an inferred session
   transcript.
 - Only cancellation, explicit handoff, or a persisted conflict can interrupt an active goal.
@@ -50,6 +57,8 @@ declared external-operation claims decide whether queued work can start.
 ### Conflicts And Capacity
 
 - Forks cannot cause workspace-write conflicts by contract.
+- Parallelism requires independent dependency-linked Tasks with distinct owners, not several owners
+  attached to one Task or Step.
 - The backend rejects or queues starts that conflict on owner, capacity reservation, or declared
   external-operation claim.
 - A discovered conflict freezes only the affected goal and notifies the coordinator.
@@ -77,6 +86,9 @@ the parent plan. Capacity and conflict records are control-plane state, not tran
 - The read-only profile requires adapter-specific command and tool enforcement.
 - External-operation claims need a small typed vocabulary before enforcement.
 - Lease expiry needs fencing so stale owners cannot report terminal results.
+
+The Teamspace membership, invite, review, and single-owner contracts are defined in
+[teamspace-multi-user.md](teamspace-multi-user.md).
 
 ## Source Journals
 

@@ -174,10 +174,13 @@ Main shape:
 
 - Conversation surfaces now share neutral message-bubble styling while preserving their own
   interaction semantics; final deployed-browser evidence remains open.
+- Teamspace now has invite-only local-account membership, auditable revocation, single-owner
+  execution claims, and explicit handoff control-plane foundations.
 
 Start with:
 
 - `2026-08-01-team-conversation-style-convergence.md`
+- `2026-08-06-teamspace-control-plane.md`
 
 ## Compaction Rules
 

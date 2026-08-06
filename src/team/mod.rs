@@ -35,11 +35,12 @@ pub(crate) use manager::TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX;
 #[allow(unused_imports)]
 pub use manager::{
     SendActorMessageInput, TeamContextLookupError, TeamContextRecord, TeamConversationStreamEvent,
-    TeamManager, TeamMemoryFlushRequest, TeamMessageArchiveMigrationReport,
-    TeamRemoteRelayWorkerSettings, TeamReplyObligationRecord, TeamRunContextFingerprint,
-    TeamRunContextStreamEvent, TeamRuntimeRecord, TeamRuntimeStatus, TeamTaskAssignmentUpdate,
-    TeamTaskContextPatch, TeamTaskCreateInput, TeamTaskListQuery, TeamTaskNoteCreateInput,
-    TeamTaskUpdateWithNoteInput,
+    TeamExecutionClaimRecord, TeamManager, TeamMemoryFlushRequest,
+    TeamMessageArchiveMigrationReport, TeamRemoteRelayWorkerSettings, TeamReplyObligationRecord,
+    TeamRunContextFingerprint, TeamRunContextStreamEvent, TeamRuntimeRecord, TeamRuntimeStatus,
+    TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskCreateInput, TeamTaskListQuery,
+    TeamTaskNoteCreateInput, TeamTaskUpdateWithNoteInput, TeamspaceInviteRecord,
+    TeamspaceMemberRecord,
 };
 pub(crate) use manager::{
     count_pending_conversation_body_migration, migrate_conversation_bodies_into_store,

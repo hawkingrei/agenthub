@@ -1140,7 +1140,7 @@ export function App() {
       return (
         <div className={APP_ROOT_CLASS} ref={appRootRef}>
           <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
-            <LazyJoinPage onComplete={(next) => setAuth(next)} />
+            <LazyJoinPage auth={auth} onComplete={(next) => setAuth(next)} />
           </Suspense>
         </div>
       );

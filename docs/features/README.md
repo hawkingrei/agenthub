@@ -78,6 +78,7 @@ when adding or compacting specs so this directory stays navigable.
 - `docs/features/team-channels-threads.md`
 - `docs/features/team-create-flow.md`
 - `docs/features/team-agent-adoption.md`
+- `docs/features/teamspace-multi-user.md`
 - `docs/features/team-execution-vocabulary.md`
 - `docs/features/teams-collaboration-playbook.md`
 - `docs/features/actor-foundation.md`

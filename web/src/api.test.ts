@@ -531,7 +531,8 @@ describe("api request headers", () => {
       body?: unknown;
     }> = [
       {
-        call: () => api.registerStart("root", "Root User", "root", "pw", "laptop"),
+        call: () =>
+          api.registerStart("root", "Root User", "root", "pw", "laptop", "invite-token"),
         url: "/api/auth/register/start",
         method: "POST",
         body: {
@@ -540,6 +541,7 @@ describe("api request headers", () => {
           role: "root",
           password: "pw",
           device_name: "laptop",
+          team_invite_token: "invite-token",
         },
       },
       {
@@ -660,6 +662,27 @@ describe("api request headers", () => {
         body: { name: "Team One", spec: { members: [] } },
       },
       {
+        call: () => api.listTeamspaceMembers(token, teamId),
+        url: "/api/teams/team%2Fone/members",
+      },
+      {
+        call: () => api.revokeTeamspaceMember(token, teamId, "user/one"),
+        url: "/api/teams/team%2Fone/members/user%2Fone",
+        method: "DELETE",
+      },
+      {
+        call: () => api.createTeamspaceInvite(token, teamId, { role: "contributor" }),
+        url: "/api/teams/team%2Fone/invites",
+        method: "POST",
+        body: { role: "contributor" },
+      },
+      {
+        call: () => api.acceptTeamspaceInvite(token, "invite-token"),
+        url: "/api/teams/invites/accept",
+        method: "POST",
+        body: { token: "invite-token" },
+      },
+      {
         call: () => api.getTeam(token, teamId),
         url: "/api/teams/team%2Fone",
       },
@@ -719,6 +742,19 @@ describe("api request headers", () => {
         url: "/api/teams/team%2Fone/tasks/task%2Fone",
         method: "PATCH",
         body: { status: "completed", assigned_member_id: null },
+      },
+      {
+        call: () =>
+          api.handoffTeamTask(token, teamId, taskId, {
+            assigned_member_id: "member-2",
+            reason: "Reassigned by the owner",
+          }),
+        url: "/api/teams/team%2Fone/tasks/task%2Fone/handoff",
+        method: "POST",
+        body: {
+          assigned_member_id: "member-2",
+          reason: "Reassigned by the owner",
+        },
       },
       {
         call: () =>

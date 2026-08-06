@@ -20,17 +20,22 @@ pub struct AuthService {
     webauthn: Arc<Webauthn>,
     pending: PendingChallengeStore,
     passkey_enabled: bool,
+    rp_origin: String,
 }
 
 impl AuthService {
+    pub fn rp_origin(&self) -> String {
+        self.rp_origin.clone()
+    }
+
     pub async fn new(db: SqlitePool, config: &agenthub_config::AppConfig) -> anyhow::Result<Self> {
         let rp_id = config.rp_id();
         let rp_origin = config.rp_origin();
         let rp_name = config.rp_name();
         let passkey_enabled = config.passkey_enabled();
 
-        let rp_origin = Url::parse(&rp_origin)?;
-        let builder = WebauthnBuilder::new(&rp_id, &rp_origin)?;
+        let rp_origin_url = Url::parse(&rp_origin)?;
+        let builder = WebauthnBuilder::new(&rp_id, &rp_origin_url)?;
         let builder = builder.rp_name(&rp_name);
         let webauthn = builder.build()?;
 
@@ -40,6 +45,7 @@ impl AuthService {
             webauthn: Arc::new(webauthn),
             pending: PendingChallengeStore::default(),
             passkey_enabled,
+            rp_origin,
         })
     }
 

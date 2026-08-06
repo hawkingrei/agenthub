@@ -38,6 +38,9 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   `task` records.
 - A `task` is the primary agent-facing work object.
 - `task.assigned_member_id` is the canonical owner slot.
+- One executable Task has one active owner. A work request that needs several executors must be
+  split into dependency-linked Tasks before execution; channels, threads, comments, and reviewers
+  do not create shared Task ownership.
 - `task.priority` is the canonical urgency field with four stable values:
   - `critical`: immediate / blocking production or coordination issue
   - `high`: high-priority work that should be scheduled before normal backlog
@@ -73,6 +76,8 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
 
 3. Execution telemetry layer
 - `run` and `step` are execution/debug artifacts, not the primary collaboration unit.
+- A Step has one responsible `member_id`; it must not introduce a second multi-owner execution
+  model beneath a Task.
 - Backend no longer runs a Team step-orchestrator worker in the default runtime path.
 - Creating a `task` no longer implies backend dispatch; runs are created only by explicit execution
   flows.

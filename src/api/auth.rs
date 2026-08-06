@@ -23,6 +23,7 @@ pub struct RegisterStartRequest {
     pub role: Option<String>,
     pub password: Option<String>,
     pub device_name: Option<String>,
+    pub team_invite_token: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,7 +104,21 @@ async fn register_start(
         return Err(ApiError::bad_request("display name cannot be empty"));
     }
 
-    let role = payload.role.as_deref().unwrap_or("device");
+    let invite_id = match payload.team_invite_token.as_deref() {
+        Some(token) if !token.trim().is_empty() => Some(
+            state
+                .teams
+                .active_teamspace_invite_id(token)
+                .await
+                .map_err(|_| ApiError::unauthorized("invalid Teamspace invite"))?,
+        ),
+        _ => None,
+    };
+    let role = if invite_id.is_some() {
+        "operator"
+    } else {
+        payload.role.as_deref().unwrap_or("device")
+    };
     let ua = extract_ua(&headers);
     if role == "root" && state.auth.root_exists().await? {
         return Err(ApiError::unauthorized("root already initialized"));
@@ -127,14 +142,36 @@ async fn register_start(
         crate::auth::RegisterStartResult::Challenge {
             challenge_id,
             options,
-        } => Ok(Json(RegisterStartResponse {
-            challenge_id: Some(challenge_id),
-            options: Some(serde_json::to_value(options)?),
-            user_id: None,
-            token: None,
-            role: None,
-        })),
+        } => {
+            if let Some(invite_id) = invite_id {
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_invite_registration_intents (challenge_id, invite_id, created_at)
+                    VALUES (?1, ?2, ?3)
+                    "#,
+                )
+                .bind(&challenge_id)
+                .bind(invite_id)
+                .bind(chrono::Utc::now().timestamp())
+                .execute(&state.db)
+                .await?;
+            }
+            Ok(Json(RegisterStartResponse {
+                challenge_id: Some(challenge_id),
+                options: Some(serde_json::to_value(options)?),
+                user_id: None,
+                token: None,
+                role: None,
+            }))
+        }
         crate::auth::RegisterStartResult::Complete { user_id, role } => {
+            if let Some(invite_id) = invite_id {
+                state
+                    .teams
+                    .accept_teamspace_invite_by_id(&invite_id, &user_id)
+                    .await
+                    .map_err(|_| ApiError::unauthorized("invalid Teamspace invite"))?;
+            }
             let token = state.auth.create_session(&user_id).await?;
             Ok(Json(RegisterStartResponse {
                 challenge_id: None,
@@ -159,6 +196,23 @@ async fn register_finish(
         .auth
         .register_finish(&payload.challenge_id, credential)
         .await?;
+    let invite_id = sqlx::query_scalar::<_, String>(
+        "SELECT invite_id FROM team_invite_registration_intents WHERE challenge_id = ?1",
+    )
+    .bind(&payload.challenge_id)
+    .fetch_optional(&state.db)
+    .await?;
+    if let Some(invite_id) = invite_id {
+        state
+            .teams
+            .accept_teamspace_invite_by_id(&invite_id, &user_id)
+            .await
+            .map_err(|_| ApiError::unauthorized("invalid Teamspace invite"))?;
+        sqlx::query("DELETE FROM team_invite_registration_intents WHERE challenge_id = ?1")
+            .bind(&payload.challenge_id)
+            .execute(&state.db)
+            .await?;
+    }
     let token = state.auth.create_session(&user_id).await?;
     let user = state.auth.get_user_by_id(&user_id).await?;
     Ok(Json(AuthFinishResponse {
