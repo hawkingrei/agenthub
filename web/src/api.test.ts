@@ -531,7 +531,8 @@ describe("api request headers", () => {
       body?: unknown;
     }> = [
       {
-        call: () => api.registerStart("root", "Root User", "root", "pw", "laptop"),
+        call: () =>
+          api.registerStart("root", "Root User", "root", "pw", "laptop", "invite-token"),
         url: "/api/auth/register/start",
         method: "POST",
         body: {
@@ -540,6 +541,7 @@ describe("api request headers", () => {
           role: "root",
           password: "pw",
           device_name: "laptop",
+          team_invite_token: "invite-token",
         },
       },
       {
@@ -658,6 +660,27 @@ describe("api request headers", () => {
         url: "/api/teams",
         method: "POST",
         body: { name: "Team One", spec: { members: [] } },
+      },
+      {
+        call: () => api.listTeamspaceMembers(token, teamId),
+        url: "/api/teams/team%2Fone/members",
+      },
+      {
+        call: () => api.revokeTeamspaceMember(token, teamId, "user/one"),
+        url: "/api/teams/team%2Fone/members/user%2Fone",
+        method: "DELETE",
+      },
+      {
+        call: () => api.createTeamspaceInvite(token, teamId, { role: "contributor" }),
+        url: "/api/teams/team%2Fone/invites",
+        method: "POST",
+        body: { role: "contributor" },
+      },
+      {
+        call: () => api.acceptTeamspaceInvite(token, "invite-token"),
+        url: "/api/teams/invites/accept",
+        method: "POST",
+        body: { token: "invite-token" },
       },
       {
         call: () => api.getTeam(token, teamId),

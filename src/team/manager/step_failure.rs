@@ -157,6 +157,9 @@ impl TeamManager {
         }
 
         tx.commit().await?;
+        if step.status == crate::team::TeamStepStatus::Failed {
+            self.release_step_execution(step_id).await?;
+        }
         self.spawn_archive_team_run_events(archive_events);
         Ok(step)
     }

@@ -10,6 +10,14 @@ impl TeamManager {
         step_id: &str,
         runtime_handle_id: Option<&str>,
     ) -> anyhow::Result<TeamStepRecord> {
+        let existing = self.get_step(step_id).await?;
+        if !matches!(
+            existing.status,
+            crate::team::TeamStepStatus::Submitted | crate::team::TeamStepStatus::InputRequired
+        ) {
+            return Ok(existing);
+        }
+        self.claim_step_execution(step_id, 300).await?;
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;
         let current = load_step_record_tx(&mut tx, step_id).await?;

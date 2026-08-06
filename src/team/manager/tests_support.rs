@@ -368,6 +368,62 @@ pub(super) async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
+        CREATE TABLE team_members (
+            team_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            created_by_user_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            revoked_at INTEGER,
+            PRIMARY KEY (team_id, user_id)
+        );
+        CREATE TABLE team_invites (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            token_digest TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL,
+            created_by_user_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            accepted_by_user_id TEXT,
+            accepted_at INTEGER,
+            revoked_at INTEGER
+        );
+        CREATE TABLE team_execution_claims (
+            entity_kind TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            owner_member_id TEXT NOT NULL,
+            lease_generation INTEGER NOT NULL,
+            claimed_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            released_at INTEGER,
+            PRIMARY KEY (entity_kind, entity_id)
+        );
+        CREATE TABLE team_invite_registration_intents (
+            challenge_id TEXT PRIMARY KEY,
+            invite_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE TABLE team_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id TEXT NOT NULL,
+            actor_user_id TEXT,
+            event_kind TEXT NOT NULL,
+            subject_kind TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            detail_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create Teamspace control-plane tables");
+
+    sqlx::query(
+        r#"
         CREATE UNIQUE INDEX idx_team_channel_bootstrap_unique
         ON team_tasks(
             team_id,

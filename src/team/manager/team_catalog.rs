@@ -28,6 +28,7 @@ impl TeamManager {
         let group_id = owner_user_id
             .map(str::trim)
             .filter(|value| !value.is_empty());
+        let mut tx = self.db.begin().await?;
         sqlx::query(
             r#"
             INSERT INTO team_definitions (
@@ -51,8 +52,24 @@ impl TeamManager {
         .bind(group_id)
         .bind(now)
         .bind(now)
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
+
+        if let Some(owner_user_id) = owner_user_id.filter(|value| !value.trim().is_empty()) {
+            sqlx::query(
+                r#"
+                INSERT INTO team_members (
+                    team_id, user_id, role, created_by_user_id, created_at, updated_at, revoked_at
+                ) VALUES (?1, ?2, 'owner', ?2, ?3, ?3, NULL)
+                "#,
+            )
+            .bind(&id)
+            .bind(owner_user_id)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
 
         Ok(TeamDefinitionRecord {
             id,

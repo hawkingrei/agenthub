@@ -609,6 +609,73 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS team_members (
+            team_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            created_by_user_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            revoked_at INTEGER,
+            PRIMARY KEY (team_id, user_id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS team_invites (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            token_digest TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL,
+            created_by_user_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            accepted_by_user_id TEXT,
+            accepted_at INTEGER,
+            revoked_at INTEGER,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id),
+            FOREIGN KEY(created_by_user_id) REFERENCES users(id),
+            FOREIGN KEY(accepted_by_user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS team_execution_claims (
+            entity_kind TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            owner_member_id TEXT NOT NULL,
+            lease_generation INTEGER NOT NULL,
+            claimed_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            released_at INTEGER,
+            PRIMARY KEY (entity_kind, entity_id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS team_invite_registration_intents (
+            challenge_id TEXT PRIMARY KEY,
+            invite_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(invite_id) REFERENCES team_invites(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS team_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id TEXT NOT NULL,
+            actor_user_id TEXT,
+            event_kind TEXT NOT NULL,
+            subject_kind TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            detail_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS team_conversations (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
@@ -910,6 +977,22 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .await
     {
         tracing::warn!("db init: failed to create idx_agent_nodes_name: {}", err);
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_members_user_active
+        ON team_members(user_id, team_id)
+        WHERE revoked_at IS NULL;
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_members_user_active: {}",
+            err
+        );
     }
 
     if let Err(err) = sqlx::query(

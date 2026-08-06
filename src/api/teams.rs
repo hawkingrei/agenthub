@@ -97,10 +97,35 @@ pub(crate) async fn load_team_for_user(
         .get_team(team_id)
         .await
         .map_err(|err| map_not_found_error(err, "team not found"))?;
-    if !team_owner_matches_user(&team, user) {
+    if !team_owner_matches_user(&team, user)
+        && !state.teams.is_teamspace_member(team_id, &user.id).await?
+    {
         return Err(ApiError::not_found("team not found"));
     }
     Ok(team)
+}
+
+async fn require_teamspace_role(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+    user: &UserRecord,
+    allowed_roles: &[&str],
+) -> Result<(), ApiError> {
+    if team_owner_matches_user(team, user) {
+        return Ok(());
+    }
+    let role = state
+        .teams
+        .teamspace_role_for_user(&team.id, &user.id)
+        .await?
+        .ok_or_else(|| ApiError::not_found("team not found"))?;
+    if allowed_roles.contains(&role.as_str()) {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden(
+            "Teamspace role cannot perform this action",
+        ))
+    }
 }
 
 fn sanitize_team_spec_for_response(spec: &mut Value) {
@@ -162,6 +187,29 @@ pub struct CreateTeamRequest {
 pub struct UpdateTeamSpecRequest {
     pub spec: Value,
     pub expected_updated_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTeamspaceInviteRequest {
+    pub role: String,
+    pub expires_in_seconds: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AcceptTeamspaceInviteRequest {
+    pub token: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HandoffTeamTaskRequest {
+    pub assigned_member_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateTeamspaceInviteResponse {
+    pub invite: crate::team::TeamspaceInviteRecord,
+    pub url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -538,6 +586,10 @@ pub fn router(state: AppState) -> Router {
         .route("/prompt_defaults", get(get_team_prompt_defaults))
         .route("/{id}", get(get_team).delete(delete_team))
         .route("/{id}/spec", put(update_team_spec))
+        .route("/{id}/members", get(list_teamspace_members))
+        .route("/{id}/members/{user_id}", delete(revoke_teamspace_member))
+        .route("/{id}/invites", post(create_teamspace_invite))
+        .route("/invites/accept", post(accept_teamspace_invite))
         .route("/{id}/members/adopt", post(adopt_existing_agent_to_team))
         .route("/{id}/members/move", post(move_existing_agent_to_team))
         .route("/{id}/runtime", get(get_team_runtime))
@@ -552,6 +604,7 @@ pub fn router(state: AppState) -> Router {
             post(force_new_session_for_team_member),
         )
         .route("/{id}/tasks", get(list_team_tasks))
+        .route("/{id}/tasks/{task_id}/handoff", post(handoff_team_task))
         .route(
             "/{id}/tasks/{task_id}",
             get(get_team_task).patch(update_team_task),
@@ -701,6 +754,7 @@ async fn update_team_spec(
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
     let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let current = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &current, &user, &["owner"]).await?;
     let previous_member_ids = parse_member_ids(current.spec.get("members"))?;
     let mut spec = payload.spec;
     normalize_team_spec(&mut spec)?;
@@ -733,6 +787,7 @@ async fn move_existing_agent_to_team(
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
     let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let current = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &current, &user, &["owner"]).await?;
     let agent_id = payload.agent_id.trim();
     if agent_id.is_empty() {
         return Err(ApiError::bad_request("agent_id is required"));
@@ -801,6 +856,7 @@ async fn adopt_existing_agent_to_team(
 ) -> Result<Json<AdoptExistingAgentResponse>, ApiError> {
     let _user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
     let current = load_team_for_user(&state, &team_id, &_user).await?;
+    require_teamspace_role(&state, &current, &_user, &["owner"]).await?;
     let source_id = payload.source_agent_id.trim();
     if source_id.is_empty() || payload.name.trim().is_empty() {
         return Err(ApiError::bad_request(
@@ -1006,6 +1062,7 @@ async fn start_team(
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
     let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner"]).await?;
     ensure_team_execution_ready(&team.spec)?;
     let runtime = ensure_team_runtime_started(state.agents.as_ref(), &team)
         .await
@@ -1020,6 +1077,7 @@ async fn stop_team(
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
     let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner"]).await?;
     let runtime = stop_team_runtime(state.agents.as_ref(), &team)
         .await
         .map_err(map_team_internal_error)?;
@@ -1075,6 +1133,7 @@ async fn force_new_session_for_team_member(
 ) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
     let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner"]).await?;
     ensure_team_execution_ready(&team.spec)?;
     let runtime = force_team_member_new_session(state.agents.as_ref(), &team, &member_id)
         .await
@@ -1089,13 +1148,91 @@ async fn list_teams(
     let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
     let teams = state
         .teams
-        .list_teams()
+        .list_teams_for_user(&user.id)
         .await?
         .into_iter()
-        .filter(|team| team_owner_matches_user(team, &user))
         .map(sanitize_team_definition_for_response)
         .collect::<Vec<_>>();
     Ok(Json(teams))
+}
+
+async fn list_teamspace_members(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+) -> Result<Json<Vec<crate::team::TeamspaceMemberRecord>>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    Ok(Json(state.teams.list_teamspace_members(&team_id).await?))
+}
+
+async fn revoke_teamspace_member(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, user_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner"]).await?;
+    if user_id.trim().is_empty() {
+        return Err(ApiError::bad_request("user_id cannot be empty"));
+    }
+    if user_id == user.id {
+        return Err(ApiError::bad_request(
+            "Teamspace owners cannot revoke themselves",
+        ));
+    }
+    state
+        .teams
+        .revoke_teamspace_member(&team_id, &user_id, &user.id)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(serde_json::json!({"status": "revoked"})))
+}
+
+async fn create_teamspace_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<CreateTeamspaceInviteRequest>,
+) -> Result<Json<CreateTeamspaceInviteResponse>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner"]).await?;
+    let expires_in_seconds = payload.expires_in_seconds.unwrap_or(7 * 24 * 60 * 60);
+    if !(60..=30 * 24 * 60 * 60).contains(&expires_in_seconds) {
+        return Err(ApiError::bad_request(
+            "invite expiry must be between 60 seconds and 30 days",
+        ));
+    }
+    let expires_at = chrono::Utc::now().timestamp() + expires_in_seconds;
+    let (invite, token) = state
+        .teams
+        .create_teamspace_invite(&team_id, &payload.role, &user.id, expires_at)
+        .await
+        .map_err(map_team_internal_error)?;
+    let base = state.auth.rp_origin();
+    Ok(Json(CreateTeamspaceInviteResponse {
+        invite,
+        url: format!("{}/join#{}", base.trim_end_matches('/'), token),
+    }))
+}
+
+async fn accept_teamspace_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AcceptTeamspaceInviteRequest>,
+) -> Result<Json<crate::team::TeamspaceMemberRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
+    if payload.token.trim().is_empty() {
+        return Err(ApiError::bad_request("invite token cannot be empty"));
+    }
+    let member = state
+        .teams
+        .accept_teamspace_invite(&payload.token, &user.id)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(member))
 }
 
 async fn get_team(
@@ -1189,7 +1326,8 @@ async fn ensure_team_shared_thread(
     Path(team_id): Path<String>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
     let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner", "planner"]).await?;
     let (task, conversation, latest_run) = state
         .teams
         .ensure_shared_thread_detail_for_team(&team_id, &canonical_user_actor_id(&user))
@@ -1253,7 +1391,8 @@ async fn create_team_task_from_channel_message(
         return Err(ApiError::bad_request("message_id must be positive"));
     }
     let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner", "planner"]).await?;
     let channel_id = channel_id.trim().to_lowercase();
     if channel_id.is_empty() {
         return Err(ApiError::bad_request("channel_id is required"));
@@ -1579,6 +1718,36 @@ async fn update_team_task(
     Err(ApiError::forbidden(error_message))
 }
 
+async fn handoff_team_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id)): Path<(String, String)>,
+    Json(payload): Json<HandoffTeamTaskRequest>,
+) -> Result<Json<TeamTaskRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner"]).await?;
+    let existing = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if existing.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    let task = state
+        .teams
+        .handoff_task_execution(
+            &task_id,
+            &payload.assigned_member_id,
+            &user.id,
+            &payload.reason,
+        )
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(task))
+}
+
 async fn send_team_task_message(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1837,6 +2006,7 @@ async fn create_team_run(
 ) -> Result<Json<TeamRunRecord>, ApiError> {
     let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner", "planner"]).await?;
     ensure_team_execution_ready(&team.spec)?;
     let run = state
         .teams

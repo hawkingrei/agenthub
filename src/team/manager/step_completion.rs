@@ -157,6 +157,9 @@ impl TeamManager {
         }
 
         tx.commit().await?;
+        if step.status == crate::team::TeamStepStatus::Completed {
+            self.release_step_execution(step_id).await?;
+        }
         self.spawn_archive_team_run_events(archive_events);
         if let Some(plan) = runtime_state_snapshot {
             Self::write_runtime_state_snapshot_best_effort(plan).await?;

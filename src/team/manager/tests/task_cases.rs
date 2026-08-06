@@ -1,4 +1,5 @@
 use super::*;
+use crate::team::{TeamTaskCreateInput, TeamTaskPriority};
 
 #[tokio::test]
 async fn task_status_updates_are_persisted() {
@@ -40,6 +41,127 @@ async fn task_status_updates_are_persisted() {
         .expect("reload updated task");
     assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
     assert_eq!(reloaded.assigned_member_id, None);
+}
+
+#[tokio::test]
+async fn teamspace_invite_is_single_use_and_task_claim_is_single_owner() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "teamspace-control".to_string(),
+                description: None,
+                spec: json!({"members":[
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
+                ]}),
+            },
+            Some("owner-user"),
+        )
+        .await
+        .expect("create Teamspace");
+    let (invite, token) = manager
+        .create_teamspace_invite(
+            &team.id,
+            "contributor",
+            "owner-user",
+            chrono::Utc::now().timestamp() + 60,
+        )
+        .await
+        .expect("create invite");
+    assert_eq!(invite.role, "contributor");
+
+    let member = manager
+        .accept_teamspace_invite(&token, "invited-user")
+        .await
+        .expect("accept invite");
+    assert_eq!(member.user_id, "invited-user");
+    assert!(
+        manager
+            .is_teamspace_member(&team.id, "invited-user")
+            .await
+            .expect("check member")
+    );
+    assert!(
+        manager
+            .accept_teamspace_invite(&token, "another-user")
+            .await
+            .is_err()
+    );
+    manager
+        .revoke_teamspace_member(&team.id, "invited-user", "owner-user")
+        .await
+        .expect("revoke member");
+    assert!(
+        !manager
+            .is_teamspace_member(&team.id, "invited-user")
+            .await
+            .expect("revoked member loses access")
+    );
+    assert!(
+        manager
+            .revoke_teamspace_member(&team.id, "owner-user", "owner-user")
+            .await
+            .is_err()
+    );
+
+    let (task, _) = manager
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &team.id,
+            title: "owned work",
+            created_by_actor_id: "coordinator",
+            priority: TeamTaskPriority::Medium,
+            assigned_member_id: Some("worker-1"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: None,
+        })
+        .await
+        .expect("create assigned task");
+    manager
+        .update_task_status(&task.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("start task");
+    let claim = manager
+        .claim_task_execution(&task.id, "worker-1", 60)
+        .await
+        .expect("claim task");
+    assert_eq!(claim.lease_generation, 1);
+    assert!(
+        manager
+            .claim_task_execution(&task.id, "worker-1", 60)
+            .await
+            .is_err()
+    );
+    assert!(
+        manager
+            .claim_task_execution(&task.id, "worker-2", 60)
+            .await
+            .is_err()
+    );
+
+    let handed_off = manager
+        .handoff_task_execution(
+            &task.id,
+            "worker-2",
+            "owner-user",
+            "worker-1 is unavailable",
+        )
+        .await
+        .expect("handoff task");
+    assert_eq!(handed_off.assigned_member_id.as_deref(), Some("worker-2"));
+    let replacement_claim = manager
+        .claim_task_execution(&task.id, "worker-2", 60)
+        .await
+        .expect("replacement owner can claim task");
+    assert_eq!(replacement_claim.lease_generation, 2);
+    assert!(
+        manager
+            .claim_task_execution(&task.id, "worker-1", 60)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

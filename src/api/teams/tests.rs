@@ -46,31 +46,33 @@ use sha2::{Digest, Sha256};
 use crate::api::authz::require_user;
 
 use super::{
-    AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
-    CreateTeamChannelRequest, CreateTeamRequest, CreateTeamRunRequest, CreateTeamTaskRequest,
-    EscalateTeamRunMessageRequest, FailTeamRunStepRequest, FlushTeamRunContextRequest,
-    ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery, ListTeamTaskMessagesQuery,
-    ListTeamTasksQuery, ReplyTeamThreadRequest, ResumeTeamRunStepRequest, SearchTeamMessagesQuery,
+    AcceptTeamspaceInviteRequest, AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest,
+    CompleteTeamRunStepRequest, CreateTeamChannelRequest, CreateTeamRequest, CreateTeamRunRequest,
+    CreateTeamTaskRequest, CreateTeamspaceInviteRequest, EscalateTeamRunMessageRequest,
+    FailTeamRunStepRequest, FlushTeamRunContextRequest, ListTeamRunEventsQuery,
+    ListTeamRunInboxQuery, ListTeamRunsQuery, ListTeamTaskMessagesQuery, ListTeamTasksQuery,
+    ReplyTeamThreadRequest, ResumeTeamRunStepRequest, SearchTeamMessagesQuery,
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TakeoverTeamRunMessageRequest,
     TeamDownloadRequest, TeamMemberSpec, TeamMessageSearchHitResponse, TeamRunSnapshotQuery,
     TeamTaskDetailResponse, TeamUploadRequest, TransferTeamRunMessageRequest,
     TriageTeamRunMessageRequest, UpdateTeamSpecRequest, UpdateTeamTaskRequest,
-    ack_team_run_message, cancel_team_run, compile_team_task_run_preview, complete_team_run_step,
-    create_team, create_team_channel, create_team_run, delete_team, delete_team_channel,
-    download_team_object, download_team_task_object, ensure_team_shared_thread,
-    escalate_team_run_message, fail_team_run_step, flush_team_run_context,
-    force_new_session_for_team_member, get_team, get_team_run, get_team_run_snapshot,
-    get_team_runtime, get_team_shared_thread, get_team_task, hex_encode, list_team_channels,
-    list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
-    list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
+    accept_teamspace_invite, ack_team_run_message, cancel_team_run, compile_team_task_run_preview,
+    complete_team_run_step, create_team, create_team_channel, create_team_run,
+    create_teamspace_invite, delete_team, delete_team_channel, download_team_object,
+    download_team_task_object, ensure_team_shared_thread, escalate_team_run_message,
+    fail_team_run_step, flush_team_run_context, force_new_session_for_team_member, get_team,
+    get_team_run, get_team_run_snapshot, get_team_runtime, get_team_shared_thread, get_team_task,
+    hex_encode, list_team_channels, list_team_run_events, list_team_run_inbox, list_team_run_steps,
+    list_team_runs, list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
     map_team_internal_error, normalize_conversation_mode, normalize_task_created_by_actor_id,
     normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, restart_team_run,
-    resume_team_run, resume_team_run_step, search_team_messages, send_team_run_message,
-    send_team_task_message, set_team_run_step_input_required, start_team, start_team_run_step,
-    stop_team, submit_team_run_step, takeover_team_run_message, transfer_team_run_message,
-    triage_team_run_message, update_team_spec, update_team_task, upload_team_image,
-    upload_team_object, upload_team_task_image, upload_team_task_object, validate_team_spec,
+    resume_team_run, resume_team_run_step, revoke_teamspace_member, search_team_messages,
+    send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
+    start_team_run_step, stop_team, submit_team_run_step, takeover_team_run_message,
+    transfer_team_run_message, triage_team_run_message, update_team_spec, update_team_task,
+    upload_team_image, upload_team_object, upload_team_task_image, upload_team_task_object,
+    validate_team_spec,
 };
 
 #[derive(Default)]
@@ -880,6 +882,62 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE team_members (
+            team_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            created_by_user_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            revoked_at INTEGER,
+            PRIMARY KEY (team_id, user_id)
+        );
+        CREATE TABLE team_invites (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            token_digest TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL,
+            created_by_user_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            accepted_by_user_id TEXT,
+            accepted_at INTEGER,
+            revoked_at INTEGER
+        );
+        CREATE TABLE team_execution_claims (
+            entity_kind TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            owner_member_id TEXT NOT NULL,
+            lease_generation INTEGER NOT NULL,
+            claimed_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            released_at INTEGER,
+            PRIMARY KEY (entity_kind, entity_id)
+        );
+        CREATE TABLE team_invite_registration_intents (
+            challenge_id TEXT PRIMARY KEY,
+            invite_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE TABLE team_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id TEXT NOT NULL,
+            actor_user_id TEXT,
+            event_kind TEXT NOT NULL,
+            subject_kind TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            detail_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create Teamspace control-plane tables");
+
+    sqlx::query(
+        r#"
         CREATE UNIQUE INDEX idx_team_channel_bootstrap_unique
         ON team_tasks(
             team_id,
@@ -1501,6 +1559,95 @@ async fn decode_json_body(response: axum::response::Response) -> Value {
         .await
         .expect("read response body");
     serde_json::from_slice(&bytes).expect("decode json response")
+}
+
+#[tokio::test]
+async fn teamspace_invite_grants_member_visibility_once() {
+    let state = build_test_state().await;
+    let owner_token = create_auth_token(&state).await;
+    let Json(team) = create_team(
+        State(state.clone()),
+        auth_headers_for_token(&owner_token),
+        Json(CreateTeamRequest {
+            name: "invite-teamspace".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create Teamspace");
+
+    let Json(created_invite) = create_teamspace_invite(
+        State(state.clone()),
+        auth_headers_for_token(&owner_token),
+        Path(team.id.clone()),
+        Json(CreateTeamspaceInviteRequest {
+            role: "observer".to_string(),
+            expires_in_seconds: Some(60),
+        }),
+    )
+    .await
+    .expect("create invite");
+    let token = created_invite.url.rsplit('#').next().expect("invite token");
+
+    let member_token = create_auth_token_with_role(&state, UserRole::Operator).await;
+    let Json(member) = accept_teamspace_invite(
+        State(state.clone()),
+        auth_headers_for_token(&member_token),
+        Json(AcceptTeamspaceInviteRequest {
+            token: token.to_string(),
+        }),
+    )
+    .await
+    .expect("accept invite");
+    assert_eq!(member.team_id, team.id);
+    assert_eq!(member.role, "observer");
+
+    let Json(visible) = list_teams(State(state.clone()), auth_headers_for_token(&member_token))
+        .await
+        .expect("list visible teams");
+    assert!(visible.iter().any(|candidate| candidate.id == team.id));
+    assert!(
+        create_teamspace_invite(
+            State(state.clone()),
+            auth_headers_for_token(&member_token),
+            Path(team.id.clone()),
+            Json(CreateTeamspaceInviteRequest {
+                role: "contributor".to_string(),
+                expires_in_seconds: Some(60),
+            }),
+        )
+        .await
+        .is_err()
+    );
+    let Json(revoked) = revoke_teamspace_member(
+        State(state.clone()),
+        auth_headers_for_token(&owner_token),
+        Path((team.id.clone(), member.user_id.clone())),
+    )
+    .await
+    .expect("owner revokes observer");
+    assert_eq!(revoked["status"], "revoked");
+    let Json(visible_after_revoke) =
+        list_teams(State(state.clone()), auth_headers_for_token(&member_token))
+            .await
+            .expect("list teams after revocation");
+    assert!(
+        !visible_after_revoke
+            .iter()
+            .any(|candidate| candidate.id == team.id)
+    );
+    assert!(
+        accept_teamspace_invite(
+            State(state),
+            auth_headers_for_token(&member_token),
+            Json(AcceptTeamspaceInviteRequest {
+                token: token.to_string(),
+            }),
+        )
+        .await
+        .is_err()
+    );
 }
 
 #[cfg(feature = "object-store-s3")]

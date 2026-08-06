@@ -334,6 +334,26 @@ export type TeamDefinitionRecord = {
   updated_at: number;
 };
 
+export type TeamspaceMemberRecord = {
+  team_id: string;
+  user_id: string;
+  role: "owner" | "planner" | "contributor" | "observer";
+  created_by_user_id?: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+export type TeamspaceInviteRecord = {
+  id: string;
+  team_id: string;
+  role: "owner" | "planner" | "contributor" | "observer";
+  created_by_user_id: string;
+  created_at: number;
+  expires_at: number;
+  accepted_at?: number | null;
+  revoked_at?: number | null;
+};
+
 export type TeamChannelRecord = {
   team_id: string;
   channel_id: string;
@@ -842,11 +862,19 @@ export const api = {
     display_name: string,
     role?: string,
     password?: string,
-    device_name?: string
+    device_name?: string,
+    team_invite_token?: string
   ) =>
     apiFetch<AuthStartResponse>("/api/auth/register/start", null, {
       method: "POST",
-      body: JSON.stringify({ username, display_name, role, password, device_name }),
+      body: JSON.stringify({
+        username,
+        display_name,
+        role,
+        password,
+        device_name,
+        team_invite_token,
+      }),
     }),
   registerFinish: (challenge_id: string, credential: unknown) =>
     apiFetch<AuthFinishResponse>("/api/auth/register/finish", null, {
@@ -966,6 +994,29 @@ export const api = {
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}/spec`, token, {
       method: "PUT",
       body: JSON.stringify(payload),
+    }),
+  listTeamspaceMembers: (token: string, id: string) =>
+    apiFetch<TeamspaceMemberRecord[]>(`/api/teams/${encodePathSegment(id)}/members`, token),
+  revokeTeamspaceMember: (token: string, teamId: string, userId: string) =>
+    apiFetch<{ status: "revoked" }>(
+      `/api/teams/${encodePathSegment(teamId)}/members/${encodePathSegment(userId)}`,
+      token,
+      { method: "DELETE" }
+    ),
+  createTeamspaceInvite: (
+    token: string,
+    id: string,
+    payload: { role: TeamspaceInviteRecord["role"]; expires_in_seconds?: number }
+  ) =>
+    apiFetch<{ invite: TeamspaceInviteRecord; url: string }>(
+      `/api/teams/${encodePathSegment(id)}/invites`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  acceptTeamspaceInvite: (token: string, inviteToken: string) =>
+    apiFetch<TeamspaceMemberRecord>("/api/teams/invites/accept", token, {
+      method: "POST",
+      body: JSON.stringify({ token: inviteToken }),
     }),
   adoptExistingAgentToTeam: (
     token: string,
@@ -1102,6 +1153,17 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(payload),
       }
+    ),
+  handoffTeamTask: (
+    token: string,
+    teamId: string,
+    taskId: string,
+    payload: { assigned_member_id: string; reason: string }
+  ) =>
+    apiFetch<TeamTaskRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}/handoff`,
+      token,
+      { method: "POST", body: JSON.stringify(payload) }
     ),
   sendTeamTaskMessage: (
     token: string,
