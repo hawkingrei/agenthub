@@ -49,6 +49,7 @@ fn parse_invite(row: &sqlx::sqlite::SqliteRow) -> TeamspaceInviteRecord {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn append_audit_event(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     team_id: &str,
@@ -343,7 +344,7 @@ impl TeamManager {
             FROM team_definitions AS td
             LEFT JOIN team_members AS tm
               ON tm.team_id = td.id AND tm.user_id = ?1 AND tm.revoked_at IS NULL
-            WHERE td.owner_user_id = ?1 OR tm.user_id IS NOT NULL
+            WHERE td.owner_user_id IS NULL OR td.owner_user_id = ?1 OR tm.user_id IS NOT NULL
             ORDER BY td.created_at DESC
             "#,
         )
