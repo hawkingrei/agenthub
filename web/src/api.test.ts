@@ -745,6 +745,19 @@ describe("api request headers", () => {
       },
       {
         call: () =>
+          api.handoffTeamTask(token, teamId, taskId, {
+            assigned_member_id: "member-2",
+            reason: "Reassigned by the owner",
+          }),
+        url: "/api/teams/team%2Fone/tasks/task%2Fone/handoff",
+        method: "POST",
+        body: {
+          assigned_member_id: "member-2",
+          reason: "Reassigned by the owner",
+        },
+      },
+      {
+        call: () =>
           api.sendTeamTaskMessage(token, teamId, taskId, {
             payload: { type: "chat_message", text: "hello" },
           }),

@@ -7,12 +7,24 @@ import {
   renderWithMantine,
 } from "../test_utils/react_test_helpers";
 
-const { joinStart, joinFinish, registerStart, acceptTeamspaceInvite, ensurePushSubscription } = vi.hoisted(() => ({
+const {
+  joinStart,
+  joinFinish,
+  registerStart,
+  registerFinish,
+  acceptTeamspaceInvite,
+  ensurePushSubscription,
+  publicKeyCredentialCreationOptionsFromJson,
+  registerCredentialToJson,
+} = vi.hoisted(() => ({
   joinStart: vi.fn(),
   joinFinish: vi.fn(),
   registerStart: vi.fn(),
+  registerFinish: vi.fn(),
   acceptTeamspaceInvite: vi.fn(),
   ensurePushSubscription: vi.fn().mockResolvedValue(undefined),
+  publicKeyCredentialCreationOptionsFromJson: vi.fn(),
+  registerCredentialToJson: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
@@ -20,6 +32,7 @@ vi.mock("../api", () => ({
     joinStart,
     joinFinish,
     registerStart,
+    registerFinish,
     acceptTeamspaceInvite,
   },
   parseApiErrorMessage: (err: unknown) => {
@@ -61,8 +74,8 @@ vi.mock("../push", () => ({
 }));
 
 vi.mock("../webauthn", () => ({
-  publicKeyCredentialCreationOptionsFromJson: vi.fn(),
-  registerCredentialToJson: vi.fn(),
+  publicKeyCredentialCreationOptionsFromJson,
+  registerCredentialToJson,
 }));
 
 vi.mock("../storage/safe_storage", () => ({
@@ -85,6 +98,21 @@ function clickByText(container: HTMLElement, text: string) {
   });
 }
 
+function setInputValue(container: HTMLElement, id: string, value: string) {
+  const input = container.querySelector<HTMLInputElement>(`#${id}`);
+  if (!input) {
+    throw new Error(`input not found: ${id}`);
+  }
+  act(() => {
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value"
+    )?.set;
+    valueSetter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 describe("JoinPage error handling", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -93,8 +121,11 @@ describe("JoinPage error handling", () => {
     joinStart.mockReset();
     joinFinish.mockReset();
     registerStart.mockReset();
+    registerFinish.mockReset();
     acceptTeamspaceInvite.mockReset();
     ensurePushSubscription.mockClear();
+    publicKeyCredentialCreationOptionsFromJson.mockReset();
+    registerCredentialToJson.mockReset();
     window.history.pushState({}, "", "/join?token=test-token");
 
     container = document.createElement("div");
@@ -194,6 +225,97 @@ describe("JoinPage error handling", () => {
     });
   });
 
+  it("finishes Teamspace registration through WebAuthn when required", async () => {
+    const onComplete = vi.fn();
+    const credential = {} as PublicKeyCredential;
+    const createCredential = vi.fn().mockResolvedValue(credential);
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: { create: createCredential },
+    });
+    window.history.pushState({}, "", "/join#teamspace-token");
+    registerStart.mockResolvedValueOnce({
+      challenge_id: "challenge-1",
+      options: { publicKey: {} },
+    });
+    publicKeyCredentialCreationOptionsFromJson.mockReturnValueOnce({});
+    registerCredentialToJson.mockReturnValueOnce({ id: "credential-1" });
+    registerFinish.mockResolvedValueOnce({
+      user_id: "team-user-id",
+      token: "team-session-token",
+      role: "contributor",
+    });
+
+    await act(async () => {
+      renderWithMantine(root, <JoinPage auth={null} onComplete={onComplete} />);
+      await Promise.resolve();
+    });
+
+    setInputValue(container, "teamspace-username", "new-user");
+    setInputValue(container, "teamspace-display-name", "New User");
+    setInputValue(container, "teamspace-password", "secret");
+    await act(async () => {
+      clickByText(container, "Join Teamspace");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(registerFinish).toHaveBeenCalledWith("challenge-1", { id: "credential-1" });
+    expect(onComplete).toHaveBeenCalledWith({
+      userId: "team-user-id",
+      token: "team-session-token",
+      username: "new-user",
+      role: "contributor",
+    });
+  });
+
+  it("shows a normalized error when accepting a Teamspace invite fails", async () => {
+    window.history.pushState({}, "", "/join#teamspace-token");
+    acceptTeamspaceInvite.mockRejectedValueOnce(new Error('{"error":"invite expired"}'));
+
+    await act(async () => {
+      renderWithMantine(
+        root,
+        <JoinPage
+          auth={{
+            token: "existing-session",
+            userId: "existing-user",
+            username: "existing",
+            role: "operator",
+          }}
+          onComplete={() => {}}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      clickByText(container, "Join as existing");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("invite expired");
+  });
+
+  it("shows a normalized error when Teamspace registration fails", async () => {
+    window.history.pushState({}, "", "/join#teamspace-token");
+    registerStart.mockRejectedValueOnce(new Error('{"error":"invite expired"}'));
+
+    await act(async () => {
+      renderWithMantine(root, <JoinPage auth={null} onComplete={() => {}} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      clickByText(container, "Join Teamspace");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("invite expired");
+  });
+
   it("accepts a Teamspace invite with an existing local account", async () => {
     window.history.pushState({}, "", "/join#teamspace-token");
     acceptTeamspaceInvite.mockResolvedValueOnce({
@@ -226,5 +348,16 @@ describe("JoinPage error handling", () => {
     });
 
     expect(acceptTeamspaceInvite).toHaveBeenCalledWith("existing-session", "teamspace-token");
+  });
+
+  it("falls back to the device join form when the invite fragment is malformed", async () => {
+    window.history.pushState({}, "", "/join?token=test-token#%E0%A4%A");
+
+    await act(async () => {
+      renderWithMantine(root, <JoinPage auth={null} onComplete={() => {}} />);
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Join Device");
   });
 });
