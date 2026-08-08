@@ -45,7 +45,7 @@ mod release_feature_tests {
     const TODO_MD: &str = include_str!("../docs/todo.md");
 
     #[test]
-    fn object_store_s3_stays_out_of_default_and_release_feature_sets() {
+    fn official_release_includes_opendal_s3_without_changing_defaults() {
         let root_manifest: Value = toml::from_str(ROOT_CARGO_TOML).expect("parse root Cargo.toml");
         let object_store_manifest: Value =
             toml::from_str(OBJECT_STORE_CARGO_TOML).expect("parse object-store Cargo.toml");
@@ -80,25 +80,38 @@ mod release_feature_tests {
         ] {
             assert!(
                 !workflow.contains("--all-features"),
-                "{name} must not use --all-features in release builds while S3 is opt-in"
+                "{name} must keep the reviewed release feature closure explicit"
+            );
+            let feature_rows = workflow
+                .lines()
+                .map(str::trim)
+                .filter_map(|line| line.strip_prefix("agenthub_features:"))
+                .collect::<Vec<_>>();
+            assert!(
+                !feature_rows.is_empty(),
+                "{name} must declare at least one agenthub release feature row"
             );
             assert!(
-                !workflow.contains("object-store-s3"),
-                "{name} must not include object-store-s3 in release feature sets until reviewed"
+                feature_rows.iter().all(|features| {
+                    features
+                        .split(',')
+                        .map(str::trim)
+                        .any(|feature| feature == "object-store-s3")
+                }),
+                "{name} must compile OpenDAL S3 support into every agenthub release artifact"
             );
             assert!(
                 !workflow.contains("agenthub-object-store/s3"),
-                "{name} must not enable the object-store S3 crate feature directly"
+                "{name} must enable S3 through the root object-store-s3 feature"
             );
         }
         assert!(
-            TODO_MD
-                .contains("- [ ] `P1` Keep `agenthub-object-store/s3` out of release feature sets"),
-            "keep the S3 release-intent TODO open until a reviewed release build intentionally includes S3"
+            TODO_MD.contains("- [ ] `P1` Verify OpenDAL S3 release artifacts"),
+            "keep the official artifact validation tail explicit"
         );
         assert!(
-            TODO_MD.contains("remaining work is the future reviewed release-build decision"),
-            "TODO should retain the reviewed release-build decision as the remaining S3 gate"
+            TODO_MD.contains("runtime default remains `fs`"),
+            "TODO should preserve the runtime default boundary"
         );
     }
 

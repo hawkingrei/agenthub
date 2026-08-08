@@ -600,7 +600,7 @@ mod tests {
 
     #[cfg(feature = "s3")]
     #[tokio::test]
-    async fn s3_compatible_store_writes_reads_and_deletes_bytes() {
+    async fn s3_compatible_store_exercises_bytes_and_hosted_images() {
         let Some(settings) = s3_fixture_settings_from_env() else {
             eprintln!("skipping s3 fixture: AGENTHUB_OBJECT_STORE_S3_TEST_* env is not set");
             return;
@@ -659,6 +659,12 @@ mod tests {
         assert!(
             !store
                 .exists("uploads/teams/team-1/report.json")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !store
+                .exists("images/agents/agent-1/image-1.png")
                 .await
                 .unwrap()
         );

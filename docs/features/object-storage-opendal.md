@@ -11,7 +11,8 @@ for multi-node operation, cleanup, access checks, or remote upload flows.
 
 - A repository-owned object storage abstraction backed by Apache OpenDAL.
 - A default local filesystem backend for development and single-node installs.
-- An optional S3-compatible backend for AWS S3, Cloudflare R2, MinIO, and similar providers.
+- A runtime-selected S3-compatible backend implemented through Apache OpenDAL for AWS S3,
+  Cloudflare R2, MinIO, and similar providers.
 - Secret-free configuration shape for object store endpoints, buckets, prefixes, and credential
   environment variable references.
 - Stable key, checksum, metadata, image-hosting, and publish/link rules that future file upload APIs
@@ -39,9 +40,10 @@ Object storage is split into two planes:
 
 The first implementation adds `agenthub-object-store` as a focused crate. It owns key validation,
 prefix joining, OpenDAL operator construction, byte writes, reads, deletes, existence checks, and
-SHA-256/size reporting. The crate defaults to OpenDAL `fs`; S3 support is compiled behind the crate
-`s3` feature so normal local and Bazel builds do not pull S3-only dependencies unless the release
-profile asks for them.
+SHA-256/size reporting. The crate defaults to OpenDAL `fs`; official release and prebuild artifacts
+compile the root `object-store-s3` feature, which enables OpenDAL `services-s3` and its HTTP
+transport without exposing backend-specific clients to callers. Default local and Bazel builds keep
+the feature disabled, and the runtime backend remains `fs` until configuration selects `s3`.
 
 Configuration lives under `[object_store]`:
 
@@ -204,7 +206,7 @@ operations must still authorize against the Team-owned metadata row.
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
 | S3-compatible fixture | A MinIO-backed CI job runs `agenthub-object-store` with the `s3` feature and verifies write/read/exists/delete plus hosted-image URL behavior against a real S3-compatible endpoint. |
-| Future S3 rollout | Keep S3 out of release feature sets until the MinIO fixture is green in PR and push CI and one reviewed release build includes the feature intentionally. Local regression tests parse the root and object-store manifests and release workflows so default/release feature sets cannot accidentally enable S3 or use `--all-features`. |
+| S3 release closure | Official release and prebuild matrices explicitly compile the root `object-store-s3` feature for every `agenthub` artifact while keeping runtime defaults on `fs`. Local regression tests parse the root and object-store manifests and release workflows so S3 remains explicit and release builds cannot use `--all-features`. A reviewed release artifact and provider-specific compatibility evidence remain required before describing a provider as production-certified. |
 
 ## Operational Notes
 
@@ -251,3 +253,4 @@ operations must still authorize against the Team-owned metadata row.
 
 - [2026-07-16-object-storage-opendal.md](../journal/2026-07-16-object-storage-opendal.md)
 - [2026-07-22-object-storage-download-ingest.md](../journal/2026-07-22-object-storage-download-ingest.md)
+- [2026-08-08-object-store-s3-release-enablement.md](../journal/2026-08-08-object-store-s3-release-enablement.md)
