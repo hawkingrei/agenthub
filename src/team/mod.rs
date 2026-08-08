@@ -35,7 +35,7 @@ pub(crate) use manager::TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX;
 #[allow(unused_imports)]
 pub use manager::{
     SendActorMessageInput, TeamContextLookupError, TeamContextRecord, TeamConversationStreamEvent,
-    TeamExecutionClaimRecord, TeamManager, TeamMemoryFlushRequest,
+    TeamExecutionClaimRecord, TeamGoalForkRecord, TeamManager, TeamMemoryFlushRequest,
     TeamMessageArchiveMigrationReport, TeamRemoteRelayWorkerSettings, TeamReplyObligationRecord,
     TeamRunContextFingerprint, TeamRunContextStreamEvent, TeamRuntimeRecord, TeamRuntimeStatus,
     TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskCreateInput, TeamTaskListQuery,

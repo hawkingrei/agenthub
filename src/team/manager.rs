@@ -137,14 +137,14 @@ use self::manager_core::{TaskConversationMessageStoreError, hex_encode, is_row_n
 use self::manager_types::PreparedTeamTaskUpdate;
 pub use self::manager_types::{
     TeamContextLookupError, TeamContextRecord, TeamContextRunOverlayRecord,
-    TeamConversationStreamEvent, TeamExecutionClaimRecord, TeamMemberCardRecord,
-    TeamMemoryFlushRequest, TeamMemoryFlushResult, TeamMessageArchiveMigrationReport,
-    TeamPendingActorUnreadRecord, TeamReplyObligationRecord, TeamReplyObligationSummary,
-    TeamRunContextFingerprint, TeamRunContextStreamEvent, TeamRunMemberRecord,
-    TeamRunMemberStepRecord, TeamRunMembersRecord, TeamRuntimeMemberRecord, TeamRuntimeRecord,
-    TeamRuntimeStatus, TeamRuntimeSummaryRecord, TeamTaskAssignmentUpdate, TeamTaskContextPatch,
-    TeamTaskCreateInput, TeamTaskListQuery, TeamTaskNoteCreateInput, TeamTaskUpdateWithNoteInput,
-    TeamspaceInviteRecord, TeamspaceMemberRecord,
+    TeamConversationStreamEvent, TeamExecutionClaimRecord, TeamGoalForkRecord, TeamGoalLeaseRecord,
+    TeamMemberCardRecord, TeamMemoryFlushRequest, TeamMemoryFlushResult,
+    TeamMessageArchiveMigrationReport, TeamPendingActorUnreadRecord, TeamReplyObligationRecord,
+    TeamReplyObligationSummary, TeamRunContextFingerprint, TeamRunContextStreamEvent,
+    TeamRunMemberRecord, TeamRunMemberStepRecord, TeamRunMembersRecord, TeamRuntimeMemberRecord,
+    TeamRuntimeRecord, TeamRuntimeStatus, TeamRuntimeSummaryRecord, TeamTaskAssignmentUpdate,
+    TeamTaskContextPatch, TeamTaskCreateInput, TeamTaskListQuery, TeamTaskNoteCreateInput,
+    TeamTaskUpdateWithNoteInput, TeamspaceInviteRecord, TeamspaceMemberRecord,
 };
 use self::payload_utils::{
     filter_visible_team_runs, merge_json_value, redact_sensitive_json, resolve_task_context_patch,

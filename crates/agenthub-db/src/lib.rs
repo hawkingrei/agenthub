@@ -651,6 +651,40 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             FOREIGN KEY(team_id) REFERENCES team_definitions(id)
         );
 
+        CREATE TABLE IF NOT EXISTS team_goal_leases (
+            task_id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            owner_member_id TEXT NOT NULL,
+            lease_generation INTEGER NOT NULL CHECK(lease_generation > 0),
+            started_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            released_at INTEGER,
+            release_reason TEXT,
+            CHECK(expires_at > started_at),
+            FOREIGN KEY(task_id) REFERENCES team_tasks(id),
+            FOREIGN KEY(team_id) REFERENCES team_definitions(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS team_goal_forks (
+            id TEXT PRIMARY KEY,
+            parent_task_id TEXT NOT NULL,
+            parent_lease_generation INTEGER NOT NULL CHECK(parent_lease_generation > 0),
+            question TEXT NOT NULL,
+            acceptance_criteria TEXT NOT NULL,
+            result_schema_json TEXT NOT NULL,
+            profile TEXT NOT NULL CHECK(profile = 'read_only'),
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            result_json TEXT,
+            CHECK(expires_at > created_at),
+            CHECK(
+                (completed_at IS NULL AND result_json IS NULL)
+                OR (completed_at IS NOT NULL AND result_json IS NOT NULL)
+            ),
+            FOREIGN KEY(parent_task_id) REFERENCES team_tasks(id)
+        );
+
         CREATE TABLE IF NOT EXISTS team_invite_registration_intents (
             challenge_id TEXT PRIMARY KEY,
             invite_id TEXT NOT NULL,
@@ -977,6 +1011,35 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .await
     {
         tracing::warn!("db init: failed to create idx_agent_nodes_name: {}", err);
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_goal_leases_active_team
+        ON team_goal_leases(team_id, expires_at)
+        WHERE released_at IS NULL;
+        CREATE INDEX IF NOT EXISTS idx_team_goal_leases_active_member
+        ON team_goal_leases(team_id, owner_member_id, expires_at)
+        WHERE released_at IS NULL;
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!("db init: failed to create Team goal lease indexes: {}", err);
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_goal_forks_active_parent
+        ON team_goal_forks(parent_task_id, expires_at)
+        WHERE completed_at IS NULL;
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!("db init: failed to create Team goal fork index: {}", err);
     }
 
     if let Err(err) = sqlx::query(
@@ -3074,6 +3137,8 @@ mod tests {
                 'team_conversations',
                 'team_conversation_messages',
                 'team_actor_messages',
+                'team_goal_leases',
+                'team_goal_forks',
                 'team_member_continuity_state',
                 'team_context_artifacts',
                 'team_context_flush_checkpoint',
@@ -3086,7 +3151,7 @@ mod tests {
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 14);
+        assert_eq!(table_count, 16);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)

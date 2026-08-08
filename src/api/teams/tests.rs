@@ -29,7 +29,7 @@ use crate::push::PushService;
 use crate::state::AppState;
 use crate::team::{
     TeamActorMessageTransport, TeamDefinitionConfig, TeamManager, TeamTaskCreateInput,
-    TeamTaskPriority, force_team_member_new_session,
+    TeamTaskPriority, TeamTaskStatus, force_team_member_new_session,
 };
 use agenthub_auth_domain::UserRole;
 use agenthub_config::{AppConfig, ObjectStoreConfig, PushConfig, WebConfig};
@@ -47,32 +47,33 @@ use crate::api::authz::require_user;
 
 use super::{
     AcceptTeamspaceInviteRequest, AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest,
-    CompleteTeamRunStepRequest, CreateTeamChannelRequest, CreateTeamRequest, CreateTeamRunRequest,
-    CreateTeamTaskRequest, CreateTeamspaceInviteRequest, EscalateTeamRunMessageRequest,
-    FailTeamRunStepRequest, FlushTeamRunContextRequest, ListTeamRunEventsQuery,
-    ListTeamRunInboxQuery, ListTeamRunsQuery, ListTeamTaskMessagesQuery, ListTeamTasksQuery,
-    ReplyTeamThreadRequest, ResumeTeamRunStepRequest, SearchTeamMessagesQuery,
-    SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
-    StartTeamRunStepRequest, SubmitTeamRunStepRequest, TakeoverTeamRunMessageRequest,
-    TeamDownloadRequest, TeamMemberSpec, TeamMessageSearchHitResponse, TeamRunSnapshotQuery,
-    TeamTaskDetailResponse, TeamUploadRequest, TransferTeamRunMessageRequest,
-    TriageTeamRunMessageRequest, UpdateTeamSpecRequest, UpdateTeamTaskRequest,
-    accept_teamspace_invite, ack_team_run_message, cancel_team_run, compile_team_task_run_preview,
-    complete_team_run_step, create_team, create_team_channel, create_team_run,
-    create_teamspace_invite, delete_team, delete_team_channel, download_team_object,
-    download_team_task_object, ensure_team_shared_thread, escalate_team_run_message,
-    fail_team_run_step, flush_team_run_context, force_new_session_for_team_member, get_team,
-    get_team_run, get_team_run_snapshot, get_team_runtime, get_team_shared_thread, get_team_task,
-    hex_encode, list_team_channels, list_team_run_events, list_team_run_inbox, list_team_run_steps,
-    list_team_runs, list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
-    map_team_internal_error, normalize_conversation_mode, normalize_task_created_by_actor_id,
-    normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, restart_team_run,
-    resume_team_run, resume_team_run_step, revoke_teamspace_member, search_team_messages,
-    send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
-    start_team_run_step, stop_team, submit_team_run_step, takeover_team_run_message,
-    transfer_team_run_message, triage_team_run_message, update_team_spec, update_team_task,
-    upload_team_image, upload_team_object, upload_team_task_image, upload_team_task_object,
-    validate_team_spec,
+    CompleteGoalForkRequest, CompleteTeamRunStepRequest, CreateGoalForkRequest,
+    CreateTeamChannelRequest, CreateTeamRequest, CreateTeamRunRequest, CreateTeamTaskRequest,
+    CreateTeamspaceInviteRequest, EscalateTeamRunMessageRequest, FailTeamRunStepRequest,
+    FlushTeamRunContextRequest, ListTeamRunEventsQuery, ListTeamRunInboxQuery, ListTeamRunsQuery,
+    ListTeamTaskMessagesQuery, ListTeamTasksQuery, ReplyTeamThreadRequest,
+    ResumeTeamRunStepRequest, SearchTeamMessagesQuery, SendTeamRunMessageRequest,
+    SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest, StartTeamRunStepRequest,
+    SubmitTeamRunStepRequest, TakeoverTeamRunMessageRequest, TeamDownloadRequest, TeamMemberSpec,
+    TeamMessageSearchHitResponse, TeamRunSnapshotQuery, TeamTaskDetailResponse, TeamUploadRequest,
+    TransferTeamRunMessageRequest, TriageTeamRunMessageRequest, UpdateTeamSpecRequest,
+    UpdateTeamTaskRequest, accept_teamspace_invite, ack_team_run_message, cancel_team_run,
+    compile_team_task_run_preview, complete_goal_fork, complete_team_run_step, create_goal_fork,
+    create_team, create_team_channel, create_team_run, create_teamspace_invite, delete_team,
+    delete_team_channel, download_team_object, download_team_task_object,
+    ensure_team_shared_thread, escalate_team_run_message, fail_team_run_step,
+    flush_team_run_context, force_new_session_for_team_member, get_team, get_team_run,
+    get_team_run_snapshot, get_team_runtime, get_team_shared_thread, get_team_task, hex_encode,
+    list_goal_forks, list_team_channels, list_team_run_events, list_team_run_inbox,
+    list_team_run_steps, list_team_runs, list_team_task_messages, list_team_tasks, list_teams,
+    load_team_for_user, map_team_internal_error, normalize_conversation_mode,
+    normalize_task_created_by_actor_id, normalize_team_spec, parse_message_archive_source_kind,
+    reply_team_thread, restart_team_run, resume_team_run, resume_team_run_step,
+    revoke_teamspace_member, search_team_messages, send_team_run_message, send_team_task_message,
+    set_team_run_step_input_required, start_team, start_team_run_step, stop_team,
+    submit_team_run_step, takeover_team_run_message, transfer_team_run_message,
+    triage_team_run_message, update_team_spec, update_team_task, upload_team_image,
+    upload_team_object, upload_team_task_image, upload_team_task_object, validate_team_spec,
 };
 
 #[derive(Default)]
@@ -909,11 +910,40 @@ async fn init_test_schema(db: &SqlitePool) {
             entity_id TEXT NOT NULL,
             team_id TEXT NOT NULL,
             owner_member_id TEXT NOT NULL,
-            lease_generation INTEGER NOT NULL,
+            lease_generation INTEGER NOT NULL CHECK(lease_generation > 0),
             claimed_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,
             released_at INTEGER,
             PRIMARY KEY (entity_kind, entity_id)
+        );
+        CREATE TABLE team_goal_leases (
+            task_id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            owner_member_id TEXT NOT NULL,
+            lease_generation INTEGER NOT NULL,
+            started_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            released_at INTEGER,
+            release_reason TEXT,
+            CHECK(expires_at > started_at)
+        );
+        CREATE TABLE team_goal_forks (
+            id TEXT PRIMARY KEY,
+            parent_task_id TEXT NOT NULL,
+            parent_lease_generation INTEGER NOT NULL CHECK(parent_lease_generation > 0),
+            question TEXT NOT NULL,
+            acceptance_criteria TEXT NOT NULL,
+            result_schema_json TEXT NOT NULL,
+            profile TEXT NOT NULL CHECK(profile = 'read_only'),
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            result_json TEXT,
+            CHECK(expires_at > created_at),
+            CHECK(
+                (completed_at IS NULL AND result_json IS NULL)
+                OR (completed_at IS NOT NULL AND result_json IS NOT NULL)
+            )
         );
         CREATE TABLE team_invite_registration_intents (
             challenge_id TEXT PRIMARY KEY,
@@ -1648,6 +1678,176 @@ async fn teamspace_invite_grants_member_visibility_once() {
         .await
         .is_err()
     );
+}
+
+#[tokio::test]
+async fn goal_fork_api_is_authorized_bounded_and_returns_parent_evidence() {
+    let state = build_test_state().await;
+    let owner_token = create_auth_token(&state).await;
+    let owner_headers = auth_headers_for_token(&owner_token);
+    let Json(team) = create_team(
+        State(state.clone()),
+        owner_headers.clone(),
+        Json(CreateTeamRequest {
+            name: "goal-fork-api".to_string(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
+        }),
+    )
+    .await
+    .expect("create Teamspace");
+    let (task, _) = state
+        .teams
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &team.id,
+            title: "research task",
+            created_by_actor_id: "planner",
+            priority: TeamTaskPriority::Medium,
+            assigned_member_id: Some("planner"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: None,
+        })
+        .await
+        .expect("create task");
+    state
+        .teams
+        .update_task_status(&task.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("start task");
+    state
+        .teams
+        .claim_task_execution(&task.id, "planner", 300)
+        .await
+        .expect("claim task goal");
+
+    let Json(fork) = create_goal_fork(
+        State(state.clone()),
+        owner_headers.clone(),
+        Path((team.id.clone(), task.id.clone())),
+        Json(CreateGoalForkRequest {
+            question: "Check the source".to_string(),
+            acceptance_criteria: "Return cited evidence".to_string(),
+            result_schema: Some(json!({"type":"object"})),
+            expires_in_seconds: Some(60),
+        }),
+    )
+    .await
+    .expect("create goal fork");
+    assert_eq!(fork.profile, "read_only");
+
+    let Json(invite) = create_teamspace_invite(
+        State(state.clone()),
+        owner_headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamspaceInviteRequest {
+            role: "observer".to_string(),
+            expires_in_seconds: Some(60),
+        }),
+    )
+    .await
+    .expect("create observer invite");
+    let invite_token = invite.url.rsplit('#').next().expect("invite token");
+    let observer_token = create_auth_token_with_role(&state, UserRole::Operator).await;
+    let observer_headers = auth_headers_for_token(&observer_token);
+    let Json(observer) = accept_teamspace_invite(
+        State(state.clone()),
+        observer_headers.clone(),
+        Json(AcceptTeamspaceInviteRequest {
+            token: invite_token.to_string(),
+        }),
+    )
+    .await
+    .expect("accept observer invite");
+    assert_eq!(observer.role, "observer");
+    let Json(observer_visible) = list_goal_forks(
+        State(state.clone()),
+        observer_headers.clone(),
+        Path((team.id.clone(), task.id.clone())),
+    )
+    .await
+    .expect("observer lists goal forks");
+    assert_eq!(observer_visible, vec![fork.clone()]);
+    let observer_create = create_goal_fork(
+        State(state.clone()),
+        observer_headers.clone(),
+        Path((team.id.clone(), task.id.clone())),
+        Json(CreateGoalForkRequest {
+            question: "Unauthorized mutation".to_string(),
+            acceptance_criteria: "Must be rejected".to_string(),
+            result_schema: None,
+            expires_in_seconds: Some(60),
+        }),
+    )
+    .await
+    .expect_err("observer cannot create goal forks")
+    .into_response();
+    assert_eq!(observer_create.status(), StatusCode::FORBIDDEN);
+    let observer_complete = complete_goal_fork(
+        State(state.clone()),
+        observer_headers,
+        Path((team.id.clone(), task.id.clone(), fork.id.clone())),
+        Json(CompleteGoalForkRequest {
+            result: json!({"summary":"unauthorized"}),
+        }),
+    )
+    .await
+    .expect_err("observer cannot complete goal forks")
+    .into_response();
+    assert_eq!(observer_complete.status(), StatusCode::FORBIDDEN);
+
+    let Json(forks) = list_goal_forks(
+        State(state.clone()),
+        owner_headers.clone(),
+        Path((team.id.clone(), task.id.clone())),
+    )
+    .await
+    .expect("list goal forks");
+    assert_eq!(forks, vec![fork.clone()]);
+    let unauthorized = list_goal_forks(
+        State(state.clone()),
+        HeaderMap::new(),
+        Path((team.id.clone(), task.id.clone())),
+    )
+    .await
+    .expect_err("fork state requires authentication")
+    .into_response();
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+    let Json(completed) = complete_goal_fork(
+        State(state.clone()),
+        owner_headers.clone(),
+        Path((team.id.clone(), task.id.clone(), fork.id.clone())),
+        Json(CompleteGoalForkRequest {
+            result: json!({"summary":"Source confirms the behavior"}),
+        }),
+    )
+    .await
+    .expect("complete goal fork");
+    assert_eq!(
+        completed.result,
+        Some(json!({"summary":"Source confirms the behavior"}))
+    );
+    let notes = state
+        .teams
+        .list_task_notes(&task.id, 10)
+        .await
+        .expect("list task evidence");
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].text, "Source confirms the behavior");
+
+    let duplicate = complete_goal_fork(
+        State(state),
+        owner_headers,
+        Path((team.id, task.id, fork.id)),
+        Json(CompleteGoalForkRequest {
+            result: json!({"summary":"rewrite"}),
+        }),
+    )
+    .await
+    .expect_err("fork result is immutable")
+    .into_response();
+    assert_eq!(duplicate.status(), StatusCode::CONFLICT);
 }
 
 #[cfg(feature = "object-store-s3")]

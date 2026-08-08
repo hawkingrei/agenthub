@@ -197,6 +197,33 @@ pub struct TeamExecutionClaimRecord {
     pub expires_at: i64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct TeamGoalLeaseRecord {
+    pub task_id: String,
+    pub team_id: String,
+    pub owner_member_id: String,
+    pub lease_generation: i64,
+    pub started_at: i64,
+    pub expires_at: i64,
+    pub released_at: Option<i64>,
+    pub release_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct TeamGoalForkRecord {
+    pub id: String,
+    pub parent_task_id: String,
+    pub parent_lease_generation: i64,
+    pub question: String,
+    pub acceptance_criteria: String,
+    pub result_schema: serde_json::Value,
+    pub profile: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub completed_at: Option<i64>,
+    pub result: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct TeamTaskListQuery {
     pub team_id: Option<String>,
