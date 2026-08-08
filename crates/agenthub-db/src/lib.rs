@@ -21,11 +21,14 @@ pub mod message_body_outbox;
 pub mod object_uploads;
 
 pub use object_uploads::{
-    NewObjectUpload, NewObjectUploadSession, NewObjectUploadSessionPart, ObjectUploadRecord,
-    ObjectUploadSessionCleanupResult, ObjectUploadSessionPartRecord, ObjectUploadSessionRecord,
-    cancel_object_upload_session, cleanup_expired_object_upload_sessions, get_object_upload,
+    NewObjectUpload, NewObjectUploadSession, NewObjectUploadSessionPart,
+    ObjectDownloadCleanupOutcome, ObjectDownloadFailureMetricRecord, ObjectDownloadMetricDelta,
+    ObjectDownloadMetricsRecord, ObjectUploadRecord, ObjectUploadSessionCleanupResult,
+    ObjectUploadSessionPartRecord, ObjectUploadSessionRecord, cancel_object_upload_session,
+    cleanup_expired_object_upload_sessions, get_object_download_metrics, get_object_upload,
     get_object_upload_session, insert_object_upload, insert_object_upload_session,
-    list_object_upload_session_parts, publish_object_upload_session,
+    list_object_download_failure_metrics, list_object_upload_session_parts,
+    publish_object_upload_session, record_object_download_metric,
     upsert_object_upload_session_part,
 };
 
@@ -923,6 +926,43 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             created_at INTEGER NOT NULL,
             published_at INTEGER,
             cleanup_after INTEGER
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS object_download_metrics (
+            backend TEXT PRIMARY KEY,
+            attempts_total INTEGER NOT NULL DEFAULT 0 CHECK(attempts_total >= 0),
+            successes_total INTEGER NOT NULL DEFAULT 0 CHECK(successes_total >= 0),
+            failures_total INTEGER NOT NULL DEFAULT 0 CHECK(failures_total >= 0),
+            downloaded_bytes_total INTEGER NOT NULL DEFAULT 0 CHECK(downloaded_bytes_total >= 0),
+            latency_ms_total INTEGER NOT NULL DEFAULT 0 CHECK(latency_ms_total >= 0),
+            latency_ms_max INTEGER NOT NULL DEFAULT 0 CHECK(latency_ms_max >= 0),
+            cleanup_attempts_total INTEGER NOT NULL DEFAULT 0 CHECK(cleanup_attempts_total >= 0),
+            cleanup_successes_total INTEGER NOT NULL DEFAULT 0 CHECK(cleanup_successes_total >= 0),
+            cleanup_failures_total INTEGER NOT NULL DEFAULT 0 CHECK(cleanup_failures_total >= 0),
+            updated_at INTEGER NOT NULL,
+            CHECK(attempts_total = successes_total + failures_total),
+            CHECK(cleanup_attempts_total = cleanup_successes_total + cleanup_failures_total)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS object_download_failure_metrics (
+            backend TEXT NOT NULL,
+            failure_class TEXT NOT NULL,
+            failures_total INTEGER NOT NULL DEFAULT 0 CHECK(failures_total >= 0),
+            last_failure_at INTEGER NOT NULL,
+            PRIMARY KEY(backend, failure_class),
+            FOREIGN KEY(backend) REFERENCES object_download_metrics(backend) ON DELETE CASCADE
         );
         "#,
     )
@@ -3097,11 +3137,13 @@ async fn backfill_team_channel_message_replica_group_ids(pool: &SqlitePool) -> a
 mod tests {
     use super::{
         AgentEventDbRouter, AgentEventIdleGc, NewObjectUpload, NewObjectUploadSession,
-        NewObjectUploadSessionPart, cancel_object_upload_session, cleanup_agent_event_history,
-        cleanup_expired_object_upload_sessions, create_parent_dir, get_object_upload,
-        get_object_upload_session, init_db_at_path, insert_object_upload,
-        insert_object_upload_session, list_object_upload_session_parts,
-        publish_object_upload_session, try_connect, upsert_object_upload_session_part,
+        NewObjectUploadSessionPart, ObjectDownloadCleanupOutcome, ObjectDownloadMetricDelta,
+        cancel_object_upload_session, cleanup_agent_event_history,
+        cleanup_expired_object_upload_sessions, create_parent_dir, get_object_download_metrics,
+        get_object_upload, get_object_upload_session, init_db_at_path, insert_object_upload,
+        insert_object_upload_session, list_object_download_failure_metrics,
+        list_object_upload_session_parts, publish_object_upload_session,
+        record_object_download_metric, try_connect, upsert_object_upload_session_part,
     };
     use agenthub_config::path_utils::expand_tilde;
     use serde_json::json;
@@ -3143,6 +3185,8 @@ mod tests {
                 'team_context_artifacts',
                 'team_context_flush_checkpoint',
                 'object_uploads',
+                'object_download_metrics',
+                'object_download_failure_metrics',
                 'object_upload_sessions',
                 'object_upload_session_parts'
               )
@@ -3151,7 +3195,7 @@ mod tests {
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 16);
+        assert_eq!(table_count, 18);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)
@@ -3231,6 +3275,126 @@ mod tests {
         assert_eq!(upload.created_by_actor_id, "worker");
         assert_eq!(upload.publish_state, "published");
         assert_eq!(upload.published_at, Some(100));
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn object_download_metrics_accumulate_terminal_and_cleanup_outcomes() {
+        let dir = unique_temp_dir("object-download-metrics");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+
+        for metric in [
+            ObjectDownloadMetricDelta {
+                backend: "fs",
+                succeeded: true,
+                downloaded_bytes: 100,
+                latency_ms: 25,
+                failure_class: None,
+                cleanup_outcome: ObjectDownloadCleanupOutcome::NotAttempted,
+                recorded_at: 100,
+            },
+            ObjectDownloadMetricDelta {
+                backend: "fs",
+                succeeded: false,
+                downloaded_bytes: 100,
+                latency_ms: 40,
+                failure_class: Some("verification"),
+                cleanup_outcome: ObjectDownloadCleanupOutcome::Succeeded,
+                recorded_at: 110,
+            },
+            ObjectDownloadMetricDelta {
+                backend: "fs",
+                succeeded: false,
+                downloaded_bytes: 100,
+                latency_ms: 30,
+                failure_class: Some("metadata_publish"),
+                cleanup_outcome: ObjectDownloadCleanupOutcome::Failed,
+                recorded_at: 105,
+            },
+        ] {
+            record_object_download_metric(&pool, metric)
+                .await
+                .expect("record object download metric");
+        }
+
+        let metrics = get_object_download_metrics(&pool, "fs")
+            .await
+            .expect("load object download metrics")
+            .expect("fs object download metrics");
+        assert_eq!(metrics.attempts_total, 3);
+        assert_eq!(metrics.successes_total, 1);
+        assert_eq!(metrics.failures_total, 2);
+        assert_eq!(metrics.downloaded_bytes_total, 300);
+        assert_eq!(metrics.latency_ms_total, 95);
+        assert_eq!(metrics.latency_ms_max, 40);
+        assert_eq!(metrics.cleanup_attempts_total, 2);
+        assert_eq!(metrics.cleanup_successes_total, 1);
+        assert_eq!(metrics.cleanup_failures_total, 1);
+        assert_eq!(metrics.updated_at, 110);
+
+        let failures = list_object_download_failure_metrics(&pool, "fs")
+            .await
+            .expect("list object download failure metrics");
+        assert_eq!(failures.len(), 2);
+        assert_eq!(failures[0].failure_class, "metadata_publish");
+        assert_eq!(failures[0].failures_total, 1);
+        assert_eq!(failures[0].last_failure_at, 105);
+        assert_eq!(failures[1].failure_class, "verification");
+        assert_eq!(failures[1].failures_total, 1);
+        assert_eq!(failures[1].last_failure_at, 110);
+
+        let invalid = record_object_download_metric(
+            &pool,
+            ObjectDownloadMetricDelta {
+                backend: "fs",
+                succeeded: false,
+                downloaded_bytes: 0,
+                latency_ms: 1,
+                failure_class: None,
+                cleanup_outcome: ObjectDownloadCleanupOutcome::NotAttempted,
+                recorded_at: 120,
+            },
+        )
+        .await
+        .expect_err("failed metric must provide a failure class");
+        assert!(invalid.to_string().contains("failure class"));
+
+        let invalid = record_object_download_metric(
+            &pool,
+            ObjectDownloadMetricDelta {
+                backend: "fs",
+                succeeded: false,
+                downloaded_bytes: 0,
+                latency_ms: 1,
+                failure_class: Some("source-host.example.test"),
+                cleanup_outcome: ObjectDownloadCleanupOutcome::NotAttempted,
+                recorded_at: 120,
+            },
+        )
+        .await
+        .expect_err("failure classes must remain bounded");
+        assert!(invalid.to_string().contains("unsupported"));
+
+        let invalid = record_object_download_metric(
+            &pool,
+            ObjectDownloadMetricDelta {
+                backend: "source-host.example.test",
+                succeeded: true,
+                downloaded_bytes: 0,
+                latency_ms: 1,
+                failure_class: None,
+                cleanup_outcome: ObjectDownloadCleanupOutcome::NotAttempted,
+                recorded_at: 120,
+            },
+        )
+        .await
+        .expect_err("metric backends must remain bounded");
+        assert!(invalid.to_string().contains("unsupported"));
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

@@ -184,8 +184,24 @@ async fn team_upload_api_requires_team_access_and_publishes_metadata() {
 
 #[tokio::test]
 async fn team_download_api_streams_remote_object_and_publishes_metadata() {
-    let state = build_test_state().await;
+    let state = build_test_state_without_seeded_team_member_agents().await;
     let headers = auth_headers(&state).await;
+    let now = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+            code_mode, status, created_at, updated_at
+        )
+        VALUES ('planner', 'planner-agent', '/tmp', '/usr/bin/true', '[]', 'use_existing',
+                NULL, NULL, 0, 'created', ?1, ?2)
+        "#,
+    )
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert download test planner agent");
 
     let Json(created) = create_team(
         State(state.clone()),
@@ -203,7 +219,7 @@ async fn team_download_api_streams_remote_object_and_publishes_metadata() {
     let sha256 = hex_encode(&Sha256::digest(bytes));
     let source_url = spawn_download_source(bytes.to_vec()).await;
     let request = TeamDownloadRequest {
-        source_url,
+        source_url: source_url.clone(),
         file_name: " evidence.txt ".to_string(),
         content_type: " Text/Plain ".to_string(),
         expected_size_bytes: Some(bytes.len() as u64),
@@ -212,7 +228,7 @@ async fn team_download_api_streams_remote_object_and_publishes_metadata() {
 
     let Json(upload) = download_team_object(
         State(state.clone()),
-        headers,
+        headers.clone(),
         Path(created.id.clone()),
         Json(request),
     )
@@ -235,6 +251,110 @@ async fn team_download_api_streams_remote_object_and_publishes_metadata() {
         .await
         .expect("load persisted download");
     assert_eq!(persisted, upload);
+
+    let successful_metrics = agenthub_db::get_object_download_metrics(&state.db, "fs")
+        .await
+        .expect("load successful download metrics")
+        .expect("fs download metrics");
+    assert_eq!(successful_metrics.attempts_total, 1);
+    assert_eq!(successful_metrics.successes_total, 1);
+    assert_eq!(successful_metrics.failures_total, 0);
+    assert_eq!(
+        successful_metrics.downloaded_bytes_total,
+        bytes.len() as i64
+    );
+
+    download_team_object(
+        State(state.clone()),
+        headers.clone(),
+        Path(created.id.clone()),
+        Json(TeamDownloadRequest {
+            source_url: source_url.clone(),
+            file_name: "rejected.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            expected_size_bytes: Some(bytes.len() as u64),
+            expected_sha256: Some("0".repeat(64)),
+        }),
+    )
+    .await
+    .expect_err("checksum mismatch should reject the downloaded object");
+
+    download_team_object(
+        State(state.clone()),
+        headers.clone(),
+        Path(created.id.clone()),
+        Json(TeamDownloadRequest {
+            source_url: "file:///tmp/rejected.txt".to_string(),
+            file_name: "rejected.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            expected_size_bytes: None,
+            expected_sha256: None,
+        }),
+    )
+    .await
+    .expect_err("unsupported source URL should reject before download");
+
+    sqlx::query(
+        r#"
+        CREATE TRIGGER reject_object_download_metadata
+        BEFORE INSERT ON object_uploads
+        BEGIN
+            SELECT RAISE(FAIL, 'forced object upload metadata failure');
+        END;
+        "#,
+    )
+    .execute(&state.db)
+    .await
+    .expect("create metadata failure trigger");
+    download_team_object(
+        State(state.clone()),
+        headers,
+        Path(created.id.clone()),
+        Json(TeamDownloadRequest {
+            source_url,
+            file_name: "metadata-failure.txt".to_string(),
+            content_type: "text/plain".to_string(),
+            expected_size_bytes: Some(bytes.len() as u64),
+            expected_sha256: Some(sha256),
+        }),
+    )
+    .await
+    .expect_err("metadata insert failure should reject the downloaded object");
+
+    let terminal_metrics = agenthub_db::get_object_download_metrics(&state.db, "fs")
+        .await
+        .expect("load terminal download metrics")
+        .expect("fs download metrics");
+    assert_eq!(terminal_metrics.attempts_total, 4);
+    assert_eq!(terminal_metrics.successes_total, 1);
+    assert_eq!(terminal_metrics.failures_total, 3);
+    assert_eq!(
+        terminal_metrics.downloaded_bytes_total,
+        (bytes.len() * 3) as i64
+    );
+    assert_eq!(terminal_metrics.cleanup_attempts_total, 2);
+    assert_eq!(terminal_metrics.cleanup_successes_total, 2);
+    assert_eq!(terminal_metrics.cleanup_failures_total, 0);
+
+    let failures = agenthub_db::list_object_download_failure_metrics(&state.db, "fs")
+        .await
+        .expect("load download failure metrics");
+    assert_eq!(failures.len(), 3);
+    assert_eq!(failures[0].failure_class, "metadata_publish");
+    assert_eq!(failures[0].failures_total, 1);
+    assert_eq!(failures[1].failure_class, "request_validation");
+    assert_eq!(failures[1].failures_total, 1);
+    assert_eq!(failures[2].failure_class, "verification");
+    assert_eq!(failures[2].failures_total, 1);
+
+    let published_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM object_uploads WHERE owner_scope = ?1",
+    )
+    .bind(format!("teams/{}", created.id))
+    .fetch_one(&state.db)
+    .await
+    .expect("count published team downloads");
+    assert_eq!(published_count, 1);
 }
 
 #[tokio::test]

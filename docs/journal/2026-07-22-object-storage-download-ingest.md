@@ -56,7 +56,8 @@ git diff --check
 
 ## Follow-Ups
 
-- Add source host allow/deny lists, retry policy, per-host concurrency limits,
-  and download observability before broad untrusted production exposure.
-- Add an async intent table if product flows need queued/cancelable downloads
-  or durable failed ingest state.
+- Source host policy, retry, per-host concurrency, structured logs, and durable terminal metrics
+  landed in the implementation checkpoints linked above and in
+  [Object Storage Download Observability](2026-08-08-object-storage-download-observability.md).
+- Add an async intent table only if product flows require queued/cancelable downloads or durable
+  in-progress state.
