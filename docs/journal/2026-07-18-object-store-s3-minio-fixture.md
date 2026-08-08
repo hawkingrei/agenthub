@@ -31,7 +31,7 @@ read/delete, and hosted-image URL behavior through OpenDAL.
 ## Validation
 
 ```bash
-cargo test -p agenthub-object-store --features s3 s3_compatible_store_writes_reads_and_deletes_bytes -- --nocapture
+cargo test -p agenthub-object-store --features s3 s3_compatible_store_exercises_bytes_and_hosted_images -- --nocapture
 ```
 
 ### 2026-07-29 Release Feature Gate
@@ -49,14 +49,13 @@ Added a local regression test for the release intent boundary:
 Validation:
 
 ```bash
-cargo test -p agenthub --test release_feature_sets -- --nocapture
+cargo test official_release_includes_opendal_s3_without_changing_defaults --lib
 cargo fmt --all --check
 ```
 
 ## Follow-Ups
 
-- Keep `agenthub-object-store/s3` out of release feature sets until one reviewed release build
-  intentionally includes it. The local release feature gate now protects against accidental default,
-  release, prebuild, or `--all-features` enablement, but it is not a substitute for the future release
-  intent review.
+- The 2026-08-08 release-intent decision supersedes the opt-in release gate: official matrices now
+  enable S3 through the root feature. Retain the first artifact and provider evidence in
+  [Object Store S3 Release Enablement](2026-08-08-object-store-s3-release-enablement.md).
 - Decide whether multipart or presigned upload tokens are the canonical large-object browser path.

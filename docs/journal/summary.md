@@ -180,12 +180,15 @@ Main shape:
   transitions and handoff release the reservation while preserving audit history.
 - Read-only forks are Team-bounded, parent-generation-fenced, exposed through authorized APIs, and
   return immutable results to the parent Task evidence stream.
+- Official release matrices now enable the OpenDAL S3 backend explicitly while keeping the local
+  filesystem as the runtime default and artifact/provider evidence as separate gates.
 
 Start with:
 
 - `2026-08-01-team-conversation-style-convergence.md`
 - `2026-08-06-teamspace-control-plane.md`
 - `2026-08-07-team-goal-lease-foundation.md`
+- `2026-08-08-object-store-s3-release-enablement.md`
 
 ## Compaction Rules
 
