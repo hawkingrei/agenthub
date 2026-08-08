@@ -25,6 +25,26 @@ pub(super) fn map_task_message_error(err: anyhow::Error) -> ApiError {
     map_team_internal_error(err)
 }
 
+pub(super) fn map_goal_fork_error(err: anyhow::Error) -> ApiError {
+    let message = err.to_string();
+    if message.contains("required")
+        || message.contains("size limit")
+        || message.contains("result schema")
+        || message.contains("object schema")
+    {
+        return ApiError::bad_request(&message);
+    }
+    if message.contains("active goal")
+        || message.contains("active fork capacity")
+        || message.contains("parent lease")
+        || message.contains("completed")
+        || message.contains("changed before completion")
+    {
+        return ApiError::conflict(&message);
+    }
+    map_not_found_error(err, "fork not found")
+}
+
 pub(super) fn map_channel_create_error(err: anyhow::Error) -> ApiError {
     let message = err.to_string();
     let normalized = message.to_ascii_lowercase();

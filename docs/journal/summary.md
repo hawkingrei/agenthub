@@ -176,11 +176,16 @@ Main shape:
   interaction semantics; final deployed-browser evidence remains open.
 - Teamspace now has invite-only local-account membership, auditable revocation, single-owner
   execution claims, and explicit handoff control-plane foundations.
+- Task claims now reserve durable, generation-fenced Team and member goal capacity; terminal
+  transitions and handoff release the reservation while preserving audit history.
+- Read-only forks are Team-bounded, parent-generation-fenced, exposed through authorized APIs, and
+  return immutable results to the parent Task evidence stream.
 
 Start with:
 
 - `2026-08-01-team-conversation-style-convergence.md`
 - `2026-08-06-teamspace-control-plane.md`
+- `2026-08-07-team-goal-lease-foundation.md`
 
 ## Compaction Rules
 

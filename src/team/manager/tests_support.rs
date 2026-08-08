@@ -395,11 +395,40 @@ pub(super) async fn setup_test_db() -> SqlitePool {
             entity_id TEXT NOT NULL,
             team_id TEXT NOT NULL,
             owner_member_id TEXT NOT NULL,
-            lease_generation INTEGER NOT NULL,
+            lease_generation INTEGER NOT NULL CHECK(lease_generation > 0),
             claimed_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,
             released_at INTEGER,
             PRIMARY KEY (entity_kind, entity_id)
+        );
+        CREATE TABLE team_goal_leases (
+            task_id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            owner_member_id TEXT NOT NULL,
+            lease_generation INTEGER NOT NULL,
+            started_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            released_at INTEGER,
+            release_reason TEXT,
+            CHECK(expires_at > started_at)
+        );
+        CREATE TABLE team_goal_forks (
+            id TEXT PRIMARY KEY,
+            parent_task_id TEXT NOT NULL,
+            parent_lease_generation INTEGER NOT NULL CHECK(parent_lease_generation > 0),
+            question TEXT NOT NULL,
+            acceptance_criteria TEXT NOT NULL,
+            result_schema_json TEXT NOT NULL,
+            profile TEXT NOT NULL CHECK(profile = 'read_only'),
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            result_json TEXT,
+            CHECK(expires_at > created_at),
+            CHECK(
+                (completed_at IS NULL AND result_json IS NULL)
+                OR (completed_at IS NOT NULL AND result_json IS NOT NULL)
+            )
         );
         CREATE TABLE team_invite_registration_intents (
             challenge_id TEXT PRIMARY KEY,

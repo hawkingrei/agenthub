@@ -93,12 +93,21 @@ async fn openapi_json_contains_team_runs_list_path() {
         value["paths"]["/api/teams/{id}/tasks/{task_id}/uploads/downloads"]["post"].is_object()
     );
     assert!(value["paths"]["/api/teams/{id}/tasks/{task_id}/images"]["post"].is_object());
+    assert!(value["paths"]["/api/teams/{id}/tasks/{task_id}/forks"]["get"].is_object());
+    assert!(value["paths"]["/api/teams/{id}/tasks/{task_id}/forks"]["post"].is_object());
+    assert!(
+        value["paths"]["/api/teams/{id}/tasks/{task_id}/forks/{fork_id}/complete"]["post"]
+            .is_object()
+    );
     assert!(value["paths"]["/api/teams/{id}/runs"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/resume"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/restart"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/snapshot"].is_object());
     assert!(value["components"]["schemas"]["TeamChannelRecord"].is_object());
     assert!(value["components"]["schemas"]["CreateTeamChannelRequest"].is_object());
+    assert!(value["components"]["schemas"]["TeamGoalForkRecord"].is_object());
+    assert!(value["components"]["schemas"]["CreateGoalForkRequest"].is_object());
+    assert!(value["components"]["schemas"]["CompleteGoalForkRequest"].is_object());
     assert!(value["components"]["schemas"]["TeamUploadRequest"].is_object());
     assert!(value["components"]["schemas"]["ObjectDownloadRequest"].is_object());
     assert!(value["components"]["schemas"]["ObjectUploadRecord"].is_object());

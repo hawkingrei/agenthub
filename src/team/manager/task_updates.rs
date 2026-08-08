@@ -1,11 +1,20 @@
 use sqlx::{Executor, QueryBuilder, Sqlite};
 
+use super::teamspace::release_task_goal_in_tx;
 use super::{
     PreparedTeamTaskUpdate, TeamManager, TeamTaskAssignmentUpdate, TeamTaskContextPatch,
     TeamTaskPriority, TeamTaskStatus, TeamTaskUpdateWithNoteInput, parse_team_task_note_row,
     resolve_task_context_patch, team_task_priority_to_str, team_task_status_to_str,
     validate_task_execution_plan,
 };
+
+fn terminal_goal_release_reason(status: Option<&TeamTaskStatus>) -> Option<&'static str> {
+    match status {
+        Some(TeamTaskStatus::Completed) => Some("completed"),
+        Some(TeamTaskStatus::Canceled) => Some("cancelled"),
+        _ => None,
+    }
+}
 
 impl TeamManager {
     pub async fn list_task_notes(
@@ -94,8 +103,20 @@ impl TeamManager {
         if !prepared.has_changes() {
             return Ok(prepared.current);
         }
-        self.execute_prepared_task_update(&self.db, task_id, &prepared)
+        let mut tx = self.db.begin().await?;
+        self.execute_prepared_task_update(&mut *tx, task_id, &prepared)
             .await?;
+        if let Some(reason) = terminal_goal_release_reason(prepared.status_patch.as_ref()) {
+            release_task_goal_in_tx(
+                &mut tx,
+                &prepared.current.team_id,
+                task_id,
+                reason,
+                chrono::Utc::now().timestamp(),
+            )
+            .await?;
+        }
+        tx.commit().await?;
         self.get_task(task_id).await
     }
 
@@ -127,6 +148,16 @@ impl TeamManager {
         if prepared.has_changes() {
             self.execute_prepared_task_update(&mut *tx, input.task_id, &prepared)
                 .await?;
+            if let Some(reason) = terminal_goal_release_reason(prepared.status_patch.as_ref()) {
+                release_task_goal_in_tx(
+                    &mut tx,
+                    &prepared.current.team_id,
+                    input.task_id,
+                    reason,
+                    chrono::Utc::now().timestamp(),
+                )
+                .await?;
+            }
         }
         tx.commit().await?;
 

@@ -236,6 +236,58 @@ pub(super) fn openapi_spec() -> Value {
               "description": { "type": ["string", "null"] }
             }
           },
+          "TeamGoalForkRecord": {
+            "type": "object",
+            "required": [
+              "id",
+              "parent_task_id",
+              "parent_lease_generation",
+              "question",
+              "acceptance_criteria",
+              "result_schema",
+              "profile",
+              "created_at",
+              "expires_at"
+            ],
+            "properties": {
+              "id": { "type": "string" },
+              "parent_task_id": { "type": "string" },
+              "parent_lease_generation": { "type": "integer", "format": "int64" },
+              "question": { "type": "string", "maxLength": 1024 },
+              "acceptance_criteria": { "type": "string", "maxLength": 2048 },
+              "result_schema": { "type": "object", "additionalProperties": true },
+              "profile": { "type": "string", "enum": ["read_only"] },
+              "created_at": { "type": "integer", "format": "int64" },
+              "expires_at": { "type": "integer", "format": "int64" },
+              "completed_at": { "type": ["integer", "null"], "format": "int64" },
+              "result": { "type": ["object", "null"], "additionalProperties": true }
+            }
+          },
+          "CreateGoalForkRequest": {
+            "type": "object",
+            "required": ["question", "acceptance_criteria"],
+            "properties": {
+              "question": { "type": "string", "maxLength": 1024 },
+              "acceptance_criteria": { "type": "string", "maxLength": 2048 },
+              "result_schema": {
+                "type": ["object", "null"],
+                "description": "The v1 API accepts only the object result schema."
+              },
+              "expires_in_seconds": {
+                "type": ["integer", "null"],
+                "format": "int64",
+                "minimum": 60,
+                "maximum": 3600
+              }
+            }
+          },
+          "CompleteGoalForkRequest": {
+            "type": "object",
+            "required": ["result"],
+            "properties": {
+              "result": { "type": "object", "additionalProperties": true }
+            }
+          },
           "TeamUploadRequest": {
             "type": "object",
             "required": ["file_name", "content_type", "bytes_base64"],
@@ -710,6 +762,84 @@ pub(super) fn openapi_spec() -> Value {
                 "content": {
                   "application/json": {
                     "schema": { "$ref": "#/components/schemas/ObjectUploadRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/tasks/{task_id}/forks": {
+          "get": {
+            "tags": ["teams"],
+            "summary": "List bounded read-only goal forks for a task",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+              { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+              "200": {
+                "description": "Goal forks visible to the Teamspace member",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/TeamGoalForkRecord" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "post": {
+            "tags": ["teams"],
+            "summary": "Create a bounded read-only goal fork",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+              { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/CreateGoalForkRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Created goal fork",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamGoalForkRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/tasks/{task_id}/forks/{fork_id}/complete": {
+          "post": {
+            "tags": ["teams"],
+            "summary": "Complete a goal fork with immutable parent evidence",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+              { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } },
+              { "name": "fork_id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/CompleteGoalForkRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Completed goal fork",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamGoalForkRecord" }
                   }
                 }
               }

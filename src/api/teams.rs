@@ -6,8 +6,8 @@ mod errors;
 
 use self::errors::{
     map_actor_service_api_error, map_channel_create_error, map_channel_delete_error,
-    map_create_team_error, map_not_found_error, map_reply_thread_error, map_resume_run_error,
-    map_runtime_start_error, map_submit_step_error, map_task_message_error,
+    map_create_team_error, map_goal_fork_error, map_not_found_error, map_reply_thread_error,
+    map_resume_run_error, map_runtime_start_error, map_submit_step_error, map_task_message_error,
     map_team_internal_error,
 };
 use agenthub_message_archive::{MessageDocumentKind, MessageSearchHit, MessageSearchQuery};
@@ -204,6 +204,19 @@ pub struct AcceptTeamspaceInviteRequest {
 pub struct HandoffTeamTaskRequest {
     pub assigned_member_id: String,
     pub reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateGoalForkRequest {
+    pub question: String,
+    pub acceptance_criteria: String,
+    pub result_schema: Option<Value>,
+    pub expires_in_seconds: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CompleteGoalForkRequest {
+    pub result: Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -605,6 +618,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/{id}/tasks", get(list_team_tasks))
         .route("/{id}/tasks/{task_id}/handoff", post(handoff_team_task))
+        .route(
+            "/{id}/tasks/{task_id}/forks",
+            get(list_goal_forks).post(create_goal_fork),
+        )
+        .route(
+            "/{id}/tasks/{task_id}/forks/{fork_id}/complete",
+            post(complete_goal_fork),
+        )
         .route(
             "/{id}/tasks/{task_id}",
             get(get_team_task).patch(update_team_task),
@@ -1746,6 +1767,107 @@ async fn handoff_team_task(
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(task))
+}
+
+async fn create_goal_fork(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id)): Path<(String, String)>,
+    Json(payload): Json<CreateGoalForkRequest>,
+) -> Result<Json<crate::team::TeamGoalForkRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner", "planner"]).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    if payload.question.trim().is_empty() || payload.acceptance_criteria.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "fork question and acceptance criteria are required",
+        ));
+    }
+    let expires_in_seconds = payload.expires_in_seconds.unwrap_or(15 * 60);
+    if !(60..=60 * 60).contains(&expires_in_seconds) {
+        return Err(ApiError::bad_request(
+            "fork expiry must be between 60 seconds and one hour",
+        ));
+    }
+    let fork = state
+        .teams
+        .create_goal_fork(
+            &task_id,
+            &payload.question,
+            &payload.acceptance_criteria,
+            payload
+                .result_schema
+                .unwrap_or_else(|| serde_json::json!({"type": "object"})),
+            chrono::Utc::now().timestamp() + expires_in_seconds,
+            Some(&user.id),
+        )
+        .await
+        .map_err(map_goal_fork_error)?;
+    Ok(Json(fork))
+}
+
+async fn list_goal_forks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id)): Path<(String, String)>,
+) -> Result<Json<Vec<crate::team::TeamGoalForkRecord>>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    let forks = state
+        .teams
+        .list_goal_forks(&task_id, 100)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(forks))
+}
+
+async fn complete_goal_fork(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, task_id, fork_id)): Path<(String, String, String)>,
+    Json(payload): Json<CompleteGoalForkRequest>,
+) -> Result<Json<crate::team::TeamGoalForkRecord>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::TeamsManage).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner", "planner"]).await?;
+    let task = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if task.team_id != team_id {
+        return Err(ApiError::not_found("task not found"));
+    }
+    let existing = state
+        .teams
+        .get_goal_fork(&fork_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "fork not found"))?;
+    if existing.parent_task_id != task_id {
+        return Err(ApiError::not_found("fork not found"));
+    }
+    let fork = state
+        .teams
+        .complete_goal_fork(&fork_id, payload.result, Some(&user.id))
+        .await
+        .map_err(map_goal_fork_error)?;
+    Ok(Json(fork))
 }
 
 async fn send_team_task_message(

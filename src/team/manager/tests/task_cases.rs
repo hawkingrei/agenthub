@@ -128,6 +128,13 @@ async fn teamspace_invite_is_single_use_and_task_claim_is_single_owner() {
         .await
         .expect("claim task");
     assert_eq!(claim.lease_generation, 1);
+    let active_goal = manager
+        .get_task_goal_lease(&task.id)
+        .await
+        .expect("load active goal")
+        .expect("goal is created with the task claim");
+    assert_eq!(active_goal.owner_member_id, "worker-1");
+    assert!(active_goal.released_at.is_none());
     assert!(
         manager
             .claim_task_execution(&task.id, "worker-1", 60)
@@ -151,16 +158,401 @@ async fn teamspace_invite_is_single_use_and_task_claim_is_single_owner() {
         .await
         .expect("handoff task");
     assert_eq!(handed_off.assigned_member_id.as_deref(), Some("worker-2"));
+    let released_goal = manager
+        .get_task_goal_lease(&task.id)
+        .await
+        .expect("load released goal")
+        .expect("goal record is retained for audit");
+    assert_eq!(released_goal.release_reason.as_deref(), Some("handoff"));
+    assert!(released_goal.released_at.is_some());
     let replacement_claim = manager
         .claim_task_execution(&task.id, "worker-2", 60)
         .await
         .expect("replacement owner can claim task");
     assert_eq!(replacement_claim.lease_generation, 2);
+    let replacement_goal = manager
+        .get_task_goal_lease(&task.id)
+        .await
+        .expect("load replacement goal")
+        .expect("replacement goal exists");
+    assert_eq!(
+        replacement_goal.lease_generation,
+        replacement_claim.lease_generation
+    );
     assert!(
         manager
             .claim_task_execution(&task.id, "worker-1", 60)
             .await
             .is_err()
+    );
+}
+
+#[tokio::test]
+async fn task_goal_capacity_is_reserved_per_member_and_released_at_terminal_status() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "goal-capacity".to_string(),
+            description: None,
+            spec: json!({"members":[
+                {"member_id":"worker-1","role":"worker"},
+                {"member_id":"worker-2","role":"worker"},
+                {"member_id":"worker-3","role":"worker"},
+                {"member_id":"worker-4","role":"worker"}
+            ]}),
+        })
+        .await
+        .expect("create team");
+
+    let (first, _) = manager
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &team.id,
+            title: "first goal",
+            created_by_actor_id: "coordinator",
+            priority: TeamTaskPriority::Medium,
+            assigned_member_id: Some("worker-1"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: None,
+        })
+        .await
+        .expect("create first task");
+    manager
+        .update_task_status(&first.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("start first task");
+    manager
+        .claim_task_execution(&first.id, "worker-1", 60)
+        .await
+        .expect("claim first goal");
+
+    let other_team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "goal-capacity-other-team".to_string(),
+            description: None,
+            spec: json!({"members":[{"member_id":"worker-1","role":"worker"}]}),
+        })
+        .await
+        .expect("create other team");
+    let (other_team_task, _) = manager
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &other_team.id,
+            title: "independent Team goal",
+            created_by_actor_id: "coordinator",
+            priority: TeamTaskPriority::Medium,
+            assigned_member_id: Some("worker-1"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: None,
+        })
+        .await
+        .expect("create other Team task");
+    manager
+        .update_task_status(&other_team_task.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("start other Team task");
+    manager
+        .claim_task_execution(&other_team_task.id, "worker-1", 60)
+        .await
+        .expect("same member id in another Team has independent capacity");
+
+    for member_id in ["worker-2", "worker-3"] {
+        let title = format!("goal for {member_id}");
+        let (parallel, _) = manager
+            .create_task_with_metadata(TeamTaskCreateInput {
+                team_id: &team.id,
+                title: &title,
+                created_by_actor_id: "coordinator",
+                priority: TeamTaskPriority::Medium,
+                assigned_member_id: Some(member_id),
+                context: json!({}),
+                conversation_mode: "group_chat",
+                topic: None,
+            })
+            .await
+            .expect("create parallel task");
+        manager
+            .update_task_status(&parallel.id, TeamTaskStatus::InProgress)
+            .await
+            .expect("start parallel task");
+        manager
+            .claim_task_execution(&parallel.id, member_id, 60)
+            .await
+            .expect("reserve Team capacity");
+    }
+    let (over_capacity, _) = manager
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &team.id,
+            title: "fourth concurrent Team goal",
+            created_by_actor_id: "coordinator",
+            priority: TeamTaskPriority::Medium,
+            assigned_member_id: Some("worker-4"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: None,
+        })
+        .await
+        .expect("create over-capacity task");
+    manager
+        .update_task_status(&over_capacity.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("start over-capacity task");
+    assert!(
+        manager
+            .claim_task_execution(&over_capacity.id, "worker-4", 60)
+            .await
+            .is_err()
+    );
+
+    let (second, _) = manager
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &team.id,
+            title: "second goal",
+            created_by_actor_id: "coordinator",
+            priority: TeamTaskPriority::Medium,
+            assigned_member_id: Some("worker-1"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: None,
+        })
+        .await
+        .expect("create second task");
+    manager
+        .update_task_status(&second.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("start second task");
+    assert!(
+        manager
+            .claim_task_execution(&second.id, "worker-1", 60)
+            .await
+            .is_err()
+    );
+
+    manager
+        .update_task_status(&first.id, TeamTaskStatus::Completed)
+        .await
+        .expect("complete first task");
+    let released = manager
+        .get_task_goal_lease(&first.id)
+        .await
+        .expect("load completed goal")
+        .expect("completed goal is retained");
+    assert_eq!(released.release_reason.as_deref(), Some("completed"));
+    assert!(released.released_at.is_some());
+
+    manager
+        .claim_task_execution(&second.id, "worker-1", 60)
+        .await
+        .expect("terminal release makes capacity available");
+}
+
+#[tokio::test]
+async fn goal_fork_requires_an_active_goal_and_returns_an_immutable_result() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "goal-fork".to_string(),
+            description: None,
+            spec: json!({"members":[{"member_id":"worker-1","role":"worker"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &team.id,
+            title: "research parent",
+            created_by_actor_id: "coordinator",
+            priority: TeamTaskPriority::Medium,
+            assigned_member_id: Some("worker-1"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: None,
+        })
+        .await
+        .expect("create task");
+    assert!(
+        manager
+            .create_goal_fork(
+                &task.id,
+                "check",
+                "cite evidence",
+                json!({"type":"object"}),
+                chrono::Utc::now().timestamp() + 60,
+                None,
+            )
+            .await
+            .is_err()
+    );
+    manager
+        .update_task_status(&task.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("start");
+    manager
+        .claim_task_execution(&task.id, "worker-1", 300)
+        .await
+        .expect("claim");
+    let fork = manager
+        .create_goal_fork(
+            &task.id,
+            "check",
+            "cite evidence",
+            json!({"type":"object"}),
+            chrono::Utc::now().timestamp() + 60,
+            None,
+        )
+        .await
+        .expect("create read-only fork");
+    assert_eq!(fork.profile, "read_only");
+    assert_eq!(fork.result_schema, json!({"type":"object"}));
+    let second = manager
+        .create_goal_fork(
+            &task.id,
+            "check another source",
+            "cite independent evidence",
+            json!({"type":"object"}),
+            chrono::Utc::now().timestamp() + 60,
+            None,
+        )
+        .await
+        .expect("create second read-only fork");
+    assert!(
+        manager
+            .create_goal_fork(
+                &task.id,
+                "exceed capacity",
+                "must not start",
+                json!({"type":"object"}),
+                chrono::Utc::now().timestamp() + 60,
+                None,
+            )
+            .await
+            .is_err()
+    );
+    let completed = manager
+        .complete_goal_fork(
+            &fork.id,
+            json!({"summary":"evidence","api_key":"secret"}),
+            None,
+        )
+        .await
+        .expect("complete");
+    assert_eq!(
+        completed.result,
+        Some(json!({"summary":"evidence","api_key":"[redacted]"}))
+    );
+    let notes = manager
+        .list_task_notes(&task.id, 10)
+        .await
+        .expect("list parent evidence");
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].kind.as_str(), "result");
+    assert_eq!(notes[0].text, "evidence");
+    manager
+        .create_goal_fork(
+            &task.id,
+            "reuse released capacity",
+            "start after completion",
+            json!({"type":"object"}),
+            chrono::Utc::now().timestamp() + 60,
+            None,
+        )
+        .await
+        .expect("completed fork releases Team fork capacity");
+    assert!(
+        manager
+            .complete_goal_fork(&fork.id, json!({"summary":"rewrite"}), None)
+            .await
+            .is_err()
+    );
+    assert!(manager.get_goal_fork(&second.id).await.is_ok());
+}
+
+#[tokio::test]
+async fn goal_fork_completion_is_fenced_by_the_parent_lease_generation() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "goal-fork-fencing".to_string(),
+            description: None,
+            spec: json!({"members":[
+                {"member_id":"worker-1","role":"worker"},
+                {"member_id":"worker-2","role":"worker"}
+            ]}),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task_with_metadata(TeamTaskCreateInput {
+            team_id: &team.id,
+            title: "fenced parent",
+            created_by_actor_id: "coordinator",
+            priority: TeamTaskPriority::Medium,
+            assigned_member_id: Some("worker-1"),
+            context: json!({}),
+            conversation_mode: "group_chat",
+            topic: None,
+        })
+        .await
+        .expect("create task");
+    manager
+        .update_task_status(&task.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("start task");
+    manager
+        .claim_task_execution(&task.id, "worker-1", 300)
+        .await
+        .expect("claim task");
+    let fork = manager
+        .create_goal_fork(
+            &task.id,
+            "check before handoff",
+            "return to the original generation",
+            json!({"type":"object"}),
+            chrono::Utc::now().timestamp() + 60,
+            None,
+        )
+        .await
+        .expect("create fork");
+    manager
+        .handoff_task_execution(&task.id, "worker-2", "owner-user", "ownership changed")
+        .await
+        .expect("handoff task");
+    manager
+        .claim_task_execution(&task.id, "worker-2", 300)
+        .await
+        .expect("replacement owner claims task");
+    for question in [
+        "first current-generation fork",
+        "second current-generation fork",
+    ] {
+        manager
+            .create_goal_fork(
+                &task.id,
+                question,
+                "return current-generation evidence",
+                json!({"type":"object"}),
+                chrono::Utc::now().timestamp() + 60,
+                None,
+            )
+            .await
+            .expect("stale fork does not consume current Team capacity");
+    }
+
+    assert!(
+        manager
+            .complete_goal_fork(&fork.id, json!({"summary":"stale"}), None)
+            .await
+            .is_err()
+    );
+    assert!(
+        manager
+            .list_task_notes(&task.id, 10)
+            .await
+            .expect("list parent evidence")
+            .is_empty()
     );
 }
 
