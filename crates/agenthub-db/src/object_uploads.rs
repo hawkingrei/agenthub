@@ -104,6 +104,256 @@ pub struct ObjectUploadSessionCleanupResult {
     pub expire_batches: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectDownloadCleanupOutcome {
+    NotAttempted,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObjectDownloadMetricDelta<'a> {
+    pub backend: &'a str,
+    pub succeeded: bool,
+    pub downloaded_bytes: i64,
+    pub latency_ms: i64,
+    pub failure_class: Option<&'a str>,
+    pub cleanup_outcome: ObjectDownloadCleanupOutcome,
+    pub recorded_at: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ObjectDownloadMetricsRecord {
+    pub backend: String,
+    pub attempts_total: i64,
+    pub successes_total: i64,
+    pub failures_total: i64,
+    pub downloaded_bytes_total: i64,
+    pub latency_ms_total: i64,
+    pub latency_ms_max: i64,
+    pub cleanup_attempts_total: i64,
+    pub cleanup_successes_total: i64,
+    pub cleanup_failures_total: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ObjectDownloadFailureMetricRecord {
+    pub backend: String,
+    pub failure_class: String,
+    pub failures_total: i64,
+    pub last_failure_at: i64,
+}
+
+pub async fn record_object_download_metric(
+    pool: &SqlitePool,
+    metric: ObjectDownloadMetricDelta<'_>,
+) -> anyhow::Result<()> {
+    let backend = metric.backend.trim();
+    anyhow::ensure!(
+        !backend.is_empty(),
+        "object download metric backend is required"
+    );
+    anyhow::ensure!(
+        matches!(backend, "fs" | "s3"),
+        "unsupported object download metric backend"
+    );
+    anyhow::ensure!(
+        metric.downloaded_bytes >= 0,
+        "object download metric bytes must be non-negative"
+    );
+    anyhow::ensure!(
+        metric.latency_ms >= 0,
+        "object download metric latency must be non-negative"
+    );
+    let failure_class = metric
+        .failure_class
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    anyhow::ensure!(
+        metric.succeeded == failure_class.is_none(),
+        "successful object downloads must not have a failure class and failed downloads must have one"
+    );
+    anyhow::ensure!(
+        failure_class.is_none_or(is_object_download_failure_class),
+        "unsupported object download failure class"
+    );
+
+    let successes = i64::from(metric.succeeded);
+    let failures = i64::from(!metric.succeeded);
+    let (cleanup_attempts, cleanup_successes, cleanup_failures) = match metric.cleanup_outcome {
+        ObjectDownloadCleanupOutcome::NotAttempted => (0_i64, 0_i64, 0_i64),
+        ObjectDownloadCleanupOutcome::Succeeded => (1_i64, 1_i64, 0_i64),
+        ObjectDownloadCleanupOutcome::Failed => (1_i64, 0_i64, 1_i64),
+    };
+
+    let mut tx = pool
+        .begin()
+        .await
+        .context("begin object download metric update")?;
+    sqlx::query(
+        r#"
+        INSERT INTO object_download_metrics (
+            backend,
+            attempts_total,
+            successes_total,
+            failures_total,
+            downloaded_bytes_total,
+            latency_ms_total,
+            latency_ms_max,
+            cleanup_attempts_total,
+            cleanup_successes_total,
+            cleanup_failures_total,
+            updated_at
+        )
+        VALUES (?1, 1, ?2, ?3, ?4, ?5, ?5, ?6, ?7, ?8, ?9)
+        ON CONFLICT(backend) DO UPDATE SET
+            attempts_total = attempts_total + 1,
+            successes_total = successes_total + excluded.successes_total,
+            failures_total = failures_total + excluded.failures_total,
+            downloaded_bytes_total = downloaded_bytes_total + excluded.downloaded_bytes_total,
+            latency_ms_total = latency_ms_total + excluded.latency_ms_total,
+            latency_ms_max = MAX(latency_ms_max, excluded.latency_ms_max),
+            cleanup_attempts_total = cleanup_attempts_total + excluded.cleanup_attempts_total,
+            cleanup_successes_total = cleanup_successes_total + excluded.cleanup_successes_total,
+            cleanup_failures_total = cleanup_failures_total + excluded.cleanup_failures_total,
+            updated_at = MAX(updated_at, excluded.updated_at)
+        "#,
+    )
+    .bind(backend)
+    .bind(successes)
+    .bind(failures)
+    .bind(metric.downloaded_bytes)
+    .bind(metric.latency_ms)
+    .bind(cleanup_attempts)
+    .bind(cleanup_successes)
+    .bind(cleanup_failures)
+    .bind(metric.recorded_at)
+    .execute(&mut *tx)
+    .await
+    .with_context(|| format!("update object download metrics for backend {backend:?}"))?;
+
+    if let Some(failure_class) = failure_class {
+        sqlx::query(
+            r#"
+            INSERT INTO object_download_failure_metrics (
+                backend,
+                failure_class,
+                failures_total,
+                last_failure_at
+            )
+            VALUES (?1, ?2, 1, ?3)
+            ON CONFLICT(backend, failure_class) DO UPDATE SET
+                failures_total = failures_total + 1,
+                last_failure_at = MAX(last_failure_at, excluded.last_failure_at)
+            "#,
+        )
+        .bind(backend)
+        .bind(failure_class)
+        .bind(metric.recorded_at)
+        .execute(&mut *tx)
+        .await
+        .with_context(|| {
+            format!(
+                "update object download failure metric for backend {backend:?} class {failure_class:?}"
+            )
+        })?;
+    }
+
+    tx.commit()
+        .await
+        .context("commit object download metric update")?;
+    Ok(())
+}
+
+pub async fn get_object_download_metrics(
+    pool: &SqlitePool,
+    backend: &str,
+) -> anyhow::Result<Option<ObjectDownloadMetricsRecord>> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            backend,
+            attempts_total,
+            successes_total,
+            failures_total,
+            downloaded_bytes_total,
+            latency_ms_total,
+            latency_ms_max,
+            cleanup_attempts_total,
+            cleanup_successes_total,
+            cleanup_failures_total,
+            updated_at
+        FROM object_download_metrics
+        WHERE backend = ?1
+        "#,
+    )
+    .bind(backend.trim())
+    .fetch_optional(pool)
+    .await
+    .with_context(|| format!("load object download metrics for backend {backend:?}"))?;
+
+    Ok(row.map(|row| ObjectDownloadMetricsRecord {
+        backend: row.get("backend"),
+        attempts_total: row.get("attempts_total"),
+        successes_total: row.get("successes_total"),
+        failures_total: row.get("failures_total"),
+        downloaded_bytes_total: row.get("downloaded_bytes_total"),
+        latency_ms_total: row.get("latency_ms_total"),
+        latency_ms_max: row.get("latency_ms_max"),
+        cleanup_attempts_total: row.get("cleanup_attempts_total"),
+        cleanup_successes_total: row.get("cleanup_successes_total"),
+        cleanup_failures_total: row.get("cleanup_failures_total"),
+        updated_at: row.get("updated_at"),
+    }))
+}
+
+pub async fn list_object_download_failure_metrics(
+    pool: &SqlitePool,
+    backend: &str,
+) -> anyhow::Result<Vec<ObjectDownloadFailureMetricRecord>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT backend, failure_class, failures_total, last_failure_at
+        FROM object_download_failure_metrics
+        WHERE backend = ?1
+        ORDER BY failure_class ASC
+        "#,
+    )
+    .bind(backend.trim())
+    .fetch_all(pool)
+    .await
+    .with_context(|| format!("list object download failure metrics for backend {backend:?}"))?;
+
+    Ok(rows
+        .iter()
+        .map(|row| ObjectDownloadFailureMetricRecord {
+            backend: row.get("backend"),
+            failure_class: row.get("failure_class"),
+            failures_total: row.get("failures_total"),
+            last_failure_at: row.get("last_failure_at"),
+        })
+        .collect())
+}
+
+fn is_object_download_failure_class(value: &str) -> bool {
+    matches!(
+        value,
+        "request_validation"
+            | "transient_status"
+            | "server_status"
+            | "size_limit"
+            | "source_policy"
+            | "redirect"
+            | "dns"
+            | "source_stream"
+            | "object_store"
+            | "request"
+            | "verification"
+            | "metadata_publish"
+    )
+}
+
 pub async fn insert_object_upload(
     pool: &SqlitePool,
     upload: &NewObjectUpload<'_>,

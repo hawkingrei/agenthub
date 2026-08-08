@@ -59,7 +59,6 @@ Stable contracts:
 ## Object Storage
 
 - [ ] `P1` Verify OpenDAL S3 release artifacts: official release and prebuild matrices now compile every `agenthub` target with the root `object-store-s3` feature while the runtime default remains `fs`. PR #890 and main push workflow run `29639782907` / job `88068255089` established the MinIO-backed bytes, hosted-image, and delete fixture. Remaining evidence is a reviewed preview or semver release whose published feature rows include `object-store-s3`, plus an x86_64 published-binary smoke against MinIO. Record the workflow run, artifact, and smoke evidence in [journal/2026-08-08-object-store-s3-release-enablement.md](journal/2026-08-08-object-store-s3-release-enablement.md). Provider-specific production certification remains separate.
-- [ ] `P2` Harden server-side download ingestion for broad untrusted production exposure: source host allow/deny lists, bounded pre-stream retry, per-host concurrency limits, and structured success/failure logs are implemented; remaining hardening is durable latency/bytes/failure/cleanup counters and an async intent table if product flows need queued, cancelable, or durable failed downloads. Stable contract: [features/object-storage-opendal.md](features/object-storage-opendal.md); notes: [journal/2026-07-22-object-storage-download-ingest.md](journal/2026-07-22-object-storage-download-ingest.md), [journal/2026-07-23-object-storage-download-ingest-implementation.md](journal/2026-07-23-object-storage-download-ingest-implementation.md).
 
 ## Observability, CI, And Docs
 

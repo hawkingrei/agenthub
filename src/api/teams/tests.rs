@@ -564,6 +564,43 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE object_download_metrics (
+            backend TEXT PRIMARY KEY,
+            attempts_total INTEGER NOT NULL DEFAULT 0,
+            successes_total INTEGER NOT NULL DEFAULT 0,
+            failures_total INTEGER NOT NULL DEFAULT 0,
+            downloaded_bytes_total INTEGER NOT NULL DEFAULT 0,
+            latency_ms_total INTEGER NOT NULL DEFAULT 0,
+            latency_ms_max INTEGER NOT NULL DEFAULT 0,
+            cleanup_attempts_total INTEGER NOT NULL DEFAULT 0,
+            cleanup_successes_total INTEGER NOT NULL DEFAULT 0,
+            cleanup_failures_total INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create object_download_metrics");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE object_download_failure_metrics (
+            backend TEXT NOT NULL,
+            failure_class TEXT NOT NULL,
+            failures_total INTEGER NOT NULL DEFAULT 0,
+            last_failure_at INTEGER NOT NULL,
+            PRIMARY KEY(backend, failure_class),
+            FOREIGN KEY(backend) REFERENCES object_download_metrics(backend) ON DELETE CASCADE
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create object_download_failure_metrics");
+
+    sqlx::query(
+        r#"
         CREATE TABLE object_upload_sessions (
             id TEXT PRIMARY KEY,
             owner_scope TEXT NOT NULL,

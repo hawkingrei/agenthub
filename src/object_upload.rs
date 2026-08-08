@@ -213,16 +213,11 @@ impl ObjectUploadService {
         if let Err(err) =
             verify_stored_object(&object, expected_size_bytes, expected_sha256.as_deref())
         {
-            if let Err(cleanup_err) = self.store.delete_stored_object(&object).await {
-                tracing::warn!(
-                    object_key = %object.key,
-                    error = %cleanup_err,
-                    "failed to delete object after upload verification failure"
-                );
-            }
+            self.cleanup_failed_object(&object, "upload_verification")
+                .await;
             return Err(err);
         }
-        self.publish_verified_object(VerifiedObjectPublication {
+        let publication = VerifiedObjectPublication {
             upload_id,
             owner_scope,
             file_name,
@@ -230,51 +225,86 @@ impl ObjectUploadService {
             object,
             public_url,
             actor_id: request.actor_id,
-        })
-        .await
+        };
+        match self.publish_verified_object(&publication).await {
+            Ok(record) => Ok(record),
+            Err(err) => {
+                self.cleanup_failed_object(&publication.object, "upload_metadata_publish")
+                    .await;
+                Err(err)
+            }
+        }
     }
 
     pub async fn download(
         &self,
         request: ObjectDownloadRequest,
     ) -> anyhow::Result<agenthub_db::ObjectUploadRecord> {
-        let file_name = normalize_upload_file_name(&request.file_name)?;
-        let expected_size_bytes = request.expected_size_bytes;
-        let expected_sha256 = normalize_expected_sha256(request.expected_sha256.as_deref())?;
-        if let Some(expected_size_bytes) = expected_size_bytes {
-            anyhow::ensure!(
-                expected_size_bytes <= self.download_settings.max_bytes,
-                "download expected_size_bytes exceeds configured max_bytes"
-            );
-        }
-        let source_url = parse_download_url(&request.source_url)?;
+        let started_at = Instant::now();
+        let upload_id = Uuid::now_v7().to_string();
+        let owner_scope = request.owner_scope.to_string();
+        let source_host_hint = Url::parse(request.source_url.trim())
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string))
+            .unwrap_or_else(|| "<invalid>".to_string());
+        let prepared = (|| {
+            let file_name = normalize_upload_file_name(&request.file_name)?;
+            let expected_size_bytes = request.expected_size_bytes;
+            let expected_sha256 = normalize_expected_sha256(request.expected_sha256.as_deref())?;
+            if let Some(expected_size_bytes) = expected_size_bytes {
+                anyhow::ensure!(
+                    expected_size_bytes <= self.download_settings.max_bytes,
+                    "download expected_size_bytes exceeds configured max_bytes"
+                );
+            }
+            let source_url = parse_download_url(&request.source_url)?;
+            Ok::<_, anyhow::Error>((file_name, expected_size_bytes, expected_sha256, source_url))
+        })();
+        let (file_name, expected_size_bytes, expected_sha256, source_url) = match prepared {
+            Ok(prepared) => prepared,
+            Err(err) => {
+                self.record_download_metric(
+                    false,
+                    Some("request_validation"),
+                    0,
+                    started_at,
+                    agenthub_db::ObjectDownloadCleanupOutcome::NotAttempted,
+                )
+                .await;
+                tracing::warn!(
+                    upload_id = %upload_id,
+                    owner_scope = %owner_scope,
+                    source_host = %source_host_hint,
+                    failure_class = "request_validation",
+                    elapsed_ms = started_at.elapsed().as_millis() as u64,
+                    error = %err,
+                    "object download ingestion failed"
+                );
+                return Err(err);
+            }
+        };
         let source_host = source_url
             .host_str()
             .expect("host checked by parse_download_url")
             .to_string();
-        let started_at = Instant::now();
-        let upload_id = Uuid::now_v7().to_string();
-        let owner_scope = request.owner_scope.to_string();
         let key = format!("uploads/{owner_scope}/{upload_id}/{file_name}");
         let object = match self.download_to_object(&key, source_url).await {
-            Ok(object) => {
-                tracing::info!(
-                    upload_id = %upload_id,
-                    owner_scope = %owner_scope,
-                    source_host = %source_host,
-                    object_key = %object.key,
-                    size_bytes = object.size_bytes,
-                    elapsed_ms = started_at.elapsed().as_millis() as u64,
-                    "object download ingestion completed"
-                );
-                object
-            }
+            Ok(object) => object,
             Err(err) => {
+                let failure_class = classify_download_error(&err);
+                self.record_download_metric(
+                    false,
+                    Some(failure_class),
+                    0,
+                    started_at,
+                    agenthub_db::ObjectDownloadCleanupOutcome::NotAttempted,
+                )
+                .await;
                 tracing::warn!(
                     upload_id = %upload_id,
                     owner_scope = %owner_scope,
                     source_host = %source_host,
-                    failure_class = classify_download_error(&err),
+                    failure_class,
                     elapsed_ms = started_at.elapsed().as_millis() as u64,
                     error = %err,
                     "object download ingestion failed"
@@ -285,16 +315,31 @@ impl ObjectUploadService {
         if let Err(err) =
             verify_stored_object(&object, expected_size_bytes, expected_sha256.as_deref())
         {
-            if let Err(cleanup_err) = self.store.delete_stored_object(&object).await {
-                tracing::warn!(
-                    object_key = %object.key,
-                    error = %cleanup_err,
-                    "failed to delete object after download verification failure"
-                );
-            }
+            let cleanup = self
+                .cleanup_failed_object(&object, "download_verification")
+                .await;
+            self.record_download_metric(
+                false,
+                Some("verification"),
+                object.size_bytes,
+                started_at,
+                cleanup,
+            )
+            .await;
+            tracing::warn!(
+                upload_id = %upload_id,
+                owner_scope = %owner_scope,
+                source_host = %source_host,
+                object_key = %object.key,
+                size_bytes = object.size_bytes,
+                failure_class = "verification",
+                elapsed_ms = started_at.elapsed().as_millis() as u64,
+                error = %err,
+                "object download ingestion failed"
+            );
             return Err(err);
         }
-        self.publish_verified_object(VerifiedObjectPublication {
+        let publication = VerifiedObjectPublication {
             upload_id,
             owner_scope,
             file_name,
@@ -302,8 +347,53 @@ impl ObjectUploadService {
             object,
             public_url: None,
             actor_id: request.actor_id,
-        })
-        .await
+        };
+        let record = match self.publish_verified_object(&publication).await {
+            Ok(record) => record,
+            Err(err) => {
+                let cleanup = self
+                    .cleanup_failed_object(&publication.object, "download_metadata_publish")
+                    .await;
+                self.record_download_metric(
+                    false,
+                    Some("metadata_publish"),
+                    publication.object.size_bytes,
+                    started_at,
+                    cleanup,
+                )
+                .await;
+                tracing::warn!(
+                    upload_id = %publication.upload_id,
+                    owner_scope = %publication.owner_scope,
+                    source_host = %source_host,
+                    object_key = %publication.object.key,
+                    size_bytes = publication.object.size_bytes,
+                    failure_class = "metadata_publish",
+                    elapsed_ms = started_at.elapsed().as_millis() as u64,
+                    error = %err,
+                    "object download ingestion failed"
+                );
+                return Err(err);
+            }
+        };
+        self.record_download_metric(
+            true,
+            None,
+            publication.object.size_bytes,
+            started_at,
+            agenthub_db::ObjectDownloadCleanupOutcome::NotAttempted,
+        )
+        .await;
+        tracing::info!(
+            upload_id = %publication.upload_id,
+            owner_scope = %publication.owner_scope,
+            source_host = %source_host,
+            object_key = %publication.object.key,
+            size_bytes = publication.object.size_bytes,
+            elapsed_ms = started_at.elapsed().as_millis() as u64,
+            "object download ingestion completed"
+        );
+        Ok(record)
     }
 
     async fn store_upload_bytes(
@@ -468,9 +558,9 @@ impl ObjectUploadService {
 
     async fn publish_verified_object(
         &self,
-        publication: VerifiedObjectPublication,
+        publication: &VerifiedObjectPublication,
     ) -> anyhow::Result<agenthub_db::ObjectUploadRecord> {
-        let object = publication.object;
+        let object = &publication.object;
         let now = Utc::now().timestamp();
         let size_bytes = i64::try_from(object.size_bytes)
             .context("uploaded object is too large for SQLite metadata size_bytes")?;
@@ -490,18 +580,56 @@ impl ObjectUploadService {
             published_at: Some(now),
             cleanup_after: None,
         };
-        match agenthub_db::insert_object_upload(&self.db, &upload).await {
-            Ok(record) => Ok(record),
+        agenthub_db::insert_object_upload(&self.db, &upload)
+            .await
+            .context("failed to publish upload metadata")
+    }
+
+    async fn cleanup_failed_object(
+        &self,
+        object: &StoredObject,
+        cleanup_reason: &'static str,
+    ) -> agenthub_db::ObjectDownloadCleanupOutcome {
+        match self.store.delete_stored_object(object).await {
+            Ok(()) => agenthub_db::ObjectDownloadCleanupOutcome::Succeeded,
             Err(err) => {
-                if let Err(cleanup_err) = self.store.delete_stored_object(&object).await {
-                    tracing::warn!(
-                        object_key = %object.key,
-                        error = %cleanup_err,
-                        "failed to delete object after upload metadata insert failure"
-                    );
-                }
-                Err(err).context("failed to publish upload metadata")
+                tracing::warn!(
+                    object_key = %object.key,
+                    cleanup_reason,
+                    error = %err,
+                    "failed to delete object after object ingestion failure"
+                );
+                agenthub_db::ObjectDownloadCleanupOutcome::Failed
             }
+        }
+    }
+
+    async fn record_download_metric(
+        &self,
+        succeeded: bool,
+        failure_class: Option<&str>,
+        downloaded_bytes: u64,
+        started_at: Instant,
+        cleanup_outcome: agenthub_db::ObjectDownloadCleanupOutcome,
+    ) {
+        let backend = object_store_backend_name(self.store.backend());
+        let metric = agenthub_db::ObjectDownloadMetricDelta {
+            backend,
+            succeeded,
+            downloaded_bytes: saturating_metric_i64(downloaded_bytes.into()),
+            latency_ms: saturating_metric_i64(started_at.elapsed().as_millis()),
+            failure_class,
+            cleanup_outcome,
+            recorded_at: Utc::now().timestamp(),
+        };
+        if let Err(err) = agenthub_db::record_object_download_metric(&self.db, metric).await {
+            tracing::warn!(
+                backend,
+                succeeded,
+                failure_class,
+                error = %err,
+                "failed to persist object download metric"
+            );
         }
     }
 }
@@ -587,7 +715,7 @@ fn is_retryable_download_request_error(err: &reqwest::Error) -> bool {
 }
 
 fn classify_download_error(err: &anyhow::Error) -> &'static str {
-    let message = err.to_string();
+    let message = format!("{err:#}");
     if message.contains("HTTP 408") || message.contains("HTTP 429") {
         return "transient_status";
     }
@@ -608,6 +736,15 @@ fn classify_download_error(err: &anyhow::Error) -> &'static str {
     }
     if message.contains("resolve download source host") {
         return "dns";
+    }
+    if message.contains("read object chunk") {
+        return "source_stream";
+    }
+    if message.contains("create object writer")
+        || message.contains("write object chunk")
+        || message.contains("close object writer")
+    {
+        return "object_store";
     }
     "request"
 }
@@ -763,6 +900,10 @@ fn object_store_backend_name(backend: ObjectStoreBackend) -> &'static str {
     }
 }
 
+fn saturating_metric_i64(value: u128) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
 fn normalize_upload_file_name(file_name: &str) -> anyhow::Result<String> {
     let file_name = file_name.trim();
     if file_name.is_empty() || file_name == "." || file_name == ".." {
@@ -896,6 +1037,16 @@ mod tests {
         assert_eq!(
             classify_download_error(&anyhow!("download exceeded max redirects")),
             "redirect"
+        );
+        assert_eq!(
+            classify_download_error(
+                &anyhow!("download exceeded configured max_bytes").context("read object chunk")
+            ),
+            "size_limit"
+        );
+        assert_eq!(
+            classify_download_error(&anyhow!("disk full").context("write object chunk")),
+            "object_store"
         );
     }
 

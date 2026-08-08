@@ -115,8 +115,10 @@ The request names a source URL, file name, content type, optional expected size,
 SHA-256. AgentHub authorizes the route resource, derives the owner scope, downloads the source on
 the server, streams bytes into the object store, verifies the final size/checksum, and publishes
 SQLite metadata only after successful verification. The first implementation is synchronous at the
-API boundary and returns the published `ObjectUploadRecord`; a future async intent table can add
-queued/canceled/expired terminal states without changing the owner-scope authority.
+API boundary and returns the published `ObjectUploadRecord`. Terminal outcomes also update durable,
+backend-scoped SQLite counters after request validation, verification, and metadata publication. A
+future async intent table can add queued/canceled/expired terminal states without changing the
+owner-scope authority when a product flow actually requires those states.
 
 Download ingestion must be fail-closed:
 
@@ -180,6 +182,10 @@ operations must still authorize against the Team-owned metadata row.
   expiry, status, and error class.
 - Download completion must verify final size and SHA-256 before inserting a `published` metadata
   row. Failed, canceled, expired, or oversized downloads must not publish object metadata.
+- Download success means both object verification and metadata publication completed. Durable
+  counters use fixed failure classes and never persist source URL, source host, actor, owner-scope,
+  or credential labels. Metric persistence failure must not reverse an already-published object or
+  create a retryable ambiguous result.
 - Public image URLs must be issued only after the owner scope is validated and the metadata row is
   published. A CDN URL is not proof that a user may create, replace, or delete an image.
 - Writes must record size and SHA-256 so repair and migration jobs can verify object integrity.
@@ -201,7 +207,7 @@ operations must still authorize against the Team-owned metadata row.
 | Agent upload entry | Parser, owner-scope, and DB tests cover `agenthub actor upload`, required scope/file flags, image mode, and published metadata persistence. |
 | Team upload API | Handler and router tests cover authorization, owner-scope derivation, base64 upload publication, raster-image allowlist, and size/checksum mismatch rejection without publishing metadata. |
 | Task and agent upload APIs | Focused API tests cover parent Team authorization before task-scope publication, agent existence checks before agent-scope publication, object/image key prefixes, and OpenAPI fixture coverage for every new route. |
-| Large download ingestion | Service and API tests cover route-derived owner scopes, URL scheme rejection, private/loopback address rejection, operator source-host allow/deny policy, configurable private-network allowance for controlled tests, final size/SHA-256 verification, OpenAPI coverage, and successful metadata publication after a streamed server-side download. Object-store tests cover chunked writes with size/hash calculation. |
+| Large download ingestion | Service and API tests cover route-derived owner scopes, URL scheme rejection, private/loopback address rejection, operator source-host allow/deny policy, configurable private-network allowance for controlled tests, final size/SHA-256 verification, OpenAPI coverage, and successful metadata publication after a streamed server-side download. Terminal-metric tests cover cumulative success/failure, bytes, latency, bounded failure classes, verification and metadata-publication compensation, and the no-publish-on-failure invariant. Object-store tests cover chunked writes with size/hash calculation. |
 | Graph-bed UX | Frontend tests cover raster MIME allowlisting, browser SHA-256/base64 request preparation, Team image endpoint wiring, and Markdown image insertion in the Team channel composer. |
 | Config contract | `agenthub-config` tests confirm defaults and secret-free S3 env reference trimming. |
 | Bazel coverage | `//crates/agenthub-object-store:agenthub_object_store_tests` is listed in Bazel test and coverage targets. |
@@ -231,8 +237,11 @@ operations must still authorize against the Team-owned metadata row.
   held until the object-store byte stream finishes so one hot source cannot monopolize download
   workers with large objects.
 - Download ingestion emits structured logs for retry attempts and terminal success/failure with
-  source host, owner scope, upload id, latency, byte count on success, and failure class. S3/R2/MinIO
-  production use should add durable counters before large user-facing uploads become default-on.
+  source host, owner scope, upload id, latency, completed byte count, and failure class. Terminal
+  success is emitted only after metadata publication. `object_download_metrics` retains cumulative
+  backend-scoped attempts, outcomes, bytes, latency sum/max, and cleanup totals;
+  `object_download_failure_metrics` retains fixed failure-class totals. These writes are best-effort
+  observability and warn on persistence failure without changing the primary request result.
 - Existing local Team context artifacts remain compatible until their metadata schema is explicitly
   migrated to record backend/key instead of only absolute local paths.
 
@@ -240,9 +249,8 @@ operations must still authorize against the Team-owned metadata row.
 
 - Existing artifact tables store local filesystem paths; moving those rows to object storage needs a
   schema migration and read-compatibility plan.
-- Download ingestion has first-pass SSRF guardrails, operator source-host policy, bounded pre-stream
-  retry, per-host concurrency limits, structured logs, and streaming object-store writer support,
-  but still needs durable metrics counters before broad untrusted production exposure.
+- Download ingestion remains synchronous. A queued/cancelable product flow must add a durable
+  intent state machine with expiry and error-class semantics before exposing asynchronous behavior.
 - S3-compatible providers differ in multipart, path-style, and checksum behavior; MinIO is the first
   CI fixture, but each documented production provider still needs compatibility evidence before it
   is described as production-ready.
@@ -253,4 +261,6 @@ operations must still authorize against the Team-owned metadata row.
 
 - [2026-07-16-object-storage-opendal.md](../journal/2026-07-16-object-storage-opendal.md)
 - [2026-07-22-object-storage-download-ingest.md](../journal/2026-07-22-object-storage-download-ingest.md)
+- [2026-07-23-object-storage-download-ingest-implementation.md](../journal/2026-07-23-object-storage-download-ingest-implementation.md)
 - [2026-08-08-object-store-s3-release-enablement.md](../journal/2026-08-08-object-store-s3-release-enablement.md)
+- [2026-08-08-object-storage-download-observability.md](../journal/2026-08-08-object-storage-download-observability.md)

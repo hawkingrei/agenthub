@@ -182,6 +182,8 @@ Main shape:
   return immutable results to the parent Task evidence stream.
 - Official release matrices now enable the OpenDAL S3 backend explicitly while keeping the local
   filesystem as the runtime default and artifact/provider evidence as separate gates.
+- Server-side download ingestion now records durable terminal outcome, latency, byte, failure-class,
+  and compensation-cleanup aggregates without introducing high-cardinality source labels.
 
 Start with:
 
@@ -189,6 +191,7 @@ Start with:
 - `2026-08-06-teamspace-control-plane.md`
 - `2026-08-07-team-goal-lease-foundation.md`
 - `2026-08-08-object-store-s3-release-enablement.md`
+- `2026-08-08-object-storage-download-observability.md`
 
 ## Compaction Rules
 

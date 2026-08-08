@@ -46,10 +46,11 @@ cargo test -p agenthub-config object_store -- --nocapture
 
 ## Follow-Ups
 
-- Add retry policy, per-host concurrency limits, and download observability before broad untrusted
-  production exposure.
-- Add an async intent table if product flows need queued/cancelable downloads or durable failed
-  ingest state.
+- Retry, per-host concurrency, structured logs, and durable terminal counters landed in the dated
+  checkpoints below and in
+  [Object Storage Download Observability](2026-08-08-object-storage-download-observability.md).
+- Add an async intent table only if product flows require queued/cancelable downloads or durable
+  in-progress state.
 
 ## 2026-07-28 Host Policy Hardening
 
@@ -76,9 +77,10 @@ cargo test -p agenthub download_ -- --nocapture
 
 ### Follow-Ups
 
-- Add durable download counters before broad untrusted production exposure.
-- Add an async intent table if product flows need queued/cancelable downloads or durable failed
-  ingest state.
+- Durable terminal counters landed in
+  [Object Storage Download Observability](2026-08-08-object-storage-download-observability.md).
+- Add an async intent table only if product flows require queued/cancelable downloads or durable
+  in-progress state.
 
 ## 2026-07-29 Retry And Observability
 
@@ -102,8 +104,8 @@ streaming starts and emits structured logs for retry attempts plus terminal succ
 
 - Do not retry after object-store streaming starts. That keeps partial writer semantics explicit
   until download ingestion has durable intents and cleanup accounting.
-- Keep logs as the first observability surface; durable counters remain separate production
-  hardening.
+- Keep structured logs as the request-level observability surface. Durable low-cardinality counters
+  later landed without persisting source or owner labels.
 
 ### Validation
 
@@ -115,9 +117,10 @@ cargo check -p agenthub
 
 ### Follow-Ups
 
-- Add durable latency/byte/failure/cleanup counters before broad untrusted production exposure.
-- Add an async intent table if product flows need queued/cancelable downloads or durable failed
-  ingest state.
+- Durable latency, byte, failure, and cleanup counters landed in
+  [Object Storage Download Observability](2026-08-08-object-storage-download-observability.md).
+- Add an async intent table only if product flows require queued/cancelable downloads or durable
+  in-progress state.
 
 ## 2026-07-29 Per-Host Concurrency
 
@@ -150,6 +153,7 @@ cargo check -p agenthub
 
 ### Follow-Ups
 
-- Add durable latency/byte/failure/cleanup counters before broad untrusted production exposure.
-- Add an async intent table if product flows need queued/cancelable downloads or durable failed
-  ingest state.
+- Durable latency, byte, failure, and cleanup counters landed in
+  [Object Storage Download Observability](2026-08-08-object-storage-download-observability.md).
+- Add an async intent table only if product flows require queued/cancelable downloads or durable
+  in-progress state.
