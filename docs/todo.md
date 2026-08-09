@@ -5,6 +5,7 @@ Active backlog only. Keep this file small and current.
 ## Release And Packaging
 
 - [ ] `P1` Verify preview release partial-asset behavior: semver release run `29194967848` for `v0.0.11` proves Linux `x86_64` / `aarch64` release builds used `release-vendored-openssl`, avoided the stale cross-sysroot OpenSSL panic, and published canonical `agenthub` / `agenthub-acp` assets plus Debian packages. Remaining evidence is a preview release run showing successful binary assets publish when one release matrix target fails. Record the preview workflow run ID and release URL in [journal/2026-04-20-release-vendored-openssl-and-partial-assets.md](journal/2026-04-20-release-vendored-openssl-and-partial-assets.md).
+- [ ] `P1` Define and enforce the Linux runtime baseline for official artifacts: the x86_64 prebuild from workflow run `31259043337` starts on Ubuntu 24.04 but requires `GLIBC_2.38` / `GLIBC_2.39` and does not start on Ubuntu 22.04. Pin the supported glibc floor, build against a compatible sysroot, and add a published-binary startup smoke on the oldest supported Linux distribution. Evidence: [journal/2026-08-08-object-store-s3-release-enablement.md](journal/2026-08-08-object-store-s3-release-enablement.md).
 
 ## Team Workspace Browser Matrix
 
@@ -55,10 +56,6 @@ Stable contracts:
 
 - [x] `P1` Complete the RocksDB `cf_index` authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). SQLite authority rows now rebuild the conversation, actor mailbox, run-event, and agent-event projections; guarded ordered reads compare high-water marks and exact SQLite page IDs, fall back on any gap, and queue a startup worker for asynchronous repair. Orphan/prune helpers remain diagnostics and explicit maintenance only. Keep normal SQLite bodies readable until a later authority-cutover decision. Notes: [journal/2026-06-10-message-store-foundation-crate.md](journal/2026-06-10-message-store-foundation-crate.md).
 - [ ] `P1` Stage SQLite retirement by responsibility, not by a flag flip: Phase 1 `cf_body` dual-write, durable SQLite outbox, startup drainer, and SQLite compatibility reads are landed; `cf_index` is now a rebuildable, guarded delivery projection. Before moving Team, Agent, run, mailbox, permission, or idempotency authority, complete dual-read comparison and full rebuild/backup-restore recovery evidence, then define a transactional `ControlStore` replacement with conditional updates, uniqueness, audit, and per-entity rollback. RocksDB indexes and LanceDB archives must not become control-plane authority by implication. Stable contract: [features/message-storage-tiering.md](features/message-storage-tiering.md).
-
-## Object Storage
-
-- [ ] `P1` Verify OpenDAL S3 release artifacts: official release and prebuild matrices now compile every `agenthub` target with the root `object-store-s3` feature while the runtime default remains `fs`. PR #890 and main push workflow run `29639782907` / job `88068255089` established the MinIO-backed bytes, hosted-image, and delete fixture. Remaining evidence is a reviewed preview or semver release whose published feature rows include `object-store-s3`, plus an x86_64 published-binary smoke against MinIO. Record the workflow run, artifact, and smoke evidence in [journal/2026-08-08-object-store-s3-release-enablement.md](journal/2026-08-08-object-store-s3-release-enablement.md). Provider-specific production certification remains separate.
 
 ## Observability, CI, And Docs
 

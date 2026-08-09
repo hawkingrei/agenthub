@@ -43,6 +43,8 @@ mod release_feature_tests {
     const RELEASE_PREBUILD_WORKFLOW: &str =
         include_str!("../.github/workflows/release-prebuild.yml");
     const TODO_MD: &str = include_str!("../docs/todo.md");
+    const S3_RELEASE_JOURNAL: &str =
+        include_str!("../docs/journal/2026-08-08-object-store-s3-release-enablement.md");
 
     #[test]
     fn official_release_includes_opendal_s3_without_changing_defaults() {
@@ -106,12 +108,21 @@ mod release_feature_tests {
             );
         }
         assert!(
-            TODO_MD.contains("- [ ] `P1` Verify OpenDAL S3 release artifacts"),
-            "keep the official artifact validation tail explicit"
+            !TODO_MD.contains("- [ ] `P1` Verify OpenDAL S3 release artifacts"),
+            "remove the S3 artifact gate after published-binary evidence lands"
         );
         assert!(
-            TODO_MD.contains("runtime default remains `fs`"),
-            "TODO should preserve the runtime default boundary"
+            S3_RELEASE_JOURNAL.contains("31259043337")
+                && S3_RELEASE_JOURNAL.contains("9022659373")
+                && S3_RELEASE_JOURNAL
+                    .contains("4438513d8a4298c30697dcf1d3e50f869640cb9cfb66930543e73ed627b3ce24"),
+            "journal must retain the official workflow, artifact, and archive evidence"
+        );
+        assert!(
+            S3_RELEASE_JOURNAL.contains("cleanup_attempts_total = 1")
+                && S3_RELEASE_JOURNAL.contains("cleanup_successes_total = 1")
+                && S3_RELEASE_JOURNAL.contains("runtime backend"),
+            "journal must retain the compensating-delete and runtime-default boundaries"
         );
     }
 
