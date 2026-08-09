@@ -35,6 +35,7 @@ rust_library(
         "//crates/agenthub-object-store:Cargo.toml",
         ".github/workflows/release.yml",
         ".github/workflows/release-prebuild.yml",
+        "docs/journal/2026-08-08-object-store-s3-release-enablement.md",
         "docs/todo.md",
         "web/index.html",
     ] + glob(
