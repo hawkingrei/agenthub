@@ -45,7 +45,11 @@ Focused checks for this documentation slice:
 git diff --check
 ```
 
+## Completion
+
+The ACP-heavy UI cluster was subsequently compacted, and the full wave is closed in
+[`2026-08-09-feature-docs-compaction-wave2-closeout.md`](2026-08-09-feature-docs-compaction-wave2-closeout.md).
+
 ## Follow-Ups
 
-- Continue compaction for remaining ACP-heavy UI journals.
-- Keep deployed browser validation follow-ups separate from documentation compaction.
+- Deployed browser validation remains separate from documentation compaction.

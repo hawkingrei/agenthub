@@ -324,3 +324,4 @@ Expected validation style:
 - `docs/journal/2026-07-19-team-task-board-card-rerender-guard.md`
 - `docs/journal/2026-07-19-team-workspace-context-rerender-split.md`
 - `docs/journal/2026-07-19-frontend-performance-browser-baseline.md`
+- `docs/journal/2026-08-09-feature-docs-compaction-wave2-closeout.md`

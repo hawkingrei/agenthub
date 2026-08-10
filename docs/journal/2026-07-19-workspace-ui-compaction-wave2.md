@@ -44,7 +44,12 @@ Focused checks for this documentation slice:
 git diff --check
 ```
 
+## Completion
+
+The Team conversation/composer and ACP-heavy UI clusters were subsequently compacted, and the full
+wave is closed in
+[`2026-08-09-feature-docs-compaction-wave2-closeout.md`](2026-08-09-feature-docs-compaction-wave2-closeout.md).
+
 ## Follow-Ups
 
-- Continue compaction for the remaining Team conversation/composer and ACP-heavy UI micro-journals.
-- Keep `docs/todo.md` open until the second pass over residual Team/UI journals is complete.
+None for this documentation cluster.

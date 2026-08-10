@@ -184,6 +184,8 @@ Main shape:
   filesystem as the runtime default and artifact/provider evidence as separate gates.
 - Server-side download ingestion now records durable terminal outcome, latency, byte, failure-class,
   and compensation-cleanup aggregates without introducing high-cardinality source labels.
+- Feature-doc compaction wave 2 now keeps Workspace, Team conversation/composer, and ACP-heavy UI
+  contracts in canonical specs while retaining dated journals only for rollout evidence.
 
 Start with:
 
@@ -192,6 +194,7 @@ Start with:
 - `2026-08-07-team-goal-lease-foundation.md`
 - `2026-08-08-object-store-s3-release-enablement.md`
 - `2026-08-08-object-storage-download-observability.md`
+- `2026-08-09-feature-docs-compaction-wave2-closeout.md`
 
 ## Compaction Rules
 

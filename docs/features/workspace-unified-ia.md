@@ -313,6 +313,8 @@ On narrow screens this model degrades to two reachable states instead of three p
 Mobile behavior should preserve operator location with explicit back/close affordances rather than
 stacking all three zones into one long page.
 
+## Contracts
+
 ### 9) Route Model Direction
 
 The rollout should converge current top-level routes toward one workspace shell.
@@ -462,6 +464,8 @@ Constraints:
 - do not make desktop left-rail density a hard dependency for navigation
 - do not bury primary workflow switches in overflow menus on narrow screens
 
+## Operational Notes
+
 ### 13) Migration Guardrails
 
 The rollout must not regress current semantic contracts.
@@ -556,13 +560,17 @@ Suggested minimum validation by phase:
 - a shared left rail can become visually heavier than the current Notion-style Team shell unless
   chrome stays restrained
 
-## Source References
+## Related Feature Specs
 
 - `docs/features/agents-teams.md`
 - `docs/features/frontend-design.md`
 - `docs/features/team-execution-vocabulary.md`
+
+## Source Journals
+
 - `docs/journal/2026-04-18-workspace-shell-compactness.md`
 - `docs/journal/2026-04-18-workspace-slock-notion-density-pass.md`
 - `docs/journal/2026-04-19-workspace-agent-pane-chrome-tightening.md`
 - `docs/journal/2026-04-19-workspace-channel-first-lens-language.md`
 - `docs/journal/2026-07-19-workspace-ui-compaction-wave2.md`
+- `docs/journal/2026-08-09-feature-docs-compaction-wave2-closeout.md`

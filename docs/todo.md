@@ -57,10 +57,6 @@ Stable contracts:
 - [x] `P1` Complete the RocksDB `cf_index` authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). SQLite authority rows now rebuild the conversation, actor mailbox, run-event, and agent-event projections; guarded ordered reads compare high-water marks and exact SQLite page IDs, fall back on any gap, and queue a startup worker for asynchronous repair. Orphan/prune helpers remain diagnostics and explicit maintenance only. Keep normal SQLite bodies readable until a later authority-cutover decision. Notes: [journal/2026-06-10-message-store-foundation-crate.md](journal/2026-06-10-message-store-foundation-crate.md).
 - [ ] `P1` Stage SQLite retirement by responsibility, not by a flag flip: Phase 1 `cf_body` dual-write, durable SQLite outbox, startup drainer, and SQLite compatibility reads are landed; `cf_index` is now a rebuildable, guarded delivery projection. Before moving Team, Agent, run, mailbox, permission, or idempotency authority, complete dual-read comparison and full rebuild/backup-restore recovery evidence, then define a transactional `ControlStore` replacement with conditional updates, uniqueness, audit, and per-entity rollback. RocksDB indexes and LanceDB archives must not become control-plane authority by implication. Stable contract: [features/message-storage-tiering.md](features/message-storage-tiering.md).
 
-## Observability, CI, And Docs
-
-- [ ] `P2` Continue `features` compaction wave 2: finish a second pass over residual Team/UI micro-journals, extract stable decisions into canonical feature specs, and leave explicit supersession pointers on merged journals so only records with distinct implementation evidence remain. See [features/README.md](features/README.md).
-
 ## Maintenance Rules
 
 - Keep only open work here. Remove completed items after evidence lands in a journal, PR, or canonical feature spec.
