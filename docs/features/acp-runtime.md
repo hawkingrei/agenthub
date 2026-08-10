@@ -332,8 +332,11 @@ ACP permission requests are first-class runtime records:
 
 - `docs/journal/2026-02-20-acp-package-and-bootstrap-module-migration.md`
 - `docs/journal/2026-02-09-codex-acp-protocol-sync.md`
+- `docs/journal/2026-02-13-acp-ui-fold-markdown-mobile.md`
+- `docs/journal/2026-02-15-acp-tool-call-humanized-rendering.md`
 - `docs/journal/2026-02-15-acp-conversation-stick-bottom-hardening.md`
 - `docs/journal/2026-02-16-permission-history-agent-scope.md`
+- `docs/journal/2026-02-17-acp-tool-call-group-fold-animation.md`
 - `docs/journal/2026-02-20-web-tailwind-ui-phase8-acp-panel-debug-shell.md`
 - `docs/journal/2026-02-20-web-tailwind-ui-phase9-acp-conversation-shell.md`
 - `docs/journal/2026-03-08-sse-stale-running-agent-reconciliation.md`
@@ -349,3 +352,5 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-06-03-acp-provider-metadata-allowlist.md`
 - `docs/journal/2026-06-10-claude-acp-provider-support.md`
 - `docs/journal/2026-06-11-generic-codex-acp-entrypoint.md`
+- `docs/journal/2026-07-19-acp-ui-compaction-wave2.md`
+- `docs/journal/2026-08-09-feature-docs-compaction-wave2-closeout.md`

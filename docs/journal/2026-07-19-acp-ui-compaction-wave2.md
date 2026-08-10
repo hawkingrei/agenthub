@@ -47,6 +47,11 @@ Focused checks for this documentation slice:
 git diff --check
 ```
 
+## Completion
+
+The combined Workspace, Team conversation/composer, and ACP-heavy UI wave is closed in
+[`2026-08-09-feature-docs-compaction-wave2-closeout.md`](2026-08-09-feature-docs-compaction-wave2-closeout.md).
+
 ## Follow-Ups
 
 - Future ACP UI changes should update `docs/features/acp-runtime.md` or
