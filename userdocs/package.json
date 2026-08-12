@@ -6,16 +6,19 @@
     "start": "docusaurus start",
     "build": "docusaurus build",
     "serve": "docusaurus serve",
-    "clear": "docusaurus clear"
+    "clear": "docusaurus clear",
+    "test:image-size-compat": "node --test packages/image-size-compat/test/*.test.js"
   },
   "dependencies": {
     "@docusaurus/core": "^3.5.2",
     "@docusaurus/preset-classic": "^3.10.2",
+    "image-size": "file:./packages/image-size-compat",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "overrides": {
     "serialize-javascript": "^7.0.5",
+    "uuid": "11.1.1",
     "webpack-dev-server": {
       "ws": "^8.20.1"
     }

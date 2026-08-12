@@ -923,10 +923,10 @@ impl AppServerCodexThread {
                 Ok(None)
             }
             InProcessServerEvent::ServerRequest(request) => {
-                self.translate_server_request(request).await
+                self.translate_server_request(*request).await
             }
             InProcessServerEvent::ServerNotification(notification) => {
-                self.translate_server_notification(notification).await
+                self.translate_server_notification(*notification).await
             }
         }
     }
@@ -1240,6 +1240,7 @@ impl AppServerCodexThread {
                                     .total
                                     .reasoning_output_tokens,
                                 total_tokens: payload.token_usage.total.total_tokens,
+                                codex_rollout_budget_units: None,
                             },
                             last_token_usage: TokenUsage {
                                 input_tokens: payload.token_usage.last.input_tokens,
@@ -1254,6 +1255,7 @@ impl AppServerCodexThread {
                                     .last
                                     .reasoning_output_tokens,
                                 total_tokens: payload.token_usage.last.total_tokens,
+                                codex_rollout_budget_units: None,
                             },
                             model_context_window: payload.token_usage.model_context_window,
                         }),
@@ -1387,6 +1389,7 @@ impl AppServerCodexThread {
                             app_context,
                             mcp_app_resource_uri,
                             plugin_id,
+                            read_only_hint,
                             ..
                         },
                     ) => {
@@ -1417,6 +1420,7 @@ impl AppServerCodexThread {
                                 app_name,
                                 action_name,
                                 plugin_id,
+                                read_only_hint,
                             }),
                         })
                     }
@@ -1594,6 +1598,7 @@ impl AppServerCodexThread {
                             app_context,
                             mcp_app_resource_uri,
                             plugin_id,
+                            read_only_hint,
                             result,
                             error,
                             duration_ms,
@@ -1642,6 +1647,7 @@ impl AppServerCodexThread {
                                 app_name,
                                 action_name,
                                 plugin_id,
+                                read_only_hint,
                                 duration: duration_ms
                                     .and_then(|ms| u64::try_from(ms).ok())
                                     .map(Duration::from_millis)
@@ -2070,6 +2076,7 @@ fn app_server_request_user_input_to_core(
             .into_iter()
             .map(app_server_request_user_input_question_to_core)
             .collect(),
+        is_blocking: params.is_blocking,
         auto_resolution_ms: params.auto_resolution_ms,
     }
 }
@@ -3619,6 +3626,7 @@ mod tests {
                 thread_id: "thread-1".to_string(),
                 turn_id: "turn-1".to_string(),
                 item_id: "item-1".to_string(),
+                is_blocking: true,
                 auto_resolution_ms: None,
                 questions: vec![codex_app_server_protocol::ToolRequestUserInputQuestion {
                     id: "question-1".to_string(),
@@ -3638,6 +3646,7 @@ mod tests {
 
         assert_eq!(event.call_id, "item-1");
         assert_eq!(event.turn_id, "turn-1");
+        assert!(event.is_blocking);
         assert_eq!(event.questions.len(), 1);
         assert_eq!(event.questions[0].header, "Clarify");
         assert!(event.questions[0].is_other);
@@ -3904,6 +3913,7 @@ mod tests {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "function-call-1".to_string(),
+            encrypted_function_args: None,
             internal_chat_message_metadata_passthrough: None,
         };
 

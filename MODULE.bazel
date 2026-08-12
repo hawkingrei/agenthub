@@ -9,14 +9,11 @@ bazel_dep(name = "rules_cc", version = "0.2.14")
 bazel_dep(name = "rules_rust", version = "0.67.0")
 
 git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
-http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
-new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 git_repository(
     name = "codex_src",
-    # rust-v0.146.0 peeled tag commit (matches what Cargo resolves the codex-* tags to).
-    commit = "e363b08c9175ac1cbe5893615dd2cb9ddf95043b",
-    remote = "https://github.com/openai/codex",
+    # Security-patched Codex 0.147 commit shared with the Cargo codex-* dependencies.
+    commit = "6ca61345ceb09d76edc3db8c4eb55df18a10888a",
+    remote = "https://github.com/hawkingrei/codex",
 )
 
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
@@ -42,73 +39,9 @@ crate.annotation(
     repositories = ["crate_index"],
     rustc_flags = ["--cfg=vendored_bwrap_available"],
 )
-new_local_repository(
-    name = "v8_targets",
-    build_file = "//third_party/v8:BUILD.bazel",
-    path = "third_party/v8",
-)
-http_archive(
-    name = "v8_crate_147_4_0",
-    build_file = "//third_party/v8:v8_crate.BUILD.bazel",
-    sha256 = "2df8fffd507fb18ed000673a83d937f58e60fb07f3306b2274284125b15137cd",
-    strip_prefix = "v8-147.4.0",
-    type = "tar.gz",
-    urls = ["https://static.crates.io/crates/v8/v8-147.4.0.crate"],
-)
-http_file(
-    name = "rusty_v8_147_4_0_aarch64_apple_darwin_archive",
-    downloaded_file_path = "librusty_v8_release_aarch64-apple-darwin.a.gz",
-    sha256 = "7e74740c3ef0a0e8fc0e268a2586123e98340fe9435668cdc1288faefb7362ae",
-    urls = [
-        "https://github.com/denoland/rusty_v8/releases/download/v147.4.0/librusty_v8_release_aarch64-apple-darwin.a.gz",
-    ],
-)
-http_file(
-    name = "rusty_v8_147_4_0_aarch64_unknown_linux_gnu_archive",
-    downloaded_file_path = "librusty_v8_release_aarch64-unknown-linux-gnu.a.gz",
-    sha256 = "94c3f0fde0051404fca1b691f28a496d78db830e7cfb499a044cb1a5e3a59455",
-    urls = [
-        "https://github.com/denoland/rusty_v8/releases/download/v147.4.0/librusty_v8_release_aarch64-unknown-linux-gnu.a.gz",
-    ],
-)
-http_file(
-    name = "rusty_v8_147_4_0_x86_64_apple_darwin_archive",
-    downloaded_file_path = "librusty_v8_release_x86_64-apple-darwin.a.gz",
-    sha256 = "fa9a51f1d3215534992f43cf6abf8394a6742be13937b59f7575df05361e97e6",
-    urls = [
-        "https://github.com/denoland/rusty_v8/releases/download/v147.4.0/librusty_v8_release_x86_64-apple-darwin.a.gz",
-    ],
-)
-http_file(
-    name = "rusty_v8_147_4_0_x86_64_unknown_linux_gnu_archive",
-    downloaded_file_path = "librusty_v8_release_x86_64-unknown-linux-gnu.a.gz",
-    sha256 = "09ddef6c51192afff0541131a0ef9c00f83185d2391daab180382a3abf36ac95",
-    urls = [
-        "https://github.com/denoland/rusty_v8/releases/download/v147.4.0/librusty_v8_release_x86_64-unknown-linux-gnu.a.gz",
-    ],
-)
-crate.annotation(
-    crate = "v8",
-    # Mirror upstream codex's Bazel pattern: inject an explicit binding target
-    # instead of letting rusty_v8 synthesize a crate-local gen/ path that
-    # rustc later cannot resolve inside Bazel sandboxes.
-    build_script_data = [
-        "@v8_targets//:rusty_v8_archive_for_target",
-        "@v8_targets//:rusty_v8_binding_for_target",
-    ],
-    build_script_env = {
-        "RUSTY_V8_ARCHIVE": "$(execpath @v8_targets//:rusty_v8_archive_for_target)",
-        "RUSTY_V8_SRC_BINDING_PATH": "$(execpath @v8_targets//:rusty_v8_binding_for_target)",
-    },
-    gen_build_script = "on",
-    patch_args = ["-p1"],
-    patches = ["//third_party/v8:rusty_v8_prebuilt_out_dir.patch"],
-    repositories = ["crate_index"],
-)
 crate.from_cargo(
     name = "crate_index",
     cargo_lockfile = "//:Cargo.lock",
     manifests = ["//:Cargo.toml"],
 )
-inject_repo(crate, "v8_targets")
 use_repo(crate, "crate_index")
