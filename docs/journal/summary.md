@@ -186,6 +186,8 @@ Main shape:
   and compensation-cleanup aggregates without introducing high-cardinality source labels.
 - Feature-doc compaction wave 2 now keeps Workspace, Team conversation/composer, and ACP-heavy UI
   contracts in canonical specs while retaining dated journals only for rollout evidence.
+- Dependabot remediation now removes all 16 open alert versions from the Rust ACP, web, and
+  userdocs dependency graphs while retaining explicit upstream dependency migration follow-ups.
 
 Start with:
 
@@ -195,6 +197,7 @@ Start with:
 - `2026-08-08-object-store-s3-release-enablement.md`
 - `2026-08-08-object-storage-download-observability.md`
 - `2026-08-09-feature-docs-compaction-wave2-closeout.md`
+- `2026-08-12-dependabot-security-remediation.md`
 
 ## Compaction Rules
 

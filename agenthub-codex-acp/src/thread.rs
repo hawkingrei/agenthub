@@ -2275,6 +2275,7 @@ impl PromptState {
             call_id,
             turn_id,
             questions,
+            is_blocking: _,
             auto_resolution_ms: _,
         } = event;
         let tool_call_id = ToolCallId::new(format!("request-user-input:{call_id}"));
@@ -5655,6 +5656,7 @@ mod tests {
                         is_secret: false,
                         options: None,
                     }],
+                    is_blocking: true,
                     auto_resolution_ms: None,
                 }));
                 tokio::task::yield_now().await;
@@ -7393,6 +7395,7 @@ mod tests {
                             app_name: None,
                             action_name: None,
                             plugin_id: None,
+                            read_only_hint: None,
                         }),
                     )
                     .await;
@@ -7409,6 +7412,7 @@ mod tests {
                             app_name: None,
                             action_name: None,
                             plugin_id: None,
+                            read_only_hint: None,
                             duration: Duration::from_millis(5),
                             result: Ok(CallToolResult {
                                 content: vec![serde_json::to_value(ContentBlock::Text(

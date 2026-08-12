@@ -4,6 +4,13 @@ Active backlog only. Keep this file small and current.
 
 ## Release And Packaging
 
+- [ ] `P1` Replace the temporary security pins for
+  `hawkingrei/codex@6ca61345ceb09d76edc3db8c4eb55df18a10888a` and
+  `hawkingrei/symposium-acp@c731bb045d1375af48b0446af728aea52503b30b` with upstream stable
+  releases that resolve the same Dependabot package set, then rerun the AgentHub ACP Cargo and Bazel
+  compatibility suites. Do not move back while the default ACP runtime graph contains an affected
+  `gix`, `hickory-proto`, `jsonwebtoken`, `opentelemetry_sdk`, `rmcp`, or `tar` release. Evidence:
+  [journal/2026-08-12-dependabot-security-remediation.md](journal/2026-08-12-dependabot-security-remediation.md).
 - [ ] `P1` Verify preview release partial-asset behavior: semver release run `29194967848` for `v0.0.11` proves Linux `x86_64` / `aarch64` release builds used `release-vendored-openssl`, avoided the stale cross-sysroot OpenSSL panic, and published canonical `agenthub` / `agenthub-acp` assets plus Debian packages. Remaining evidence is a preview release run showing successful binary assets publish when one release matrix target fails. Record the preview workflow run ID and release URL in [journal/2026-04-20-release-vendored-openssl-and-partial-assets.md](journal/2026-04-20-release-vendored-openssl-and-partial-assets.md).
 - [ ] `P1` Define and enforce the Linux runtime baseline for official artifacts: the x86_64 prebuild from workflow run `31259043337` starts on Ubuntu 24.04 but requires `GLIBC_2.38` / `GLIBC_2.39` and does not start on Ubuntu 22.04. Pin the supported glibc floor, build against a compatible sysroot, and add a published-binary startup smoke on the oldest supported Linux distribution. Evidence: [journal/2026-08-08-object-store-s3-release-enablement.md](journal/2026-08-08-object-store-s3-release-enablement.md).
 
