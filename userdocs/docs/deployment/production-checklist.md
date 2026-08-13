@@ -4,82 +4,98 @@ sidebar_position: 2
 
 # Production Checklist
 
-Use this checklist before and after deploying AgentHub in a shared environment.
+Use this checklist for a shared AgentHub deployment and for every release
+upgrade.
 
-## Preflight Checklist
+## Artifact Preflight
 
-- Define explicit `safe_paths` for each team/project root.
-- Validate `worktree.default_root` exists and is writable.
-- For Debian package installs, update `/var/lib/agenthub/.agenthub/config.toml` and grant the
-  `agenthub` service user access to each configured workspace root.
-- Confirm runtime user permissions for repository paths.
-- Confirm Node/Rust build artifacts are reproducible in CI.
-- Confirm rollback plan (previous binary + config snapshot).
+- Select one exact release tag and verify `SHA256SUMS.txt`.
+- Install `agenthub` and `agenthub-acp` from that same release.
+- Confirm both `--version` commands before rollout.
+- Validate the official binary on the oldest Linux environment you intend to
+  support; the project's glibc floor is not yet frozen.
+- If using S3, smoke test the release artifact against the exact provider and
+  bucket. An S3-enabled build alone is not provider certification.
+- Keep the previous verified binaries and a configuration/data snapshot for
+  rollback.
 
-## Security Baseline
+## Service and Network Baseline
 
-- Run AgentHub as a non-root user.
-- Keep network exposure minimal (private network + reverse proxy).
-- Use TLS at the edge.
-- Enforce strong user credentials and periodic rotation.
-- Avoid putting sensitive directories under `safe_paths`.
+- Run as a dedicated non-root OS account.
+- Make every `safe_paths` entry explicit and writable by that account.
+- Keep the HTTP listener on loopback/private ingress and terminate shared
+  access with an authenticated HTTPS proxy.
+- Configure `web.rp_id` and `web.rp_origin` to match the public URL before
+  enabling passkeys.
+- Preserve SSE streaming and disable proxy buffering for `/sse/*`.
+- Keep the first-run root initialization page off public unauthenticated
+  ingress.
+
+For Debian packages, the service uses `HOME=/var/lib/agenthub`. Its default
+configuration and state live under `/var/lib/agenthub/.agenthub/`, and its
+default workspace root is `/var/lib/agenthub/workspaces`.
 
 ## Remote Node Baseline
 
-When remote Agent Nodes are enabled:
+When Agent Nodes are enabled:
 
-- Keep node-only processes on internal `https://` gRPC endpoints.
-- Register remote nodes from the main control plane; do not treat registry rows
-  as credential storage.
-- Keep internal gRPC `issuer`, `audience`, and `shared_secret` aligned across
-  peers until per-node identity is available.
-- Keep node clocks synchronized so timestamp-window validation is reliable.
-- Smoke test duplicate relay retries in staging and confirm they do not create
-  duplicate destination mailbox rows.
-- Keep the dedicated gRPC port until same-port HTTP plus gRPC multiplexing has
-  been validated with your reverse proxy.
+- expose node-only internal gRPC on a private `https://` endpoint;
+- keep bootstrap tokens, JWT shared secrets, and TLS keys out of node registry
+  metadata and logs;
+- align issuer/audience/auth configuration across peers;
+- prefer `mtls` when client-certificate identity is required;
+- synchronize clocks and validate each registered `grpc_target` and
+  `tls_server_name`;
+- run one remote-agent start/output/stop smoke before admitting normal work.
 
 ## Data and Backup
 
-AgentHub persists runtime data under `~/.agenthub/` by default.
+The safest default is a consistent snapshot of the complete AgentHub data
+directory while the service is stopped. At minimum account for:
 
-For Debian package installs, the default service sets `HOME=/var/lib/agenthub`, so the persisted
-runtime data is under `/var/lib/agenthub/.agenthub/`.
+- `agenthub.db` and its SQLite sidecar files;
+- `agent-events/` per-agent event databases;
+- `config.toml` and `vapid.json`;
+- `message-archive/` and optional `message-bodies/` stores;
+- local `objects/`, or the corresponding external object-store retention and
+  recovery policy;
+- internal gRPC certificates and generated auth/bootstrap files;
+- worktrees only when uncommitted workspace content must be recoverable.
 
-Minimum backup targets:
+If any path is overridden in configuration, back up the effective path rather
+than assuming it lives below `~/.agenthub`. For S3, back up control-plane
+metadata and make sure bucket versioning/retention matches the database
+recovery point.
 
-- `~/.agenthub/agenthub.db` for source, Homebrew, and archive installs.
-- `/var/lib/agenthub/.agenthub/agenthub.db` for Debian package installs.
-- deployment `config.toml`.
-
-Recommended cadence:
-
-- Daily snapshot for active environments
-- Extra snapshot before each upgrade
+Test restore into an isolated instance. A backup that has never been restored
+is not release evidence.
 
 ## Upgrade Runbook
 
-1. Stop new task submissions.
-2. Backup `agenthub.db` and `config.toml`.
-3. Deploy new binary/config.
-4. Restart service.
-5. Run smoke checks:
-   - login
-   - create/start one test agent
-   - session replay after refresh
-6. Monitor logs for startup/runtime errors.
+1. Stop new task submissions and let important active runs finish.
+2. Stop the service.
+3. Capture a consistent data/config snapshot and record both binary versions.
+4. Install the new matching binary pair.
+5. Start the service and verify `GET /health` returns `ok`.
+6. Sign in, create/start a disposable agent, receive output, and replay it after
+   a browser refresh.
+7. If enabled, test browser push, OpenAPI retrieval, S3 object flow, and one
+   remote Agent Node.
+8. Keep the environment closed until logs and smoke checks are clean.
 
-## Failure Rollback Rule
+## Rollback
 
-If smoke checks fail or critical flows regress:
+If startup or a critical smoke fails, stop the service before changing files.
+Restore the previous binaries and configuration. Restore the pre-upgrade data
+snapshot when the newer process may have migrated or mutated persistent state;
+do not run an older binary against a possibly upgraded database by assumption.
 
-1. Restore previous binary.
-2. Restore previous config.
-3. Restore database snapshot when schema compatibility is uncertain.
-4. Re-run smoke checks before reopening service.
+Record the failed version, exact artifact checksums, first failing step, and
+matching logs before reopening the previous version.
 
 ## Related Pages
 
+- [Installation and Startup](../getting-started/installation.md)
 - [Deployment Overview and Topology](./overview-and-topology.md)
 - [Remote Node Transport](./remote-node-transport.md)
 - [Security and Path Safety](../operations/security-and-path-safety.md)

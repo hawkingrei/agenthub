@@ -4,7 +4,10 @@ sidebar_position: 2
 
 # Configuration Basics
 
-This page lists all available configuration options for AgentHub.
+This page covers the operator-facing runtime options in AgentHub's current
+configuration schema. Experimental integration bindings are intentionally
+documented with their owning feature contract until they become a supported
+user workflow.
 
 ## Configuration File
 
@@ -81,6 +84,7 @@ WebAuthn/Passkey configuration.
 | `rp_id` | string | `"localhost"` | Relying party ID for WebAuthn |
 | `rp_origin` | string | `"http://localhost:8080"` | Origin for WebAuthn |
 | `rp_name` | string | `"AgentHub"` | Display name for WebAuthn |
+| `passkey_enabled` | boolean | `false` | Initial passkey state; root can change it later in Admin settings |
 
 **Production WebAuthn Setup**:
 
@@ -108,7 +112,7 @@ ACP (Agent Control Protocol) provider settings.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `binary` | string | `"agenthub-acp"` | Canonical AgentHub ACP adapter binary name or path |
-| `default_mode` | string | `"auto"` | Default ACP mode (`auto`, `full`, `suggest`) |
+| `default_mode` | string | `"full-access"` | Default Codex ACP mode (`read-only`, `auto`, or `full-access`; `yolo` normalizes to `full-access`) |
 | `multi_agent_enabled` | boolean | `true` | Force Codex ACP `Feature::Collab` on AgentHub-managed sessions |
 
 The canonical Codex command for new agents is `agenthub-acp codex`. The
@@ -116,13 +120,9 @@ The canonical Codex command for new agents is `agenthub-acp codex`. The
 include the `codex` subcommand argument. Existing deployments can still set it
 to `agenthub-codex-acp` or another compatible Codex ACP executable.
 
-The built-in adapter paths assume the repository's current ACP baseline:
-
-- `agenthub-acp codex`
-- official Codex `0.138.x`
-
-If you point `codex_acp.binary` at a custom binary, keep it compatible with the
-same ACP protocol surface before mixing it into a shared deployment.
+If you point `codex_acp.binary` at a custom binary, verify it against the ACP
+protocol surface used by the exact AgentHub release before mixing versions in a
+shared deployment.
 
 Other ACP adapters are configured per agent command rather than through this
 section. For Claude, prefer the AgentHub-distributed `agenthub-acp claude`
@@ -158,8 +158,14 @@ Object storage for uploaded files, generated artifacts, and image-hosting
 objects. AgentHub keeps ownership, publish state, size, checksum, MIME type, and
 cleanup eligibility in SQLite metadata; the object store only stores bytes.
 
-The first supported backend is local filesystem storage. S3-compatible storage
-is available only in builds that enable the `agenthub-object-store/s3` feature.
+The default backend is local filesystem storage. Official release binaries
+include the OpenDAL S3 backend; default/source builds must enable the root
+`object-store-s3` feature explicitly. Runtime storage remains `fs` until
+`backend = "s3"` is configured.
+
+Shipping the S3 backend is not a production certification for every
+S3-compatible provider. Validate the exact release artifact against the target
+service and bucket before rollout.
 Actor-scoped uploads are available from the CLI:
 
 ```bash
@@ -181,6 +187,15 @@ When `backend = "fs"` and `root` is omitted, actor uploads use
 | `region` | string | provider default | S3-compatible region |
 | `access_key_id_env` | string | provider chain | Environment variable name that contains the access key id |
 | `secret_access_key_env` | string | provider chain | Environment variable name that contains the secret access key |
+| `download_max_bytes` | integer | `536870912` | Maximum server-side download size in bytes |
+| `download_max_redirects` | integer | `5` | Maximum redirects for one download |
+| `download_timeout_seconds` | integer | `120` | End-to-end download timeout |
+| `download_retry_attempts` | integer | `3` | Total attempts for retryable download failures |
+| `download_retry_backoff_millis` | integer | `250` | Initial retry backoff |
+| `download_max_concurrent_per_host` | integer | `4` | Per-host concurrent download limit |
+| `download_allow_private_networks` | boolean | `false` | Permit private, loopback, or link-local destinations |
+| `download_allowed_hosts` | array of strings | `[]` | Optional allowlist; non-empty means unmatched hosts are rejected |
+| `download_denied_hosts` | array of strings | `[]` | Explicit denylist evaluated before the allowlist |
 
 **Local Object Store Example**:
 
@@ -203,6 +218,8 @@ prefix = "agenthub/prod"
 public_base_url = "https://img.example.com"
 access_key_id_env = "AGENTHUB_OBJECT_STORE_ACCESS_KEY_ID"
 secret_access_key_env = "AGENTHUB_OBJECT_STORE_SECRET_ACCESS_KEY"
+download_allowed_hosts = ["downloads.example.com", "*.cdn.example.com"]
+download_denied_hosts = ["metadata.google.internal", "169.254.169.254"]
 ```
 
 `access_key_id_env` and `secret_access_key_env` are references to environment
@@ -213,6 +230,40 @@ grant create, read, replace, or delete permission. AgentHub API handlers must
 authorize against the owning metadata row before returning an image URL or
 mutating an object. The current image-hosting helper accepts only raster image
 MIME types: `image/png`, `image/jpeg`, `image/webp`, and `image/gif`.
+
+Server-side download ingestion permits only `http` and `https`. Private,
+loopback, link-local, metadata-service, and rebinding targets remain blocked by
+default. Keep that default unless the deployment has a narrowly reviewed need.
+
+### `[message_archive]` Section
+
+Searchable Team and agent message documents use the LanceDB-backed archive.
+The archive is a derived search surface, not control-plane authority.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `backend` | string | `"lancedb"` | Archive backend |
+| `uri` | string | `"~/.agenthub/message-archive"` | Archive directory |
+| `message_table` | string | `"messages"` | LanceDB message table |
+
+If archive initialization or readiness fails, AgentHub logs the error and runs
+without that search surface. Include the archive directory in backups when you
+want to preserve it, but treat SQLite as the source for control-plane state.
+
+### `[message_body_store]` Section
+
+The optional RocksDB body store keeps compressed message-body copies while
+SQLite remains the compatibility source.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `false` | Enable the tiered message-body store |
+| `path` | string | `"~/.agenthub/message-bodies"` | RocksDB directory |
+| `auto_migrate` | boolean | `true` | Backfill compatible SQLite bodies at startup after the store is enabled |
+
+This option requires a binary built with the root `rocksdb` feature. Official
+release artifacts include it; a default source build does not. Keep the main
+SQLite data in backups even when this store is enabled.
 
 ### `[push]` Section
 
@@ -321,35 +372,25 @@ http = "http://proxy.company.com:8080"
 https = "http://proxy.company.com:8080"
 ```
 
-## Environment Variables
+## Environment Boundary
 
-All configuration options can be overridden via environment variables:
+The server does not currently apply environment overrides for normal TOML
+settings. Variables such as `AGENTHUB_LISTEN`, `AGENTHUB_SAFE_PATHS`, and
+`AGENTHUB_INTERNAL_GRPC_*` are detected only so startup can warn that they were
+ignored. Put those values in `~/.agenthub/config.toml` instead.
 
-| Environment Variable | Config Path |
-|---------------------|-------------|
-| `AGENTHUB_LISTEN` | `server.listen` |
-| `AGENTHUB_SAFE_PATHS` | `safe_paths` (comma-separated) |
-| `AGENTHUB_WEB_DIR` | `web_dir` |
-| `AGENTHUB_LOG_PATH` | `log_path` |
-| `AGENTHUB_RP_ID` | `web.rp_id` |
-| `AGENTHUB_RP_ORIGIN` | `web.rp_origin` |
-| `AGENTHUB_RP_NAME` | `web.rp_name` |
-| `AGENTHUB_CODEX_ACP_BINARY` | `codex_acp.binary` |
-| `AGENTHUB_CODEX_ACP_DEFAULT_MODE` | `codex_acp.default_mode` |
-| `AGENTHUB_HISTORY_EVENT_RETENTION_DAYS` | `history.event_retention_days` |
-| `AGENTHUB_HISTORY_VACUUM_ON_CLEANUP` | `history.vacuum_on_cleanup` |
-| `AGENTHUB_INTERNAL_GRPC_ENABLED` | `internal_grpc.enabled` |
-| `AGENTHUB_INTERNAL_GRPC_LISTEN` | `internal_grpc.listen` |
-| `AGENTHUB_INTERNAL_GRPC_SECURITY_MODE` | `internal_grpc.security.mode` |
-| `AGENTHUB_INTERNAL_GRPC_CERT_DIR` | `internal_grpc.security.cert_dir` |
-| `AGENTHUB_INTERNAL_GRPC_AUTH_SHARED_SECRET` | `internal_grpc.auth.shared_secret` |
-| `AGENTHUB_INTERNAL_GRPC_AUTH_ISSUER` | `internal_grpc.auth.issuer` |
-| `AGENTHUB_INTERNAL_GRPC_AUTH_AUDIENCE` | `internal_grpc.auth.audience` |
-| `AGENTHUB_INTERNAL_GRPC_BOOTSTRAP_TOKEN` | `internal_grpc.bootstrap.token` |
-| `AGENTHUB_HTTP_PROXY` | `proxy.http` |
-| `AGENTHUB_HTTPS_PROXY` | `proxy.https` |
-| `AGENTHUB_ALL_PROXY` | `proxy.all` |
-| `AGENTHUB_VAPID_SUBJECT` | `push.subject` |
+Environment variables still have explicit uses at other boundaries:
+
+- `access_key_id_env` and `secret_access_key_env` name the variables from which
+  the S3 backend reads credentials.
+- ACP provider commands inherit the service environment according to the
+  process-launch policy.
+- `AGENTHUB_SERVER_URL` and `AGENTHUB_TOKEN` are defaults for `agenthub doctor`,
+  not server configuration overrides.
+- Pyroscope uses the three variables documented below.
+
+Treat an `env overrides ignored` startup warning as a configuration error to
+correct, not proof that the requested value was applied.
 
 ## Pyroscope Profiling
 
@@ -403,16 +444,14 @@ After updating configuration:
 
 1. **Restart AgentHub**:
    ```bash
-   # If running as service
-   systemctl restart agenthub
-   
-   # If running directly
-   pkill agenthub && agenthub
+   sudo systemctl restart agenthub.service
    ```
+
+   For a foreground process, stop it normally and start `agenthub` again.
 
 2. **Verify Server Startup**:
    ```bash
-   curl http://localhost:8080/
+   curl --fail http://127.0.0.1:8080/health
    ```
 
 3. **Test Configuration**:
@@ -433,12 +472,13 @@ safe_paths = [
 ]
 
 [server]
-listen = "0.0.0.0:8080"
+listen = "127.0.0.1:8080"
 
 [web]
 rp_id = "agenthub.company.com"
 rp_origin = "https://agenthub.company.com"
 rp_name = "Company AgentHub"
+passkey_enabled = false
 
 [worktree]
 default_root = "/var/agenthub/worktrees"
@@ -460,7 +500,7 @@ mode = "tls"
 cert_dir = "/etc/agenthub/certs"
 
 [internal_grpc.auth]
-shared_secret = "change-me-to-256-bit-random-secret"
+shared_secret = "<load-a-long-random-secret-from-your-deployment-secret-store>"
 issuer = "agenthub"
 audience = "agenthub-internal"
 

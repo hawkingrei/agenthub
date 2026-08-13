@@ -71,17 +71,18 @@ Three properties tend to matter together:
   the work
 - **structured ACP history**: plans, tools, output, and debug data stay
   reviewable after the run
-- **actor p2p execution model**: remote execution keeps the same actor and
-  mailbox control path instead of introducing a separate orchestration system
+- **shared remote-control model**: remote execution uses the dedicated internal
+  gRPC control plane instead of introducing another human-facing orchestrator
 
 ## What AgentHub Persists
 
 AgentHub keeps operational state in `~/.agenthub/` by default, including:
 
-- SQLite-backed runtime and history state
+- a main SQLite control-plane database and per-agent event databases
 - agent configuration
 - Team state
 - audit and operational records
+- optional local message and object stores
 
 This is why reconnect, history replay, and deployment operations can happen
 without treating the browser as the source of truth.

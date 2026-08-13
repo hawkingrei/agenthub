@@ -4,123 +4,223 @@ sidebar_position: 1
 
 # Installation and Startup
 
-## Install Release Binaries With Homebrew
+AgentHub publishes native binaries for these platforms:
 
-AgentHub publishes Homebrew release binaries through the `linkerdog/homebrew-tap`
-tap.
+| Platform | Release target | Debian package | npm package |
+| --- | --- | --- | --- |
+| macOS Apple Silicon | `darwin-arm64` | No | Yes |
+| Linux x86_64 | `linux-amd64` | `amd64` | Yes |
+| Linux ARM64 | `linux-arm64` | `arm64` | Yes |
 
-```bash
-brew tap linkerdog/homebrew-tap
-brew install linkerdog/homebrew-tap/agenthub
-```
+Windows and macOS Intel binaries are not currently published.
 
-This installs:
+For a complete agent runtime, install both executables from the same release:
 
-- `agenthub`
-- `agenthub-acp`
+- `agenthub`: the control plane and embedded web UI
+- `agenthub-acp`: the provider adapter used by the default Codex and Claude
+  runtime commands
 
-To run AgentHub as a background service:
+The Debian package contains both executables. GitHub publishes them as separate
+archives. The npm wrapper currently contains only `agenthub`.
 
-```bash
-brew services start linkerdog/homebrew-tap/agenthub
-```
+:::caution Linux runtime baseline
 
-AgentHub reads configuration from `~/.agenthub/config.toml`.
+The minimum supported glibc version for official Linux artifacts is not frozen
+yet. A recent `main` prebuild was verified on Ubuntu 24.04 and required
+`GLIBC_2.38` / `GLIBC_2.39`; it did not start on Ubuntu 22.04. Validate the
+binary on the target host before production rollout and check the selected
+release notes for release-specific compatibility evidence.
 
-To create that file interactively:
+:::
 
-```bash
-agenthub init
-```
+## Choose an Installation Method
 
-Minimal example:
+| Method | Best for | Includes `agenthub-acp` | Service integration |
+| --- | --- | --- | --- |
+| Debian package | Ubuntu/Debian servers | Yes | systemd unit included |
+| GitHub archives | macOS and portable Linux installs | Install the matching archive | Manual |
+| npm | Existing Node.js environments | No | Manual |
+| Homebrew tap | Legacy installations only | Legacy helper only | Homebrew service |
 
-```toml
-[server]
-listen = "127.0.0.1:8080"
-```
+## Debian Package
 
-Then open `http://localhost:8080`.
+Use the Debian package for a system-managed Linux installation. Install the
+GitHub CLI first, or download the matching `.deb` and `SHA256SUMS.txt` from the
+[latest release](https://github.com/hawkingrei/agenthub/releases/latest).
 
-Current release binaries are available for:
-
-- macOS Apple Silicon (`darwin-arm64`)
-- Linux `x86_64`
-- Linux `aarch64`
-
-## Install Debian Packages
-
-Linux releases also publish Debian packages for Ubuntu/Debian-style hosts:
-
-- `agenthub_<version>_amd64.deb`
-- `agenthub_<version>_arm64.deb`
-
-Download the package that matches your host and install it with `apt`:
+For Linux x86_64:
 
 ```bash
-sudo apt install ./agenthub_<version>_amd64.deb
+mkdir -p agenthub-install
+cd agenthub-install
+gh release download --repo hawkingrei/agenthub \
+  --pattern 'agenthub_*_amd64.deb' \
+  --pattern SHA256SUMS.txt
+sha256sum --ignore-missing -c SHA256SUMS.txt
+sudo apt install ./agenthub_*_amd64.deb
 ```
 
-The Debian package installs:
+For Linux ARM64, replace `amd64` with `arm64` in the download pattern and
+package name.
 
-- `agenthub`
-- `agenthub-acp`
+The package installs:
+
+- `/usr/bin/agenthub`
+- `/usr/bin/agenthub-acp`
 - `agenthub.service`
 
-On install, the package creates an `agenthub` system user, creates runtime data under
-`/var/lib/agenthub`, enables the service, and attempts to start it.
-
-Check service status:
-
-```bash
-systemctl status agenthub.service
-journalctl -u agenthub.service -f
-```
-
-The service reads configuration from:
+It also creates an `agenthub` system user, enables the service, and attempts to
+start it. Runtime data is stored under `/var/lib/agenthub`, and the generated
+configuration is:
 
 ```text
 /var/lib/agenthub/.agenthub/config.toml
 ```
 
-The default package config listens on `127.0.0.1:8080` and allows workspaces under
-`/var/lib/agenthub/workspaces`. Edit the config and restart the service when you need a different
-listen address or repository root:
+Check the installation:
 
 ```bash
+agenthub --version
+agenthub-acp --version
+sudo systemctl status agenthub.service --no-pager
+sudo journalctl -u agenthub.service -n 100 --no-pager
+```
+
+The package config listens on `127.0.0.1:8080` and allows workspaces under
+`/var/lib/agenthub/workspaces`. For a remote server, either access it through
+an SSH tunnel:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 user@agenthub-host
+```
+
+or place AgentHub behind an authenticated HTTPS reverse proxy. Do not expose an
+unconfigured instance directly to a public network.
+
+Edit the service configuration with:
+
+```bash
+sudoedit /var/lib/agenthub/.agenthub/config.toml
 sudo systemctl restart agenthub.service
 ```
 
-## Build From Source
+## GitHub Release Archives
 
-### Prerequisites
+Use release archives for macOS or a user-managed Linux installation. This
+example downloads the latest matching `agenthub` and `agenthub-acp` archives.
 
-- Rust `1.96.0` (stable toolchain baseline)
-- Node.js 20+
-- Git
+Set `TARGET` to one of:
 
-### Install Web Dependencies
-
-```bash
-npm --prefix web ci
-```
-
-### Create A Minimal Config
-
-AgentHub reads configuration from `~/.agenthub/config.toml` by default.
-
-If you want a guided first-run setup instead of hand-writing TOML, run:
+- `darwin-arm64`
+- `linux-amd64`
+- `linux-arm64`
 
 ```bash
-cargo run -- init
+TARGET=darwin-arm64
+mkdir -p agenthub-install
+cd agenthub-install
+gh release download --repo hawkingrei/agenthub \
+  --pattern "agenthub-[0-9]*-${TARGET}.tar.gz" \
+  --pattern "agenthub-acp-*-${TARGET}.tar.gz" \
+  --pattern SHA256SUMS.txt
 ```
 
-Start with a minimal single-node config:
+Verify the downloaded assets. On macOS:
+
+```bash
+grep -- "-${TARGET}.tar.gz$" SHA256SUMS.txt | shasum -a 256 -c -
+```
+
+On Linux:
+
+```bash
+grep -- "-${TARGET}.tar.gz$" SHA256SUMS.txt | sha256sum -c -
+```
+
+Extract and install both binaries into a user-owned directory:
+
+```bash
+tar -xzf agenthub-[0-9]*-${TARGET}.tar.gz
+tar -xzf agenthub-acp-*-${TARGET}.tar.gz
+mkdir -p "$HOME/.local/bin"
+install -m 0755 agenthub-[0-9]*-${TARGET}/agenthub "$HOME/.local/bin/agenthub"
+install -m 0755 agenthub-acp-*-${TARGET}/agenthub-acp "$HOME/.local/bin/agenthub-acp"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Persist the `PATH` update in your shell profile, then verify both commands:
+
+```bash
+agenthub --version
+agenthub-acp --version
+```
+
+Keep the two archives on the same release tag. Mixing the control plane with a
+different ACP adapter generation can cause provider startup or protocol errors.
+
+## npm
+
+The npm package requires Node.js 18 or newer and supports macOS Apple Silicon,
+Linux x86_64, and Linux ARM64:
+
+```bash
+npm install -g @linkerdog/agenthub
+agenthub --version
+```
+
+The npm wrapper installs only the native `agenthub` control-plane binary. To
+run the default Codex or Claude agent commands, also install the matching
+`agenthub-acp` archive from the same GitHub release by following the archive
+instructions above.
+
+If npm reports that the platform package is missing, confirm that optional
+dependencies are enabled and reinstall:
+
+```bash
+npm config get optional
+npm install -g @linkerdog/agenthub@latest --include=optional
+```
+
+## Homebrew Channel Status
+
+:::warning
+
+The `linkerdog/homebrew-tap` formula currently trails the primary GitHub and npm
+release channels and installs the legacy `agenthub-codex-acp` helper instead of
+the current `agenthub-acp` adapter. Do not use it for a new installation that
+needs the current complete runtime. Use the GitHub archives instead.
+
+:::
+
+Existing Homebrew users can inspect the pinned formula and installed binaries
+before deciding whether to migrate:
+
+```bash
+brew update
+brew info linkerdog/homebrew-tap/agenthub
+agenthub --version
+command -v agenthub-acp
+command -v agenthub-codex-acp
+```
+
+## First Startup
+
+Archive and npm installations read configuration from
+`~/.agenthub/config.toml`. Create it with the interactive initializer:
+
+```bash
+agenthub init
+```
+
+`agenthub init` requires an interactive terminal. It configures the instance
+role and internal gRPC bootstrap, but it does not configure provider API keys
+or provider-specific base URLs.
+
+For a minimal local instance, the resulting configuration should include:
 
 ```toml
 safe_paths = [
   "/home/you/projects",
-  "/home/you/sandboxes",
 ]
 
 [server]
@@ -130,74 +230,91 @@ listen = "127.0.0.1:8080"
 default_root = "/home/you/.agenthub/worktrees"
 ```
 
-`safe_paths` should list the repository roots that users are allowed to use as
-agent workdirs.
+On macOS, replace the Linux paths with paths under your home directory.
 
-### Start AgentHub
-
-For the standard local workflow:
+Start AgentHub in the foreground:
 
 ```bash
-make run
+agenthub
 ```
 
-`make run` builds the web UI as part of the normal startup path, so you do not
-need a separate `npm --prefix web run build` step for the default local setup.
+Then open [http://localhost:8080](http://localhost:8080), create the first
+account, and continue with the [first task walkthrough](./first-task-walkthrough.md).
 
-If you want to point at an explicit config file:
+Before starting an agent, configure any provider credentials required by the
+selected adapter. Keep secrets in the provider-supported environment or
+credential store; do not commit them to the AgentHub config or a workspace.
+
+## Upgrade
+
+### Debian package
+
+Download and verify the new package, then install it over the existing version:
 
 ```bash
-cargo run -- -c /path/to/config.toml
+sudo apt install ./agenthub_<new-version>_amd64.deb
+sudo systemctl status agenthub.service --no-pager
 ```
 
-By default, AgentHub serves the UI at `http://localhost:8080`.
+The package preserves `/var/lib/agenthub` during upgrades.
 
-### ACP Provider Baseline
+### GitHub archives
 
-The canonical AgentHub ACP adapter binary is `agenthub-acp`. Use `agenthub-acp codex` for Codex
-sessions and `agenthub-acp claude` for Claude sessions. Existing deployments that still launch
-`agenthub-codex-acp` should migrate to `agenthub-acp codex` before relying on current release
-packages.
+Stop the foreground process or your service manager, download both archives
+from the same new release, verify their checksums, and replace both binaries.
+Keep `~/.agenthub` unchanged.
 
-- Current repository baseline: official Codex `0.138.x`
-- If you override `codex_acp.binary`, keep the replacement ACP binary protocol-
-  compatible with the same Codex generation
+### npm
 
-### Optional App Install
+```bash
+npm install -g @linkerdog/agenthub@latest --include=optional
+agenthub --version
+```
 
-On supported browsers, AgentHub can be installed as a standalone web app.
+Upgrade the separately installed `agenthub-acp` archive to the matching release
+at the same time.
+
+## Uninstall
+
+### Debian package
+
+```bash
+sudo apt remove agenthub
+```
+
+Package removal and purge preserve runtime data under `/var/lib/agenthub`.
+Back it up and remove it manually only when you intentionally want to delete
+all instance state.
+
+### Archive installation
+
+Remove the installed binaries from `$HOME/.local/bin`. Runtime state under
+`~/.agenthub` is not removed automatically.
+
+### npm installation
+
+```bash
+npm uninstall -g @linkerdog/agenthub
+```
+
+This does not remove `~/.agenthub` or a separately installed `agenthub-acp`.
+
+## Install the Web App Shell
+
+On supported browsers, AgentHub can be installed as a standalone web app after
+the server is running.
 
 - The frontend registers its service worker automatically.
 - The same service worker is used for push notifications and installability.
-- AgentHub is **not** offline-first: a normal refresh still fetches the latest
-  app shell and hashed assets from the server.
+- AgentHub is not offline-first; a refresh still fetches the current app shell
+  and hashed assets from the server.
 
-For non-localhost deployments, use HTTPS if you want installability and browser
-push to work reliably.
+Use HTTPS for non-localhost deployments if you need browser installability,
+passkeys, or push notifications.
 
-### Runtime Data Location
+## Build From Source
 
-AgentHub stores runtime data under `~/.agenthub/` by default, including:
-
-- SQLite database
-- runtime session state
-- logs and operational files
-
-For Codex-backed ACP sessions, AgentHub also materializes its managed Team and
-runtime skills under `~/.agents/skills/agenthub-runtime/...`.
-
-- No manual `~/.codex/config.toml` skill configuration is required.
-- Global managed skills should be referenced through an absolute path or
-  `~/...`; do not treat them as current-workdir-relative `.agents/...` paths.
-- Repo-local `.agents/skills` continue to work independently alongside the
-  managed AgentHub skill set.
-
-### Smoke Check
-
-After startup:
-
-1. Open `http://localhost:8080`
-2. Confirm the login page loads
-3. Create one test agent
-4. Start it and send one simple instruction
-5. Confirm output appears in `Conversation`
+Building from source is a contributor workflow, not the recommended user
+installation path. See the repository
+[developer setup](https://github.com/hawkingrei/agenthub/blob/main/docs/developer-setup.md)
+for the pinned Rust toolchain, web build, Bazel, and test commands.

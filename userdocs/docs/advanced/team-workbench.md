@@ -25,17 +25,6 @@ Use the header toggle to move between them.
 The important distinction is that Team `Execution Runs` and `steps` are
 execution and debug artifacts. They are not the primary planning surface.
 
-## Recent Updates
-
-Recent Team workbench updates changed the operator-facing shape in a few useful
-ways:
-
-- the shell is now more clearly `Channels`-first
-- run history is consistently labeled `Execution Runs`
-- the left rail carries most Team switching and workspace navigation
-- the shared `# all` lane stays the default place for human goals and team-wide
-  coordination
-
 ## Main UI Areas
 
 - **Channels**:
@@ -173,34 +162,6 @@ prompt:
   to a human-visible review card
 - resolved or timed-out review cards collapse to compact status cards so the
   shared channel keeps more space for active content
-
-## Managed Runtime Vs Local Development
-
-Managed Team sessions already receive the role indexes and actor runtime
-environment they need.
-
-If you run Team actors manually in a local Codex environment outside the normal
-managed runtime, bootstrap the Team skills first:
-
-```bash
-scripts/setup_team_skills.sh
-```
-
-Managed Team runtime actor commands are now auto-approved by the ACP
-permission layer when `agenthub actor ...` resolves to the managed runtime
-binary.
-
-If you also run `agenthub actor ...` manually in a local Codex shell and want
-those manual commands to stop prompting repeatedly, allow the human-typed
-prefix:
-
-```text
-prefix_rule(pattern=["agenthub", "actor"], decision="allow")
-```
-
-Recommended location:
-
-- `~/.codex/rules/default.rules`
 
 ## Related Pages
 

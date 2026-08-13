@@ -16,8 +16,8 @@ AgentHub is built for the operational side of agent work:
 - keep agent sessions alive after the browser tab closes
 - inspect structured ACP history instead of relying on raw scrollback
 - manage Team workflows with explicit shared channels, Kanban, and execution surfaces
-- route execution to remote nodes with actor p2p control and mailbox relay when
-  one machine is not enough
+- route execution to remote nodes over the dedicated internal gRPC control
+  plane when one machine is not enough
 - keep runtime state, history, and operator control in one place
 
 If you are evaluating AgentHub as an:
@@ -52,9 +52,8 @@ AgentHub has four primary user-facing surfaces:
   and debug events as structured history
 - **Teams**: coordinate coordinator/worker collaboration with shared channels,
   Kanban, and execution tracking
-- **Agent Nodes and actor p2p**: extend execution onto remote machines without
-  moving the control plane, while keeping mailbox/control traffic on the same
-  operational model
+- **Agent Nodes**: extend execution onto remote machines without moving the
+  main control plane
 
 ## Choose Your Path
 

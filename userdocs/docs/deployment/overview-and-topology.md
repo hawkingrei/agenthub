@@ -13,7 +13,7 @@ AgentHub deployment is intentionally simple:
 
 - One backend process (Rust)
 - One embedded web UI served by that same process
-- One SQLite database for persisted state
+- One main SQLite database plus per-agent SQLite event databases
 - Browser clients connected with HTTP + SSE
 
 Optional scale-out deployments can add remote Agent Nodes for execution and
@@ -23,24 +23,25 @@ mailbox delivery while keeping AgentHub as the main control plane.
 
 Prepare these components before rollout:
 
-1. AgentHub executable (or `cargo run` for development)
+1. Matching `agenthub` and `agenthub-acp` release binaries when using the
+   bundled ACP presets (or a source build for development)
 2. A valid `config.toml`
 3. Writable runtime home (default under `~/.agenthub/`)
 4. Explicit `safe_paths` for all allowed repositories/workdirs
 
 ## Deployment Modes
 
-### Local development mode
+### Single-machine mode
 
-Use this for daily personal work:
+Use this for personal or small internal deployments. Install the release pair,
+write `~/.agenthub/config.toml`, and start the server:
 
 ```bash
-cd web
-npm install
-npm run build
-cd ..
-cargo run -- -c /path/to/config.toml
+agenthub
 ```
+
+Release builds embed the web UI. Source builds and frontend development belong
+to the contributor workflow, not the production deployment path.
 
 ### Team internal mode
 
@@ -60,8 +61,7 @@ Use this when execution must span multiple machines:
 - Use encrypted gRPC between AgentHub and nodes
 - Configure a node-specific default worktree root when remote filesystems differ
 - Keep the current production posture on a dedicated internal `https://` gRPC
-  port; same-port HTTP plus gRPC multiplexing is a future-compatible design
-  target, not the conservative default.
+  port rather than relying on same-port HTTP plus gRPC multiplexing.
 
 #### Distributed node prerequisites
 
@@ -88,11 +88,11 @@ cert_dir = "~/.agenthub/internal-grpc"
 issuer = "agenthub"
 audience = "agenthub-internal"
 # optional: persisted to cert_dir/auth_secret.txt if omitted
-shared_secret = "replace-me-for-production"
+shared_secret = "<shared-secret-from-your-secret-store>"
 
 [internal_grpc.bootstrap]
 # optional: persisted to cert_dir/bootstrap_token.txt if omitted
-token = "replace-me-for-bootstrap"
+token = "<node-bootstrap-token>"
 ```
 
 Operational notes:
@@ -147,19 +147,17 @@ Operational notes:
 - AgentHub listens on internal/private address where possible
 - Users access a single stable URL (for login, UI, and API)
 
-## Basic Startup Commands
+## Startup
 
-If you build a release binary:
-
-```bash
-./agenthub -c /path/to/config.toml
-```
-
-If you run from source:
+AgentHub currently reads `~/.agenthub/config.toml`; there is no alternate
+config-path flag. Start the installed release binary with:
 
 ```bash
-cargo run -- -c /path/to/config.toml
+agenthub
 ```
+
+Use the Debian package's systemd unit for a managed Linux service. For source
+development, follow the repository's contributor documentation.
 
 ## Post-Deploy Smoke Checklist
 
