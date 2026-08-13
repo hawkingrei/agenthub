@@ -17,7 +17,7 @@ AgentHub is designed as one main control-plane service:
 
 - one Rust backend process
 - one embedded web UI served by the same process
-- one SQLite-backed persistence layer
+- a main SQLite control-plane database plus per-agent SQLite event stores
 - HTTP plus SSE for browser interaction and live updates
 
 That baseline is enough for local and many shared internal deployments while
@@ -80,7 +80,8 @@ When one machine is not enough, AgentHub can add remote Agent Nodes:
 
 - the main AgentHub instance stays the control plane
 - remote nodes run the same `agenthub` binary
-- actor control and mailbox relay use internal gRPC on a p2p-aware path
+- agent lifecycle control and actor mailbox relay use the dedicated internal
+  gRPC transport
 - node-local execution data stays on the selected node
 
 This lets operators keep one main UI and API surface while execution happens
@@ -92,7 +93,9 @@ consistent whether execution is local or remote.
 
 ## Persistence And Reliability
 
-AgentHub stores runtime state in SQLite and on-disk runtime directories so
+AgentHub stores control-plane state in the main SQLite database and high-volume
+agent output in per-agent SQLite databases. Optional message archives, message
+body stores, and object stores add separate data paths. This persistence lets
 these behaviors remain stable:
 
 - browser refresh or disconnect does not stop the task

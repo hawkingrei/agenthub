@@ -46,50 +46,42 @@ workbench than to a thin prompt UI.
 
 ## Install AgentHub
 
-### Homebrew
-
-AgentHub publishes Homebrew release binaries through the
-`linkerdog/homebrew-tap` tap.
-
-```bash
-brew tap linkerdog/homebrew-tap
-brew install linkerdog/homebrew-tap/agenthub
-```
-
-Installed binaries:
-
-- `agenthub`
-- `agenthub-codex-acp`
-- `agenthub-acp`
-
-To run AgentHub in the background:
-
-```bash
-brew services start linkerdog/homebrew-tap/agenthub
-```
-
-AgentHub reads config from `~/.agenthub/config.toml`.
-
-To create that file interactively:
-
-```bash
-agenthub init
-```
-
-Minimal example:
-
-```toml
-[server]
-listen = "127.0.0.1:8080"
-```
-
-Then open `http://localhost:8080`.
-
-Current release binaries are available for:
+Official release binaries are available for:
 
 - macOS Apple Silicon (`darwin-arm64`)
 - Linux `x86_64`
 - Linux `aarch64`
+
+Windows and macOS Intel binaries are not currently published.
+
+Recommended installation paths:
+
+- Ubuntu/Debian: install the matching `.deb` from the
+  [latest release](https://github.com/hawkingrei/agenthub/releases/latest). It
+  includes `agenthub`, `agenthub-acp`, and a systemd service.
+- macOS or portable Linux: install the matching `agenthub` and `agenthub-acp`
+  archives from the same release and verify them with `SHA256SUMS.txt`.
+- npm: `npm install -g @linkerdog/agenthub` installs only the `agenthub`
+  control-plane binary; install the matching `agenthub-acp` release archive
+  separately before running the default Codex or Claude adapters.
+
+The Homebrew tap currently trails the primary release channel and installs a
+legacy ACP helper. Use release archives for a new complete installation until
+the formula is brought back into version and adapter parity.
+
+After installing both binaries:
+
+```bash
+agenthub --version
+agenthub-acp --version
+agenthub init
+agenthub
+```
+
+Then open `http://localhost:8080`. For package-specific commands, checksum
+verification, upgrades, uninstall behavior, platform limitations, and the
+current Linux runtime caveat, see
+[Installation and Startup](https://doc.agenthub.hawkingrei.com/docs/getting-started/installation).
 
 For local source development, contributor setup, repository layout, and common
 commands, see [docs/developer-setup.md](docs/developer-setup.md).
@@ -176,34 +168,33 @@ Core concepts:
 
 ## Remote Agent Nodes
 
-If you want remote execution, run the same `agenthub` binary on the remote
-machine and enable internal gRPC on both the main node and the remote node.
+If you want remote execution, run the same `agenthub` release on every machine.
+Keep the main process in its default `main` role, enable internal gRPC on both
+sides, and configure each remote process with `role = "node"` plus a unique
+`node_id`.
 
 ```toml
+[server]
+role = "node"
+node_id = "node-east"
+
 [internal_grpc]
 enabled = true
 listen = "0.0.0.0:50051"
 
-[internal_grpc.security]
-mode = "mtls" # mtls | tls | disabled
-cert_dir = "~/.agenthub/internal-grpc"
-
 [internal_grpc.auth]
-shared_secret = "replace-me"
+shared_secret = "<shared-secret-from-your-secret-store>"
 issuer = "agenthub"
 audience = "agenthub-internal"
+
+[internal_grpc.bootstrap]
+token = "<node-bootstrap-token>"
 ```
 
-Then register the remote node from the `Agents` page or the `agent_nodes` API
-with:
-
-- `id`
-- `grpc_target`
-- `tls_server_name`
-- `default_worktree_root` (optional)
-
-For the current contract, see
-[docs/features/agent-nodes.md](docs/features/agent-nodes.md).
+Use TLS or mTLS on a private network, then register the reachable gRPC target
+from the root-only node controls on the **Agents** page. See the
+[Agent Nodes user guide](https://doc.agenthub.hawkingrei.com/docs/core/agent-nodes)
+for onboarding and the current transport boundary.
 
 ## Documentation
 

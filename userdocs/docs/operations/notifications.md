@@ -4,129 +4,76 @@ sidebar_position: 3
 
 # Notifications
 
-AgentHub can notify you when a task is completed, both in-app and via browser push notifications.
+AgentHub shows completion state in the web UI and can deliver an encrypted Web
+Push notification when an agent process finishes.
 
-## In-App Notification
+## Browser Push Requirements
 
-By default, completion signals appear in the AgentHub UI:
+- A browser with service worker, Notification, and Push API support.
+- HTTPS outside localhost.
+- A signed-in AgentHub session with permission to create a subscription.
+- A configured VAPID subject.
 
-- Runtime and connection badges in the active workspace
-- Structured completion state in ACP / Team timelines
-- Browser notifications when push is enabled
+The frontend registers `/sw.js`. After sign-in, grant the browser notification
+permission so it can submit the browser subscription to AgentHub.
 
-## Browser Push Notification
+## Configuration
 
-AgentHub supports Web Push API notifications that work even when the browser
-tab is not focused or closed.
-
-### How It Works
-
-1. **Service worker**: the frontend registers `/sw.js` automatically
-2. **Subscription**: after successful login or join, AgentHub attempts to attach a Push subscription for the current browser session
-3. **Delivery**: when an agent completes, the backend sends a push notification via your browser's push service
-
-### Configuration
-
-VAPID keys are auto-generated on first startup and stored in `~/.agenthub/vapid.json`:
-
-```json
-{
-  "public_key": "<base64-encoded-public-key>",
-  "private_key": "<base64-encoded-private-key>"
-}
+```toml
+[push]
+subject = "mailto:ops@example.com"
+keys_path = "~/.agenthub/vapid.json"
 ```
 
-To rotate VAPID keys (invalidates existing subscriptions):
+The VAPID key pair is created at `keys_path` on first startup and reused across
+restarts. Protect and back up this file alongside other AgentHub state.
+
+Root operators can inspect or rotate keys from **Admin**. The equivalent API is:
 
 ```bash
-# Via API (requires admin)
-curl -X POST -H "Authorization: Bearer <token>" \
-  http://localhost:8080/api/admin/push/rotate-keys
+curl --fail -X POST \
+  -H "Authorization: Bearer ${AGENTHUB_TOKEN}" \
+  http://127.0.0.1:8080/api/push/vapid_rotate
 ```
 
-Or use the Admin Console UI to rotate keys.
+Rotation invalidates the public key associated with existing browser
+subscriptions. Use it for an intentional security event, then have users sign
+in and subscribe again; do not rotate it as routine cleanup.
 
-### Enabling Push Notifications
+## What Is Sent
 
-1. Open AgentHub in a browser that supports service workers and Push API
-2. Sign in or complete the join/bootstrap flow
-3. Allow notifications when the browser asks
-4. Keep using the same browser profile for that subscription
-
-### Notification Payload
-
-Push notifications include:
+The current completion payload contains the event type, agent ID, session ID,
+and server timestamp:
 
 ```json
 {
   "type": "agent_completed",
-  "agent_id": "agent-uuid",
-  "session_id": "session-uuid",
+  "agent_id": "agent-id",
+  "session_id": "session-id",
   "ts": 1710000000
 }
 ```
 
-## Quick Validation
+Push delivery is best effort. The session history and current Agent status are
+the authoritative records.
 
-1. Start a short task
-2. Switch browser tab or minimize the window
-3. Wait for task completion
-4. Confirm:
-   - System notification appears (if push is enabled)
-   - The active AgentHub workspace reflects the completed state
-   - Timeline / history shows the completion event
+## Validate Push
+
+1. Sign in with a browser profile that permits notifications.
+2. Start a short agent run.
+3. Move the tab to the background.
+4. Let the agent process exit.
+5. Confirm the system notification and the persisted AgentHub timeline.
 
 ## Troubleshooting
 
-### Push Notifications Not Received
+| Symptom | Check |
+|---------|-------|
+| No permission prompt | Reset the site's notification permission and reload. |
+| Subscription request is `401` or `403` | Sign in again and confirm the account has push-subscribe capability. |
+| Push works on localhost but not a hostname | Use HTTPS and confirm the service worker is registered for the same origin. |
+| Delivery stops after key rotation | Re-subscribe every browser profile. |
+| Server warns that push is disabled | Set a valid `push.subject` and ensure `keys_path` is writable. |
 
-| Symptom | Check | Solution |
-|---------|-------|----------|
-| No browser prompt | Permission already denied or browser does not support Push | Reset site permissions, then refresh and sign in again |
-| Subscription fails | VAPID keys missing | Restart AgentHub to auto-generate keys |
-| Silent failures | Check browser console for errors | Verify `push.subject` is configured in the `[push]` section |
-| Works locally but not remote | HTTPS required | Push API requires secure context (HTTPS) |
-
-## Installable App Behavior
-
-AgentHub is installable as a standalone browser app on supported platforms.
-
-- Installability and push both rely on the same service worker registration
-- The installed app still prefers fresh server-delivered HTML and hashed assets
-- Do not treat the installed experience as an offline-first shell
-
-### Configuration Options
-
-Add to `~/.agenthub/config.toml`:
-
-```toml
-[push]
-# Required for push notifications
-subject = "mailto:admin@example.com"
-
-# Optional: custom keys path (default: ~/.agenthub/vapid.json)
-keys_path = "/custom/path/vapid.json"
-```
-
-The `push.subject` value should be a contact email or URL for your application.
-
-## Security Considerations
-
-- VAPID private keys are sensitive — protect the keys file
-- Subscriptions are per-user; other users won't receive your notifications
-- Push services (FCM, APNS, etc.) only receive encrypted payload headers
-
-## Future Extensions
-
-Planned notification channels:
-
-- **Webhook**: POST callbacks to external systems
-- **Email**: SMTP-based notifications for critical completions
-- **Slack/Discord**: Direct integrations with team chat
-
-## Recommended Setup
-
-- Enable push notifications for long-running tasks (>5 minutes)
-- Use clear agent naming conventions for easy notification identification
-- Combine notifications with session history for efficient follow-up
-- Rotate VAPID keys periodically if you have high security requirements
+AgentHub does not currently document webhook, email, Slack, or Discord delivery
+as supported notification channels.

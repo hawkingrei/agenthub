@@ -17,7 +17,7 @@ Before pushing, verify local static build:
 
 ```bash
 cd userdocs
-npm install
+npm ci
 npm run build
 ```
 
@@ -28,7 +28,7 @@ Build output should appear in `userdocs/build/`.
 Use these values in Vercel:
 
 - Root Directory: `userdocs`
-- Install Command: `npm install`
+- Install Command: `npm ci`
 - Build Command: `npm run build`
 - Output Directory: `build`
 
@@ -42,7 +42,7 @@ Use these values in Vercel:
 
 - Wrong root directory (not `userdocs`)
 - Wrong output directory (must be `build`)
-- Missing dependencies due to skipped `npm install`
+- Missing dependencies due to skipped `npm ci`
 
 ## Validation After Deploy
 

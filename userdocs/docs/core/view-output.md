@@ -4,30 +4,44 @@ sidebar_position: 4
 
 # View Execution Output
 
-AgentHub supports structured ACP rendering for agent output.
+AgentHub renders ACP output as a structured timeline while preserving raw
+runtime events for recovery and diagnosis.
 
-## Output Tabs
+## Main Views
 
-- **Conversation**: user and agent messages in timeline form
-- **Debug / Raw**: low-level event stream useful for diagnosis
+- **Thread**: user and agent messages.
+- **Plan**: structured plan updates when the provider emits them.
+- **Debug**: raw ACP and system detail. This tab is hidden in production until
+  developer mode is enabled from **Admin**.
 
-## What to Watch
+Provider-specific tool calls, permissions, modes, models, and configuration
+controls appear only when the active runtime advertises them.
 
-- Agent status transitions: queued, running, completed, failed
-- Tool calls and command outputs
-- Plan updates and intermediate reasoning chunks
-- Error events and retry behavior
+## Connection Badge
+
+The workspace header distinguishes browser network state from the live stream:
+
+- `Online · SSE connected`: live events are arriving normally.
+- `Online · SSE connecting` or `reconnecting`: the UI is restoring the stream.
+- `Online · SSE idle`: there is no running stream target.
+- `Offline · SSE disconnected`: the browser reports no network connection.
+
+A reconnecting badge does not mean history was lost. The UI falls back to the
+persisted event API while the SSE connection recovers.
 
 ## History Replay
 
-Session history is retained. You can:
+When you reopen an agent, AgentHub loads recent events and lets you request
+older pages. The event API returns at most 20 records per request and uses a
+`before_id` cursor for older history.
 
-- Re-open an older session from history cards
-- Scroll upward to load earlier output records
-- Continue from the last known point without losing context
+Large ACP tool payloads may be compacted in the live stream. The UI can fetch
+the complete persisted event by its event ID when detail is needed.
 
-## Reading Long Sessions Efficiently
+## Review Tips
 
-- Keep focus on the newest actionable block
-- Expand tool/debug details only when needed
-- Use session history to compare behavior before and after changes
+- Read the newest actionable Thread or Plan block first.
+- Open Debug only when structured rendering is insufficient.
+- Confirm the agent status before treating a quiet stream as a connection
+  failure.
+- Refreshing the page is safe; it does not stop the backend process.

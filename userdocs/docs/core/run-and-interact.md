@@ -23,7 +23,7 @@ Use the input dock in the output panel:
 
 ## Session Controls
 
-When the active ACP runtime exposes session controls, the debug surface can also
+When the active ACP runtime exposes session controls, the Agent view can also
 let you:
 
 - switch `mode` or `model` from provider-supplied options
@@ -32,7 +32,8 @@ let you:
 - force a new session when recovery is easier than continuing the current one
 
 These controls are runtime-specific. Codex, Gemini, Claude, and other ACP
-providers may surface different option sets.
+providers may surface different option sets. Production hides the Debug tab and
+session metadata until developer mode is enabled from **Admin**.
 
 ## Codex ACP Runtimes
 

@@ -4,531 +4,134 @@ sidebar_position: 2
 
 # Security and Path Safety
 
-This guide covers security best practices for deploying and operating AgentHub safely.
+AgentHub launches powerful subprocesses in user-selected workspaces. Its
+authentication and path checks are important control-plane guardrails, but they
+are not an operating-system sandbox.
 
-## Security Model Overview
+## Security Boundary
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Security Layers                       │
-├─────────────────────────────────────────────────────────┤
-│  1. Authentication: Who are you?                        │
-│     - Password-based login                              │
-│     - WebAuthn/Passkey support                          │
-│     - Token-based API access                            │
-├─────────────────────────────────────────────────────────┤
-│  2. Authorization: What can you do?                     │
-│     - Role-based access (root/user)                     │
-│     - Path-based restrictions                           │
-│     - Operation-level controls                          │
-├─────────────────────────────────────────────────────────┤
-│  3. Execution Isolation: What can the agent access?     │
-│     - Safe path restrictions                            │
-│     - Workdir boundaries                                │
-│     - Network policies                                  │
-├─────────────────────────────────────────────────────────┤
-│  4. Data Protection: How is data secured?               │
-│     - Encryption at rest                                │
-│     - TLS in transit                                    │
-│     - Audit logging                                     │
-└─────────────────────────────────────────────────────────┘
-```
+- The web/API layer authenticates a user and checks a capability for each
+  protected operation.
+- `safe_paths` restricts which workdirs AgentHub accepts.
+- The agent process runs with the same operating-system identity and ambient
+  privileges as the AgentHub service unless you add container or host-level
+  isolation.
+- Provider credentials and network access available to that service identity
+  may also be available to the runtime.
 
-## Path Safety
+Setting a process working directory does not prevent it from reading other
+files that the OS account can access. For stronger isolation, use a dedicated
+service account, containers/VMs, filesystem permissions, and network policy.
 
-### Principle: Least Path Access
-
-Only allow paths users actually need.
-
-**Good examples**:
-- `/home/you/projects/agenthub` - Specific project directory
-- `/home/you/workspace/team-a` - Team workspace
-- `/data/sandboxes/experiments` - Isolated sandbox
-
-**Avoid**:
-- `/home/you` - Too broad, includes personal files
-- `/` - System-wide access
-- `/etc`, `/usr` - System directories
-- Network mounts with sensitive data
-
-### Path Validation
-
-AgentHub validates paths at multiple stages:
-
-1. **Configuration time**: `safe_paths` loaded from config
-2. **Agent creation**: Workdir validated against allowed paths
-3. **Runtime**: Agent process restricted to workdir context
-
-### Safe Paths Configuration
+## Minimize `safe_paths`
 
 ```toml
-# ~/.agenthub/config.toml
 safe_paths = [
-  # Development directories
-  "/home/dev/projects",
-  "/home/dev/experiments",
-  
-  # Team workspaces
-  "/data/team-a/workspace",
-  "/data/team-b/sandboxes",
-  
-  # CI/CD builds
-  "/var/ci/builds",
-  
-  # Production (read-only operations)
-  "/opt/services/configs",
+  "/srv/agenthub/workspaces/team-a",
+  "/srv/agenthub/workspaces/team-b",
 ]
 ```
 
-**Important**: `~/.agenthub/worktrees` is automatically included.
+AgentHub always includes `~/.agenthub/worktrees` in the effective safe-path
+list. Additional paths should be specific, owned by the service account, and
+free of unrelated credentials or personal data.
 
-### Path Security Checklist
+Avoid broad roots such as `/`, `/home`, or an entire user home. Review symlinks,
+mount points, and the resolved path seen by the service account when a seemingly
+valid workspace is rejected.
 
-- [ ] Paths are as specific as possible
-- [ ] No parent directories of sensitive data
-- [ ] No world-writable directories
-- [ ] Separate paths for different teams if needed
-- [ ] Regular audit of effective paths
+## Roles and Capabilities
 
-## Authentication
+AgentHub uses explicit capabilities rather than one global user check:
 
-### Password-Based Authentication
+| Role | Intended access |
+|------|-----------------|
+| `root` | All instance, user, auth, runtime, Team, node, diagnostics, and push operations. |
+| `admin` | Agent, Team, node, linker, runtime, diagnostics, and push operations; no root instance/user/auth configuration. |
+| `operator` | Agent and Team management plus runtime operation/inspection and push subscription. |
+| `viewer` | Runtime inspection and push subscription. |
+| `device` | Push subscription only. |
 
-Default authentication method:
+Initialize the first root operator from a trusted network. Teamspace invitation
+links create operator accounts; they do not create another root.
 
-```toml
-# Configure password policy (if applicable)
-[auth]
-min_password_length = 12
-require_special_chars = true
-```
+## Sessions and Passkeys
 
-**Best practices**:
-- Use strong, unique passwords
-- Enable account lockout after failed attempts
-- Rotate passwords regularly
+- Passwords are hashed with Argon2.
+- Browser/API bearer sessions expire after 12 hours. Logging out removes the
+  browser's token; use expiration and credential rotation as the current
+  server-side invalidation boundary.
+- Passkeys are disabled by default and require a correct relying-party origin.
+- Outside localhost, use HTTPS before enabling WebAuthn or browser push.
 
-### WebAuthn/Passkey Support
+Bearer tokens grant the holder the session's capabilities. Never place them in
+URLs, committed files, screenshots, support tickets, or durable shell history.
+The SSE endpoint is the browser-specific exception that uses a query token; keep
+proxy access logs for `/sse/*` appropriately restricted and redacted.
 
-Modern passwordless authentication:
+## Network Exposure
 
-```toml
-[web]
-rp_id = "agenthub.company.com"
-rp_origin = "https://agenthub.company.com"
-rp_name = "Company AgentHub"
-```
+The safe default is:
 
-**Setup**:
-1. Login with password
-2. Go to Settings → Security
-3. Register passkey (Touch ID, YubiKey, etc.)
-4. Use passkey for future logins
-
-**Benefits**:
-- Phishing-resistant
-- No passwords to remember
-- Hardware-backed security
-
-### API Token Security
-
-```bash
-# Get token via login
-TOKEN=$(curl -X POST http://localhost:8080/api/login \
-  -d '{"username":"user","password":"pass"}' \
-  | jq -r '.token')
-
-# Use in API calls
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/agents
-```
-
-**Token Security**:
-- Store tokens in environment variables or secrets manager
-- Never commit tokens to version control
-- Rotate tokens periodically
-- Revoke tokens on logout/device removal
-
-## Authorization
-
-### Role-Based Access Control
-
-| Role | Permissions |
-|------|-------------|
-| `root` | Full system access, user management, node registration |
-| `user` | Create agents, view own agents, participate in teams |
-
-### Root-Only Operations
-
-Require root privileges:
-
-- Register Agent Nodes
-- Rotate VAPID keys
-- Manage users
-- View all agents (admin mode)
-- System configuration changes
-
-### Team-Level Permissions
-
-Teams have their own permission model:
-
-- **Coordinator**: Planning, task assignment, final approval
-- **Worker**: Implementation, status updates
-- **Human operators**: Conversation, oversight
-
-## Execution Isolation
-
-### Workdir Boundaries
-
-Agent processes are constrained to their configured workdir:
-
-```
-Agent Process
-├── Workdir: /home/dev/projects/myapp
-│   ├── Can read/write here
-│   └── Can execute commands here
-├── Cannot access: /home/dev/other-project
-├── Cannot access: /etc/passwd
-└── Cannot access: /
-```
-
-**Implementation**:
-- Process working directory set to workdir
-- Agent tools validate paths before operations
-- Configuration prevents path traversal
-
-### Container Isolation (Advanced)
-
-For stronger isolation, run agents in containers:
-
-```bash
-# Wrap agent execution in Docker
-docker run \
-  --rm \
-  -v "${WORKDIR}:${WORKDIR}:rw" \
-  -w "${WORKDIR}" \
-  --network none \
-  --security-opt no-new-privileges \
-  agent-runtime:latest \
-  "$@"
-```
-
-**Configuration**:
-```toml
-[codex_acp]
-binary = "/usr/local/bin/agenthub-docker-wrapper"
-```
-
-### Network Policies
-
-Restrict agent network access:
-
-```bash
-# iptables example: Allow only specific egress
-iptables -A OUTPUT -p tcp --dport 443 -d github.com -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 443 -d api.openai.com -j ACCEPT
-iptables -A OUTPUT -p tcp -j DROP
-```
-
-## Data Protection
-
-### Encryption at Rest
-
-AgentHub stores data in SQLite databases:
-
-| Data | Location | Protection |
-|------|----------|------------|
-| Main database | `~/.agenthub/agenthub.db` | File permissions |
-| Event databases | `~/.agenthub/agent-events/*.db` | File permissions |
-| Config | `~/.agenthub/config.toml` | File permissions |
-| Secrets | `~/.agenthub/*.json` | File permissions |
-
-**Recommended**:
-```bash
-# Set restrictive permissions
-chmod 700 ~/.agenthub
-chmod 600 ~/.agenthub/config.toml
-chmod 600 ~/.agenthub/vapid.json
-```
-
-**Full Disk Encryption**:
-- Enable LUKS on Linux
-- Enable FileVault on macOS
-- Enable BitLocker on Windows
-
-### Encryption in Transit
-
-**HTTP/HTTPS**:
 ```toml
 [server]
-# For production, use reverse proxy (nginx, traefik)
-# with TLS termination
 listen = "127.0.0.1:8080"
 ```
 
-**Internal gRPC**:
-```toml
-[internal_grpc.security]
-mode = "tls"  # or "mtls" for mutual TLS
-cert_dir = "/etc/agenthub/certs"
-```
+For shared access, place AgentHub behind an authenticated HTTPS reverse proxy or
+private network. Preserve SSE streaming without proxy buffering. Do not expose a
+fresh first-run instance publicly.
 
-### Secret Management
+Remote Agent Nodes use a separate internal gRPC listener. Keep it on a private
+network, use `tls` or `mtls`, protect the bootstrap token and JWT shared secret,
+and synchronize node clocks. `security.mode = "disabled"` is for isolated local
+testing only.
 
-**Environment Variables** (for containers):
-```bash
-# Don't put secrets in config file
-export AGENTHUB_INTERNAL_GRPC_AUTH_SHARED_SECRET="$(cat /run/secrets/grpc_secret)"
-```
+## Secrets and Stored Data
 
-**HashiCorp Vault**:
-```python
-import hvac
+Protect at least:
 
-client = hvac.Client(url='https://vault.company.com')
-secret = client.secrets.kv.v2.read_secret_version(path='agenthub/grpc')
-shared_secret = secret['data']['data']['shared_secret']
-```
+- `config.toml` when it contains internal gRPC secrets or environment-variable
+  names that reveal credential wiring;
+- `vapid.json`, which contains the Web Push private key;
+- the main and per-agent SQLite databases;
+- optional message-body, message-archive, and object-store data;
+- provider configuration and credentials visible to the service account.
 
-**Kubernetes Secrets**:
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: agenthub-secrets
-type: Opaque
-stringData:
-  shared_secret: "secret-value"
-  vapid_private_key: "key-value"
-```
+Use restrictive directory permissions and encrypted disks or volumes. S3
+credentials should be supplied through the configured environment-variable
+names, not as literal values in `config.toml`.
 
-## Audit Logging
+## S3 and Download Ingestion
 
-### What Gets Logged
+Official release builds include the OpenDAL S3 backend, while source/default
+builds keep it feature-gated and runtime storage defaults to `fs`. Including the
+backend does not certify every S3-compatible provider.
 
-| Event | Logged Data | Purpose |
-|-------|-------------|---------|
-| Login | User ID, IP, success/fail | Security monitoring |
-| Agent creation | User, workdir, command | Activity trace |
-| Agent start/stop | Agent ID, user, timestamp | Operational audit |
-| Node registration | Node ID, user | Infrastructure changes |
-| Permission review | Request, reviewer, decision | Compliance |
+When server-side URL ingestion is enabled:
 
-### Log Format
+- keep private-network downloads disabled unless explicitly required;
+- allowlist expected hosts and retain size, redirect, timeout, retry, and
+  per-host concurrency limits;
+- verify expected size and SHA-256 when the source provides them;
+- authorize object access through AgentHub metadata rather than treating a
+  public object URL as permission.
 
-```json
-{
-  "timestamp": "2026-03-25T10:30:00Z",
-  "level": "INFO",
-  "event": "agent_started",
-  "agent_id": "agent-123",
-  "user_id": "user-456",
-  "ip": "10.0.0.1",
-  "workdir": "/home/dev/project"
-}
-```
+## Operational Hardening Checklist
 
-### Audit Log Configuration
+- Run AgentHub as a dedicated non-root OS account.
+- Minimize `safe_paths` and review them after workspace changes.
+- Keep HTTP and gRPC listeners private; terminate external access with TLS.
+- Back up the complete data set and test restore before upgrades.
+- Keep the main binary and `agenthub-acp` on the same release.
+- Patch the host, browser, ACP providers, and AgentHub dependencies promptly.
+- Review authentication audits, node registration, permission decisions, and
+  unexpected process/network activity.
+- Revoke sessions, rotate exposed secrets, and preserve logs before repairing
+  a suspected compromise.
 
-```toml
-[logging]
-level = "info"
-format = "json"  # or "text"
-output = "/var/log/agenthub/audit.log"
-```
+## Reporting a Vulnerability
 
-### Log Retention
-
-```bash
-# Rotate logs daily
-logrotate /etc/logrotate.d/agenthub
-
-# Keep 30 days
-timeout 30
-```
-
-### Audit Log Monitoring
-
-**SIEM Integration**:
-```bash
-# Forward to Splunk/ELK
-filebeat -c /etc/filebeat/filebeat.yml
-```
-
-**Alerting Rules**:
-```yaml
-# Example: Alert on failed logins
-rules:
-  - name: Failed Login Spike
-    condition: count(event="login_failed") > 10 per 5m
-    action: notify_security_team
-```
-
-## Security Best Practices
-
-### Deployment Security
-
-1. **Run as non-root**:
-   ```bash
-   useradd -r -s /bin/false agenthub
-   sudo -u agenthub agenthub
-   ```
-
-2. **Use dedicated service account** (Kubernetes):
-   ```yaml
-   serviceAccountName: agenthub
-   securityContext:
-     runAsNonRoot: true
-     runAsUser: 1000
-     readOnlyRootFilesystem: true
-   ```
-
-3. **Resource limits**:
-   ```yaml
-   resources:
-     limits:
-       cpu: "2"
-       memory: "4Gi"
-     requests:
-       cpu: "100m"
-       memory: "512Mi"
-   ```
-
-### Operational Security
-
-**Daily**:
-- Review failed login attempts
-- Check for unauthorized path access
-- Monitor agent activity
-
-**Weekly**:
-- Audit user list
-- Review agent nodes
-- Check log integrity
-
-**Monthly**:
-- Rotate secrets
-- Update TLS certificates
-- Security patch review
-
-### Incident Response
-
-**Containment**:
-1. Stop suspicious agents immediately
-2. Revoke compromised tokens
-3. Disable affected user accounts
-
-**Investigation**:
-1. Review audit logs
-2. Check event databases
-3. Analyze agent outputs
-
-**Recovery**:
-1. Patch vulnerabilities
-2. Rotate all secrets
-3. Rebuild affected nodes
-
-## Hardening Checklist
-
-### Pre-Deployment
-
-- [ ] Review and minimize `safe_paths`
-- [ ] Enable TLS for all communications
-- [ ] Configure strong authentication
-- [ ] Set up audit logging
-- [ ] Plan secret management strategy
-
-### Deployment
-
-- [ ] Run as non-root user
-- [ ] Enable firewall rules
-- [ ] Configure resource limits
-- [ ] Set up log aggregation
-- [ ] Enable monitoring/alerting
-
-### Post-Deployment
-
-- [ ] Regular access reviews
-- [ ] Secret rotation schedule
-- [ ] Backup and recovery tested
-- [ ] Incident response plan documented
-- [ ] Security training for users
-
-## Common Security Pitfalls
-
-### 1. Overly Permissive safe_paths
-
-```toml
-# BAD - Too broad
-safe_paths = ["/home"]
-
-# GOOD - Specific directories
-safe_paths = [
-  "/home/dev/projects",
-  "/home/dev/sandboxes"
-]
-```
-
-### 2. Hardcoded Secrets
-
-```toml
-# BAD
-[internal_grpc.auth]
-shared_secret = "my-secret-123"
-
-# GOOD - Use environment variable
-# AGENTHUB_INTERNAL_GRPC_AUTH_SHARED_SECRET loaded at runtime
-```
-
-### 3. Missing TLS
-
-```toml
-# BAD
-[internal_grpc.security]
-mode = "disabled"
-
-# GOOD
-[internal_grpc.security]
-mode = "mtls"
-```
-
-### 4. Running as Root
-
-```bash
-# BAD
-sudo agenthub
-
-# GOOD
-sudo -u agenthub agenthub
-```
-
-## Compliance
-
-### SOC 2 Considerations
-
-- **CC6.1**: Logical access security (authentication/authorization)
-- **CC6.2**: Access removal (user offboarding)
-- **CC7.1**: Security monitoring (audit logs)
-- **CC7.2**: Incident detection (monitoring/alerting)
-
-### GDPR Considerations
-
-- Audit logs contain user activity
-- Event databases store conversation history
-- Implement data retention policies
-- Provide data export/deletion capabilities
-
-## Security Resources
-
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks)
-- [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
-
-## Reporting Security Issues
-
-If you discover a security vulnerability:
-
-1. Do not open a public issue
-2. Email security@yourcompany.com
-3. Provide detailed reproduction steps
-4. Allow time for patch before disclosure
+Use the repository's private GitHub security-reporting flow. Do not include live
+tokens, credentials, private prompts, or customer data in the report, and do not
+open a public issue for an unpatched vulnerability.

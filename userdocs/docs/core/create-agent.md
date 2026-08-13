@@ -4,40 +4,49 @@ sidebar_position: 1
 
 # Create Your First Agent
 
-From the Agents page, use the top form to create a new task/agent.
+Open **Agents**, select **Create Agent**, and configure one durable runtime.
 
-## Key Inputs
+## Required Inputs
 
-- **Name**: human-readable label for management
-- **Command or preset**: execution entry (for example a Codex ACP command)
-- **Execution node**: root-only selector for `Main Node` or a registered remote node
-- **Workdir mode**:
-  - `use_existing`: run directly in an existing directory
-  - `create_worktree`: create an isolated worktree for this run
-- **Workdir**: execution path under your allowed safe paths
+- **Name**: a human-readable runtime label.
+- **Command or preset**: the installed ACP entry point, such as
+  `agenthub-acp codex`.
+- **Execution node**: `Main Node` or a registered remote node. Only root
+  operators can select and manage remote nodes.
+- **Workspace mode**:
+  - `use_existing` runs in an existing directory.
+  - `create_worktree` asks AgentHub to create an isolated Git worktree.
+  - `reuse_worktree` attaches an already prepared Git worktree.
+- **Workdir**: an execution path allowed by `safe_paths` on the selected node.
 
-## Remote Node Notes
+Provider-specific model, thinking, mode, and loop controls are optional. The
+available values come from the selected runtime rather than a global fixed
+list.
 
-- Non-root users create agents on `Main Node` only. The execution-node selector
-  and node-management controls are visible to root operators.
-- Only root operators can register or edit remote nodes from the Agents page.
-- Remote nodes use encrypted gRPC transport for control-plane traffic.
-- If a remote node has a configured **Default worktree root**, you can leave
-  `Workdir` blank in `create_worktree` mode and AgentHub will derive the final
-  workdir under that node-specific root.
-- If a remote node does not define a default root, remote `create_worktree`
-  requests must provide an explicit `Workdir`.
+## Choosing a Workspace Mode
 
-## Worktree Strategy Tips
+Prefer `create_worktree` for feature work, experiments, and concurrent agents.
+Use `use_existing` only when direct access to that checkout is intentional and
+you understand its current uncommitted state. Use `reuse_worktree` when another
+workflow owns worktree and branch creation.
 
-- Use `create_worktree` for isolated feature work or experiments
-- Use `use_existing` when you intentionally want to reuse an existing workspace
-- Keep repositories clean and branch-aware to reduce merge/rebase friction
+For a remote node with **Default worktree root**, `create_worktree` can derive
+the final workdir from that root. Without a node default, provide an explicit
+allowed path.
 
 ## After Creation
 
-The new item appears in the running/history card list. You can:
+The agent appears in the Agents list in `created` state. Select it to start the
+runtime, send instructions, inspect history, stop it, or delete it. Deleting an
+agent also removes its managed event history, so treat delete as a deliberate
+cleanup action.
 
-- Start it immediately
-- Open execution view
-- Stop or delete it later from agent actions
+## Common Creation Failures
+
+- The resolved workdir is outside `safe_paths`.
+- The configured command is missing from the service user's `PATH`.
+- A requested remote node is offline or lacks a valid internal gRPC route.
+- `create_worktree` does not have a repository/ref or a writable worktree root.
+
+See [Workdir and Worktree Strategy](./workdir-worktree-strategy.md) before
+running multiple agents against the same repository.

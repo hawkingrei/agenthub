@@ -188,6 +188,8 @@ Main shape:
   contracts in canonical specs while retaining dated journals only for rollout evidence.
 - Dependabot remediation now removes all 16 open alert versions from the Rust ACP, web, and
   userdocs dependency graphs while retaining explicit upstream dependency migration follow-ups.
+- User documentation now follows current release artifacts and runtime behavior across installation,
+  onboarding, agent lifecycle, streaming, API automation, nodes, security, storage, and operations.
 
 Start with:
 
@@ -198,6 +200,7 @@ Start with:
 - `2026-08-08-object-storage-download-observability.md`
 - `2026-08-09-feature-docs-compaction-wave2-closeout.md`
 - `2026-08-12-dependabot-security-remediation.md`
+- `2026-08-13-user-documentation-release-readiness.md`
 
 ## Compaction Rules
 

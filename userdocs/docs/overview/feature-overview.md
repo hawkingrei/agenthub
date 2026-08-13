@@ -27,7 +27,7 @@ logs. That gives you:
 - conversation history
 - tool-call and command output context
 - plan and reasoning segments
-- debug and raw-event inspection when something looks wrong
+- developer-mode debug and raw-event inspection when something looks wrong
 
 Use this when task review, auditability, or deep debugging matters.
 
@@ -56,20 +56,6 @@ Key concepts:
 Use this when planning, implementation, and review should be coordinated rather
 than collapsed into one session.
 
-## Recent Product Updates
-
-Recent merges worth knowing before rollout or operator training:
-
-- **Workspace shell convergence**: Team pages now use a more compact
-  workspace shell with clearer `Channels`-first navigation and less duplicated
-  chrome.
-- **Execution wording cleanup**: Team run history is presented as
-  `Execution Runs` to distinguish planning state from raw execution artifacts.
-- **Token-based Agent Node onboarding**: remote node join now uses explicit
-  bootstrap tokens from the `Agents` page instead of QR-style node onboarding.
-- **Rust / Codex baseline refresh**: local builds and bundled ACP integration
-  now track Rust `1.96.0` and the official Codex `0.138.x` line.
-
 ## Installable Web App And Push
 
 AgentHub can also behave like an installable web app:
@@ -81,11 +67,11 @@ AgentHub can also behave like an installable web app:
 AgentHub still prefers fresh server-delivered UI resources on reload; install
 support does not turn it into an offline-first shell.
 
-## Agent Nodes And Actor P2P
+## Agent Nodes
 
 AgentHub can register remote execution nodes and route agent execution to them
-over internal gRPC, while keeping actor control and mailbox delivery on the
-same p2p-aware control path.
+over the dedicated internal gRPC transport, while keeping lifecycle control and
+actor mailbox delivery in the same control plane.
 
 Use this when:
 
@@ -97,7 +83,8 @@ Use this when:
 
 ## Automation And Integration
 
-AgentHub exposes authenticated OpenAPI discovery endpoints for:
+AgentHub exposes authenticated OpenAPI discovery endpoints for the subset of
+HTTP routes with a published automation contract:
 
 - internal tooling
 - typed client generation
@@ -105,6 +92,8 @@ AgentHub exposes authenticated OpenAPI discovery endpoints for:
 - operational automation around agents and Teams
 
 Use this when AgentHub needs to plug into a larger engineering system.
+Always generate clients from the exact deployed release because the OpenAPI
+document is intentionally incremental.
 
 ## Operations And Safety
 

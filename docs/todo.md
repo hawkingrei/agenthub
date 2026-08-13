@@ -4,6 +4,12 @@ Active backlog only. Keep this file small and current.
 
 ## Release And Packaging
 
+- [ ] `P0` Restore Homebrew channel parity before advertising it as a current complete install. The
+  `linkerdog/homebrew-tap` formula still points to `v0.0.7` and installs the legacy
+  `agenthub-codex-acp` helper, while current GitHub artifacts publish `agenthub-acp`. Update and
+  validate the formula against the intended formal release, including both binary versions and
+  `brew services` startup. Evidence:
+  [journal/2026-08-13-user-documentation-release-readiness.md](journal/2026-08-13-user-documentation-release-readiness.md).
 - [ ] `P1` Replace the temporary security pins for
   `hawkingrei/codex@6ca61345ceb09d76edc3db8c4eb55df18a10888a` and
   `hawkingrei/symposium-acp@c731bb045d1375af48b0446af728aea52503b30b` with upstream stable

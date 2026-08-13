@@ -4,199 +4,108 @@ sidebar_position: 6
 
 # Session Lifecycle
 
-This page explains how session state changes over time, how ACP (Agent Control Protocol) events are captured, and what each action means for users.
+An AgentHub agent is a durable configuration plus a backend-managed runtime.
+Browser tabs observe and control that runtime; they do not own its lifetime.
 
-## Session States
+## Agent States
 
-An agent session transitions through the following states:
+| State | Meaning |
+|-------|---------|
+| `created` | The agent exists but has not started. |
+| `running` | A backend process is active. |
+| `stopped` | The operator stopped the runtime. |
+| `exited` | The process ended normally. |
+| `failed` | Startup or runtime execution failed. |
 
-| State | Description |
-|-------|-------------|
-| `created` | Agent exists but process is not running yet |
-| `running` | Task process is actively executing |
-| `completed` | Task finished successfully |
-| `failed` | Task encountered an error |
-| `cancelled` | Task was manually stopped by user |
-| `exited` | Process exited (may be expected or unexpected) |
+AgentHub permits one active runtime per agent. Repeated start requests do not
+create parallel processes for the same agent.
 
-## User Actions and Effects
+## Actions and Their Scope
 
 ### Start
 
-- Boots the runtime process for the selected agent
-- Reuses single active runtime guard to prevent duplicate starts
-- Initializes ACP session with the configured provider
-- Begins capturing events to persistent storage
+Starts the configured command in the selected workspace, creates a session,
+and begins persisting output.
 
-### Stop/Interrupt
+### Interrupt or Cancel
 
-- Requests the in-progress run to stop gracefully
-- Sends termination signal to the agent process
-- Keeps all history for later audit and replay
-- Session transitions to `cancelled` state
+Cancels the active ACP turn when the provider supports cancellation. Use this
+when a response or tool call needs to stop without discarding the agent.
+
+### Stop
+
+Stops the backend process and keeps the agent definition and persisted history.
+Use **Start** again when you want a new active runtime.
+
+### Clear ACP Session
+
+Forces the next provider interaction to create a new ACP session. This is a
+provider recovery action; it does not delete AgentHub event history.
 
 ### Delete
 
-- Removes the agent entry from management list
-- Optionally removes associated event history (configurable retention)
-- Should be used only after output/history are no longer needed
+Removes the agent and its managed session/event records. Export or back up
+anything you need before deletion.
 
-## ACP Event Model
+## Persisted Events
 
-AgentHub uses the **Agent Control Protocol (ACP)** to capture structured events from agent runs. Unlike raw terminal output, ACP events preserve context and enable rich replay.
+AgentHub stores agent configuration and session metadata in the main SQLite
+database. High-volume output is stored in per-agent SQLite databases under:
 
-### Event Streams
-
-Events are captured in two parallel streams:
-
-- **`acp`**: Structured ACP protocol messages (conversation, tool calls, plans)
-- **`system`**: System-level output (process stdout/stderr, initialization logs)
-
-### Event Storage
-
-Each agent has a dedicated SQLite database for events:
-
-```
-~/.agenthub/agent-events/{agent_id}.db
+```text
+~/.agenthub/agent-events/<agent-id>.db
 ```
 
-The `agent_events` table schema:
+Events record `stdout`, `stderr`, `system`, or structured `acp` streams. The
+history API supports session filtering and cursor-based paging, and the UI uses
+that persisted history for replay after a refresh or reconnect.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER | Auto-increment primary key |
-| `session_id` | TEXT | ACP session identifier |
-| `seq` | TEXT | Sequence UUID (v7) for ordering |
-| `ts` | INTEGER | Unix timestamp (seconds) |
-| `stream` | TEXT | Stream type: `acp` or `system` |
-| `message` | BLOB | Event payload (JSON bytes) |
+Do not remove individual event database files as a recovery shortcut. The
+running service may still hold connections or metadata that refer to them. Use
+the product's delete action for intentional removal, or stop the service and
+restore a consistent backup when repairing storage.
 
-### Event Types
+## Retention
 
-Common ACP event types captured:
-
-```json
-// Conversation message
-{
-  "type": "conversation",
-  "role": "assistant",
-  "content": "I'll help you with that..."
-}
-
-// Tool call
-{
-  "type": "tool_call",
-  "tool": "shell",
-  "input": { "command": "ls -la" },
-  "output": "..."
-}
-
-// Plan/reasoning
-{
-  "type": "plan",
-  "text": "1. First I'll check the files..."
-}
-
-// Debug information
-{
-  "type": "debug",
-  "level": "info",
-  "message": "Initializing context..."
-}
-```
-
-### Event Retention and Cleanup
-
-AgentHub automatically manages event storage:
-
-**Configuration** (`~/.agenthub/config.toml`):
+History cleanup is controlled by `~/.agenthub/config.toml`:
 
 ```toml
 [history]
-# Days to retain events (default: 5)
 event_retention_days = 5
-
-# Run VACUUM after cleanup (default: false)
 vacuum_on_cleanup = false
+delete_batch_size = 10000
 ```
 
-**Cleanup Behavior**:
+- `event_retention_days = 0` disables age-based deletion.
+- Cleanup deletes old records in bounded batches.
+- `vacuum_on_cleanup = true` may reclaim space but adds I/O and locking work.
 
-- Runs during idle periods (no activity for configured timeout)
-- Processes deletion in batches to minimize impact
-- Removes events older than `event_retention_days`
-- Optionally runs `VACUUM` to reclaim disk space
+Choose a retention window that matches your audit and disk requirements, then
+include the entire AgentHub data directory in backups if session replay is
+important.
 
-**Manual Cleanup**:
+## Reconnect and Replay
 
-If you need to free space immediately:
+1. The backend runtime continues while the browser is disconnected.
+2. The browser loads persisted events when the agent view opens.
+3. Live output resumes through `/sse/agents`.
+4. If SSE is unavailable or stale, the UI polls the event API until streaming
+   recovers.
 
-```bash
-# Stop the agent first
-# Then remove the agent's event database
-rm ~/.agenthub/agent-events/{agent_id}.db
-```
+SSE backpressure or a lagging receiver causes the server to close that stream
+instead of growing memory without bound. The browser reconnects and catches up
+from the database.
 
-## Reconnect Behavior
+## Safe Recovery Order
 
-A key feature of AgentHub is **session persistence** across browser disconnects:
+When an agent appears stuck:
 
-1. **During Disconnect**:
-   - Backend process continues running
-   - Events continue to be captured and stored
-   - Agent state is maintained
+1. Check the connection badge and agent state.
+2. Refresh the page to trigger history replay.
+3. Inspect the server log and the configured ACP binary.
+4. Interrupt the active turn, then stop/start the agent if necessary.
+5. Clear only the ACP provider session when the provider thread is corrupted.
+6. Restore a consistent backup before attempting any database-level repair.
 
-2. **On Reconnect**:
-   - UI retrieves session status from backend
-   - Event history is replayed from storage
-   - Live updates resume via SSE (Server-Sent Events)
-
-3. **Multi-Tab Support**:
-   - Multiple browser tabs can view the same session
-   - All tabs receive live updates
-   - Changes are synchronized across clients
-
-## History Replay
-
-When you reopen a session, AgentHub replays stored events to reconstruct the view:
-
-1. Fetches events from the agent's SQLite database
-2. Renders ACP events as structured timeline
-3. Shows system output in raw/stream view
-4. Maintains chronological ordering via sequence UUIDs
-
-### Performance Considerations
-
-- Each agent has its own database to avoid contention
-- Indexes on `(session_id, seq)` and `(ts)` for efficient queries
-- BLOB storage for message content to handle large payloads
-- Lazy loading for long sessions (loads recent events first)
-
-## Operational Tips
-
-- **One goal per session**: Keep history understandable by focusing each session on a specific task
-- **New sessions for experiments**: Use fresh sessions for risky refactors to isolate potential issues
-- **Keep failed sessions**: Don't delete immediately; failed sessions contain valuable debugging context
-- **Monitor disk usage**: Event databases can grow; adjust retention settings based on your storage
-- **Backup considerations**: Include `~/.agenthub/agent-events/` in backups if history is critical
-
-## Troubleshooting
-
-### Session Shows "Running" But No Output
-
-1. Check browser console for SSE connection errors
-2. Verify `~/.agenthub/agent-events/{agent_id}.db` exists and is writable
-3. Try refreshing the page to trigger history replay
-4. Check server logs for ACP event sink errors
-
-### History Replay Is Slow
-
-- Large sessions (>10k events) may take time to load
-- Consider reducing `event_retention_days` for high-volume agents
-- Event databases are per-agent; deleting old agents frees space
-
-### Events Missing From History
-
-- Events are persisted asynchronously; very recent events may not appear immediately
-- If using `vacuum_on_cleanup = true`, cleanup runs may briefly lock the database
-- Check server logs for SQLite errors
+See [Connection Status and Recovery](../advanced/connection-status-and-recovery.md)
+for stream diagnostics.
