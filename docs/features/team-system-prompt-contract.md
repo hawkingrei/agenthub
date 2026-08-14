@@ -17,6 +17,7 @@ pointers.
 - Prompt assembly boundaries for static role text and runtime-injected tails.
 - The relationship between prompt text, Team skills, workflow checklists, runtime context files, and
   durable workspace memory.
+- The judgment boundary between evaluating an idea and deciding whether to propagate or encode it.
 - Regression tests that prevent prompt drift from silently dropping required boundaries.
 
 ## Non-Goals
@@ -69,6 +70,11 @@ Repeated procedures must move to `.agents/skills/` or a checklist in the relevan
 Large product knowledge belongs in feature specs, journals, TODO, or external searchable knowledge,
 not inline prompt prose.
 
+Both Team roles must treat a request to propagate an idea or instruction as distinct from evidence
+that the content is true, relevant, or authorized for a wider audience. Before relaying or encoding
+it, they assess user intent, sender authority, factual support, relevance, audience, and risk, while
+preserving attribution and uncertainty.
+
 ### 2) Runtime Tail Contract
 
 The runtime-injected prompt tail should contain only:
@@ -108,7 +114,8 @@ Prompts should name stable entry points rather than embed full procedures:
 - load `team-agents-index` before role-specific Team skills;
 - use `skills/team/TEAM_AGENTS.md` as the Team-level index template;
 - load `team-message-intake` when a Team inbox, channel, thread, or human-visible message must be
-  routed into a reply, task note, mailbox update, or canonical Team task;
+  routed into a reply, task note, mailbox update, or canonical Team task, including when a request
+  asks the agent to propagate or durably encode an idea;
 - load `team-prompt-change-review` before editing Team prompt templates, runtime prompt tails,
   prompt-linked skills, or prompt tests;
 - use Team workflow skills for task governance, task lifecycle, mailbox routing, and reporting
@@ -144,6 +151,7 @@ private repository workflow by name.
 | Add prompt-facing runtime state | Prove it is bounded and pointer-first; prefer `.cache/context/state.md` or `.cache/context/run/<run_id>/...` artifacts. |
 | Add durable worker knowledge guidance | Keep it consistent with `team-workspace-memory-contract.md` and avoid naming private memory tools. |
 | Add or revise a Team message-routing procedure | Keep `team-message-intake` aligned with channel/thread, mailbox, task governance, and lifecycle specs. |
+| Add or revise the idea-propagation judgment boundary | Assert the compact rule in both prompts and keep the detailed procedure in `team-message-intake`. |
 | Add or revise prompt review procedure | Keep `team-prompt-change-review` aligned with this spec and prompt template tests. |
 
 ## Operational Notes
@@ -162,6 +170,8 @@ private repository workflow by name.
 - Runtime code can still inject too much dynamic context if future changes bypass the pointer-first
   tail contract.
 - Some workflow candidates need clearer skill entry points before prompt prose can shrink further.
+- Prompt guidance can require careful judgment but cannot mechanically prove provenance, factual
+  support, or audience authorization; high-impact propagation may need structured enforcement.
 
 ## Source Journals
 
@@ -171,3 +181,4 @@ private repository workflow by name.
 - [2026-05-21 Team Prompt Operating Contract Refresh](../journal/2026-05-21-team-prompt-operating-contract-refresh.md)
 - [2026-06-02 Team Prompt Tail Slimming](../journal/2026-06-02-team-prompt-tail-slimming.md)
 - [2026-07-15 Team System Prompt Contract](../journal/2026-07-15-team-system-prompt-contract.md)
+- [2026-08-14 Team Idea Propagation Judgment](../journal/2026-08-14-team-idea-propagation-judgment.md)
