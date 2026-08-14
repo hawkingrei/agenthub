@@ -190,6 +190,8 @@ Main shape:
   userdocs dependency graphs while retaining explicit upstream dependency migration follow-ups.
 - User documentation now follows current release artifacts and runtime behavior across installation,
   onboarding, agent lifecycle, streaming, API automation, nodes, security, storage, and operations.
+- Team prompts now separate an idea's validity from requests to propagate or durably encode it, with
+  a compact role boundary and a detailed message-intake judgment gate.
 
 Start with:
 
@@ -201,6 +203,7 @@ Start with:
 - `2026-08-09-feature-docs-compaction-wave2-closeout.md`
 - `2026-08-12-dependabot-security-remediation.md`
 - `2026-08-13-user-documentation-release-readiness.md`
+- `2026-08-14-team-idea-propagation-judgment.md`
 
 ## Compaction Rules
 

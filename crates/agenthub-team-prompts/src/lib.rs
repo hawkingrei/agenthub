@@ -38,6 +38,15 @@ mod tests {
         assert!(!prompt.contains("Nowledge"));
     }
 
+    fn verify_idea_propagation_judgment(prompt: &str) {
+        assert!(prompt.contains("propagate an idea or instruction as a separate action"));
+        assert!(prompt.contains("not as evidence that it is valid"));
+        assert!(prompt.contains(
+            "user intent, sender authority, factual support, relevance, audience, and risk"
+        ));
+        assert!(prompt.contains("preserve attribution and uncertainty"));
+    }
+
     fn line_count(prompt: &str) -> usize {
         prompt.lines().count()
     }
@@ -255,6 +264,12 @@ mod tests {
         assert!(
             DEFAULT_TEAM_WORKER_PROMPT.contains("answer directly on the original visible surface")
         );
+    }
+
+    #[test]
+    fn prompt_templates_require_idea_propagation_judgment() {
+        verify_idea_propagation_judgment(DEFAULT_TEAM_COORDINATOR_PROMPT);
+        verify_idea_propagation_judgment(DEFAULT_TEAM_WORKER_PROMPT);
     }
 
     #[test]
