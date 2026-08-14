@@ -603,6 +603,78 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_restore_survives_source_loss_and_passes_integrity_checks() {
+        let source_dir = tempfile::tempdir().unwrap();
+        let checkpoint_dir = tempfile::tempdir().unwrap();
+        let backup_path = checkpoint_dir.path().join("message-store-backup");
+
+        let present_id = AuthorityMessageId::new("auth-backup-present");
+        let present_ref = MessageRef {
+            authority_message_id: present_id.clone(),
+            ..sample_ref(42)
+        };
+        let channel_key = crate::keys::channel_key("group-a", "chan-1", 42);
+        let id_key = crate::keys::message_id_key(present_ref.message_id.as_str());
+
+        {
+            let store = RocksdbBodyStore::open(source_dir.path()).unwrap();
+            store
+                .put_body_and_refs(
+                    &present_id,
+                    b"body that must survive total source loss",
+                    [
+                        (channel_key.as_slice(), &present_ref),
+                        (id_key.as_slice(), &present_ref),
+                    ],
+                )
+                .unwrap();
+            store
+                .put_high_water("team_conversation_messages", 42)
+                .unwrap();
+            store.create_checkpoint(&backup_path).unwrap();
+        }
+
+        // Disaster-recovery evidence: the original store is gone entirely, so the checkpoint is the
+        // only remaining copy. If restore silently depended on the source directory, this would fail to
+        // open or return stale/empty data instead of the checkpointed state.
+        std::fs::remove_dir_all(source_dir.path()).unwrap();
+
+        let restored = RocksdbBodyStore::open(&backup_path).unwrap();
+        assert_eq!(
+            restored.get_body(&present_id).unwrap().as_deref(),
+            Some(&b"body that must survive total source loss"[..])
+        );
+
+        // The restored copy must itself pass the same integrity gates an operator would run before
+        // trusting it: every index ref resolves to a body, and every index ref is backed by authority.
+        // These are the two integrity primitives from `crate::integrity` that previously had no caller
+        // outside their own isolated unit tests.
+        let body_report = crate::check_index_refs_have_bodies(
+            &restored,
+            &restored,
+            [crate::keys::channel_prefix("group-a", "chan-1")],
+        )
+        .unwrap();
+        assert!(
+            body_report.is_clean(),
+            "restored store must have no index refs missing a body: {:?}",
+            body_report.missing_body_refs
+        );
+
+        let authority_report = crate::check_index_refs_have_authority(
+            &restored,
+            [crate::keys::channel_prefix("group-a", "chan-1")],
+            [present_id],
+        )
+        .unwrap();
+        assert!(
+            authority_report.is_clean(),
+            "restored store must have no orphan index refs: {:?}",
+            authority_report.orphan_refs
+        );
+    }
+
+    #[test]
     fn fan_out_stores_one_body_per_authority_message() {
         let dir = tempfile::tempdir().unwrap();
         let store = RocksdbBodyStore::open(dir.path()).unwrap();

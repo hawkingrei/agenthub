@@ -320,6 +320,155 @@ async fn repair_team_conversation_message_index_derives_refs_from_sqlite_authori
 }
 
 #[tokio::test]
+async fn repair_team_conversation_message_index_recovers_full_history_after_simulated_index_loss() {
+    // Recovery evidence for docs/todo.md's "Message Storage" item: simulate a total loss of the
+    // RocksDB-backed cf_index (e.g. a wiped data volume) -- including messages written both before and
+    // during the outage -- then rebuild from SQLite authority alone and confirm the recovered index
+    // matches authority exactly (a dual-read comparison, not just a row count).
+    use agenthub_message_store::{
+        AuthorityMessageId, InMemoryIndexStore, MessageIndexStore, check_index_refs_have_authority,
+        keys,
+    };
+
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "message-index-recovery-team".to_string(),
+                description: Some("team exercising index-loss recovery".to_string()),
+                spec: json!({
+                    "entrypoint":"coordinator",
+                    "members":[{"member_id":"coordinator","role":"coordinator"}]
+                }),
+            },
+            Some("user-message-index-recovery"),
+        )
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "Message index recovery task",
+            "user",
+            json!({"summary":"index loss recovery check"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    // Messages written while the index was healthy.
+    let mut message_ids = Vec::new();
+    for i in 0..2 {
+        let key = format!("pre-loss-{i}");
+        let (message, created) = manager
+            .append_task_conversation_message_with_created(
+                &task.id,
+                "user",
+                Some("coordinator"),
+                "group_chat",
+                json!({
+                    "type": "chat_message",
+                    "text": format!("pre-loss message {i}"),
+                    "correlation_id": format!("corr-pre-loss-{i}")
+                }),
+                Some(key.as_str()),
+            )
+            .await
+            .expect("append pre-loss message");
+        assert!(created);
+        message_ids.push(message.message_id);
+    }
+
+    let healthy_index = InMemoryIndexStore::new();
+    manager
+        .repair_team_conversation_message_index(&healthy_index, 16, *message_ids.last().unwrap())
+        .await
+        .expect("repair index while healthy");
+    assert_eq!(
+        healthy_index
+            .scan_prefix(&keys::channel_prefix(
+                "user-message-index-recovery",
+                &conversation.id,
+            ))
+            .expect("scan before loss")
+            .len(),
+        message_ids.len(),
+        "index must reflect all messages written before the simulated loss"
+    );
+
+    // Simulate total loss of cf_index: a brand-new, empty index store with no high-water mark stands in
+    // for what a wiped RocksDB volume would look like on restart.
+    let recovered_index = InMemoryIndexStore::new();
+
+    // A write lands after the loss but before recovery runs; the rebuild must still catch it.
+    let (post_loss_message, created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            Some("coordinator"),
+            "group_chat",
+            json!({
+                "type": "chat_message",
+                "text": "message written during the outage",
+                "correlation_id": "corr-post-loss"
+            }),
+            Some("post-loss-0"),
+        )
+        .await
+        .expect("append post-loss message");
+    assert!(created);
+    message_ids.push(post_loss_message.message_id);
+
+    let report = manager
+        .repair_team_conversation_message_index(&recovered_index, 16, post_loss_message.message_id)
+        .await
+        .expect("rebuild index from sqlite authority after loss");
+    assert_eq!(
+        report.repaired_refs,
+        message_ids.len() * 2,
+        "rebuild must recreate both the channel-prefix and by-id refs for every authority row, \
+         including messages written before and during the simulated loss"
+    );
+
+    let recovered_refs = recovered_index
+        .scan_prefix(&keys::channel_prefix(
+            "user-message-index-recovery",
+            &conversation.id,
+        ))
+        .expect("scan after recovery");
+    assert_eq!(
+        recovered_refs.len(),
+        message_ids.len(),
+        "recovery must reconstruct the full channel history, not just messages written after the loss"
+    );
+
+    // Dual-read comparison: the recovered index must exactly match SQLite authority, with no gaps and
+    // no orphans, for every message written before or during the simulated loss.
+    let authority_ids: Vec<AuthorityMessageId> = message_ids
+        .iter()
+        .map(|id| AuthorityMessageId::new(format!("tcm:{id}")))
+        .collect();
+    let integrity = check_index_refs_have_authority(
+        &recovered_index,
+        [keys::channel_prefix(
+            "user-message-index-recovery",
+            &conversation.id,
+        )],
+        authority_ids,
+    )
+    .expect("integrity check against sqlite authority");
+    assert!(
+        integrity.is_clean(),
+        "recovered index must have no orphan refs: {:?}",
+        integrity.orphan_refs
+    );
+    assert_eq!(integrity.scanned_refs, message_ids.len());
+}
+
+#[tokio::test]
 async fn list_task_conversation_messages_uses_fresh_index_and_falls_back_when_lagging() {
     let db = setup_test_db().await;
     let index = Arc::new(CountingIndexStore::new());
