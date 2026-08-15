@@ -246,3 +246,52 @@ insert-then-fingerprint-compare idempotency, plus opening up the existing but na
   `conversation_idempotency.rs`'s and `mailbox_queries.rs`'s unique-violation matchers, and the
   duplicated `SQLITE_CONSTRAINT_UNIQUE_CODE` constants in `manager_consts.rs`/`src/api/teams.rs`, onto
   the shared primitives when those files are next touched for other reasons.
+
+# 2026-08-15 Follow-Up: Phase 3 Backfill Of `teamspace.rs`
+
+## Summary
+
+Backfilled `teamspace.rs` onto the `ControlStore` primitives (`crates/agenthub-db/src/control_store.rs`)
+as the first real adoption -- proof the abstraction works against production code, not just its own unit
+tests. This is the "opportunistic backfill" the spec's Phase 3 describes, done as one bounded,
+self-contained file rather than the batch rewrite of all Phase-3 candidates the spec explicitly rules
+out.
+
+## Scope
+
+- `append_audit_event` (`teamspace.rs`) now delegates its `INSERT` to
+  `agenthub_db::control_store::record_audit_event` instead of issuing the query itself. All 11 existing
+  call sites are unchanged -- the function's signature didn't move, only its body.
+- Four `rows_affected() != 1` bail-on-conflict guards -- task handoff, Teamspace member revocation,
+  invite consumption, and goal-fork completion -- now call
+  `agenthub_db::control_store::require_guarded_write_applied`, `.map_err`'d back to each site's original,
+  specific `anyhow` message (e.g. "fork changed before completion").
+- `claim_execution_entity`'s generation-fencing arithmetic (`lease_generation + 1` / `else 1`) now calls
+  `agenthub_db::control_store::next_fencing_generation`.
+
+## Key Decisions
+
+- Two `rows_affected() == 1` sites (`release_task_goal_in_tx`, `release_step_execution`) were
+  deliberately left alone. They return `Ok(false)` on a non-matching row count as an expected "nothing to
+  release" outcome, not a precondition failure to error on -- routing them through
+  `require_guarded_write_applied` (which is `Err`-shaped) would mean immediately discarding that `Err` to
+  recover a bool, making the code worse, not more consistent. Not every `rows_affected()` check is a CAS
+  guard; only the ones that bail on mismatch are.
+- Every guard's original, specific error message (e.g. "invite was consumed concurrently") is preserved
+  via `.map_err`, so callers and logs see identical text to before -- this is a pure internal refactor,
+  not a behavior or observability change.
+
+## Validation
+
+- `cargo build --lib` succeeds.
+- `cargo test --lib team::manager` (181 passed) and `cargo test --lib api::teams` (102 passed), including
+  `goal_fork_completion_is_fenced_by_the_parent_lease_generation` and
+  `teamspace_invite_is_single_use_and_task_claim_is_single_owner`, which directly exercise the guards and
+  fencing arithmetic touched here -- all pass unchanged, confirming the refactor is behavior-preserving.
+- `cargo clippy --lib --tests -p agenthub` and `cargo fmt -p agenthub -- --check` clean.
+
+## Follow-Ups
+
+- `conversation_idempotency.rs`, `mailbox_queries.rs`, and the `manager_consts.rs`/`src/api/teams.rs`
+  `SQLITE_CONSTRAINT_UNIQUE_CODE` redeclarations remain unmigrated -- next candidates when those files are
+  next touched for other reasons, not scheduled as a dedicated pass.
