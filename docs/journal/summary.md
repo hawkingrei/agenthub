@@ -195,6 +195,9 @@ Main shape:
 - Message-store `cf_body`/`cf_index` now has executable dual-read comparison and full rebuild/
   backup-restore recovery evidence, narrowing the remaining SQLite-retirement work to the unstarted
   transactional `ControlStore` design for Team/Agent/run/mailbox/permission/idempotency authority.
+- The `ControlStore` design is now defined and its Phase 1 foundation (conditional update, idempotent
+  insert, and audit primitives, SQLite remaining the authority) is landed with zero existing callers
+  migrated, unblocking Phase 2 adoption by new control-plane authority work.
 
 Start with:
 
