@@ -128,3 +128,60 @@ index refs idempotently.
 - Derive `MessageIndexProjection` rows from SQLite authority tables.
 - Add orphan detection and explicit prune mode for refs not backed by authority rows.
 - Keep production reads on SQLite until high-water-mark/read-repair and backup/restore evidence land.
+
+# 2026-08-15 Follow-Up: Rebuild And Backup-Restore Recovery Evidence
+
+## Summary
+
+Closed the "dual-read comparison and full rebuild/backup-restore recovery evidence" prerequisite that
+[todo.md](../todo.md) requires before any control-plane authority (Team/Agent/run/mailbox/permission/
+idempotency) can be considered for a future non-SQLite store. This slice only adds recovery evidence for
+the already-landed `cf_body`/`cf_index` work; it does not touch control-plane authority tables, which
+stay explicitly out of scope per the spec's Non-Goals.
+
+Two integrity primitives (`check_index_refs_have_bodies`, `check_index_refs_have_authority`) and the
+RocksDB checkpoint API (`create_checkpoint`) were already implemented and unit-tested in isolation, but
+had zero callers wiring them into an actual loss-and-recovery scenario end to end.
+
+## Scope
+
+- `crates/agenthub-message-store/src/rocksdb_store.rs`:
+  `checkpoint_restore_survives_source_loss_and_passes_integrity_checks` deletes the source RocksDB
+  directory entirely after checkpointing (a true disaster-recovery shape, not just "the checkpoint has
+  the same bytes"), then runs `check_index_refs_have_bodies` and `check_index_refs_have_authority`
+  against the restored-only copy and asserts both reports are clean.
+- `src/team/manager/tests/conversation_cases.rs`:
+  `repair_team_conversation_message_index_recovers_full_history_after_simulated_index_loss` builds a
+  healthy index, then simulates total `cf_index` loss (a fresh empty index store, standing in for a
+  wiped RocksDB volume) while a message is written during the simulated outage. It drives the real,
+  production `TeamManager::repair_team_conversation_message_index` rebuild path from SQLite authority
+  alone, then runs `check_index_refs_have_authority` against the real SQLite-derived authority id set to
+  prove the recovered index has no gaps and no orphans (the dual-read comparison), not just a matching
+  row count.
+
+## Key Decisions
+
+- Evidence lives as executable tests, not a manual runbook: both scenarios reuse the exact production
+  repair/checkpoint code paths, so the evidence stays true as the implementation evolves instead of
+  rotting as prose.
+- The disaster-recovery test removes the source directory before opening the restored copy, so it cannot
+  pass by accidentally reading through to the original store.
+- No CLI/operator surface was added in this slice. `repair_team_*_index` are `pub(crate)` methods on
+  `TeamManager` inside the main binary crate; exposing them to an external operator CLI needs a public
+  API decision of its own and was left out to keep this change small and reviewable.
+
+## Validation
+
+- `cargo test -p agenthub-message-store --features rocksdb checkpoint_restore_survives_source_loss -- --nocapture`
+- `cargo test --lib team::manager::tests::conversation_cases::repair_team_conversation_message_index_recovers_full_history_after_simulated_index_loss -- --nocapture`
+- `cargo test --lib team::manager::tests::conversation_cases::` (29 passed, no regressions)
+- `cargo clippy -p agenthub-message-store --features rocksdb --tests` and
+  `cargo clippy --lib --tests -p agenthub` are clean.
+
+## Follow-Ups
+
+- The remaining, larger half of the todo.md item -- defining a transactional `ControlStore` for Team/
+  Agent/run/mailbox/permission/idempotency authority -- is unstarted and needs its own design spec before
+  any implementation; it is not a natural extension of this slice.
+- Consider promoting the RocksDB checkpoint test into the Bazel stress lane (`body-store-tests.yml`)
+  rather than leaving it in the separate single-run `rust-message-store-rocksdb` cargo job.

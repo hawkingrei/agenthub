@@ -192,6 +192,9 @@ Main shape:
   onboarding, agent lifecycle, streaming, API automation, nodes, security, storage, and operations.
 - Team prompts now separate an idea's validity from requests to propagate or durably encode it, with
   a compact role boundary and a detailed message-intake judgment gate.
+- Message-store `cf_body`/`cf_index` now has executable dual-read comparison and full rebuild/
+  backup-restore recovery evidence, narrowing the remaining SQLite-retirement work to the unstarted
+  transactional `ControlStore` design for Team/Agent/run/mailbox/permission/idempotency authority.
 
 Start with:
 
