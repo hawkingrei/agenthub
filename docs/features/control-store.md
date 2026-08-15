@@ -185,17 +185,34 @@ Adoption is staged and non-destructive, matching the pattern already used for
   conditional-update, idempotency, or audit needs -- Teamspace multi-user membership writes, goal/fork
   conflict escalation, future capability/permission tables -- uses these primitives instead of hand-rolling
   a new CAS guard or a new unique-violation matcher.
-- **Phase 3 (opportunistic, not scheduled): backfill existing call sites.** `teamspace.rs` is backfilled
-  (landed): its four `rows_affected() != 1` bail-on-conflict guards now call
-  `require_guarded_write_applied`, its generation-fencing arithmetic in `claim_execution_entity` now
-  calls `next_fencing_generation`, and `append_audit_event` now delegates to the shared
-  `record_audit_event` instead of issuing its own `INSERT`. `teamspace.rs`'s two boolean-return release
-  checks (`release_task_goal_in_tx`, `release_step_execution`) were deliberately left as plain `if ==`
-  checks -- they signal an expected "nothing to release" outcome via `Ok(false)`, not a precondition
-  failure, so forcing them through a CAS-error primitive would be a worse fit, not a cleanup.
-  `conversation_idempotency.rs`, `mailbox_queries.rs`, and the `manager_consts.rs`/`src/api/teams.rs`
-  `SQLITE_CONSTRAINT_UNIQUE_CODE` redeclarations remain unmigrated: natural next candidates when those
-  files are next touched for other reasons, per `AGENTS.md` §3 -- not scheduled as a dedicated rewrite.
+- **Phase 3 (opportunistic, not scheduled): backfill existing call sites.** Landed for every call site
+  identified when this spec was written:
+  - `teamspace.rs`: its four `rows_affected() != 1` bail-on-conflict guards now call
+    `require_guarded_write_applied`, its generation-fencing arithmetic in `claim_execution_entity` now
+    calls `next_fencing_generation`, and `append_audit_event` now delegates to the shared
+    `record_audit_event` instead of issuing its own `INSERT`. Its two boolean-return release checks
+    (`release_task_goal_in_tx`, `release_step_execution`) were deliberately left as plain `if ==` checks
+    -- they signal an expected "nothing to release" outcome via `Ok(false)`, not a precondition failure,
+    so forcing them through a CAS-error primitive would be a worse fit, not a cleanup.
+  - `conversation_idempotency.rs`'s and `mailbox_threads.rs`'s fingerprint-compare-then-conflict
+    functions now build an `IdempotentReplay` and call `resolve_idempotent_replay`, mapping the shared
+    `IdempotencyConflict` error back onto each call site's own error type
+    (`TaskConversationMessageStoreError`/`SqlActorMailboxStoreError`).
+    `conversation_idempotency.rs`'s unique-violation matcher now calls `is_unique_violation` directly.
+    `mailbox_threads.rs`'s insert path uses `INSERT OR IGNORE` + a row-count check, not error-catching,
+    so it never had a unique-violation matcher to migrate -- only the replay-decision half applied there.
+  - The `manager_consts.rs` and (surviving, previously unnoticed dead) `src/api/teams.rs`
+    `SQLITE_CONSTRAINT_UNIQUE_CODE` redeclarations are gone: `manager.rs` now re-exports the crate
+    constant under the same name so `super::SQLITE_CONSTRAINT_UNIQUE_CODE` keeps resolving for
+    `conversation_idempotency.rs`/`channel_mutations.rs` unchanged; `src/api/teams.rs`'s copy was
+    entirely unused dead code and was deleted rather than repointed.
+  - `src/api/teams/errors.rs`'s `is_unique_violation_for` (a third, previously undiscovered duplicate --
+    it downcasts `anyhow::Error` to `sqlx::Error` first) now calls `is_unique_violation` after the
+    downcast.
+  - `channel_mutations.rs`'s `is_team_channel_bootstrap_unique_violation` was deliberately left alone: it
+    matches an OR of two different index-message shapes, not the single-column-list shape
+    `is_unique_violation` models, and forcing a fit there was judged more likely to obscure the logic
+    than simplify it.
 - **Rollback:** since Phase 1 changed no existing call site, there was nothing to roll back to. Each
   Phase 3 file's backfill is behavior-preserving by construction (same SQL, same error messages, only the
   precondition-check/audit-write logic is shared) and is reversible per-file, independent of every other

@@ -58,7 +58,6 @@ use crate::team::{
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
-const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "coordinator_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "coordinator_synthesize";

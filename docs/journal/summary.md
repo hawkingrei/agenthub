@@ -196,8 +196,10 @@ Main shape:
   backup-restore recovery evidence, narrowing the remaining SQLite-retirement work to the unstarted
   transactional `ControlStore` design for Team/Agent/run/mailbox/permission/idempotency authority.
 - The `ControlStore` design is now defined and its Phase 1 foundation (conditional update, idempotent
-  insert, and audit primitives, SQLite remaining the authority) is landed with zero existing callers
-  migrated, unblocking Phase 2 adoption by new control-plane authority work.
+  insert, and audit primitives, SQLite remaining the authority) is landed. Phase 3 backfill is complete
+  for every duplicated CAS/idempotency/audit call site found, including a third, previously-undiscovered
+  duplicate matcher; `docs/todo.md`'s SQLite-retirement item is closed, leaving only the ongoing Phase 2
+  discipline of new authority code adopting the primitives as it lands.
 
 Start with:
 

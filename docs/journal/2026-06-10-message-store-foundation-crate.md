@@ -295,3 +295,60 @@ out.
 - `conversation_idempotency.rs`, `mailbox_queries.rs`, and the `manager_consts.rs`/`src/api/teams.rs`
   `SQLITE_CONSTRAINT_UNIQUE_CODE` redeclarations remain unmigrated -- next candidates when those files are
   next touched for other reasons, not scheduled as a dedicated pass.
+
+# 2026-08-15 Follow-Up: Phase 3 Backfill Completion
+
+## Summary
+
+Finished Phase 3 backfill for every duplicated CAS/idempotency/audit call site identified in
+`docs/features/control-store.md`'s Problem section, closing out `docs/todo.md`'s Message Storage item
+(now `[x]`). Remaining work is Phase 2 only -- new authority code adopting the primitives as it lands,
+not a standalone task.
+
+## Scope
+
+- `conversation_idempotency.rs`: `ensure_task_conversation_message_idempotency_compatible` now builds an
+  `IdempotentReplay` and calls `resolve_idempotent_replay`; `is_task_conversation_message_idempotency_unique_violation`
+  now calls `is_unique_violation` directly.
+- `mailbox_threads.rs`: `ensure_idempotency_compatible` gets the same `IdempotentReplay` treatment. It has
+  no matching unique-violation matcher to migrate -- `mailbox_store_delivery.rs`'s insert path uses
+  `INSERT OR IGNORE` plus a `rows_affected()` check, not error-catching, so only the replay-decision half
+  of the pattern applied here.
+- `manager_consts.rs`'s `SQLITE_CONSTRAINT_UNIQUE_CODE` const is deleted; `manager.rs` now re-exports
+  `agenthub_db::control_store::SQLITE_CONSTRAINT_UNIQUE_CODE` under the same name, so
+  `super::SQLITE_CONSTRAINT_UNIQUE_CODE` keeps resolving unchanged for `conversation_idempotency.rs` and
+  `channel_mutations.rs`.
+- `src/api/teams.rs`'s copy of the same constant turned out to be dead code -- zero usages in that file.
+  Deleted outright rather than repointed. Removing it broke the build: a third, previously-undiscovered
+  duplicate matcher, `is_unique_violation_for` in `src/api/teams/errors.rs`, referenced it via
+  `super::SQLITE_CONSTRAINT_UNIQUE_CODE`. That function now downcasts `anyhow::Error` to `sqlx::Error`
+  and calls `is_unique_violation` directly.
+- `channel_mutations.rs`'s `is_team_channel_bootstrap_unique_violation` was deliberately left alone: it
+  matches an OR of two different index-message shapes (one plain unique-index name, one two-fragment
+  `AND`), not the single-column-list shape `is_unique_violation` models. Forcing a fit would obscure the
+  logic rather than simplify it.
+
+## Key Decisions
+
+- Finding a third, undocumented duplicate (`src/api/teams/errors.rs`) while backfilling the two
+  documented ones is exactly the value this consolidation was for: the pattern was more widely
+  copy-pasted than the original Problem-section survey found.
+- Dead code (the unused `src/api/teams.rs` constant) gets deleted, not migrated -- migrating something
+  nothing calls would just be relocating dead code.
+- Not every structurally-similar check is a good fit. `channel_mutations.rs`'s OR-of-two-conditions
+  matcher was evaluated and rejected as a `is_unique_violation` adopter, on purpose, rather than forced
+  through for uniformity's sake.
+
+## Validation
+
+- `cargo build --lib` succeeds.
+- `cargo test --lib team::manager` (181 passed), `cargo test --lib api::teams` (102 passed), and
+  `cargo test --lib idempotency` (11 passed, including the mailbox and conversation replay/conflict
+  paths and `api::teams::errors::tests::map_task_message_error_maps_idempotency_conflicts_to_conflict`)
+  -- all pass unchanged.
+- `cargo clippy --lib --tests -p agenthub` and `cargo fmt -p agenthub -- --check` clean.
+
+## Follow-Ups
+
+- None outstanding for Phase 3. Phase 2 (new authority code adopting `ControlStore` from the start) is
+  an ongoing discipline, tracked in the spec itself rather than as a backlog item.
