@@ -166,11 +166,8 @@ fn is_unique_step_attempt_violation(err: &anyhow::Error) -> bool {
 
 fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
     match err.downcast_ref::<SqlxError>() {
-        Some(SqlxError::Database(db_err)) => {
-            db_err.code().as_deref() == Some(super::SQLITE_CONSTRAINT_UNIQUE_CODE)
-                && db_err.message().contains(constraint)
-        }
-        _ => false,
+        Some(sqlx_err) => agenthub_db::control_store::is_unique_violation(sqlx_err, constraint),
+        None => false,
     }
 }
 

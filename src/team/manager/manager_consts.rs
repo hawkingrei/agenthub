@@ -18,5 +18,4 @@ pub(crate) const TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX: i64 = 500;
 pub(crate) const TEAM_SHARED_THREAD_TITLE: &str = "all";
 pub(crate) const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 pub(crate) const TEAM_CHANNEL_BOOTSTRAP_KIND: &str = "team_channel";
-pub(super) const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 pub(super) const MESSAGE_ARCHIVE_APPEND_TIMEOUT: Duration = Duration::from_secs(2);

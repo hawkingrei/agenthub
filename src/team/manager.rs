@@ -126,8 +126,8 @@ use self::manager_consts::{
     CONTINUITY_MODE_DEFAULT, CONTINUITY_MODE_RESET, MEMORY_FLUSH_ARTIFACT_KIND,
     MEMORY_FLUSH_MAX_EVENTS_DEFAULT, MEMORY_FLUSH_MAX_EVENTS_MAX, MEMORY_FLUSH_MAX_EXCERPT_CHARS,
     MEMORY_FLUSH_MAX_SUMMARY_CHARS, MESSAGE_ARCHIVE_APPEND_TIMEOUT, RECONCILE_ROUND_ARTIFACT_KIND,
-    SQLITE_CONSTRAINT_UNIQUE_CODE, TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY,
-    TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_SOURCE,
+    TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY, TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND,
+    TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_SOURCE,
 };
 pub(crate) use self::manager_consts::{
     TEAM_CHANNEL_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_TITLE,
@@ -153,6 +153,9 @@ use self::run_task_status_sync::load_linked_task_ids_for_runs;
 use self::runtime_views::TeamMemberSpecView;
 use self::runtime_views::parse_team_member_specs;
 use self::support::maybe_attach_context_artifact_pointer;
+// Re-exported so `super::SQLITE_CONSTRAINT_UNIQUE_CODE` keeps resolving for sibling modules
+// (`conversation_idempotency`, `channel_mutations`) without each one importing the crate directly.
+use agenthub_db::control_store::SQLITE_CONSTRAINT_UNIQUE_CODE;
 pub use mailbox::{SendActorMessageInput, TeamRemoteRelayWorkerSettings};
 
 use self::codec_rows::{

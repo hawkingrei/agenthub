@@ -93,20 +93,18 @@ pub(super) fn ensure_task_conversation_message_idempotency_compatible(
         &existing.route,
         &existing.payload,
     );
-    if incoming_fp != existing_fp {
-        return Err(TaskConversationMessageStoreError::IdempotencyConflict);
-    }
-    Ok(())
+    let outcome = if incoming_fp == existing_fp {
+        agenthub_db::control_store::IdempotentReplay::SamePayload
+    } else {
+        agenthub_db::control_store::IdempotentReplay::DifferentPayload
+    };
+    agenthub_db::control_store::resolve_idempotent_replay(outcome)
+        .map_err(|_| TaskConversationMessageStoreError::IdempotencyConflict)
 }
 
 pub(super) fn is_task_conversation_message_idempotency_unique_violation(err: &SqlxError) -> bool {
-    match err {
-        SqlxError::Database(db_err) => {
-            db_err.code().as_deref() == Some(super::SQLITE_CONSTRAINT_UNIQUE_CODE)
-                && db_err
-                    .message()
-                    .contains(TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS)
-        }
-        _ => false,
-    }
+    agenthub_db::control_store::is_unique_violation(
+        err,
+        TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS,
+    )
 }

@@ -299,8 +299,11 @@ pub(super) fn ensure_idempotency_compatible(
         existing.route.as_ref(),
         &existing.payload,
     );
-    if incoming_fp != existing_fp {
-        return Err(SqlActorMailboxStoreError::IdempotencyConflict);
-    }
-    Ok(())
+    let outcome = if incoming_fp == existing_fp {
+        agenthub_db::control_store::IdempotentReplay::SamePayload
+    } else {
+        agenthub_db::control_store::IdempotentReplay::DifferentPayload
+    };
+    agenthub_db::control_store::resolve_idempotent_replay(outcome)
+        .map_err(|_| SqlActorMailboxStoreError::IdempotencyConflict)
 }
