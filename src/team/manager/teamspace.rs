@@ -68,21 +68,21 @@ pub(super) async fn append_audit_event(
     detail: serde_json::Value,
     created_at: i64,
 ) -> anyhow::Result<()> {
-    sqlx::query(
-        r#"
-        INSERT INTO team_audit_events (
-            team_id, actor_user_id, event_kind, subject_kind, subject_id, detail_json, created_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-        "#,
+    // Delegates to the shared ControlStore primitive (docs/features/control-store.md) instead of
+    // issuing this INSERT locally, so this Teamspace-originated audit path and any future authority
+    // write that adopts `agenthub_db::control_store::record_audit_event` write through the same code.
+    agenthub_db::control_store::record_audit_event(
+        tx,
+        agenthub_db::control_store::AuditEvent {
+            team_id,
+            actor_user_id,
+            event_kind,
+            subject_kind,
+            subject_id,
+            detail,
+            created_at,
+        },
     )
-    .bind(team_id)
-    .bind(actor_user_id)
-    .bind(event_kind)
-    .bind(subject_kind)
-    .bind(subject_id)
-    .bind(detail.to_string())
-    .bind(created_at)
-    .execute(&mut **tx)
     .await?;
     Ok(())
 }
@@ -323,9 +323,8 @@ impl TeamManager {
         .bind(previous_owner.as_deref())
         .execute(&mut *tx)
         .await?;
-        if updated.rows_affected() != 1 {
-            anyhow::bail!("task changed during handoff")
-        }
+        agenthub_db::control_store::require_guarded_write_applied(updated.rows_affected())
+            .map_err(|_| anyhow::anyhow!("task changed during handoff"))?;
         release_task_goal_in_tx(&mut tx, &task.team_id, task_id, "handoff", now).await?;
         append_audit_event(
             &mut tx,
@@ -364,14 +363,17 @@ impl TeamManager {
         .bind(entity_id)
         .fetch_optional(&mut *tx)
         .await?;
-        let generation = if let Some(current) = current {
-            let released_at: Option<i64> = current.get("released_at");
-            if released_at.is_none() && current.get::<i64, _>("expires_at") > now {
-                anyhow::bail!("execution entity already has an active claim")
+        let generation = match &current {
+            Some(current) => {
+                let released_at: Option<i64> = current.get("released_at");
+                if released_at.is_none() && current.get::<i64, _>("expires_at") > now {
+                    anyhow::bail!("execution entity already has an active claim")
+                }
+                agenthub_db::control_store::next_fencing_generation(Some(
+                    current.get("lease_generation"),
+                ))
             }
-            current.get::<i64, _>("lease_generation") + 1
-        } else {
-            1
+            None => agenthub_db::control_store::next_fencing_generation(None),
         };
         sqlx::query(
             r#"
@@ -495,9 +497,8 @@ impl TeamManager {
         .bind(user_id)
         .execute(&mut *tx)
         .await?;
-        if revoked.rows_affected() != 1 {
-            anyhow::bail!("Teamspace member changed during revocation")
-        }
+        agenthub_db::control_store::require_guarded_write_applied(revoked.rows_affected())
+            .map_err(|_| anyhow::anyhow!("Teamspace member changed during revocation"))?;
         append_audit_event(
             &mut tx,
             team_id,
@@ -667,9 +668,8 @@ impl TeamManager {
         .bind(&invite.id)
         .execute(&mut *tx)
         .await?;
-        if consumed.rows_affected() != 1 {
-            anyhow::bail!("invite was consumed concurrently")
-        }
+        agenthub_db::control_store::require_guarded_write_applied(consumed.rows_affected())
+            .map_err(|_| anyhow::anyhow!("invite was consumed concurrently"))?;
 
         sqlx::query(
             r#"
@@ -1021,9 +1021,8 @@ impl TeamManager {
         .bind(fork_id)
         .execute(&mut *tx)
         .await?;
-        if updated.rows_affected() != 1 {
-            anyhow::bail!("fork changed before completion")
-        }
+        agenthub_db::control_store::require_guarded_write_applied(updated.rows_affected())
+            .map_err(|_| anyhow::anyhow!("fork changed before completion"))?;
         let result_text = result
             .get("summary")
             .and_then(serde_json::Value::as_str)

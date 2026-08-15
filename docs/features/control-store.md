@@ -178,22 +178,28 @@ unit by construction: there is no `ControlStore` code path that could partially 
 Adoption is staged and non-destructive, matching the pattern already used for
 [message-storage-tiering.md](message-storage-tiering.md):
 
-- **Phase 1 (this spec's implementation): foundation only, zero existing callers changed.**
+- **Phase 1 (landed): foundation only, zero existing callers changed.**
   `crates/agenthub-db/src/control_store.rs` ships the four primitives above with unit tests against a
-  real in-memory SQLite schema. `teamspace.rs`, `conversation_idempotency.rs`, `mailbox_queries.rs`,
-  `manager_consts.rs`, and `src/api/teams.rs` are unchanged and keep working exactly as before.
+  real in-memory SQLite schema.
 - **Phase 2: new authority code goes through `ControlStore` from the start.** Work that introduces new
   conditional-update, idempotency, or audit needs -- Teamspace multi-user membership writes, goal/fork
   conflict escalation, future capability/permission tables -- uses these primitives instead of hand-rolling
   a new CAS guard or a new unique-violation matcher.
-- **Phase 3 (opportunistic, not scheduled): backfill existing call sites.** When `teamspace.rs`,
-  `conversation_idempotency.rs`, or `mailbox_queries.rs` is next touched for an unrelated reason, its
-  hand-rolled CAS/idempotency/audit code can be swapped for the shared primitive as a "fix obvious local
-  issues discovered during the active edit" change (per `AGENTS.md` §3), not as a dedicated mass rewrite.
-  `manager_consts.rs`'s and `src/api/teams.rs`'s local `SQLITE_CONSTRAINT_UNIQUE_CODE` redeclarations are
-  natural first candidates.
-- **Rollback:** since Phase 1 changes no existing call site, there is nothing to roll back to. A Phase 3
-  backfill of one file is reversible per-file, independent of every other file's migration state.
+- **Phase 3 (opportunistic, not scheduled): backfill existing call sites.** `teamspace.rs` is backfilled
+  (landed): its four `rows_affected() != 1` bail-on-conflict guards now call
+  `require_guarded_write_applied`, its generation-fencing arithmetic in `claim_execution_entity` now
+  calls `next_fencing_generation`, and `append_audit_event` now delegates to the shared
+  `record_audit_event` instead of issuing its own `INSERT`. `teamspace.rs`'s two boolean-return release
+  checks (`release_task_goal_in_tx`, `release_step_execution`) were deliberately left as plain `if ==`
+  checks -- they signal an expected "nothing to release" outcome via `Ok(false)`, not a precondition
+  failure, so forcing them through a CAS-error primitive would be a worse fit, not a cleanup.
+  `conversation_idempotency.rs`, `mailbox_queries.rs`, and the `manager_consts.rs`/`src/api/teams.rs`
+  `SQLITE_CONSTRAINT_UNIQUE_CODE` redeclarations remain unmigrated: natural next candidates when those
+  files are next touched for other reasons, per `AGENTS.md` §3 -- not scheduled as a dedicated rewrite.
+- **Rollback:** since Phase 1 changed no existing call site, there was nothing to roll back to. Each
+  Phase 3 file's backfill is behavior-preserving by construction (same SQL, same error messages, only the
+  precondition-check/audit-write logic is shared) and is reversible per-file, independent of every other
+  file's migration state.
 
 ## Validation Matrix
 
