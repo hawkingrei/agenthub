@@ -185,3 +185,64 @@ had zero callers wiring them into an actual loss-and-recovery scenario end to en
   any implementation; it is not a natural extension of this slice.
 - Consider promoting the RocksDB checkpoint test into the Bazel stress lane (`body-store-tests.yml`)
   rather than leaving it in the separate single-run `rust-message-store-rocksdb` cargo job.
+
+# 2026-08-15 Follow-Up: ControlStore Design And Phase 1 Foundation
+
+## Summary
+
+Defined the `ControlStore` contract the todo.md item calls for
+([features/control-store.md](../features/control-store.md)) and landed its Phase 1 foundation. SQLite
+stays the control-plane authority -- this is not a storage-engine change, matching
+[message-storage-tiering.md](../features/message-storage-tiering.md)'s existing Non-Goal that rules that
+out for Team/run/permission/node/group rows. `ControlStore` is a shared, typed decision layer over
+patterns already proven in production but duplicated per call site: `teamspace.rs`'s generation-fenced
+CAS and guarded-completion checks, and `conversation_idempotency.rs`'s/`mailbox_queries.rs`'s
+insert-then-fingerprint-compare idempotency, plus opening up the existing but narrowly-used
+`team_audit_events` table to any future authority write.
+
+## Scope
+
+- `docs/features/control-store.md`: the stable design -- four contracts (conditional update, idempotent
+  insert, audit, transaction-scoped execution), a 3-phase non-destructive migration contract (foundation
+  only -> new code adopts it -> opportunistic backfill), and an explicit list of what this does *not* do
+  (no engine change, no mandatory rewrite of the ~70 existing files with raw SQL against these tables).
+- `crates/agenthub-db/src/control_store.rs`: the Phase 1 foundation --
+  `require_guarded_write_applied`, `next_fencing_generation`, `is_unique_violation`,
+  `IdempotentReplay`/`resolve_idempotent_replay`, and `record_audit_event`, all unit-tested against the
+  real production schema (`init_db_at_path`), including a real SQLite `UNIQUE` violation (not a mocked
+  error) and a real commit-vs-rollback audit-durability check.
+- Zero existing call sites changed: `teamspace.rs`, `conversation_idempotency.rs`, `mailbox_queries.rs`,
+  `manager_consts.rs`, and `src/api/teams.rs` are untouched and behave exactly as before.
+
+## Key Decisions
+
+- `ControlStore` centralizes *decisions*, not SQL execution: every table's INSERT/UPDATE differs in its
+  columns, so threading a caller's query through a generic async closure would need boxed futures across
+  an unstable HRTB boundary for little benefit. Callers keep writing their own SQL; `ControlStore`
+  classifies the guard/conflict/audit outcome around it.
+- Two CAS shapes only (guarded write, fencing generation) -- exactly what current production code
+  already needs. A third shape is added when a real caller needs it, not designed speculatively.
+- Lives in `crates/agenthub-db` (the crate that already owns the schema), not a new crate: no native
+  dependency, no new Bazel wiring beyond the glob-based `rust_library` picking up the new file
+  automatically.
+- Zero-callers-in-Phase-1 follows the same precedent as the message-store foundation crate above: land
+  the contract and its tests first, adopt incrementally, never force a mass rewrite in one PR.
+
+## Validation
+
+- `cargo test -p agenthub-db control_store::` (7 new tests) and `cargo test -p agenthub-db` (50 total,
+  no regressions).
+- `cargo clippy -p agenthub-db --all-targets` and `cargo fmt -p agenthub-db -- --check` clean.
+- `cargo build -p agenthub-db -p agenthub` succeeds (the main binary crate depends on `agenthub-db`).
+- `bazel test //crates/agenthub-db:agenthub_db_tests --test_arg='control_store'` (Bazel parity per
+  `AGENTS.md` §2).
+
+## Follow-Ups
+
+- Phase 2: route new control-plane authority work (Teamspace multi-user membership writes, goal/fork
+  conflict escalation, any future capability/permission table) through `ControlStore` from the start
+  instead of hand-rolling a new CAS guard or unique-violation matcher.
+- Phase 3 (opportunistic): backfill `teamspace.rs`'s `append_audit_event`/CAS checks,
+  `conversation_idempotency.rs`'s and `mailbox_queries.rs`'s unique-violation matchers, and the
+  duplicated `SQLITE_CONSTRAINT_UNIQUE_CODE` constants in `manager_consts.rs`/`src/api/teams.rs`, onto
+  the shared primitives when those files are next touched for other reasons.

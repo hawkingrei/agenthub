@@ -17,9 +17,15 @@ use anyhow::Context;
 
 use agenthub_config::path_utils::expand_tilde;
 
+pub mod control_store;
 pub mod message_body_outbox;
 pub mod object_uploads;
 
+pub use control_store::{
+    AuditEvent, ControlStoreError, IdempotentReplay, SQLITE_CONSTRAINT_UNIQUE_CODE,
+    is_unique_violation, next_fencing_generation, record_audit_event,
+    require_guarded_write_applied, resolve_idempotent_replay,
+};
 pub use object_uploads::{
     NewObjectUpload, NewObjectUploadSession, NewObjectUploadSessionPart,
     ObjectDownloadCleanupOutcome, ObjectDownloadFailureMetricRecord, ObjectDownloadMetricDelta,
