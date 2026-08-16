@@ -62,15 +62,15 @@ the running code actually diverges from it or has gaps it doesn't cover at all.
   button's loading state, the composer/markdown duplication cleanup, and the contrast/fixed-width
   accessibility findings are real but separate follow-ups (see Follow-Ups), not folded in here, to keep
   this changeset reviewable.
-- No new test scaffolding was built for `onDeleteAgentNode` (node removal) or
-  `onDeleteSelectedTeamAgent` (Team agent removal) confirmations -- neither had an existing test harness
-  to extend cheaply. Verified via `tsc --noEmit` and the full existing suite passing unchanged; flagged
-  here rather than silently skipped.
+- `onDeleteAgentNode` (node removal) and `onDeleteSelectedTeamAgent` (Team agent removal) had no existing
+  test harness for their confirmations initially; new, minimal test scaffolding (mocking `api.deleteAgentNode`/
+  `api.deleteAgent` and wiring `window.confirm`) was added for both once codecov's patch-coverage check
+  on the PR confirmed these were genuinely uncovered lines, not just a theoretical gap.
 
 # Validation
 
 - `npx tsc --noEmit` clean.
-- `npm exec vitest -- run` -- 1515 passed (161 files; +5 new tests over the pre-change 1510), no
+- `npm exec vitest -- run` -- 1519 passed (161 files; +9 new tests over the pre-change 1510), no
   regressions.
 - `npm run lint` clean.
 - `npm run build` succeeds.
@@ -79,7 +79,8 @@ the running code actually diverges from it or has gaps it doesn't cover at all.
   `admin_page_sections.test.tsx` (empty-state copy for all three lists), `join_page.test.tsx` (busy button
   text + disabled state + a second click while pending does not fire a duplicate
   `acceptTeamspaceInvite` call), `output_header.test.tsx` (updated to assert the now-humanized "Running"
-  instead of the previously-buggy lowercase "running").
+  instead of the previously-buggy lowercase "running"), `use_app_agents.test.tsx` (node deletion confirmed
+  vs. declined), `use_team_management_actions.test.tsx` (Team agent deletion confirmed vs. declined).
 
 # Follow-Ups
 

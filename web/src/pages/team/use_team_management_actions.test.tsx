@@ -901,4 +901,72 @@ describe("useTeamManagementActions", () => {
       mounted.cleanup();
     }
   });
+
+  it("deletes the selected Team agent only after the removal is confirmed", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockedApi.deleteAgent.mockResolvedValueOnce(undefined as never);
+    const params = createParams({
+      selectedAgentWorkspaceMemberId: "worker-1",
+      selectedAgentWorkspaceAgent: {
+        id: "worker-agent-1",
+        name: "Worker One",
+        workdir: "/repo/worker",
+        command: "agenthub-codex-acp",
+        args: [],
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+        status: "stopped",
+        created_at: 1,
+        updated_at: 1,
+      },
+      selectedAgentLabel: "Worker One",
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onDeleteSelectedTeamAgent();
+      });
+
+      expect(confirmSpy).toHaveBeenCalledWith('Delete agent "Worker One"?');
+      expect(mockedApi.deleteAgent).toHaveBeenCalledWith("token-1", "worker-agent-1");
+    } finally {
+      confirmSpy.mockRestore();
+      mounted.cleanup();
+    }
+  });
+
+  it("does not delete the selected Team agent when the confirmation is declined", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const params = createParams({
+      selectedAgentWorkspaceMemberId: "worker-1",
+      selectedAgentWorkspaceAgent: {
+        id: "worker-agent-1",
+        name: "Worker One",
+        workdir: "/repo/worker",
+        command: "agenthub-codex-acp",
+        args: [],
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+        status: "stopped",
+        created_at: 1,
+        updated_at: 1,
+      },
+      selectedAgentLabel: "Worker One",
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onDeleteSelectedTeamAgent();
+      });
+
+      expect(mockedApi.deleteAgent).not.toHaveBeenCalled();
+    } finally {
+      confirmSpy.mockRestore();
+      mounted.cleanup();
+    }
+  });
 });
