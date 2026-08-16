@@ -208,6 +208,13 @@ Main shape:
   existing humanizer, hand-rolled Team dialogs missing focus trap/return, destructive actions with no
   confirmation, empty admin lists rendering nothing, no loading guard on the join/register flow),
   remainder tracked as a new Frontend UI/UX `todo.md` item.
+- A code-only Rust backend correctness review found `safe_paths` never actually restricted an agent's
+  `workdir` -- only skill-file loading checked it -- letting any `AgentsManage`-capable account bypass
+  the operator-configured allowlist entirely; now enforced (empty allowlist stays permissive, matching
+  every existing deployment) for both direct agent creation and Team workspace-copy adoption. Four other
+  findings from the same review (an unbounded gRPC client cache leak, a remote-relay panic-poisoning
+  trap, a panic landmine from an unvalidated task context shape, a bootstrap-token timing side-channel)
+  are tracked as a new Backend Correctness `todo.md` item.
 
 Start with:
 
@@ -220,6 +227,7 @@ Start with:
 - `2026-08-12-dependabot-security-remediation.md`
 - `2026-08-13-user-documentation-release-readiness.md`
 - `2026-08-16-pwa-icon-branding-fix.md`
+- `2026-08-16-safe-paths-workdir-enforcement.md`
 - `2026-08-16-frontend-uiux-review-round1-fixes.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 
