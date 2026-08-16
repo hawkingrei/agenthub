@@ -22,8 +22,12 @@ could keep serving old HTML or old asset graphs.
 
 ## Architecture
 
-- `web/index.html` owns install metadata links and mobile app meta tags.
+- `web/index.html` owns install metadata links and mobile app meta tags, including the browser-tab
+  favicon (`<link rel="icon">`), not just install-time metadata.
 - `web/public/manifest.webmanifest` owns web app manifest metadata and icons.
+- `web/public/pwa-192.png` and `web/public/pwa-512.png` are generated from the real brand asset
+  (`web/public/slock-icon.png`, also used in the admin page UI), not authored as standalone install
+  icons; regenerate them from that source (or a higher-resolution successor) if the brand mark changes.
 - `web/public/sw.js` is a minimal service worker for lifecycle, push, and notification-click
   behavior.
 - `src/web.rs` owns request-path-based static asset fallback and cache-control classification.
@@ -66,6 +70,9 @@ could keep serving old HTML or old asset graphs.
 
 - A CDN or reverse proxy can override the Rust server's cache headers.
 - Browser installability can regress if manifest icons or shell metadata drift.
+- `pwa-192.png`/`pwa-512.png` are upscaled from a 180x180 source (`slock-icon.png`); the 512px icon is
+  visually acceptable for this bold, high-contrast flat design but a native higher-resolution export
+  would render more crisply if the brand asset is ever redesigned.
 - A future service worker change could accidentally add fetch handling and reintroduce stale shell
   caching.
 
