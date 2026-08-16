@@ -80,6 +80,27 @@ Stable contracts:
   `acp_tool_fold.tsx`'s `IntersectionObserver` auto-collapse silently closes a manually-opened tool card
   when it scrolls out of view. Evidence: [journal/2026-08-16-frontend-uiux-review-round1-fixes.md](journal/2026-08-16-frontend-uiux-review-round1-fixes.md).
 
+## Backend Correctness
+
+- [ ] `P1` Close out the remaining findings from the 2026-08-16 code-only Rust backend review: an
+  unbounded `TeamRemoteRelayAdapter.grpc_client_cache` leaks a live gRPC `Channel` per relay delivery
+  (cache key includes a freshly-minted, timestamp-embedded access token, so it almost never hits) under
+  sustained remote-relay traffic; the remote relay worker's `std::sync::Mutex::lock().expect(...)` calls
+  mean any panic while one is held permanently and silently poisons the lock, killing remote message
+  relay for the process's lifetime with no restart or alerting; `update_team_task`'s gRPC handler accepts
+  a non-object `context_json` (only validates it's *valid* JSON, unlike its `context_merge_json` sibling
+  which checks the shape), which plants a landmine that panics the *next*, unrelated run-status-changing
+  request touching that task at `run_task_status_sync.rs`'s `.as_object_mut().expect(...)`; a timing
+  side-channel on the internal gRPC bootstrap-token comparison (`src/internal/service/mod.rs:137`, plain
+  `!=` instead of constant-time) on the endpoint that mints cluster-bootstrap credentials for new nodes;
+  no timeout on the child-process stdin write path, so a hung child can block that agent's stdin lock
+  indefinitely; several silently-swallowed DB/parse errors that leave no log trace (corrupt JSON resets
+  linked-task-sync context to `{}`, a failed startup `safe_paths` seed insert is invisible). The
+  `safe_paths` workdir-enforcement gap from the same review is fixed separately; see
+  [journal/2026-08-16-safe-paths-workdir-enforcement.md](journal/2026-08-16-safe-paths-workdir-enforcement.md).
+  Evidence for the rest: this review round has no dedicated journal entry yet (findings were reported
+  inline, not yet written up) -- write one when starting on the next item from this list.
+
 ## Message Storage
 
 - [x] `P1` Complete the RocksDB `cf_index` authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). SQLite authority rows now rebuild the conversation, actor mailbox, run-event, and agent-event projections; guarded ordered reads compare high-water marks and exact SQLite page IDs, fall back on any gap, and queue a startup worker for asynchronous repair. Orphan/prune helpers remain diagnostics and explicit maintenance only. Keep normal SQLite bodies readable until a later authority-cutover decision. Notes: [journal/2026-06-10-message-store-foundation-crate.md](journal/2026-06-10-message-store-foundation-crate.md).
