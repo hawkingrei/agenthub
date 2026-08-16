@@ -467,6 +467,11 @@ export function useAppAgents(
   const onDeleteAgentNode = useCallback(
     async (nodeId: string) => {
       if (!token || nodeId === "main") return;
+      const nodeLabel =
+        agentNodesRef.current.find((node) => node.id === nodeId)?.name ?? nodeId;
+      if (!window.confirm(`Remove node "${nodeLabel}"?`)) {
+        return;
+      }
       setError(null);
       setDeletingAgentNodeIds((prev) => ({ ...prev, [nodeId]: true }));
       try {

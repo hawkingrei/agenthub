@@ -88,10 +88,10 @@ describe("OutputHeader", () => {
     expect(html).toContain("gpt-4o");
   });
 
-  it("merges run and thinking state into a single status badge", () => {
+  it("merges run and thinking state into a single, humanized status badge", () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(15_000);
     const html = renderHeader({ runStatus: "running", thinkingStartTs: 10 });
-    expect(html).toContain("running · thinking 5s");
+    expect(html).toContain("Running · thinking 5s");
     expect(html).not.toContain("class=\"acp-thinking\"");
     nowSpy.mockRestore();
   });

@@ -43,9 +43,12 @@ export function JoinPage({
   const [password, setPassword] = useState("");
   const [deviceName, setDeviceName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const onJoin = async () => {
+    if (busy) return;
     setError(null);
+    setBusy(true);
     try {
       const start = await api.joinStart({
         token,
@@ -87,11 +90,14 @@ export function JoinPage({
       location.href = "/";
     } catch (err) {
       setError(stringifyApiError(err));
+      setBusy(false);
     }
   };
 
   const onRegisterForTeamspace = async () => {
+    if (busy) return;
     setError(null);
+    setBusy(true);
     try {
       const start = await api.registerStart(
         username,
@@ -135,19 +141,22 @@ export function JoinPage({
       location.href = "/";
     } catch (err) {
       setError(stringifyApiError(err));
+      setBusy(false);
     }
   };
 
   const onAcceptTeamspaceInvite = async () => {
-    if (!auth) {
+    if (!auth || busy) {
       return;
     }
     setError(null);
+    setBusy(true);
     try {
       await api.acceptTeamspaceInvite(auth.token, teamInviteToken);
       location.href = "/workspace/teams";
     } catch (err) {
       setError(stringifyApiError(err));
+      setBusy(false);
     }
   };
 
@@ -163,9 +172,10 @@ export function JoinPage({
               size="md"
               type="button"
               className="mt-4"
+              disabled={busy}
               onClick={() => void onAcceptTeamspaceInvite()}
             >
-              Join as {auth.username}
+              {busy ? "Joining..." : `Join as ${auth.username}`}
             </ActionButton>
           </section>
         </div>
@@ -210,8 +220,8 @@ export function JoinPage({
             autoComplete="new-password"
             onChange={(e) => setPassword(e.target.value)}
           />
-          <ActionButton tone="primary" size="md" type="submit" className="mt-1">
-            Join Teamspace
+          <ActionButton tone="primary" size="md" type="submit" className="mt-1" disabled={busy}>
+            {busy ? "Joining..." : "Join Teamspace"}
           </ActionButton>
         </form>
       </div>
@@ -228,7 +238,7 @@ export function JoinPage({
         }}
       >
         <h2 className="text-xl font-bold tracking-tight text-notion-text">Join Device</h2>
-        {tokenError && <div className="error">{tokenError}</div>}
+        {tokenError && <ErrorBanner message={tokenError} />}
         {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
         <input
           className={AUTH_INPUT_CLASS}
@@ -276,8 +286,8 @@ export function JoinPage({
           autoComplete="organization"
           onChange={(e) => setDeviceName(e.target.value)}
         />
-        <ActionButton tone="primary" size="md" type="submit" className="mt-1">
-          Join
+        <ActionButton tone="primary" size="md" type="submit" className="mt-1" disabled={busy}>
+          {busy ? "Joining..." : "Join"}
         </ActionButton>
       </form>
     </div>

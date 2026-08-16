@@ -122,6 +122,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
 
   const onDeleteSafePath = useCallback(async (path: string) => {
     if (!token) return;
+    if (!window.confirm(`Delete safe path "${path}"?`)) return;
     try {
       await api.deleteSafePath(token, path);
       const list = await api.listSafePaths(token);
@@ -133,6 +134,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
 
   const onRevokeDevice = useCallback(async (id: string) => {
     if (!token) return;
+    if (!window.confirm("Revoke this device? It will be signed out immediately.")) return;
     try {
       await api.revokeDevice(token, id);
       const list = await api.listDevices(token);
@@ -243,7 +245,14 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
   }, [safePaths]);
 
   const onDeleteSelectedSafePaths = useCallback(async () => {
-    if (!token) return;
+    if (!token || selectedSafePaths.size === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${selectedSafePaths.size} selected safe path${selectedSafePaths.size === 1 ? "" : "s"}?`
+      )
+    ) {
+      return;
+    }
     try {
       for (const path of selectedSafePaths) {
         await api.deleteSafePath(token, path);

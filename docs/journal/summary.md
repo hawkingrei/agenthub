@@ -203,6 +203,11 @@ Main shape:
 - PWA install icons and the browser-tab favicon were blank/missing (a placeholder square with no logo,
   and no favicon link at all); both now use the real brand asset, unrelated to and unblocked by the
   still-open deployed-domain PWA verification item.
+- A code-only UI/UX review surfaced 17 findings against `features/frontend-design.md`'s contracts; the
+  six highest-priority ones landed (error hidden behind its own modal, raw status strings leaking past an
+  existing humanizer, hand-rolled Team dialogs missing focus trap/return, destructive actions with no
+  confirmation, empty admin lists rendering nothing, no loading guard on the join/register flow),
+  remainder tracked as a new Frontend UI/UX `todo.md` item.
 
 Start with:
 
@@ -215,6 +220,7 @@ Start with:
 - `2026-08-12-dependabot-security-remediation.md`
 - `2026-08-13-user-documentation-release-readiness.md`
 - `2026-08-16-pwa-icon-branding-fix.md`
+- `2026-08-16-frontend-uiux-review-round1-fixes.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 
 ## Compaction Rules

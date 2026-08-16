@@ -1037,6 +1037,10 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     if (!token || !selectedAgentWorkspaceAgent || !selectedAgentWorkspaceMemberId) {
       return;
     }
+    const confirmed = window.confirm(`Delete agent "${selectedAgentLabel}"?`);
+    if (!confirmed) {
+      return;
+    }
     setError(null);
     setWarning(null);
     setBusy("delete-team-member-agent");

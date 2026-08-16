@@ -269,6 +269,134 @@ describe("JoinPage error handling", () => {
     });
   });
 
+  it("disables the submit button while a Teamspace invite accept is in flight, preventing a duplicate request", async () => {
+    window.history.pushState({}, "", "/join#teamspace-token");
+    let resolveAccept: (() => void) | undefined;
+    acceptTeamspaceInvite.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAccept = resolve;
+        })
+    );
+
+    await act(async () => {
+      renderWithMantine(
+        root,
+        <JoinPage
+          auth={{
+            token: "existing-session",
+            userId: "existing-user",
+            username: "existing",
+            role: "operator",
+          }}
+          onComplete={() => {}}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    const findButton = () =>
+      Array.from(container.querySelectorAll("button")).find((node) =>
+        node.textContent?.includes("Join as existing")
+      ) ?? Array.from(container.querySelectorAll("button")).find((node) =>
+        node.textContent?.includes("Joining...")
+      );
+
+    await act(async () => {
+      findButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    const busyButton = findButton();
+    expect(busyButton?.textContent).toContain("Joining...");
+    expect(busyButton?.hasAttribute("disabled")).toBe(true);
+
+    // A second click while busy must not fire a second request.
+    act(() => {
+      busyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(acceptTeamspaceInvite).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveAccept?.();
+      await Promise.resolve();
+    });
+  });
+
+  it("disables the Join Device submit button while joining is in flight, preventing a duplicate request", async () => {
+    let resolveJoin: (() => void) | undefined;
+    joinStart.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveJoin = () => resolve({ user_id: "test-user-id", token: "session-token" });
+        })
+    );
+
+    await act(async () => {
+      renderWithMantine(root, <JoinPage auth={null} onComplete={() => {}} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      clickByText(container, "Join");
+      await Promise.resolve();
+    });
+
+    const busyButton = Array.from(container.querySelectorAll("button")).find((node) =>
+      node.textContent?.includes("Joining...")
+    );
+    expect(busyButton?.hasAttribute("disabled")).toBe(true);
+
+    act(() => {
+      busyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(joinStart).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveJoin?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it("disables the Join Teamspace submit button while registering is in flight, preventing a duplicate request", async () => {
+    window.history.pushState({}, "", "/join#teamspace-token");
+    let resolveRegister: (() => void) | undefined;
+    registerStart.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRegister = () =>
+            resolve({ user_id: "team-user-id", token: "team-session-token", role: "operator" });
+        })
+    );
+
+    await act(async () => {
+      renderWithMantine(root, <JoinPage auth={null} onComplete={() => {}} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      clickByText(container, "Join Teamspace");
+      await Promise.resolve();
+    });
+
+    const busyButton = Array.from(container.querySelectorAll("button")).find((node) =>
+      node.textContent?.includes("Joining...")
+    );
+    expect(busyButton?.hasAttribute("disabled")).toBe(true);
+
+    act(() => {
+      busyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(registerStart).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRegister?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
   it("shows a normalized error when accepting a Teamspace invite fails", async () => {
     window.history.pushState({}, "", "/join#teamspace-token");
     acceptTeamspaceInvite.mockRejectedValueOnce(new Error('{"error":"invite expired"}'));

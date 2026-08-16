@@ -14,6 +14,7 @@ const {
   getRuntimeDefaultsMock,
   createAgentMock,
   setAgentCodexAcpDefaultModeMock,
+  deleteAgentNodeMock,
 } = vi.hoisted(() => ({
   listAgentsMock: vi.fn(),
   listAgentNodesMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   getRuntimeDefaultsMock: vi.fn(),
   createAgentMock: vi.fn(),
   setAgentCodexAcpDefaultModeMock: vi.fn(),
+  deleteAgentNodeMock: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -35,6 +37,7 @@ vi.mock("./api", () => ({
     getRuntimeDefaults: getRuntimeDefaultsMock,
     createAgent: createAgentMock,
     setAgentCodexAcpDefaultMode: setAgentCodexAcpDefaultModeMock,
+    deleteAgentNode: deleteAgentNodeMock,
   },
   parseApiErrorMessage: vi.fn(() => null),
   stringifyApiError: vi.fn((error: unknown) => String(error)),
@@ -78,6 +81,7 @@ describe("useAppAgents", () => {
     getRuntimeDefaultsMock.mockReset();
     createAgentMock.mockReset();
     setAgentCodexAcpDefaultModeMock.mockReset();
+    deleteAgentNodeMock.mockReset();
     listAgentsMock.mockResolvedValue([]);
     listAgentNodesMock.mockResolvedValue([]);
     listTeamsMock.mockResolvedValue([]);
@@ -510,5 +514,116 @@ describe("useAppAgents", () => {
     expect(listTeamsMock).toHaveBeenCalledWith("token-1");
     expect(getAgentMock).toHaveBeenCalledWith("token-1", "hidden-worker");
     expect(latest.teamMemberAgentsById["hidden-worker"]?.target_node_id).toBe("main");
+  });
+
+  it("deletes a node only after the removal is confirmed", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    listAgentNodesMock.mockResolvedValue([
+      {
+        id: "node-east",
+        name: "East",
+        grpc_target: "grpc://east",
+        tls_server_name: "east.local",
+        default_worktree_root: "/tmp/east",
+        last_seen_at: null,
+        is_main: false,
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    deleteAgentNodeMock.mockResolvedValue(undefined);
+
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    let latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.refreshAgentNodes();
+      await Promise.resolve();
+    });
+
+    latest = captures[captures.length - 1];
+    expect(latest.agentNodes.map((node) => node.id)).toEqual(["node-east"]);
+
+    await act(async () => {
+      await latest.onDeleteAgentNode("node-east");
+      await Promise.resolve();
+    });
+
+    expect(confirmSpy).toHaveBeenCalledWith('Remove node "East"?');
+    expect(deleteAgentNodeMock).toHaveBeenCalledWith("token-1", "node-east");
+    latest = captures[captures.length - 1];
+    expect(latest.agentNodes.map((node) => node.id)).toEqual([]);
+
+    confirmSpy.mockRestore();
+  });
+
+  it("does not delete a node when the confirmation is declined", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    listAgentNodesMock.mockResolvedValue([
+      {
+        id: "node-east",
+        name: "East",
+        grpc_target: "grpc://east",
+        tls_server_name: "east.local",
+        default_worktree_root: "/tmp/east",
+        last_seen_at: null,
+        is_main: false,
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    let latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.refreshAgentNodes();
+      await Promise.resolve();
+    });
+
+    latest = captures[captures.length - 1];
+    expect(latest.agentNodes.map((node) => node.id)).toEqual(["node-east"]);
+
+    await act(async () => {
+      await latest.onDeleteAgentNode("node-east");
+      await Promise.resolve();
+    });
+
+    expect(deleteAgentNodeMock).not.toHaveBeenCalled();
+    expect(captures[captures.length - 1].agentNodes.map((node) => node.id)).toEqual([
+      "node-east",
+    ]);
+
+    confirmSpy.mockRestore();
   });
 });

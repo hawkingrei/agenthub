@@ -65,6 +65,21 @@ Stable contracts:
 - [ ] `P1` Verify remote Team direct-mailbox routing on real multi-node teams: after the local API regression and routing fix in [journal/2026-05-26-team-remote-direct-mailbox-routing.md](journal/2026-05-26-team-remote-direct-mailbox-routing.md), confirm direct single-member delivery still preserves mention metadata plus summary/`detail_ref` payloads when the recipient agent is remote and transport falls back to p2p relay in a real multi-node rollout. Existing notes: [journal/2026-03-26-team-direct-mailbox-summary-first.md](journal/2026-03-26-team-direct-mailbox-summary-first.md).
 - [ ] `P2` Verify Team agent self-maintenance and deferred follow-up flows: `profile_patch_proposal`, `agent_time_trigger_*`, and operator-controlled `agent_loop` should behave consistently without blocking normal task progress.
 
+## Frontend UI/UX
+
+- [ ] `P2` Close out the remaining findings from the 2026-08-16 code-only UI/UX review: `team_markdown.ts`
+  duplicates `markdown.ts`'s LRU cache/`sanitizeHref`/autolink logic instead of sharing it; `InputDock`
+  and `TeamMessageComposer` use two different color-token systems and send-button shapes, contradicting
+  [features/frontend-design.md](features/frontend-design.md)'s "one composer language" rule; channel-feed
+  author name renders heavier than message body text where the spec requires lighter; `rich_text_classes.ts`
+  styles both `.md-*` semantic classes and raw tag selectors in parallel; muted text tokens sit at the
+  WCAG AA 4.5:1 floor and are used at 10-11px sizes with no large-text relief; `min-w-[220px]` fixed-width
+  blocks inside popovers/menus can force horizontal scroll on narrow viewports; `prefers-reduced-motion`
+  is described in the spec as implemented but has zero implementation anywhere in `web/src`; most
+  `admin_page_sections.tsx` buttons still lack a loading state beyond the destructive ones already fixed;
+  `acp_tool_fold.tsx`'s `IntersectionObserver` auto-collapse silently closes a manually-opened tool card
+  when it scrolls out of view. Evidence: [journal/2026-08-16-frontend-uiux-review-round1-fixes.md](journal/2026-08-16-frontend-uiux-review-round1-fixes.md).
+
 ## Message Storage
 
 - [x] `P1` Complete the RocksDB `cf_index` authority-derived repair path, per [features/message-storage-tiering.md](features/message-storage-tiering.md). SQLite authority rows now rebuild the conversation, actor mailbox, run-event, and agent-event projections; guarded ordered reads compare high-water marks and exact SQLite page IDs, fall back on any gap, and queue a startup worker for asynchronous repair. Orphan/prune helpers remain diagnostics and explicit maintenance only. Keep normal SQLite bodies readable until a later authority-cutover decision. Notes: [journal/2026-06-10-message-store-foundation-crate.md](journal/2026-06-10-message-store-foundation-crate.md).
