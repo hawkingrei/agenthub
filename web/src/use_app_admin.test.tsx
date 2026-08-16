@@ -482,6 +482,38 @@ describe("useAppAdmin", () => {
     confirmSpy.mockRestore();
   });
 
+  it("does not prompt or delete when bulk-deleting with no safe paths selected", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const captures: UseAppAdminResult[] = [];
+    const auth = { token: "token-1", role: "root" } as HookProps[0];
+    listSafePathsMock.mockResolvedValue([{ path: "/workspace", created_at: 1 }]);
+    listDevicesMock.mockResolvedValue([]);
+    listAuditsMock.mockResolvedValue([]);
+
+    await act(async () => {
+      root.render(
+        <HookHarness
+          auth={auth}
+          isAdminRoute={true}
+          onCapture={(value) => captures.push(value)}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latest = captures[captures.length - 1];
+    expect(latest.selectedSafePaths.size).toBe(0);
+    await act(async () => {
+      await latest.onDeleteSelectedSafePaths();
+      await Promise.resolve();
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(deleteSafePathMock).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
   it("clears Slock linker state when leaving the root admin route", async () => {
     const captures: UseAppAdminResult[] = [];
     const configuredLinker = {
