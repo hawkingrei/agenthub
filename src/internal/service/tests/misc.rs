@@ -937,3 +937,15 @@ async fn coordinator_transition_step_checks_run_scope_before_mutation() {
     assert_eq!(step_after.status, crate::team::TeamStepStatus::Working);
     assert_eq!(step_after.output, None);
 }
+
+#[test]
+fn constant_time_eq_matches_ordinary_byte_equality() {
+    use super::super::constant_time_eq;
+
+    assert!(constant_time_eq(b"", b""));
+    assert!(constant_time_eq(b"bootstrap-token", b"bootstrap-token"));
+    assert!(!constant_time_eq(b"bootstrap-token", b"bootstrap-toke"));
+    assert!(!constant_time_eq(b"bootstrap-token", b"bootstrap-tokeX"));
+    assert!(!constant_time_eq(b"bootstrap-token", b"Xootstrap-token"));
+    assert!(!constant_time_eq(b"short", b"much-longer-value"));
+}
