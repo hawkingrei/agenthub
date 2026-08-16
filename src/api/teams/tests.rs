@@ -2226,10 +2226,11 @@ async fn adopt_existing_agent_rejects_workspace_copy_destination_outside_safe_pa
         .await
         .expect("insert allowed safe path");
 
-    let outside_destination = std::env::temp_dir()
-        .join(format!("agenthub-adopt-outside-{}", Uuid::new_v4()))
-        .to_string_lossy()
-        .to_string();
+    // Deliberately NOT under `std::env::temp_dir()`: `seed_default_team_member_agents` (called by
+    // `build_test_state()`) unconditionally seeds a blanket "/tmp" safe_paths entry, and on Linux
+    // `temp_dir()` *is* "/tmp" -- a temp-dir-based "outside" path would silently pass validation
+    // there while still failing correctly on macOS, where `temp_dir()` differs from "/tmp".
+    let outside_destination = format!("/agenthub-outside-safe-paths-allowlist-{}", Uuid::new_v4());
 
     let result = super::adopt_existing_agent_to_team(
         State(state.clone()),
