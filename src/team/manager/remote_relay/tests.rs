@@ -1,5 +1,7 @@
 use super::TeamRemoteRelayAdapter;
-use crate::internal::client::InternalGrpcPeerClientConfig;
+use crate::internal::client::{
+    InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, InternalGrpcPeerClientConfig,
+};
 use crate::internal::p2p::NodeTransportMetadata;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::manager::remote_relay_route::{
@@ -7,8 +9,10 @@ use crate::team::manager::remote_relay_route::{
     relay_timeout_ms,
 };
 use crate::team::manager::remote_relay_types::{
-    GrpcRelayTlsDefaults, GrpcRemoteRelayRouteValue, ParsedRemoteRelayRoute,
-    RELAY_DEFAULT_TIMEOUT_MS, RELAY_TIMEOUT_MAX_MS, RELAY_TIMEOUT_MIN_MS, RemoteRelaySigningValue,
+    CachedGrpcRelayClient, GrpcRelayClientCacheKey, GrpcRelayTlsDefaults,
+    GrpcRemoteRelayRouteValue, ParsedRemoteRelayRoute, RELAY_DEFAULT_TIMEOUT_MS,
+    RELAY_GRPC_CLIENT_CACHE_TTL, RELAY_TIMEOUT_MAX_MS, RELAY_TIMEOUT_MIN_MS,
+    RemoteRelaySigningValue,
 };
 use crate::team::{TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport};
 use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorIdentityKind};
@@ -16,6 +20,7 @@ use chrono::Utc;
 use serde_json::json;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use std::time::{Duration, Instant};
 
 async fn test_db() -> SqlitePool {
     let options = SqliteConnectOptions::new()
@@ -513,5 +518,92 @@ fn apply_route_signing_sets_signature_timestamp_and_message_id_headers() {
             .get("X-AgentHub-Message-Id")
             .and_then(|value| value.to_str().ok()),
         Some("42")
+    );
+}
+
+fn stub_grpc_client_config() -> InternalGrpcMailboxClientConfig {
+    // Deliberately not a connectable target: a real `connect()` attempt against it fails fast,
+    // so an `Ok` result from `grpc_client_for_route` can only mean the cache was hit.
+    InternalGrpcMailboxClientConfig {
+        target: "not a valid grpc target".to_string(),
+        access_token: "cache-test-token".to_string(),
+        ca_cert_path: None,
+        tls_server_name: None,
+        client_cert_path: None,
+        client_key_path: None,
+    }
+}
+
+fn stub_grpc_client_cache_key(config: &InternalGrpcMailboxClientConfig) -> GrpcRelayClientCacheKey {
+    GrpcRelayClientCacheKey {
+        target: config.target.clone(),
+        access_token: config.access_token.clone(),
+        ca_cert_path: config.ca_cert_path.clone(),
+        tls_server_name: config.tls_server_name.clone(),
+        client_cert_path: config.client_cert_path.clone(),
+        client_key_path: config.client_key_path.clone(),
+    }
+}
+
+#[tokio::test]
+async fn grpc_client_for_route_returns_cached_client_before_ttl_expires() {
+    let db = test_db().await;
+    let adapter = TeamRemoteRelayAdapter::new(db);
+    let config = stub_grpc_client_config();
+    let cache_key = stub_grpc_client_cache_key(&config);
+    adapter
+        .grpc_client_cache
+        .lock()
+        .expect("lock grpc client cache")
+        .insert(
+            cache_key,
+            CachedGrpcRelayClient {
+                client: InternalGrpcMailboxClient::test_stub(&config.access_token),
+                inserted_at: Instant::now(),
+            },
+        );
+
+    adapter
+        .grpc_client_for_route(config)
+        .await
+        .expect("fresh cache entry should be served without reconnecting");
+}
+
+#[tokio::test]
+async fn grpc_client_for_route_evicts_expired_entries_and_reconnects() {
+    let db = test_db().await;
+    let adapter = TeamRemoteRelayAdapter::new(db);
+    let config = stub_grpc_client_config();
+    let cache_key = stub_grpc_client_cache_key(&config);
+    let expired_at = Instant::now()
+        .checked_sub(RELAY_GRPC_CLIENT_CACHE_TTL + Duration::from_secs(1))
+        .expect("process uptime exceeds cache TTL");
+    adapter
+        .grpc_client_cache
+        .lock()
+        .expect("lock grpc client cache")
+        .insert(
+            cache_key.clone(),
+            CachedGrpcRelayClient {
+                client: InternalGrpcMailboxClient::test_stub(&config.access_token),
+                inserted_at: expired_at,
+            },
+        );
+
+    let err = match adapter.grpc_client_for_route(config).await {
+        Err(err) => err,
+        Ok(_) => panic!("expired entry must not be served, forcing a real (failing) reconnect"),
+    };
+    assert!(
+        err.to_string().contains("gRPC connect failed"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        !adapter
+            .grpc_client_cache
+            .lock()
+            .expect("lock grpc client cache")
+            .contains_key(&cache_key),
+        "expired entry should have been swept from the cache"
     );
 }

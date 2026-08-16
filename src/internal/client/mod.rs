@@ -220,6 +220,15 @@ impl InternalGrpcMailboxClient {
         self.request(payload)
             .map_err(|err| anyhow::anyhow!("{:?}: {}", err.code, err.message))
     }
+
+    #[cfg(test)]
+    pub(crate) fn test_stub(access_token: &str) -> Self {
+        let channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:0").connect_lazy();
+        Self {
+            channel,
+            access_token: access_token.to_string(),
+        }
+    }
 }
 
 fn internal_grpc_timeout_message() -> String {

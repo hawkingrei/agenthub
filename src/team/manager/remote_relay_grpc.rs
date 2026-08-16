@@ -1,10 +1,12 @@
+use std::time::Instant;
+
 use agenthub_team_actor::ActorRelayError;
 use reqwest::Url;
 use sqlx::Row;
 
 use super::remote_relay_types::{
-    GrpcRelayClientCacheKey, GrpcRemoteRelayRouteValue, TeamRemoteRelayAdapter,
-    TeamRemoteRelayError,
+    CachedGrpcRelayClient, GrpcRelayClientCacheKey, GrpcRemoteRelayRouteValue,
+    RELAY_GRPC_CLIENT_CACHE_TTL, TeamRemoteRelayAdapter, TeamRemoteRelayError,
 };
 use crate::agent::AGENT_NODE_MAIN_ID;
 use crate::internal::auth::InternalRole;
@@ -152,13 +154,17 @@ impl TeamRemoteRelayAdapter {
             client_cert_path: config.client_cert_path.clone(),
             client_key_path: config.client_key_path.clone(),
         };
-        if let Some(client) = self
-            .grpc_client_cache
-            .lock()
-            .expect("lock grpc client cache")
-            .get(&cache_key)
-            .cloned()
-        {
+        let now = Instant::now();
+        if let Some(client) = {
+            let mut cache = self
+                .grpc_client_cache
+                .lock()
+                .expect("lock grpc client cache");
+            cache.retain(|_, entry| {
+                now.duration_since(entry.inserted_at) < RELAY_GRPC_CLIENT_CACHE_TTL
+            });
+            cache.get(&cache_key).map(|entry| entry.client.clone())
+        } {
             return Ok(client);
         }
 
@@ -170,7 +176,13 @@ impl TeamRemoteRelayAdapter {
         self.grpc_client_cache
             .lock()
             .expect("lock grpc client cache")
-            .insert(cache_key, client.clone());
+            .insert(
+                cache_key,
+                CachedGrpcRelayClient {
+                    client: client.clone(),
+                    inserted_at: now,
+                },
+            );
         Ok(client)
     }
 }

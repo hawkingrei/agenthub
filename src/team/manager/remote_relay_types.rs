@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -11,6 +12,10 @@ pub(super) const RELAY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
 pub(super) const RELAY_TIMEOUT_MIN_MS: u64 = 100;
 pub(super) const RELAY_TIMEOUT_MAX_MS: u64 = 60_000;
 
+/// Kept below the 600s TTL that `issue_registered_grpc_access_token` mints so cached clients are
+/// dropped, and a fresh access token obtained, before the token they were built with expires.
+pub(super) const RELAY_GRPC_CLIENT_CACHE_TTL: Duration = Duration::from_secs(240);
+
 #[derive(Clone)]
 pub(super) struct TeamRemoteRelayAdapter {
     pub(super) db: SqlitePool,
@@ -18,7 +23,13 @@ pub(super) struct TeamRemoteRelayAdapter {
     pub(super) grpc_tls_defaults: Arc<Mutex<Option<GrpcRelayTlsDefaults>>>,
     pub(super) grpc_peer_client_config: Arc<Mutex<Option<InternalGrpcPeerClientConfig>>>,
     pub(super) grpc_client_cache:
-        Arc<Mutex<HashMap<GrpcRelayClientCacheKey, InternalGrpcMailboxClient>>>,
+        Arc<Mutex<HashMap<GrpcRelayClientCacheKey, CachedGrpcRelayClient>>>,
+}
+
+#[derive(Clone)]
+pub(super) struct CachedGrpcRelayClient {
+    pub(super) client: InternalGrpcMailboxClient,
+    pub(super) inserted_at: Instant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
