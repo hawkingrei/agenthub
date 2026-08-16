@@ -193,6 +193,42 @@ describe("admin_page_sections", () => {
     expect(onRevokeDevice).toHaveBeenCalledWith("device-1");
   });
 
+  it("renders an empty-state message instead of a bare list for safe paths, devices, and audits", () => {
+    renderWithMantine(
+      root,
+      <>
+        <AdminSafePathsSection
+          safePaths={{
+            safePaths: [],
+            selectedSafePaths: new Set<string>(),
+            safePathInput: "",
+            setSafePathInput: vi.fn(),
+            onAddSafePath: vi.fn(),
+            onToggleSafePath: vi.fn(),
+            onToggleAllSafePaths: vi.fn(),
+            onDeleteSelectedSafePaths: vi.fn(),
+            onDeleteSafePath: vi.fn(),
+          }}
+        />
+        <AdminDevicesSection
+          devices={{
+            devices: [],
+            onRevokeDevice: vi.fn(),
+          }}
+        />
+        <AdminAuditsSection
+          audits={{
+            audits: [],
+          }}
+        />
+      </>
+    );
+
+    expect(container.textContent).toContain("No safe paths yet");
+    expect(container.textContent).toContain("No devices yet");
+    expect(container.textContent).toContain("No login audits yet");
+  });
+
   it("renders empty vapid state and system/ui toggles from section props", () => {
     const onDeveloperModeChange = vi.fn();
     const onPasskeyEnabledChange = vi.fn();

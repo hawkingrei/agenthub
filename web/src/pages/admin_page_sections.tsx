@@ -1,4 +1,4 @@
-import { ActionButton } from "../ui/primitives";
+import { ActionButton, EmptyState } from "../ui/primitives";
 import {
   ADMIN_CARD_CLASS,
   ADMIN_CARD_TITLE_CLASS,
@@ -74,6 +74,13 @@ export function AdminSafePathsSection({
           Delete Selected
         </ActionButton>
       </div>
+      {section.safePaths.length === 0 ? (
+        <EmptyState
+          title="No safe paths yet"
+          body="Add a path above to allow agents to work inside it."
+          className="border border-dashed border-ui-border bg-white/80 px-4 py-6"
+        />
+      ) : null}
       <ul className={ADMIN_LIST_CLASS}>
         {section.safePaths.map((path) => (
           <li className={ADMIN_LIST_ITEM_CLASS} key={path.path}>
@@ -393,6 +400,13 @@ export function AdminDevicesSection({
   return (
     <div className={ADMIN_CARD_CLASS}>
       <h3 className={ADMIN_CARD_TITLE_CLASS}>Devices</h3>
+      {section.devices.length === 0 ? (
+        <EmptyState
+          title="No devices yet"
+          body="Devices appear here after signing in with a passkey."
+          className="border border-dashed border-ui-border bg-white/80 px-4 py-6"
+        />
+      ) : null}
       <ul className={ADMIN_LIST_CLASS}>
         {section.devices.map((device) => (
           <li className={ADMIN_LIST_ITEM_CLASS} key={device.id}>
@@ -424,6 +438,13 @@ export function AdminAuditsSection({
   return (
     <div className={ADMIN_CARD_CLASS}>
       <h3 className={ADMIN_CARD_TITLE_CLASS}>Login Audits</h3>
+      {section.audits.length === 0 ? (
+        <EmptyState
+          title="No login audits yet"
+          body="Sign-in and passkey activity will appear here."
+          className="border border-dashed border-ui-border bg-white/80 px-4 py-6"
+        />
+      ) : null}
       <ul className={ADMIN_LIST_CLASS}>
         {section.audits.map((audit) => (
           <li className={ADMIN_LIST_ITEM_CLASS} key={audit.id}>

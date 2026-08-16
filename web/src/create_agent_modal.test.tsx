@@ -86,6 +86,19 @@ describe("CreateAgentModal", () => {
     expect(html).toContain("Check Safe Paths for the workdir and repo path.");
   });
 
+  it("renders a plain validation alert inside the modal when formError is set", () => {
+    // Regression test: submit-time validation errors (e.g. "workdir is required") used to only
+    // reach a page-level banner that this always-on-top, non-dismissible modal covers, so the user
+    // saw no feedback at all. The message must render inside the modal itself.
+    const html = renderModal({ formError: "workdir is required" });
+    expect(html).toContain("workdir is required");
+  });
+
+  it("renders no validation alert when formError is not set", () => {
+    const html = renderModal({ formError: null });
+    expect(html).not.toContain("workdir is required");
+  });
+
   it("renders the preset command summary", () => {
     const html = renderModal({ agentPresetId: "gemini" as const });
     expect(html).toContain("Preset");

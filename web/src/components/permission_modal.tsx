@@ -4,6 +4,7 @@ import {
   isRejectPermissionOption,
   resolveAcpPermissionOptionLabel,
 } from "../acp_permission_options";
+import { formatToolCallStatus } from "./acp_tool_bubble_shared";
 import {
   NOTION_MODAL_CLASSNAMES,
   NOTION_MODAL_OVERLAY_PROPS,
@@ -55,7 +56,7 @@ export function PermissionModal({
               <Group justify="space-between" align="center">
                 <Text fw={600}>{title}</Text>
                 <Badge variant="outline" size="sm">
-                  {perm.status}
+                  {formatToolCallStatus(perm.status)}
                 </Badge>
               </Group>
               <Group gap="xs" mt="sm" wrap="wrap">

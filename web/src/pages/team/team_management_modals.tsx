@@ -1,5 +1,6 @@
 import React from "react";
 import { Alert, Select, Switch, TextInput, Textarea } from "@mantine/core";
+import { useFocusReturn, useFocusTrap } from "@mantine/hooks";
 import { DEFAULT_TEAM_COORDINATOR_SKILLS, DEFAULT_TEAM_WORKER_SKILLS } from "./member_helpers";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type { TeamMemberRoleProfile } from "./forge_helpers";
@@ -96,6 +97,9 @@ export const TeamCreateDialog = React.memo(function TeamCreateDialog({
   onClose: () => void;
   chrome: TeamModalChrome;
 }) {
+  const focusTrapRef = useFocusTrap(open);
+  useFocusReturn({ opened: open });
+
   if (!open) {
     return null;
   }
@@ -113,6 +117,7 @@ export const TeamCreateDialog = React.memo(function TeamCreateDialog({
       }}
     >
       <div
+        ref={focusTrapRef}
         className={`${TEAM_CREATE_MODAL_CARD_CLASS} ${chrome.panelClassName}`}
         role="dialog"
         aria-modal="true"
@@ -209,6 +214,10 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
   chrome: TeamModalChrome;
   supportsRuntimeProfile: boolean;
 }) {
+  const dialogActive = open && Boolean(draft);
+  const focusTrapRef = useFocusTrap(dialogActive);
+  useFocusReturn({ opened: dialogActive });
+
   if (!open || !draft) {
     return null;
   }
@@ -226,6 +235,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
       }}
     >
       <div
+        ref={focusTrapRef}
         className={`${TEAM_CREATE_MODAL_CARD_CLASS} ${chrome.panelClassName}`}
         role="dialog"
         aria-modal="true"
@@ -490,6 +500,9 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
     setSelectedAgentId(filteredAgents[0]?.id ?? "");
   }, [filteredAgents, open, selectedAgentId]);
 
+  const focusTrapRef = useFocusTrap(open);
+  useFocusReturn({ opened: open });
+
   if (!open) {
     return null;
   }
@@ -509,6 +522,7 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
       }}
     >
       <div
+        ref={focusTrapRef}
         className={`${TEAM_CREATE_MODAL_CARD_CLASS} ${chrome.panelClassName}`}
         role="dialog"
         aria-modal="true"

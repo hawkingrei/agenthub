@@ -269,6 +269,60 @@ describe("JoinPage error handling", () => {
     });
   });
 
+  it("disables the submit button while a Teamspace invite accept is in flight, preventing a duplicate request", async () => {
+    window.history.pushState({}, "", "/join#teamspace-token");
+    let resolveAccept: (() => void) | undefined;
+    acceptTeamspaceInvite.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAccept = resolve;
+        })
+    );
+
+    await act(async () => {
+      renderWithMantine(
+        root,
+        <JoinPage
+          auth={{
+            token: "existing-session",
+            userId: "existing-user",
+            username: "existing",
+            role: "operator",
+          }}
+          onComplete={() => {}}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    const findButton = () =>
+      Array.from(container.querySelectorAll("button")).find((node) =>
+        node.textContent?.includes("Join as existing")
+      ) ?? Array.from(container.querySelectorAll("button")).find((node) =>
+        node.textContent?.includes("Joining...")
+      );
+
+    await act(async () => {
+      findButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    const busyButton = findButton();
+    expect(busyButton?.textContent).toContain("Joining...");
+    expect(busyButton?.hasAttribute("disabled")).toBe(true);
+
+    // A second click while busy must not fire a second request.
+    act(() => {
+      busyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(acceptTeamspaceInvite).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveAccept?.();
+      await Promise.resolve();
+    });
+  });
+
   it("shows a normalized error when accepting a Teamspace invite fails", async () => {
     window.history.pushState({}, "", "/join#teamspace-token");
     acceptTeamspaceInvite.mockRejectedValueOnce(new Error('{"error":"invite expired"}'));

@@ -89,9 +89,12 @@ export const OutputHeader = React.memo(function OutputHeader({
     activeAgent?.status.trim().toLowerCase() ||
     "unknown"
   );
-  const mergedStatusLabel = thinkingLabel
-    ? `${mergedStatus} · ${thinkingLabel}`
+  const mergedStatusDisplay = mergedStatus
+    ? mergedStatus.charAt(0).toUpperCase() + mergedStatus.slice(1)
     : mergedStatus;
+  const mergedStatusLabel = thinkingLabel
+    ? `${mergedStatusDisplay} · ${thinkingLabel}`
+    : mergedStatusDisplay;
   const mergedStatusClassToken = mergedStatus.replace(/[^a-z0-9_-]+/g, "-");
   const detailsItems = developerMode
     ? [

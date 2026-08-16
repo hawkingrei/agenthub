@@ -5,6 +5,7 @@ import { AcpPermissionRecord } from "../api";
 import { shouldDisplayPermissionRecord } from "../app_permission_polling";
 import { OutputLine } from "../output_cache";
 import { ActionButton, ToolbarRow, cx } from "../ui/primitives";
+import { formatToolCallStatus } from "./acp_tool_bubble_shared";
 import {
   ACP_DEBUG_EMPTY_CLASS,
   ACP_DEBUG_PERMISSION_SUBMETA_CLASS,
@@ -525,7 +526,7 @@ function AcpDebugView({
                     <span className="text-[14px] font-bold text-notion-text">
                       {derivePermissionTitle(permission, toolCall)}
                     </span>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-notion-text-muted">{permission.status}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-notion-text-muted">{formatToolCallStatus(permission.status)}</span>
                   </UnstyledButton>
                   <ActionButton
                     className="acp-permission-copy"

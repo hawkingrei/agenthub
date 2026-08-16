@@ -360,6 +360,7 @@ describe("useAppAdmin", () => {
   });
 
   it("refreshes admin datasets after maintenance actions", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const captures: UseAppAdminResult[] = [];
     const auth = { token: "token-1", role: "root" } as HookProps[0];
     listSafePathsMock.mockResolvedValue([{ path: "/workspace", created_at: 1 }]);
@@ -436,6 +437,49 @@ describe("useAppAdmin", () => {
     expect(revokeDeviceMock).toHaveBeenCalledWith("token-1", "device-1");
     expect(rotateVapidMock).toHaveBeenCalledWith("token-1");
     expect(latest.selectedSafePaths.size).toBe(0);
+    confirmSpy.mockRestore();
+  });
+
+  it("does not delete a safe path, revoke a device, or bulk-delete when the confirmation is declined", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const captures: UseAppAdminResult[] = [];
+    const auth = { token: "token-1", role: "root" } as HookProps[0];
+    listSafePathsMock.mockResolvedValue([{ path: "/workspace", created_at: 1 }]);
+    listDevicesMock.mockResolvedValue([]);
+    listAuditsMock.mockResolvedValue([]);
+
+    await act(async () => {
+      root.render(
+        <HookHarness
+          auth={auth}
+          isAdminRoute={true}
+          onCapture={(value) => captures.push(value)}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    let latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.onDeleteSafePath("/workspace");
+      await latest.onRevokeDevice("device-1");
+      await Promise.resolve();
+    });
+    latest = captures[captures.length - 1];
+    await act(async () => {
+      latest.onToggleAllSafePaths();
+      await Promise.resolve();
+    });
+    latest = captures[captures.length - 1];
+    await act(async () => {
+      await latest.onDeleteSelectedSafePaths();
+      await Promise.resolve();
+    });
+
+    expect(deleteSafePathMock).not.toHaveBeenCalled();
+    expect(revokeDeviceMock).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 
   it("clears Slock linker state when leaving the root admin route", async () => {

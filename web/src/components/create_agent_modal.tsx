@@ -67,6 +67,7 @@ export type CreateAgentModalProps = {
   codeMode: boolean;
   setCodeMode: (value: boolean) => void;
   worktreeError: string | null;
+  formError?: string | null;
   showWorktreeAdvancedOptions?: boolean;
   createBusy: boolean;
   workdirPlaceholder?: string;
@@ -191,6 +192,7 @@ export function CreateAgentModal({
   codeMode,
   setCodeMode,
   worktreeError,
+  formError = null,
   showWorktreeAdvancedOptions = true,
   createBusy,
   workdirPlaceholder = "Workdir",
@@ -265,6 +267,11 @@ export function CreateAgentModal({
       overlayProps={NOTION_MODAL_OVERLAY_PROPS}
     >
       <Stack gap="sm">
+        {formError ? (
+          <Alert color="red" variant="light">
+            <Text size="sm">{formError}</Text>
+          </Alert>
+        ) : null}
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
           <TextInput
             label="Name"
