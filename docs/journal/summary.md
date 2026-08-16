@@ -211,10 +211,14 @@ Main shape:
 - A code-only Rust backend correctness review found `safe_paths` never actually restricted an agent's
   `workdir` -- only skill-file loading checked it -- letting any `AgentsManage`-capable account bypass
   the operator-configured allowlist entirely; now enforced (empty allowlist stays permissive, matching
-  every existing deployment) for both direct agent creation and Team workspace-copy adoption. Four other
-  findings from the same review (an unbounded gRPC client cache leak, a remote-relay panic-poisoning
-  trap, a panic landmine from an unvalidated task context shape, a bootstrap-token timing side-channel)
-  are tracked as a new Backend Correctness `todo.md` item.
+  every existing deployment) for both direct agent creation and Team workspace-copy adoption. The same
+  review's `TeamRemoteRelayAdapter.grpc_client_cache` finding turned out worse than an admin-bounded
+  leak: the common relay path mints a fresh, timestamp-embedded access token per message, so the cache
+  key is unique almost every call and every delivery leaked a live gRPC `Channel` forever; now bounded
+  by TTL-based lazy eviction, which also closes a second gap where callers with stable tokens could keep
+  serving an expired bearer token from a long-lived cache entry. Three other findings from the same
+  review (a remote-relay panic-poisoning trap, a panic landmine from an unvalidated task context shape,
+  a bootstrap-token timing side-channel) remain open in the Backend Correctness `todo.md` item.
 
 Start with:
 
@@ -228,6 +232,7 @@ Start with:
 - `2026-08-13-user-documentation-release-readiness.md`
 - `2026-08-16-pwa-icon-branding-fix.md`
 - `2026-08-16-safe-paths-workdir-enforcement.md`
+- `2026-08-16-grpc-relay-client-cache-ttl.md`
 - `2026-08-16-frontend-uiux-review-round1-fixes.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 

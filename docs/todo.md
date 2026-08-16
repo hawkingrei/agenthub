@@ -82,22 +82,22 @@ Stable contracts:
 
 ## Backend Correctness
 
-- [ ] `P1` Close out the remaining findings from the 2026-08-16 code-only Rust backend review: an
-  unbounded `TeamRemoteRelayAdapter.grpc_client_cache` leaks a live gRPC `Channel` per relay delivery
-  (cache key includes a freshly-minted, timestamp-embedded access token, so it almost never hits) under
-  sustained remote-relay traffic; the remote relay worker's `std::sync::Mutex::lock().expect(...)` calls
-  mean any panic while one is held permanently and silently poisons the lock, killing remote message
-  relay for the process's lifetime with no restart or alerting; `update_team_task`'s gRPC handler accepts
-  a non-object `context_json` (only validates it's *valid* JSON, unlike its `context_merge_json` sibling
-  which checks the shape), which plants a landmine that panics the *next*, unrelated run-status-changing
-  request touching that task at `run_task_status_sync.rs`'s `.as_object_mut().expect(...)`; a timing
-  side-channel on the internal gRPC bootstrap-token comparison (`src/internal/service/mod.rs:137`, plain
-  `!=` instead of constant-time) on the endpoint that mints cluster-bootstrap credentials for new nodes;
-  no timeout on the child-process stdin write path, so a hung child can block that agent's stdin lock
-  indefinitely; several silently-swallowed DB/parse errors that leave no log trace (corrupt JSON resets
-  linked-task-sync context to `{}`, a failed startup `safe_paths` seed insert is invisible). The
-  `safe_paths` workdir-enforcement gap from the same review is fixed separately; see
-  [journal/2026-08-16-safe-paths-workdir-enforcement.md](journal/2026-08-16-safe-paths-workdir-enforcement.md).
+- [ ] `P1` Close out the remaining findings from the 2026-08-16 code-only Rust backend review: the
+  remote relay worker's `std::sync::Mutex::lock().expect(...)` calls mean any panic while one is held
+  permanently and silently poisons the lock, killing remote message relay for the process's lifetime
+  with no restart or alerting; `update_team_task`'s gRPC handler accepts a non-object `context_json`
+  (only validates it's *valid* JSON, unlike its `context_merge_json` sibling which checks the shape),
+  which plants a landmine that panics the *next*, unrelated run-status-changing request touching that
+  task at `run_task_status_sync.rs`'s `.as_object_mut().expect(...)`; a timing side-channel on the
+  internal gRPC bootstrap-token comparison (`src/internal/service/mod.rs:137`, plain `!=` instead of
+  constant-time) on the endpoint that mints cluster-bootstrap credentials for new nodes; no timeout on
+  the child-process stdin write path, so a hung child can block that agent's stdin lock indefinitely;
+  several silently-swallowed DB/parse errors that leave no log trace (corrupt JSON resets linked-task-
+  sync context to `{}`, a failed startup `safe_paths` seed insert is invisible). Two findings from the
+  same review are fixed separately: `safe_paths` workdir enforcement, see
+  [journal/2026-08-16-safe-paths-workdir-enforcement.md](journal/2026-08-16-safe-paths-workdir-enforcement.md);
+  the unbounded `TeamRemoteRelayAdapter.grpc_client_cache` leak and its token-staleness correctness gap,
+  see [journal/2026-08-16-grpc-relay-client-cache-ttl.md](journal/2026-08-16-grpc-relay-client-cache-ttl.md).
   Evidence for the rest: this review round has no dedicated journal entry yet (findings were reported
   inline, not yet written up) -- write one when starting on the next item from this list.
 
