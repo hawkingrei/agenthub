@@ -228,6 +228,21 @@ Main shape:
   `webidl.util.markAsUncloneable is not a function` -- jsdom 30 explicitly requires Node >=22, and the
   `Web`/`Web E2E`/`Web E2E Mobile` jobs were still pinned to Node 20 (`userdocs.yml`'s unrelated
   Docusaurus build stays on Node 20, out of scope). Bumped those three jobs to Node 22.
+- A code-only Team-subsystem review found reply-obligation "credit" matching keyed only on
+  `(agent_actor_id, human_actor_id)`, ignoring which thread/conversation a message belonged to; a reply
+  in one conversation could incorrectly close an unrelated open obligation in a different one. Fixed with
+  a two-tier key (exact thread/conversation scope first, untagged-reply loose-pool fallback) so a reply
+  that declares a thread can never satisfy an obligation in a different one, while plain untagged replies
+  keep working as before. Other findings from the same review round are tracked in the Backend
+  Correctness `todo.md` item.
+- The same review found `reassign_reply_required_message` (transfer/escalate/takeover) had no CAS guard
+  on its source-message `UPDATE`, unlike `triage_message_impl`, and inserted the reassigned message with
+  `idempotency_key = NULL`. Added the guard plus a stable idempotency key with an `INSERT OR IGNORE` +
+  fetch-existing fallback. A genuine-concurrency soak test (new WAL-mode `setup_concurrent_mailbox_db`
+  helper) found SQLite's WAL snapshot-conflict detection already prevents literal duplicate rows in this
+  stack -- the CAS guard is kept as defense-in-depth and for a correct `Conflict` error rather than a raw
+  database error, not as the sole mechanism; the idempotency key is the part with directly fix-sensitive
+  test coverage (client-retry duplicate submission).
 
 Start with:
 
@@ -247,6 +262,8 @@ Start with:
 - `2026-08-17-pwa-icon-borrowed-slock-mark-fix.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 - `2026-08-17-ci-web-node22-for-jsdom30.md`
+- `2026-08-17-reply-obligation-thread-scoped-matching.md`
+- `2026-08-17-mailbox-reassignment-cas-and-idempotency.md`
 
 ## Compaction Rules
 

@@ -100,6 +100,24 @@ Stable contracts:
   [journal/2026-08-16-bootstrap-token-constant-time-compare.md](journal/2026-08-16-bootstrap-token-constant-time-compare.md).
   Evidence for the rest: this review round has no dedicated journal entry yet (findings were reported
   inline, not yet written up) -- write one when starting on the next item from this list.
+- [ ] `P2` Close out the remaining finding from the 2026-08-17 code-only Team-subsystem review:
+  `message_index_projection.rs` silently coerces unparseable `payload_json`/`input_json` to
+  `Value::Null`/defaults during index rebuild with no logging, hiding real data corruption as an empty
+  message. Six findings from the same review are fixed separately: goal-lease CAS hardening across
+  `task_updates.rs`/`teamspace.rs`/`run_task_status_sync.rs`, see
+  [journal/2026-08-17-goal-lease-cas-hardening.md](journal/2026-08-17-goal-lease-cas-hardening.md);
+  permission-review reviewer-target consistency (removing the idle-unaware fallback resolver), see
+  [journal/2026-08-17-permission-review-reviewer-target-consistency.md](journal/2026-08-17-permission-review-reviewer-target-consistency.md);
+  `context_json`/`context_merge_json` shape validation, see
+  [journal/2026-08-17-task-context-json-shape-validation.md](journal/2026-08-17-task-context-json-shape-validation.md);
+  the client-spoofable `requires_user_visible_reply` suppression via `source_kind`, see
+  [journal/2026-08-17-reply-obligation-client-suppression-fix.md](journal/2026-08-17-reply-obligation-client-suppression-fix.md);
+  the pair-only, thread-unaware reply-obligation credit matching that let a reply in one conversation
+  incorrectly close an unrelated obligation in another, see
+  [journal/2026-08-17-reply-obligation-thread-scoped-matching.md](journal/2026-08-17-reply-obligation-thread-scoped-matching.md);
+  and `reassign_reply_required_message`'s missing CAS guard and `idempotency_key = NULL` reassignment
+  insert (transfer/escalate/takeover in `mailbox_service_escalation.rs`), see
+  [journal/2026-08-17-mailbox-reassignment-cas-and-idempotency.md](journal/2026-08-17-mailbox-reassignment-cas-and-idempotency.md).
 
 ## Message Storage
 
