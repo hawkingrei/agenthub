@@ -107,10 +107,14 @@ impl TeamManager {
         self.execute_prepared_task_update(&mut *tx, task_id, &prepared)
             .await?;
         if let Some(reason) = terminal_goal_release_reason(prepared.status_patch.as_ref()) {
+            let active_lease_generation = self
+                .active_goal_lease_generation_in_tx(&mut tx, task_id)
+                .await?;
             release_task_goal_in_tx(
                 &mut tx,
                 &prepared.current.team_id,
                 task_id,
+                active_lease_generation,
                 reason,
                 chrono::Utc::now().timestamp(),
             )
@@ -149,10 +153,14 @@ impl TeamManager {
             self.execute_prepared_task_update(&mut *tx, input.task_id, &prepared)
                 .await?;
             if let Some(reason) = terminal_goal_release_reason(prepared.status_patch.as_ref()) {
+                let active_lease_generation = self
+                    .active_goal_lease_generation_in_tx(&mut tx, input.task_id)
+                    .await?;
                 release_task_goal_in_tx(
                     &mut tx,
                     &prepared.current.team_id,
                     input.task_id,
+                    active_lease_generation,
                     reason,
                     chrono::Utc::now().timestamp(),
                 )
@@ -220,6 +228,23 @@ impl TeamManager {
         })
     }
 
+    /// Look up the generation of whatever goal lease is currently active for `task_id`, inside `tx`, so
+    /// callers that are about to release "the" lease release the exact generation they observed in this
+    /// same transaction rather than whatever happens to be active by the time the release statement runs.
+    async fn active_goal_lease_generation_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        task_id: &str,
+    ) -> anyhow::Result<Option<i64>> {
+        let generation = sqlx::query_scalar::<_, i64>(
+            "SELECT lease_generation FROM team_goal_leases WHERE task_id = ?1 AND released_at IS NULL",
+        )
+        .bind(task_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        Ok(generation)
+    }
+
     async fn execute_prepared_task_update<'e, E>(
         &self,
         executor: E,
@@ -267,11 +292,22 @@ impl TeamManager {
         if !first {
             builder.push(", ");
         }
-        builder.push("updated_at = ");
+        // `MAX(updated_at + 1, ?)` rather than plain `updated_at = ?now` -- `now()` is second-granularity,
+        // so two guarded writes to the same task within the same wall-clock second would otherwise
+        // compute the identical "new" value, which the *next* writer's `WHERE updated_at = <old value>`
+        // guard can't distinguish from "nothing changed": self-referencing the row's own prior value
+        // guarantees every successful write strictly advances it by at least 1, so the CAS token can
+        // never collide regardless of write frequency.
+        builder.push("updated_at = MAX(updated_at + 1, ");
         builder.push_bind(now);
+        builder.push(")");
         builder.push(" WHERE id = ");
         builder.push_bind(task_id);
-        builder.build().execute(executor).await?;
+        builder.push(" AND updated_at = ");
+        builder.push_bind(prepared.current.updated_at);
+        let result = builder.build().execute(executor).await?;
+        agenthub_db::control_store::require_guarded_write_applied(result.rows_affected())
+            .map_err(|_| anyhow::anyhow!("task changed concurrently, retry the update"))?;
         Ok(())
     }
 }

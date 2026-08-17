@@ -29,7 +29,7 @@ pub(super) use crate::team::{
     TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskCreateInput,
     TeamTaskListQuery, TeamTaskNoteCreateInput, TeamTaskNoteKind, TeamTaskPriority, TeamTaskStatus,
     TeamTaskUpdateWithNoteInput, dispatch_actor_mailbox_immediate_hint,
-    plan_actor_mailbox_immediate_hint, resolve_team_permission_review_target,
+    plan_actor_mailbox_immediate_hint,
 };
 
 pub(super) use super::auth::{InternalAction, InternalAuthz, InternalRole};

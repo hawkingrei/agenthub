@@ -2,7 +2,6 @@ mod dispatcher;
 mod payload;
 mod selection;
 pub use dispatcher::{TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings};
-pub(crate) use selection::resolve_team_permission_review_target;
 use std::time::Duration;
 
 const TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE: &str = "permission_review_request";
