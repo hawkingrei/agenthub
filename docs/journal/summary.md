@@ -265,6 +265,12 @@ Main shape:
   stack -- the CAS guard is kept as defense-in-depth and for a correct `Conflict` error rather than a raw
   database error, not as the sole mechanism; the idempotency key is the part with directly fix-sensitive
   test coverage (client-retry duplicate submission).
+- The same review's last finding: `message_index_projection.rs`'s repair passes silently coerced
+  unparseable `payload_json`/`input_json` to `Value::Null` with no logging, so genuinely corrupt rows
+  indexed as empty messages with no trace. Kept the `Value::Null` fallback (aborting the whole repair
+  batch on one bad row would be worse) but added a structured `tracing::warn!` (source table, row id,
+  field, parse error) via a new shared `parse_projection_json` helper replacing four inline duplicates.
+  This closes out all seven findings from the 2026-08-17 Team-subsystem review round.
 
 Start with:
 
@@ -290,6 +296,7 @@ Start with:
 - `2026-08-17-reply-obligation-client-suppression-fix.md`
 - `2026-08-17-reply-obligation-thread-scoped-matching.md`
 - `2026-08-17-mailbox-reassignment-cas-and-idempotency.md`
+- `2026-08-17-message-index-repair-corruption-visibility.md`
 
 ## Compaction Rules
 
