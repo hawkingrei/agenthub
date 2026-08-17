@@ -1,6 +1,6 @@
 use super::mailbox::{
     MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_IGNORED, MAILBOX_RESOLUTION_TAKEN_OVER,
-    MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey,
+    MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey, reply_thread_scope,
 };
 use super::mailbox_payloads::is_human_actor_id;
 use super::mailbox_reply_obligation_snapshot_conversion::resolve_canonical_chat_reply_from_snapshot;
@@ -24,6 +24,10 @@ pub(super) fn reply_actor_pair_for_inbound_obligation_snapshot(
     Some(ReplyActorPairKey {
         agent_actor_id: message.to_actor_id.clone(),
         human_actor_id: message.from_actor_id.clone(),
+        thread_scope: reply_thread_scope(
+            message.conversation_id.as_deref(),
+            message.thread_root_message_id,
+        ),
     })
 }
 
@@ -42,6 +46,10 @@ pub(super) fn reply_actor_pair_for_visible_reply_snapshot(
     Some(ReplyActorPairKey {
         agent_actor_id: message.from_actor_id.clone(),
         human_actor_id: message.to_actor_id.clone(),
+        thread_scope: reply_thread_scope(
+            message.conversation_id.as_deref(),
+            message.thread_root_message_id,
+        ),
     })
 }
 
