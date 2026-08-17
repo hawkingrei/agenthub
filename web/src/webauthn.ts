@@ -1,8 +1,14 @@
 export function publicKeyCredentialCreationOptionsFromJson(
   options: unknown
 ): PublicKeyCredentialCreationOptions {
+  if (!options || typeof options !== "object") {
+    throw new Error("missing WebAuthn registration options");
+  }
   const maybe = options as { publicKey?: PublicKeyCredentialCreationOptions };
   const o = (maybe.publicKey ?? options) as PublicKeyCredentialCreationOptions;
+  if (!o || typeof o !== "object") {
+    throw new Error("missing WebAuthn registration options");
+  }
   const challenge = toArrayBuffer(o.challenge, "challenge");
   const user = o.user as PublicKeyCredentialUserEntity;
   const userId = toArrayBuffer(user.id, "user.id");
@@ -21,8 +27,14 @@ export function publicKeyCredentialCreationOptionsFromJson(
 export function publicKeyCredentialRequestOptionsFromJson(
   options: unknown
 ): PublicKeyCredentialRequestOptions {
+  if (!options || typeof options !== "object") {
+    throw new Error("missing WebAuthn authentication options");
+  }
   const maybe = options as { publicKey?: PublicKeyCredentialRequestOptions };
   const o = (maybe.publicKey ?? options) as PublicKeyCredentialRequestOptions;
+  if (!o || typeof o !== "object") {
+    throw new Error("missing WebAuthn authentication options");
+  }
   const challenge = toArrayBuffer(o.challenge, "challenge");
   const allow = (o.allowCredentials ?? []).map((c) => ({
     ...c,
