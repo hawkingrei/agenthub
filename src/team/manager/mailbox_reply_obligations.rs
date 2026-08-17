@@ -2,7 +2,7 @@ use serde_json::{Map, Value};
 
 use super::mailbox::{
     MAILBOX_RESOLUTION_ESCALATED, MAILBOX_RESOLUTION_IGNORED, MAILBOX_RESOLUTION_TAKEN_OVER,
-    MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey,
+    MAILBOX_RESOLUTION_TRANSFERRED, ReplyActorPairKey, reply_thread_scope,
 };
 use super::mailbox_reply_obligation_snapshot_conversion::{
     mailbox_resolution_kind, mailbox_resolution_reason,
@@ -25,6 +25,10 @@ pub(super) fn reply_actor_pair_for_inbound_obligation(
     Some(ReplyActorPairKey {
         agent_actor_id: message.to_actor_id.clone(),
         human_actor_id: message.from_actor_id.clone(),
+        thread_scope: reply_thread_scope(
+            envelope.conversation_id.as_deref(),
+            envelope.thread_root_message_id,
+        ),
     })
 }
 

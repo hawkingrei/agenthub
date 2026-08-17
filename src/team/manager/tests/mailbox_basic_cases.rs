@@ -203,6 +203,114 @@ async fn summarize_open_reply_obligations_prefers_lightweight_snapshot_loader() 
 }
 
 #[tokio::test]
+async fn reply_obligation_credit_matching_is_scoped_per_thread_not_just_actor_pair() {
+    // A human sends two unrelated reply-required messages to the same agent in two different
+    // conversations. A reply in the *first* conversation must close that conversation's obligation --
+    // not silently satisfy the unrelated, still-open obligation in the second conversation just
+    // because both share the same (agent, human) pair.
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "reply-obligation-thread-scope-team".to_string(),
+            description: Some("team for thread-scoped reply obligation matching".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-reply-obligation-thread-scope"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "user:alice",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"Please review PR #100",
+                "requires_user_visible_reply":true,
+                "task_conversation_id":"conv-pr-100"
+            }),
+            idempotency_key: None,
+            message_kind: None,
+        })
+        .await
+        .expect("send first inbound obligation");
+    manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "user:alice",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"What is the ETA on task X?",
+                "requires_user_visible_reply":true,
+                "task_conversation_id":"conv-task-x"
+            }),
+            idempotency_key: None,
+            message_kind: None,
+        })
+        .await
+        .expect("send second, unrelated inbound obligation");
+    manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "reviewer",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "user:alice",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"PR #100 looks good, approved",
+                "task_conversation_id":"conv-pr-100"
+            }),
+            idempotency_key: None,
+            message_kind: None,
+        })
+        .await
+        .expect("send visible reply scoped to the first conversation");
+
+    let summary = manager
+        .summarize_open_reply_obligations(&run.id)
+        .await
+        .expect("summarize reply obligations");
+
+    assert_eq!(
+        summary.open_total, 1,
+        "only the unrelated task-x obligation should remain open"
+    );
+    assert_eq!(summary.open_items.len(), 1);
+    assert_eq!(
+        summary.open_items[0].conversation_id.as_deref(),
+        Some("conv-task-x")
+    );
+}
+
+#[tokio::test]
 async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db);

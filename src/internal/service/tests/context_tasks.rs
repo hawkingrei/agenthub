@@ -463,6 +463,85 @@ async fn internal_grpc_team_task_update_rolls_back_note_when_metadata_patch_fail
 }
 
 #[tokio::test]
+async fn internal_grpc_team_task_update_rejects_non_object_context_json() {
+    // `context_json` (a full Replace patch) previously only validated it was *valid* JSON, unlike its
+    // `context_merge_json` sibling which checks the shape too. A non-object value stored this way would
+    // later panic an unrelated run-status-changing request in `compute_next_task_execution_context`'s
+    // `.as_object_mut().expect(...)` the next time that task's run transitioned to `in_progress`.
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let authz = build_authz();
+    let token = issue_token(
+        &authz,
+        InternalRole::Coordinator,
+        Some("planner"),
+        Some(&run.id),
+    );
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let created = TeamInternalControl::create_team_task(
+        &service,
+        authenticated_request(
+            CreateTeamTaskRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                title: "Reject non-object context_json".to_string(),
+                status: "open".to_string(),
+                priority: "high".to_string(),
+                assigned_member_id: "planner".to_string(),
+                topic: "non-object-context".to_string(),
+                context_json: json!({"goal":"stay an object"}).to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("create team task")
+    .into_inner();
+    let created_json: serde_json::Value =
+        serde_json::from_str(&created.output_json).expect("decode created task");
+    let task_id = created_json["task"]["id"]
+        .as_str()
+        .expect("created task id")
+        .to_string();
+
+    for non_object in [json!(["not", "an", "object"]), json!(null), json!("text")] {
+        let err = TeamInternalControl::update_team_task(
+            &service,
+            authenticated_request(
+                UpdateTeamTaskRequest {
+                    team_id: run.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    task_id: task_id.clone(),
+                    status: None,
+                    assigned_member_id: None,
+                    clear_assigned_member_id: false,
+                    priority: None,
+                    context_json: Some(non_object.to_string()),
+                    context_merge_json: None,
+                    note_kind: None,
+                    note_text: None,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("non-object context_json should be rejected");
+        assert_eq!(err.code(), Code::InvalidArgument);
+        assert!(
+            err.message().contains("context_json must be a JSON object"),
+            "unexpected error for {non_object}: {err}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn internal_grpc_team_channel_controls_are_wire_compatible() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;

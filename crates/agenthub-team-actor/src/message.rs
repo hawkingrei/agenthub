@@ -370,15 +370,21 @@ fn infer_actor_message_reply_target(payload: &Value) -> Option<Value> {
 }
 
 fn infer_requires_user_visible_reply(
-    source_kind: &ActorMessageSourceKind,
+    from_actor_id: &str,
     to_actor_id: &str,
     payload: &Value,
 ) -> bool {
-    if let Some(explicit) = actor_message_payload_requires_user_visible_reply(payload) {
-        return explicit;
-    }
-    matches!(source_kind, ActorMessageSourceKind::Human)
+    // A human message to an agent must always be tracked until visibly answered -- this is the
+    // system's own reply-obligation guarantee, not user-facing content, so it must not be
+    // overridable by whatever the caller puts in `payload`. `from_actor_id` (not the payload's
+    // `source_kind`, which itself can be spoofed the same way) is the one signal here that a
+    // sender can't rewrite to claim a different identity than the one it authenticated as.
+    if infer_actor_identity_kind(from_actor_id) == ActorIdentityKind::Human
         && infer_actor_identity_kind(to_actor_id) == ActorIdentityKind::Agent
+    {
+        return true;
+    }
+    actor_message_payload_requires_user_visible_reply(payload).unwrap_or(false)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -402,7 +408,7 @@ pub fn project_actor_message_envelope(
         source_surface: infer_actor_message_source_surface(message_kind, payload),
         reply_target: infer_actor_message_reply_target(payload),
         requires_user_visible_reply: infer_requires_user_visible_reply(
-            &source_kind,
+            from_actor_id,
             to_actor_id,
             payload,
         ),
@@ -936,6 +942,42 @@ mod tests {
                 thread_root_message_id: None,
             }
         );
+    }
+
+    #[test]
+    fn project_actor_message_envelope_rejects_client_suppressed_human_reply_obligation() {
+        // A human-to-agent message must always be tracked until visibly answered, no matter what
+        // the payload claims -- this is the system's own guarantee, not something the sender
+        // controls.
+        let projection = project_actor_message_envelope(
+            "user:alice",
+            "worker-1",
+            &ActorMessageKind::HumanRequest,
+            &json!({
+                "task_id":"task-1",
+                "requires_user_visible_reply": false
+            }),
+        );
+        assert!(projection.requires_user_visible_reply);
+    }
+
+    #[test]
+    fn project_actor_message_envelope_rejects_spoofed_source_kind_alongside_suppressed_reply_obligation()
+     {
+        // Even if the payload also claims a fabricated `source_kind: "agent"` for a message that
+        // actually came from a human `from_actor_id`, the reply obligation must still be forced --
+        // `source_kind` is itself payload-derived and must not be trusted for this decision.
+        let projection = project_actor_message_envelope(
+            "user:alice",
+            "worker-1",
+            &ActorMessageKind::HumanRequest,
+            &json!({
+                "task_id":"task-1",
+                "source_kind": "agent",
+                "requires_user_visible_reply": false
+            }),
+        );
+        assert!(projection.requires_user_visible_reply);
     }
 
     #[test]

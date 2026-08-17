@@ -72,6 +72,26 @@ pub(crate) struct ResolvedMailboxRecipientDelivery {
 pub(super) struct ReplyActorPairKey {
     pub(super) agent_actor_id: String,
     pub(super) human_actor_id: String,
+    /// Scopes credit-matching to the specific thread/conversation a message belongs to (preferring
+    /// `thread_root_message_id`, falling back to `conversation_id`) so a reply in one thread can't
+    /// close an unrelated obligation from the same agent/human pair in a different thread. `None` for
+    /// unthreaded mailbox messages, where the pair alone is the best signal available.
+    pub(super) thread_scope: Option<ReplyThreadScope>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(super) enum ReplyThreadScope {
+    Thread(i64),
+    Conversation(String),
+}
+
+pub(super) fn reply_thread_scope(
+    conversation_id: Option<&str>,
+    thread_root_message_id: Option<i64>,
+) -> Option<ReplyThreadScope> {
+    thread_root_message_id
+        .map(ReplyThreadScope::Thread)
+        .or_else(|| conversation_id.map(|value| ReplyThreadScope::Conversation(value.to_string())))
 }
 
 #[derive(Debug, Clone, Copy)]
