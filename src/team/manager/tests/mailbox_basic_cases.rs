@@ -1475,3 +1475,304 @@ async fn actor_mailbox_service_task_link_surfaces_durable_task_association() {
         Some(task.id.as_str())
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_transfers_of_same_reply_required_message_do_not_both_apply() {
+    // A real file-backed WAL pool so the two reassignment transactions actually interleave (the
+    // shared :memory: pool serializes everything).
+    let (db, dir) = setup_concurrent_mailbox_db().await;
+
+    struct CleanupGuard(std::path::PathBuf);
+    impl Drop for CleanupGuard {
+        fn drop(&mut self) {
+            let path = std::mem::take(&mut self.0);
+            tokio::spawn(async move {
+                let _ = tokio::fs::remove_dir_all(path).await;
+            });
+        }
+    }
+    let _cleanup = CleanupGuard(dir);
+
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "reassign-race-team".to_string(),
+            description: Some("team for concurrent reassignment races".to_string()),
+            spec: json!({
+                "entrypoint":"worker-1",
+                "members":[
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"},
+                    {"member_id":"worker-3","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-reassign-race"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    for iteration in 0..60 {
+        let payload_json = json!({
+            "type":"chat_message",
+            "text":"please handle this",
+            "source_kind":"human",
+            "source_surface":"conversation",
+            "requires_user_visible_reply": true,
+        })
+        .to_string();
+        let message_id = sqlx::query(
+            r#"
+            INSERT INTO team_actor_messages (
+                run_id,
+                from_actor_id,
+                to_actor_id,
+                channel,
+                transport,
+                route_json,
+                payload_json,
+                idempotency_key,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+            "#,
+        )
+        .bind(&run.id)
+        .bind("user")
+        .bind("worker-1")
+        .bind("default")
+        .bind("local")
+        .bind(&payload_json)
+        .bind(Utc::now().timestamp())
+        .execute(&db)
+        .await
+        .expect("insert human reply-required message")
+        .last_insert_rowid();
+
+        let service_a = manager.actor_mailbox_service();
+        let service_b = manager.actor_mailbox_service();
+        let run_id_for_a = run.id.clone();
+        let run_id_for_b = run.id.clone();
+        let (result_a, result_b) = tokio::join!(
+            tokio::spawn(async move {
+                service_a
+                    .transfer_reply_required_message(
+                        &run_id_for_a,
+                        "worker-1",
+                        ACTOR_MAIN_PEER_ID,
+                        message_id,
+                        "worker-2",
+                    )
+                    .await
+            }),
+            tokio::spawn(async move {
+                service_b
+                    .transfer_reply_required_message(
+                        &run_id_for_b,
+                        "worker-1",
+                        ACTOR_MAIN_PEER_ID,
+                        message_id,
+                        "worker-3",
+                    )
+                    .await
+            })
+        );
+        let result_a = result_a.expect("transfer-to-worker-2 task did not panic");
+        let result_b = result_b.expect("transfer-to-worker-3 task did not panic");
+
+        // A losing side is rejected one of three legitimate ways: sequentially, by re-reading the
+        // already-terminal message fresh (BadRequest, a pre-existing check unrelated to this fix);
+        // concurrently, by the CAS guard on the release UPDATE finding the row already changed
+        // (Conflict); or, if its transaction's snapshot went stale mid-flight under genuine WAL
+        // concurrency, a raw SQLite busy/locked error (Internal, the codebase's existing, separately-
+        // tested contract for that case -- empirically the one WAL's own snapshot-conflict detection
+        // always produces here, ahead of the CAS guard, but the guard stays as explicit, self-
+        // documenting defense-in-depth consistent with `triage_message_impl`). It must never be an
+        // unrelated error, and it must never be a duplicate success.
+        for result in [&result_a, &result_b] {
+            if let Err(err) = result {
+                assert!(
+                    matches!(
+                        err.code,
+                        ActorServiceErrorCode::Conflict
+                            | ActorServiceErrorCode::Internal
+                            | ActorServiceErrorCode::BadRequest
+                    ),
+                    "iteration {iteration}: unexpected error code on losing transfer: {err:?}"
+                );
+            }
+        }
+        let successes = [result_a.is_ok(), result_b.is_ok()]
+            .into_iter()
+            .filter(|ok| *ok)
+            .count();
+        assert!(
+            successes <= 1,
+            "iteration {iteration}: at most one of two concurrent transfers of the same message should apply, got a={result_a:?} b={result_b:?}"
+        );
+
+        let reassigned_count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM team_actor_messages
+            WHERE run_id = ?1 AND idempotency_key = ?2
+            "#,
+        )
+        .bind(&run.id)
+        .bind(format!("mailbox-reassign:{message_id}"))
+        .fetch_one(&db)
+        .await
+        .expect("count reassigned rows");
+        assert_eq!(
+            reassigned_count as usize, successes,
+            "iteration {iteration}: the number of persisted reassigned rows must match the number of transfers that actually succeeded"
+        );
+    }
+}
+
+#[tokio::test]
+async fn transfer_reply_required_message_reuses_existing_row_on_idempotency_key_collision() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "reassign-idempotency-team".to_string(),
+            description: Some("team for reassignment idempotency fallback".to_string()),
+            spec: json!({
+                "entrypoint":"worker-1",
+                "members":[
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"},
+                    {"member_id":"worker-3","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-reassign-idempotency"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let payload_json = json!({
+        "type":"chat_message",
+        "text":"please handle this",
+        "source_kind":"human",
+        "source_surface":"conversation",
+        "requires_user_visible_reply": true,
+    })
+    .to_string();
+    let message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, NULL, 'pending', ?7)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("user")
+    .bind("worker-1")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(Utc::now().timestamp())
+    .execute(&db)
+    .await
+    .expect("insert human reply-required message")
+    .last_insert_rowid();
+
+    // Pre-seed a row occupying the idempotency key this reassignment would compute, standing in for
+    // a duplicate insert that already landed from an earlier, concurrently-committed attempt. It is
+    // addressed to a third target so it is unmistakably distinct from the transfer request below.
+    let phantom_idempotency_key = format!("mailbox-reassign:{message_id}");
+    let phantom_message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            from_peer_id,
+            to_actor_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            idempotency_key,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8, 'pending', ?9)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("user")
+    .bind(ACTOR_MAIN_PEER_ID)
+    .bind("worker-3")
+    .bind("default")
+    .bind("local")
+    .bind(&payload_json)
+    .bind(&phantom_idempotency_key)
+    .bind(Utc::now().timestamp())
+    .execute(&db)
+    .await
+    .expect("insert phantom idempotency row")
+    .last_insert_rowid();
+
+    let service = manager.actor_mailbox_service();
+    let transferred = service
+        .transfer_reply_required_message(
+            &run.id,
+            "worker-1",
+            ACTOR_MAIN_PEER_ID,
+            message_id,
+            "worker-2",
+        )
+        .await
+        .expect("transfer reuses the pre-existing idempotency row instead of erroring");
+    assert_eq!(
+        transferred.message_id, phantom_message_id,
+        "transfer should resolve to the pre-existing row occupying the idempotency key, not insert a new one"
+    );
+    assert_eq!(
+        transferred.to_actor_id, "worker-3",
+        "the reused row keeps its own original recipient, not the requested transfer target"
+    );
+
+    let row_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_actor_messages
+        WHERE run_id = ?1 AND idempotency_key = ?2
+        "#,
+    )
+    .bind(&run.id)
+    .bind(&phantom_idempotency_key)
+    .fetch_one(&db)
+    .await
+    .expect("count rows for idempotency key");
+    assert_eq!(
+        row_count, 1,
+        "no second row should be inserted when the idempotency key already exists"
+    );
+}
