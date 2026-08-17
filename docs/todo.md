@@ -88,16 +88,16 @@ Stable contracts:
   with no restart or alerting; `update_team_task`'s gRPC handler accepts a non-object `context_json`
   (only validates it's *valid* JSON, unlike its `context_merge_json` sibling which checks the shape),
   which plants a landmine that panics the *next*, unrelated run-status-changing request touching that
-  task at `run_task_status_sync.rs`'s `.as_object_mut().expect(...)`; a timing side-channel on the
-  internal gRPC bootstrap-token comparison (`src/internal/service/mod.rs:137`, plain `!=` instead of
-  constant-time) on the endpoint that mints cluster-bootstrap credentials for new nodes; no timeout on
-  the child-process stdin write path, so a hung child can block that agent's stdin lock indefinitely;
-  several silently-swallowed DB/parse errors that leave no log trace (corrupt JSON resets linked-task-
-  sync context to `{}`, a failed startup `safe_paths` seed insert is invisible). Two findings from the
-  same review are fixed separately: `safe_paths` workdir enforcement, see
+  task at `run_task_status_sync.rs`'s `.as_object_mut().expect(...)`; no timeout on the child-process
+  stdin write path, so a hung child can block that agent's stdin lock indefinitely; several silently-
+  swallowed DB/parse errors that leave no log trace (corrupt JSON resets linked-task-sync context to
+  `{}`, a failed startup `safe_paths` seed insert is invisible). Three findings from the same review are
+  fixed separately: `safe_paths` workdir enforcement, see
   [journal/2026-08-16-safe-paths-workdir-enforcement.md](journal/2026-08-16-safe-paths-workdir-enforcement.md);
   the unbounded `TeamRemoteRelayAdapter.grpc_client_cache` leak and its token-staleness correctness gap,
-  see [journal/2026-08-16-grpc-relay-client-cache-ttl.md](journal/2026-08-16-grpc-relay-client-cache-ttl.md).
+  see [journal/2026-08-16-grpc-relay-client-cache-ttl.md](journal/2026-08-16-grpc-relay-client-cache-ttl.md);
+  the internal gRPC bootstrap-token comparison's timing side-channel, see
+  [journal/2026-08-16-bootstrap-token-constant-time-compare.md](journal/2026-08-16-bootstrap-token-constant-time-compare.md).
   Evidence for the rest: this review round has no dedicated journal entry yet (findings were reported
   inline, not yet written up) -- write one when starting on the next item from this list.
 

@@ -216,9 +216,11 @@ Main shape:
   leak: the common relay path mints a fresh, timestamp-embedded access token per message, so the cache
   key is unique almost every call and every delivery leaked a live gRPC `Channel` forever; now bounded
   by TTL-based lazy eviction, which also closes a second gap where callers with stable tokens could keep
-  serving an expired bearer token from a long-lived cache entry. Three other findings from the same
-  review (a remote-relay panic-poisoning trap, a panic landmine from an unvalidated task context shape,
-  a bootstrap-token timing side-channel) remain open in the Backend Correctness `todo.md` item.
+  serving an expired bearer token from a long-lived cache entry. The internal gRPC bootstrap-token
+  comparison (the endpoint that mints cluster-bootstrap credentials for new nodes) used a plain `!=`
+  that short-circuits at the first mismatching byte, a timing side-channel; now a constant-time XOR-fold
+  comparison. Two other findings from the same review (a remote-relay panic-poisoning trap, a panic
+  landmine from an unvalidated task context shape) remain open in the Backend Correctness `todo.md` item.
 
 Start with:
 
@@ -233,6 +235,7 @@ Start with:
 - `2026-08-16-pwa-icon-branding-fix.md`
 - `2026-08-16-safe-paths-workdir-enforcement.md`
 - `2026-08-16-grpc-relay-client-cache-ttl.md`
+- `2026-08-16-bootstrap-token-constant-time-compare.md`
 - `2026-08-16-frontend-uiux-review-round1-fixes.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 

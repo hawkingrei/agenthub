@@ -64,6 +64,19 @@ const MAX_INTERNAL_TEAM_TASK_LIST_LIMIT: i64 = 500;
 const DEFAULT_TOKEN_TTL_SECONDS: i64 = 3600;
 const MAX_TOKEN_TTL_SECONDS: i64 = 24 * 60 * 60;
 
+/// Byte-for-byte equality that doesn't short-circuit on the first mismatching byte, so comparing a
+/// bootstrap token candidate against the real secret doesn't leak how many leading bytes matched
+/// through response timing.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |diff, (x, y)| diff | (x ^ y))
+        == 0
+}
+
 #[derive(Clone)]
 pub(crate) struct TeamInternalControlDeps {
     pub db: sqlx::SqlitePool,
@@ -134,7 +147,7 @@ impl TeamInternalControlService {
         if provided.is_empty() {
             return Err(Status::unauthenticated("empty bootstrap token"));
         }
-        if provided != self.bootstrap_token {
+        if !constant_time_eq(provided.as_bytes(), self.bootstrap_token.as_bytes()) {
             return Err(Status::permission_denied("bootstrap token mismatch"));
         }
         Ok(())
