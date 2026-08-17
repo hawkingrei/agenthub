@@ -228,6 +228,13 @@ Main shape:
   `webidl.util.markAsUncloneable is not a function` -- jsdom 30 explicitly requires Node >=22, and the
   `Web`/`Web E2E`/`Web E2E Mobile` jobs were still pinned to Node 20 (`userdocs.yml`'s unrelated
   Docusaurus build stays on Node 20, out of scope). Bumped those three jobs to Node 22.
+- A code-only Team-subsystem review found reply-obligation "credit" matching keyed only on
+  `(agent_actor_id, human_actor_id)`, ignoring which thread/conversation a message belonged to; a reply
+  in one conversation could incorrectly close an unrelated open obligation in a different one. Fixed with
+  a two-tier key (exact thread/conversation scope first, untagged-reply loose-pool fallback) so a reply
+  that declares a thread can never satisfy an obligation in a different one, while plain untagged replies
+  keep working as before. Other findings from the same review round are tracked in the Backend
+  Correctness `todo.md` item.
 
 Start with:
 
@@ -247,6 +254,7 @@ Start with:
 - `2026-08-17-pwa-icon-borrowed-slock-mark-fix.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 - `2026-08-17-ci-web-node22-for-jsdom30.md`
+- `2026-08-17-reply-obligation-thread-scoped-matching.md`
 
 ## Compaction Rules
 
