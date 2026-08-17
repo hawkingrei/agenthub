@@ -104,11 +104,7 @@ Stable contracts:
 ## Agent Team Correctness
 
 - [ ] `P1` Close out the remaining findings from a 2026-08-17 code-only review of the Team subsystem
-  (Task/Run/Step lifecycle, mailbox, remote relay/permission review, actor protocol): `update_task`'s
-  gRPC `context_json` (`Replace` patch) accepts any valid JSON, not just objects, unlike its
-  `context_merge_json` sibling -- storing e.g. an array or `null` there plants a landmine that panics the
-  *next* unrelated run-status-changing request in `run_task_status_sync.rs`'s
-  `compute_next_task_execution_context` (`.as_object_mut().expect(...)`); a caller can set
+  (Task/Run/Step lifecycle, mailbox, remote relay/permission review, actor protocol): a caller can set
   `payload.requires_user_visible_reply: false` on a human-to-agent mailbox message to silently disable
   the system's reply-obligation tracking for it, since normalization only backfills the field when absent
   instead of enforcing the server-computed value for human-originated messages; reply-obligation "credit"
@@ -119,13 +115,16 @@ Stable contracts:
   `idempotency_key = NULL`, so a concurrent double-reassign can duplicate it; the SQLite index-repair
   path (`message_index_projection.rs`) silently coerces unparseable `payload_json`/`input_json` to
   `Value::Null`/defaults with no logging, so a corrupted authority row loses its conversation/task linkage
-  during a rebuild with the repair report still claiming success. Two findings from the same review are
+  during a rebuild with the repair report still claiming success. Three findings from the same review are
   fixed separately: `task_updates.rs`'s missing optimistic-concurrency guard on `team_tasks` writes,
   `release_task_goal_in_tx` releasing whatever lease is active instead of the specific generation
   observed, and `claim_task_goal_in_tx`/`claim_execution_entity`'s check-then-act upserts, see
   [journal/2026-08-17-goal-lease-cas-hardening.md](journal/2026-08-17-goal-lease-cas-hardening.md);
   the permission-review reviewer-selection inconsistency between dispatch time and approval time, see
-  [journal/2026-08-17-permission-review-reviewer-target-consistency.md](journal/2026-08-17-permission-review-reviewer-target-consistency.md).
+  [journal/2026-08-17-permission-review-reviewer-target-consistency.md](journal/2026-08-17-permission-review-reviewer-target-consistency.md);
+  `update_task`'s gRPC `context_json` (`Replace` patch) accepting non-object JSON and the resulting
+  `run_task_status_sync.rs` panic landmine, see
+  [journal/2026-08-17-task-context-json-shape-validation.md](journal/2026-08-17-task-context-json-shape-validation.md).
   Evidence for the rest: this review round has no dedicated journal entry yet -- write one when starting
   on the next item from this list.
 

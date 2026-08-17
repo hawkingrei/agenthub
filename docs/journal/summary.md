@@ -241,8 +241,13 @@ Main shape:
   idle-aware at dispatch time, idle-*unaware* (always the first candidate) when re-derived at approval
   time because the persisted target hadn't landed yet -- letting the wrong actor approve/deny a review
   it never received; the approval-time fallback is now removed entirely (fail closed on no persisted
-  target) rather than trying to duplicate dispatch's idle-check machinery. Four other findings from the
-  same review remain open in a new Agent Team Correctness `todo.md` item.
+  target) rather than trying to duplicate dispatch's idle-check machinery. `update_task`'s gRPC
+  `context_json` (`Replace` patch) only validated it was *valid* JSON, unlike its `context_merge_json`
+  sibling which checks the shape -- a non-object value stored this way panicked the next unrelated
+  run-status-changing request; now rejected at the RPC boundary, and the consuming
+  `run_task_status_sync.rs` code self-heals instead of panicking as defense-in-depth for any
+  already-corrupted row. Three other findings from the same review remain open in a new Agent Team
+  Correctness `todo.md` item.
 
 Start with:
 
@@ -264,6 +269,7 @@ Start with:
 - `2026-08-17-ci-web-node22-for-jsdom30.md`
 - `2026-08-17-goal-lease-cas-hardening.md`
 - `2026-08-17-permission-review-reviewer-target-consistency.md`
+- `2026-08-17-task-context-json-shape-validation.md`
 
 ## Compaction Rules
 
