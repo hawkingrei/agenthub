@@ -257,6 +257,14 @@ Main shape:
   so a reply that declares a thread can never satisfy an obligation in a different one, while plain
   untagged replies keep working as before. Other findings from the same review round are tracked in the
   Backend Correctness `todo.md` item.
+- The same review found `reassign_reply_required_message` (transfer/escalate/takeover) had no CAS guard
+  on its source-message `UPDATE`, unlike `triage_message_impl`, and inserted the reassigned message with
+  `idempotency_key = NULL`. Added the guard plus a stable idempotency key with an `INSERT OR IGNORE` +
+  fetch-existing fallback. A genuine-concurrency soak test (new WAL-mode `setup_concurrent_mailbox_db`
+  helper) found SQLite's WAL snapshot-conflict detection already prevents literal duplicate rows in this
+  stack -- the CAS guard is kept as defense-in-depth and for a correct `Conflict` error rather than a raw
+  database error, not as the sole mechanism; the idempotency key is the part with directly fix-sensitive
+  test coverage (client-retry duplicate submission).
 
 Start with:
 
@@ -281,6 +289,7 @@ Start with:
 - `2026-08-17-task-context-json-shape-validation.md`
 - `2026-08-17-reply-obligation-client-suppression-fix.md`
 - `2026-08-17-reply-obligation-thread-scoped-matching.md`
+- `2026-08-17-mailbox-reassignment-cas-and-idempotency.md`
 
 ## Compaction Rules
 

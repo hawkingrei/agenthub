@@ -263,7 +263,11 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         .connect_with(options)
         .await
         .expect("connect sqlite");
+    create_full_test_schema(&pool).await;
+    pool
+}
 
+async fn create_full_test_schema(pool: &SqlitePool) {
     sqlx::query(
         r#"
         CREATE TABLE team_definitions (
@@ -278,7 +282,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_definitions");
 
@@ -298,7 +302,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_runs");
 
@@ -323,7 +327,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_steps");
 
@@ -340,7 +344,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_run_events");
 
@@ -362,7 +366,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_tasks");
 
@@ -447,7 +451,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create Teamspace control-plane tables");
 
@@ -461,7 +465,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         WHERE lower(trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), ''))) = 'team_channel';
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team channel bootstrap unique index");
 
@@ -480,7 +484,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_conversations");
 
@@ -506,7 +510,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_conversation_messages");
 
@@ -517,7 +521,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         WHERE idempotency_key IS NOT NULL;
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_conversation_messages idempotency index");
 
@@ -530,7 +534,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create message_body_outbox");
 
@@ -542,7 +546,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create message_body_backfill_checkpoint");
 
@@ -576,7 +580,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_actor_messages");
 
@@ -598,7 +602,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_actor_thread_claims");
 
@@ -616,7 +620,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_actor_message_links");
 
@@ -640,7 +644,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_channel_message_replicas");
 
@@ -660,7 +664,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_member_continuity_state");
 
@@ -683,7 +687,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_context_artifacts");
 
@@ -702,7 +706,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_context_flush_checkpoint");
 
@@ -728,7 +732,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create agents");
 
@@ -744,7 +748,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create agent_sessions");
 
@@ -763,7 +767,7 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         );
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create agent_events");
 
@@ -774,11 +778,34 @@ pub(super) async fn setup_test_db() -> SqlitePool {
         WHERE idempotency_key IS NOT NULL
         "#,
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .expect("create team_actor_messages idempotency index");
+}
 
-    pool
+/// A file-backed, WAL-mode, multi-connection SQLite pool for concurrency/race tests over the mailbox
+/// domain, sharing the full schema from `setup_test_db`. The shared `:memory:` pool used elsewhere is
+/// single-connection and serializes everything, which cannot exercise real interleavings between
+/// concurrent mailbox writes (e.g. two overlapping transfer/takeover/escalate requests).
+///
+/// Returns the pool and the temp directory holding the database; the caller removes the directory when
+/// the test finishes.
+pub(super) async fn setup_concurrent_mailbox_db() -> (SqlitePool, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!("agenthub-race-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let options = SqliteConnectOptions::new()
+        .filename(dir.join("race.db"))
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(20));
+    let pool = SqlitePoolOptions::new()
+        .max_connections(8)
+        .connect_with(options)
+        .await
+        .expect("connect sqlite");
+    create_full_test_schema(&pool).await;
+    (pool, dir)
 }
 
 /// A file-backed, WAL-mode, multi-connection SQLite pool for concurrency/race tests. The shared

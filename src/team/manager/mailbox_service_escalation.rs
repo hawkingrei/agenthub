@@ -301,7 +301,7 @@ impl TeamActorMailboxService {
             .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
         }
 
-        sqlx::query(
+        let released = sqlx::query(
             r#"
             UPDATE team_actor_messages
             SET
@@ -313,6 +313,7 @@ impl TeamActorMailboxService {
               AND run_id = ?5
               AND to_actor_id = ?6
               AND to_peer_id = ?7
+              AND handling_disposition = ?8
             "#,
         )
         .bind(actor_id)
@@ -322,13 +323,21 @@ impl TeamActorMailboxService {
         .bind(run_id)
         .bind(actor_id)
         .bind(peer_id)
+        .bind(message.handling_disposition.as_str())
         .execute(&mut *tx)
         .await
         .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+        if released.rows_affected() == 0 {
+            return Err(agenthub_team_actor::ActorServiceError::new(
+                agenthub_team_actor::ActorServiceErrorCode::Conflict,
+                "mailbox work was already escalated, transferred, or taken over by a concurrent request",
+            ));
+        }
 
+        let reassign_idempotency_key = format!("mailbox-reassign:{message_id}");
         let inserted = sqlx::query(
             r#"
-            INSERT INTO team_actor_messages (
+            INSERT OR IGNORE INTO team_actor_messages (
                 run_id,
                 from_actor_id,
                 from_peer_id,
@@ -344,7 +353,7 @@ impl TeamActorMailboxService {
                 created_at,
                 idempotency_key
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, (SELECT group_id FROM team_runs WHERE id = ?1), ?11, ?12, NULL)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, (SELECT group_id FROM team_runs WHERE id = ?1), ?11, ?12, ?13)
             "#,
         )
         .bind(run_id)
@@ -359,10 +368,24 @@ impl TeamActorMailboxService {
         .bind(message.message_kind.as_str())
         .bind(status_raw)
         .bind(now)
+        .bind(&reassign_idempotency_key)
         .execute(&mut *tx)
         .await
         .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
-        let reassigned_message_id = inserted.last_insert_rowid();
+        let reassigned_message_id = if inserted.rows_affected() == 1 {
+            inserted.last_insert_rowid()
+        } else {
+            super::mailbox::fetch_message_by_idempotency(
+                &mut tx,
+                run_id,
+                &message.from_actor_id,
+                &message.from_peer_id,
+                &reassign_idempotency_key,
+            )
+            .await
+            .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?
+            .message_id
+        };
         if resolution_kind == MAILBOX_RESOLUTION_TAKEN_OVER {
             sqlx::query(
                 r#"
