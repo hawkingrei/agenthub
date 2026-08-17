@@ -201,8 +201,11 @@ Main shape:
   duplicate matcher; `docs/todo.md`'s SQLite-retirement item is closed, leaving only the ongoing Phase 2
   discipline of new authority code adopting the primitives as it lands.
 - PWA install icons and the browser-tab favicon were blank/missing (a placeholder square with no logo,
-  and no favicon link at all); both now use the real brand asset, unrelated to and unblocked by the
-  still-open deployed-domain PWA verification item.
+  and no favicon link at all); a follow-up fix then discovered the "real brand asset" used to fill them
+  in was actually the third-party Slock OAuth provider's icon, not AgentHub's own, so every installed
+  instance displayed another product's logo -- now a neutral "A" monogram placeholder pending a real
+  designed mark. Both fixes are unrelated to and unblocked by the still-open deployed-domain PWA
+  verification item.
 - A code-only UI/UX review surfaced 17 findings against `features/frontend-design.md`'s contracts; the
   six highest-priority ones landed (error hidden behind its own modal, raw status strings leaking past an
   existing humanizer, hand-rolled Team dialogs missing focus trap/return, destructive actions with no
@@ -237,6 +240,7 @@ Start with:
 - `2026-08-16-grpc-relay-client-cache-ttl.md`
 - `2026-08-16-bootstrap-token-constant-time-compare.md`
 - `2026-08-16-frontend-uiux-review-round1-fixes.md`
+- `2026-08-17-pwa-icon-borrowed-slock-mark-fix.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 
 ## Compaction Rules
