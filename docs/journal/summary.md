@@ -228,6 +228,16 @@ Main shape:
   `webidl.util.markAsUncloneable is not a function` -- jsdom 30 explicitly requires Node >=22, and the
   `Web`/`Web E2E`/`Web E2E Mobile` jobs were still pinned to Node 20 (`userdocs.yml`'s unrelated
   Docusaurus build stays on Node 20, out of scope). Bumped those three jobs to Node 22.
+- A code-only review of the Team subsystem (Task/Run/Step lifecycle, goal-lease/fork concurrency,
+  mailbox, remote relay, permission review, actor protocol) found `task_updates.rs`'s `team_tasks`
+  writes had no optimistic-concurrency guard, `release_task_goal_in_tx` released whatever lease was
+  active rather than the specific generation observed, and `claim_task_goal_in_tx`/
+  `claim_execution_entity` decided claimability in Rust from a stale read but wrote unconditionally --
+  all three now guarded via the existing `ControlStore` idiom. Fixing this surfaced a real, separate bug:
+  writing `team_tasks.updated_at` from a plain second-granularity `now()` let two same-second writes
+  collide and silently defeat the new CAS guard; every writer of that column now writes
+  `MAX(updated_at + 1, now())` so it's strictly monotonic regardless of which function touches it. Five
+  other findings from the same review remain open in a new Agent Team Correctness `todo.md` item.
 
 Start with:
 
@@ -247,6 +257,7 @@ Start with:
 - `2026-08-17-pwa-icon-borrowed-slock-mark-fix.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 - `2026-08-17-ci-web-node22-for-jsdom30.md`
+- `2026-08-17-goal-lease-cas-hardening.md`
 
 ## Compaction Rules
 
