@@ -170,8 +170,13 @@ pub(super) async fn sync_linked_task_status_tx(
     if !first {
         builder.push(", ");
     }
-    builder.push("updated_at = ");
+    // `MAX(updated_at + 1, ?)` keeps `team_tasks.updated_at` strictly monotonic per row across every
+    // writer (see `task_updates.rs::execute_prepared_task_update`, which relies on `updated_at` as an
+    // optimistic-concurrency token): a plain `now()` here could coincide with another writer's
+    // second-granularity timestamp and silently defeat that guard.
+    builder.push("updated_at = MAX(updated_at + 1, ");
     builder.push_bind(now);
+    builder.push(")");
     builder.push(" WHERE id = ");
     builder.push_bind(task_id);
     builder.push(" AND team_id = ");

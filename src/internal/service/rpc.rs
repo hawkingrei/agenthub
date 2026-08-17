@@ -1047,34 +1047,16 @@ impl TeamInternalControl for TeamInternalControlService {
                 "requester cannot review its own permission request",
             ));
         }
-        let team = self
-            .deps
-            .teams
-            .get_team(team_id)
-            .await
-            .map_err(map_manager_error)?;
-        let active_reviewer =
-            if let Some(review_target_actor_id) = record.review_target_actor_id.as_deref() {
-                Some(review_target_actor_id.to_string())
-            } else {
-                let requester_actor_id = record.requester_actor_id.as_deref().ok_or_else(|| {
-                    Status::failed_precondition("permission request is missing requester actor")
-                })?;
-                Some(
-                    resolve_team_permission_review_target(
-                        &team.spec,
-                        requester_actor_id,
-                        record.requester_role.as_deref().unwrap_or_default(),
-                    )
-                    .map(|(reviewer, _)| reviewer)
-                    .map_err(|err| {
-                        Status::failed_precondition(format!(
-                            "failed to resolve active reviewer for permission request: {err}"
-                        ))
-                    })?,
-                )
-            };
-        if active_reviewer.as_deref() != Some(actor_id) {
+        // `review_target_actor_id` is the single source of truth for who dispatch actually notified --
+        // it's chosen with idle-aware selection (`TeamPermissionReviewDispatcher::resolve_review_target`)
+        // and persisted before the human-review fallback timer can fire. Re-deriving a reviewer here from
+        // the team spec when it's absent used to call the *idle-unaware* `resolve_team_permission_review_target`,
+        // which can disagree with dispatch's own idle-aware pick during the narrow window between dispatch
+        // delivering the mailbox message and its own `record_review_dispatch` write committing -- letting
+        // an actor who never received the review approve/deny it while the actual recipient is wrongly
+        // rejected. Fail closed instead: no persisted target means dispatch hasn't finished (or never
+        // started), so no actor is yet authorized to respond.
+        if record.review_target_actor_id.as_deref() != Some(actor_id) {
             return Err(Status::permission_denied(
                 "current actor is not the active reviewer for this permission request",
             ));
