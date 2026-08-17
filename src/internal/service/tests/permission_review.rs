@@ -55,13 +55,14 @@ async fn internal_grpc_permission_review_respond_updates_pending_request() {
                 team_id,
                 requester_actor_id,
                 requester_role,
+                review_target_actor_id,
                 tool_call_id,
                 options_json,
                 tool_call_json,
                 status,
                 created_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'pending', ?12)
             "#,
     )
     .bind("perm-internal-1")
@@ -71,6 +72,7 @@ async fn internal_grpc_permission_review_respond_updates_pending_request() {
     .bind(&run.team_id)
     .bind("reviewer")
     .bind("worker")
+    .bind("planner")
     .bind("tool-call-1")
     .bind(
         json!([
@@ -123,10 +125,15 @@ async fn internal_grpc_permission_review_respond_updates_pending_request() {
 }
 
 #[tokio::test]
-async fn internal_grpc_permission_review_respond_accepts_legacy_team_coordinator_fallback() {
+async fn internal_grpc_permission_review_respond_rejects_when_no_reviewer_target_persisted_yet() {
+    // `review_target_actor_id` is the single source of truth for who dispatch actually notified. A
+    // pending request that hasn't had it persisted yet (dispatch still in flight, or never started)
+    // must reject every actor rather than re-deriving a plausible reviewer from the team spec -- that
+    // used to be resolved via an idle-*unaware* fallback that could disagree with dispatch's own
+    // idle-aware pick, letting the wrong actor approve/deny a review it never received.
     let fixture = setup_permission_review_fixture_with_spec(
-        "legacy-coordinator-fallback",
-        "validate legacy coordinator fallback",
+        "no-reviewer-target-persisted",
+        "validate fail-closed behavior with no persisted reviewer target",
         json!({
             "entrypoint":"planner",
             "coordinator_member_id":"planner",
@@ -143,128 +150,14 @@ async fn internal_grpc_permission_review_respond_accepts_legacy_team_coordinator
         &fixture.state,
         &fixture.run,
         PermissionReviewSeed {
-            request_id: "perm-legacy-coordinator-1",
-            agent_id: "legacy-worker-agent",
-            session_id: "legacy-worker-session",
-            acp_session_id: "acp-session-legacy-1",
+            request_id: "perm-no-target-1",
+            agent_id: "no-target-worker-agent",
+            session_id: "no-target-worker-session",
+            acp_session_id: "acp-session-no-target-1",
             requester_actor_id: "reviewer",
             requester_role: "worker",
             review_target_actor_id: None,
-            tool_call_id: "tool-call-legacy-1",
-            status: "pending",
-        },
-        fixture.now,
-    )
-    .await;
-
-    let response = TeamInternalControl::respond_permission_review(
-        &fixture.service,
-        authenticated_request(
-            RespondPermissionReviewRequest {
-                team_id: fixture.run.team_id.clone(),
-                actor_id: "planner".to_string(),
-                permission_id: "perm-legacy-coordinator-1".to_string(),
-                option_id: "allow".to_string(),
-                outcome: String::new(),
-            },
-            &fixture.token,
-        ),
-    )
-    .await
-    .expect("respond permission review")
-    .into_inner();
-
-    assert_eq!(response.status, "ok");
-    assert_eq!(response.request_status, "responded");
-    assert_eq!(response.reviewed_by_actor_id, "planner");
-}
-
-#[tokio::test]
-async fn internal_grpc_permission_review_respond_accepts_legacy_team_peer_worker_fallback() {
-    let fixture = setup_permission_review_fixture_with_spec(
-        "legacy-peer-worker-fallback",
-        "validate legacy peer worker fallback",
-        json!({
-            "entrypoint":"planner",
-            "coordinator_member_id":"planner",
-            "members":[
-                {"member_id":"planner","role":"coordinator"},
-                {"member_id":"requester","role":"worker"},
-                {"member_id":"reviewer","role":"worker"}
-            ]
-        }),
-        InternalRole::Worker,
-        "reviewer",
-    )
-    .await;
-    seed_permission_review_request(
-        &fixture.state,
-        &fixture.run,
-        PermissionReviewSeed {
-            request_id: "perm-legacy-peer-worker-1",
-            agent_id: "legacy-peer-worker-agent",
-            session_id: "legacy-peer-worker-session",
-            acp_session_id: "acp-session-legacy-peer-worker-1",
-            requester_actor_id: "requester",
-            requester_role: "worker",
-            review_target_actor_id: None,
-            tool_call_id: "tool-call-legacy-peer-worker-1",
-            status: "pending",
-        },
-        fixture.now,
-    )
-    .await;
-
-    let response = TeamInternalControl::respond_permission_review(
-        &fixture.service,
-        authenticated_request(
-            RespondPermissionReviewRequest {
-                team_id: fixture.run.team_id.clone(),
-                actor_id: "reviewer".to_string(),
-                permission_id: "perm-legacy-peer-worker-1".to_string(),
-                option_id: "allow".to_string(),
-                outcome: String::new(),
-            },
-            &fixture.token,
-        ),
-    )
-    .await
-    .expect("respond permission review")
-    .into_inner();
-
-    assert_eq!(response.status, "ok");
-    assert_eq!(response.request_status, "responded");
-    assert_eq!(response.reviewed_by_actor_id, "reviewer");
-}
-
-#[tokio::test]
-async fn internal_grpc_permission_review_respond_surfaces_legacy_reviewer_resolution_errors() {
-    let fixture = setup_permission_review_fixture_with_spec(
-        "legacy-reviewer-resolution-error",
-        "validate legacy reviewer resolution errors",
-        json!({
-            "entrypoint":"reviewer",
-            "coordinator_member_id":"reviewer",
-            "members":[
-                {"member_id":"reviewer","role":"worker"}
-            ]
-        }),
-        InternalRole::Worker,
-        "reviewer",
-    )
-    .await;
-    seed_permission_review_request(
-        &fixture.state,
-        &fixture.run,
-        PermissionReviewSeed {
-            request_id: "perm-legacy-resolution-error-1",
-            agent_id: "legacy-resolution-error-agent",
-            session_id: "legacy-resolution-error-session",
-            acp_session_id: "acp-session-legacy-resolution-error-1",
-            requester_actor_id: "removed-planner",
-            requester_role: "coordinator",
-            review_target_actor_id: None,
-            tool_call_id: "tool-call-legacy-resolution-error-1",
+            tool_call_id: "tool-call-no-target-1",
             status: "pending",
         },
         fixture.now,
@@ -276,8 +169,8 @@ async fn internal_grpc_permission_review_respond_surfaces_legacy_reviewer_resolu
         authenticated_request(
             RespondPermissionReviewRequest {
                 team_id: fixture.run.team_id.clone(),
-                actor_id: "reviewer".to_string(),
-                permission_id: "perm-legacy-resolution-error-1".to_string(),
+                actor_id: "planner".to_string(),
+                permission_id: "perm-no-target-1".to_string(),
                 option_id: "allow".to_string(),
                 outcome: String::new(),
             },
@@ -285,12 +178,12 @@ async fn internal_grpc_permission_review_respond_surfaces_legacy_reviewer_resolu
         ),
     )
     .await
-    .expect_err("legacy reviewer resolution should fail");
+    .expect_err("respond must be rejected before a reviewer target is persisted");
 
-    assert_eq!(err.code(), tonic::Code::FailedPrecondition);
+    assert_eq!(err.code(), tonic::Code::PermissionDenied);
     assert!(
         err.message()
-            .contains("failed to resolve active reviewer for permission request"),
+            .contains("current actor is not the active reviewer for this permission request"),
         "unexpected error message: {err}"
     );
 }
@@ -561,13 +454,14 @@ async fn internal_grpc_permission_review_respond_rejects_conflicting_outcome_fie
                 team_id,
                 requester_actor_id,
                 requester_role,
+                review_target_actor_id,
                 tool_call_id,
                 options_json,
                 tool_call_json,
                 status,
                 created_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'pending', ?12)
             "#,
     )
     .bind("perm-conflict-review-1")
@@ -577,6 +471,7 @@ async fn internal_grpc_permission_review_respond_rejects_conflicting_outcome_fie
     .bind(&run.team_id)
     .bind("reviewer")
     .bind("worker")
+    .bind("planner")
     .bind("tool-call-conflict-1")
     .bind(
         json!([

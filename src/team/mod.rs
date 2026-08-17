@@ -45,7 +45,6 @@ pub use manager::{
 pub(crate) use manager::{
     count_pending_conversation_body_migration, migrate_conversation_bodies_into_store,
 };
-pub(crate) use permission_review::resolve_team_permission_review_target;
 pub use permission_review::{
     TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
 };
