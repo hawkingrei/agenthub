@@ -224,6 +224,10 @@ Main shape:
   that short-circuits at the first mismatching byte, a timing side-channel; now a constant-time XOR-fold
   comparison. Two other findings from the same review (a remote-relay panic-poisoning trap, a panic
   landmine from an unvalidated task context shape) remain open in the Backend Correctness `todo.md` item.
+- The Dependabot `jsdom 29 -> 30` bump failed CI's `Web` job on Node 20 with a cryptic `undici`
+  `webidl.util.markAsUncloneable is not a function` -- jsdom 30 explicitly requires Node >=22, and the
+  `Web`/`Web E2E`/`Web E2E Mobile` jobs were still pinned to Node 20 (`userdocs.yml`'s unrelated
+  Docusaurus build stays on Node 20, out of scope). Bumped those three jobs to Node 22.
 
 Start with:
 
@@ -242,6 +246,7 @@ Start with:
 - `2026-08-16-frontend-uiux-review-round1-fixes.md`
 - `2026-08-17-pwa-icon-borrowed-slock-mark-fix.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
+- `2026-08-17-ci-web-node22-for-jsdom30.md`
 
 ## Compaction Rules
 
