@@ -228,6 +228,30 @@ Main shape:
   `webidl.util.markAsUncloneable is not a function` -- jsdom 30 explicitly requires Node >=22, and the
   `Web`/`Web E2E`/`Web E2E Mobile` jobs were still pinned to Node 20 (`userdocs.yml`'s unrelated
   Docusaurus build stays on Node 20, out of scope). Bumped those three jobs to Node 22.
+- A code-only review of the Team subsystem (Task/Run/Step lifecycle, goal-lease/fork concurrency,
+  mailbox, remote relay, permission review, actor protocol) found `task_updates.rs`'s `team_tasks`
+  writes had no optimistic-concurrency guard, `release_task_goal_in_tx` released whatever lease was
+  active rather than the specific generation observed, and `claim_task_goal_in_tx`/
+  `claim_execution_entity` decided claimability in Rust from a stale read but wrote unconditionally --
+  all three now guarded via the existing `ControlStore` idiom. Fixing this surfaced a real, separate bug:
+  writing `team_tasks.updated_at` from a plain second-granularity `now()` let two same-second writes
+  collide and silently defeat the new CAS guard; every writer of that column now writes
+  `MAX(updated_at + 1, now())` so it's strictly monotonic regardless of which function touches it. The
+  same review also found permission-review's "current reviewer" was resolved two different ways --
+  idle-aware at dispatch time, idle-*unaware* (always the first candidate) when re-derived at approval
+  time because the persisted target hadn't landed yet -- letting the wrong actor approve/deny a review
+  it never received; the approval-time fallback is now removed entirely (fail closed on no persisted
+  target) rather than trying to duplicate dispatch's idle-check machinery. `update_task`'s gRPC
+  `context_json` (`Replace` patch) only validated it was *valid* JSON, unlike its `context_merge_json`
+  sibling which checks the shape -- a non-object value stored this way panicked the next unrelated
+  run-status-changing request; now rejected at the RPC boundary, and the consuming
+  `run_task_status_sync.rs` code self-heals instead of panicking as defense-in-depth for any
+  already-corrupted row. A caller could also set `payload.requires_user_visible_reply: false` on a
+  human-to-agent mailbox message to silently disable the system's reply-obligation tracking for it, since
+  normalization only backfilled the field when absent; the human-to-agent case is now forced regardless
+  of payload, derived from `from_actor_id` (not the payload's own spoofable `source_kind`) so it can't be
+  defeated by also faking the source. Two other findings from the same review remain open in a new Agent
+  Team Correctness `todo.md` item.
 
 Start with:
 
@@ -247,6 +271,10 @@ Start with:
 - `2026-08-17-pwa-icon-borrowed-slock-mark-fix.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 - `2026-08-17-ci-web-node22-for-jsdom30.md`
+- `2026-08-17-goal-lease-cas-hardening.md`
+- `2026-08-17-permission-review-reviewer-target-consistency.md`
+- `2026-08-17-task-context-json-shape-validation.md`
+- `2026-08-17-reply-obligation-client-suppression-fix.md`
 
 ## Compaction Rules
 
