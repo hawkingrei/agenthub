@@ -246,13 +246,17 @@ Main shape:
   sibling which checks the shape -- a non-object value stored this way panicked the next unrelated
   run-status-changing request; now rejected at the RPC boundary, and the consuming
   `run_task_status_sync.rs` code self-heals instead of panicking as defense-in-depth for any
-  already-corrupted row. Reply-obligation "credit" matching also keyed only on `(agent_actor_id,
-  human_actor_id)`, ignoring which thread/conversation a message belonged to, so a reply in one
-  conversation could incorrectly close an unrelated open obligation in a different one; fixed with a
-  two-tier key (exact thread/conversation scope first, untagged-reply loose-pool fallback) so a reply
-  that declares a thread can never satisfy an obligation in a different one, while plain untagged
-  replies keep working as before. Other findings from the same review round are tracked in the Backend
-  Correctness `todo.md` item.
+  already-corrupted row. A caller could also set `payload.requires_user_visible_reply: false` on a
+  human-to-agent mailbox message to silently disable the system's reply-obligation tracking for it, since
+  normalization only backfilled the field when absent; the human-to-agent case is now forced regardless
+  of payload, derived from `from_actor_id` (not the payload's own spoofable `source_kind`) so it can't be
+  defeated by also faking the source. Reply-obligation "credit" matching also keyed only on
+  `(agent_actor_id, human_actor_id)`, ignoring which thread/conversation a message belonged to, so a
+  reply in one conversation could incorrectly close an unrelated open obligation in a different one;
+  fixed with a two-tier key (exact thread/conversation scope first, untagged-reply loose-pool fallback)
+  so a reply that declares a thread can never satisfy an obligation in a different one, while plain
+  untagged replies keep working as before. Other findings from the same review round are tracked in the
+  Backend Correctness `todo.md` item.
 
 Start with:
 
@@ -275,6 +279,7 @@ Start with:
 - `2026-08-17-goal-lease-cas-hardening.md`
 - `2026-08-17-permission-review-reviewer-target-consistency.md`
 - `2026-08-17-task-context-json-shape-validation.md`
+- `2026-08-17-reply-obligation-client-suppression-fix.md`
 - `2026-08-17-reply-obligation-thread-scoped-matching.md`
 
 ## Compaction Rules
