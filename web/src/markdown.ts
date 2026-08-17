@@ -225,9 +225,9 @@ export function renderMarkdown(input: string): string {
   }
 }
 
-let markdownRenderer: MarkdownIt | null = null;
+let markdownRenderer: InstanceType<typeof MarkdownIt> | null = null;
 
-function getMarkdownRenderer(): MarkdownIt {
+function getMarkdownRenderer(): InstanceType<typeof MarkdownIt> {
   if (markdownRenderer) return markdownRenderer;
   const renderer = createConfiguredMarkdownRenderer({
     highlight: (code: string, lang: string) => {
