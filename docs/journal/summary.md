@@ -236,8 +236,13 @@ Main shape:
   all three now guarded via the existing `ControlStore` idiom. Fixing this surfaced a real, separate bug:
   writing `team_tasks.updated_at` from a plain second-granularity `now()` let two same-second writes
   collide and silently defeat the new CAS guard; every writer of that column now writes
-  `MAX(updated_at + 1, now())` so it's strictly monotonic regardless of which function touches it. Five
-  other findings from the same review remain open in a new Agent Team Correctness `todo.md` item.
+  `MAX(updated_at + 1, now())` so it's strictly monotonic regardless of which function touches it. The
+  same review also found permission-review's "current reviewer" was resolved two different ways --
+  idle-aware at dispatch time, idle-*unaware* (always the first candidate) when re-derived at approval
+  time because the persisted target hadn't landed yet -- letting the wrong actor approve/deny a review
+  it never received; the approval-time fallback is now removed entirely (fail closed on no persisted
+  target) rather than trying to duplicate dispatch's idle-check machinery. Four other findings from the
+  same review remain open in a new Agent Team Correctness `todo.md` item.
 
 Start with:
 
@@ -258,6 +263,7 @@ Start with:
 - `2026-08-14-team-idea-propagation-judgment.md`
 - `2026-08-17-ci-web-node22-for-jsdom30.md`
 - `2026-08-17-goal-lease-cas-hardening.md`
+- `2026-08-17-permission-review-reviewer-target-consistency.md`
 
 ## Compaction Rules
 
