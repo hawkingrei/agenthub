@@ -23,6 +23,22 @@ const AGENT_EVENT_SOURCE: &str = "agent_events";
 const PER_AGENT_EVENT_SOURCE: &str = "per_agent_agent_events";
 const MAIN_AGENT_EVENT_INDEX_STREAM: &str = "agent_events:main";
 
+/// Parses a stored JSON column during index repair, warning (with enough context to locate the row)
+/// and indexing as an empty payload instead of aborting the whole repair pass on one corrupt row.
+fn parse_projection_json(source: &str, message_id: i64, field: &str, raw: &str) -> Value {
+    serde_json::from_str::<Value>(raw).unwrap_or_else(|err| {
+        tracing::warn!(
+            source,
+            message_id,
+            field,
+            "message index repair: failed to parse {} as JSON, indexing as empty payload: {}",
+            field,
+            err
+        );
+        Value::Null
+    })
+}
+
 fn classify_message_kind(payload: &Value) -> MessageKind {
     match payload
         .get("kind")
@@ -283,7 +299,12 @@ impl TeamManager {
                 let group_id: Option<String> = row.try_get("group_id").ok().flatten();
                 let team_id: String = row.get("team_id");
                 let payload_json: String = row.get("payload_json");
-                let payload = serde_json::from_str::<Value>(&payload_json).unwrap_or(Value::Null);
+                let payload = parse_projection_json(
+                    TEAM_CONVERSATION_MESSAGE_SOURCE,
+                    message_id,
+                    "payload_json",
+                    &payload_json,
+                );
                 let correlation_id: String = row.try_get("correlation_id").unwrap_or_default();
                 let normalized_correlation_id =
                     (!correlation_id.trim().is_empty()).then_some(correlation_id);
@@ -380,7 +401,12 @@ impl TeamManager {
                 let to_actor_id: String = row.get("to_actor_id");
                 let to_peer_id: String = row.get("to_peer_id");
                 let payload_json: String = row.get("payload_json");
-                let payload = serde_json::from_str::<Value>(&payload_json).unwrap_or(Value::Null);
+                let payload = parse_projection_json(
+                    TEAM_ACTOR_MESSAGE_SOURCE,
+                    message_id,
+                    "payload_json",
+                    &payload_json,
+                );
                 let group_id: Option<String> = row.try_get("group_id").ok().flatten();
                 let team_id: String = row.get("team_id");
                 let index_group_id = group_id.clone().unwrap_or(team_id);
@@ -495,9 +521,19 @@ impl TeamManager {
                 let run_id: String = row.get("run_id");
                 let event_type: String = row.get("event_type");
                 let payload_json: String = row.get("payload_json");
-                let payload = serde_json::from_str::<Value>(&payload_json).unwrap_or(Value::Null);
+                let payload = parse_projection_json(
+                    TEAM_RUN_EVENT_SOURCE,
+                    event_id,
+                    "payload_json",
+                    &payload_json,
+                );
                 let input_json: String = row.get("input_json");
-                let run_input = serde_json::from_str::<Value>(&input_json).unwrap_or(Value::Null);
+                let run_input = parse_projection_json(
+                    TEAM_RUN_EVENT_SOURCE,
+                    event_id,
+                    "input_json",
+                    &input_json,
+                );
                 let base_scope = MessageArchiveScopeFallback::from_run_input(&run_input);
                 let group_id: Option<String> = row.try_get("group_id").ok().flatten();
                 let team_id: String = row.get("team_id");
@@ -745,6 +781,28 @@ async fn fetch_agent_event_projection_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_projection_json_returns_parsed_value_for_valid_json() {
+        let parsed = parse_projection_json(
+            TEAM_ACTOR_MESSAGE_SOURCE,
+            42,
+            "payload_json",
+            r#"{"text":"hello"}"#,
+        );
+        assert_eq!(parsed, serde_json::json!({"text": "hello"}));
+    }
+
+    #[test]
+    fn parse_projection_json_indexes_as_null_instead_of_panicking_on_corrupt_json() {
+        let parsed = parse_projection_json(
+            TEAM_ACTOR_MESSAGE_SOURCE,
+            42,
+            "payload_json",
+            "{not valid json",
+        );
+        assert_eq!(parsed, Value::Null);
+    }
 
     #[test]
     fn classify_message_kind_uses_payload_hint() {
