@@ -60,7 +60,14 @@ fn compute_next_task_execution_context(
         return None;
     }
 
-    let mut next_context = current_context.clone();
+    // `context_json` is meant to always be a JSON object, and the write path validates that -- but this
+    // defends against any row that predates that validation (or reached this shape some other way)
+    // rather than panicking and taking down every other in-flight run-status sync with it.
+    let mut next_context = if current_context.is_object() {
+        current_context.clone()
+    } else {
+        serde_json::json!({})
+    };
     let next_attempt_number = current_context
         .pointer("/execution/attempt_number")
         .and_then(Value::as_i64)
@@ -69,7 +76,7 @@ fn compute_next_task_execution_context(
 
     let context_obj = next_context
         .as_object_mut()
-        .expect("team task context should always be a JSON object");
+        .expect("next_context was just constructed as a JSON object");
     let execution = context_obj
         .entry("execution".to_string())
         .or_insert_with(|| serde_json::json!({}));
@@ -163,8 +170,13 @@ pub(super) async fn sync_linked_task_status_tx(
     if !first {
         builder.push(", ");
     }
-    builder.push("updated_at = ");
+    // `MAX(updated_at + 1, ?)` keeps `team_tasks.updated_at` strictly monotonic per row across every
+    // writer (see `task_updates.rs::execute_prepared_task_update`, which relies on `updated_at` as an
+    // optimistic-concurrency token): a plain `now()` here could coincide with another writer's
+    // second-granularity timestamp and silently defeat that guard.
+    builder.push("updated_at = MAX(updated_at + 1, ");
     builder.push_bind(now);
+    builder.push(")");
     builder.push(" WHERE id = ");
     builder.push_bind(task_id);
     builder.push(" AND team_id = ");

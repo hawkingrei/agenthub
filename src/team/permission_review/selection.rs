@@ -69,19 +69,6 @@ pub(super) fn collect_team_permission_review_candidates(
     Ok(candidates)
 }
 
-pub(crate) fn resolve_team_permission_review_target(
-    spec: &Value,
-    requester_actor_id: &str,
-    requester_role: &str,
-) -> anyhow::Result<(String, &'static str)> {
-    let candidate =
-        collect_team_permission_review_candidates(spec, requester_actor_id, requester_role)?
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("team has no non-requester reviewer configured"))?;
-    Ok((candidate.actor_id, candidate.dispatch_status))
-}
-
 fn team_coordinator_member_id(spec: &Value) -> Option<&str> {
     let spec_obj = spec.as_object()?;
     let members = spec_obj.get("members")?.as_array()?;

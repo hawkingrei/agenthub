@@ -171,7 +171,12 @@ async fn claim_task_goal_in_tx(
         anyhow::bail!("member already has an active goal")
     }
 
-    sqlx::query(
+    // The `WHERE` on the conflict branch re-checks the same precondition validated above, but against
+    // whatever row actually exists at write time rather than the snapshot read at the top of this
+    // function -- SQLite skips the DO UPDATE (and reports 0 rows affected) when it evaluates false, so a
+    // second transaction that read the same stale "no active lease" snapshot cannot silently clobber a
+    // lease a concurrent transaction already claimed in between.
+    let claimed = sqlx::query(
         r#"
         INSERT INTO team_goal_leases (
             task_id, team_id, owner_member_id, lease_generation, started_at, expires_at,
@@ -185,6 +190,8 @@ async fn claim_task_goal_in_tx(
             expires_at = excluded.expires_at,
             released_at = NULL,
             release_reason = NULL
+        WHERE (team_goal_leases.released_at IS NOT NULL OR team_goal_leases.expires_at <= ?5)
+          AND team_goal_leases.lease_generation < ?4
         "#,
     )
     .bind(&task.id)
@@ -195,6 +202,9 @@ async fn claim_task_goal_in_tx(
     .bind(expires_at)
     .execute(&mut **tx)
     .await?;
+    if claimed.rows_affected() != 1 {
+        anyhow::bail!("task already has an active goal")
+    }
     append_audit_event(
         tx,
         &task.team_id,
@@ -218,10 +228,16 @@ async fn claim_task_goal_in_tx(
     })
 }
 
+/// Release the goal lease active for `task_id`. When `expected_generation` is `Some`, only that exact
+/// generation is released -- if the lease has since been re-claimed to a newer generation (or released
+/// already), this is a no-op (`Ok(false)`) rather than releasing whatever happens to be active by the
+/// time this statement runs, so a completion decision made against an observed generation can't
+/// terminate a lease it never actually observed.
 pub(super) async fn release_task_goal_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     team_id: &str,
     task_id: &str,
+    expected_generation: Option<i64>,
     reason: &str,
     now: i64,
 ) -> anyhow::Result<bool> {
@@ -232,14 +248,29 @@ pub(super) async fn release_task_goal_in_tx(
     .bind(task_id)
     .execute(&mut **tx)
     .await?;
-    let result = sqlx::query(
-        "UPDATE team_goal_leases SET released_at = ?1, release_reason = ?2 WHERE task_id = ?3 AND released_at IS NULL",
-    )
-    .bind(now)
-    .bind(reason)
-    .bind(task_id)
-    .execute(&mut **tx)
-    .await?;
+    let result = match expected_generation {
+        Some(generation) => {
+            sqlx::query(
+                "UPDATE team_goal_leases SET released_at = ?1, release_reason = ?2 WHERE task_id = ?3 AND released_at IS NULL AND lease_generation = ?4",
+            )
+            .bind(now)
+            .bind(reason)
+            .bind(task_id)
+            .bind(generation)
+            .execute(&mut **tx)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                "UPDATE team_goal_leases SET released_at = ?1, release_reason = ?2 WHERE task_id = ?3 AND released_at IS NULL",
+            )
+            .bind(now)
+            .bind(reason)
+            .bind(task_id)
+            .execute(&mut **tx)
+            .await?
+        }
+    };
     if result.rows_affected() == 1 {
         append_audit_event(
             tx,
@@ -308,10 +339,14 @@ impl TeamManager {
             .execute(&mut *tx)
             .await?;
         }
+        // `MAX(updated_at + 1, ?2)` keeps `team_tasks.updated_at` strictly monotonic per row across every
+        // writer (see `task_updates.rs::execute_prepared_task_update`, which relies on `updated_at` as an
+        // optimistic-concurrency token): a plain `now()` here could coincide with another writer's
+        // second-granularity timestamp and silently defeat that guard.
         let updated = sqlx::query(
             r#"
             UPDATE team_tasks
-            SET assigned_member_id = ?1, updated_at = ?2
+            SET assigned_member_id = ?1, updated_at = MAX(updated_at + 1, ?2)
             WHERE id = ?3
               AND status = 'in_progress'
               AND assigned_member_id IS ?4
@@ -325,7 +360,21 @@ impl TeamManager {
         .await?;
         agenthub_db::control_store::require_guarded_write_applied(updated.rows_affected())
             .map_err(|_| anyhow::anyhow!("task changed during handoff"))?;
-        release_task_goal_in_tx(&mut tx, &task.team_id, task_id, "handoff", now).await?;
+        let active_lease_generation = sqlx::query_scalar::<_, i64>(
+            "SELECT lease_generation FROM team_goal_leases WHERE task_id = ?1 AND released_at IS NULL",
+        )
+        .bind(task_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        release_task_goal_in_tx(
+            &mut tx,
+            &task.team_id,
+            task_id,
+            active_lease_generation,
+            "handoff",
+            now,
+        )
+        .await?;
         append_audit_event(
             &mut tx,
             &task.team_id,
@@ -375,7 +424,11 @@ impl TeamManager {
             }
             None => agenthub_db::control_store::next_fencing_generation(None),
         };
-        sqlx::query(
+        // See `claim_task_goal_in_tx`'s comment: the conflict-branch `WHERE` re-checks the same
+        // precondition against the row as it actually is at write time, so a second transaction that
+        // read the same stale "no active claim" snapshot cannot silently clobber a claim a concurrent
+        // transaction already took in between.
+        let claimed = sqlx::query(
             r#"
             INSERT INTO team_execution_claims (
                 entity_kind, entity_id, team_id, owner_member_id, lease_generation, claimed_at, expires_at, released_at
@@ -384,6 +437,8 @@ impl TeamManager {
                 team_id = excluded.team_id, owner_member_id = excluded.owner_member_id,
                 lease_generation = excluded.lease_generation, claimed_at = excluded.claimed_at,
                 expires_at = excluded.expires_at, released_at = NULL
+            WHERE (team_execution_claims.released_at IS NOT NULL OR team_execution_claims.expires_at <= ?6)
+              AND team_execution_claims.lease_generation < ?5
             "#,
         )
         .bind(entity_kind)
@@ -395,6 +450,9 @@ impl TeamManager {
         .bind(expires_at)
         .execute(&mut *tx)
         .await?;
+        if claimed.rows_affected() != 1 {
+            anyhow::bail!("execution entity already has an active claim")
+        }
         append_audit_event(
             &mut tx,
             team_id,

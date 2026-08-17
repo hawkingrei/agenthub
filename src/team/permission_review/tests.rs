@@ -71,11 +71,14 @@ fn worker_request_skips_coordinator_even_if_coordinator_member_role_is_misconfig
         ]
     });
 
-    let (reviewer, dispatch_status) =
-        resolve_team_permission_review_target(&spec, "worker", "worker").expect("resolve reviewer");
+    let candidate = collect_team_permission_review_candidates(&spec, "worker", "worker")
+        .expect("collect reviewer candidates")
+        .into_iter()
+        .next()
+        .expect("has a reviewer candidate");
 
-    assert_eq!(reviewer, "reviewer");
-    assert_eq!(dispatch_status, "worker_dispatched");
+    assert_eq!(candidate.actor_id, "reviewer");
+    assert_eq!(candidate.dispatch_status, "worker_dispatched");
 }
 
 #[test]
@@ -89,12 +92,14 @@ fn requester_role_is_trimmed_before_review_target_resolution() {
         ]
     });
 
-    let (reviewer, dispatch_status) =
-        resolve_team_permission_review_target(&spec, "planner", " coordinator ")
-            .expect("resolve reviewer");
+    let candidate = collect_team_permission_review_candidates(&spec, "planner", " coordinator ")
+        .expect("collect reviewer candidates")
+        .into_iter()
+        .next()
+        .expect("has a reviewer candidate");
 
-    assert_eq!(reviewer, "reviewer");
-    assert_eq!(dispatch_status, "worker_dispatched");
+    assert_eq!(candidate.actor_id, "reviewer");
+    assert_eq!(candidate.dispatch_status, "worker_dispatched");
 }
 
 #[test]
@@ -146,12 +151,14 @@ fn worker_request_uses_coordinator_when_no_peer_worker_exists() {
         ]
     });
 
-    let (reviewer, dispatch_status) =
-        resolve_team_permission_review_target(&spec, "worker", "worker")
-            .expect("resolve coordinator fallback reviewer");
+    let candidate = collect_team_permission_review_candidates(&spec, "worker", "worker")
+        .expect("collect coordinator fallback candidates")
+        .into_iter()
+        .next()
+        .expect("has a reviewer candidate");
 
-    assert_eq!(reviewer, "coordinator");
-    assert_eq!(dispatch_status, "coordinator_dispatched");
+    assert_eq!(candidate.actor_id, "coordinator");
+    assert_eq!(candidate.dispatch_status, "coordinator_dispatched");
 }
 
 #[test]
@@ -164,7 +171,7 @@ fn coordinator_request_errors_without_subordinate_reviewer() {
         ]
     });
 
-    let err = resolve_team_permission_review_target(&spec, "coordinator", "coordinator")
+    let err = collect_team_permission_review_candidates(&spec, "coordinator", "coordinator")
         .expect_err("coordinator should need a subordinate reviewer");
 
     assert!(
