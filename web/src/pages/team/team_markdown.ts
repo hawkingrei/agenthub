@@ -18,7 +18,7 @@ export const TEAM_THREAD_RICH_TEXT_BASE_CLASS = SHARED_THREAD_RICH_TEXT_BASE_CLA
 const markdownHtmlCache = new Map<string, string>();
 const markdownHtmlCacheSize = new Map<string, number>();
 let markdownCacheBytes = 0;
-let markdownRenderer: MarkdownIt | null = null;
+let markdownRenderer: InstanceType<typeof MarkdownIt> | null = null;
 
 export function renderTeamMarkdownCached(text: string): string {
   const normalized = normalizeSkillBlocksForMarkdown(text);
@@ -48,7 +48,7 @@ function renderTeamMarkdown(input: string): string {
   }
 }
 
-function getMarkdownRenderer(): MarkdownIt {
+function getMarkdownRenderer(): InstanceType<typeof MarkdownIt> {
   if (markdownRenderer) return markdownRenderer;
   const renderer = createConfiguredMarkdownRenderer({
     highlight: (code: string, lang: string) => {

@@ -9,7 +9,7 @@ export function createConfiguredMarkdownRenderer({
 }: {
   highlight: HighlightRenderer;
   sanitizeHref: HrefSanitizer;
-}): MarkdownIt {
+}): InstanceType<typeof MarkdownIt> {
   const renderer = new MarkdownIt({
     html: false,
     linkify: false,

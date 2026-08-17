@@ -23,7 +23,7 @@
     "@mantine/hooks": "9.5.1",
     "bootstrap-icons": "^1.11.3",
     "highlight.js": "^11.11.1",
-    "markdown-it": "^14.3.0",
+    "markdown-it": "^15.0.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.8",
     "uuidv7": "^1.0.2"
