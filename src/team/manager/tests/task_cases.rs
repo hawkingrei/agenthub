@@ -833,6 +833,75 @@ async fn update_task_context_rejects_execution_plan_with_unknown_member() {
 }
 
 #[tokio::test]
+async fn create_run_does_not_panic_when_linked_task_context_is_not_an_object() {
+    // The internal gRPC handler now rejects a non-object `context_json` Replace patch outright (see
+    // `internal_grpc_team_task_update_rejects_non_object_context_json`), but a row that predates that
+    // validation could still have a non-object context stored. `compute_next_task_execution_context`
+    // used to panic on such a row via `.as_object_mut().expect(...)` the moment its task's run
+    // transitioned to `in_progress` -- crashing an otherwise-unrelated `create_run` call. It must now
+    // self-heal instead.
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "non-object-context-team".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Task with corrupted context",
+            "coordinator",
+            json!({"repo":"agenthub"}),
+            "group_chat",
+            Some("corrupted-context"),
+        )
+        .await
+        .expect("create task");
+
+    // Bypass the RPC-layer object-shape validation (the manager API itself has no such guard) to
+    // reproduce a row that was already corrupted before that validation existed.
+    manager
+        .update_task_with_context(
+            &task.id,
+            None,
+            TeamTaskAssignmentUpdate::Unchanged,
+            Some(TeamTaskContextPatch::Replace(json!([
+                "not", "an", "object"
+            ]))),
+        )
+        .await
+        .expect("manager API does not itself enforce the object shape");
+    let corrupted = manager.get_task(&task.id).await.expect("reload task");
+    assert!(
+        !corrupted.context.is_object(),
+        "context must actually be non-object for this test to be meaningful"
+    );
+
+    let run = manager
+        .create_run(&team.id, None, json!({"task_id": task.id}))
+        .await
+        .expect("create run linked to a task with a non-object context must not panic");
+
+    let synced_task = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(synced_task.status, TeamTaskStatus::InProgress);
+    assert_eq!(
+        synced_task.context.pointer("/execution/attempt_number"),
+        Some(&json!(1)),
+        "the self-healed context should still track the attempt number"
+    );
+    assert_eq!(run.status, TeamRunStatus::Submitted);
+}
+
+#[tokio::test]
 async fn list_tasks_with_query_filters_by_run_topic_and_owner() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

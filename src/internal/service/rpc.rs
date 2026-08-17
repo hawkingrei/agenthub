@@ -579,6 +579,13 @@ impl TeamInternalControl for TeamInternalControlService {
             .as_deref()
             .map(|raw| parse_json_required(raw, "context_json"))
             .transpose()?;
+        if let Some(context_json) = context_json.as_ref()
+            && !context_json.is_object()
+        {
+            return Err(Status::invalid_argument(
+                "context_json must be a JSON object",
+            ));
+        }
         let context_merge_json = payload
             .context_merge_json
             .as_deref()
