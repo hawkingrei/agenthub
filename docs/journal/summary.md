@@ -228,13 +228,26 @@ Main shape:
   `webidl.util.markAsUncloneable is not a function` -- jsdom 30 explicitly requires Node >=22, and the
   `Web`/`Web E2E`/`Web E2E Mobile` jobs were still pinned to Node 20 (`userdocs.yml`'s unrelated
   Docusaurus build stays on Node 20, out of scope). Bumped those three jobs to Node 22.
-- A code-only Team-subsystem review found reply-obligation "credit" matching keyed only on
-  `(agent_actor_id, human_actor_id)`, ignoring which thread/conversation a message belonged to; a reply
-  in one conversation could incorrectly close an unrelated open obligation in a different one. Fixed with
-  a two-tier key (exact thread/conversation scope first, untagged-reply loose-pool fallback) so a reply
-  that declares a thread can never satisfy an obligation in a different one, while plain untagged replies
-  keep working as before. Other findings from the same review round are tracked in the Backend
-  Correctness `todo.md` item.
+- A code-only review of the Team subsystem (Task/Run/Step lifecycle, goal-lease/fork concurrency,
+  mailbox, remote relay, permission review, actor protocol) found `task_updates.rs`'s `team_tasks`
+  writes had no optimistic-concurrency guard, `release_task_goal_in_tx` released whatever lease was
+  active rather than the specific generation observed, and `claim_task_goal_in_tx`/
+  `claim_execution_entity` decided claimability in Rust from a stale read but wrote unconditionally --
+  all three now guarded via the existing `ControlStore` idiom. Fixing this surfaced a real, separate bug:
+  writing `team_tasks.updated_at` from a plain second-granularity `now()` let two same-second writes
+  collide and silently defeat the new CAS guard; every writer of that column now writes
+  `MAX(updated_at + 1, now())` so it's strictly monotonic regardless of which function touches it. The
+  same review also found permission-review's "current reviewer" was resolved two different ways --
+  idle-aware at dispatch time, idle-*unaware* (always the first candidate) when re-derived at approval
+  time because the persisted target hadn't landed yet -- letting the wrong actor approve/deny a review
+  it never received; the approval-time fallback is now removed entirely (fail closed on no persisted
+  target) rather than trying to duplicate dispatch's idle-check machinery. Reply-obligation "credit"
+  matching also keyed only on `(agent_actor_id, human_actor_id)`, ignoring which thread/conversation a
+  message belonged to, so a reply in one conversation could incorrectly close an unrelated open
+  obligation in a different one; fixed with a two-tier key (exact thread/conversation scope first,
+  untagged-reply loose-pool fallback) so a reply that declares a thread can never satisfy an obligation
+  in a different one, while plain untagged replies keep working as before. Other findings from the same
+  review round are tracked in the Backend Correctness `todo.md` item.
 
 Start with:
 
@@ -254,6 +267,8 @@ Start with:
 - `2026-08-17-pwa-icon-borrowed-slock-mark-fix.md`
 - `2026-08-14-team-idea-propagation-judgment.md`
 - `2026-08-17-ci-web-node22-for-jsdom30.md`
+- `2026-08-17-goal-lease-cas-hardening.md`
+- `2026-08-17-permission-review-reviewer-target-consistency.md`
 - `2026-08-17-reply-obligation-thread-scoped-matching.md`
 
 ## Compaction Rules
