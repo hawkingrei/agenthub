@@ -279,6 +279,7 @@ impl std::ops::AddAssign for HistoryRepairStats {
     }
 }
 
+#[cfg(test)]
 fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairStats {
     let function_call_ids = items
         .iter()
