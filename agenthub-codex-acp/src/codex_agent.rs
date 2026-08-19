@@ -1143,7 +1143,8 @@ impl CodexAgent {
 mod tests {
     use super::{
         HistoryRepairStats, codex_mcp_server_config, persist_repaired_initial_history,
-        repair_initial_history, repair_response_item_history,
+        repair_initial_history, repair_response_item_envelope_history,
+        repair_response_item_history,
     };
     use agent_client_protocol::schema::v1::{
         EnvVariable, HttpHeader, McpServer, McpServerHttp, McpServerSse, McpServerStdio,
@@ -1151,7 +1152,10 @@ mod tests {
     use codex_config::types::McpServerTransportConfig;
     use codex_core::RolloutRecorder;
     use codex_core::config::ConfigBuilder;
-    use codex_history::{CompactedItem, InitialHistory, ResumedHistory, RolloutItem};
+    use codex_history::{
+        CodexHarnessMetadata, CompactedItem, InitialHistory, ResponseItemEnvelope, ResumedHistory,
+        RolloutItem,
+    };
     use codex_protocol::{
         ThreadId,
         models::{
@@ -1436,6 +1440,59 @@ mod tests {
             ResponseItem::CustomToolCallOutput { call_id, output, .. }
                 if call_id == "call-2" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
         ));
+    }
+
+    #[test]
+    fn repair_response_item_envelope_history_drops_orphan_outputs_and_preserves_metadata() {
+        let kept_metadata = Some(CodexHarnessMetadata {
+            client_authored: true,
+        });
+        let mut history = vec![
+            ResponseItemEnvelope {
+                item: ResponseItem::CustomToolCallOutput {
+                    id: None,
+                    call_id: "missing".to_string(),
+                    name: None,
+                    output: FunctionCallOutputPayload::from_text("ok".to_string()),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+                metadata: Some(CodexHarnessMetadata {
+                    client_authored: false,
+                }),
+            },
+            ResponseItemEnvelope {
+                item: ResponseItem::CustomToolCall {
+                    id: None,
+                    status: Some("completed".to_string()),
+                    call_id: "call-2".to_string(),
+                    name: "actor_ack".to_string(),
+                    namespace: None,
+                    input: "{}".to_string(),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+                metadata: kept_metadata.clone(),
+            },
+        ];
+
+        let repaired = repair_response_item_envelope_history(&mut history);
+        assert_eq!(
+            repaired,
+            HistoryRepairStats {
+                inserted_custom_tool_call_outputs: 1,
+                dropped_orphan_custom_tool_call_outputs: 1,
+                ..HistoryRepairStats::default()
+            }
+        );
+        assert_eq!(history.len(), 2);
+        // The retained call's own metadata survives the repair pass...
+        assert_eq!(history[0].metadata, kept_metadata);
+        assert!(matches!(
+            &history[1].item,
+            ResponseItem::CustomToolCallOutput { call_id, output, .. }
+                if call_id == "call-2" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+        ));
+        // ...while the synthesized output for the aborted call carries no metadata of its own.
+        assert_eq!(history[1].metadata, None);
     }
 
     #[test]
