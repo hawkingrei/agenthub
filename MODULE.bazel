@@ -12,7 +12,7 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
 git_repository(
     name = "codex_src",
     # Security-patched Codex 0.147 commit shared with the Cargo codex-* dependencies.
-    commit = "6ca61345ceb09d76edc3db8c4eb55df18a10888a",
+    commit = "8a877a796039bba36b5c9bbba76e134660e45d03",
     remote = "https://github.com/hawkingrei/codex",
 )
 

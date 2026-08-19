@@ -25,6 +25,7 @@ use codex_core::{
     config::{Config, set_project_trust_level},
     review_prompts::user_facing_hint,
 };
+use codex_history::RolloutItem;
 use codex_login::AuthManager;
 use codex_models_manager::manager::{ModelsManager, RefreshStrategy};
 use codex_protocol::{
@@ -48,8 +49,8 @@ use codex_protocol::{
         ModelRerouteEvent, NetworkApprovalContext, NetworkPolicyRuleAction, Op,
         PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus, PatchApplyUpdatedEvent,
         ReasoningContentDeltaEvent, ReasoningRawContentDeltaEvent, ReviewDecision,
-        ReviewOutputEvent, ReviewRequest, ReviewTarget, RolloutItem, SandboxPolicy,
-        StreamErrorEvent, TerminalInteractionEvent, ThreadGoalStatus, ThreadGoalUpdatedEvent,
+        ReviewOutputEvent, ReviewRequest, ReviewTarget, SandboxPolicy, StreamErrorEvent,
+        TerminalInteractionEvent, ThreadGoalStatus, ThreadGoalUpdatedEvent,
         ThreadSettingsOverrides, TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent,
         TurnStartedEvent, UserMessageEvent, ViewImageToolCallEvent, WarningEvent,
         WebSearchBeginEvent, WebSearchEndEvent,
@@ -62,6 +63,7 @@ use codex_protocol::{
         RequestUserInputResponse,
     },
     review_format::format_review_findings_block,
+    turn_input::{TurnInput, TurnInputMode, TurnInputRequest, TurnStartOptions},
     user_input::UserInput,
 };
 use codex_shell_command::parse_command::parse_command;
@@ -1328,7 +1330,8 @@ impl PromptState {
             | EventMsg::PlanDelta(..)
             | EventMsg::EnvironmentConnected(..)
             | EventMsg::EnvironmentDisconnected(..)
-            | EventMsg::RawResponseCompleted(..) => {}
+            | EventMsg::RawResponseCompleted(..)
+            | EventMsg::ThreadQueueChanged(..) => {}
             EventMsg::GuardianAssessment(..) => {}
         }
     }
@@ -2453,6 +2456,9 @@ fn build_exec_permission_options(
                 decision: ReviewDecision::denied("denied"),
             }),
             ReviewDecision::TimedOut => None,
+            // MCP approvals are handled through elicitations, so this decision should never
+            // appear as an exec-approval UI option.
+            ReviewDecision::ApprovedMcpPolicyAmendment => None,
             ReviewDecision::Abort => Some(ExecPermissionOption {
                 option_id: "denied",
                 permission_option: PermissionOption::new(
@@ -3450,16 +3456,10 @@ impl<A: Auth> ThreadActor<A> {
                 "compact" => op = Op::Compact,
                 "undo" => op = Op::ThreadRollback { num_turns: 1 },
                 "init" => {
-                    op = Op::UserInput {
-                        items: vec![UserInput::Text {
-                            text: INIT_COMMAND_PROMPT.into(),
-                            text_elements: vec![],
-                        }],
-                        final_output_json_schema: None,
-                        responsesapi_client_metadata: None,
-                        additional_context: Default::default(),
-                        thread_settings: ThreadSettingsOverrides::default(),
-                    }
+                    op = build_user_input_op(vec![UserInput::Text {
+                        text: INIT_COMMAND_PROMPT.into(),
+                        text_elements: vec![],
+                    }])
                 }
                 "review" => {
                     let instructions = rest.trim();
@@ -3505,24 +3505,10 @@ impl<A: Auth> ThreadActor<A> {
                     self.auth.logout().await?;
                     return Err(Error::auth_required());
                 }
-                _ => {
-                    op = Op::UserInput {
-                        items,
-                        final_output_json_schema: None,
-                        responsesapi_client_metadata: None,
-                        additional_context: Default::default(),
-                        thread_settings: ThreadSettingsOverrides::default(),
-                    }
-                }
+                _ => op = build_user_input_op(items),
             }
         } else {
-            op = Op::UserInput {
-                items,
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: ThreadSettingsOverrides::default(),
-            }
+            op = build_user_input_op(items)
         }
 
         let submission_seed = Uuid::new_v4().to_string();
@@ -3536,7 +3522,7 @@ impl<A: Auth> ThreadActor<A> {
         );
         let submission_id = self
             .thread
-            .submit(submission_seed, op.clone())
+            .submit(submission_seed, op)
             .instrument(submit_span)
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
@@ -4377,6 +4363,32 @@ fn prompt_blocks_to_answer_strings(prompt: &[ContentBlock]) -> Result<Vec<String
     Ok(answers)
 }
 
+/// Builds a fire-and-forget user-input turn submission op.
+///
+/// Upstream replaced the old flat `Op::UserInput` with `Op::TurnInput`, which routes through
+/// Core's start-or-steer turn machinery and reports its outcome via an embedded oneshot reply
+/// channel. Callers here never awaited a result from plain user input before (outcomes were
+/// always observed through the subsequent event stream instead), so the receiver is dropped
+/// unused, preserving the original fire-and-forget behavior exactly.
+fn build_user_input_op(items: Vec<UserInput>) -> Op {
+    let (reply, _reply_rx) = oneshot::channel();
+    Op::TurnInput {
+        request: Box::new(TurnInputRequest {
+            input: TurnInput::UserInput {
+                content: items,
+                client_id: None,
+            },
+            thread_settings: ThreadSettingsOverrides::default(),
+            start: TurnStartOptions::default(),
+            additional_context: Default::default(),
+            responsesapi_client_metadata: None,
+            trace: None,
+        }),
+        mode: TurnInputMode::StartOrSteer,
+        reply,
+    }
+}
+
 fn build_prompt_items(prompt: Vec<ContentBlock>) -> Vec<UserInput> {
     let trusted_root = managed_skills_root(None)
         .ok()
@@ -4909,7 +4921,7 @@ mod tests {
             }) if text == "Compact task completed"
         ));
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(ops.as_slice(), &[Op::Compact]);
+        assert!(matches!(ops.as_slice(), [Op::Compact]));
 
         Ok(())
     }
@@ -4959,7 +4971,10 @@ mod tests {
         ));
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(ops.as_slice(), &[Op::ThreadRollback { num_turns: 1 }]);
+        assert!(matches!(
+            ops.as_slice(),
+            [Op::ThreadRollback { num_turns: 1 }]
+        ));
 
         Ok(())
     }
@@ -4999,18 +5014,22 @@ mod tests {
             "notifications don't match {notifications:?}"
         );
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::UserInput {
-                items: vec![UserInput::Text {
-                    text: INIT_COMMAND_PROMPT.to_string(),
-                    text_elements: vec![]
-                }],
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: ThreadSettingsOverrides::default(),
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::TurnInput {
+                    request,
+                    mode: TurnInputMode::StartOrSteer,
+                    ..
+                }] if matches!(
+                    &request.input,
+                    TurnInput::UserInput { content, client_id: None }
+                        if content == &vec![UserInput::Text {
+                            text: INIT_COMMAND_PROMPT.to_string(),
+                            text_elements: vec![]
+                        }]
+                )
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5054,14 +5073,15 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::Review {
-                review_request: ReviewRequest {
-                    user_facing_hint: Some(user_facing_hint(&ReviewTarget::UncommittedChanges)),
-                    target: ReviewTarget::UncommittedChanges,
-                }
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::Review { review_request }]
+                    if review_request == &ReviewRequest {
+                        user_facing_hint: Some(user_facing_hint(&ReviewTarget::UncommittedChanges)),
+                        target: ReviewTarget::UncommittedChanges,
+                    }
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5109,18 +5129,19 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::Review {
-                review_request: ReviewRequest {
-                    user_facing_hint: Some(user_facing_hint(&ReviewTarget::Custom {
-                        instructions: instructions.to_owned()
-                    })),
-                    target: ReviewTarget::Custom {
-                        instructions: instructions.to_owned()
-                    },
-                }
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::Review { review_request }]
+                    if review_request == &ReviewRequest {
+                        user_facing_hint: Some(user_facing_hint(&ReviewTarget::Custom {
+                            instructions: instructions.to_owned()
+                        })),
+                        target: ReviewTarget::Custom {
+                            instructions: instructions.to_owned()
+                        },
+                    }
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5164,20 +5185,21 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::Review {
-                review_request: ReviewRequest {
-                    user_facing_hint: Some(user_facing_hint(&ReviewTarget::Commit {
-                        sha: "123456".to_owned(),
-                        title: None
-                    })),
-                    target: ReviewTarget::Commit {
-                        sha: "123456".to_owned(),
-                        title: None
-                    },
-                }
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::Review { review_request }]
+                    if review_request == &ReviewRequest {
+                        user_facing_hint: Some(user_facing_hint(&ReviewTarget::Commit {
+                            sha: "123456".to_owned(),
+                            title: None
+                        })),
+                        target: ReviewTarget::Commit {
+                            sha: "123456".to_owned(),
+                            title: None
+                        },
+                    }
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5221,18 +5243,19 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::Review {
-                review_request: ReviewRequest {
-                    user_facing_hint: Some(user_facing_hint(&ReviewTarget::BaseBranch {
-                        branch: "feature".to_owned()
-                    })),
-                    target: ReviewTarget::BaseBranch {
-                        branch: "feature".to_owned()
-                    },
-                }
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::Review { review_request }]
+                    if review_request == &ReviewRequest {
+                        user_facing_hint: Some(user_facing_hint(&ReviewTarget::BaseBranch {
+                            branch: "feature".to_owned()
+                        })),
+                        target: ReviewTarget::BaseBranch {
+                            branch: "feature".to_owned()
+                        },
+                    }
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5276,18 +5299,22 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::UserInput {
-                items: vec![UserInput::Text {
-                    text: "/custom foo".into(),
-                    text_elements: vec![]
-                }],
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: ThreadSettingsOverrides::default(),
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::TurnInput {
+                    request,
+                    mode: TurnInputMode::StartOrSteer,
+                    ..
+                }] if matches!(
+                    &request.input,
+                    TurnInput::UserInput { content, client_id: None }
+                        if content == &vec![UserInput::Text {
+                            text: "/custom foo".into(),
+                            text_elements: vec![]
+                        }]
+                )
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5343,8 +5370,8 @@ mod tests {
 
                 let ops = thread.ops.lock().unwrap();
                 assert_eq!(ops.len(), 2, "ops don't match {ops:?}");
-                assert!(matches!(ops[0], Op::UserInput { .. }));
-                assert!(matches!(ops[1], Op::UserInput { .. }));
+                assert!(matches!(ops[0], Op::TurnInput { .. }));
+                assert!(matches!(ops[1], Op::TurnInput { .. }));
 
                 drop(message_tx);
                 anyhow::Ok(())
@@ -5383,6 +5410,7 @@ mod tests {
                             message: "resumed output".to_string(),
                             phase: None,
                             memory_citation: None,
+                            delivery: None,
                         }),
                     })
                     .await;
@@ -5671,7 +5699,7 @@ mod tests {
                 {
                     let ops = thread.ops.lock().unwrap();
                     assert_eq!(ops.len(), 2, "ops don't match {ops:?}");
-                    assert!(matches!(ops[0], Op::UserInput { .. }));
+                    assert!(matches!(ops[0], Op::TurnInput { .. }));
                     match &ops[1] {
                         Op::UserInputAnswer { id, response } => {
                             assert_eq!(id, "shared-submission");
@@ -5837,6 +5865,75 @@ mod tests {
         }
     }
 
+    /// Rebuilds an owned copy of `op` for test-recording purposes.
+    ///
+    /// `Op` no longer derives `Clone` because `Op::TurnInput` embeds a `oneshot::Sender` reply
+    /// channel. Every other variant is still structurally cloneable, so this reconstructs each
+    /// one field-by-field; `TurnInput`'s reply channel is rebuilt fresh and its receiver is
+    /// dropped unused, since recorded ops are only ever inspected, never resubmitted.
+    fn record_op(op: &Op) -> Op {
+        match op {
+            Op::TurnInput { request, mode, .. } => {
+                let (reply, _reply_rx) = oneshot::channel();
+                Op::TurnInput {
+                    request: request.clone(),
+                    mode: mode.clone(),
+                    reply,
+                }
+            }
+            Op::Compact => Op::Compact,
+            Op::Interrupt => Op::Interrupt,
+            Op::Shutdown => Op::Shutdown,
+            Op::ThreadRollback { num_turns } => Op::ThreadRollback {
+                num_turns: *num_turns,
+            },
+            Op::ThreadSettings { thread_settings } => Op::ThreadSettings {
+                thread_settings: thread_settings.clone(),
+            },
+            Op::Review { review_request } => Op::Review {
+                review_request: review_request.clone(),
+            },
+            Op::ExecApproval {
+                id,
+                turn_id,
+                decision,
+            } => Op::ExecApproval {
+                id: id.clone(),
+                turn_id: turn_id.clone(),
+                decision: decision.clone(),
+            },
+            Op::PatchApproval { id, decision } => Op::PatchApproval {
+                id: id.clone(),
+                decision: decision.clone(),
+            },
+            Op::ResolveElicitation {
+                server_name,
+                request_id,
+                decision,
+                content,
+                meta,
+            } => Op::ResolveElicitation {
+                server_name: server_name.clone(),
+                request_id: request_id.clone(),
+                decision: *decision,
+                content: content.clone(),
+                meta: meta.clone(),
+            },
+            Op::UserInputAnswer { id, response } => Op::UserInputAnswer {
+                id: id.clone(),
+                response: response.clone(),
+            },
+            Op::RequestPermissionsResponse { id, response } => Op::RequestPermissionsResponse {
+                id: id.clone(),
+                response: response.clone(),
+            },
+            other => unimplemented!(
+                "record_op: unhandled Op variant in test mock: {}",
+                other.kind()
+            ),
+        }
+    }
+
     #[async_trait::async_trait]
     impl CodexThreadImpl for StubCodexThread {
         async fn submit(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
@@ -5848,10 +5945,14 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(submission_id.clone());
-            self.ops.lock().unwrap().push(op.clone());
+            self.ops.lock().unwrap().push(record_op(&op));
 
             match op {
-                Op::UserInput { items, .. } => {
+                Op::TurnInput { request, .. } => {
+                    let TurnInputRequest { input, .. } = *request;
+                    let TurnInput::UserInput { content: items, .. } = input else {
+                        unimplemented!("StubCodexThread only handles TurnInput::UserInput");
+                    };
                     *self.active_prompt_id.lock().unwrap() = Some(submission_id.clone());
                     let prompt = items
                         .into_iter()
@@ -6016,6 +6117,7 @@ mod tests {
                                     message: prompt,
                                     phase: None,
                                     memory_citation: None,
+                                    delivery: None,
                                 }),
                             })
                             .unwrap();
@@ -6051,6 +6153,7 @@ mod tests {
                                 message: "Compact task completed".to_string(),
                                 phase: None,
                                 memory_citation: None,
+                                delivery: None,
                             }),
                         })
                         .unwrap();
@@ -6071,6 +6174,7 @@ mod tests {
                                 message: "Undo in progress...".to_string(),
                                 phase: None,
                                 memory_citation: None,
+                                delivery: None,
                             }),
                         })
                         .unwrap();
@@ -6082,6 +6186,7 @@ mod tests {
                                 message: "Undo completed.".to_string(),
                                 phase: None,
                                 memory_citation: None,
+                                delivery: None,
                             }),
                         })
                         .unwrap();
@@ -7184,6 +7289,7 @@ mod tests {
                             message: "still flowing".to_string(),
                             phase: None,
                             memory_citation: None,
+                            delivery: None,
                         }),
                     )
                     .await;

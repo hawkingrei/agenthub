@@ -55,6 +55,7 @@ use codex_protocol::request_permissions::{
 use codex_protocol::request_user_input::{
     RequestUserInputEvent, RequestUserInputQuestion, RequestUserInputResponse,
 };
+use codex_protocol::turn_input::TurnInput;
 use codex_shell_command::parse_command::parse_command;
 use tokio::sync::Mutex;
 use tracing::warn;
@@ -328,16 +329,14 @@ impl AppServerCodexThread {
         op: &Op,
     ) -> Result<SteerFollowUpAction, CodexErr> {
         let (items, output_schema, responsesapi_client_metadata) = match op {
-            Op::UserInput {
-                items,
-                final_output_json_schema,
-                responsesapi_client_metadata,
-                ..
-            } => (
-                items.clone(),
-                final_output_json_schema.clone(),
-                responsesapi_client_metadata.clone(),
-            ),
+            Op::TurnInput { request, .. } => match &request.input {
+                TurnInput::UserInput { content, .. } => (
+                    content.clone(),
+                    request.start.final_output_json_schema.clone(),
+                    request.responsesapi_client_metadata.clone(),
+                ),
+                _ => return Ok(SteerFollowUpAction::QueueFollowUp),
+            },
             _ => return Ok(SteerFollowUpAction::QueueFollowUp),
         };
 
@@ -543,6 +542,7 @@ impl AppServerCodexThread {
                                 message: "Undo completed.".to_string(),
                                 phase: None,
                                 memory_citation: None,
+                                delivery: None,
                             }),
                         });
                         state.local_events.push_back(Event {
@@ -1141,7 +1141,12 @@ impl AppServerCodexThread {
             | ServerNotification::TurnModerationMetadata(_)
             | ServerNotification::EnvironmentConnected(_)
             | ServerNotification::EnvironmentDisconnected(_)
-            | ServerNotification::RawResponseCompleted(_) => Ok(None),
+            | ServerNotification::RawResponseCompleted(_)
+            | ServerNotification::ThreadReverted(_)
+            | ServerNotification::ThreadQueueChanged(_)
+            | ServerNotification::ProjectChanged(_)
+            | ServerNotification::ThreadProjectUpdated(_)
+            | ServerNotification::StrictReviewRequired(_) => Ok(None),
             ServerNotification::FileChangePatchUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
                 Ok(submission_id.map(|id| Event {
@@ -1505,6 +1510,7 @@ impl AppServerCodexThread {
                                 phase,
                                 memory_citation: memory_citation
                                     .map(app_server_memory_citation_to_core),
+                                delivery: None,
                             }),
                         })
                     }
@@ -1891,7 +1897,7 @@ impl AppServerCodexThread {
 impl CodexThreadImpl for AppServerCodexThread {
     async fn submit(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
         match op {
-            op @ (Op::UserInput { .. }
+            op @ (Op::TurnInput { .. }
             | Op::Review { .. }
             | Op::Compact
             | Op::ThreadRollback { .. }) => self.submit_prompt_like(submission_id, op).await,
@@ -2308,12 +2314,10 @@ fn prepare_submission_start(
     op: &Op,
 ) -> Result<Option<PreparedSubmissionStart>, PrepareSubmissionStartError> {
     match op {
-        Op::UserInput {
-            items,
-            final_output_json_schema,
-            responsesapi_client_metadata,
-            ..
-        } => {
+        Op::TurnInput { request, .. } => {
+            let TurnInput::UserInput { content: items, .. } = &request.input else {
+                return Ok(None);
+            };
             if let Some(missing) = MissingCustomToolOutputs::from_state(state) {
                 return Err(PrepareSubmissionStartError::MissingCustomToolOutputs(
                     missing,
@@ -2348,8 +2352,8 @@ fn prepare_submission_start(
                     effort: state.config.model_reasoning_effort.clone(),
                     summary: state.config.model_reasoning_summary,
                     personality: state.config.personality,
-                    output_schema: final_output_json_schema.clone(),
-                    responsesapi_client_metadata: responsesapi_client_metadata.clone(),
+                    output_schema: request.start.final_output_json_schema.clone(),
+                    responsesapi_client_metadata: request.responsesapi_client_metadata.clone(),
                     collaboration_mode: None,
                     environments: None,
                     permissions: None,
@@ -2682,6 +2686,10 @@ fn review_decision_to_app_server(decision: ReviewDecision) -> CommandExecutionAp
         ReviewDecision::Denied { .. } => CommandExecutionApprovalDecision::Decline,
         ReviewDecision::TimedOut => CommandExecutionApprovalDecision::Decline,
         ReviewDecision::Abort => CommandExecutionApprovalDecision::Cancel,
+        // MCP approvals are handled through elicitations, so an MCP policy amendment
+        // should never appear in a command execution approval. Fail closed, mirroring
+        // upstream's own CoreReviewDecision -> CommandExecutionApprovalDecision::From impl.
+        ReviewDecision::ApprovedMcpPolicyAmendment => CommandExecutionApprovalDecision::Decline,
     }
 }
 
@@ -2694,6 +2702,8 @@ fn patch_review_decision_to_app_server(decision: ReviewDecision) -> FileChangeAp
         ReviewDecision::Abort => FileChangeApprovalDecision::Cancel,
         ReviewDecision::ApprovedExecpolicyAmendment { .. }
         | ReviewDecision::NetworkPolicyAmendment { .. } => FileChangeApprovalDecision::Accept,
+        // MCP approvals are handled through elicitations, not file-change review; fail closed.
+        ReviewDecision::ApprovedMcpPolicyAmendment => FileChangeApprovalDecision::Decline,
     }
 }
 
@@ -2841,6 +2851,9 @@ fn app_server_codex_error_info_to_core(error: AppServerCodexErrorInfo) -> CodexE
         AppServerCodexErrorInfo::UsageLimitExceeded => CodexErrorInfo::UsageLimitExceeded,
         AppServerCodexErrorInfo::ServerOverloaded => CodexErrorInfo::ServerOverloaded,
         AppServerCodexErrorInfo::CyberPolicy => CodexErrorInfo::CyberPolicy,
+        AppServerCodexErrorInfo::MisalignmentPolicyViolation => {
+            CodexErrorInfo::MisalignmentPolicyViolation
+        }
         AppServerCodexErrorInfo::HttpConnectionFailed { http_status_code } => {
             CodexErrorInfo::HttpConnectionFailed { http_status_code }
         }
@@ -3195,9 +3208,29 @@ mod tests {
     use super::*;
     use codex_core::config::ConfigBuilder;
     use codex_protocol::protocol::ReviewRequest;
+    use codex_protocol::turn_input::{TurnInputMode, TurnInputRequest, TurnStartOptions};
     use codex_utils_absolute_path::AbsolutePathBuf;
     use std::fs;
     use uuid::Uuid;
+
+    fn test_user_input_op(items: Vec<codex_protocol::user_input::UserInput>) -> Op {
+        let (reply, _reply_rx) = tokio::sync::oneshot::channel();
+        Op::TurnInput {
+            request: Box::new(TurnInputRequest {
+                input: TurnInput::UserInput {
+                    content: items,
+                    client_id: None,
+                },
+                thread_settings: Default::default(),
+                start: TurnStartOptions::default(),
+                additional_context: Default::default(),
+                responsesapi_client_metadata: None,
+                trace: None,
+            }),
+            mode: TurnInputMode::StartOrSteer,
+            reply,
+        }
+    }
 
     async fn test_state_with_active_turn(active_turn: Option<ActiveTurn>) -> AppServerState {
         let codex_home =
@@ -3237,6 +3270,7 @@ mod tests {
                 text: "hello".to_string(),
                 phase: None,
                 memory_citation: None,
+                delivery: None,
             }],
             items_view: codex_app_server_protocol::TurnItemsView::Full,
             status: TurnStatus::InProgress,
@@ -3954,16 +3988,10 @@ mod tests {
         let err = prepare_submission_start(
             &mut state,
             "submission-2",
-            &Op::UserInput {
-                items: vec![codex_protocol::user_input::UserInput::Text {
-                    text: "continue".to_string(),
-                    text_elements: Vec::new(),
-                }],
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: Default::default(),
-            },
+            &test_user_input_op(vec![codex_protocol::user_input::UserInput::Text {
+                text: "continue".to_string(),
+                text_elements: Vec::new(),
+            }]),
         )
         .expect_err("dirty custom tool history should block new turns");
 
@@ -4030,13 +4058,7 @@ mod tests {
         let prepared = prepare_submission_start(
             &mut state,
             "submission-after-undo",
-            &Op::UserInput {
-                items: Vec::new(),
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: Default::default(),
-            },
+            &test_user_input_op(Vec::new()),
         )
         .expect("undo should clear the local pending tool guard");
         assert!(matches!(
@@ -4052,13 +4074,7 @@ mod tests {
         let prepared = prepare_submission_start(
             &mut state,
             "submission-runtime-roots",
-            &Op::UserInput {
-                items: Vec::new(),
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: Default::default(),
-            },
+            &test_user_input_op(Vec::new()),
         )
         .expect("prepare submission")
         .expect("turn start");

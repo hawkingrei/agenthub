@@ -23,6 +23,9 @@ use codex_extension_api::{
     LoadUserInstructionsFuture, LoadedUserInstructions, UserInstructionsProvider,
     empty_extension_registry,
 };
+use codex_history::{
+    InitialHistory, ResponseItemEnvelope, ResumedHistory, RolloutItem, RolloutLine,
+};
 use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_env};
 use codex_login::{
     AuthManager, CLIENT_ID, CODEX_API_KEY_ENV_VAR, CodexAuth, OPENAI_API_KEY_ENV_VAR,
@@ -30,7 +33,7 @@ use codex_login::{
 use codex_protocol::{
     ThreadId,
     models::{FunctionCallOutputPayload, ResponseItem},
-    protocol::{InitialHistory, ResumedHistory, RolloutItem, RolloutLine, SessionSource},
+    protocol::SessionSource,
 };
 use std::{
     cell::RefCell,
@@ -193,6 +196,7 @@ fn codex_mcp_server_config(cwd: &Path, mcp_server: McpServer) -> Option<(String,
                     Some(headers.into_iter().map(|h| (h.name, h.value)).collect())
                 },
                 env_http_headers: None,
+                http_headers_helper: None,
             },
         ),
         McpServer::Stdio(McpServerStdio {
@@ -392,21 +396,152 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairS
     repaired
 }
 
+/// Same repair as [`repair_response_item_history`], but for the
+/// [`ResponseItemEnvelope`]-wrapped items used by [`CompactedItem::replacement_history`].
+/// Metadata on retained items is preserved; synthesized aborted-call outputs carry no
+/// metadata, matching how newly-inserted items behave everywhere else in this module.
+fn repair_response_item_envelope_history(
+    items: &mut Vec<ResponseItemEnvelope>,
+) -> HistoryRepairStats {
+    let function_call_ids = items
+        .iter()
+        .filter_map(|item| match &item.item {
+            ResponseItem::FunctionCall { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let local_shell_call_ids = items
+        .iter()
+        .filter_map(|item| match &item.item {
+            ResponseItem::LocalShellCall {
+                call_id: Some(call_id),
+                ..
+            } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let custom_tool_call_ids = items
+        .iter()
+        .filter_map(|item| match &item.item {
+            ResponseItem::CustomToolCall { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+
+    let mut repaired = HistoryRepairStats::default();
+    items.retain(|item| match &item.item {
+        ResponseItem::FunctionCallOutput { call_id, .. } => {
+            let keep =
+                function_call_ids.contains(call_id) || local_shell_call_ids.contains(call_id);
+            if !keep {
+                repaired.dropped_orphan_function_call_outputs += 1;
+            }
+            keep
+        }
+        ResponseItem::CustomToolCallOutput { call_id, .. } => {
+            let keep = custom_tool_call_ids.contains(call_id);
+            if !keep {
+                repaired.dropped_orphan_custom_tool_call_outputs += 1;
+            }
+            keep
+        }
+        _ => true,
+    });
+    let mut function_output_call_ids = items
+        .iter()
+        .filter_map(|item| match &item.item {
+            ResponseItem::FunctionCallOutput { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let mut custom_output_call_ids = items
+        .iter()
+        .filter_map(|item| match &item.item {
+            ResponseItem::CustomToolCallOutput { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+
+    let mut synthetic_outputs = Vec::new();
+    for (idx, item) in items.iter().enumerate() {
+        match &item.item {
+            ResponseItem::FunctionCall { call_id, .. }
+                if function_output_call_ids.insert(call_id.clone()) =>
+            {
+                repaired.inserted_function_call_outputs += 1;
+                synthetic_outputs.push((
+                    idx,
+                    ResponseItem::FunctionCallOutput {
+                        id: None,
+                        call_id: call_id.clone(),
+                        output: aborted_call_output(),
+                        internal_chat_message_metadata_passthrough: None,
+                    }
+                    .into(),
+                ));
+            }
+            ResponseItem::CustomToolCall { call_id, .. }
+                if custom_output_call_ids.insert(call_id.clone()) =>
+            {
+                repaired.inserted_custom_tool_call_outputs += 1;
+                synthetic_outputs.push((
+                    idx,
+                    ResponseItem::CustomToolCallOutput {
+                        id: None,
+                        call_id: call_id.clone(),
+                        name: None,
+                        output: aborted_call_output(),
+                        internal_chat_message_metadata_passthrough: None,
+                    }
+                    .into(),
+                ));
+            }
+            ResponseItem::LocalShellCall {
+                call_id: Some(call_id),
+                ..
+            } if function_output_call_ids.insert(call_id.clone()) => {
+                repaired.inserted_function_call_outputs += 1;
+                synthetic_outputs.push((
+                    idx,
+                    ResponseItem::FunctionCallOutput {
+                        id: None,
+                        call_id: call_id.clone(),
+                        output: aborted_call_output(),
+                        internal_chat_message_metadata_passthrough: None,
+                    }
+                    .into(),
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    for (idx, output) in synthetic_outputs.into_iter().rev() {
+        items.insert(idx + 1, output);
+    }
+    repaired
+}
+
 fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
     let function_call_ids = items
         .iter()
         .filter_map(|item| match item {
-            RolloutItem::ResponseItem(ResponseItem::FunctionCall { call_id, .. }) => {
-                Some(call_id.clone())
-            }
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::FunctionCall { call_id, .. },
+                ..
+            }) => Some(call_id.clone()),
             _ => None,
         })
         .collect::<HashSet<_>>();
     let local_shell_call_ids = items
         .iter()
         .filter_map(|item| match item {
-            RolloutItem::ResponseItem(ResponseItem::LocalShellCall {
-                call_id: Some(call_id),
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item:
+                    ResponseItem::LocalShellCall {
+                        call_id: Some(call_id),
+                        ..
+                    },
                 ..
             }) => Some(call_id.clone()),
             _ => None,
@@ -415,9 +550,10 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
     let custom_tool_call_ids = items
         .iter()
         .filter_map(|item| match item {
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. }) => {
-                Some(call_id.clone())
-            }
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::CustomToolCall { call_id, .. },
+                ..
+            }) => Some(call_id.clone()),
             _ => None,
         })
         .collect::<HashSet<_>>();
@@ -426,49 +562,59 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
     let mut retained = Vec::with_capacity(items.len());
     for item in std::mem::take(items) {
         match item {
-            RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
-                id,
-                call_id,
-                output,
-                internal_chat_message_metadata_passthrough,
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item:
+                    ResponseItem::FunctionCallOutput {
+                        id,
+                        call_id,
+                        output,
+                        internal_chat_message_metadata_passthrough,
+                    },
+                metadata,
             }) => {
                 if function_call_ids.contains(&call_id) || local_shell_call_ids.contains(&call_id) {
-                    retained.push(RolloutItem::ResponseItem(
-                        ResponseItem::FunctionCallOutput {
+                    retained.push(RolloutItem::ResponseItem(ResponseItemEnvelope {
+                        item: ResponseItem::FunctionCallOutput {
                             id,
                             call_id,
                             output,
                             internal_chat_message_metadata_passthrough,
                         },
-                    ));
+                        metadata,
+                    }));
                 } else {
                     repaired.dropped_orphan_function_call_outputs += 1;
                 }
             }
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
-                id,
-                call_id,
-                name,
-                output,
-                internal_chat_message_metadata_passthrough,
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item:
+                    ResponseItem::CustomToolCallOutput {
+                        id,
+                        call_id,
+                        name,
+                        output,
+                        internal_chat_message_metadata_passthrough,
+                    },
+                metadata,
             }) => {
                 if custom_tool_call_ids.contains(&call_id) {
-                    retained.push(RolloutItem::ResponseItem(
-                        ResponseItem::CustomToolCallOutput {
+                    retained.push(RolloutItem::ResponseItem(ResponseItemEnvelope {
+                        item: ResponseItem::CustomToolCallOutput {
                             id,
                             call_id,
                             name,
                             output,
                             internal_chat_message_metadata_passthrough,
                         },
-                    ));
+                        metadata,
+                    }));
                 } else {
                     repaired.dropped_orphan_custom_tool_call_outputs += 1;
                 }
             }
             RolloutItem::Compacted(mut compacted) => {
                 if let Some(replacement_history) = compacted.replacement_history.as_mut() {
-                    repaired += repair_response_item_history(replacement_history);
+                    repaired += repair_response_item_envelope_history(replacement_history);
                 }
                 retained.push(RolloutItem::Compacted(compacted));
             }
@@ -479,18 +625,20 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
     let mut function_output_call_ids = items
         .iter()
         .filter_map(|item| match item {
-            RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput { call_id, .. }) => {
-                Some(call_id.clone())
-            }
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::FunctionCallOutput { call_id, .. },
+                ..
+            }) => Some(call_id.clone()),
             _ => None,
         })
         .collect::<HashSet<_>>();
     let mut custom_output_call_ids = items
         .iter()
         .filter_map(|item| match item {
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, .. }) => {
-                Some(call_id.clone())
-            }
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::CustomToolCallOutput { call_id, .. },
+                ..
+            }) => Some(call_id.clone()),
             _ => None,
         })
         .collect::<HashSet<_>>();
@@ -498,48 +646,63 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
     let mut synthetic_outputs = Vec::new();
     for (idx, item) in items.iter().enumerate() {
         match item {
-            RolloutItem::ResponseItem(ResponseItem::FunctionCall { call_id, .. })
-                if function_output_call_ids.insert(call_id.clone()) =>
-            {
-                repaired.inserted_function_call_outputs += 1;
-                synthetic_outputs.push((
-                    idx,
-                    RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
-                        id: None,
-                        call_id: call_id.clone(),
-                        output: aborted_call_output(),
-                        internal_chat_message_metadata_passthrough: None,
-                    }),
-                ));
-            }
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. })
-                if custom_output_call_ids.insert(call_id.clone()) =>
-            {
-                repaired.inserted_custom_tool_call_outputs += 1;
-                synthetic_outputs.push((
-                    idx,
-                    RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
-                        id: None,
-                        call_id: call_id.clone(),
-                        name: None,
-                        output: aborted_call_output(),
-                        internal_chat_message_metadata_passthrough: None,
-                    }),
-                ));
-            }
-            RolloutItem::ResponseItem(ResponseItem::LocalShellCall {
-                call_id: Some(call_id),
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::FunctionCall { call_id, .. },
                 ..
             }) if function_output_call_ids.insert(call_id.clone()) => {
                 repaired.inserted_function_call_outputs += 1;
                 synthetic_outputs.push((
                     idx,
-                    RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
-                        id: None,
-                        call_id: call_id.clone(),
-                        output: aborted_call_output(),
-                        internal_chat_message_metadata_passthrough: None,
-                    }),
+                    RolloutItem::ResponseItem(
+                        ResponseItem::FunctionCallOutput {
+                            id: None,
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                            internal_chat_message_metadata_passthrough: None,
+                        }
+                        .into(),
+                    ),
+                ));
+            }
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::CustomToolCall { call_id, .. },
+                ..
+            }) if custom_output_call_ids.insert(call_id.clone()) => {
+                repaired.inserted_custom_tool_call_outputs += 1;
+                synthetic_outputs.push((
+                    idx,
+                    RolloutItem::ResponseItem(
+                        ResponseItem::CustomToolCallOutput {
+                            id: None,
+                            call_id: call_id.clone(),
+                            name: None,
+                            output: aborted_call_output(),
+                            internal_chat_message_metadata_passthrough: None,
+                        }
+                        .into(),
+                    ),
+                ));
+            }
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item:
+                    ResponseItem::LocalShellCall {
+                        call_id: Some(call_id),
+                        ..
+                    },
+                ..
+            }) if function_output_call_ids.insert(call_id.clone()) => {
+                repaired.inserted_function_call_outputs += 1;
+                synthetic_outputs.push((
+                    idx,
+                    RolloutItem::ResponseItem(
+                        ResponseItem::FunctionCallOutput {
+                            id: None,
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                            internal_chat_message_metadata_passthrough: None,
+                        }
+                        .into(),
+                    ),
                 ));
             }
             _ => {}
@@ -987,16 +1150,14 @@ mod tests {
     use codex_config::types::McpServerTransportConfig;
     use codex_core::RolloutRecorder;
     use codex_core::config::ConfigBuilder;
+    use codex_history::{CompactedItem, InitialHistory, ResumedHistory, RolloutItem};
     use codex_protocol::{
         ThreadId,
         models::{
             FunctionCallOutputPayload, LocalShellAction, LocalShellExecAction, LocalShellStatus,
             ResponseItem,
         },
-        protocol::{
-            CompactedItem, InitialHistory, ResumedHistory, RolloutItem, SessionMeta,
-            SessionMetaLine, SessionSource,
-        },
+        protocol::{SessionMeta, SessionMetaLine, SessionSource},
     };
     use std::{
         collections::HashMap,
@@ -1137,7 +1298,8 @@ mod tests {
                     namespace: None,
                     input: "{}".to_string(),
                     internal_chat_message_metadata_passthrough: None,
-                },
+                }
+                .into(),
             )]),
             rollout_path: Some(PathBuf::from("/tmp/rollout.jsonl")),
         });
@@ -1154,8 +1316,12 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert!(matches!(
             &items[1],
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output, .. })
-                if call_id == "call-1" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+            RolloutItem::ResponseItem(envelope)
+                if matches!(
+                    &envelope.item,
+                    ResponseItem::CustomToolCallOutput { call_id, output, .. }
+                        if call_id == "call-1" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+                )
         ));
     }
 
@@ -1179,15 +1345,18 @@ mod tests {
                     },
                     git: None,
                 }),
-                RolloutItem::ResponseItem(ResponseItem::CustomToolCall {
-                    id: None,
-                    status: Some("completed".to_string()),
-                    call_id: "call-persist".to_string(),
-                    name: "actor_send".to_string(),
-                    namespace: None,
-                    input: "{}".to_string(),
-                    internal_chat_message_metadata_passthrough: None,
-                }),
+                RolloutItem::ResponseItem(
+                    ResponseItem::CustomToolCall {
+                        id: None,
+                        status: Some("completed".to_string()),
+                        call_id: "call-persist".to_string(),
+                        name: "actor_send".to_string(),
+                        namespace: None,
+                        input: "{}".to_string(),
+                        internal_chat_message_metadata_passthrough: None,
+                    }
+                    .into(),
+                ),
             ]),
             rollout_path: Some(rollout_path.clone()),
         });
@@ -1221,8 +1390,12 @@ mod tests {
         assert!(matches!(&items[0], RolloutItem::SessionMeta(_)));
         assert!(matches!(
             &items[2],
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output, .. })
-                if call_id == "call-persist" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+            RolloutItem::ResponseItem(envelope)
+                if matches!(
+                    &envelope.item,
+                    ResponseItem::CustomToolCallOutput { call_id, output, .. }
+                        if call_id == "call-persist" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+                )
         ));
     }
 
@@ -1268,19 +1441,23 @@ mod tests {
     fn repair_initial_history_updates_compacted_replacement_history() {
         let history = InitialHistory::Forked(vec![RolloutItem::Compacted(CompactedItem {
             message: "compacted".to_string(),
-            replacement_history: Some(vec![ResponseItem::LocalShellCall {
-                id: None,
-                call_id: Some("shell-1".to_string()),
-                status: LocalShellStatus::Completed,
-                internal_chat_message_metadata_passthrough: None,
-                action: LocalShellAction::Exec(LocalShellExecAction {
-                    command: vec!["echo".to_string(), "hi".to_string()],
-                    timeout_ms: None,
-                    working_directory: Some(".".to_string()),
-                    env: None,
-                    user: None,
-                }),
-            }]),
+            replacement_history: Some(vec![
+                ResponseItem::LocalShellCall {
+                    id: None,
+                    call_id: Some("shell-1".to_string()),
+                    status: LocalShellStatus::Completed,
+                    internal_chat_message_metadata_passthrough: None,
+                    action: LocalShellAction::Exec(LocalShellExecAction {
+                        command: vec!["echo".to_string(), "hi".to_string()],
+                        timeout_ms: None,
+                        working_directory: Some(".".to_string()),
+                        env: None,
+                        user: None,
+                    }),
+                }
+                .into(),
+            ]),
+            mcp_resource_origins: None,
             window_number: None,
             first_window_id: None,
             previous_window_id: None,
@@ -1304,7 +1481,7 @@ mod tests {
             .as_ref()
             .expect("replacement history");
         assert!(matches!(
-            &replacement_history[1],
+            &replacement_history[1].item,
             ResponseItem::FunctionCallOutput {
                 call_id, output, ..
             }

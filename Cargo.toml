@@ -32,7 +32,7 @@ members = [
 exclude = ["cmd/agenthub"]
 
 [patch.crates-io]
-rama-dns = { git = "https://github.com/hawkingrei/codex", rev = "6ca61345ceb09d76edc3db8c4eb55df18a10888a" }
+rama-dns = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
 sacp = { git = "https://github.com/hawkingrei/symposium-acp", rev = "c731bb045d1375af48b0446af728aea52503b30b" }
 tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "132f5b39c862e3a970f731d709608b3e6276d5f6" }
 tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "9200079d3b54a1ff51072e24d81fd354f085156f" }
