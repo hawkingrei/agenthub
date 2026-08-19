@@ -279,6 +279,18 @@ Main shape:
   and all three independent consumers (agent-creation/Team-adoption enforcement, the ACP skill-loading
   allowlist which is now fully unrestricted, and a team-runtime repo-inference heuristic which is deleted
   outright rather than repointed).
+- The pinned `codex` fork (hawkingrei/codex, agenthub-security-deps branch) had been stuck ~5
+  months behind real upstream openai/codex since its base was never resynced after two custom
+  patches (a security-dependency bump, a Bazel crate-rename fix) landed on top of it. Resynced to
+  current upstream (4619 commits forward) via a targeted 2-commit cherry-pick rather than a full
+  branch rebase (which tried replaying 4067 commits due to a prior sync artifact), pushed as a new
+  branch, and repointed all 20 pins. This surfaced real upstream API drift in
+  `agenthub-codex-acp`: `Op::UserInput` was replaced by `Op::TurnInput`, a genuine
+  start-or-steer-turn redesign with an embedded oneshot reply channel that agenthub's own
+  `CodexThreadImpl` trait shares across an in-process Core thread and an RPC-backed app-server
+  thread (a channel that can't cross the RPC boundary); adapted by constructing the new op with a
+  deliberately unawaited reply channel at every call site, preserving the prior fire-and-forget
+  semantics exactly.
 
 Start with:
 
@@ -306,6 +318,7 @@ Start with:
 - `2026-08-17-mailbox-reassignment-cas-and-idempotency.md`
 - `2026-08-17-message-index-repair-corruption-visibility.md`
 - `2026-08-19-safe-paths-removal.md`
+- `2026-08-19-codex-fork-resync.md`
 
 ## Compaction Rules
 
