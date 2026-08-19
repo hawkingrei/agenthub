@@ -271,6 +271,14 @@ Main shape:
   batch on one bad row would be worse) but added a structured `tracing::warn!` (source table, row id,
   field, parse error) via a new shared `parse_projection_json` helper replacing four inline duplicates.
   This closes out all seven findings from the 2026-08-17 Team-subsystem review round.
+- `safe_paths` -- the admin-configured workdir allowlist, including the enforcement landed earlier this
+  month -- has been removed entirely rather than fixed: a startup-seeding bug meant the "empty allowlist
+  = permissive" design intent was never actually reachable once a server had booted once, and the
+  decision was to drop the feature (workdirs are no longer restricted at all) instead of patching the
+  seed or widening the default. Removal spans the config field/DB table/migration, the admin API and UI,
+  and all three independent consumers (agent-creation/Team-adoption enforcement, the ACP skill-loading
+  allowlist which is now fully unrestricted, and a team-runtime repo-inference heuristic which is deleted
+  outright rather than repointed).
 
 Start with:
 
@@ -297,6 +305,7 @@ Start with:
 - `2026-08-17-reply-obligation-thread-scoped-matching.md`
 - `2026-08-17-mailbox-reassignment-cas-and-idempotency.md`
 - `2026-08-17-message-index-repair-corruption-visibility.md`
+- `2026-08-19-safe-paths-removal.md`
 
 ## Compaction Rules
 

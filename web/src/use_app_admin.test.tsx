@@ -6,15 +6,12 @@ import { useAppAdmin } from "./use_app_admin";
 
 const {
   authStatusMock,
-  listSafePathsMock,
   listDevicesMock,
   listAuditsMock,
   getVapidInfoMock,
   getAdminSettingsMock,
   joinStartAdminMock,
   setPasskeyEnabledMock,
-  addSafePathMock,
-  deleteSafePathMock,
   revokeDeviceMock,
   rotateVapidMock,
   listLinkersMock,
@@ -25,15 +22,12 @@ const {
   stringifyApiErrorMock,
 } = vi.hoisted(() => ({
   authStatusMock: vi.fn(),
-  listSafePathsMock: vi.fn(),
   listDevicesMock: vi.fn(),
   listAuditsMock: vi.fn(),
   getVapidInfoMock: vi.fn(),
   getAdminSettingsMock: vi.fn(),
   joinStartAdminMock: vi.fn(),
   setPasskeyEnabledMock: vi.fn(),
-  addSafePathMock: vi.fn(),
-  deleteSafePathMock: vi.fn(),
   revokeDeviceMock: vi.fn(),
   rotateVapidMock: vi.fn(),
   listLinkersMock: vi.fn(),
@@ -47,15 +41,12 @@ const {
 vi.mock("./api", () => ({
   api: {
     authStatus: authStatusMock,
-    listSafePaths: listSafePathsMock,
     listDevices: listDevicesMock,
     listAudits: listAuditsMock,
     getVapidInfo: getVapidInfoMock,
     getAdminSettings: getAdminSettingsMock,
     joinStartAdmin: joinStartAdminMock,
     setPasskeyEnabled: setPasskeyEnabledMock,
-    addSafePath: addSafePathMock,
-    deleteSafePath: deleteSafePathMock,
     revokeDevice: revokeDeviceMock,
     rotateVapid: rotateVapidMock,
     listLinkers: listLinkersMock,
@@ -97,15 +88,12 @@ describe("useAppAdmin", () => {
     root = createRoot(container);
 
     authStatusMock.mockReset();
-    listSafePathsMock.mockReset();
     listDevicesMock.mockReset();
     listAuditsMock.mockReset();
     getVapidInfoMock.mockReset();
     getAdminSettingsMock.mockReset();
     joinStartAdminMock.mockReset();
     setPasskeyEnabledMock.mockReset();
-    addSafePathMock.mockReset();
-    deleteSafePathMock.mockReset();
     revokeDeviceMock.mockReset();
     rotateVapidMock.mockReset();
     listLinkersMock.mockReset();
@@ -119,14 +107,11 @@ describe("useAppAdmin", () => {
       root_initialized: true,
       passkey_enabled: false,
     });
-    listSafePathsMock.mockResolvedValue([]);
     listDevicesMock.mockResolvedValue([]);
     listAuditsMock.mockResolvedValue([]);
     getVapidInfoMock.mockResolvedValue(null);
     getAdminSettingsMock.mockResolvedValue({ passkey_enabled: false });
     setPasskeyEnabledMock.mockResolvedValue({ status: "ok" });
-    addSafePathMock.mockResolvedValue({ status: "ok" });
-    deleteSafePathMock.mockResolvedValue({ status: "ok" });
     revokeDeviceMock.mockResolvedValue({ status: "ok" });
     rotateVapidMock.mockResolvedValue({ public_key: "next-key" });
     listLinkersMock.mockResolvedValue([]);
@@ -363,7 +348,6 @@ describe("useAppAdmin", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const captures: UseAppAdminResult[] = [];
     const auth = { token: "token-1", role: "root" } as HookProps[0];
-    listSafePathsMock.mockResolvedValue([{ path: "/workspace", created_at: 1 }]);
     listDevicesMock.mockResolvedValue([
       {
         id: "device-1",
@@ -408,85 +392,21 @@ describe("useAppAdmin", () => {
     let latest = captures[captures.length - 1];
     await act(async () => {
       await latest.onPasskeyEnabledChange(true);
-      latest.setSafePathInput("/workspace");
-      await Promise.resolve();
-    });
-    latest = captures[captures.length - 1];
-    await act(async () => {
-      await latest.onAddSafePath();
-      await latest.onDeleteSafePath("/workspace");
       await latest.onRevokeDevice("device-1");
       await latest.onRotateVapid();
-      latest.onToggleSafePath("/workspace");
-      await Promise.resolve();
-    });
-    latest = captures[captures.length - 1];
-    await act(async () => {
-      latest.onToggleAllSafePaths();
-      await Promise.resolve();
-    });
-    latest = captures[captures.length - 1];
-    await act(async () => {
-      await latest.onDeleteSelectedSafePaths();
       await Promise.resolve();
     });
 
     expect(setPasskeyEnabledMock).toHaveBeenCalledWith("token-1", true);
-    expect(addSafePathMock).toHaveBeenCalledWith("token-1", "/workspace");
-    expect(deleteSafePathMock).toHaveBeenCalledWith("token-1", "/workspace");
     expect(revokeDeviceMock).toHaveBeenCalledWith("token-1", "device-1");
     expect(rotateVapidMock).toHaveBeenCalledWith("token-1");
-    expect(latest.selectedSafePaths.size).toBe(0);
     confirmSpy.mockRestore();
   });
 
-  it("does not delete a safe path, revoke a device, or bulk-delete when the confirmation is declined", async () => {
+  it("does not revoke a device when the confirmation is declined", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const captures: UseAppAdminResult[] = [];
     const auth = { token: "token-1", role: "root" } as HookProps[0];
-    listSafePathsMock.mockResolvedValue([{ path: "/workspace", created_at: 1 }]);
-    listDevicesMock.mockResolvedValue([]);
-    listAuditsMock.mockResolvedValue([]);
-
-    await act(async () => {
-      root.render(
-        <HookHarness
-          auth={auth}
-          isAdminRoute={true}
-          onCapture={(value) => captures.push(value)}
-        />
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    let latest = captures[captures.length - 1];
-    await act(async () => {
-      await latest.onDeleteSafePath("/workspace");
-      await latest.onRevokeDevice("device-1");
-      await Promise.resolve();
-    });
-    latest = captures[captures.length - 1];
-    await act(async () => {
-      latest.onToggleAllSafePaths();
-      await Promise.resolve();
-    });
-    latest = captures[captures.length - 1];
-    await act(async () => {
-      await latest.onDeleteSelectedSafePaths();
-      await Promise.resolve();
-    });
-
-    expect(deleteSafePathMock).not.toHaveBeenCalled();
-    expect(revokeDeviceMock).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
-  });
-
-  it("does not prompt or delete when bulk-deleting with no safe paths selected", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm");
-    const captures: UseAppAdminResult[] = [];
-    const auth = { token: "token-1", role: "root" } as HookProps[0];
-    listSafePathsMock.mockResolvedValue([{ path: "/workspace", created_at: 1 }]);
     listDevicesMock.mockResolvedValue([]);
     listAuditsMock.mockResolvedValue([]);
 
@@ -503,14 +423,12 @@ describe("useAppAdmin", () => {
     });
 
     const latest = captures[captures.length - 1];
-    expect(latest.selectedSafePaths.size).toBe(0);
     await act(async () => {
-      await latest.onDeleteSelectedSafePaths();
+      await latest.onRevokeDevice("device-1");
       await Promise.resolve();
     });
 
-    expect(confirmSpy).not.toHaveBeenCalled();
-    expect(deleteSafePathMock).not.toHaveBeenCalled();
+    expect(revokeDeviceMock).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 

@@ -21,91 +21,10 @@ import type {
   AdminDevicesSectionProps,
   AdminJoinSectionProps,
   AdminLinkersSectionProps,
-  AdminSafePathsSectionProps,
   AdminSystemSectionProps,
   AdminUiSectionProps,
   AdminVapidSectionProps,
 } from "./admin_page";
-
-export function AdminSafePathsSection({
-  safePaths: section,
-}: {
-  safePaths: AdminSafePathsSectionProps;
-}) {
-  return (
-    <div className={ADMIN_CARD_CLASS}>
-      <h3 className={ADMIN_CARD_TITLE_CLASS}>Safe Paths</h3>
-      <div className={ADMIN_FORM_ROW_CLASS}>
-        <input
-          className={ADMIN_INPUT_CLASS}
-          placeholder="Add safe path"
-          value={section.safePathInput}
-          onChange={(e) => section.setSafePathInput(e.target.value)}
-        />
-        <ActionButton
-          className={ADMIN_PRIMARY_BUTTON_CLASS}
-          tone="primary"
-          size="md"
-          onClick={section.onAddSafePath}
-        >
-          Add Path
-        </ActionButton>
-      </div>
-      <div className={ADMIN_FORM_ROW_CLASS}>
-        <label className="checkbox inline-flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={
-              section.safePaths.length > 0 &&
-              section.safePaths.every((path) =>
-                section.selectedSafePaths.has(path.path)
-              )
-            }
-            onChange={section.onToggleAllSafePaths}
-          />
-          Select All
-        </label>
-        <ActionButton
-          className={ADMIN_DANGER_BUTTON_CLASS}
-          tone="danger"
-          size="md"
-          onClick={section.onDeleteSelectedSafePaths}
-        >
-          Delete Selected
-        </ActionButton>
-      </div>
-      {section.safePaths.length === 0 ? (
-        <EmptyState
-          title="No safe paths yet"
-          body="Add a path above to allow agents to work inside it."
-          className="border border-dashed border-ui-border bg-white/80 px-4 py-6"
-        />
-      ) : null}
-      <ul className={ADMIN_LIST_CLASS}>
-        {section.safePaths.map((path) => (
-          <li className={ADMIN_LIST_ITEM_CLASS} key={path.path}>
-            <label className="checkbox inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={section.selectedSafePaths.has(path.path)}
-                onChange={() => section.onToggleSafePath(path.path)}
-              />
-            </label>
-            <span className="mono flex-1 text-sm text-slate-800">{path.path}</span>
-            <ActionButton
-              className={ADMIN_DANGER_BUTTON_CLASS}
-              tone="danger"
-              size="md"
-              onClick={() => section.onDeleteSafePath(path.path)}
-            >
-              Delete
-            </ActionButton>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 export function AdminJoinSection({
   join: section,

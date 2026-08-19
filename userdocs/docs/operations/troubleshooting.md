@@ -59,8 +59,7 @@ state.
 
 ## Agent Fails to Start
 
-1. Confirm the resolved workdir exists, is inside `safe_paths`, and is writable
-   by the service user.
+1. Confirm the resolved workdir exists and is writable by the service user.
 2. Run the configured command as that same OS user:
 
    ```bash

@@ -219,10 +219,6 @@ or provider-specific base URLs.
 For a minimal local instance, the resulting configuration should include:
 
 ```toml
-safe_paths = [
-  "/home/you/projects",
-]
-
 [server]
 listen = "127.0.0.1:8080"
 

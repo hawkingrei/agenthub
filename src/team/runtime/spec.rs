@@ -8,8 +8,6 @@ use crate::team::build_team_member_actor_context_for_role;
 pub(super) struct TeamRuntimeMemberSpec {
     pub member_id: String,
     pub role: String,
-    pub description: Option<String>,
-    pub prompt: Option<String>,
     pub runtime: Option<TeamRuntimeMemberRuntimeHint>,
 }
 
@@ -56,18 +54,6 @@ pub(super) fn parse_runtime_member_specs(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("worker");
-        let description = member_obj
-            .get("description")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
-        let prompt = member_obj
-            .get("prompt")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
         let runtime = member_obj
             .get("runtime")
             .cloned()
@@ -77,8 +63,6 @@ pub(super) fn parse_runtime_member_specs(
         out.push(TeamRuntimeMemberSpec {
             member_id: member_id.to_string(),
             role: role.to_string(),
-            description,
-            prompt,
             runtime,
         });
     }

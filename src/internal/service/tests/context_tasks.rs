@@ -725,12 +725,6 @@ async fn internal_grpc_describe_team_context_reconciles_stale_running_member_ses
     );
 
     let now = chrono::Utc::now().timestamp();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind("/tmp/internal-stale-planner")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path for stale planner");
     sqlx::query(
         r#"
         INSERT OR REPLACE INTO agents (
@@ -818,12 +812,6 @@ async fn internal_grpc_describe_team_context_rejects_non_member_before_reconcile
     );
 
     let now = chrono::Utc::now().timestamp();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind("/tmp/internal-unauthorized-stale-planner")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path for unauthorized stale planner");
     sqlx::query(
         r#"
         INSERT OR REPLACE INTO agents (
@@ -969,13 +957,6 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
         std::env::temp_dir().join(format!("agenthub-run-scope-runtime-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&workdir).expect("create runtime-scope workdir");
     let workdir_str = workdir.to_string_lossy().to_string();
-    let now = chrono::Utc::now().timestamp();
-    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir_str)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert runtime-scope safe path");
     let agent = state
         .agents
         .create_agent(crate::agent::AgentConfig {
@@ -1063,13 +1044,6 @@ async fn internal_grpc_resolve_actor_run_scope_rejects_unverified_requested_team
     ));
     std::fs::create_dir_all(&workdir).expect("create runtime-scope workdir");
     let workdir_str = workdir.to_string_lossy().to_string();
-    let now = chrono::Utc::now().timestamp();
-    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir_str)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert runtime-scope safe path");
     let agent = state
         .agents
         .create_agent(crate::agent::AgentConfig {

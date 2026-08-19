@@ -158,14 +158,11 @@ mod tests {
         }
     }
 
-    const REVIEWED_ROOT_ONLY_CALLS: [&str; 13] = [
-        "admin.rs::add_safe_path",
-        "admin.rs::delete_safe_path",
+    const REVIEWED_ROOT_ONLY_CALLS: [&str; 10] = [
         "admin.rs::get_settings",
         "admin.rs::join_start",
         "admin.rs::list_audits",
         "admin.rs::list_devices",
-        "admin.rs::list_safe_paths",
         "admin.rs::migrate_team_messages_archive",
         "admin.rs::revoke_device",
         "admin.rs::set_passkey_enabled",

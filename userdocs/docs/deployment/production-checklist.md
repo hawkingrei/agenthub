@@ -22,7 +22,8 @@ upgrade.
 ## Service and Network Baseline
 
 - Run as a dedicated non-root OS account.
-- Make every `safe_paths` entry explicit and writable by that account.
+- AgentHub does not restrict workdirs itself, so scope that account's
+  filesystem permissions to the repositories/workspaces it should touch.
 - Keep the HTTP listener on loopback/private ingress and terminate shared
   access with an authenticated HTTPS proxy.
 - Configure `web.rp_id` and `web.rp_origin` to match the public URL before

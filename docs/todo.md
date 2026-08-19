@@ -91,9 +91,11 @@ Stable contracts:
   task at `run_task_status_sync.rs`'s `.as_object_mut().expect(...)`; no timeout on the child-process
   stdin write path, so a hung child can block that agent's stdin lock indefinitely; several silently-
   swallowed DB/parse errors that leave no log trace (corrupt JSON resets linked-task-sync context to
-  `{}`, a failed startup `safe_paths` seed insert is invisible). Three findings from the same review are
-  fixed separately: `safe_paths` workdir enforcement, see
-  [journal/2026-08-16-safe-paths-workdir-enforcement.md](journal/2026-08-16-safe-paths-workdir-enforcement.md);
+  `{}`). Two findings from the same review are
+  fixed separately (a third, `safe_paths` workdir enforcement -- see
+  [journal/2026-08-16-safe-paths-workdir-enforcement.md](journal/2026-08-16-safe-paths-workdir-enforcement.md)
+  for the original fix -- is now moot: `safe_paths` was removed entirely, see
+  [journal/2026-08-19-safe-paths-removal.md](journal/2026-08-19-safe-paths-removal.md)):
   the unbounded `TeamRemoteRelayAdapter.grpc_client_cache` leak and its token-staleness correctness gap,
   see [journal/2026-08-16-grpc-relay-client-cache-ttl.md](journal/2026-08-16-grpc-relay-client-cache-ttl.md);
   the internal gRPC bootstrap-token comparison's timing side-channel, see

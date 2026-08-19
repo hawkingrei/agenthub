@@ -4,7 +4,6 @@ import {
   AppLinkerRecord,
   AuditRecord,
   DeviceRecord,
-  SafePath,
   SlockLinkAttemptResponse,
   VapidInfo,
 } from "../api";
@@ -16,7 +15,6 @@ import {
   AdminDevicesSection,
   AdminJoinSection,
   AdminLinkersSection,
-  AdminSafePathsSection,
   AdminSystemSection,
   AdminUiSection,
   AdminVapidSection,
@@ -34,18 +32,6 @@ import {
   ADMIN_TITLE_CLASS,
   ADMIN_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
-
-export type AdminSafePathsSectionProps = {
-  safePaths: SafePath[];
-  selectedSafePaths: Set<string>;
-  safePathInput: string;
-  setSafePathInput: (value: string) => void;
-  onAddSafePath: () => void;
-  onToggleSafePath: (path: string) => void;
-  onToggleAllSafePaths: () => void;
-  onDeleteSelectedSafePaths: () => void;
-  onDeleteSafePath: (path: string) => void;
-};
 
 export type AdminDevicesSectionProps = {
   devices: DeviceRecord[];
@@ -102,7 +88,6 @@ export type AdminPageProps = {
   auth: AuthState;
   error: string | null;
   setError: (value: string | null) => void;
-  safePaths: AdminSafePathsSectionProps;
   devices: AdminDevicesSectionProps;
   audits: AdminAuditsSectionProps;
   join: AdminJoinSectionProps;
@@ -114,7 +99,6 @@ export type AdminPageProps = {
 
 export function AdminPage(props: AdminPageProps) {
   const [tab, setTab] = useState<
-    | "safe"
     | "devices"
     | "audits"
     | "join"
@@ -122,7 +106,7 @@ export function AdminPage(props: AdminPageProps) {
     | "linkers"
     | "ui"
     | "system"
-  >("safe");
+  >("devices");
   const [joinLinkCopyState, setJoinLinkCopyState] = useState<"idle" | "copied" | "failed">(
     "idle"
   );
@@ -171,12 +155,6 @@ export function AdminPage(props: AdminPageProps) {
         </div>
         <div className={ADMIN_TAB_BAR_CLASS}>
           <UnstyledButton
-            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "safe" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
-            onClick={() => setTab("safe")}
-          >
-            Safe Paths
-          </UnstyledButton>
-          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "devices" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("devices")}
           >
@@ -221,8 +199,6 @@ export function AdminPage(props: AdminPageProps) {
         </div>
 
         <div className="admin-panel">
-          {tab === "safe" ? <AdminSafePathsSection safePaths={props.safePaths} /> : null}
-
           {tab === "devices" ? <AdminDevicesSection devices={props.devices} /> : null}
 
           {tab === "audits" ? <AdminAuditsSection audits={props.audits} /> : null}

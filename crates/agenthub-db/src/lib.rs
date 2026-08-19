@@ -15,8 +15,6 @@ use tokio::sync::Mutex;
 
 use anyhow::Context;
 
-use agenthub_config::path_utils::expand_tilde;
-
 pub mod control_store;
 pub mod message_body_outbox;
 pub mod object_uploads;
@@ -422,17 +420,10 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS safe_paths (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT NOT NULL UNIQUE,
-            created_at INTEGER NOT NULL
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await?;
+    // safe_paths was removed; drop it on any install that still has it from before.
+    sqlx::query("DROP TABLE IF EXISTS safe_paths")
+        .execute(&pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -1045,7 +1036,6 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     migrate_team_tasks_add_assigned_member_id(&pool).await?;
     migrate_team_tasks_add_priority(&pool).await?;
     migrate_team_channel_bootstrap_uniqueness(&pool).await?;
-    migrate_safe_paths_to_absolute(&pool).await?;
     migrate_legacy_team_coordinator_terms(&pool).await?;
     if let Err(err) = sqlx::query(
         r#"
@@ -2700,51 +2690,6 @@ async fn migrate_team_channel_bootstrap_uniqueness(pool: &SqlitePool) -> anyhow:
     Ok(())
 }
 
-async fn migrate_safe_paths_to_absolute(pool: &SqlitePool) -> anyhow::Result<()> {
-    let rows = sqlx::query("SELECT id, path, created_at FROM safe_paths ORDER BY id ASC")
-        .fetch_all(pool)
-        .await?;
-    if rows.is_empty() {
-        return Ok(());
-    }
-
-    let mut tx = pool.begin().await?;
-    let mut migrated = 0_u64;
-    for row in rows {
-        let id: i64 = row.get("id");
-        let path: String = row.get("path");
-        let created_at: i64 = row.get("created_at");
-        let expanded = expand_tilde(&path);
-        if expanded == path {
-            continue;
-        }
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO safe_paths (path, created_at)
-            VALUES (?1, ?2)
-            "#,
-        )
-        .bind(&expanded)
-        .bind(created_at)
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query("DELETE FROM safe_paths WHERE id = ?1")
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
-        migrated += 1;
-    }
-    tx.commit().await?;
-
-    if migrated > 0 {
-        tracing::info!(
-            migrated_safe_path_count = migrated,
-            "db init: normalized safe_paths entries to absolute paths"
-        );
-    }
-    Ok(())
-}
-
 async fn migrate_legacy_team_coordinator_terms(pool: &SqlitePool) -> anyhow::Result<()> {
     let mut migrated_team_specs = 0_u64;
     let mut migrated_task_contexts = 0_u64;
@@ -3151,7 +3096,6 @@ mod tests {
         list_object_upload_session_parts, publish_object_upload_session,
         record_object_download_metric, try_connect, upsert_object_upload_session_part,
     };
-    use agenthub_config::path_utils::expand_tilde;
     use serde_json::json;
     use sqlx::Row;
     use sqlx::SqlitePool;
@@ -3778,8 +3722,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn init_db_normalizes_safe_paths_to_absolute_paths() {
-        let dir = unique_temp_dir("db-safe-path-migration");
+    async fn init_db_drops_legacy_safe_paths_table() {
+        let dir = unique_temp_dir("db-safe-paths-removal");
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let db_path = dir.join("agenthub.db");
         let options = SqliteConnectOptions::new()
@@ -3803,25 +3747,20 @@ mod tests {
         )
         .execute(&pool)
         .await
-        .expect("create safe_paths");
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind("~/.agenthub/worktrees")
-            .bind(1_i64)
-            .execute(&pool)
-            .await
-            .expect("insert legacy safe path");
+        .expect("create legacy safe_paths");
         pool.close().await;
 
         let pool = init_db_at_path(&db_path).await.expect("init db");
-        let rows = sqlx::query("SELECT path FROM safe_paths ORDER BY id ASC")
-            .fetch_all(&pool)
-            .await
-            .expect("load safe paths");
-        let paths = rows
-            .into_iter()
-            .map(|row| row.get::<String, _>("path"))
-            .collect::<Vec<_>>();
-        assert_eq!(paths, vec![expand_tilde("~/.agenthub/worktrees")]);
+        let row = sqlx::query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'safe_paths'",
+        )
+        .fetch_optional(&pool)
+        .await
+        .expect("query sqlite_master");
+        assert!(
+            row.is_none(),
+            "legacy safe_paths table should be dropped on init"
+        );
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

@@ -14,9 +14,9 @@ first root operator there:
 3. Set a password.
 4. Select **Initialize Root**.
 
-This first account can manage instance-wide settings, safe paths, users, and
-remote Agent Nodes. Initialize it only from a trusted network and store its
-credentials in your normal secrets manager.
+This first account can manage instance-wide settings, users, and remote Agent
+Nodes. Initialize it only from a trusted network and store its credentials in
+your normal secrets manager.
 
 ## Regular Login
 

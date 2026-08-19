@@ -3,7 +3,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    routing::{delete, get, post, put},
+    routing::{get, post, put},
 };
 use chrono::Utc;
 use rand::Rng;
@@ -16,19 +16,7 @@ use crate::api::authz::{require_capability, require_root};
 use crate::api::error::{ApiError, map_linker_error};
 use crate::api::{extract_ip, extract_ua, ok_response};
 use crate::linkers::{self, AppLinkerRecord, AppLinkerService, SlockConfigInput};
-use crate::path_utils::expand_tilde;
 use crate::state::AppState;
-
-#[derive(Debug, serde::Serialize)]
-pub struct SafePath {
-    pub path: String,
-    pub created_at: i64,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct AddSafePathRequest {
-    pub path: String,
-}
 
 #[derive(Debug, serde::Deserialize)]
 pub struct SetPasskeyEnabledRequest {
@@ -100,8 +88,6 @@ pub struct ExchangeSlockCodeRequest {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/safe_paths", get(list_safe_paths).post(add_safe_path))
-        .route("/safe_paths", delete(delete_safe_path))
         .route("/devices", get(list_devices))
         .route("/devices/{id}/revoke", post(revoke_device))
         .route("/audits", get(list_audits))
@@ -126,82 +112,6 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/join/start", post(join_start))
         .with_state(state)
-}
-
-async fn list_safe_paths(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<Vec<SafePath>>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
-    let rows = sqlx::query("SELECT path, created_at FROM safe_paths ORDER BY id ASC")
-        .fetch_all(&state.db)
-        .await?;
-    let mut items = Vec::with_capacity(rows.len());
-    for row in rows {
-        items.push(SafePath {
-            path: row.get("path"),
-            created_at: row.get("created_at"),
-        });
-    }
-    Ok(Json(items))
-}
-
-async fn add_safe_path(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(payload): Json<AddSafePathRequest>,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = require_root(&headers, &state).await?;
-    let now = Utc::now().timestamp();
-    let path = expand_tilde(payload.path.trim());
-    sqlx::query(
-        r#"
-        INSERT OR IGNORE INTO safe_paths (path, created_at)
-        VALUES (?1, ?2)
-        "#,
-    )
-    .bind(path)
-    .bind(now)
-    .execute(&state.db)
-    .await?;
-    let detail = format!("path={}", payload.path.trim());
-    let _ = state
-        .auth
-        .record_audit(
-            Some(&user.id),
-            None,
-            "safe_path_added",
-            Some(&detail),
-            extract_ip(&headers).as_deref(),
-            extract_ua(&headers).as_deref(),
-        )
-        .await;
-    Ok(ok_response())
-}
-
-async fn delete_safe_path(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(payload): Json<AddSafePathRequest>,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = require_root(&headers, &state).await?;
-    sqlx::query("DELETE FROM safe_paths WHERE path = ?1")
-        .bind(expand_tilde(payload.path.trim()))
-        .execute(&state.db)
-        .await?;
-    let detail = format!("path={}", payload.path.trim());
-    let _ = state
-        .auth
-        .record_audit(
-            Some(&user.id),
-            None,
-            "safe_path_deleted",
-            Some(&detail),
-            extract_ip(&headers).as_deref(),
-            extract_ua(&headers).as_deref(),
-        )
-        .await;
-    Ok(ok_response())
 }
 
 async fn list_devices(

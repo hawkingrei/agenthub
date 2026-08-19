@@ -918,9 +918,6 @@ async fn adopt_existing_agent_to_team(
         ));
     }
     let workdir = destination.unwrap_or(&source.workdir).to_string();
-    if destination.is_some() {
-        super::agents::ensure_workdir_within_safe_paths(&state, &workdir).await?;
-    }
     let mut spec = payload.spec;
     let member_id = Uuid::new_v4().to_string();
     replace_adopted_member_placeholder(&mut spec, &member_id);

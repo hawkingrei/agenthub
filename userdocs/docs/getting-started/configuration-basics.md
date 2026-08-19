@@ -28,11 +28,6 @@ provider-specific API base URLs or API keys yet.
 Start with this baseline for single-node usage:
 
 ```toml
-safe_paths = [
-  "/home/you/projects",
-  "/home/you/sandboxes",
-]
-
 [server]
 listen = "127.0.0.1:8080"
 
@@ -50,7 +45,6 @@ vacuum_on_cleanup = false
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `safe_paths` | array of strings | `["~/.agenthub/worktrees"]` | Allowed workdir roots |
 | `web_dir` | string | `web/dist` (dev only) | Path to web assets |
 | `log_path` | string | none | Log file path (default: stdout) |
 
@@ -375,9 +369,9 @@ https = "http://proxy.company.com:8080"
 ## Environment Boundary
 
 The server does not currently apply environment overrides for normal TOML
-settings. Variables such as `AGENTHUB_LISTEN`, `AGENTHUB_SAFE_PATHS`, and
-`AGENTHUB_INTERNAL_GRPC_*` are detected only so startup can warn that they were
-ignored. Put those values in `~/.agenthub/config.toml` instead.
+settings. Variables such as `AGENTHUB_LISTEN` and `AGENTHUB_INTERNAL_GRPC_*`
+are detected only so startup can warn that they were ignored. Put those
+values in `~/.agenthub/config.toml` instead.
 
 Environment variables still have explicit uses at other boundaries:
 
@@ -419,24 +413,14 @@ agenthub
 Main-mode processes use the Pyroscope application name `agenthub.server`.
 Node-mode processes use `agenthub.node`.
 
-## Safe Paths
+## Workdir Access
 
-The `safe_paths` array defines which directories agents can access:
-
-```toml
-safe_paths = [
-  "/home/you/projects",
-  "/home/you/experiments",
-  "/data/shared",
-]
-```
-
-**Important Notes**:
-
-- `~/.agenthub/worktrees` is **automatically included**
-- All configured `safe_paths` are expanded (`~` → `$HOME`)
-- Duplicate paths are deduplicated
-- Paths are validated at agent creation time
+AgentHub does not restrict which directories an agent or Team workdir can
+point at; there is no allowlist to configure. Operators choose workdirs
+directly, and the agent process runs with whatever filesystem access the
+AgentHub service account has. Use OS-level controls — a dedicated service
+account, filesystem permissions, containers/VMs — to scope that access. See
+[Security and Path Safety](../operations/security-and-path-safety.md).
 
 ## Configuration Validation
 
@@ -457,7 +441,6 @@ After updating configuration:
 3. **Test Configuration**:
    ```bash
    # Create a test agent
-   # Verify workdir validation works
    # Test internal gRPC (if enabled)
    agenthub actor inbox --actor-id test --limit 1
    ```
@@ -466,11 +449,6 @@ After updating configuration:
 
 ```toml
 # Production AgentHub Configuration
-safe_paths = [
-  "/var/agenthub/workspaces",
-  "/data/repos",
-]
-
 [server]
 listen = "127.0.0.1:8080"
 
@@ -526,8 +504,8 @@ log_path = "/var/log/agenthub/agenthub.log"
 - Verify firewall allows traffic on gRPC port
 - Check TLS certificates exist in `cert_dir`
 
-### Path Validation Errors
+### Workdir Errors
 
-- Ensure paths in `safe_paths` exist and are readable
+- Ensure the workdir path exists and is readable by the service account
 - Remember that `~` is expanded to `$HOME`
 - Verify worktree directories are writable

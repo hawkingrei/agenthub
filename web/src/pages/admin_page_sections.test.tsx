@@ -7,7 +7,6 @@ import {
   AdminDevicesSection,
   AdminJoinSection,
   AdminLinkersSection,
-  AdminSafePathsSection,
   AdminSystemSection,
   AdminUiSection,
   AdminVapidSection,
@@ -35,73 +34,6 @@ describe("admin_page_sections", () => {
       root.unmount();
     });
     container.remove();
-  });
-
-  it("wires safe-path section interactions through the section contract", () => {
-    const setSafePathInput = vi.fn();
-    const onAddSafePath = vi.fn();
-    const onToggleAllSafePaths = vi.fn();
-    const onDeleteSelectedSafePaths = vi.fn();
-    const onToggleSafePath = vi.fn();
-    const onDeleteSafePath = vi.fn();
-
-    renderWithMantine(
-      root,
-      <AdminSafePathsSection
-        safePaths={{
-          safePaths: [{ path: "/repo", created_at: 1 }],
-          selectedSafePaths: new Set<string>(["/repo"]),
-          safePathInput: "/tmp/new",
-          setSafePathInput,
-          onAddSafePath,
-          onToggleSafePath,
-          onToggleAllSafePaths,
-          onDeleteSelectedSafePaths,
-          onDeleteSafePath,
-        }}
-      />
-    );
-
-    const textInput = required(
-      container.querySelector('input[placeholder="Add safe path"]') as HTMLInputElement | null,
-      "safe path input missing"
-    );
-    act(() => {
-      const descriptor = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "value"
-      );
-      descriptor?.set?.call(textInput, "/tmp/updated");
-      textInput.dispatchEvent(new Event("input", { bubbles: true }));
-      textInput.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    const buttons = Array.from(container.querySelectorAll("button"));
-    const addPathButton = buttons.find((button) => button.textContent === "Add Path");
-    const deleteSelectedButton = buttons.find(
-      (button) => button.textContent === "Delete Selected"
-    );
-    const deleteButton = buttons.find((button) => button.textContent === "Delete");
-    const checkboxes = Array.from(
-      container.querySelectorAll('input[type="checkbox"]')
-    ) as HTMLInputElement[];
-    const selectAll = checkboxes[0];
-    const itemToggle = checkboxes[1];
-
-    act(() => {
-      addPathButton?.click();
-      selectAll?.click();
-      deleteSelectedButton?.click();
-      itemToggle?.click();
-      deleteButton?.click();
-    });
-
-    expect(setSafePathInput).toHaveBeenCalledWith("/tmp/updated");
-    expect(onAddSafePath).toHaveBeenCalledTimes(1);
-    expect(onToggleAllSafePaths).toHaveBeenCalledTimes(1);
-    expect(onDeleteSelectedSafePaths).toHaveBeenCalledTimes(1);
-    expect(onToggleSafePath).toHaveBeenCalledWith("/repo");
-    expect(onDeleteSafePath).toHaveBeenCalledWith("/repo");
   });
 
   it("renders join, vapid, devices, and audits sections with their section data", () => {
@@ -193,23 +125,10 @@ describe("admin_page_sections", () => {
     expect(onRevokeDevice).toHaveBeenCalledWith("device-1");
   });
 
-  it("renders an empty-state message instead of a bare list for safe paths, devices, and audits", () => {
+  it("renders an empty-state message instead of a bare list for devices and audits", () => {
     renderWithMantine(
       root,
       <>
-        <AdminSafePathsSection
-          safePaths={{
-            safePaths: [],
-            selectedSafePaths: new Set<string>(),
-            safePathInput: "",
-            setSafePathInput: vi.fn(),
-            onAddSafePath: vi.fn(),
-            onToggleSafePath: vi.fn(),
-            onToggleAllSafePaths: vi.fn(),
-            onDeleteSelectedSafePaths: vi.fn(),
-            onDeleteSafePath: vi.fn(),
-          }}
-        />
         <AdminDevicesSection
           devices={{
             devices: [],
@@ -224,7 +143,6 @@ describe("admin_page_sections", () => {
       </>
     );
 
-    expect(container.textContent).toContain("No safe paths yet");
     expect(container.textContent).toContain("No devices yet");
     expect(container.textContent).toContain("No login audits yet");
   });

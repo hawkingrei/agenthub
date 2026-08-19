@@ -802,12 +802,6 @@ async fn teams_api_runtime_reconciles_stale_running_member_sessions() {
     );
 
     let now = Utc::now().timestamp();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind("/tmp/team-runtime-stale")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path for stale planner");
     sqlx::query(
         r#"
         INSERT OR REPLACE INTO agents (
@@ -1553,16 +1547,8 @@ async fn teams_api_start_team_keeps_legacy_worker_use_existing_runtime_when_vali
 {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
-    let now = Utc::now().timestamp();
-    let repo = create_named_worker_test_repo("shiro");
     let worker_id = "shiro-reviewer";
     let legacy_workdir = insert_legacy_team_member_agent(&state, worker_id).await;
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&repo)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert shiro repo safe path");
 
     let team = state
         .teams
@@ -3487,12 +3473,6 @@ async fn start_team_run_step_requests_reconcile_prompt_for_reconcile_loop_steps(
         .join(format!("agenthub-reconcile-prompt-worker-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&workdir).expect("create reconcile prompt worker workdir");
     let workdir = workdir.to_string_lossy().to_string();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert reconcile prompt worker safe path");
     for agent_id in ["planner", "worker-1"] {
         sqlx::query(
             r#"

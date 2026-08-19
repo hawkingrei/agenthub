@@ -26,30 +26,30 @@ workflow owns branch/worktree creation.
   execution node.
 - **Repository ref** defaults to `HEAD` and must be valid for `git worktree add`.
 - **Workdir** may be generated below the default worktree root or explicitly
-  set to an allowed path.
+  set to any path reachable by the execution node's service account.
 
 If the target directory is a registered worktree for the same agent, AgentHub
 can reuse it. It rejects a non-empty ordinary directory and a worktree already
 bound to another agent. A configured ref mismatch is logged when an existing
 worktree is reused; AgentHub does not silently rewrite that checkout.
 
-## Safe Paths
+## Workdir Location
 
-Every final workdir must be below an effective `safe_paths` root. The local
-default root `~/.agenthub/worktrees` is included automatically.
+AgentHub does not restrict which directory a workdir can point at; operators
+and users choose the path directly, and `create_worktree` falls back to the
+local default root `~/.agenthub/worktrees` (or a node's registered default)
+only when no explicit workdir is given:
 
 ```toml
-safe_paths = [
-  "/srv/agenthub/repositories",
-  "/srv/agenthub/workspaces",
-]
-
 [worktree]
 default_root = "/srv/agenthub/worktrees"
 ```
 
-`safe_paths` validates the requested workdir; it does not sandbox the
-subprocess from other files readable by the service account.
+Because there is no path allowlist, the agent subprocess can read anything
+else the service account can read. Scope the OS-level account, filesystem
+permissions, and container/VM boundaries deliberately instead of relying on
+workdir choice for isolation — see
+[Security and Path Safety](../operations/security-and-path-safety.md).
 
 ## Remote Nodes
 
@@ -63,7 +63,6 @@ Before starting a remote worktree agent, confirm:
 - Git is installed on the node.
 - The repository/ref exists on that node.
 - The service account can create the workdir.
-- Both repository and workdir paths satisfy the remote node's policy.
 
 ## Repository State
 
@@ -106,7 +105,6 @@ work, and filesystem age does not prove that a workspace is safe to delete.
 
 | Error | Check |
 |-------|-------|
-| Workdir outside safe paths | Resolved path and effective roots on the execution node. |
 | `worktree_repo required` | Repository path is set for `create_worktree`. |
 | Worktree does not exist | `reuse_worktree` points to a real checkout. |
 | Workdir is not empty | Use another path or deliberately select the registered worktree. |

@@ -70,17 +70,5 @@ pub(super) async fn test_db() -> sqlx::SqlitePool {
     .execute(&pool)
     .await
     .expect("create users table");
-    sqlx::query(
-        r#"
-        CREATE TABLE safe_paths (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT NOT NULL UNIQUE,
-            created_at INTEGER NOT NULL
-        )
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .expect("create safe_paths table");
     pool
 }

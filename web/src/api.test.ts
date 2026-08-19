@@ -604,22 +604,6 @@ describe("api request headers", () => {
         url: "/api/settings/defaults",
       },
       {
-        call: () => api.listSafePaths(token),
-        url: "/api/admin/safe_paths",
-      },
-      {
-        call: () => api.addSafePath(token, "/workspace"),
-        url: "/api/admin/safe_paths",
-        method: "POST",
-        body: { path: "/workspace" },
-      },
-      {
-        call: () => api.deleteSafePath(token, "/workspace"),
-        url: "/api/admin/safe_paths",
-        method: "DELETE",
-        body: { path: "/workspace" },
-      },
-      {
         call: () => api.revokeDevice(token, "device/one"),
         url: "/api/admin/devices/device%2Fone/revoke",
         method: "POST",

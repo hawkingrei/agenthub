@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { AuthState } from "./types";
-import { 
-  api, 
-  SafePath, 
-  DeviceRecord, 
-  AuditRecord, 
-  VapidInfo, 
+import {
+  api,
+  DeviceRecord,
+  AuditRecord,
+  VapidInfo,
   AppLinkerRecord,
   SlockLinkAttemptResponse,
-  stringifyApiError 
+  stringifyApiError
 } from "./api";
 
 const DEFAULT_SLOCK_API_ORIGIN = "https://api.slock.ai";
@@ -30,7 +29,6 @@ function parseScopesInput(value: string): string[] {
 
 export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
   const token = auth?.token ?? null;
-  const [safePaths, setSafePaths] = useState<SafePath[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [audits, setAudits] = useState<AuditRecord[]>([]);
   const [vapidInfo, setVapidInfo] = useState<VapidInfo | null>(null);
@@ -45,8 +43,6 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
   const [slockCallbackInput, setSlockCallbackInput] = useState("");
   const [passkeyEnabled, setPasskeyEnabled] = useState<boolean | null>(null);
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
-  const [selectedSafePaths, setSelectedSafePaths] = useState<Set<string>>(() => new Set());
-  const [safePathInput, setSafePathInput] = useState("");
   const [joinUrl, setJoinUrl] = useState<string | null>(null);
   const [joinPin, setJoinPin] = useState<string | null>(null);
   const [joinToken, setJoinToken] = useState<string | null>(null);
@@ -66,7 +62,6 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
 
   useEffect(() => {
     if (!token || auth?.role !== "root" || !isAdminRoute) {
-      setSafePaths([]);
       setDevices([]);
       setAudits([]);
       setVapidInfo(null);
@@ -77,7 +72,6 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       setJoinToken(null);
       return;
     }
-    api.listSafePaths(token).then(setSafePaths).catch(() => {});
     api.listDevices(token).then(setDevices).catch(() => {});
     api.listAudits(token).then(setAudits).catch(() => {});
     api.getVapidInfo(token).then(setVapidInfo).catch(() => {});
@@ -105,32 +99,6 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       setError(stringifyApiError(err));
     }
   }, [token, auth?.role]);
-
-  const onAddSafePath = useCallback(async () => {
-    if (!token) return;
-    try {
-      const path = safePathInput.trim();
-      if (!path) return;
-      await api.addSafePath(token, path);
-      const list = await api.listSafePaths(token);
-      setSafePaths(list);
-      setSafePathInput("");
-    } catch (err: unknown) {
-      setError(stringifyApiError(err));
-    }
-  }, [token, safePathInput]);
-
-  const onDeleteSafePath = useCallback(async (path: string) => {
-    if (!token) return;
-    if (!window.confirm(`Delete safe path "${path}"?`)) return;
-    try {
-      await api.deleteSafePath(token, path);
-      const list = await api.listSafePaths(token);
-      setSafePaths(list);
-    } catch (err: unknown) {
-      setError(stringifyApiError(err));
-    }
-  }, [token]);
 
   const onRevokeDevice = useCallback(async (id: string) => {
     if (!token) return;
@@ -225,48 +193,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
     }
   }, [token, auth?.role, slockCallbackInput, slockLinkAttempt?.state]);
 
-  const onToggleSafePath = useCallback((path: string) => {
-    setSelectedSafePaths((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, []);
-
-  const onToggleAllSafePaths = useCallback(() => {
-    setSelectedSafePaths((prev) => {
-      if (prev.size === safePaths.length) return new Set();
-      return new Set(safePaths.map((p) => p.path));
-    });
-  }, [safePaths]);
-
-  const onDeleteSelectedSafePaths = useCallback(async () => {
-    if (!token || selectedSafePaths.size === 0) return;
-    if (
-      !window.confirm(
-        `Delete ${selectedSafePaths.size} selected safe path${selectedSafePaths.size === 1 ? "" : "s"}?`
-      )
-    ) {
-      return;
-    }
-    try {
-      for (const path of selectedSafePaths) {
-        await api.deleteSafePath(token, path);
-      }
-      const list = await api.listSafePaths(token);
-      setSafePaths(list);
-      setSelectedSafePaths(new Set());
-    } catch (err: unknown) {
-      setError(stringifyApiError(err));
-    }
-  }, [token, selectedSafePaths]);
-
   return {
-    safePaths,
     devices,
     audits,
     vapidInfo,
@@ -286,25 +213,17 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
     setSlockCallbackInput,
     passkeyEnabled,
     rootInitialized,
-    selectedSafePaths,
-    safePathInput,
-    setSafePathInput,
     joinUrl,
     joinPin,
     joinToken,
     error,
     setError,
     onPasskeyEnabledChange,
-    onAddSafePath,
-    onDeleteSafePath,
     onRevokeDevice,
     onRotateVapid,
     onCreateJoin,
     onSaveSlockLinker,
     onCreateSlockLinkAttempt,
     onExchangeSlockCode,
-    onToggleSafePath,
-    onToggleAllSafePaths,
-    onDeleteSelectedSafePaths,
   };
 }

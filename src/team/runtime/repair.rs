@@ -1,11 +1,7 @@
-use std::collections::HashSet;
-use std::path::Path;
-
 use anyhow::Context;
 use sqlx::Error as SqlxError;
 
 use crate::agent::{AgentManager, AgentRecord, WorktreeMode, normalize_target_node_id};
-use crate::path_utils::expand_tilde;
 
 use super::spec::{TeamRuntimeMemberRuntimeHint, TeamRuntimeMemberSpec, trimmed_opt};
 use super::types::TeamRuntimeStartError;
@@ -50,94 +46,16 @@ fn build_worker_runtime_agent_config(agent: &AgentRecord) -> Option<WorkerRuntim
     })
 }
 
-fn is_git_repo(path: &Path) -> bool {
-    path.join(".git").exists()
-}
-
-fn collect_repo_candidates(safe_paths: &[String]) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut candidates = Vec::new();
-    for safe_path in safe_paths {
-        let root = expand_tilde(safe_path);
-        let root_path = Path::new(&root);
-        if is_git_repo(root_path) && seen.insert(root.clone()) {
-            candidates.push(root.clone());
-        }
-        let Ok(entries) = std::fs::read_dir(root_path) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() || !is_git_repo(&path) {
-                continue;
-            }
-            let candidate = path.to_string_lossy().to_string();
-            if seen.insert(candidate.clone()) {
-                candidates.push(candidate);
-            }
-        }
-    }
-    candidates
-}
-
-fn infer_repo_from_member_text(
-    candidates: &[String],
+fn resolve_worker_runtime_repair(
     member: &TeamRuntimeMemberSpec,
     agent: &AgentRecord,
-) -> Option<String> {
-    let mut haystack_parts = Vec::new();
-    if let Some(prompt) = member.prompt.as_deref() {
-        haystack_parts.push(prompt.to_ascii_lowercase());
-    }
-    if let Some(description) = member.description.as_deref() {
-        haystack_parts.push(description.to_ascii_lowercase());
-    }
-    if let Some(runtime) = member.runtime.as_ref()
-        && let Some(name) = runtime.name.as_deref()
-    {
-        haystack_parts.push(name.to_ascii_lowercase());
-    }
-    haystack_parts.push(member.member_id.to_ascii_lowercase());
-    haystack_parts.push(agent.name.to_ascii_lowercase());
-    let haystack = haystack_parts.join("\n");
-    let matches = candidates
-        .iter()
-        .filter_map(|candidate| {
-            let basename = Path::new(candidate)
-                .file_name()
-                .and_then(|value| value.to_str())
-                .map(str::trim)
-                .filter(|value| !value.is_empty())?
-                .to_ascii_lowercase();
-            haystack.contains(&basename).then(|| candidate.clone())
-        })
-        .collect::<Vec<_>>();
-    (matches.len() == 1).then(|| matches[0].clone())
-}
-
-async fn resolve_worker_runtime_repair(
-    agents: &AgentManager,
-    member: &TeamRuntimeMemberSpec,
-    agent: &AgentRecord,
-) -> anyhow::Result<Option<WorkerRuntimeRepairConfig>> {
+) -> Option<WorkerRuntimeRepairConfig> {
     if let Some(hint) = member.runtime.as_ref()
         && let Some(config) = build_worker_runtime_hint_config(agent, hint)
     {
-        return Ok(Some(config));
+        return Some(config);
     }
-    if let Some(config) = build_worker_runtime_agent_config(agent) {
-        return Ok(Some(config));
-    }
-    let safe_paths = agents.list_safe_paths().await?;
-    let candidates = collect_repo_candidates(&safe_paths);
-    let inferred_repo = infer_repo_from_member_text(&candidates, member, agent);
-    Ok(
-        inferred_repo.map(|worktree_repo| WorkerRuntimeRepairConfig {
-            workdir: agent.workdir.clone(),
-            worktree_repo,
-            worktree_ref: Some("HEAD".to_string()),
-        }),
-    )
+    build_worker_runtime_agent_config(agent)
 }
 
 pub(super) async fn reconcile_team_member_runtime(
@@ -168,7 +86,7 @@ pub(super) async fn reconcile_team_member_runtime(
         return Ok(());
     }
 
-    let Some(repair) = resolve_worker_runtime_repair(agents, member, &agent).await? else {
+    let Some(repair) = resolve_worker_runtime_repair(member, &agent) else {
         return Err(TeamRuntimeStartError::InvalidConfig(format!(
             "team member runtime config for worker '{}' is missing worktree_repo; reconfigure the team member agent or recreate the team",
             member.member_id

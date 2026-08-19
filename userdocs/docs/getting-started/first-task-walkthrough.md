@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # First Task Walkthrough
 
-This walkthrough verifies the installed server, ACP adapter, workspace safety,
+This walkthrough verifies the installed server, ACP adapter, workspace setup,
 live output, and history replay in one short run.
 
 ## 1. Sign In
@@ -21,7 +21,8 @@ you to initialize the root operator.
    - `create_worktree` for isolated repository work.
    - `use_existing` when you intentionally want to use an existing directory.
    - `reuse_worktree` when an existing Git worktree is already prepared.
-5. Confirm the selected path is under a configured `safe_paths` root.
+5. Confirm the selected path exists and is readable/writable by the AgentHub
+   service account — AgentHub does not restrict which path you can choose.
 6. Create the agent and select its card.
 
 ## 3. Start and Send an Instruction
@@ -56,6 +57,6 @@ process; AgentHub replays persisted events and resumes live SSE updates.
 
 - The server accepts login.
 - Both `agenthub` and the selected ACP provider are available.
-- The workspace passes safe-path validation.
+- The workspace path exists and is accessible by the service account.
 - The task produces structured output.
 - History remains visible after refresh.

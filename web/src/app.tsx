@@ -332,7 +332,6 @@ export function App() {
 
 
   const {
-    safePaths,
     devices,
     audits,
     vapidInfo,
@@ -352,25 +351,17 @@ export function App() {
     setSlockCallbackInput,
     passkeyEnabled,
     rootInitialized,
-    selectedSafePaths,
-    safePathInput,
-    setSafePathInput,
     joinUrl,
     joinPin,
     joinToken,
     error: adminError,
     onPasskeyEnabledChange,
-    onAddSafePath,
-    onDeleteSafePath,
     onRevokeDevice,
     onRotateVapid,
     onCreateJoin,
     onSaveSlockLinker,
     onCreateSlockLinkAttempt,
     onExchangeSlockCode,
-    onToggleSafePath,
-    onToggleAllSafePaths,
-    onDeleteSelectedSafePaths,
   } = useAppAdmin(auth, isAdminRoute);
 
   const normalizedError = useMemo(() => {
@@ -1157,11 +1148,6 @@ export function App() {
           auth={auth!}
           error={normalizedError}
           setError={setError}
-          safePaths={safePaths}
-          selectedSafePaths={selectedSafePaths}
-          onToggleSafePath={onToggleSafePath}
-          onToggleAllSafePaths={onToggleAllSafePaths}
-          onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
           devices={devices}
           audits={audits}
           vapidInfo={vapidInfo}
@@ -1183,15 +1169,11 @@ export function App() {
           onSaveSlockLinker={onSaveSlockLinker}
           onCreateSlockLinkAttempt={onCreateSlockLinkAttempt}
           onExchangeSlockCode={onExchangeSlockCode}
-          onAddSafePath={onAddSafePath}
-          onDeleteSafePath={onDeleteSafePath}
           onRevokeDevice={onRevokeDevice}
           onCreateJoin={onCreateJoin}
           joinUrl={joinUrl}
           joinToken={joinToken}
           joinPin={joinPin}
-          safePathInput={safePathInput}
-          setSafePathInput={setSafePathInput}
           developerMode={developerMode}
           onDeveloperModeChange={setDeveloperMode}
           passkeyEnabled={passkeyEnabled}

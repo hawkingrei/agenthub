@@ -45,7 +45,7 @@ use super::{
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpHandleDiagnostics, AcpPermissionReviewDispatcher,
-    AcpPermissionService, AcpPromptDeliveryPolicy, load_safe_paths,
+    AcpPermissionService, AcpPromptDeliveryPolicy,
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
@@ -1578,10 +1578,6 @@ impl AgentManager {
         self.reconcile_stale_running_agents().await?;
         let row = get_agent_row(&self.db, self.agent_schema_caps().await?, agent_id).await?;
         decode_agent_record(&row)
-    }
-
-    pub(crate) async fn list_safe_paths(&self) -> anyhow::Result<Vec<String>> {
-        load_safe_paths(&self.db).await
     }
 
     pub async fn list_events(

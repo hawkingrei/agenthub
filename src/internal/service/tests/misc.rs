@@ -94,12 +94,6 @@ async fn build_started_reconcile_transition_fixture(
     ));
     std::fs::create_dir_all(&workdir).expect("create reconcile transition test workdir");
     let workdir = workdir.to_string_lossy().to_string();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert reconcile transition safe path");
     for agent_id in ["planner", "worker-1"] {
         sqlx::query(
             r#"
@@ -214,12 +208,6 @@ async fn transition_step_continue_advances_reconcile_round_and_keeps_step_workin
     ));
     std::fs::create_dir_all(&workdir).expect("create internal continue test workdir");
     let workdir = workdir.to_string_lossy().to_string();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert continue test safe path");
     for agent_id in ["planner", "worker-1"] {
         sqlx::query(
             r#"
@@ -619,12 +607,6 @@ async fn worker_token_can_continue_own_reconcile_step_but_not_other_members_step
         std::env::temp_dir().join(format!("agenthub-internal-worker-step-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&workdir).expect("create internal worker step test workdir");
     let workdir = workdir.to_string_lossy().to_string();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert worker step safe path");
     for agent_id in ["planner", "worker-1", "worker-2"] {
         sqlx::query(
             r#"
@@ -791,12 +773,6 @@ async fn coordinator_transition_step_checks_run_scope_before_mutation() {
         std::env::temp_dir().join(format!("agenthub-internal-run-scope-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&workdir).expect("create internal run-scope test workdir");
     let workdir = workdir.to_string_lossy().to_string();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert run-scope safe path");
     for agent_id in ["planner", "worker-1"] {
         sqlx::query(
             r#"
