@@ -49,6 +49,19 @@ crate.annotation(
     data_glob = ["bin/**", "include/**"],
     repositories = ["crate_index"],
 )
+crate.annotation(
+    # cargo_build_script only pulls a crate's own `data`/`build_script_data` into its
+    # sandbox, not the `data` of its (build-)dependencies -- so protoc-bin-vendored's
+    # bundled protoc binary (see the protoc-bin-vendored-linux-x86_64 annotation above)
+    # has to be listed here explicitly for codex-code-mode-protocol's build script to
+    # find it. Canonical repo name pinned via `bazel query`; may need updating on a
+    # future rules_rust bump if its internal crate_universe repo-naming scheme changes.
+    crate = "codex-code-mode-protocol",
+    build_script_data = [
+        "@@rules_rust++crate+crate_index__protoc-bin-vendored-linux-x86_64-3.2.0//:protoc_bin_vendored_linux_x86_64",
+    ],
+    repositories = ["crate_index"],
+)
 crate.from_cargo(
     name = "crate_index",
     cargo_lockfile = "//:Cargo.lock",
