@@ -6,8 +6,9 @@ The fork branch was built by adding two custom commits (a security-dependency pa
 external-crate-rename fix) directly on top of the fork's own `main`, but that `main` was never
 resynced with upstream after the patches landed, so every dependent crate in agenthub was
 building against a codex snapshot from 2026-03-27 while upstream had moved 4619 commits further.
-Resynced the fork to current upstream, rebased both patches on top, and adapted agenthub's own
-ACP adapter code (`agenthub-codex-acp`) for the real API drift that surfaced.
+Resynced the fork to current upstream, rebased both patches on top, adapted agenthub's own ACP
+adapter code (`agenthub-codex-acp`) for the real API drift that surfaced, and added a third fork
+commit fixing a Bazel-only `protoc` build-script failure the resync uncovered.
 
 # Scope
 
@@ -86,6 +87,27 @@ ACP adapter code (`agenthub-codex-acp`) for the real API drift that surfaced.
   patterns with inner-field equality checks instead, since pattern matching doesn't require
   `Op: PartialEq` the way value comparison does.
 
+**CI follow-up: `codex-code-mode-protocol`'s `protoc` dependency.** This crate is new at the
+resynced commit and its `build.rs` unconditionally calls `protoc_bin_vendored::protoc_bin_path()`,
+which locates the bundled `protoc` binary via `env!("CARGO_MANIFEST_DIR")` (a path baked in at
+compile time). Under a plain `cargo build` this works because Cargo always places a crate's own
+package files at that path. Under Bazel it does not: CI's `Bazel Test (Crates)` job failed with
+`internal: protoc not found <sandbox path>/protoc-bin-vendored-linux-x86_64-3.2.0/bin/protoc`.
+Two `crate.annotation()` attempts to fix this at the Bazel-config level were tried and both were
+confirmed *graph-correct* via `bazel query --output=build` (the vendored-protoc target really was
+listed in the right place: first `data_glob` on `protoc-bin-vendored-linux-x86_64` itself, then
+`build_script_data` on `codex-code-mode-protocol` referencing that target directly, once tracing
+through `cargo_build_script.bzl` showed `data` of a *dependency* crate doesn't propagate into a
+build script's sandbox the way `data`/`build_script_data` of the crate running the script does) --
+yet CI reproduced the identical failure both times. Without a Linux Bazel environment to actually
+execute the sandboxed action and inspect it (as opposed to statically querying the target graph),
+this session couldn't pin down why the correctly-declared `data` didn't materialize at the exact
+path the compiled-in `CARGO_MANIFEST_DIR` expects. Patched the fork's `build.rs` instead (a third
+commit) to prefer a `PROTOC` env var when set, falling back to the vendored lookup otherwise --
+zero effect on a plain `cargo build`, and sidesteps the whole cross-crate data-propagation question
+by wiring `PROTOC` to the system `protoc` CI's Bazel jobs already install via `apt`
+(`protobuf-compiler`). Removed both now-unnecessary `crate.annotation()` blocks.
+
 # Key Decisions
 
 - Cherry-pick the 2 real patch commits onto fresh upstream rather than rebase the full branch
@@ -107,6 +129,12 @@ ACP adapter code (`agenthub-codex-acp`) for the real API drift that surfaced.
   variants -- deliberately matched to upstream's own conversion and its explicit code comment
   reasoning, rather than picked independently, since upstream had already made and documented this
   exact judgment call for the identical scenario.
+- Patched the fork's `build.rs` rather than continuing to iterate on Bazel `crate.annotation()`
+  configuration for the `protoc` sandbox issue, after two graph-verified-correct attempts both
+  failed identically in CI -- a build-script-level `PROTOC` env check is a one-line, safe,
+  purely-additive change (no effect when unset) that sidesteps a Bazel/crate_universe behavior this
+  session couldn't fully diagnose without a Linux Bazel environment to execute against, rather than
+  continuing to guess at Bazel-config-only fixes against a ~15-20 minute CI round-trip each time.
 
 # Validation
 
@@ -125,13 +153,24 @@ ACP adapter code (`agenthub-codex-acp`) for the real API drift that surfaced.
 - `cargo fmt -- --check` -- clean.
 - `bazel mod deps --lockfile_mode=update` -- resolves cleanly against the new pin (confirms the
   Bazel external-crate-rename patch still applies correctly across the version jump).
-- `bazel build` of targets under `agenthub-codex-acp`/`agenthub-acp-adapter` could not be
-  validated locally: this codex snapshot's `codex-app-server` pulls in `codex-arg0` ->
-  `codex-linux-sandbox` -> a vendored `bwrap` FFI target that's constrained to
-  `@@platforms//os:linux`, which fails to build on macOS regardless of this change. CI's Bazel job
-  runs on Linux and will perform the real native-build validation this session's tooling couldn't.
+- `bazel build`/`bazel query --output=build` of targets under `agenthub-codex-acp`/
+  `agenthub-acp-adapter` could not be run to full completion locally: this codex snapshot's
+  `codex-app-server` pulls in `codex-arg0` -> `codex-linux-sandbox` -> a vendored `bwrap` FFI
+  target constrained to `@@platforms//os:linux`, which fails to build on macOS regardless of this
+  change. `bazel query`/`bazel mod deps` (graph construction, not execution) work fine locally and
+  were used throughout the `protoc` investigation; CI's Linux Bazel job performs the real
+  native-build validation this session's tooling couldn't.
+- CI (`Bazel Test (Crates)`) confirmed the actual regression this session couldn't reproduce
+  locally: the `protoc` sandbox issue described above. The `PROTOC`-override fix's own CI
+  confirmation is the next step after this entry is written.
 
 # Follow-Ups
 
-- None identified. The fork resync and adaptation are both complete and symmetric with prior
-  behavior; no reduced or partially-migrated state was left behind.
+- The `PROTOC` path (`/usr/bin/protoc`) wired into `codex-code-mode-protocol`'s
+  `crate.annotation()` is a literal absolute path matching what CI's `apt-get install
+  protobuf-compiler` installs on `ubuntu-latest`, not a hermetic Bazel toolchain reference. It has
+  no effect on `cargo build` (Bazel-only) and doesn't make local macOS Bazel builds any more or
+  less broken than the pre-existing `codex-linux-sandbox` platform gate already does, but it is
+  coupled to the CI runner's OS/package-manager specifics. Worth revisiting with a proper
+  `rules_proto`/`toolchains_protoc` dependency if agenthub ever needs a hermetic protoc for other
+  Bazel-built proto codegen.
