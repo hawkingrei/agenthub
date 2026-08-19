@@ -11,7 +11,7 @@ bazel_dep(name = "rules_rust", version = "0.67.0")
 git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 git_repository(
     name = "codex_src",
-    # Security-patched Codex 0.147 commit shared with the Cargo codex-* dependencies.
+    # Security-patched Codex commit shared with the Cargo codex-* dependencies.
     commit = "8a877a796039bba36b5c9bbba76e134660e45d03",
     remote = "https://github.com/hawkingrei/codex",
 )
@@ -38,6 +38,16 @@ crate.annotation(
     gen_build_script = "off",
     repositories = ["crate_index"],
     rustc_flags = ["--cfg=vendored_bwrap_available"],
+)
+crate.annotation(
+    # protoc-bin-vendored-linux-x86_64 bundles a `protoc` binary and .proto includes,
+    # located via CARGO_MANIFEST_DIR at runtime by protoc-bin-vendored (a build-dependency
+    # of codex-code-mode-protocol's build script). crate_universe's default data glob
+    # excludes these extensionless/binary files, so the crate's own CARGO_MANIFEST_DIR
+    # in the Bazel sandbox is missing them unless explicitly declared here.
+    crate = "protoc-bin-vendored-linux-x86_64",
+    data_glob = ["bin/**", "include/**"],
+    repositories = ["crate_index"],
 )
 crate.from_cargo(
     name = "crate_index",
