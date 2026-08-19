@@ -3,7 +3,6 @@ import type {
   AppLinkerRecord,
   AuditRecord,
   DeviceRecord,
-  SafePath,
   SlockLinkAttemptResponse,
   VapidInfo,
 } from "../api";
@@ -22,11 +21,6 @@ type AdminRouteContainerProps = {
   auth: AuthState;
   error: string | null;
   setError: (value: string | null) => void;
-  safePaths: SafePath[];
-  selectedSafePaths: Set<string>;
-  onToggleSafePath: (path: string) => void;
-  onToggleAllSafePaths: () => void;
-  onDeleteSelectedSafePaths: () => void;
   devices: DeviceRecord[];
   audits: AuditRecord[];
   vapidInfo: VapidInfo | null;
@@ -48,15 +42,11 @@ type AdminRouteContainerProps = {
   onSaveSlockLinker: () => void;
   onCreateSlockLinkAttempt: () => void;
   onExchangeSlockCode: () => void;
-  onAddSafePath: () => void;
-  onDeleteSafePath: (path: string) => void;
   onRevokeDevice: (id: string) => void;
   onCreateJoin: () => void;
   joinUrl: string | null;
   joinToken: string | null;
   joinPin: string | null;
-  safePathInput: string;
-  setSafePathInput: (value: string) => void;
   developerMode: boolean;
   onDeveloperModeChange: (value: boolean) => void;
   passkeyEnabled: boolean | null;
@@ -68,11 +58,6 @@ export function AdminRouteContainer({
   auth,
   error,
   setError,
-  safePaths,
-  selectedSafePaths,
-  onToggleSafePath,
-  onToggleAllSafePaths,
-  onDeleteSelectedSafePaths,
   devices,
   audits,
   vapidInfo,
@@ -94,15 +79,11 @@ export function AdminRouteContainer({
   onSaveSlockLinker,
   onCreateSlockLinkAttempt,
   onExchangeSlockCode,
-  onAddSafePath,
-  onDeleteSafePath,
   onRevokeDevice,
   onCreateJoin,
   joinUrl,
   joinToken,
   joinPin,
-  safePathInput,
-  setSafePathInput,
   developerMode,
   onDeveloperModeChange,
   passkeyEnabled,
@@ -112,17 +93,6 @@ export function AdminRouteContainer({
     auth,
     error,
     setError,
-    safePaths: {
-      safePaths,
-      selectedSafePaths,
-      safePathInput,
-      setSafePathInput,
-      onAddSafePath,
-      onToggleSafePath,
-      onToggleAllSafePaths,
-      onDeleteSelectedSafePaths,
-      onDeleteSafePath,
-    },
     devices: {
       devices,
       onRevokeDevice,

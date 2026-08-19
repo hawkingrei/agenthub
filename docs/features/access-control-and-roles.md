@@ -82,7 +82,7 @@ role directly.
 | `push:subscribe` | yes | yes | yes | yes | yes |
 
 `root` remains the only role that can change security-sensitive instance settings such as passkey
-mode, root lifecycle, root-owned safe paths, and user role assignments.
+mode, root lifecycle, and user role assignments.
 
 ### 4) Authorization Entry Points
 

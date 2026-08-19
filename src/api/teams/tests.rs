@@ -720,19 +720,6 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
-        CREATE TABLE safe_paths (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT NOT NULL UNIQUE,
-            created_at INTEGER NOT NULL
-        );
-        "#,
-    )
-    .execute(db)
-    .await
-    .expect("create safe_paths");
-
-    sqlx::query(
-        r#"
         CREATE TABLE agent_sessions (
             id TEXT PRIMARY KEY,
             agent_id TEXT NOT NULL,
@@ -1314,14 +1301,6 @@ async fn seed_default_team_member_agents(state: &AppState) {
     let actor_cli = resolve_test_agenthub_binary_path();
     let actor_args = serde_json::to_string(&vec!["actor"]).expect("serialize actor args");
     let now = Utc::now().timestamp();
-    for safe_path in [&workdir, "/tmp"] {
-        sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(safe_path)
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path for team member agents");
-    }
 
     for member_id in DEFAULT_TEST_TEAM_MEMBER_IDS {
         sqlx::query(
@@ -1368,18 +1347,6 @@ pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_i
         std::fs::remove_dir_all(&workdir).expect("clear stale worker workdir");
     }
     let workdir = workdir.to_string_lossy().to_string();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&repo)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert repo safe path for worker team member agent");
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&worktree_root)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert worker runtime root safe path");
     sqlx::query(
         r#"
         UPDATE agents
@@ -1444,12 +1411,6 @@ pub(crate) async fn insert_legacy_team_member_agent(state: &AppState, agent_id: 
     let actor_cli = resolve_test_agenthub_binary_path();
     let actor_args = serde_json::to_string(&vec!["actor"]).expect("serialize actor args");
     let now = Utc::now().timestamp();
-    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path for legacy team member");
     sqlx::query(
         r#"
         INSERT OR REPLACE INTO agents (
@@ -1507,23 +1468,6 @@ fn worker_test_repo() -> &'static String {
         run_git(&base, &["commit", "-m", "init"]);
         base.to_string_lossy().to_string()
     })
-}
-
-fn create_named_worker_test_repo(name: &str) -> String {
-    let base = std::env::temp_dir().join(format!("agenthub-team-worker-root-{}", Uuid::new_v4()));
-    let repo = base.join(name);
-    std::fs::create_dir_all(&repo).expect("create named worker test repo dir");
-    run_git(&repo, &["init"]);
-    run_git(
-        &repo,
-        &["config", "user.email", "agenthub-test@example.com"],
-    );
-    run_git(&repo, &["config", "user.name", "AgentHub Test"]);
-    std::fs::write(repo.join("README.md"), format!("{name}\n"))
-        .expect("write named worker repo seed");
-    run_git(&repo, &["add", "README.md"]);
-    run_git(&repo, &["commit", "-m", "init"]);
-    repo.to_string_lossy().to_string()
 }
 
 fn run_git(repo_dir: &StdPath, args: &[&str]) {
@@ -2167,128 +2111,11 @@ include!("tests_core.rs");
 include!("tests_router.rs");
 
 #[tokio::test]
-async fn adopt_existing_agent_rejects_workspace_copy_destination_outside_safe_paths() {
-    let state = build_test_state().await;
-    let headers = auth_headers(&state).await;
-
-    let source_workdir = std::env::temp_dir()
-        .join(format!("agenthub-adopt-source-{}", Uuid::new_v4()))
-        .to_string_lossy()
-        .to_string();
-    let source = state
-        .agents
-        .create_agent(crate::agent::AgentConfig {
-            name: format!("adopt-source-{}", Uuid::new_v4()),
-            workdir: source_workdir,
-            command: "/bin/sh".to_string(),
-            args: vec!["-c".to_string(), "sleep 10".to_string()],
-            target_node_id: None,
-            worktree_mode: WorktreeMode::UseExisting,
-            worktree_repo: None,
-            worktree_ref: None,
-            code_mode: true,
-            codex_acp_default_mode: None,
-            runtime_model: None,
-            thinking_level: None,
-            agent_loop_enabled: false,
-            agent_loop_idle_seconds: None,
-            agent_loop_prompt: None,
-        })
-        .await
-        .expect("create standalone source agent");
-
-    let Json(team) = create_team(
-        State(state.clone()),
-        headers.clone(),
-        Json(CreateTeamRequest {
-            name: format!("adopt-safe-path-team-{}", Uuid::new_v4()),
-            description: None,
-            spec: json!({
-                "entrypoint": "coordinator",
-                "members": [{"member_id": "coordinator", "role": "coordinator"}]
-            }),
-        }),
-    )
-    .await
-    .expect("create team");
-
-    // Configure a safe_paths allowlist that does NOT include the destination below, so the
-    // workdir-validation gap this test guards against would otherwise let workspace-content
-    // copy write agent files outside the operator-configured allowlist.
-    let allowed = std::env::temp_dir()
-        .join(format!("agenthub-adopt-allowed-{}", Uuid::new_v4()))
-        .to_string_lossy()
-        .to_string();
-    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&allowed)
-        .bind(Utc::now().timestamp())
-        .execute(&state.db)
-        .await
-        .expect("insert allowed safe path");
-
-    // Deliberately NOT under `std::env::temp_dir()`: `seed_default_team_member_agents` (called by
-    // `build_test_state()`) unconditionally seeds a blanket "/tmp" safe_paths entry, and on Linux
-    // `temp_dir()` *is* "/tmp" -- a temp-dir-based "outside" path would silently pass validation
-    // there while still failing correctly on macOS, where `temp_dir()` differs from "/tmp".
-    let outside_destination = format!("/agenthub-outside-safe-paths-allowlist-{}", Uuid::new_v4());
-
-    let result = super::adopt_existing_agent_to_team(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(super::AdoptExistingAgentRequest {
-            source_agent_id: source.id.clone(),
-            name: "adopted-agent".to_string(),
-            spec: json!({
-                "entrypoint": "coordinator",
-                "members": [
-                    {"member_id": "coordinator", "role": "coordinator"},
-                    {"member_id": super::ADOPTED_MEMBER_ID_PLACEHOLDER, "role": "worker"}
-                ]
-            }),
-            expected_updated_at: team.updated_at,
-            workspace_copy_destination: Some(outside_destination),
-            memory_seed: None,
-        }),
-    )
-    .await;
-
-    let err = result.expect_err("adoption must reject a destination outside safe_paths");
-    let response = err.into_response();
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    let body = to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("read response body");
-    let body: Value = serde_json::from_slice(&body).expect("decode response body");
-    assert_eq!(
-        body["error"],
-        json!("workdir is outside the configured safe_paths allowlist")
-    );
-
-    // The source agent must still be unowned by any team -- the rejected adoption must not have
-    // partially applied.
-    let owning_teams = state
-        .teams
-        .list_teams_referencing_member(&source.id)
-        .await
-        .expect("list teams referencing source agent");
-    assert!(owning_teams.is_empty());
-}
-
-#[tokio::test]
 async fn start_agent_with_actor_context_injects_runtime_env_vars() {
     let state = build_test_state().await;
     let workdir = std::env::temp_dir().join(format!("agenthub-actor-env-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&workdir).expect("create workdir");
     let workdir_str = workdir.to_string_lossy().to_string();
-    let now = Utc::now().timestamp();
-
-    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-        .bind(&workdir_str)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path");
 
     let agent = state
         .agents

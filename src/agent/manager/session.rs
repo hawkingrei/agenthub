@@ -17,8 +17,8 @@ use super::{
     ensure_team_runtime_workspace_layout, normalize_agent_loop_config, spawn_agent_loop_controller,
 };
 use crate::acp::{
-    AcpActorSkillContext, AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths,
-    normalize_actor_context, spawn_acp_session,
+    AcpActorSkillContext, AgenthubAcpEventSink, SpawnAcpSessionRequest, normalize_actor_context,
+    spawn_acp_session,
 };
 use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentStatus, OutputStream};
@@ -711,13 +711,6 @@ impl AgentManager {
                     return Err(anyhow::anyhow!("acp stdin missing"));
                 }
             };
-            let safe_paths = match load_safe_paths(&self.db).await {
-                Ok(paths) => paths,
-                Err(err) => {
-                    tracing::warn!("safe paths load failed: {err}");
-                    Vec::new()
-                }
-            };
             let event_sink = Arc::new(AgenthubAcpEventSink::new(
                 self.event_dbs.clone(),
                 self.idle_gc.clone(),
@@ -743,7 +736,6 @@ impl AgentManager {
                 client_info,
                 stdout,
                 stdin,
-                safe_paths,
                 actor_context: actor_context.clone(),
                 prompt_delivery_policy: provider.prompt_delivery_policy,
                 runtime_location: local_execution.runtime_location,

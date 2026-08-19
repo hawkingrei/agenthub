@@ -27,7 +27,6 @@ Prepare these components before rollout:
    bundled ACP presets (or a source build for development)
 2. A valid `config.toml`
 3. Writable runtime home (default under `~/.agenthub/`)
-4. Explicit `safe_paths` for all allowed repositories/workdirs
 
 ## Deployment Modes
 
@@ -165,8 +164,7 @@ development, follow the repository's contributor documentation.
 2. Create one agent with a safe test path.
 3. Start a short task and confirm status reaches a terminal state.
 4. Refresh browser and verify session history still exists.
-5. Confirm a path outside `safe_paths` is rejected.
-6. If distributed node mode is enabled, register one remote node and verify a
+5. If distributed node mode is enabled, register one remote node and verify a
    remote-target agent can start and stream output back through the main
    control plane.
 

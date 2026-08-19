@@ -26,11 +26,13 @@ finalized, so validate the exact artifact on the deployment host.
 Not for a new complete installation while the tap trails the current release
 and adapter naming. Use the verified GitHub archives or Debian package.
 
-## Is `safe_paths` an OS sandbox?
+## Does AgentHub restrict which workdir I can use?
 
-No. It validates accepted workdirs. The subprocess still inherits the service
-account's filesystem and network privileges. Use a dedicated account and host,
-container, or VM isolation for stronger boundaries.
+No. AgentHub does not validate or restrict workdirs; you can point an agent or
+Team workdir at any path the service account can access, and the subprocess
+inherits that account's full filesystem and network privileges. Use a
+dedicated account and host, container, or VM isolation for stronger
+boundaries.
 
 ## Should I use one agent per repository?
 

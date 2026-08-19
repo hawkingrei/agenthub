@@ -38,11 +38,6 @@ npm --prefix web ci
 AgentHub reads config from `~/.agenthub/config.toml`.
 
 ```toml
-safe_paths = [
-  "/home/foo",
-  "/home/foo/projects"
-]
-
 [server]
 listen = "127.0.0.1:8080"
 

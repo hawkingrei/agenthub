@@ -33,15 +33,9 @@ pub fn normalize_path(path: &str) -> String {
     normalized.to_string_lossy().to_string()
 }
 
-pub fn is_path_allowed(target: &str, allowed: &str) -> bool {
-    let target = normalize_path(target);
-    let allowed = normalize_path(allowed);
-    target == allowed || target.starts_with(&(allowed + std::path::MAIN_SEPARATOR_STR))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{expand_tilde, is_path_allowed, normalize_path};
+    use super::{expand_tilde, normalize_path};
 
     #[test]
     fn expand_tilde_uses_home_join_for_relative_paths() {
@@ -60,14 +54,5 @@ mod tests {
         assert_eq!(normalize_path("/a/b/./c"), "/a/b/c");
         assert_eq!(normalize_path("/a/b/../c"), "/a/c");
         assert_eq!(normalize_path("/a/./b/../c/."), "/a/c");
-    }
-
-    #[test]
-    fn is_path_allowed_matches_exact_or_child() {
-        assert!(is_path_allowed("/home/foo", "/home/foo"));
-        assert!(is_path_allowed("/home/foo/bar", "/home/foo"));
-        assert!(is_path_allowed("/home/foo/bar/baz", "/home/foo/bar"));
-        assert!(!is_path_allowed("/home/foobar", "/home/foo"));
-        assert!(!is_path_allowed("/home/foo/../bar", "/home/foo"));
     }
 }

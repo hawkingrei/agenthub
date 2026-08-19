@@ -41,7 +41,6 @@ use agenthub_acp_core::{
     AcpSkill, build_skill, build_skill_blocks, build_skills_meta, expand_tilde, extract_skill_name,
     filter_mcp_servers, parse_mcp_config, parse_skills_config,
 };
-use agenthub_config::path_utils::{is_path_allowed, normalize_path};
 use agenthub_managed_skills::install_managed_skills;
 use team_role_skills::{
     build_team_role_skills, is_reserved_team_role_skill, should_attach_team_role_skills,
@@ -134,7 +133,6 @@ pub struct SpawnAcpSessionRequest {
     pub client_info: Implementation,
     pub stdout: ChildStdout,
     pub stdin: ChildStdin,
-    pub safe_paths: Vec<String>,
     pub actor_context: Option<AcpActorSkillContext>,
     pub prompt_delivery_policy: AcpPromptDeliveryPolicy,
     pub runtime_location: AcpRuntimeLocation,
@@ -230,33 +228,6 @@ fn skills_config_path() -> PathBuf {
     Path::new(&home).join(SKILLS_CONFIG_FILE)
 }
 
-pub async fn load_safe_paths(db: &SqlitePool) -> anyhow::Result<Vec<String>> {
-    let rows = sqlx::query("SELECT path FROM safe_paths ORDER BY id ASC")
-        .fetch_all(db)
-        .await?;
-    Ok(rows
-        .into_iter()
-        .filter_map(|row| row.try_get::<String, _>("path").ok())
-        .collect())
-}
-
-fn is_skill_path_allowed(path: &Path, safe_paths: &[String]) -> bool {
-    if !path.is_absolute() {
-        return false;
-    }
-    if safe_paths.is_empty() {
-        return false;
-    }
-    let target = normalize_path(&path.to_string_lossy());
-    for safe_path in safe_paths {
-        let allowed = normalize_path(&expand_tilde(safe_path));
-        if is_path_allowed(&target, &allowed) {
-            return true;
-        }
-    }
-    false
-}
-
 fn load_mcp_servers_from_path(path: &Path) -> Vec<McpServer> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
@@ -311,18 +282,7 @@ fn default_skill_name_for_path(path: &Path) -> String {
     stem.unwrap_or("skill").to_string()
 }
 
-fn load_skill_from_path(
-    path_buf: &Path,
-    explicit_name: Option<String>,
-    safe_paths: &[String],
-) -> Option<AcpSkill> {
-    if !is_skill_path_allowed(path_buf, safe_paths) {
-        tracing::warn!(
-            "skill skipped: path={} reason=not allowed",
-            path_buf.display()
-        );
-        return None;
-    }
+fn load_skill_from_path(path_buf: &Path, explicit_name: Option<String>) -> Option<AcpSkill> {
     let contents = match fs::read_to_string(path_buf) {
         Ok(contents) => contents,
         Err(err) => {
@@ -341,7 +301,7 @@ fn load_skill_from_path(
     Some(build_skill(name, path_display, &contents))
 }
 
-fn load_skills_from_config(path: &Path, safe_paths: &[String]) -> Vec<AcpSkill> {
+fn load_skills_from_config(path: &Path) -> Vec<AcpSkill> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(err) if err.kind() == ErrorKind::NotFound => return Vec::new(),
@@ -366,16 +326,11 @@ fn load_skills_from_config(path: &Path, safe_paths: &[String]) -> Vec<AcpSkill> 
         }
     };
 
-    if safe_paths.is_empty() {
-        tracing::warn!("skills config skipped: no safe paths configured");
-        return Vec::new();
-    }
-
     let mut skills = Vec::new();
     for entry in entries {
         let raw_path = expand_tilde(&entry.path);
         let path_buf = PathBuf::from(&raw_path);
-        if let Some(skill) = load_skill_from_path(&path_buf, entry.name, safe_paths) {
+        if let Some(skill) = load_skill_from_path(&path_buf, entry.name) {
             skills.push(skill);
         }
     }
@@ -436,13 +391,9 @@ fn collect_workdir_skill_paths(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn load_workdir_skills(workdir: &Path, safe_paths: &[String]) -> Vec<AcpSkill> {
+fn load_workdir_skills(workdir: &Path) -> Vec<AcpSkill> {
     let skills_dir = workdir.join(".agents").join("skills");
     if !skills_dir.exists() {
-        return Vec::new();
-    }
-    if safe_paths.is_empty() {
-        tracing::warn!("workdir skills skipped: no safe paths configured");
         return Vec::new();
     }
     match fs::symlink_metadata(&skills_dir) {
@@ -470,13 +421,13 @@ fn load_workdir_skills(workdir: &Path, safe_paths: &[String]) -> Vec<AcpSkill> {
 
     skill_paths
         .into_iter()
-        .filter_map(|path| load_skill_from_path(&path, None, safe_paths))
+        .filter_map(|path| load_skill_from_path(&path, None))
         .collect()
 }
 
-fn load_skills(workdir: &Path, safe_paths: &[String]) -> Vec<AcpSkill> {
-    let mut skills = load_workdir_skills(workdir, safe_paths);
-    skills.extend(load_skills_from_config(&skills_config_path(), safe_paths));
+fn load_skills(workdir: &Path) -> Vec<AcpSkill> {
+    let mut skills = load_workdir_skills(workdir);
+    skills.extend(load_skills_from_config(&skills_config_path()));
     skills
 }
 
@@ -1425,7 +1376,6 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         client_info,
         stdout,
         stdin,
-        safe_paths,
         actor_context,
         prompt_delivery_policy,
         runtime_location,
@@ -1444,7 +1394,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 return;
             }
             let mcp_servers = load_mcp_servers();
-            let mut skills = load_skills(Path::new(&workdir), &safe_paths);
+            let mut skills = load_skills(Path::new(&workdir));
             skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
             let mut attached_team_role_skills = false;
             if let Some(ctx) = actor_context.as_ref() {
@@ -2746,10 +2696,6 @@ mod tests {
             &self.config_path
         }
 
-        fn safe_paths(&self) -> Vec<String> {
-            vec![self.root.to_string_lossy().to_string()]
-        }
-
         fn create_workdir_skill(&self, relative_dir: &str, contents: &str) -> PathBuf {
             let path = self
                 .workdir
@@ -3151,7 +3097,7 @@ Use the repo-local implementation workflow.
 "#,
         );
 
-        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        let skills = load_workdir_skills(workspace.workdir());
         let names = skills
             .iter()
             .map(|skill| skill.name.as_str())
@@ -3167,26 +3113,10 @@ Use the repo-local implementation workflow.
             "Respond to incidents with the repo-local workflow.\n",
         );
 
-        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        let skills = load_workdir_skills(workspace.workdir());
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "incident-response");
         assert_eq!(skills[0].path, skill_path.to_string_lossy());
-    }
-
-    #[test]
-    fn load_workdir_skills_respects_safe_paths() {
-        let workspace = TempSkillWorkspace::new();
-        workspace.create_workdir_skill(
-            "ops",
-            r#"---
-name: "ops-skill"
----
-Use the repo-local ops workflow.
-"#,
-        );
-
-        let skills = load_workdir_skills(workspace.workdir(), &[]);
-        assert!(skills.is_empty());
     }
 
     #[cfg(unix)]
@@ -3212,7 +3142,7 @@ Use the repo-local primary workflow.
         )
         .expect("create loop symlink");
 
-        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        let skills = load_workdir_skills(workspace.workdir());
         let names = skills
             .iter()
             .map(|skill| skill.name.as_str())
@@ -3240,7 +3170,7 @@ Use the detached skill root.
         fs::create_dir_all(&agents_dir).expect("create .agents directory");
         unix_fs::symlink(&real_dir, agents_dir.join("skills")).expect("symlink skills root");
 
-        let skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
+        let skills = load_workdir_skills(workspace.workdir());
         assert!(skills.is_empty());
     }
 
@@ -3265,11 +3195,8 @@ Fallback to the user-level review contract.
         );
         workspace.write_skills_config(std::slice::from_ref(&global_skill));
 
-        let mut skills = load_workdir_skills(workspace.workdir(), &workspace.safe_paths());
-        skills.extend(load_skills_from_config(
-            workspace.config_path(),
-            &workspace.safe_paths(),
-        ));
+        let mut skills = load_workdir_skills(workspace.workdir());
+        skills.extend(load_skills_from_config(workspace.config_path()));
         let deduped = dedupe_skills(skills);
 
         assert_eq!(deduped.len(), 1);

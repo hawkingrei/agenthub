@@ -12,8 +12,8 @@ Usage:
 
 Description:
   Add Team coordinator/worker/deliberation skill files into AgentHub skills.json.
-  By default, copies Team skill files into ~/.agenthub/worktrees/team-skills so
-  resulting paths are inside the default safe_paths allow-list.
+  By default, copies Team skill files into ~/.agenthub/worktrees/team-skills, a
+  convenient default location alongside other AgentHub runtime state.
   Existing skills are preserved and duplicates are removed.
 
 Options:

@@ -446,20 +446,6 @@ async fn seed_team_run_with_spec(
     .expect("insert team run");
 }
 
-async fn seed_safe_path(state: &crate::state::AppState, path: &std::path::Path) {
-    sqlx::query(
-        r#"
-            INSERT OR IGNORE INTO safe_paths (path, created_at)
-            VALUES (?1, ?2)
-            "#,
-    )
-    .bind(path.to_string_lossy().to_string())
-    .bind(chrono::Utc::now().timestamp())
-    .execute(&state.db)
-    .await
-    .expect("insert safe path");
-}
-
 async fn configure_remote_grpc_relay(
     state: &crate::state::AppState,
     cert_dir: &Path,
@@ -1419,7 +1405,6 @@ async fn remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls() {
         std::env::temp_dir().join(format!("agenthub-remote-agent-{}", Uuid::new_v4()));
     let workdir = workdir_root.join("workspace");
     std::fs::create_dir_all(&workdir).expect("create workdir");
-    seed_safe_path(&remote_state, &workdir_root).await;
 
     let cert_dir = test_cert_dir("remote-agent-control");
     ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)

@@ -10,7 +10,6 @@ sidebar_position: 1
 - The deployed `agenthub` and `agenthub-acp` versions match.
 - Disk space is healthy for the data directory, worktrees, and local objects.
 - Required remote nodes show a recent last-seen signal.
-- The selected repository/workdir is inside an effective `safe_paths` root.
 - No unresolved backup, migration, or provider incident is in progress.
 
 ## During Execution
@@ -44,7 +43,7 @@ sidebar_position: 1
 ## Scheduled Maintenance
 
 - Snapshot and restore-test the complete data set.
-- Review `safe_paths`, users/roles, devices, remote nodes, and TLS expiry.
+- Review users/roles, devices, remote nodes, and TLS expiry.
 - Check event retention and disk growth before enabling SQLite `VACUUM`.
 - Re-run the release artifact smoke after upgrades, including S3 or remote-node
   paths that your deployment advertises.

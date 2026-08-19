@@ -1189,19 +1189,6 @@ mod tests {
 
         sqlx::query(
             r#"
-            CREATE TABLE safe_paths (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                path TEXT NOT NULL UNIQUE,
-                created_at INTEGER NOT NULL
-            )
-            "#,
-        )
-        .execute(db)
-        .await
-        .expect("create safe_paths");
-
-        sqlx::query(
-            r#"
             CREATE TABLE agent_sessions (
                 id TEXT PRIMARY KEY,
                 agent_id TEXT NOT NULL,

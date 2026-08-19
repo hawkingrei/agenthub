@@ -5,7 +5,6 @@ use std::collections::{HashMap, HashSet};
 
 use path_utils::expand_tilde;
 
-const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 const DEFAULT_CODEX_ACP_MODE: &str = "full-access";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
@@ -32,7 +31,6 @@ pub struct AppConfig {
     pub object_store: Option<ObjectStoreConfig>,
     pub push: Option<PushConfig>,
     pub internal_grpc: Option<InternalGrpcConfig>,
-    pub safe_paths: Option<Vec<String>>,
     pub web_dir: Option<String>,
     pub log_path: Option<String>,
 }
@@ -376,25 +374,6 @@ impl AppConfig {
             .as_ref()
             .and_then(|w| w.passkey_enabled)
             .unwrap_or(false)
-    }
-
-    pub fn safe_paths(&self) -> Vec<String> {
-        let mut paths = Vec::new();
-        paths.push(expand_tilde(DEFAULT_SAFE_PATH));
-        if let Some(configured_paths) = &self.safe_paths {
-            for path in configured_paths {
-                let trimmed = path.trim();
-                if !trimmed.is_empty() {
-                    paths.push(expand_tilde(trimmed));
-                }
-            }
-        }
-
-        let mut seen = HashSet::new();
-        paths
-            .into_iter()
-            .filter(|path| seen.insert(path.clone()))
-            .collect()
     }
 
     pub fn log_path(&self) -> Option<String> {
@@ -862,7 +841,6 @@ fn detect_env_overrides() -> Vec<String> {
         "AGENTHUB_RP_ORIGIN",
         "AGENTHUB_RP_NAME",
         "AGENTHUB_PASSKEY_ENABLED",
-        "AGENTHUB_SAFE_PATHS",
         "AGENTHUB_WEB_DIR",
         "AGENTHUB_LOG_PATH",
         "AGENTHUB_CODEX_ACP_BINARY",
@@ -1207,34 +1185,6 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.default_worktree_root(), "~/.agenthub/worktrees");
-    }
-
-    #[test]
-    fn safe_paths_includes_default_worktrees_path() {
-        let config = AppConfig::default();
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        assert_eq!(
-            config.safe_paths(),
-            vec![format!("{home}/.agenthub/worktrees")]
-        );
-    }
-
-    #[test]
-    fn safe_paths_merges_configured_paths_and_deduplicates() {
-        let config = AppConfig {
-            safe_paths: Some(vec![
-                " /tmp/a ".to_string(),
-                "~/.agenthub/worktrees".to_string(),
-                "".to_string(),
-                "/tmp/a".to_string(),
-            ]),
-            ..Default::default()
-        };
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        assert_eq!(
-            config.safe_paths(),
-            vec![format!("{home}/.agenthub/worktrees"), "/tmp/a".to_string()]
-        );
     }
 
     #[test]

@@ -54,8 +54,7 @@ The session is valid but the role cannot perform the operation. See
 
 ## Common Validation Errors
 
-- Agent creation rejects empty names/commands and workdirs outside the
-  effective safe paths.
+- Agent creation rejects empty names/commands.
 - Remote-node operations reject missing peer configuration, invalid node IDs,
   or unreachable internal gRPC targets.
 - Agent loop enablement requires a prompt and an idle interval from 10 to

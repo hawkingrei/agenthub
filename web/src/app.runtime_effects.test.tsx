@@ -11,7 +11,6 @@ const {
   listAgentsMock,
   listAgentEventsMock,
   listAgentNodesMock,
-  listSafePathsMock,
   listDevicesMock,
   listAuditsMock,
   listLinkersMock,
@@ -24,7 +23,6 @@ const {
   listAgentsMock: vi.fn(),
   listAgentEventsMock: vi.fn(),
   listAgentNodesMock: vi.fn(),
-  listSafePathsMock: vi.fn(),
   listDevicesMock: vi.fn(),
   listAuditsMock: vi.fn(),
   listLinkersMock: vi.fn(),
@@ -40,7 +38,6 @@ vi.mock("./api", () => ({
     listAgents: listAgentsMock,
     listAgentEvents: listAgentEventsMock,
     listAgentNodes: listAgentNodesMock,
-    listSafePaths: listSafePathsMock,
     listDevices: listDevicesMock,
     listAudits: listAuditsMock,
     listLinkers: listLinkersMock,
@@ -115,8 +112,6 @@ describe("App runtime viewport effects", () => {
     listAgentEventsMock.mockResolvedValue([]);
     listAgentNodesMock.mockReset();
     listAgentNodesMock.mockResolvedValue([]);
-    listSafePathsMock.mockReset();
-    listSafePathsMock.mockResolvedValue([]);
     listDevicesMock.mockReset();
     listDevicesMock.mockResolvedValue([]);
     listAuditsMock.mockReset();
@@ -588,7 +583,6 @@ describe("App runtime viewport effects", () => {
       await Promise.resolve();
     });
 
-    expect(listSafePathsMock).not.toHaveBeenCalled();
     expect(listDevicesMock).not.toHaveBeenCalled();
     expect(listAuditsMock).not.toHaveBeenCalled();
     expect(listLinkersMock).not.toHaveBeenCalled();
@@ -614,7 +608,6 @@ describe("App runtime viewport effects", () => {
       await Promise.resolve();
     });
 
-    expect(listSafePathsMock).toHaveBeenCalledWith("token-root");
     expect(listDevicesMock).toHaveBeenCalledWith("token-root");
     expect(listAuditsMock).toHaveBeenCalledWith("token-root");
     expect(listLinkersMock).toHaveBeenCalledWith("token-root");

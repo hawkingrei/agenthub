@@ -247,11 +247,6 @@ export type JoinFinishResponse = {
   token: string;
 };
 
-export type SafePath = {
-  path: string;
-  created_at: number;
-};
-
 export type DeviceRecord = {
   id: string;
   user_id: string;
@@ -916,18 +911,6 @@ export const api = {
     }),
   getRuntimeDefaults: (token: string) =>
     apiFetch<RuntimeDefaults>("/api/settings/defaults", token),
-  listSafePaths: (token: string) =>
-    apiFetch<SafePath[]>("/api/admin/safe_paths", token),
-  addSafePath: (token: string, path: string) =>
-    apiFetch<{ status: string }>("/api/admin/safe_paths", token, {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    }),
-  deleteSafePath: (token: string, path: string) =>
-    apiFetch<{ status: string }>("/api/admin/safe_paths", token, {
-      method: "DELETE",
-      body: JSON.stringify({ path }),
-    }),
   listDevices: (token: string) =>
     apiFetch<DeviceRecord[]>("/api/admin/devices", token),
   revokeDevice: (token: string, id: string) =>

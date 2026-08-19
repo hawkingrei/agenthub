@@ -13,7 +13,6 @@ use agenthub_auth_domain::UserCapability;
 use agenthub_config::{
     normalize_optional_codex_acp_mode_id, normalize_optional_runtime_model,
     normalize_optional_thinking_level,
-    path_utils::{expand_tilde, is_path_allowed},
 };
 
 use crate::acp::{
@@ -309,7 +308,6 @@ async fn create_agent(
         &worktree_mode,
         default_worktree_root.as_deref(),
     )?;
-    ensure_workdir_within_safe_paths(&state, &workdir).await?;
     let config = AgentConfig {
         name,
         workdir,
@@ -1053,30 +1051,6 @@ fn resolve_create_agent_workdir(
     Ok(default_worktree_path(agent_name, default_worktree_root))
 }
 
-/// Reject a workdir outside the configured `safe_paths` allowlist.
-///
-/// An empty allowlist means no operator has opted into restricting agent workdirs yet, so this is
-/// a no-op in that case (matches the pre-existing, unrestricted behavior) rather than failing every
-/// agent-creation request on an install that has never configured `safe_paths`.
-pub(super) async fn ensure_workdir_within_safe_paths(
-    state: &AppState,
-    workdir: &str,
-) -> Result<(), ApiError> {
-    let safe_paths = state.agents.list_safe_paths().await?;
-    if safe_paths.is_empty() {
-        return Ok(());
-    }
-    let allowed = safe_paths
-        .iter()
-        .any(|safe_path| is_path_allowed(workdir, &expand_tilde(safe_path)));
-    if !allowed {
-        return Err(ApiError::forbidden(
-            "workdir is outside the configured safe_paths allowlist",
-        ));
-    }
-    Ok(())
-}
-
 fn default_worktree_path(agent_name: &str, default_worktree_root: &str) -> String {
     let root = default_worktree_root
         .trim()
@@ -1736,19 +1710,6 @@ mod tests {
 
         sqlx::query(
             r#"
-            CREATE TABLE safe_paths (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                path TEXT NOT NULL UNIQUE,
-                created_at INTEGER NOT NULL
-            )
-            "#,
-        )
-        .execute(db)
-        .await
-        .expect("create safe_paths");
-
-        sqlx::query(
-            r#"
             CREATE TABLE object_uploads (
                 id TEXT PRIMARY KEY,
                 owner_scope TEXT NOT NULL,
@@ -2379,12 +2340,6 @@ mod tests {
             .join(format!("agenthub-managed-agent-{}", Uuid::new_v4()))
             .to_string_lossy()
             .to_string();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?, ?)")
-            .bind(&workdir)
-            .bind(chrono::Utc::now().timestamp())
-            .execute(&state.db)
-            .await
-            .expect("insert managed agent safe path");
 
         let create_payload = json!({
             "name": "managed-agent",
@@ -2513,58 +2468,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_agent_rejects_workdir_outside_configured_safe_paths() {
-        let state = build_test_state().await;
-        let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
-        let app = router(state.clone());
-        let allowed = std::env::temp_dir()
-            .join(format!("agenthub-safe-path-{}", Uuid::new_v4()))
-            .to_string_lossy()
-            .to_string();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(&allowed)
-            .bind(chrono::Utc::now().timestamp())
-            .execute(&state.db)
-            .await
-            .expect("insert allowed safe path");
-
-        let outside_workdir = std::env::temp_dir()
-            .join(format!("agenthub-outside-safe-path-{}", Uuid::new_v4()))
-            .to_string_lossy()
-            .to_string();
-        let response = app
-            .oneshot(build_json_request(
-                Method::POST,
-                "/",
-                Some(&operator_token),
-                Some(json!({
-                    "name": "escapes-safe-paths",
-                    "workdir": outside_workdir,
-                    "command": "agenthub-codex-acp",
-                    "args": [],
-                    "worktree_mode": "use_existing"
-                })),
-            ))
-            .await
-            .expect("create agent outside safe_paths");
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        let body = decode_json_body(response).await;
-        assert_eq!(
-            body["error"],
-            json!("workdir is outside the configured safe_paths allowlist")
-        );
-    }
-
-    #[tokio::test]
-    async fn create_agent_allows_any_workdir_when_no_safe_paths_are_configured() {
+    async fn create_agent_allows_any_workdir() {
         let state = build_test_state().await;
         let operator_token = create_role_auth_token(&state, UserRole::Operator).await;
         let app = router(state.clone());
         let workdir = std::env::temp_dir()
-            .join(format!(
-                "agenthub-unconfigured-safe-paths-{}",
-                Uuid::new_v4()
-            ))
+            .join(format!("agenthub-arbitrary-workdir-{}", Uuid::new_v4()))
             .to_string_lossy()
             .to_string();
 
@@ -2574,7 +2483,7 @@ mod tests {
                 "/",
                 Some(&operator_token),
                 Some(json!({
-                    "name": "no-safe-paths-configured",
+                    "name": "arbitrary-workdir",
                     "workdir": workdir,
                     "command": "agenthub-codex-acp",
                     "args": [],
@@ -2582,7 +2491,7 @@ mod tests {
                 })),
             ))
             .await
-            .expect("create agent with no safe_paths configured");
+            .expect("create agent with arbitrary workdir");
         assert_eq!(response.status(), StatusCode::OK);
     }
 
@@ -2634,16 +2543,6 @@ mod tests {
         std::fs::write(repo_dir.join("README.md"), "seed\n").expect("write seed file");
         run_git(&repo_dir, &["add", "README.md"]);
         run_git(&repo_dir, &["commit", "-m", "init"]);
-
-        let now = chrono::Utc::now().timestamp();
-        for path in [&repo_dir, &workdir] {
-            sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-                .bind(path.to_string_lossy().to_string())
-                .bind(now)
-                .execute(&state.db)
-                .await
-                .expect("insert safe path");
-        }
 
         let create_resp = app
             .clone()
@@ -2819,7 +2718,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_agent_treats_main_target_node_as_local_without_safe_path() {
+    async fn create_agent_treats_main_target_node_as_local() {
         let db = create_test_db().await;
         init_test_schema(&db).await;
         add_agent_node_support(&db).await;
@@ -2958,12 +2857,6 @@ mod tests {
             .join(format!("agenthub-upload-agent-{}", Uuid::new_v4()))
             .to_string_lossy()
             .to_string();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(&workdir)
-            .bind(chrono::Utc::now().timestamp())
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
         let agent = state
             .agents
             .create_agent(crate::agent::AgentConfig {
@@ -3244,13 +3137,6 @@ mod tests {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind("/tmp/codex-mode-agent")
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
 
         let response = app
             .oneshot(build_json_request(
@@ -3290,13 +3176,6 @@ mod tests {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind("/tmp/runtime-profile-agent")
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
 
         let response = app
             .oneshot(build_json_request(
@@ -3338,13 +3217,6 @@ mod tests {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind("/tmp/bad-thinking-agent")
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
 
         let response = app
             .oneshot(build_json_request(
@@ -3370,13 +3242,6 @@ mod tests {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind("/tmp/non-acp-profile-agent")
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
 
         let response = app
             .oneshot(build_json_request(
@@ -3402,13 +3267,6 @@ mod tests {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind("/tmp/set-runtime-profile-agent")
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
 
         let create_response = app
             .clone()
@@ -3650,16 +3508,6 @@ mod tests {
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
 
-        let now = chrono::Utc::now().timestamp();
-        for path in [&repo_dir, &workdir] {
-            sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-                .bind(path.to_string_lossy().to_string())
-                .bind(now)
-                .execute(&state.db)
-                .await
-                .expect("insert safe path");
-        }
-
         let create_resp = app
             .clone()
             .oneshot(build_json_request(
@@ -3787,20 +3635,6 @@ mod tests {
         );
         run_git(&repo_dir, &["checkout", "-"]);
 
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(repo_dir.to_string_lossy().to_string())
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert repo safe path");
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(workdir.to_string_lossy().to_string())
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert workdir safe path");
-
         let create_resp = app
             .clone()
             .oneshot(build_json_request(
@@ -3904,20 +3738,6 @@ mod tests {
         run_git(&repo_dir, &["add", "README.md"]);
         run_git(&repo_dir, &["commit", "-m", "init"]);
 
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(repo_dir.to_string_lossy().to_string())
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert repo safe path");
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(workdir.to_string_lossy().to_string())
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert workdir safe path");
-
         let first_create = app
             .clone()
             .oneshot(build_json_request(
@@ -4016,13 +3836,6 @@ mod tests {
 
         let workdir = std::env::temp_dir().join(format!("agenthub-send-input-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&workdir).expect("create workdir");
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
-            .bind(workdir.to_string_lossy().to_string())
-            .bind(now)
-            .execute(&state.db)
-            .await
-            .expect("insert safe path");
 
         let create_resp = app
             .clone()
@@ -4166,18 +3979,6 @@ mod tests {
 
         let workdir = std::env::temp_dir().join(format!("agenthub-start-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&workdir).expect("create workdir");
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO safe_paths (path, created_at)
-            VALUES (?1, ?2)
-            "#,
-        )
-        .bind(workdir.to_string_lossy().to_string())
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path");
 
         let env_file = workdir.join("actor-runtime-env.txt");
         let script = "printf '%s\\n' \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" > actor-runtime-env.txt; \
@@ -4241,7 +4042,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn start_route_accepts_empty_body_without_safe_path() {
+    async fn start_route_accepts_empty_body() {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
         let app = router(state.clone());
@@ -4308,17 +4109,6 @@ mod tests {
             std::env::temp_dir().join(format!("agenthub-discovery-card-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&workdir).expect("create workdir");
         let now = chrono::Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO safe_paths (path, created_at)
-            VALUES (?1, ?2)
-            "#,
-        )
-        .bind(workdir.to_string_lossy().to_string())
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path");
 
         let create_resp = app
             .clone()
@@ -4622,17 +4412,6 @@ mod tests {
         let workdir = std::env::temp_dir().join(format!("agenthub-list-agents-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&workdir).expect("create workdir");
         let now = chrono::Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO safe_paths (path, created_at)
-            VALUES (?1, ?2)
-            "#,
-        )
-        .bind(workdir.to_string_lossy().to_string())
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path");
 
         let hidden_member = state
             .agents
@@ -4807,18 +4586,6 @@ mod tests {
         let workdir =
             std::env::temp_dir().join(format!("agenthub-list-agents-source-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&workdir).expect("create workdir");
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT INTO safe_paths (path, created_at)
-            VALUES (?1, ?2)
-            "#,
-        )
-        .bind(workdir.to_string_lossy().to_string())
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert safe path");
 
         let manual_agent = state
             .agents

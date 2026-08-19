@@ -12,33 +12,16 @@ are not an operating-system sandbox.
 
 - The web/API layer authenticates a user and checks a capability for each
   protected operation.
-- `safe_paths` restricts which workdirs AgentHub accepts.
-- The agent process runs with the same operating-system identity and ambient
-  privileges as the AgentHub service unless you add container or host-level
-  isolation.
+- AgentHub does not restrict which workdir an agent or Team member can use;
+  operators choose workdirs directly, and the agent process runs with the same
+  operating-system identity and ambient privileges as the AgentHub service
+  unless you add container or host-level isolation.
 - Provider credentials and network access available to that service identity
   may also be available to the runtime.
 
 Setting a process working directory does not prevent it from reading other
 files that the OS account can access. For stronger isolation, use a dedicated
 service account, containers/VMs, filesystem permissions, and network policy.
-
-## Minimize `safe_paths`
-
-```toml
-safe_paths = [
-  "/srv/agenthub/workspaces/team-a",
-  "/srv/agenthub/workspaces/team-b",
-]
-```
-
-AgentHub always includes `~/.agenthub/worktrees` in the effective safe-path
-list. Additional paths should be specific, owned by the service account, and
-free of unrelated credentials or personal data.
-
-Avoid broad roots such as `/`, `/home`, or an entire user home. Review symlinks,
-mount points, and the resolved path seen by the service account when a seemingly
-valid workspace is rejected.
 
 ## Roles and Capabilities
 
@@ -120,7 +103,8 @@ When server-side URL ingestion is enabled:
 ## Operational Hardening Checklist
 
 - Run AgentHub as a dedicated non-root OS account.
-- Minimize `safe_paths` and review them after workspace changes.
+- Since AgentHub does not restrict workdirs itself, scope filesystem
+  permissions for the service account to the workspaces it should touch.
 - Keep HTTP and gRPC listeners private; terminate external access with TLS.
 - Back up the complete data set and test restore before upgrades.
 - Keep the main binary and `agenthub-acp` on the same release.

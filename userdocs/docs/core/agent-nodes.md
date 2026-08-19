@@ -89,12 +89,11 @@ audience = "agenthub-internal"
 
 [internal_grpc.bootstrap]
 token = "<bootstrap-token-from-main>"
-
-safe_paths = [
-  "/srv/agenthub/repositories",
-  "/srv/agenthub/worktrees",
-]
 ```
+
+AgentHub does not restrict which workdir an agent can use on the node; scope
+the remote service account's filesystem permissions to the repositories and
+worktree roots it should touch.
 
 The bootstrap token authenticates onboarding. Runtime calls still depend on
 the configured TLS and JWT auth contract. Keep clocks synchronized and restart
@@ -168,7 +167,7 @@ Do not use `grpcurl -insecure` as production evidence.
 | Certificate failure | CA trust, SAN, expiry, and registered `tls_server_name`. |
 | Unauthorized | Bootstrap token during onboarding; shared secret, issuer, audience, and clock during runtime. |
 | Agent starts locally instead | Selected execution node and persisted `target_node_id`. |
-| Worktree failure | Repository/ref, effective safe paths, default root, and permissions on the remote host. |
+| Worktree failure | Repository/ref, default root, and permissions on the remote host. |
 | Stale node signal | Process health, network path, and last-seen timestamp before editing registry state. |
 | Node cannot be deleted | Stop or migrate agents that still reference it. |
 

@@ -11,7 +11,6 @@ const {
   listAgentsMock,
   listAgentEventsMock,
   listAgentNodesMock,
-  listSafePathsMock,
   listDevicesMock,
   listAuditsMock,
   getVapidInfoMock,
@@ -24,7 +23,6 @@ const {
   listAgentsMock: vi.fn(),
   listAgentEventsMock: vi.fn(),
   listAgentNodesMock: vi.fn(),
-  listSafePathsMock: vi.fn(),
   listDevicesMock: vi.fn(),
   listAuditsMock: vi.fn(),
   getVapidInfoMock: vi.fn(),
@@ -40,7 +38,6 @@ vi.mock("./api", () => ({
     listAgents: listAgentsMock,
     listAgentEvents: listAgentEventsMock,
     listAgentNodes: listAgentNodesMock,
-    listSafePaths: listSafePathsMock,
     listDevices: listDevicesMock,
     listAudits: listAuditsMock,
     getVapidInfo: getVapidInfoMock,
@@ -108,8 +105,6 @@ describe("App route shell wiring", () => {
     listAgentEventsMock.mockResolvedValue([]);
     listAgentNodesMock.mockReset();
     listAgentNodesMock.mockResolvedValue([]);
-    listSafePathsMock.mockReset();
-    listSafePathsMock.mockResolvedValue([]);
     listDevicesMock.mockReset();
     listDevicesMock.mockResolvedValue([]);
     listAuditsMock.mockReset();

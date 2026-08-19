@@ -29,10 +29,6 @@ ensure_agenthub_layout() {
     chown agenthub:agenthub /var/lib/agenthub/.agenthub/config.toml
     chmod 0640 /var/lib/agenthub/.agenthub/config.toml
     cat > /var/lib/agenthub/.agenthub/config.toml <<'CONFIG'
-safe_paths = [
-  "/var/lib/agenthub/workspaces",
-]
-
 [server]
 listen = "127.0.0.1:8080"
 

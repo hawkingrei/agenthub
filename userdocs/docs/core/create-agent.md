@@ -17,7 +17,9 @@ Open **Agents**, select **Create Agent**, and configure one durable runtime.
   - `use_existing` runs in an existing directory.
   - `create_worktree` asks AgentHub to create an isolated Git worktree.
   - `reuse_worktree` attaches an already prepared Git worktree.
-- **Workdir**: an execution path allowed by `safe_paths` on the selected node.
+- **Workdir**: any execution path reachable by the selected node's service
+  account. AgentHub does not restrict which directory you choose, so pick one
+  deliberately.
 
 Provider-specific model, thinking, mode, and loop controls are optional. The
 available values come from the selected runtime rather than a global fixed
@@ -32,7 +34,7 @@ workflow owns worktree and branch creation.
 
 For a remote node with **Default worktree root**, `create_worktree` can derive
 the final workdir from that root. Without a node default, provide an explicit
-allowed path.
+path.
 
 ## After Creation
 
@@ -43,7 +45,6 @@ cleanup action.
 
 ## Common Creation Failures
 
-- The resolved workdir is outside `safe_paths`.
 - The configured command is missing from the service user's `PATH`.
 - A requested remote node is offline or lacks a valid internal gRPC route.
 - `create_worktree` does not have a repository/ref or a writable worktree root.

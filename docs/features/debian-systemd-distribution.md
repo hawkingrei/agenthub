@@ -79,8 +79,12 @@ If no service config exists, package install writes
 
 - `server.listen = "127.0.0.1:8080"`
 - `worktree.default_root = "/var/lib/agenthub/.agenthub/worktrees"`
-- `safe_paths = ["/var/lib/agenthub/workspaces"]`
 - message archive/body paths under `/var/lib/agenthub/.agenthub`
+
+The package also pre-creates `/var/lib/agenthub/workspaces` as a convenience
+directory for repository checkouts, but AgentHub does not restrict workdirs to
+it or any other path; operators can point agent/Team workdirs at any
+filesystem path the `agenthub` service account can access.
 
 Operators can edit that file and restart `agenthub.service`.
 
@@ -98,8 +102,8 @@ Operators can edit that file and restart `agenthub.service`.
 
 - The default service listens only on `127.0.0.1:8080`; production exposure should happen behind a
   reverse proxy or by editing the config deliberately.
-- The service user must be granted filesystem permissions for any repository roots added to
-  `safe_paths`.
+- Since AgentHub does not restrict workdirs itself, the service user must be granted filesystem
+  permissions for any repository roots operators point agent/Team workdirs at.
 - Runtime data is not removed automatically. Operators should back up
   `/var/lib/agenthub/.agenthub` before upgrades.
 

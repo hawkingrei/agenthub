@@ -43,17 +43,6 @@ function createAdminPageProps(
     auth: rootAuth,
     error: null,
     setError: () => {},
-    safePaths: {
-      safePaths: [],
-      selectedSafePaths: new Set<string>(),
-      safePathInput: "",
-      setSafePathInput: () => {},
-      onAddSafePath: () => {},
-      onToggleSafePath: () => {},
-      onToggleAllSafePaths: () => {},
-      onDeleteSelectedSafePaths: () => {},
-      onDeleteSafePath: () => {},
-    },
     devices: {
       devices: [],
       onRevokeDevice: () => {},

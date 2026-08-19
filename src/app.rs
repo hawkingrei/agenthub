@@ -106,7 +106,6 @@ fn log_config_details(
             config.vapid_keys_path().display()
         );
     }
-    tracing::info!("config safe_paths: {}", config.safe_paths().len());
     tracing::info!(
         "config worktree.default_root: {}",
         config.default_worktree_root()

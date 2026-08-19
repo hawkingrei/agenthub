@@ -12,7 +12,6 @@ impl AppState {
         if config.server_role() == ServerRole::Main {
             Self::ensure_root(&db).await?;
         }
-        Self::seed_safe_paths(&db, config).await?;
         Ok(db)
     }
 
@@ -40,26 +39,6 @@ impl AppState {
             .bind(now)
             .execute(db)
             .await?;
-        }
-        Ok(())
-    }
-
-    pub(super) async fn seed_safe_paths(
-        db: &SqlitePool,
-        config: &agenthub_config::AppConfig,
-    ) -> anyhow::Result<()> {
-        for path in config.safe_paths() {
-            let now = chrono::Utc::now().timestamp();
-            let _ = sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO safe_paths (path, created_at)
-                VALUES (?1, ?2)
-                "#,
-            )
-            .bind(path)
-            .bind(now)
-            .execute(db)
-            .await;
         }
         Ok(())
     }
