@@ -21,7 +21,7 @@ agenthub-codex-acp-runtime = { path = "../../agenthub-codex-acp" }
 anyhow = "1"
 claude-code-acp-rs = { version = "0.1.22", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
-codex-utils-cli = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
+codex-utils-cli = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 
 [features]

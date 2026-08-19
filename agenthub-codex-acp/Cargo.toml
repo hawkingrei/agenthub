@@ -26,27 +26,27 @@ agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
 clap = "4"
-codex-apply-patch = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-config = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-arg0 = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-app-server-client = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-app-server-protocol = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-core = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-exec-server = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-extension-api = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-features = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-feedback = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-history = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-http-client = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-mcp-server = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-protocol = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-login = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-models-manager = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-shell-command = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-utils-approval-presets = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-utils-absolute-path = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-utils-cli = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
-codex-utils-path-uri = { git = "https://github.com/hawkingrei/codex", rev = "8a877a796039bba36b5c9bbba76e134660e45d03" }
+codex-apply-patch = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-config = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-arg0 = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-app-server-client = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-app-server-protocol = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-core = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-exec-server = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-extension-api = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-features = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-feedback = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-history = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-http-client = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-mcp-server = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-protocol = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-login = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-models-manager = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-shell-command = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-utils-approval-presets = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-utils-absolute-path = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-utils-cli = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
+codex-utils-path-uri = { git = "https://github.com/hawkingrei/codex", rev = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1" }
 heck = "0.5.0"
 itertools = "0.15.0"
 libc = "0.2"

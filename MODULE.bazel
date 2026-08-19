@@ -12,7 +12,7 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
 git_repository(
     name = "codex_src",
     # Security-patched Codex commit shared with the Cargo codex-* dependencies.
-    commit = "8a877a796039bba36b5c9bbba76e134660e45d03",
+    commit = "f7f30a851dbe8d4b31d130e1e3c0ca4a6790ceb1",
     remote = "https://github.com/hawkingrei/codex",
 )
 
@@ -40,26 +40,16 @@ crate.annotation(
     rustc_flags = ["--cfg=vendored_bwrap_available"],
 )
 crate.annotation(
-    # protoc-bin-vendored-linux-x86_64 bundles a `protoc` binary and .proto includes,
-    # located via CARGO_MANIFEST_DIR at runtime by protoc-bin-vendored (a build-dependency
-    # of codex-code-mode-protocol's build script). crate_universe's default data glob
-    # excludes these extensionless/binary files, so the crate's own CARGO_MANIFEST_DIR
-    # in the Bazel sandbox is missing them unless explicitly declared here.
-    crate = "protoc-bin-vendored-linux-x86_64",
-    data_glob = ["bin/**", "include/**"],
-    repositories = ["crate_index"],
-)
-crate.annotation(
-    # cargo_build_script only pulls a crate's own `data`/`build_script_data` into its
-    # sandbox, not the `data` of its (build-)dependencies -- so protoc-bin-vendored's
-    # bundled protoc binary (see the protoc-bin-vendored-linux-x86_64 annotation above)
-    # has to be listed here explicitly for codex-code-mode-protocol's build script to
-    # find it. Canonical repo name pinned via `bazel query`; may need updating on a
-    # future rules_rust bump if its internal crate_universe repo-naming scheme changes.
+    # codex-code-mode-protocol's build script needs protoc. protoc-bin-vendored's bundled
+    # binary is located via CARGO_MANIFEST_DIR at runtime, which Bazel's crate_universe
+    # sandboxing for cargo_build_script doesn't reliably propagate across crate boundaries
+    # for build-dependencies (confirmed: neither a data_glob on the vendored crate nor a
+    # build_script_data reference to it made the file visible at build-script execution
+    # time, despite both being correct in the Bazel target graph per `bazel query`). The
+    # AgentHub fork's build.rs patch prefers PROTOC when set, so point it at the system
+    # protoc that CI's Bazel jobs already install via apt (protobuf-compiler).
     crate = "codex-code-mode-protocol",
-    build_script_data = [
-        "@@rules_rust++crate+crate_index__protoc-bin-vendored-linux-x86_64-3.2.0//:protoc_bin_vendored_linux_x86_64",
-    ],
+    build_script_env = {"PROTOC": "/usr/bin/protoc"},
     repositories = ["crate_index"],
 )
 crate.from_cargo(
