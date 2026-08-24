@@ -57,6 +57,13 @@ export type AgentRecord = {
   updated_at: number;
 };
 
+export type AgentInputImage = {
+  id: string;
+  file_name: string;
+  mime_type: string;
+  data: string;
+};
+
 export type AgentTimeTriggerRecord = {
   id: string;
   agent_id: string;
@@ -1488,11 +1495,12 @@ export const api = {
     id: string,
     input: string,
     message_id?: string,
-    session_id?: string
+    session_id?: string,
+    images: AgentInputImage[] = []
   ) =>
     apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/input`, token, {
       method: "POST",
-      body: JSON.stringify({ input, message_id, session_id }),
+      body: JSON.stringify({ input, message_id, session_id, images }),
     }),
   createAgent: (token: string, payload: AgentConfig) =>
     apiFetch<AgentRecord>("/api/agents", token, {

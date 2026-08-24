@@ -1,10 +1,11 @@
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::HeaderMap,
     routing::{delete, get, post},
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
@@ -19,7 +20,7 @@ use crate::acp::{
     AcpActorSkillContext, AcpPermissionRecord, AcpPermissionRespondResult, DEFAULT_ACTOR_CHANNEL,
 };
 use crate::agent::{
-    AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
+    AgentConfig, AgentInputImage, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
     AgentTimeTriggerManager, AgentTimeTriggerRecord, WorktreeMode, normalize_target_node_id,
 };
 use crate::api::authz::require_capability;
@@ -36,6 +37,10 @@ use crate::team::effective_team_member_skills;
 const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
 const AGENT_EVENTS_PAGE_LIMIT: i64 = 20;
+const AGENT_INPUT_MAX_IMAGES: usize = 4;
+const AGENT_INPUT_MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
+const AGENT_INPUT_MAX_TOTAL_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+const AGENT_INPUT_BODY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateAgentRequest {
@@ -145,6 +150,15 @@ pub struct SendInputRequest {
     pub input: String,
     pub message_id: Option<String>,
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub images: Vec<SendInputImageRequest>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SendInputImageRequest {
+    pub file_name: String,
+    pub mime_type: String,
+    pub data: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -200,7 +214,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/{id}/start", post(start_agent))
         .route("/{id}/stop", post(stop_agent))
-        .route("/{id}/input", post(send_input))
+        .route(
+            "/{id}/input",
+            post(send_input).layer(DefaultBodyLimit::max(AGENT_INPUT_BODY_LIMIT_BYTES)),
+        )
         .route("/{id}/uploads", post(upload_agent_object))
         .route("/{id}/uploads/downloads", post(download_agent_object))
         .route("/{id}/images", post(upload_agent_image))
@@ -447,16 +464,18 @@ async fn send_input(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     let input = payload.input;
-    if input.trim().is_empty() {
+    let images = validate_agent_input_images(payload.images)?;
+    if input.trim().is_empty() && images.is_empty() {
         return Err(ApiError::bad_request("input is required"));
     }
     let message_id = normalize_optional_request_field("message_id", payload.message_id)?;
     let session_id = normalize_optional_request_field("session_id", payload.session_id)?;
     match state
         .agents
-        .send_input(
+        .send_input_with_images(
             &agent_id,
             &input,
+            &images,
             message_id.as_deref(),
             session_id.as_deref(),
         )
@@ -464,15 +483,86 @@ async fn send_input(
     {
         Ok(()) => {}
         Err(err) => {
-            if let Some(AgentSendInputError::SessionMismatch { .. }) =
-                err.downcast_ref::<AgentSendInputError>()
-            {
-                return Err(ApiError::conflict(&err.to_string()));
+            if let Some(send_error) = err.downcast_ref::<AgentSendInputError>() {
+                return match send_error {
+                    AgentSendInputError::SessionMismatch { .. } => {
+                        Err(ApiError::conflict(&err.to_string()))
+                    }
+                    AgentSendInputError::MultimodalUnsupported => {
+                        Err(ApiError::bad_request(&err.to_string()))
+                    }
+                };
             }
             return Err(err.into());
         }
     }
     Ok(ok_response())
+}
+
+fn validate_agent_input_images(
+    images: Vec<SendInputImageRequest>,
+) -> Result<Vec<AgentInputImage>, ApiError> {
+    if images.len() > AGENT_INPUT_MAX_IMAGES {
+        return Err(ApiError::bad_request("at most 4 images may be attached"));
+    }
+
+    let mut total_bytes = 0usize;
+    images
+        .into_iter()
+        .map(|image| {
+            let file_name = image.file_name.trim();
+            if file_name.is_empty() || file_name.len() > 255 {
+                return Err(ApiError::bad_request(
+                    "image file_name must be between 1 and 255 bytes",
+                ));
+            }
+            let mime_type = image.mime_type.trim().to_ascii_lowercase();
+            if !matches!(
+                mime_type.as_str(),
+                "image/png" | "image/jpeg" | "image/webp" | "image/gif"
+            ) {
+                return Err(ApiError::bad_request(
+                    "image mime_type must be image/png, image/jpeg, image/webp, or image/gif",
+                ));
+            }
+            let data = image.data.trim();
+            let decoded = STANDARD
+                .decode(data)
+                .map_err(|_| ApiError::bad_request("image data must be valid standard base64"))?;
+            if decoded.is_empty() {
+                return Err(ApiError::bad_request("image data must not be empty"));
+            }
+            if decoded.len() > AGENT_INPUT_MAX_IMAGE_BYTES {
+                return Err(ApiError::bad_request("each image must be 5 MiB or smaller"));
+            }
+            if !image_bytes_match_mime_type(&decoded, &mime_type) {
+                return Err(ApiError::bad_request(
+                    "image data does not match its declared mime_type",
+                ));
+            }
+            total_bytes = total_bytes.saturating_add(decoded.len());
+            if total_bytes > AGENT_INPUT_MAX_TOTAL_IMAGE_BYTES {
+                return Err(ApiError::bad_request(
+                    "attached images must total 10 MiB or less",
+                ));
+            }
+            Ok(AgentInputImage {
+                file_name: file_name.to_string(),
+                mime_type,
+                data: data.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn image_bytes_match_mime_type(bytes: &[u8], mime_type: &str) -> bool {
+    match mime_type {
+        "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg" => bytes.starts_with(&[0xff, 0xd8, 0xff]),
+        "image/webp" => bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP",
+        "image/gif" => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+        _ => false,
+    }
 }
 
 async fn upload_agent_object(
@@ -932,28 +1022,41 @@ fn normalize_codex_acp_default_mode_request(
 
 /// Normalize and validate the runtime profile fields from a create/update request, and gate them to
 /// providers that support runtime profiles. `runtime_model` accepts any non-blank string (unknown
-/// model names are allowed); `thinking_level` must be one of `low|medium|high|max`. A profile may only
-/// be set when the agent's derived ACP provider is Codex or Claude — Gemini/Kimi and non-ACP agents are
-/// rejected. Returns the normalized `(runtime_model, thinking_level)`.
+/// model names are allowed). Common thinking levels are `low|medium|high|max`; Codex additionally
+/// accepts `xhigh|ultra`. A profile may only be set when the agent's derived ACP provider is Codex or
+/// Claude — Gemini/Kimi and non-ACP agents are rejected. Returns the normalized
+/// `(runtime_model, thinking_level)`.
 fn normalize_runtime_profile_request(
     provider: Option<&str>,
     runtime_model: Option<&str>,
     thinking_level: Option<&str>,
 ) -> Result<(Option<String>, Option<String>), ApiError> {
     let model = normalize_optional_runtime_model(runtime_model);
-    let level =
-        match thinking_level
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            None => None,
-            Some(value) => Some(normalize_optional_thinking_level(Some(value)).ok_or_else(
-                || ApiError::bad_request("thinking_level must be one of low, medium, high, or max"),
-            )?),
-        };
+    let level = match thinking_level
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        None => None,
+        Some(value) => Some(
+            normalize_optional_thinking_level(Some(value)).ok_or_else(|| {
+                ApiError::bad_request(
+                    "thinking_level must be one of low, medium, high, xhigh, max, or ultra",
+                )
+            })?,
+        ),
+    };
     if (model.is_some() || level.is_some()) && !matches!(provider, Some("codex") | Some("claude")) {
         return Err(ApiError::bad_request(
             "runtime_model and thinking_level require a Codex or Claude ACP agent",
+        ));
+    }
+    if provider == Some("claude")
+        && level
+            .as_deref()
+            .is_some_and(|value| matches!(value, "xhigh" | "ultra"))
+    {
+        return Err(ApiError::bad_request(
+            "thinking_level xhigh and ultra are only supported by Codex ACP agents",
         ));
     }
     Ok((model, level))
@@ -1318,11 +1421,11 @@ mod tests {
     use agenthub_config::{AppConfig, PushConfig, WebConfig};
 
     use super::{
-        StartAgentActorRuntimeRequest, StartAgentRequest, TeamMemberProfileRecord, WorktreeMode,
-        build_agent_discovery_card, map_create_agent_error, parse_agent_source,
-        parse_optional_start_agent_request, parse_start_actor_runtime_context, parse_worktree_mode,
-        resolve_create_agent_workdir, resolve_member_profile_from_spec, router,
-        sanitize_worktree_segment,
+        SendInputImageRequest, StartAgentActorRuntimeRequest, StartAgentRequest,
+        TeamMemberProfileRecord, WorktreeMode, build_agent_discovery_card, map_create_agent_error,
+        parse_agent_source, parse_optional_start_agent_request, parse_start_actor_runtime_context,
+        parse_worktree_mode, resolve_create_agent_workdir, resolve_member_profile_from_spec,
+        router, sanitize_worktree_segment, validate_agent_input_images,
     };
 
     #[test]
@@ -3228,11 +3331,71 @@ mod tests {
                     "workdir": "/tmp/bad-thinking-agent",
                     "command": "agenthub-codex-acp",
                     "args": [],
-                    "thinking_level": "ultra"
+                    "thinking_level": "turbo"
                 })),
             ))
             .await
             .expect("create bad thinking agent");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_persists_ultra_thinking_level_for_codex() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "ultra-thinking-agent",
+                    "workdir": "/tmp/ultra-thinking-agent",
+                    "command": "agenthub-codex-acp",
+                    "args": [],
+                    "thinking_level": "ULTRA"
+                })),
+            ))
+            .await
+            .expect("create ultra thinking agent");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        let agent_id = body["id"].as_str().expect("agent id");
+        let thinking_level = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT thinking_level FROM agents WHERE id = ?1",
+        )
+        .bind(agent_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load created agent thinking level");
+        assert_eq!(thinking_level.as_deref(), Some("ultra"));
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_codex_only_thinking_level_for_claude() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "claude-ultra-agent",
+                    "workdir": "/tmp/claude-ultra-agent",
+                    "command": "agenthub-acp",
+                    "args": ["claude"],
+                    "thinking_level": "ultra"
+                })),
+            ))
+            .await
+            .expect("create Claude ultra thinking agent");
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
@@ -5200,5 +5363,32 @@ mod tests {
         assert_eq!(second.status(), StatusCode::OK);
         let second_body = decode_json_body(second).await;
         assert_eq!(second_body["status"], "already_resolved");
+    }
+
+    #[test]
+    fn input_image_validation_accepts_supported_image_data() {
+        let png = b"\x89PNG\r\n\x1a\nminimal";
+        let images = validate_agent_input_images(vec![SendInputImageRequest {
+            file_name: "diagram.png".to_string(),
+            mime_type: "IMAGE/PNG".to_string(),
+            data: STANDARD.encode(png),
+        }])
+        .expect("valid image input");
+
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].mime_type, "image/png");
+        assert_eq!(images[0].file_name, "diagram.png");
+    }
+
+    #[test]
+    fn input_image_validation_rejects_mismatched_content_type() {
+        let err = validate_agent_input_images(vec![SendInputImageRequest {
+            file_name: "diagram.png".to_string(),
+            mime_type: "image/png".to_string(),
+            data: STANDARD.encode(b"not-a-png"),
+        }])
+        .expect_err("mismatched image data should fail");
+
+        assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
     }
 }

@@ -7,6 +7,7 @@ import { useAgentsPermissionJump } from "./use_agents_permission_jump";
 import { resolveAcpInputDockConversationClearance } from "./acp_input_dock_clearance";
 import { resolveInputDockJumpMode } from "./acp_panel_helpers";
 import type { AgentsWorkbenchProps } from "./agents_workbench_types";
+import { StandaloneAcpHeaderContext } from "./standalone_acp_header_context";
 
 type UseAgentsWorkbenchPanelResult = {
   acpPanelProps: AcpPanelProps;
@@ -30,6 +31,7 @@ export function useAgentsWorkbenchPanel({
   scopedAcpPermissionHistory,
   terminalRef,
   input,
+  inputImages,
   ansi,
   canControlAcp,
   canInterruptAcpRun,
@@ -91,8 +93,9 @@ export function useAgentsWorkbenchPanel({
     await onSendAcpInput(input, {
       recordHistory: true,
       clearComposer: true,
+      images: inputImages,
     });
-  }, [jumpToConversationBottom, input, onSendAcpInput]);
+  }, [jumpToConversationBottom, input, inputImages, onSendAcpInput]);
 
   const onSubmitRequestUserInput = React.useCallback(
     async (text: string) => {
@@ -247,6 +250,10 @@ export function useAgentsWorkbenchPanel({
       acpView,
       subtitle: activeAgentRecord?.workdir ?? null,
       mobileTitle: activeAgentRecord?.name ?? null,
+      headerContext: React.createElement(StandaloneAcpHeaderContext, {
+        acpView,
+        agent: activeAgentRecord,
+      }),
       acpTab: !developerMode && acpTab === "debug" ? "conversation" : acpTab,
       developerMode,
       conversationBottomClearance,
@@ -263,8 +270,7 @@ export function useAgentsWorkbenchPanel({
     }),
     [
       acpView,
-      activeAgentRecord?.workdir,
-      activeAgentRecord?.name,
+      activeAgentRecord,
       developerMode,
       acpTab,
       conversationBottomClearance,

@@ -10,6 +10,7 @@ import {
   normalizeCodexAcpModeId,
 } from "../../codex_acp_modes";
 import {
+  CODEX_THINKING_LEVEL_OPTIONS,
   CreateAgentModal,
   THINKING_LEVEL_OPTIONS,
   type CreateAgentModalProps,
@@ -203,6 +204,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
   onSave,
   chrome,
   supportsRuntimeProfile,
+  isCodexProvider = false,
 }: {
   open: boolean;
   busy: string | null;
@@ -213,6 +215,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
   onSave: () => void;
   chrome: TeamModalChrome;
   supportsRuntimeProfile: boolean;
+  isCodexProvider?: boolean;
 }) {
   const dialogActive = open && Boolean(draft);
   const focusTrapRef = useFocusTrap(dialogActive);
@@ -299,7 +302,11 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                   description="Applies to future sessions."
                   placeholder="Provider default"
                   value={draft.thinking_level || null}
-                  data={THINKING_LEVEL_OPTIONS}
+                  data={
+                    isCodexProvider
+                      ? CODEX_THINKING_LEVEL_OPTIONS
+                      : THINKING_LEVEL_OPTIONS
+                  }
                   clearable
                   onChange={(value) => onPatchDraft({ thinking_level: value ?? "" })}
                 />

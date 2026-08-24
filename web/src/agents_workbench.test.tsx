@@ -97,6 +97,52 @@ describe("AgentsWorkbench", () => {
     expect(html).toContain("Send");
     expect(html).toContain("Thread");
     expect(html).toContain("/repo/workdir");
+    expect(html).toContain('data-standalone-acp-context="true"');
+    expect(html).toContain('aria-label="Attach images"');
+  });
+
+  it("summarizes active Codex subagents in the standalone header", () => {
+    const html = renderWorkbench({
+      acpView: {
+        ...baseView,
+        toolCalls: [
+          {
+            id: "codex-subagent:child",
+            title: "Subagent child",
+            status: "in_progress",
+            meta: { agenthub: { kind: "codex_subagent" } },
+          },
+        ],
+      },
+    });
+
+    expect(html).toContain("1 active / 1 total");
+  });
+
+  it("prefers live Codex reasoning and mode context in the standalone header", () => {
+    const html = renderWorkbench({
+      activeAgentRecord: {
+        ...createProps().activeAgentRecord!,
+        thinking_level: "high",
+        codex_acp_default_mode: "full-access",
+      },
+      acpView: {
+        ...baseView,
+        currentMode: "read-only",
+        configOptions: [
+          {
+            id: "reasoning_effort",
+            label: "Reasoning effort",
+            currentValueId: "ultra",
+            selectOptions: [],
+          },
+        ],
+      },
+    });
+
+    expect(html).toContain("Ultra");
+    expect(html).toContain("Read Only");
+    expect(html).not.toContain("Full Access");
   });
 
   it("hides the input dock when ACP debug owns the footer", () => {

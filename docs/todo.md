@@ -10,13 +10,16 @@ Active backlog only. Keep this file small and current.
   validate the formula against the intended formal release, including both binary versions and
   `brew services` startup. Evidence:
   [journal/2026-08-13-user-documentation-release-readiness.md](journal/2026-08-13-user-documentation-release-readiness.md).
-- [ ] `P1` Replace the temporary security pins for
-  `hawkingrei/codex@6ca61345ceb09d76edc3db8c4eb55df18a10888a` and
-  `hawkingrei/symposium-acp@c731bb045d1375af48b0446af728aea52503b30b` with upstream stable
-  releases that resolve the same Dependabot package set, then rerun the AgentHub ACP Cargo and Bazel
-  compatibility suites. Do not move back while the default ACP runtime graph contains an affected
-  `gix`, `hickory-proto`, `jsonwebtoken`, `opentelemetry_sdk`, `rmcp`, or `tar` release. Evidence:
-  [journal/2026-08-12-dependabot-security-remediation.md](journal/2026-08-12-dependabot-security-remediation.md).
+- [ ] `P1` Remediate dependency-graph regressions exposed by returning Codex to official
+  `openai/codex@ff29a44391deccde0aba0f8390337d7f3c319ea4`, and replace the separate
+  `hawkingrei/symposium-acp@c731bb045d1375af48b0446af728aea52503b30b` pin with an upstream stable
+  release. The official 0.149.1 graph currently reintroduces advisory-range `gix 0.81.0`,
+  `gix-fs 0.19.2`, `gix-pack 0.68.0`, `hickory-proto 0.25.2`, `jsonwebtoken 9.3.1`,
+  `opentelemetry_sdk 0.31.0`, and `tar 0.4.45`; even `tar` is pinned exactly by upstream and cannot
+  be updated independently. Do not restore a downstream Codex fork; resolve findings in a newer
+  official Codex release or with ordinary compatible constraints. Evidence:
+  [journal/2026-08-12-dependabot-security-remediation.md](journal/2026-08-12-dependabot-security-remediation.md),
+  [journal/2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md](journal/2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md).
 - [ ] `P1` Verify preview release partial-asset behavior: semver release run `29194967848` for `v0.0.11` proves Linux `x86_64` / `aarch64` release builds used `release-vendored-openssl`, avoided the stale cross-sysroot OpenSSL panic, and published canonical `agenthub` / `agenthub-acp` assets plus Debian packages. Remaining evidence is a preview release run showing successful binary assets publish when one release matrix target fails. Record the preview workflow run ID and release URL in [journal/2026-04-20-release-vendored-openssl-and-partial-assets.md](journal/2026-04-20-release-vendored-openssl-and-partial-assets.md).
 - [ ] `P1` Define and enforce the Linux runtime baseline for official artifacts: the x86_64 prebuild from workflow run `31259043337` starts on Ubuntu 24.04 but requires `GLIBC_2.38` / `GLIBC_2.39` and does not start on Ubuntu 22.04. Pin the supported glibc floor, build against a compatible sysroot, and add a published-binary startup smoke on the oldest supported Linux distribution. Evidence: [journal/2026-08-08-object-store-s3-release-enablement.md](journal/2026-08-08-object-store-s3-release-enablement.md).
 
@@ -67,6 +70,13 @@ Stable contracts:
 
 ## Frontend UI/UX
 
+- [ ] `P1` Replace inline base64 persistence for standalone ACP image attachments with owner-scoped
+  object-store references and replay-safe thumbnails, then capture authenticated Chrome evidence for
+  select, paste, drag/drop, reload replay, generated-image rendering, asynchronous delivery, and
+  concurrent Codex subagent activity. Keep the current four-image, 5 MiB-per-image, 10 MiB-total
+  limits until storage and replay costs are measured. Stable contract:
+  [features/acp-runtime.md](features/acp-runtime.md); evidence:
+  [journal/2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md](journal/2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md).
 - [ ] `P2` Close out the remaining findings from the 2026-08-16 code-only UI/UX review: `team_markdown.ts`
   duplicates `markdown.ts`'s LRU cache/`sanitizeHref`/autolink logic instead of sharing it; `InputDock`
   and `TeamMessageComposer` use two different color-token systems and send-button shapes, contradicting

@@ -65,15 +65,16 @@ impl AcpProviderSpec {
     }
 }
 
-/// Map the provider-neutral thinking level to the Codex `reasoning_effort` config value. Codex tops out
-/// at `high`, so `max` maps to `high`; an unrecognized level yields `None` (caller skips the option and
-/// the provider default applies).
+/// Map an AgentHub thinking level to the exact Codex `reasoning_effort` config value. An unrecognized
+/// level yields `None` so the provider default remains authoritative.
 pub(super) fn codex_reasoning_effort_for_thinking_level(level: &str) -> Option<&'static str> {
     match level.trim().to_ascii_lowercase().as_str() {
         "low" => Some("low"),
         "medium" => Some("medium"),
         "high" => Some("high"),
-        "max" => Some("high"),
+        "xhigh" => Some("xhigh"),
+        "max" => Some("max"),
+        "ultra" => Some("ultra"),
         _ => None,
     }
 }
@@ -322,15 +323,22 @@ mod tests {
             codex_reasoning_effort_for_thinking_level("high"),
             Some("high")
         );
-        // Codex tops out at high, so max maps to high.
+        assert_eq!(
+            codex_reasoning_effort_for_thinking_level("xhigh"),
+            Some("xhigh")
+        );
         assert_eq!(
             codex_reasoning_effort_for_thinking_level("max"),
-            Some("high")
+            Some("max")
+        );
+        assert_eq!(
+            codex_reasoning_effort_for_thinking_level("ultra"),
+            Some("ultra")
         );
         // Case-insensitive + trimmed.
         assert_eq!(
             codex_reasoning_effort_for_thinking_level(" MAX "),
-            Some("high")
+            Some("max")
         );
         // Unknown levels are skipped (provider default applies).
         assert_eq!(codex_reasoning_effort_for_thinking_level("turbo"), None);

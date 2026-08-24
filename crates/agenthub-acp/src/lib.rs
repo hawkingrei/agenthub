@@ -15,12 +15,12 @@ use std::sync::{
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
-    CancelNotification, ClientCapabilities, ContentBlock, ContentChunk, Implementation,
-    InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, PermissionOption,
-    PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-    RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
-    SetSessionConfigOptionRequest, SetSessionModeRequest, TextContent, ToolCall, ToolCallStatus,
-    ToolCallUpdate, ToolCallUpdateFields,
+    CancelNotification, ClientCapabilities, ContentBlock, ContentChunk, ImageContent,
+    Implementation, InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest,
+    PermissionOption, PermissionOptionKind, PromptRequest, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
+    TextContent, ToolCall, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
 };
 // `ProtocolVersion` is version-agnostic in 0.15 — it lives at the schema root, not
 // under the versioned `schema::v1` module.
@@ -737,7 +737,7 @@ fn permission_outcome_allows(
 #[derive(Debug)]
 enum AcpCommand {
     Prompt {
-        input: String,
+        blocks: Vec<ContentBlock>,
         submission_id: String,
     },
     SetMode(String),
@@ -747,6 +747,42 @@ enum AcpCommand {
         value: String,
     },
     Cancel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcpPromptImage {
+    pub data: String,
+    pub mime_type: String,
+    pub uri: Option<String>,
+}
+
+impl AcpPromptImage {
+    pub fn new(data: impl Into<String>, mime_type: impl Into<String>) -> Self {
+        Self {
+            data: data.into(),
+            mime_type: mime_type.into(),
+            uri: None,
+        }
+    }
+
+    #[must_use]
+    pub fn uri(mut self, uri: impl Into<String>) -> Self {
+        self.uri = Some(uri.into());
+        self
+    }
+
+    fn into_content_block(self) -> ContentBlock {
+        ContentBlock::Image(ImageContent::new(self.data, self.mime_type).uri(self.uri))
+    }
+}
+
+fn build_user_prompt_blocks(input: String, images: Vec<AcpPromptImage>) -> Vec<ContentBlock> {
+    let mut blocks = Vec::with_capacity(images.len() + 1);
+    if !input.is_empty() || images.is_empty() {
+        blocks.push(ContentBlock::Text(TextContent::new(input)));
+    }
+    blocks.extend(images.into_iter().map(AcpPromptImage::into_content_block));
+    blocks
 }
 
 impl AcpCommand {
@@ -965,8 +1001,18 @@ impl AcpHandle {
         input: String,
         submission_id: String,
     ) -> anyhow::Result<()> {
+        self.prompt_with_images_with_submission(input, Vec::new(), submission_id)
+            .await
+    }
+
+    pub async fn prompt_with_images_with_submission(
+        &self,
+        input: String,
+        images: Vec<AcpPromptImage>,
+        submission_id: String,
+    ) -> anyhow::Result<()> {
         self.send(AcpCommand::Prompt {
-            input,
+            blocks: build_user_prompt_blocks(input, images),
             submission_id,
         })
         .await
@@ -1264,7 +1310,7 @@ async fn dispatch_acp_command(
 ) {
     match cmd {
         AcpCommand::Prompt {
-            input,
+            blocks: prompt_blocks,
             submission_id,
         } => {
             context.diagnostics.observe_prompt_start(&submission_id);
@@ -1275,9 +1321,10 @@ async fn dispatch_acp_command(
             let prompt_done_tx = context.prompt_done_tx.clone();
             let diagnostics = context.diagnostics.clone();
             let submission_id_for_task = submission_id.clone();
-            let mut blocks = Vec::with_capacity(context.prompt_prefix_blocks.len() + 1);
+            let mut blocks =
+                Vec::with_capacity(context.prompt_prefix_blocks.len() + prompt_blocks.len());
             blocks.extend(context.prompt_prefix_blocks.iter().cloned());
-            blocks.push(ContentBlock::Text(TextContent::new(input)));
+            blocks.extend(prompt_blocks);
             let task = tokio::task::spawn_local(async move {
                 let request = PromptRequest::new(session_id, blocks);
                 send_acp_prompt(conn, request, event_sink, diagnostics.clone()).await;
@@ -1900,6 +1947,12 @@ fn json_message(kind: &str, chunk: &ContentChunk, chunk_state: &mut AcpChunkStat
         obj.insert(
             "chunk_index".to_string(),
             Value::Number(Number::from(chunk_index)),
+        );
+    }
+    if let Some(meta) = &chunk.meta {
+        obj.insert(
+            "meta".to_string(),
+            serde_json::to_value(meta).unwrap_or(Value::Null),
         );
     }
     Value::Object(obj)
@@ -2598,17 +2651,18 @@ mod tests {
     use super::{
         ACP_PERMISSION_REVIEW_TIMEOUT, AcpActorContinuityEnvelope, AcpActorSkillContext,
         AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
-        AcpPromptDeliveryPolicy, AcpRuntimeDiagnostics, AcpRuntimeLocation, AcpSendError,
-        acp_pending_tool_call_prompt_block_seconds, acp_permission_review_timeout,
+        AcpPromptDeliveryPolicy, AcpPromptImage, AcpRuntimeDiagnostics, AcpRuntimeLocation,
+        AcpSendError, acp_pending_tool_call_prompt_block_seconds, acp_permission_review_timeout,
         acp_session_start_timeout, acp_stale_provider_prompt_seconds, build_prompt_prefix_blocks,
-        dedupe_skills, format_auth_required_message, handle_auth_required_failure,
-        is_auth_required_error, load_mcp_servers_from_path, load_skills_from_config,
-        load_workdir_skills, permission_outcome_allows, permission_review_failure_outcome,
-        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
+        build_user_prompt_blocks, dedupe_skills, format_auth_required_message,
+        handle_auth_required_failure, is_auth_required_error, load_mcp_servers_from_path,
+        load_skills_from_config, load_workdir_skills, permission_outcome_allows,
+        permission_review_failure_outcome, remove_skills_conflicting_with_reserved,
+        should_queue_while_prompts_active,
     };
     use agent_client_protocol::schema::v1::{
         ContentBlock, McpServer, PermissionOption, PermissionOptionKind, RequestPermissionOutcome,
-        SelectedPermissionOutcome,
+        SelectedPermissionOutcome, TextContent,
     };
     use agent_client_protocol::{Error as AcpError, ErrorCode as AcpErrorCode};
     use agenthub_acp_core::build_skill;
@@ -2904,7 +2958,7 @@ mod tests {
             false,
             false,
             &AcpCommand::Prompt {
-                input: "hello".to_string(),
+                blocks: vec![ContentBlock::Text(TextContent::new("hello"))],
                 submission_id: "submission-1".to_string(),
             }
         ));
@@ -2914,7 +2968,7 @@ mod tests {
             false,
             false,
             &AcpCommand::Prompt {
-                input: "hello".to_string(),
+                blocks: vec![ContentBlock::Text(TextContent::new("hello"))],
                 submission_id: "submission-1".to_string(),
             }
         ));
@@ -2924,7 +2978,7 @@ mod tests {
             true,
             false,
             &AcpCommand::Prompt {
-                input: "hello".to_string(),
+                blocks: vec![ContentBlock::Text(TextContent::new("hello"))],
                 submission_id: "submission-1".to_string(),
             }
         ));
@@ -2934,7 +2988,7 @@ mod tests {
             false,
             true,
             &AcpCommand::Prompt {
-                input: "hello".to_string(),
+                blocks: vec![ContentBlock::Text(TextContent::new("hello"))],
                 submission_id: "submission-1".to_string(),
             }
         ));
@@ -2944,7 +2998,7 @@ mod tests {
             false,
             false,
             &AcpCommand::Prompt {
-                input: "hello".to_string(),
+                blocks: vec![ContentBlock::Text(TextContent::new("hello"))],
                 submission_id: "submission-1".to_string(),
             }
         ));
@@ -2992,10 +3046,39 @@ mod tests {
             false,
             true,
             &AcpCommand::Prompt {
-                input: "hello".to_string(),
+                blocks: vec![ContentBlock::Text(TextContent::new("hello"))],
                 submission_id: "submission-1".to_string(),
             }
         ));
+    }
+
+    #[test]
+    fn multimodal_prompt_blocks_preserve_text_and_image_order() {
+        let blocks = build_user_prompt_blocks(
+            "describe this image".to_string(),
+            vec![AcpPromptImage::new("aW1hZ2U=", "image/png")],
+        );
+
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Text(content) if content.text == "describe this image"
+        ));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::Image(content)
+                if content.data == "aW1hZ2U=" && content.mime_type == "image/png"
+        ));
+    }
+
+    #[test]
+    fn image_only_prompt_does_not_add_an_empty_text_block() {
+        let blocks = build_user_prompt_blocks(
+            String::new(),
+            vec![AcpPromptImage::new("aW1hZ2U=", "image/png")],
+        );
+
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(blocks[0], ContentBlock::Image(_)));
     }
 
     #[test]

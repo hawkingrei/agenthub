@@ -188,6 +188,9 @@ Main shape:
   contracts in canonical specs while retaining dated journals only for rollout evidence.
 - Dependabot remediation now removes all 16 open alert versions from the Rust ACP, web, and
   userdocs dependency graphs while retaining explicit upstream dependency migration follow-ups.
+- Codex ACP now pins official `openai/codex` `0.149.1`, forwards asynchronous and subagent activity
+  through ACP metadata, and gives the standalone workbench bounded image input/output plus compact
+  runtime context without projecting Codex subagents into Team membership.
 - User documentation now follows current release artifacts and runtime behavior across installation,
   onboarding, agent lifecycle, streaming, API automation, nodes, security, storage, and operations.
 - Team prompts now separate an idea's validity from requests to propagate or durably encode it, with
@@ -306,6 +309,7 @@ Start with:
 - `2026-08-17-mailbox-reassignment-cas-and-idempotency.md`
 - `2026-08-17-message-index-repair-corruption-visibility.md`
 - `2026-08-19-safe-paths-removal.md`
+- `2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md`
 
 ## Compaction Rules
 

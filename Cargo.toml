@@ -32,7 +32,6 @@ members = [
 exclude = ["cmd/agenthub"]
 
 [patch.crates-io]
-rama-dns = { git = "https://github.com/hawkingrei/codex", rev = "6ca61345ceb09d76edc3db8c4eb55df18a10888a" }
 sacp = { git = "https://github.com/hawkingrei/symposium-acp", rev = "c731bb045d1375af48b0446af728aea52503b30b" }
 tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "132f5b39c862e3a970f731d709608b3e6276d5f6" }
 tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "9200079d3b54a1ff51072e24d81fd354f085156f" }
@@ -126,9 +125,9 @@ agenthub-message-store = { path = "crates/agenthub-message-store" }
 agenthub-object-store = { path = "crates/agenthub-object-store" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
 agent-client-protocol = { version = "2.0.0", features = ["unstable"] }
-prost = "0.14"
-tonic-prost = "0.14"
-tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }
+prost = "=0.14.3"
+tonic-prost = "=0.14.3"
+tonic = { version = "=0.14.3", features = ["transport", "tls-native-roots"] }
 rcgen = "0.14"
 rustls = "0.23.40"
 
@@ -136,7 +135,7 @@ rustls = "0.23.40"
 tower = { version = "0.5", features = ["util"] }
 
 [build-dependencies]
-tonic-prost-build = "0.14"
+tonic-prost-build = "=0.14.3"
 protoc-bin-vendored = "3"
 
 [profile.release]

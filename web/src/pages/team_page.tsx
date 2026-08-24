@@ -2953,6 +2953,12 @@ export function TeamPage(props: TeamPageProps) {
           selectedAgentWorkspaceAgent.args
         ) ?? ""
       ),
+    selectedAgentIsCodex:
+      selectedAgentWorkspaceAgent != null &&
+      resolveAcpProviderForAgent(
+        selectedAgentWorkspaceAgent.command,
+        selectedAgentWorkspaceAgent.args
+      ) === "codex",
     createChrome: modalChrome,
     forgeChrome: modalChrome,
     editChrome: modalChrome,

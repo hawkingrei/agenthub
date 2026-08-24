@@ -154,6 +154,8 @@ export const AcpConversationBubble = React.memo(
         <MarkdownBubble
           className="agent_message"
           text={msg.text}
+          media={msg.media}
+          delivery={msg.delivery}
           markdownRenderVersion={markdownRenderVersion}
         />
       );
@@ -163,6 +165,7 @@ export const AcpConversationBubble = React.memo(
       <MarkdownBubble
         className="user_message"
         text={msg.text}
+        media={msg.media}
         markdownRenderVersion={markdownRenderVersion}
       />
     );
