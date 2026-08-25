@@ -44,6 +44,10 @@ No downstream Codex fork is used by the Cargo or Bazel Codex source pins.
 - The Team ACP duplicate-send test now follows the successful-send contract: the cleared composer
   remains disabled until a new prompt is entered, then duplicate triggers are still suppressed
   while that follow-up prompt is in flight.
+- The Team task handoff CAS regression now prepares the terminal update before either concurrent
+  writer starts. It exercises the complete production transaction through an internal helper, so a
+  stale update still loses while a valid handoff-then-update serial order is no longer misclassified
+  as a concurrency failure under coverage instrumentation.
 
 ### Updated Codex Capabilities Through ACP
 
@@ -98,6 +102,7 @@ cargo test -p agenthub input_image_validation
 cargo test -p agenthub-config normalize_optional_thinking_level
 cargo test -p agenthub codex_reasoning_effort_maps_thinking_levels
 cargo test -p agenthub create_agent_route_
+cargo test --locked -p agenthub concurrent_terminal_status_update_and_handoff_do_not_both_apply -- --nocapture
 npm run lint
 npx tsc --noEmit
 npm run build
@@ -120,10 +125,12 @@ The affected Bazel binaries and test targets passed with Bazel 9.2.0:
 ```bash
 bazel build //agenthub-codex-acp:agenthub_codex_acp_bin //crates/agenthub-acp-adapter:agenthub_acp_adapter_bin
 bazel test //agenthub-codex-acp:agenthub_codex_acp_tests //crates/agenthub-acp-adapter:agenthub_acp_adapter_tests
+bazel test --nocache_test_results --runs_per_test=20 --test_arg=concurrent_terminal_status_update_and_handoff_do_not_both_apply //:agenthub_unit_tests
 ```
 
-The build completed 4,082 actions and both tests passed. The commands used an isolated local output
-root and repository/disk caches to avoid a capacity-limited `/tmp` mount; no project or user Bazel
+The build completed 4,082 actions and both ACP tests passed. The deterministic Team task CAS
+regression also passed 20 independent Bazel runs. The commands used an isolated local output root
+and repository/disk caches to avoid a capacity-limited `/tmp` mount; no project or user Bazel
 configuration was changed.
 
 Chrome DevTools MCP was not available in this environment, so this checkpoint does not claim

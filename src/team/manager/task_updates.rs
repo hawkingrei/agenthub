@@ -100,6 +100,14 @@ impl TeamManager {
         let prepared = self
             .prepare_task_update(task_id, status, assignment, priority, context_patch)
             .await?;
+        self.apply_prepared_task_update(task_id, prepared).await
+    }
+
+    pub(super) async fn apply_prepared_task_update(
+        &self,
+        task_id: &str,
+        prepared: PreparedTeamTaskUpdate,
+    ) -> anyhow::Result<super::TeamTaskRecord> {
         if !prepared.has_changes() {
             return Ok(prepared.current);
         }
@@ -183,7 +191,7 @@ impl TeamManager {
         }
     }
 
-    async fn prepare_task_update(
+    pub(super) async fn prepare_task_update(
         &self,
         task_id: &str,
         status: Option<TeamTaskStatus>,
