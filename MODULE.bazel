@@ -5,6 +5,7 @@ module(
 
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "protobuf", version = "34.0.bcr.1", repo_name = "com_google_protobuf")
 bazel_dep(name = "rules_cc", version = "0.2.14")
 bazel_dep(name = "rules_rust", version = "0.67.0")
 
@@ -38,6 +39,16 @@ crate.annotation(
     gen_build_script = "off",
     repositories = ["crate_index"],
     rustc_flags = ["--cfg=vendored_bwrap_available"],
+)
+crate.annotation(
+    crate = "codex-code-mode-protocol",
+    # The vendored protoc path is captured in a different Bazel sandbox. Keep
+    # Codex's build script but give it Bazel's hermetic protoc executable.
+    build_script_env = {"PROTOC": "$(execpath @@protobuf+//:protoc)"},
+    build_script_tools = ["@@protobuf+//:protoc"],
+    patch_args = ["-p1"],
+    patches = ["//third_party/codex_code_mode_protocol:use_bazel_protoc.patch"],
+    repositories = ["crate_index"],
 )
 crate.from_cargo(
     name = "crate_index",

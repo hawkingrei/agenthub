@@ -491,60 +491,60 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
 
     let mut synthetic_outputs = Vec::new();
     for (idx, item) in items.iter().enumerate() {
-        match item {
-            RolloutItem::ResponseItem(item) => match &item.item {
-                ResponseItem::FunctionCall { call_id, .. }
-                    if function_output_call_ids.insert(call_id.clone()) =>
-                {
-                    repaired.inserted_function_call_outputs += 1;
-                    synthetic_outputs.push((
-                        idx,
-                        RolloutItem::ResponseItem(ResponseItemEnvelope::from(
-                            ResponseItem::FunctionCallOutput {
-                                id: None,
-                                call_id: call_id.clone(),
-                                output: aborted_call_output(),
-                                internal_chat_message_metadata_passthrough: None,
-                            },
-                        )),
-                    ));
-                }
-                ResponseItem::CustomToolCall { call_id, .. }
-                    if custom_output_call_ids.insert(call_id.clone()) =>
-                {
-                    repaired.inserted_custom_tool_call_outputs += 1;
-                    synthetic_outputs.push((
-                        idx,
-                        RolloutItem::ResponseItem(ResponseItemEnvelope::from(
-                            ResponseItem::CustomToolCallOutput {
-                                id: None,
-                                call_id: call_id.clone(),
-                                name: None,
-                                output: aborted_call_output(),
-                                internal_chat_message_metadata_passthrough: None,
-                            },
-                        )),
-                    ));
-                }
-                ResponseItem::LocalShellCall {
-                    call_id: Some(call_id),
-                    ..
-                } if function_output_call_ids.insert(call_id.clone()) => {
-                    repaired.inserted_function_call_outputs += 1;
-                    synthetic_outputs.push((
-                        idx,
-                        RolloutItem::ResponseItem(ResponseItemEnvelope::from(
-                            ResponseItem::FunctionCallOutput {
-                                id: None,
-                                call_id: call_id.clone(),
-                                output: aborted_call_output(),
-                                internal_chat_message_metadata_passthrough: None,
-                            },
-                        )),
-                    ));
-                }
-                _ => {}
-            },
+        let RolloutItem::ResponseItem(item) = item else {
+            continue;
+        };
+        match &item.item {
+            ResponseItem::FunctionCall { call_id, .. }
+                if function_output_call_ids.insert(call_id.clone()) =>
+            {
+                repaired.inserted_function_call_outputs += 1;
+                synthetic_outputs.push((
+                    idx,
+                    RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                        ResponseItem::FunctionCallOutput {
+                            id: None,
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                            internal_chat_message_metadata_passthrough: None,
+                        },
+                    )),
+                ));
+            }
+            ResponseItem::CustomToolCall { call_id, .. }
+                if custom_output_call_ids.insert(call_id.clone()) =>
+            {
+                repaired.inserted_custom_tool_call_outputs += 1;
+                synthetic_outputs.push((
+                    idx,
+                    RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                        ResponseItem::CustomToolCallOutput {
+                            id: None,
+                            call_id: call_id.clone(),
+                            name: None,
+                            output: aborted_call_output(),
+                            internal_chat_message_metadata_passthrough: None,
+                        },
+                    )),
+                ));
+            }
+            ResponseItem::LocalShellCall {
+                call_id: Some(call_id),
+                ..
+            } if function_output_call_ids.insert(call_id.clone()) => {
+                repaired.inserted_function_call_outputs += 1;
+                synthetic_outputs.push((
+                    idx,
+                    RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                        ResponseItem::FunctionCallOutput {
+                            id: None,
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                            internal_chat_message_metadata_passthrough: None,
+                        },
+                    )),
+                ));
+            }
             _ => {}
         }
     }

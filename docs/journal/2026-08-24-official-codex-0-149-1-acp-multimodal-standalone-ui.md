@@ -33,6 +33,18 @@ No downstream Codex fork is used by the Cargo or Bazel Codex source pins.
 - Runtime and test code now use `codex-history` envelopes and `Op::TurnInput` without weakening the
   existing history-repair, prompt-steering, approval, or configuration tests.
 
+### CI Compatibility Repairs
+
+- The official `codex-code-mode-protocol` build script now honors an explicit `PROTOC` executable
+  before falling back to its vendored Cargo executable. Bazel supplies the hermetic protobuf
+  compiler through crate-universe build-script metadata, so the generated protocol remains on the
+  official Codex source graph without depending on an absolute path from another sandbox.
+- The rollout-history repair loop uses an equivalent `let ... else` shape that satisfies the
+  workspace `single_match` lint without changing which response items are repaired.
+- The Team ACP duplicate-send test now follows the successful-send contract: the cleared composer
+  remains disabled until a new prompt is entered, then duplicate triggers are still suppressed
+  while that follow-up prompt is in flight.
+
 ### Updated Codex Capabilities Through ACP
 
 - Asynchronous Codex agent messages retain `delivery = async` metadata through the ACP event path
@@ -77,6 +89,7 @@ The focused checks cover the changed dependency, protocol, API, and UI boundarie
 
 ```bash
 cargo fmt --all --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo check -p agenthub-codex-acp-runtime -p agenthub-acp-adapter -p agenthub-acp -p agenthub
 cargo test -p agenthub-codex-acp-runtime
 cargo test -p agenthub-acp-adapter
@@ -88,6 +101,7 @@ cargo test -p agenthub create_agent_route_
 npm run lint
 npx tsc --noEmit
 npm run build
+npm run test:coverage
 npx vitest run src/acp.test.ts src/components/input_dock.test.tsx src/components/acp_media_gallery.test.tsx src/agents_workbench.test.tsx src/components/use_agents_workbench_panel.test.tsx src/api.test.ts src/create_agent_modal.test.tsx src/pages/team/team_management_modals.test.tsx
 ```
 
@@ -97,16 +111,20 @@ validator contains two passing tests, and the focused web matrix contains 82 pas
 eight files. The extended reasoning checks add one config normalization test, one Codex mapping
 test, and 13 create-agent route tests.
 
-The focused Bazel command was attempted with the repository's default configuration:
+The CI repair follow-up also passed the full Web coverage matrix: 1,503 tests across 162 core test
+files plus 30 Team smoke tests. The production build, ESLint, TypeScript typecheck, workspace
+all-targets Clippy, and formatting checks completed successfully.
+
+The affected Bazel binaries and test targets passed with Bazel 9.2.0:
 
 ```bash
+bazel build //agenthub-codex-acp:agenthub_codex_acp_bin //crates/agenthub-acp-adapter:agenthub_acp_adapter_bin
 bazel test //agenthub-codex-acp:agenthub_codex_acp_tests //crates/agenthub-acp-adapter:agenthub_acp_adapter_tests
 ```
 
-It stopped before loading AgentHub's targets because the local external repository state reported
-that `@rules_rust+//rust:defs.bzl` had no corresponding Bazel package. No project or user Bazel
-configuration was changed as part of this checkpoint; CI or a repaired local external-repository
-state still needs to provide Bazel compilation evidence.
+The build completed 4,082 actions and both tests passed. The commands used an isolated local output
+root and repository/disk caches to avoid a capacity-limited `/tmp` mount; no project or user Bazel
+configuration was changed.
 
 Chrome DevTools MCP was not available in this environment, so this checkpoint does not claim
 before/after browser evidence. The DOM-level interaction matrix and production web build are the

@@ -8327,7 +8327,28 @@ describe("team panels interactions", () => {
       resolveSend?.();
       await Promise.resolve();
     });
+
+    expect(sendButton.disabled).toBe(true);
+    changeInputValue(input, "follow-up from team acp");
     expect(sendButton.disabled).toBe(false);
+
+    await act(async () => {
+      sendButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(onSendInput).toHaveBeenCalledTimes(2);
+    expect(onSendInput).toHaveBeenLastCalledWith(
+      "follow-up from team acp",
+      "runtime-session-1"
+    );
+    expect(sendButton.disabled).toBe(true);
+
+    await act(async () => {
+      resolveSend?.();
+      await Promise.resolve();
+    });
+    expect(sendButton.disabled).toBe(true);
   });
 
   it("TeamMailboxPanel handles member chat, accept, and advanced mailbox controls", () => {

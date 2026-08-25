@@ -1,0 +1,11 @@
+diff --git a/build.rs b/build.rs
+--- a/build.rs
++++ b/build.rs
+@@ -7,2 +7,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+     let mut config = tonic_prost_build::Config::new();
+-    config.protoc_executable(protoc_bin_vendored::protoc_bin_path()?);
++    let protoc = match std::env::var_os("PROTOC") {
++        Some(protoc) => PathBuf::from(protoc),
++        None => protoc_bin_vendored::protoc_bin_path()?,
++    };
++    config.protoc_executable(protoc);
