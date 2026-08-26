@@ -775,4 +775,161 @@ describe("buildAcpView", () => {
       status: "running",
     });
   });
+
+  it("preserves user image attachments and asynchronous message delivery", () => {
+    const view = buildAcpView([
+      {
+        ts: 10,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "user_message",
+          text: "What is shown?",
+          attachments: [
+            {
+              type: "image",
+              file_name: "diagram.png",
+              mime_type: "image/png",
+              data: "aW1hZ2U=",
+            },
+          ],
+        }),
+      },
+      {
+        ts: 20,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Background result",
+          meta: { delivery: "async" },
+        }),
+      },
+    ]);
+
+    expect(view.messages[0].media).toEqual([
+      {
+        type: "image",
+        name: "diagram.png",
+        mime_type: "image/png",
+        data: "aW1hZ2U=",
+        uri: undefined,
+      },
+    ]);
+    expect(view.messages[1].delivery).toBe("async");
+  });
+
+  it("extracts generated images without exposing base64 as tool text", () => {
+    const view = buildAcpView([
+      {
+        ts: 10,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call_update",
+          id: "image-1",
+          title: "Generate image",
+          status: "completed",
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "image",
+                data: "aW1hZ2U=",
+                mimeType: "image/png",
+              },
+            },
+          ],
+          meta: { agenthub: { kind: "codex_image_generation" } },
+        }),
+      },
+    ]);
+
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].content).toBeUndefined();
+    expect(view.toolCalls[0].media?.[0]).toMatchObject({
+      type: "image",
+      mime_type: "image/png",
+      data: "aW1hZ2U=",
+    });
+  });
+
+  it("upserts subagent activity and keeps live subagents open across parent messages", () => {
+    const subagentMeta = { agenthub: { kind: "codex_subagent" } };
+    const view = buildAcpView([
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "codex-subagent:child",
+          title: "Subagent child",
+          status: "in_progress",
+          meta: subagentMeta,
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "codex-subagent:child",
+          title: "Subagent reviewer",
+          status: "in_progress",
+          meta: subagentMeta,
+        }),
+      },
+      {
+        ts: 30,
+        event_id: 3,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Parent turn completed.",
+        }),
+      },
+    ]);
+
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0]).toMatchObject({
+      id: "codex-subagent:child",
+      title: "Subagent reviewer",
+      status: "in_progress",
+    });
+  });
+
+  it("settles live subagents when their parent run reaches a terminal state", () => {
+    const view = buildAcpView([
+      {
+        ts: 10,
+        event_id: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call",
+          id: "codex-subagent:child",
+          title: "Subagent child",
+          status: "in_progress",
+          meta: { agenthub: { kind: "codex_subagent" } },
+        }),
+      },
+      {
+        ts: 20,
+        event_id: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "run_status",
+          status: "interrupted",
+        }),
+      },
+    ]);
+
+    expect(view.toolCalls[0].status).toBe("interrupted");
+  });
 });

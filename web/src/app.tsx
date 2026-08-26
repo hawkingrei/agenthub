@@ -3,6 +3,7 @@ import {
   api,
   parseApiErrorMessage,
   stringifyApiError,
+  type AgentInputImage,
 } from "./api";
 import {
   AGENT_NOT_RUNNING_ERROR,
@@ -392,6 +393,7 @@ export function App() {
   );
 
   const [input, setInput] = useState("");
+  const [inputImages, setInputImages] = useState<AgentInputImage[]>([]);
   const [inputHistory, setInputHistory] = useState<string[]>(() =>
     parseInputHistory(getLocalStorageItemSafe(INPUT_HISTORY_STORAGE_KEY))
   );
@@ -421,6 +423,10 @@ export function App() {
       JSON.stringify(inputHistory)
     );
   }, [inputHistory]);
+
+  useEffect(() => {
+    setInputImages([]);
+  }, [activeAgent]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -564,10 +570,12 @@ export function App() {
     options?: {
       recordHistory?: boolean;
       clearComposer?: boolean;
+      images?: AgentInputImage[];
     }
   ) => {
     const text = rawText.trim();
-    if (!text) return;
+    const images = options?.images ?? [];
+    if (!text && images.length === 0) return;
     if (!auth?.token || !activeAgent) return;
     
     let messageId: string | null = null;
@@ -583,17 +591,19 @@ export function App() {
         activeAgent,
         text,
         messageId ?? undefined,
-        sessionId ?? undefined
+        sessionId ?? undefined,
+        images
       );
     try {
       await sendInputForSession(activeSessionId);
-      if (options?.recordHistory) {
+      if (options?.recordHistory && text) {
         setInputHistory((prev) => pushInputHistory(prev, text));
         setInputHistoryCursor(-1);
       }
       if (options?.clearComposer) {
         inputHistoryDraftRef.current = "";
         setInput("");
+        setInputImages([]);
       }
       } catch (err: unknown) {
         const msg = parseApiErrorMessage(err) ?? String(err || "websocket not connected");
@@ -605,13 +615,14 @@ export function App() {
           await loadAgentEvents(activeAgent, runningSessionId);
           try {
             await sendInputForSession(runningSessionId);
-            if (options?.recordHistory) {
+            if (options?.recordHistory && text) {
               setInputHistory((prev) => pushInputHistory(prev, text));
               setInputHistoryCursor(-1);
             }
             if (options?.clearComposer) {
               inputHistoryDraftRef.current = "";
               setInput("");
+              setInputImages([]);
             }
             return;
           } catch (retryErr: unknown) {
@@ -888,6 +899,7 @@ export function App() {
         isConversationLoading,
         terminalRef,
         input,
+        inputImages,
         inputHistory,
         ansi,
         canControlAcp,
@@ -910,6 +922,7 @@ export function App() {
         onAcpCancel: onAcpCancel,
         onAcpClearSession: onAcpClearSession,
         onInputChange: onInputChange,
+        onInputImagesChange: setInputImages,
         onSelectInputHistory: onSelectInputHistory,
         onNavigateInputHistory: onNavigateInputHistory,
         onSendAcpInput: sendAcpInput,
@@ -932,6 +945,7 @@ export function App() {
       isConversationLoading,
       terminalRef,
       input,
+      inputImages,
       inputHistory,
       ansi,
       canControlAcp,

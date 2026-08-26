@@ -15,6 +15,8 @@ spec is required to keep contracts consistent across providers and UI/runtime la
 - ACP provider compatibility baseline for Codex/Gemini/Kimi/Claude adapters, including
   AgentHub-distributed adapter binaries where available.
 - Codex-specific diagnostic side-channel boundaries for live turn/tool-call integrity.
+- Standalone ACP workbench behavior, including runtime context and Codex subagent visibility.
+- Local ACP multimodal image input and provider-generated image output.
 
 ## Non-Goals
 
@@ -23,6 +25,7 @@ spec is required to keep contracts consistent across providers and UI/runtime la
   protocol calls.
 - Re-documenting every ACP UI polish change as timeline history.
 - Defining Team orchestration semantics beyond ACP interaction boundaries.
+- Extending image attachments to remote agents, stdin-only processes, or Team composers.
 
 ## Architecture
 
@@ -77,6 +80,15 @@ Codex and Claude are special cases inside the provider adapter layer:
 ### 4) Conversation/Debug Surfaces
 
 - Conversation is the primary event timeline with ordered render.
+- The standalone ACP workbench exposes the active run state, model, thinking level, permission mode,
+  and Codex subagent activity without requiring the debug tab.
+- Codex collaboration and subagent events remain ACP tool activity. They must not be projected as
+  AgentHub Team members or mutate Team ownership and execution records.
+- Codex runtime profiles accept `xhigh`, `max`, and `ultra` in addition to the common reasoning
+  levels. The adapter must pass these values through exactly; provider/model validation remains
+  authoritative. Claude retains the common `low`, `medium`, `high`, and `max` profile levels.
+- Asynchronous Codex agent messages remain in the ordered conversation and carry an explicit
+  background-delivery label instead of being mistaken for synchronous turn output.
 - Debug provides advanced state/introspection:
   - permission pending/history
   - runtime metrics
@@ -168,6 +180,9 @@ ACP permission requests are first-class runtime records:
 ### 6) Provider Compatibility Contract
 
 - ACP protocol mapping must stay aligned with upstream provider schemas.
+- The Codex ACP baseline is the official `openai/codex` release source. AgentHub must pin Cargo and
+  Bazel to one reviewed upstream commit and must not require a downstream Codex fork for protocol or
+  dependency compatibility.
 - Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
 - Codex ACP behavior should use upstream Codex TUI/core behavior as the compatibility reference
   when ACP semantics are ambiguous. In particular, a permission denial is a model-visible failed
@@ -222,7 +237,39 @@ ACP permission requests are first-class runtime records:
   Code invocations are not misclassified as interactive ACP sessions.
 - When an ACP provider returns `auth_required`, AgentHub should surface an explicit setup error instead of silently retrying interactive auth flows on behalf of a remote user.
 
-### 7) Placement And Proxy Contract
+### 7) Multimodal Contract
+
+- The standalone browser composer may submit text, images, or both. Image-only prompts must not add
+  an empty text content block.
+- The browser sends validated image attachments through the existing agent input route. AgentHub
+  maps them to ACP `ImageContent`, and the Codex adapter maps that provider-neutral content to Codex
+  image user input.
+- Input is limited to four images, 5 MiB per decoded image, and 10 MiB total decoded image bytes.
+  The input route has a 16 MiB request-body limit to cover JSON and base64 overhead.
+- Accepted formats are PNG, JPEG, WebP, and GIF. The backend must validate standard base64, declared
+  MIME type, and the corresponding file signature before persisting or forwarding an attachment.
+- Multimodal input is currently local-ACP-only. Remote agents and stdin-only processes must reject
+  image attachments deterministically instead of silently dropping them.
+- The normalized user event keeps one bounded attachment copy so SSE replay can reconstruct the
+  conversation. Prompt submission failures must preserve the visible user event and attachments.
+- Provider-generated images are represented as ACP image content with an optional saved-resource
+  link. Raw/debug tool output must not duplicate the base64 payload.
+- The web renderer may display only PNG, JPEG, WebP, and GIF from validated `data:` or HTTP(S)
+  sources. SVG and local-file URI rendering remain disallowed.
+
+### 8) Standalone Workbench Contract
+
+- Image selection, clipboard paste, drag-and-drop, preview, removal, and image-only submission are
+  available in the standalone ACP composer without changing Team composer semantics.
+- Composer validation must mirror backend limits and preserve attachments across failed sends or
+  explicit retries. Successful sends clear text and attachments together.
+- The primary header exposes run state, model, live reasoning effort, effective permission mode, and
+  active versus total Codex subagent counts in a compact, localization-ready presentation. Live ACP
+  config values take precedence over persisted startup defaults.
+- Repeated Codex subagent activity with the same thread identifier updates one deterministic tool
+  card. Live subagent cards must not be closed by generic stale-tool settlement.
+
+### 9) Placement And Proxy Contract
 
 - Provider identity and runtime placement must stay independent axes.
 - Introducing remote-node/P2P execution must not require duplicating Codex/Gemini/Kimi/Claude adapter logic.
@@ -237,6 +284,12 @@ ACP permission requests are first-class runtime records:
 - `cargo test -p agenthub-acp-adapter`
 - `cargo check -p agenthub-codex-acp-runtime`
 - `cargo test -p agenthub-codex-acp-runtime`
+- `cargo test -p agenthub-acp prompt_`
+- `cargo test -p agenthub input_image_validation`
+- `cargo test -p agenthub-config normalize_optional_thinking_level`
+- `cargo test -p agenthub codex_reasoning_effort_maps_thinking_levels`
+- `cargo test -p agenthub create_agent_route_`
+- `pnpm -C web exec vitest run src/acp.test.ts src/components/input_dock.test.tsx src/components/acp_media_gallery.test.tsx src/agents_workbench.test.tsx src/components/use_agents_workbench_panel.test.tsx src/api.test.ts src/create_agent_modal.test.tsx src/pages/team/team_management_modals.test.tsx`
 - Focused `agenthub-codex-acp` tests for live-turn tool-call completeness:
   - a `CustomToolCall` without matching `CustomToolCallOutput` is recorded as diagnostic state
     before turn completion/compaction can panic
@@ -271,6 +324,9 @@ ACP permission requests are first-class runtime records:
 
 - Keep ACP contracts provider-agnostic at system boundary; isolate provider drift in adapter modules.
 - Prefer additive compatibility changes when protocol evolves.
+- Keep the Codex Cargo and Bazel pins on the same official `openai/codex` commit. A dependency graph
+  regression should be tracked and remediated upstream or through ordinary dependency constraints,
+  not by silently switching AgentHub back to a downstream Codex fork.
 - AgentHub owns Codex subagent enablement through `codex_acp.multi_agent_enabled` (default
   `true`). When launching Codex ACP through `agenthub-acp codex`, `agenthub-codex-acp`, or another
   recognized Codex ACP command, AgentHub should pass an explicit
@@ -324,6 +380,11 @@ ACP permission requests are first-class runtime records:
   compaction or resume paths run.
 - Long-session rendering can regress if virtualization/stick-bottom heuristics are bypassed.
 - Permission UX still needs periodic real-browser verification under rapid agent switching.
+- Inline base64 attachment persistence increases SQLite and SSE replay cost near the current input
+  limits. A later storage migration should replace inline event payloads with owner-scoped object
+  references and replay-safe thumbnails without changing the ACP content contract.
+- Official Codex releases can reintroduce older or parallel transitive dependency versions. Each
+  Codex upgrade needs a lockfile audit even when the upstream source itself is current.
 - A provider may still fail to finish after receiving a valid deny response. AgentHub should expose
   that as a stale provider prompt with safe diagnostics; automatic cancel, kill, or prompt
   abandonment remains out of scope unless a future provider-specific contract explicitly requires it.
@@ -353,4 +414,5 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-06-10-claude-acp-provider-support.md`
 - `docs/journal/2026-06-11-generic-codex-acp-entrypoint.md`
 - `docs/journal/2026-07-19-acp-ui-compaction-wave2.md`
+- `docs/journal/2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md`
 - `docs/journal/2026-08-09-feature-docs-compaction-wave2-closeout.md`

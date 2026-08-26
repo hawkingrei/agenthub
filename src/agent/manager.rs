@@ -45,7 +45,7 @@ use super::{
 };
 use crate::acp::{
     AcpActorSkillContext, AcpHandle, AcpHandleDiagnostics, AcpPermissionReviewDispatcher,
-    AcpPermissionService, AcpPromptDeliveryPolicy,
+    AcpPermissionService, AcpPromptDeliveryPolicy, AcpPromptImage,
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
@@ -97,6 +97,15 @@ const PER_AGENT_EVENT_SOURCE: &str = "per_agent_agent_events";
 pub enum AgentSendInputError {
     #[error("agent session mismatch: expected={expected} running={running}")]
     SessionMismatch { expected: String, running: String },
+    #[error("image input is only supported by local ACP agents")]
+    MultimodalUnsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentInputImage {
+    pub file_name: String,
+    pub mime_type: String,
+    pub data: String,
 }
 
 #[derive(Debug, Clone)]
@@ -2131,8 +2140,28 @@ impl AgentManager {
         message_id: Option<&str>,
         expected_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
+        self.send_input_with_images(agent_id, input, &[], message_id, expected_session_id)
+            .await
+    }
+
+    #[tracing::instrument(
+        skip(self, input, images, message_id),
+        fields(agent_id = %agent_id, expected_session_id = ?expected_session_id, image_count = images.len()),
+        err
+    )]
+    pub async fn send_input_with_images(
+        &self,
+        agent_id: &str,
+        input: &str,
+        images: &[AgentInputImage],
+        message_id: Option<&str>,
+        expected_session_id: Option<&str>,
+    ) -> anyhow::Result<()> {
         let agent = self.get_agent(agent_id).await?;
         if let Some(target_node_id) = agent.target_node_id.as_deref() {
+            if !images.is_empty() {
+                return Err(AgentSendInputError::MultimodalUnsupported.into());
+            }
             let client = self
                 .remote_control_client_for_target_node(target_node_id)
                 .await?;
@@ -2193,6 +2222,9 @@ impl AgentManager {
         }
 
         if let Some(stdin) = stdin {
+            if !images.is_empty() {
+                return Err(AgentSendInputError::MultimodalUnsupported.into());
+            }
             let mut stdin_guard = stdin.lock().await;
             if let Some(stdin) = stdin_guard.as_mut() {
                 stdin.write_all(format!("{}\n", input).as_bytes()).await?;
@@ -2214,7 +2246,13 @@ impl AgentManager {
             "type": "user_message",
             "text": input,
             "chunk": false,
-            "message_id": message_id
+            "message_id": message_id,
+            "attachments": images.iter().map(|image| serde_json::json!({
+                "type": "image",
+                "file_name": image.file_name,
+                "mime_type": image.mime_type,
+                "data": image.data,
+            })).collect::<Vec<_>>()
         })
         .to_string();
         let ts = Utc::now().timestamp();
@@ -2240,8 +2278,16 @@ impl AgentManager {
         };
         let _ = output_tx.send(output);
 
+        let prompt_images = images
+            .iter()
+            .map(|image| AcpPromptImage::new(image.data.clone(), image.mime_type.clone()))
+            .collect();
         match acp
-            .prompt_with_submission(input.to_string(), message_id.clone())
+            .prompt_with_images_with_submission(
+                input.to_string(),
+                prompt_images,
+                message_id.clone(),
+            )
             .await
         {
             Ok(()) => Ok(()),

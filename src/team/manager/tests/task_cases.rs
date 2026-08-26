@@ -1198,16 +1198,11 @@ async fn list_tasks_with_query_keeps_tasks_without_conversation_rows() {
 /// pool (`setup_concurrent_teamspace_db`) because the shared `:memory:` pool used elsewhere is
 /// single-connection and cannot exercise genuine interleaving between two transactions.
 ///
-/// Whether any single attempt actually lands the two operations' internal reads/writes in the
-/// vulnerable order is scheduler-dependent -- empirically only about 1 in 20 single attempts do, even
-/// with a real multi-connection pool, since `update_task_status` reaches its write in fewer awaits than
-/// `handoff_task_execution` and so usually wins outright rather than losing to a stale read. Looping
-/// many fresh task/lease pairs turns that low per-attempt probability into a reliable regression check
-/// (a single-attempt version of this test reliably passed even with the CAS guard reverted).
+/// Prepare the terminal update before either writer starts so it always carries the original CAS token.
+/// This makes the stale-write boundary deterministic without treating a legitimate handoff-then-update
+/// serial order as a concurrency failure.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_terminal_status_update_and_handoff_do_not_both_apply() {
-    const ATTEMPTS: usize = 60;
-
     let (db, dir) = setup_concurrent_teamspace_db().await;
 
     struct CleanupGuard(std::path::PathBuf);
@@ -1222,110 +1217,93 @@ async fn concurrent_terminal_status_update_and_handoff_do_not_both_apply() {
     let _cleanup = CleanupGuard(dir);
 
     let manager = Arc::new(TeamManager::new(db.clone()));
+    let now = Utc::now().timestamp();
+    let team_id = format!("team-{}", Uuid::new_v4());
+    sqlx::query(
+        "INSERT INTO team_definitions (id, name, spec_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
+    )
+    .bind(&team_id)
+    .bind(format!("race-team-{}", Uuid::new_v4()))
+    .bind(json!({"entrypoint":"member-a","members":[{"member_id":"member-a"},{"member_id":"member-b"}]}).to_string())
+    .bind(now)
+    .execute(&db)
+    .await
+    .expect("insert team");
 
-    for attempt in 0..ATTEMPTS {
-        let now = Utc::now().timestamp();
-        let team_id = format!("team-{}", Uuid::new_v4());
-        sqlx::query(
-            "INSERT INTO team_definitions (id, name, spec_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
-        )
-        .bind(&team_id)
-        .bind(format!("race-team-{}", Uuid::new_v4()))
-        .bind(json!({"entrypoint":"member-a","members":[{"member_id":"member-a"},{"member_id":"member-b"}]}).to_string())
-        .bind(now)
-        .execute(&db)
+    let task_id = format!("task-{}", Uuid::new_v4());
+    sqlx::query(
+        "INSERT INTO team_tasks (id, team_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at) \
+         VALUES (?1, ?2, 'race task', 'in_progress', 'medium', 'user', 'member-a', '{}', ?3, ?3)",
+    )
+    .bind(&task_id)
+    .bind(&team_id)
+    .bind(now)
+    .execute(&db)
+    .await
+    .expect("insert task");
+
+    manager
+        .claim_task_execution(&task_id, "member-a", 300)
         .await
-        .expect("insert team");
-
-        let task_id = format!("task-{}", Uuid::new_v4());
-        sqlx::query(
-            "INSERT INTO team_tasks (id, team_id, title, status, priority, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at) \
-             VALUES (?1, ?2, 'race task', 'in_progress', 'medium', 'user', 'member-a', '{}', ?3, ?3)",
+        .expect("claim initial goal lease");
+    let prepared_completion = manager
+        .prepare_task_update(
+            &task_id,
+            Some(TeamTaskStatus::Completed),
+            TeamTaskAssignmentUpdate::Unchanged,
+            None,
+            None,
         )
-        .bind(&task_id)
-        .bind(&team_id)
-        .bind(now)
-        .execute(&db)
         .await
-        .expect("insert task");
+        .expect("prepare terminal status update");
 
-        manager
-            .claim_task_execution(&task_id, "member-a", 300)
+    let complete_manager = manager.clone();
+    let complete_task_id = task_id.clone();
+    let complete = tokio::spawn(async move {
+        complete_manager
+            .apply_prepared_task_update(&complete_task_id, prepared_completion)
             .await
-            .expect("claim initial goal lease");
+    });
+    let handoff_manager = manager.clone();
+    let handoff_task_id = task_id.clone();
+    let handoff = tokio::spawn(async move {
+        handoff_manager
+            .handoff_task_execution(&handoff_task_id, "member-b", "owner-1", "reassign")
+            .await
+    });
+    let (complete_result, handoff_result) = tokio::join!(complete, handoff);
+    let complete_result = complete_result.expect("complete task did not panic");
+    let handoff_result = handoff_result.expect("handoff task did not panic");
 
-        let complete_manager = manager.clone();
-        let complete_task_id = task_id.clone();
-        let complete = tokio::spawn(async move {
-            complete_manager
-                .update_task_status(&complete_task_id, TeamTaskStatus::Completed)
-                .await
-        });
-        let handoff_manager = manager.clone();
-        let handoff_task_id = task_id.clone();
-        let handoff = tokio::spawn(async move {
-            handoff_manager
-                .handoff_task_execution(&handoff_task_id, "member-b", "owner-1", "reassign")
-                .await
-        });
-        let (complete_result, handoff_result) = tokio::join!(complete, handoff);
-        let complete_result = complete_result.expect("complete task did not panic");
-        let handoff_result = handoff_result.expect("handoff task did not panic");
+    let final_task = manager.get_task(&task_id).await.expect("reload task");
+    let lease_row = sqlx::query(
+        "SELECT released_at, release_reason FROM team_goal_leases WHERE task_id = ?1 AND lease_generation = 1",
+    )
+    .bind(&task_id)
+    .fetch_one(&db)
+    .await
+    .expect("reload goal lease");
+    let released_at: Option<i64> = lease_row.get("released_at");
+    let release_reason: Option<String> = lease_row.get("release_reason");
 
-        let final_task = manager.get_task(&task_id).await.expect("reload task");
-        let lease_row = sqlx::query(
-            "SELECT released_at, release_reason FROM team_goal_leases WHERE task_id = ?1 AND lease_generation = 1",
-        )
-        .bind(&task_id)
-        .fetch_one(&db)
-        .await
-        .expect("reload goal lease");
-        let released_at: Option<i64> = lease_row.get("released_at");
-        let release_reason: Option<String> = lease_row.get("release_reason");
-
-        match (complete_result.is_ok(), handoff_result.is_ok()) {
-            (true, false) => {
-                assert_eq!(
-                    final_task.status,
-                    TeamTaskStatus::Completed,
-                    "attempt {attempt}"
-                );
-                assert_eq!(
-                    final_task.assigned_member_id.as_deref(),
-                    Some("member-a"),
-                    "attempt {attempt}"
-                );
-                assert_eq!(
-                    release_reason.as_deref(),
-                    Some("completed"),
-                    "attempt {attempt}"
-                );
-            }
-            (false, true) => {
-                assert_eq!(
-                    final_task.status,
-                    TeamTaskStatus::InProgress,
-                    "attempt {attempt}"
-                );
-                assert_eq!(
-                    final_task.assigned_member_id.as_deref(),
-                    Some("member-b"),
-                    "attempt {attempt}"
-                );
-                assert_eq!(
-                    release_reason.as_deref(),
-                    Some("handoff"),
-                    "attempt {attempt}"
-                );
-            }
-            other => panic!(
-                "attempt {attempt}: expected exactly one of the two concurrent operations to win, got {:?} (complete={:?}, handoff={:?})",
-                other, complete_result, handoff_result
-            ),
+    match (complete_result.is_ok(), handoff_result.is_ok()) {
+        (true, false) => {
+            assert_eq!(final_task.status, TeamTaskStatus::Completed);
+            assert_eq!(final_task.assigned_member_id.as_deref(), Some("member-a"));
+            assert_eq!(release_reason.as_deref(), Some("completed"));
         }
-        assert!(
-            released_at.is_some(),
-            "attempt {attempt}: the generation-1 goal lease must be released by whichever operation won"
-        );
+        (false, true) => {
+            assert_eq!(final_task.status, TeamTaskStatus::InProgress);
+            assert_eq!(final_task.assigned_member_id.as_deref(), Some("member-b"));
+            assert_eq!(release_reason.as_deref(), Some("handoff"));
+        }
+        other => panic!(
+            "expected exactly one of the two concurrent operations to win, got {:?} (complete={:?}, handoff={:?})",
+            other, complete_result, handoff_result
+        ),
     }
+    assert!(
+        released_at.is_some(),
+        "the generation-1 goal lease must be released by whichever operation won"
+    );
 }

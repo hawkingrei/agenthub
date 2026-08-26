@@ -11,7 +11,7 @@ pub use agenthub_agent_domain::{
     AgentNodeUpdate, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
 };
 pub(crate) use manager::derive_team_runtime_workdir;
-pub use manager::{AgentManager, AgentSendInputError};
+pub use manager::{AgentInputImage, AgentManager, AgentSendInputError};
 pub use triggers::{
     AgentTimeTriggerCreateInput, AgentTimeTriggerManager, AgentTimeTriggerRecord,
     AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,

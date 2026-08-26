@@ -1,5 +1,6 @@
 import type {
   AcpMessage,
+  AcpMedia,
   AcpPlanEntry,
   AcpPlanView,
   AcpTerminalActivity,
@@ -14,6 +15,8 @@ export type MessageConversationItem = {
   text: string;
   plan_entries?: PlanEntryView[];
   live?: boolean;
+  media?: AcpMedia[];
+  delivery?: string;
   seq?: string;
   event_id?: number;
   ts?: number;
@@ -29,6 +32,8 @@ export type ToolCallConversationItem = {
   raw_output?: unknown;
   terminal_output?: string;
   terminal_activities?: AcpTerminalActivity[];
+  media?: AcpMedia[];
+  meta?: unknown;
   seq?: string;
   event_id?: number;
   ts?: number;
@@ -226,6 +231,8 @@ export function buildConversationMessages(
         items.push({
           kind: "agent_message",
           text: msg.text,
+          media: msg.media,
+          delivery: msg.delivery,
           seq: msg.seq,
           event_id: msg.event_id,
           ts: msg.ts,
@@ -235,6 +242,7 @@ export function buildConversationMessages(
       items.push({
         kind: "user_message",
         text: msg.text,
+        media: msg.media,
         seq: msg.seq,
         event_id: msg.event_id,
         ts: msg.ts,
@@ -299,6 +307,8 @@ export function buildConversationMessages(
       raw_output: call.raw_output,
       terminal_output: call.terminal_output,
       terminal_activities: call.terminal_activities,
+      media: call.media,
+      meta: call.meta,
       seq: call.seq,
       event_id: call.event_id,
       ts: call.ts,

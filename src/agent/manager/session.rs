@@ -838,8 +838,8 @@ impl AgentManager {
                             }
                         }
                         None => {
-                            // Phase 1 only persists low|medium|high|max, so an unmapped level means
-                            // manual or stale data; surface it rather than silently using the default.
+                            // An unmapped level means manual or stale data; surface it rather than
+                            // silently using the default.
                             tracing::warn!(
                                 "unmapped thinking level for codex reasoning effort, leaving provider default: agent_id={}, level={}",
                                 agent.id,

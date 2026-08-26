@@ -10,10 +10,20 @@ export type AcpToolCall = {
   raw_output?: unknown;
   terminal_output?: string;
   terminal_activities?: AcpTerminalActivity[];
+  media?: AcpMedia[];
+  meta?: unknown;
   session_id?: string | null;
   seq?: string;
   event_id?: number;
   ts?: number;
+};
+
+export type AcpMedia = {
+  type: "image";
+  data?: string;
+  mime_type: string;
+  uri?: string;
+  name?: string;
 };
 
 export type AcpTerminalActivity = {
@@ -30,6 +40,9 @@ export type AcpMessage = {
   seq?: string;
   event_id?: number;
   chunk: boolean;
+  media?: AcpMedia[];
+  delivery?: string;
+  meta?: unknown;
   ts?: number;
 };
 
@@ -159,6 +172,9 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       const text = String(parsed.text ?? "");
       const last = messages[messages.length - 1];
       const is_chunk = parsed.chunk === true;
+      const messageMedia = extractAcpMedia(parsed.attachments);
+      const messageMeta = parsed.meta;
+      const delivery = parseMessageDelivery(messageMeta);
       const messageId =
         typeof parsed.message_id === "string" ? parsed.message_id : null;
       const chunkIndex = parseChunkIndex(parsed.chunk_index);
@@ -199,6 +215,9 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
             existing.message_id = messageId;
           }
           existing.chunk_index = chunkIndex;
+          existing.media = mergeAcpMedia(existing.media, messageMedia);
+          if (messageMeta !== undefined) existing.meta = messageMeta;
+          if (delivery) existing.delivery = delivery;
         } else {
           const chunks = new Map<number, string>();
           chunks.set(chunkIndex, text);
@@ -212,6 +231,9 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
             seq: event.seq,
             event_id: event.event_id,
             chunk: true,
+            media: messageMedia,
+            delivery,
+            meta: messageMeta,
             ts: event.ts,
           } satisfies AcpMessage;
           messages.push(next);
@@ -235,6 +257,9 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
           if (messageId && last.message_id == null) {
             last.message_id = messageId;
           }
+          last.media = mergeAcpMedia(last.media, messageMedia);
+          if (messageMeta !== undefined) last.meta = messageMeta;
+          if (delivery) last.delivery = delivery;
         } else {
           messages.push({
             kind: parsed.type,
@@ -245,6 +270,9 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
             seq: event.seq,
             event_id: event.event_id,
             chunk: is_chunk,
+            media: messageMedia,
+            delivery,
+            meta: messageMeta,
             ts: event.ts,
           });
         }
@@ -272,14 +300,30 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         status: parsed.status ? String(parsed.status) : "in_progress",
         content: parsed.content ? formatAcpContent(parsed.content) : undefined,
         raw_input: parsed.raw_input,
+        media: extractAcpMedia(parsed.content),
+        meta: parsed.meta,
         session_id: event.session_id ?? null,
         seq: event.seq,
         event_id: event.event_id,
         ts: event.ts,
       };
       if (!call.id) continue;
-      toolCallMap.set(call.id, call);
-      toolCalls.push(call);
+      const existing = toolCallMap.get(call.id);
+      if (existing) {
+        existing.title = call.title;
+        existing.kind = call.kind;
+        existing.status = call.status;
+        existing.content = mergeToolCallContent(existing.content, call.content ?? "");
+        existing.raw_input = call.raw_input ?? existing.raw_input;
+        existing.media = mergeAcpMedia(existing.media, call.media);
+        existing.meta = call.meta ?? existing.meta;
+        existing.seq = call.seq;
+        existing.event_id = call.event_id;
+        existing.ts = call.ts;
+      } else {
+        toolCallMap.set(call.id, call);
+        toolCalls.push(call);
+      }
       continue;
     }
     if (parsed.type === "tool_call_update") {
@@ -300,6 +344,8 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       if (parsed.kind) call.kind = String(parsed.kind);
       if (parsed.raw_input) call.raw_input = parsed.raw_input;
       if (parsed.raw_output) call.raw_output = parsed.raw_output;
+      if (parsed.meta !== undefined) call.meta = parsed.meta;
+      call.media = mergeAcpMedia(call.media, extractAcpMedia(parsed.content));
       if (parsed.content) {
         const nextContent = formatAcpContent(parsed.content);
         if (nextContent) {
@@ -442,6 +488,9 @@ function closeStaleLiveToolCalls(
     }
     if (terminalRunStatus && isRunStatusForToolCall(runStatus, call)) {
       call.status = terminalRunStatus;
+      continue;
+    }
+    if (readAgentHubMetaKind(call.meta) === "codex_subagent") {
       continue;
     }
     const latestMessageOrder = latestMessageOrderBySession.get(
@@ -624,6 +673,78 @@ function parseAcpConfigValueId(value: unknown): string | null {
   return null;
 }
 
+function parseMessageDelivery(meta: unknown): string | undefined {
+  if (!meta || typeof meta !== "object") return undefined;
+  const delivery = (meta as Record<string, unknown>).delivery;
+  return typeof delivery === "string" && delivery.trim() ? delivery.trim() : undefined;
+}
+
+export function readAgentHubMetaKind(meta: unknown): string | null {
+  if (!meta || typeof meta !== "object") return null;
+  const agenthub = (meta as Record<string, unknown>).agenthub;
+  if (!agenthub || typeof agenthub !== "object") return null;
+  const kind = (agenthub as Record<string, unknown>).kind;
+  return typeof kind === "string" ? kind : null;
+}
+
+function isSameAcpMedia(left: AcpMedia, right: AcpMedia): boolean {
+  return (
+    left.mime_type === right.mime_type &&
+    left.uri === right.uri &&
+    left.data === right.data
+  );
+}
+
+function mergeAcpMedia(
+  previous: AcpMedia[] | undefined,
+  next: AcpMedia[] | undefined
+): AcpMedia[] | undefined {
+  if (!previous?.length) return next?.length ? next : undefined;
+  if (!next?.length) return previous;
+  const merged = [...previous];
+  for (const media of next) {
+    if (merged.some((candidate) => isSameAcpMedia(candidate, media))) continue;
+    merged.push(media);
+  }
+  return merged;
+}
+
+export function extractAcpMedia(content: unknown): AcpMedia[] | undefined {
+  const media: AcpMedia[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const obj = value as Record<string, unknown>;
+    if (obj.type === "image") {
+      const data = typeof obj.data === "string" ? obj.data : undefined;
+      const uri = typeof obj.uri === "string" ? obj.uri : undefined;
+      const mimeTypeValue = obj.mimeType ?? obj.mime_type;
+      const mimeType =
+        typeof mimeTypeValue === "string" ? mimeTypeValue.toLowerCase() : "image/png";
+      if (!mimeType.startsWith("image/") || (!data && !uri)) return;
+      const nameValue = obj.name ?? obj.file_name;
+      const candidate: AcpMedia = {
+        type: "image",
+        data,
+        uri,
+        mime_type: mimeType,
+        name: typeof nameValue === "string" ? nameValue : undefined,
+      };
+      if (!media.some((item) => isSameAcpMedia(item, candidate))) {
+        media.push(candidate);
+      }
+      return;
+    }
+    if (obj.content !== undefined) visit(obj.content);
+    if (obj.attachments !== undefined) visit(obj.attachments);
+  };
+  visit(content);
+  return media.length > 0 ? media : undefined;
+}
+
 function formatAcpContent(content: unknown): string {
   if (Array.isArray(content)) {
     return content
@@ -634,6 +755,7 @@ function formatAcpContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (content && typeof content === "object") {
     const obj = content as Record<string, unknown>;
+    if (obj.type === "image") return "";
     if (typeof obj.text === "string") return obj.text;
     if (obj.type === "content" && obj.content) {
       return formatAcpContent(obj.content);

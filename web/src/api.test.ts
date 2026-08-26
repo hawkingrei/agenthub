@@ -936,7 +936,12 @@ describe("api request headers", () => {
         call: () => api.sendInput(token, agentId, "hello", "message-1", "session-1"),
         url: "/api/agents/agent%2Fone/input",
         method: "POST",
-        body: { input: "hello", message_id: "message-1", session_id: "session-1" },
+        body: {
+          input: "hello",
+          message_id: "message-1",
+          session_id: "session-1",
+          images: [],
+        },
       },
       {
         call: () =>

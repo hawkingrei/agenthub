@@ -20,6 +20,7 @@ function AgentsWorkbenchView({
   isConversationLoading,
   terminalRef,
   input,
+  inputImages,
   inputHistory,
   ansi,
   canControlAcp,
@@ -42,6 +43,7 @@ function AgentsWorkbenchView({
   onAcpCancel,
   onAcpClearSession,
   onInputChange,
+  onInputImagesChange,
   onSelectInputHistory,
   onNavigateInputHistory,
   onSendAcpInput,
@@ -70,6 +72,7 @@ function AgentsWorkbenchView({
     isConversationLoading,
     terminalRef,
     input,
+    inputImages,
     inputHistory,
     ansi,
     canControlAcp,
@@ -112,12 +115,16 @@ function AgentsWorkbenchView({
       />
       {showInputDock ? (
         <InputDock
+          key={activeAgent ?? "standalone-acp"}
           input={input}
+          images={inputImages}
+          enableImages={true}
           historyCommands={inputHistory}
           showInterrupt={acpView.hasAcp}
           canInterrupt={canInterruptAcpRun}
           onHeightChange={setInputDockHeight}
           onInputChange={onInputChange}
+          onImagesChange={onInputImagesChange}
           onSendInput={onSendInput}
           onInterrupt={onAcpCancel}
           onNavigateHistory={onNavigateInputHistory}

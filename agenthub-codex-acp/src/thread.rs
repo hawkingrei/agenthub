@@ -8,14 +8,15 @@ use std::{
 use agent_client_protocol::schema::v1::{
     AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ClientCapabilities,
     ConfigOptionUpdate, Content, ContentBlock, ContentChunk, Diff, EmbeddedResource,
-    EmbeddedResourceResource, LoadSessionResponse, Meta, PermissionOption, PermissionOptionKind,
-    Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus, PromptRequest, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, ResourceLink, SelectedPermissionOutcome,
-    SessionConfigId, SessionConfigOption, SessionConfigOptionCategory, SessionConfigOptionValue,
-    SessionConfigSelectOption, SessionConfigValueId, SessionId, SessionMode, SessionModeId,
-    SessionModeState, SessionNotification, SessionUpdate, StopReason, Terminal,
-    TextResourceContents, ToolCall, ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus,
-    ToolCallUpdate, ToolCallUpdateFields, ToolKind, UnstructuredCommandInput, UsageUpdate,
+    EmbeddedResourceResource, ImageContent, LoadSessionResponse, Meta, PermissionOption,
+    PermissionOptionKind, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus, PromptRequest,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse, ResourceLink,
+    SelectedPermissionOutcome, SessionConfigId, SessionConfigOption, SessionConfigOptionCategory,
+    SessionConfigOptionValue, SessionConfigSelectOption, SessionConfigValueId, SessionId,
+    SessionMode, SessionModeId, SessionModeState, SessionNotification, SessionUpdate, StopReason,
+    Terminal, TextResourceContents, ToolCall, ToolCallContent, ToolCallId, ToolCallLocation,
+    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind, UnstructuredCommandInput,
+    UsageUpdate,
 };
 use agent_client_protocol::{Client, Error};
 use agenthub_managed_skills::managed_skills_root;
@@ -25,6 +26,7 @@ use codex_core::{
     config::{Config, set_project_trust_level},
     review_prompts::user_facing_hint,
 };
+use codex_history::RolloutItem;
 use codex_login::AuthManager;
 use codex_models_manager::manager::{ModelsManager, RefreshStrategy};
 use codex_protocol::{
@@ -32,6 +34,10 @@ use codex_protocol::{
     config_types::TrustLevel,
     dynamic_tools::{DynamicToolCallOutputContentItem, DynamicToolCallRequest},
     error::CodexErr,
+    items::{
+        AgentMessageDelivery, CollabAgentTool, CollabAgentToolCallItem, CollabAgentToolCallStatus,
+        SubAgentActivityItem, TurnItem,
+    },
     mcp::CallToolResult,
     models::{AdditionalPermissionProfile, ResponseItem, WebSearchAction},
     openai_models::{ModelPreset, ReasoningEffort, ReasoningEffortPreset},
@@ -39,17 +45,18 @@ use codex_protocol::{
     plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs},
     protocol::{
         AgentMessageContentDeltaEvent, AgentMessageEvent, AgentReasoningEvent,
-        AgentReasoningRawContentEvent, AgentReasoningSectionBreakEvent,
+        AgentReasoningRawContentEvent, AgentReasoningSectionBreakEvent, AgentStatus,
         ApplyPatchApprovalRequestEvent, DeprecationNoticeEvent, DynamicToolCallResponseEvent,
         ElicitationAction, ErrorEvent, Event, EventMsg, ExecApprovalRequestEvent,
         ExecCommandBeginEvent, ExecCommandEndEvent, ExecCommandOutputDeltaEvent, ExecCommandStatus,
-        ExitedReviewModeEvent, FileChange, ItemCompletedEvent, ItemStartedEvent, McpInvocation,
-        McpStartupCompleteEvent, McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent,
-        ModelRerouteEvent, NetworkApprovalContext, NetworkPolicyRuleAction, Op,
-        PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus, PatchApplyUpdatedEvent,
-        ReasoningContentDeltaEvent, ReasoningRawContentDeltaEvent, ReviewDecision,
-        ReviewOutputEvent, ReviewRequest, ReviewTarget, RolloutItem, SandboxPolicy,
-        StreamErrorEvent, TerminalInteractionEvent, ThreadGoalStatus, ThreadGoalUpdatedEvent,
+        ExitedReviewModeEvent, FileChange, ImageGenerationBeginEvent, ImageGenerationEndEvent,
+        ItemCompletedEvent, ItemStartedEvent, McpInvocation, McpStartupCompleteEvent,
+        McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent, ModelRerouteEvent,
+        NetworkApprovalContext, NetworkPolicyRuleAction, Op, PatchApplyBeginEvent,
+        PatchApplyEndEvent, PatchApplyStatus, PatchApplyUpdatedEvent, ReasoningContentDeltaEvent,
+        ReasoningRawContentDeltaEvent, ReviewDecision, ReviewOutputEvent, ReviewRequest,
+        ReviewTarget, SandboxPolicy, StreamErrorEvent, SubAgentActivityKind,
+        TerminalInteractionEvent, ThreadGoalStatus, ThreadGoalUpdatedEvent,
         ThreadSettingsOverrides, TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent,
         TurnStartedEvent, UserMessageEvent, ViewImageToolCallEvent, WarningEvent,
         WebSearchBeginEvent, WebSearchEndEvent,
@@ -62,6 +69,7 @@ use codex_protocol::{
         RequestUserInputResponse,
     },
     review_format::format_review_findings_block,
+    turn_input::{TurnInputMode, TurnInputRequest},
     user_input::UserInput,
 };
 use codex_shell_command::parse_command::parse_command;
@@ -108,6 +116,91 @@ fn format_thread_goal_update(event: &ThreadGoalUpdatedEvent) -> String {
         format!("Goal updated ({status}):\n{objective}")
     } else {
         format!("Goal updated ({status}): {objective}")
+    }
+}
+
+fn collab_agent_tool_name(tool: CollabAgentTool) -> &'static str {
+    match tool {
+        CollabAgentTool::SpawnAgent => "spawn_agent",
+        CollabAgentTool::SendInput => "send_input",
+        CollabAgentTool::ResumeAgent => "resume_agent",
+        CollabAgentTool::Wait => "wait",
+        CollabAgentTool::CloseAgent => "close_agent",
+    }
+}
+
+fn collab_agent_tool_title(tool: CollabAgentTool) -> &'static str {
+    match tool {
+        CollabAgentTool::SpawnAgent => "Spawn subagent",
+        CollabAgentTool::SendInput => "Message subagent",
+        CollabAgentTool::ResumeAgent => "Resume subagent",
+        CollabAgentTool::Wait => "Wait for subagents",
+        CollabAgentTool::CloseAgent => "Close subagent",
+    }
+}
+
+fn collab_agent_raw_input(item: &CollabAgentToolCallItem) -> serde_json::Value {
+    serde_json::json!({
+        "tool": collab_agent_tool_name(item.tool),
+        "prompt": item.prompt,
+        "model": item.model,
+        "reasoning_effort": item.reasoning_effort,
+        "receiver_thread_ids": item.receiver_thread_ids,
+    })
+}
+
+fn collab_agent_meta(item: &CollabAgentToolCallItem) -> Meta {
+    Meta::from_iter([(
+        "agenthub".into(),
+        serde_json::json!({
+            "kind": "codex_collaboration",
+            "tool": collab_agent_tool_name(item.tool),
+            "sender_thread_id": item.sender_thread_id,
+            "receiver_thread_ids": item.receiver_thread_ids,
+        }),
+    )])
+}
+
+fn subagent_tool_call_id(thread_id: &codex_protocol::ThreadId) -> String {
+    format!("codex-subagent:{thread_id}")
+}
+
+fn short_thread_id(thread_id: &codex_protocol::ThreadId) -> String {
+    thread_id.to_string().chars().take(8).collect()
+}
+
+fn subagent_meta(
+    thread_id: &codex_protocol::ThreadId,
+    agent_path: Option<&str>,
+    activity: &str,
+) -> Meta {
+    Meta::from_iter([(
+        "agenthub".into(),
+        serde_json::json!({
+            "kind": "codex_subagent",
+            "thread_id": thread_id,
+            "agent_path": agent_path,
+            "activity": activity,
+        }),
+    )])
+}
+
+fn agent_status_to_tool_call_status(status: &AgentStatus) -> ToolCallStatus {
+    match status {
+        AgentStatus::PendingInit | AgentStatus::Running => ToolCallStatus::InProgress,
+        AgentStatus::Completed(_) | AgentStatus::Shutdown => ToolCallStatus::Completed,
+        AgentStatus::Interrupted | AgentStatus::Errored(_) | AgentStatus::NotFound => {
+            ToolCallStatus::Failed
+        }
+    }
+}
+
+pub(crate) fn user_input_op(items: Vec<UserInput>) -> Op {
+    let (reply, _response) = oneshot::channel();
+    Op::TurnInput {
+        request: Box::new(TurnInputRequest::user_input(items)),
+        mode: TurnInputMode::StartOrSteer,
+        reply,
     }
 }
 
@@ -559,6 +652,7 @@ struct PromptState {
     stream_open: bool,
     response_txs: Vec<oneshot::Sender<Result<StopReason, Error>>>,
     seen_message_deltas: bool,
+    last_agent_message_id: Option<String>,
     seen_reasoning_deltas: bool,
     seen_reasoning_final: bool,
 }
@@ -599,6 +693,7 @@ impl PromptState {
             stream_open: true,
             response_txs: vec![response_tx],
             seen_message_deltas: false,
+            last_agent_message_id: None,
             seen_reasoning_deltas: false,
             seen_reasoning_final: false,
         }
@@ -622,6 +717,7 @@ impl PromptState {
             stream_open: true,
             response_txs: Vec::new(),
             seen_message_deltas: false,
+            last_agent_message_id: None,
             seen_reasoning_deltas: false,
             seen_reasoning_final: false,
         }
@@ -928,6 +1024,9 @@ impl PromptState {
                 started_at_ms: _,
             }) => {
                 info!("Item started with thread_id: {thread_id}, turn_id: {turn_id}, item: {item:?}");
+                if let TurnItem::CollabAgentToolCall(item) = item {
+                    self.start_collab_agent_tool_call(client, item).await;
+                }
             }
             EventMsg::UserMessage(UserMessageEvent {
                 message,
@@ -952,7 +1051,10 @@ impl PromptState {
             }) => {
                 info!("Agent message content delta received: thread_id: {thread_id}, turn_id: {turn_id}, item_id: {item_id}, delta: {delta:?}");
                 self.seen_message_deltas = true;
-                client.send_agent_text(delta).await;
+                self.last_agent_message_id = Some(item_id.clone());
+                client
+                    .send_agent_text_chunk(delta, Some(item_id), None)
+                    .await;
             }
             EventMsg::ReasoningContentDelta(ReasoningContentDeltaEvent {
                 thread_id,
@@ -983,10 +1085,24 @@ impl PromptState {
                 self.seen_reasoning_deltas = true;
                 client.send_agent_thought("\n\n").await;
             }
-            EventMsg::AgentMessage(AgentMessageEvent { message , phase: _, .. }) => {
+            EventMsg::AgentMessage(AgentMessageEvent {
+                message,
+                phase: _,
+                delivery,
+                ..
+            }) => {
                 info!("Agent message (non-delta) received: {message:?}");
-                // We didn't receive this message via streaming
-                if !std::mem::take(&mut self.seen_message_deltas) {
+                let streamed = std::mem::take(&mut self.seen_message_deltas);
+                let message_id = self.last_agent_message_id.take();
+                if delivery == Some(AgentMessageDelivery::Async) {
+                    client
+                        .send_agent_text_chunk(
+                            if streamed { String::new() } else { message },
+                            message_id,
+                            Some("async"),
+                        )
+                        .await;
+                } else if !streamed {
                     client.send_agent_text(message).await;
                 }
             }
@@ -1152,6 +1268,15 @@ impl PromptState {
                 started_at_ms: _,
             }) => {
                 info!("Item completed: thread_id={}, turn_id={}, item={:?}", thread_id, turn_id, item);
+                match item {
+                    TurnItem::CollabAgentToolCall(item) => {
+                        self.finish_collab_agent_tool_call(client, item).await;
+                    }
+                    TurnItem::SubAgentActivity(item) => {
+                        self.update_subagent_activity(client, item).await;
+                    }
+                    _ => {}
+                }
             }
             EventMsg::TurnComplete(TurnCompleteEvent {
                 last_agent_message,
@@ -1216,6 +1341,17 @@ impl PromptState {
                         )
                     )]).locations(vec![ToolCallLocation::new(path)])))
                     .await;
+            }
+            EventMsg::ImageGenerationBegin(event) => {
+                info!("Image generation started: call_id={}", event.call_id);
+                self.start_image_generation(client, event).await;
+            }
+            EventMsg::ImageGenerationEnd(event) => {
+                info!(
+                    "Image generation finished: call_id={}, status={}",
+                    event.call_id, event.status
+                );
+                self.finish_image_generation(client, event).await;
             }
             EventMsg::EnteredReviewMode(review_request) => {
                 info!("Review begin: request={review_request:?}");
@@ -1298,10 +1434,8 @@ impl PromptState {
             // Informational: backend is waiting on a safety review before
             // streaming more output. No user-facing action in the ACP adapter.
             | EventMsg::SafetyBuffering(..)
-            |
-            EventMsg::ImageGenerationBegin(..)
-            | EventMsg::ImageGenerationEnd(..)
             | EventMsg::ThreadRolledBack(..)
+            | EventMsg::ThreadQueueChanged(..)
             | EventMsg::HookStarted(..)
             | EventMsg::HookCompleted(..)
             // we already have a way to diff the turn, so ignore
@@ -1330,6 +1464,175 @@ impl PromptState {
             | EventMsg::EnvironmentDisconnected(..)
             | EventMsg::RawResponseCompleted(..) => {}
             EventMsg::GuardianAssessment(..) => {}
+        }
+    }
+
+    async fn start_collab_agent_tool_call(
+        &self,
+        client: &SessionClient,
+        item: CollabAgentToolCallItem,
+    ) {
+        let tool_call = ToolCall::new(item.id.clone(), collab_agent_tool_title(item.tool))
+            .kind(ToolKind::Think)
+            .status(ToolCallStatus::InProgress)
+            .raw_input(collab_agent_raw_input(&item))
+            .meta(collab_agent_meta(&item));
+        client.send_tool_call(tool_call).await;
+    }
+
+    async fn start_image_generation(
+        &self,
+        client: &SessionClient,
+        event: ImageGenerationBeginEvent,
+    ) {
+        let meta = Meta::from_iter([(
+            "agenthub".into(),
+            serde_json::json!({ "kind": "codex_image_generation" }),
+        )]);
+        client
+            .send_tool_call(
+                ToolCall::new(event.call_id, "Generate image")
+                    .kind(ToolKind::Other)
+                    .status(ToolCallStatus::InProgress)
+                    .meta(meta),
+            )
+            .await;
+    }
+
+    async fn finish_image_generation(
+        &self,
+        client: &SessionClient,
+        event: ImageGenerationEndEvent,
+    ) {
+        let saved_path = event
+            .saved_path
+            .as_ref()
+            .map(|path| path.display().to_string());
+        let failed = event.failure.is_some()
+            || matches!(
+                event.status.trim().to_ascii_lowercase().as_str(),
+                "failed" | "error" | "cancelled" | "canceled"
+            );
+        let completed = matches!(
+            event.status.trim().to_ascii_lowercase().as_str(),
+            "completed" | "succeeded" | "success"
+        );
+        let mut content = Vec::new();
+        if !event.result.is_empty() {
+            content.push(ToolCallContent::Content(Content::new(ContentBlock::Image(
+                ImageContent::new(event.result, "image/png"),
+            ))));
+        }
+        if let Some(path) = saved_path.as_ref() {
+            content.push(ToolCallContent::Content(Content::new(
+                ContentBlock::ResourceLink(ResourceLink::new(path.clone(), path.clone())),
+            )));
+        }
+
+        let mut fields = ToolCallUpdateFields::new()
+            .title("Generate image")
+            .status(if failed {
+                ToolCallStatus::Failed
+            } else if completed {
+                ToolCallStatus::Completed
+            } else {
+                ToolCallStatus::InProgress
+            })
+            .raw_output(serde_json::json!({
+                "status": event.status,
+                "revised_prompt": event.revised_prompt,
+                "transparent_background": event.transparent_background,
+                "failure": event.failure,
+                "saved_path": saved_path,
+            }));
+        if !content.is_empty() {
+            fields = fields.content(content);
+        }
+        let meta = Meta::from_iter([(
+            "agenthub".into(),
+            serde_json::json!({ "kind": "codex_image_generation" }),
+        )]);
+        client
+            .send_tool_call_update(ToolCallUpdate::new(event.call_id, fields).meta(meta))
+            .await;
+    }
+
+    async fn finish_collab_agent_tool_call(
+        &self,
+        client: &SessionClient,
+        item: CollabAgentToolCallItem,
+    ) {
+        let status = match item.status {
+            CollabAgentToolCallStatus::InProgress => ToolCallStatus::InProgress,
+            CollabAgentToolCallStatus::Completed => ToolCallStatus::Completed,
+            CollabAgentToolCallStatus::Failed => ToolCallStatus::Failed,
+        };
+        let fields = ToolCallUpdateFields::new()
+            .title(collab_agent_tool_title(item.tool))
+            .status(status)
+            .raw_output(serde_json::json!({
+                "receiver_thread_ids": &item.receiver_thread_ids,
+                "agent_statuses": &item.agents_states,
+            }));
+        client
+            .send_tool_call_update(
+                ToolCallUpdate::new(item.id.clone(), fields).meta(collab_agent_meta(&item)),
+            )
+            .await;
+
+        for (thread_id, agent_status) in &item.agents_states {
+            let subagent_id = subagent_tool_call_id(thread_id);
+            let fields = ToolCallUpdateFields::new()
+                .title(format!("Subagent {}", short_thread_id(thread_id)))
+                .status(agent_status_to_tool_call_status(agent_status));
+            client
+                .send_tool_call_update(
+                    ToolCallUpdate::new(subagent_id, fields)
+                        .meta(subagent_meta(thread_id, None, "status")),
+                )
+                .await;
+        }
+    }
+
+    async fn update_subagent_activity(&self, client: &SessionClient, item: SubAgentActivityItem) {
+        let tool_call_id = subagent_tool_call_id(&item.agent_thread_id);
+        let title = format!("Subagent {}", item.agent_path);
+        let activity = match item.kind {
+            SubAgentActivityKind::Started => "started",
+            SubAgentActivityKind::Interacted => "interacted",
+            SubAgentActivityKind::Interrupted => "interrupted",
+        };
+        let status = match item.kind {
+            SubAgentActivityKind::Started | SubAgentActivityKind::Interacted => {
+                ToolCallStatus::InProgress
+            }
+            SubAgentActivityKind::Interrupted => ToolCallStatus::Failed,
+        };
+        let meta = subagent_meta(
+            &item.agent_thread_id,
+            Some(item.agent_path.as_str()),
+            activity,
+        );
+
+        if item.kind == SubAgentActivityKind::Started {
+            client
+                .send_tool_call(
+                    ToolCall::new(tool_call_id, title)
+                        .kind(ToolKind::Think)
+                        .status(status)
+                        .meta(meta),
+                )
+                .await;
+        } else {
+            client
+                .send_tool_call_update(
+                    ToolCallUpdate::new(
+                        tool_call_id,
+                        ToolCallUpdateFields::new().title(title).status(status),
+                    )
+                    .meta(meta),
+                )
+                .await;
         }
     }
 
@@ -2420,6 +2723,7 @@ fn build_exec_permission_options(
                 ),
                 decision: ReviewDecision::ApprovedForSession,
             }),
+            ReviewDecision::ApprovedMcpPolicyAmendment => None,
             ReviewDecision::NetworkPolicyAmendment {
                 network_policy_amendment,
             } => Some({
@@ -2857,10 +3161,28 @@ impl SessionClient {
     }
 
     async fn send_agent_text(&self, text: impl Into<String>) {
-        self.send_notification(SessionUpdate::AgentMessageChunk(ContentChunk::new(
-            text.into().into(),
-        )))
-        .await;
+        self.send_agent_text_chunk(text, None, None).await;
+    }
+
+    async fn send_agent_text_chunk(
+        &self,
+        text: impl Into<String>,
+        message_id: Option<String>,
+        delivery: Option<&str>,
+    ) {
+        let mut meta = Meta::new();
+        if let Some(message_id) = message_id {
+            meta.insert("message_id".into(), serde_json::Value::String(message_id));
+        }
+        if let Some(delivery) = delivery {
+            meta.insert(
+                "delivery".into(),
+                serde_json::Value::String(delivery.into()),
+            );
+        }
+        let chunk = ContentChunk::new(text.into().into()).meta((!meta.is_empty()).then_some(meta));
+        self.send_notification(SessionUpdate::AgentMessageChunk(chunk))
+            .await;
     }
 
     async fn send_agent_thought(&self, text: impl Into<String>) {
@@ -3450,16 +3772,10 @@ impl<A: Auth> ThreadActor<A> {
                 "compact" => op = Op::Compact,
                 "undo" => op = Op::ThreadRollback { num_turns: 1 },
                 "init" => {
-                    op = Op::UserInput {
-                        items: vec![UserInput::Text {
-                            text: INIT_COMMAND_PROMPT.into(),
-                            text_elements: vec![],
-                        }],
-                        final_output_json_schema: None,
-                        responsesapi_client_metadata: None,
-                        additional_context: Default::default(),
-                        thread_settings: ThreadSettingsOverrides::default(),
-                    }
+                    op = user_input_op(vec![UserInput::Text {
+                        text: INIT_COMMAND_PROMPT.into(),
+                        text_elements: vec![],
+                    }])
                 }
                 "review" => {
                     let instructions = rest.trim();
@@ -3505,24 +3821,10 @@ impl<A: Auth> ThreadActor<A> {
                     self.auth.logout().await?;
                     return Err(Error::auth_required());
                 }
-                _ => {
-                    op = Op::UserInput {
-                        items,
-                        final_output_json_schema: None,
-                        responsesapi_client_metadata: None,
-                        additional_context: Default::default(),
-                        thread_settings: ThreadSettingsOverrides::default(),
-                    }
-                }
+                _ => op = user_input_op(items),
             }
         } else {
-            op = Op::UserInput {
-                items,
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: ThreadSettingsOverrides::default(),
-            }
+            op = user_input_op(items)
         }
 
         let submission_seed = Uuid::new_v4().to_string();
@@ -3536,7 +3838,7 @@ impl<A: Auth> ThreadActor<A> {
         );
         let submission_id = self
             .thread
-            .submit(submission_seed, op.clone())
+            .submit(submission_seed, op)
             .instrument(submit_span)
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
@@ -3678,7 +3980,7 @@ impl<A: Auth> ThreadActor<A> {
                     self.replay_event_msg(&event_msg).await;
                 }
                 RolloutItem::ResponseItem(response_item) => {
-                    self.replay_response_item(&response_item).await;
+                    self.replay_response_item(&response_item.item).await;
                 }
                 // Skip SessionMeta, TurnContext, Compacted
                 _ => {}
@@ -4682,6 +4984,7 @@ mod tests {
     use codex_core::test_support::all_model_presets;
     use codex_protocol::config_types::ModeKind;
     use codex_protocol::protocol::{EnteredReviewModeEvent, ModelVerificationEvent};
+    use codex_protocol::turn_input::TurnInput as ProtocolTurnInput;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use tokio::{
         sync::{Mutex, Notify, mpsc::UnboundedSender},
@@ -4700,6 +5003,16 @@ mod tests {
             duration_ms: None,
             time_to_first_token_ms: None,
         }
+    }
+
+    fn turn_input_items(op: &Op) -> Option<&[UserInput]> {
+        let Op::TurnInput { request, .. } = op else {
+            return None;
+        };
+        let ProtocolTurnInput::UserInput { content, .. } = &request.input else {
+            return None;
+        };
+        Some(content)
     }
 
     #[test]
@@ -4877,6 +5190,144 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_updated_codex_events_preserve_async_subagent_and_image_content()
+    -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (message_tx, _message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state =
+                    PromptState::new_detached("submission-id".to_string(), thread, message_tx);
+                let child_thread_id = codex_protocol::ThreadId::new();
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::AgentMessage(AgentMessageEvent {
+                            message: "Background result".to_string(),
+                            phase: None,
+                            memory_citation: None,
+                            delivery: Some(AgentMessageDelivery::Async),
+                        }),
+                    )
+                    .await;
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::ItemCompleted(ItemCompletedEvent {
+                            thread_id: codex_protocol::ThreadId::new(),
+                            turn_id: "turn-1".to_string(),
+                            item: TurnItem::SubAgentActivity(SubAgentActivityItem {
+                                id: "activity-1".to_string(),
+                                kind: SubAgentActivityKind::Started,
+                                agent_thread_id: child_thread_id,
+                                agent_path: codex_protocol::AgentPath::root()
+                                    .join("reviewer")
+                                    .expect("reviewer path"),
+                            }),
+                            started_at_ms: None,
+                            completed_at_ms: 42,
+                        }),
+                    )
+                    .await;
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::ImageGenerationBegin(ImageGenerationBeginEvent {
+                            call_id: "image-1".to_string(),
+                        }),
+                    )
+                    .await;
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::ImageGenerationEnd(ImageGenerationEndEvent {
+                            call_id: "image-1".to_string(),
+                            status: "completed".to_string(),
+                            revised_prompt: Some("A diagram".to_string()),
+                            result: "aW1hZ2U=".to_string(),
+                            transparent_background: Some(false),
+                            failure: None,
+                            saved_path: None,
+                        }),
+                    )
+                    .await;
+
+                let notifications = client.notifications.lock().unwrap();
+                assert_eq!(
+                    notifications.len(),
+                    4,
+                    "notifications don't match {notifications:?}"
+                );
+
+                let async_chunk = match &notifications[0].update {
+                    SessionUpdate::AgentMessageChunk(chunk) => chunk,
+                    other => panic!("expected async agent message, got {other:?}"),
+                };
+                assert!(matches!(
+                    &async_chunk.content,
+                    ContentBlock::Text(TextContent { text, .. }) if text == "Background result"
+                ));
+                assert_eq!(
+                    async_chunk
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.get("delivery"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("async")
+                );
+
+                let subagent_call = match &notifications[1].update {
+                    SessionUpdate::ToolCall(call) => call,
+                    other => panic!("expected subagent tool call, got {other:?}"),
+                };
+                assert_eq!(subagent_call.title, "Subagent /root/reviewer");
+                assert_eq!(
+                    subagent_call
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.get("agenthub"))
+                        .and_then(|value| value.get("kind"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("codex_subagent")
+                );
+
+                assert!(matches!(
+                    &notifications[2].update,
+                    SessionUpdate::ToolCall(call)
+                        if call.title == "Generate image"
+                            && call.status == ToolCallStatus::InProgress
+                ));
+                let image_update = match &notifications[3].update {
+                    SessionUpdate::ToolCallUpdate(update) => update,
+                    other => panic!("expected image tool update, got {other:?}"),
+                };
+                assert_eq!(image_update.fields.status, Some(ToolCallStatus::Completed));
+                assert!(image_update.fields.content.as_ref().is_some_and(|content| {
+                    content.iter().any(|item| {
+                        matches!(
+                            item,
+                            ToolCallContent::Content(Content {
+                                content: ContentBlock::Image(ImageContent { data, mime_type, .. }),
+                                ..
+                            }) if data == "aW1hZ2U=" && mime_type == "image/png"
+                        )
+                    })
+                }));
+                assert!(
+                    !serde_json::to_string(&image_update.fields.raw_output)?.contains("aW1hZ2U=")
+                );
+
+                anyhow::Ok(())
+            })
+            .await
+    }
+
+    #[tokio::test]
     async fn test_compact() -> anyhow::Result<()> {
         let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
@@ -4909,7 +5360,7 @@ mod tests {
             }) if text == "Compact task completed"
         ));
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(ops.as_slice(), &[Op::Compact]);
+        assert!(matches!(ops.as_slice(), [Op::Compact]));
 
         Ok(())
     }
@@ -4959,7 +5410,10 @@ mod tests {
         ));
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(ops.as_slice(), &[Op::ThreadRollback { num_turns: 1 }]);
+        assert!(matches!(
+            ops.as_slice(),
+            [Op::ThreadRollback { num_turns: 1 }]
+        ));
 
         Ok(())
     }
@@ -4999,18 +5453,16 @@ mod tests {
             "notifications don't match {notifications:?}"
         );
         let ops = thread.ops.lock().unwrap();
+        assert_eq!(ops.len(), 1, "ops don't match {ops:?}");
         assert_eq!(
-            ops.as_slice(),
-            &[Op::UserInput {
-                items: vec![UserInput::Text {
+            turn_input_items(&ops[0]),
+            Some(
+                [UserInput::Text {
                     text: INIT_COMMAND_PROMPT.to_string(),
-                    text_elements: vec![]
-                }],
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: ThreadSettingsOverrides::default(),
-            }],
+                    text_elements: vec![],
+                }]
+                .as_slice()
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5054,14 +5506,15 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::Review {
-                review_request: ReviewRequest {
-                    user_facing_hint: Some(user_facing_hint(&ReviewTarget::UncommittedChanges)),
-                    target: ReviewTarget::UncommittedChanges,
-                }
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::Review { review_request }]
+                    if review_request == &ReviewRequest {
+                        user_facing_hint: Some(user_facing_hint(&ReviewTarget::UncommittedChanges)),
+                        target: ReviewTarget::UncommittedChanges,
+                    }
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5109,18 +5562,19 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::Review {
-                review_request: ReviewRequest {
-                    user_facing_hint: Some(user_facing_hint(&ReviewTarget::Custom {
-                        instructions: instructions.to_owned()
-                    })),
-                    target: ReviewTarget::Custom {
-                        instructions: instructions.to_owned()
-                    },
-                }
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::Review { review_request }]
+                    if review_request == &ReviewRequest {
+                        user_facing_hint: Some(user_facing_hint(&ReviewTarget::Custom {
+                            instructions: instructions.to_owned(),
+                        })),
+                        target: ReviewTarget::Custom {
+                            instructions: instructions.to_owned(),
+                        },
+                    }
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5164,20 +5618,21 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::Review {
-                review_request: ReviewRequest {
-                    user_facing_hint: Some(user_facing_hint(&ReviewTarget::Commit {
-                        sha: "123456".to_owned(),
-                        title: None
-                    })),
-                    target: ReviewTarget::Commit {
-                        sha: "123456".to_owned(),
-                        title: None
-                    },
-                }
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::Review { review_request }]
+                    if review_request == &ReviewRequest {
+                        user_facing_hint: Some(user_facing_hint(&ReviewTarget::Commit {
+                            sha: "123456".to_owned(),
+                            title: None,
+                        })),
+                        target: ReviewTarget::Commit {
+                            sha: "123456".to_owned(),
+                            title: None,
+                        },
+                    }
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5221,18 +5676,19 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
-        assert_eq!(
-            ops.as_slice(),
-            &[Op::Review {
-                review_request: ReviewRequest {
-                    user_facing_hint: Some(user_facing_hint(&ReviewTarget::BaseBranch {
-                        branch: "feature".to_owned()
-                    })),
-                    target: ReviewTarget::BaseBranch {
-                        branch: "feature".to_owned()
-                    },
-                }
-            }],
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [Op::Review { review_request }]
+                    if review_request == &ReviewRequest {
+                        user_facing_hint: Some(user_facing_hint(&ReviewTarget::BaseBranch {
+                            branch: "feature".to_owned(),
+                        })),
+                        target: ReviewTarget::BaseBranch {
+                            branch: "feature".to_owned(),
+                        },
+                    }
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5276,18 +5732,16 @@ mod tests {
         );
 
         let ops = thread.ops.lock().unwrap();
+        assert_eq!(ops.len(), 1, "ops don't match {ops:?}");
         assert_eq!(
-            ops.as_slice(),
-            &[Op::UserInput {
-                items: vec![UserInput::Text {
+            turn_input_items(&ops[0]),
+            Some(
+                [UserInput::Text {
                     text: "/custom foo".into(),
-                    text_elements: vec![]
-                }],
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: ThreadSettingsOverrides::default(),
-            }],
+                    text_elements: vec![],
+                }]
+                .as_slice()
+            ),
             "ops don't match {ops:?}"
         );
 
@@ -5343,8 +5797,8 @@ mod tests {
 
                 let ops = thread.ops.lock().unwrap();
                 assert_eq!(ops.len(), 2, "ops don't match {ops:?}");
-                assert!(matches!(ops[0], Op::UserInput { .. }));
-                assert!(matches!(ops[1], Op::UserInput { .. }));
+                assert!(matches!(&ops[0], Op::TurnInput { .. }));
+                assert!(matches!(&ops[1], Op::TurnInput { .. }));
 
                 drop(message_tx);
                 anyhow::Ok(())
@@ -5383,6 +5837,7 @@ mod tests {
                             message: "resumed output".to_string(),
                             phase: None,
                             memory_citation: None,
+                            delivery: None,
                         }),
                     })
                     .await;
@@ -5671,7 +6126,7 @@ mod tests {
                 {
                     let ops = thread.ops.lock().unwrap();
                     assert_eq!(ops.len(), 2, "ops don't match {ops:?}");
-                    assert!(matches!(ops[0], Op::UserInput { .. }));
+                    assert!(matches!(&ops[0], Op::TurnInput { .. }));
                     match &ops[1] {
                         Op::UserInputAnswer { id, response } => {
                             assert_eq!(id, "shared-submission");
@@ -5848,15 +6303,17 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(submission_id.clone());
-            self.ops.lock().unwrap().push(op.clone());
 
-            match op {
-                Op::UserInput { items, .. } => {
+            match &op {
+                Op::TurnInput { request, .. } => {
+                    let ProtocolTurnInput::UserInput { content: items, .. } = &request.input else {
+                        unimplemented!()
+                    };
                     *self.active_prompt_id.lock().unwrap() = Some(submission_id.clone());
                     let prompt = items
-                        .into_iter()
+                        .iter()
                         .map(|i| match i {
-                            UserInput::Text { text, .. } => text,
+                            UserInput::Text { text, .. } => text.clone(),
                             _ => unimplemented!(),
                         })
                         .join("\n");
@@ -6016,6 +6473,7 @@ mod tests {
                                     message: prompt,
                                     phase: None,
                                     memory_citation: None,
+                                    delivery: None,
                                 }),
                             })
                             .unwrap();
@@ -6051,6 +6509,7 @@ mod tests {
                                 message: "Compact task completed".to_string(),
                                 phase: None,
                                 memory_citation: None,
+                                delivery: None,
                             }),
                         })
                         .unwrap();
@@ -6071,6 +6530,7 @@ mod tests {
                                 message: "Undo in progress...".to_string(),
                                 phase: None,
                                 memory_citation: None,
+                                delivery: None,
                             }),
                         })
                         .unwrap();
@@ -6082,6 +6542,7 @@ mod tests {
                                 message: "Undo completed.".to_string(),
                                 phase: None,
                                 memory_citation: None,
+                                delivery: None,
                             }),
                         })
                         .unwrap();
@@ -6159,6 +6620,7 @@ mod tests {
                     unimplemented!()
                 }
             }
+            self.ops.lock().unwrap().push(op);
             Ok(submission_id)
         }
 
@@ -7184,6 +7646,7 @@ mod tests {
                             message: "still flowing".to_string(),
                             phase: None,
                             memory_citation: None,
+                            delivery: None,
                         }),
                     )
                     .await;

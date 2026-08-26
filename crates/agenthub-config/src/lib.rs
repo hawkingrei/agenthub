@@ -802,8 +802,8 @@ pub fn normalize_optional_codex_acp_mode_id(mode_id: Option<&str>) -> Option<Str
         .map(normalize_codex_acp_mode_id)
 }
 
-/// Provider-neutral thinking levels for the Agent Runtime Profiles feature, ordered low → high.
-pub const AGENT_THINKING_LEVELS: [&str; 4] = ["low", "medium", "high", "max"];
+/// Runtime thinking levels accepted by AgentHub, ordered low → high. Providers may support a subset.
+pub const AGENT_THINKING_LEVELS: [&str; 6] = ["low", "medium", "high", "xhigh", "max", "ultra"];
 
 /// Normalize an operator-provided runtime model override: trim, and treat blank as unset. Unknown model
 /// names are intentionally allowed — provider availability drifts independently of AgentHub releases.
@@ -815,8 +815,9 @@ pub fn normalize_optional_runtime_model(model: Option<&str>) -> Option<String> {
 }
 
 /// Normalize a runtime thinking level: trim, lowercase, and keep only the constrained enum
-/// (`low|medium|high|max`). Blank is unset; an unrecognized value yields `None` so callers can reject
-/// it. Stored provider-neutrally — the launch translation maps it to provider-specific options.
+/// (`low|medium|high|xhigh|max|ultra`). Blank is unset; an unrecognized value yields `None` so callers
+/// can reject it. Provider-specific validation and launch translation happen at the API/runtime
+/// boundary.
 pub fn normalize_optional_thinking_level(level: Option<&str>) -> Option<String> {
     let normalized = level.map(str::trim).filter(|value| !value.is_empty())?;
     let lowered = normalized.to_ascii_lowercase();
@@ -1335,7 +1336,7 @@ mod tests {
     fn normalize_optional_thinking_level_keeps_only_the_enum() {
         assert_eq!(super::normalize_optional_thinking_level(None), None);
         assert_eq!(super::normalize_optional_thinking_level(Some(" ")), None);
-        for level in ["low", "medium", "high", "max"] {
+        for level in ["low", "medium", "high", "xhigh", "max", "ultra"] {
             assert_eq!(
                 super::normalize_optional_thinking_level(Some(level)).as_deref(),
                 Some(level)
@@ -1348,8 +1349,8 @@ mod tests {
         );
         // Unrecognized values are rejected (None) so the API layer can surface an error.
         assert_eq!(
-            super::normalize_optional_thinking_level(Some("ultra")),
-            None
+            super::normalize_optional_thinking_level(Some("  ULTRA ")).as_deref(),
+            Some("ultra")
         );
         assert!(super::is_valid_thinking_level("Max"));
         assert!(!super::is_valid_thinking_level("turbo"));

@@ -4,6 +4,8 @@ import { MantineProvider } from "@mantine/core";
 import {
   CreateAgentModal,
   CODEX_RUNTIME_MODEL_OPTIONS,
+  CODEX_THINKING_LEVEL_OPTIONS,
+  THINKING_LEVEL_OPTIONS,
   listCodexRuntimeModelOptions,
   type CreateAgentModalProps,
   resolveCreateAgentPresetId,
@@ -114,6 +116,23 @@ describe("CreateAgentModal", () => {
     expect(renderModal()).toContain("Thinking level");
     expect(renderModal({ agentPresetId: "claude" })).toContain("Runtime model");
     expect(renderModal({ agentPresetId: "gemini" })).not.toContain("Runtime model");
+  });
+
+  it("exposes extended Codex reasoning efforts without changing Claude levels", () => {
+    expect(CODEX_THINKING_LEVEL_OPTIONS.map((option) => option.value)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra",
+    ]);
+    expect(THINKING_LEVEL_OPTIONS.map((option) => option.value)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "max",
+    ]);
   });
 
   it("renders the Codex runtime model selector with bundled model presets", () => {

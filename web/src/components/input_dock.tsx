@@ -14,15 +14,29 @@ import {
   TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS,
 } from "../ui/tailwind_classes";
 import { isImeComposing } from "../input_ime";
+import type { AgentInputImage } from "../api";
+
+export const ACP_INPUT_MAX_IMAGES = 4;
+export const ACP_INPUT_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const ACP_INPUT_MAX_TOTAL_IMAGE_BYTES = 10 * 1024 * 1024;
+const ACP_INPUT_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
 
 type InputDockProps = {
   input: string;
+  images?: AgentInputImage[];
+  enableImages?: boolean;
   historyCommands: string[];
   showInterrupt: boolean;
   canInterrupt: boolean;
   sendDisabled?: boolean;
   onHeightChange?: (height: number) => void;
   onInputChange: (value: string) => void;
+  onImagesChange?: (images: AgentInputImage[]) => void;
   onSendInput: () => void;
   onInterrupt: () => void;
   onNavigateHistory: (direction: "up" | "down") => void;
@@ -31,6 +45,75 @@ type InputDockProps = {
   showConversationJump: boolean;
   isComposingRef: React.MutableRefObject<boolean>;
 };
+
+function approximateBase64Bytes(data: string): number {
+  const normalized = data.replace(/\s/g, "");
+  if (!normalized) return 0;
+  const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
+}
+
+export function validateInputImageFiles(
+  existing: AgentInputImage[],
+  files: File[]
+): string | null {
+  if (existing.length + files.length > ACP_INPUT_MAX_IMAGES) {
+    return `Attach up to ${ACP_INPUT_MAX_IMAGES} images.`;
+  }
+  for (const file of files) {
+    if (!ACP_INPUT_IMAGE_TYPES.has(file.type.toLowerCase())) {
+      return "Use PNG, JPEG, WebP, or GIF images.";
+    }
+    if (file.size <= 0) return "Empty images cannot be attached.";
+    if (file.size > ACP_INPUT_MAX_IMAGE_BYTES) {
+      return "Each image must be 5 MiB or smaller.";
+    }
+  }
+  const existingBytes = existing.reduce(
+    (total, image) => total + approximateBase64Bytes(image.data),
+    0
+  );
+  const nextBytes = files.reduce((total, file) => total + file.size, existingBytes);
+  if (nextBytes > ACP_INPUT_MAX_TOTAL_IMAGE_BYTES) {
+    return "Attached images must total 10 MiB or less.";
+  }
+  return null;
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Failed to read ${file.name || "image"}.`));
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const separator = result.indexOf(",");
+      if (separator < 0) {
+        reject(new Error(`Failed to encode ${file.name || "image"}.`));
+        return;
+      }
+      resolve(result.slice(separator + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function createInputImageId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `image-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export async function buildInputImages(files: File[]): Promise<AgentInputImage[]> {
+  return Promise.all(
+    files.map(async (file) => ({
+      id: createInputImageId(),
+      file_name: file.name || "pasted-image",
+      mime_type: file.type.toLowerCase(),
+      data: await readFileAsBase64(file),
+    }))
+  );
+}
 
 type VerticalRect = {
   top: number;
@@ -235,12 +318,15 @@ export function deriveInputDockKeyAction(
 
 export function InputDock({
   input,
+  images = [],
+  enableImages = false,
   historyCommands,
   showInterrupt,
   canInterrupt,
   sendDisabled = false,
   onHeightChange,
   onInputChange,
+  onImagesChange,
   onSendInput,
   onInterrupt,
   onNavigateHistory,
@@ -255,11 +341,58 @@ export function InputDock({
   const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
   const inputDockRef = React.useRef<HTMLDivElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = React.useRef<HTMLInputElement | null>(null);
+  const imagesRef = React.useRef(images);
+  const mountedRef = React.useRef(true);
   const lastReportedHeightRef = React.useRef<number | null>(null);
+  const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const visibleHistory = historyCommands.slice(0, 12);
   const mobileInputViewport = useMobileInputViewport();
   const inputPlaceholder = deriveInputPlaceholder(mobileInputViewport);
   const inputHelperText = deriveInputHelperText(mobileInputViewport);
+  const effectiveSendDisabled =
+    sendDisabled || (input.trim().length === 0 && images.length === 0);
+
+  React.useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const addImageFiles = React.useCallback(
+    async (fileList: FileList | File[]) => {
+      if (!enableImages || !onImagesChange) return;
+      const files = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
+      if (files.length === 0) return;
+      const validationError = validateInputImageFiles(imagesRef.current, files);
+      if (validationError) {
+        setAttachmentError(validationError);
+        return;
+      }
+      try {
+        const next = await buildInputImages(files);
+        if (!mountedRef.current) return;
+        const latestImages = imagesRef.current;
+        const completionError = validateInputImageFiles(latestImages, files);
+        if (completionError) {
+          setAttachmentError(completionError);
+          return;
+        }
+        const mergedImages = [...latestImages, ...next];
+        imagesRef.current = mergedImages;
+        onImagesChange(mergedImages);
+        setAttachmentError(null);
+      } catch (error) {
+        setAttachmentError(error instanceof Error ? error.message : "Failed to read image.");
+      }
+    },
+    [enableImages, onImagesChange]
+  );
 
   const reportDockHeight = React.useCallback(() => {
     if (!onHeightChange) return;
@@ -386,9 +519,49 @@ export function InputDock({
         </UnstyledButton>
       )}
       <div className={INPUT_DOCK_ROOT_CLASS}>
+        {enableImages && images.length > 0 ? (
+          <div
+            className="flex flex-wrap gap-2 border-b border-notion-border/70 px-2 pb-2"
+            data-acp-input-images="true"
+          >
+            {images.map((image) => (
+              <div
+                key={image.id}
+                className="group relative h-16 w-16 overflow-hidden rounded-lg border border-notion-border bg-notion-hover"
+              >
+                <img
+                  src={`data:${image.mime_type};base64,${image.data}`}
+                  alt={image.file_name}
+                  className="h-full w-full object-cover"
+                />
+                <UnstyledButton
+                  type="button"
+                  className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-950/75 text-xs text-white opacity-80 transition hover:opacity-100"
+                  onClick={() => {
+                    onImagesChange?.(images.filter((candidate) => candidate.id !== image.id));
+                    setAttachmentError(null);
+                  }}
+                  aria-label={`Remove ${image.file_name}`}
+                  title={`Remove ${image.file_name}`}
+                >
+                  <i className="bi bi-x" aria-hidden="true" />
+                </UnstyledButton>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div
           className={`input-editor-row ${TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS}`}
           data-input-editor-row="true"
+          onDragOver={(event) => {
+            if (!enableImages) return;
+            event.preventDefault();
+          }}
+          onDrop={(event) => {
+            if (!enableImages) return;
+            event.preventDefault();
+            void addImageFiles(event.dataTransfer.files);
+          }}
         >
           <textarea
             id={textareaId}
@@ -408,6 +581,17 @@ export function InputDock({
               setShowHistory(false);
               onInputChange(e.target.value);
               ensureInputVisible();
+            }}
+            onPaste={(event) => {
+              if (!enableImages) return;
+              const imageFiles = Array.from(event.clipboardData.files).filter((file) =>
+                file.type.startsWith("image/")
+              );
+              if (imageFiles.length === 0) return;
+              if (!event.clipboardData.getData("text/plain")) {
+                event.preventDefault();
+              }
+              void addImageFiles(imageFiles);
             }}
             onCompositionStart={() => {
               isComposingRef.current = true;
@@ -441,7 +625,7 @@ export function InputDock({
                 return;
               }
               if (action.type === "send") {
-                if (sendDisabled) {
+                if (effectiveSendDisabled) {
                   return;
                 }
                 e.preventDefault();
@@ -461,7 +645,7 @@ export function InputDock({
             type="button"
             className={INPUT_DOCK_SEND_BUTTON_CLASS}
             onClick={onSendInput}
-            disabled={sendDisabled}
+            disabled={effectiveSendDisabled}
             aria-label="Send input"
             title="Send input"
           >
@@ -475,7 +659,38 @@ export function InputDock({
           data-input-actions-row="true"
         >
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span className={TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS}>{inputHelperText}</span>
+            {enableImages ? (
+              <>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    if (event.target.files) {
+                      void addImageFiles(event.target.files);
+                    }
+                    event.target.value = "";
+                  }}
+                />
+                <UnstyledButton
+                  type="button"
+                  className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={images.length >= ACP_INPUT_MAX_IMAGES}
+                  title="Attach images"
+                  aria-label="Attach images"
+                >
+                  <i className="bi bi-image text-[12px]" aria-hidden="true" />
+                  <span>Images</span>
+                  {images.length > 0 ? <span>{images.length}</span> : null}
+                </UnstyledButton>
+              </>
+            ) : null}
+            <span className={TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS}>
+              {inputHelperText}{enableImages ? " · paste or drop images" : ""}
+            </span>
             {historyCommands.length > 0 && (
               <div className="input-history relative" ref={historyContainerRef}>
                 <UnstyledButton
@@ -536,6 +751,11 @@ export function InputDock({
             </UnstyledButton>
           )}
         </div>
+        {attachmentError ? (
+          <div className="px-2 pb-1 text-[11px] font-medium text-rose-600" role="alert">
+            {attachmentError}
+          </div>
+        ) : null}
       </div>
     </div>
   );

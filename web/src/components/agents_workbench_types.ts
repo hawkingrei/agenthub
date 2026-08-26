@@ -1,12 +1,13 @@
 import React from "react";
 import { AcpView } from "../acp";
-import { AcpPermissionRecord, AgentRecord } from "../api";
+import { AcpPermissionRecord, AgentInputImage, AgentRecord } from "../api";
 import { OutputLine } from "../output_cache";
 import { AcpConversationEventMeta } from "../hooks/use_acp_conversation";
 
 export type SendAcpInputOptions = {
   recordHistory?: boolean;
   clearComposer?: boolean;
+  images?: AgentInputImage[];
 };
 
 export type AgentsWorkbenchProps = {
@@ -25,6 +26,7 @@ export type AgentsWorkbenchProps = {
   isConversationLoading: boolean;
   terminalRef: React.RefObject<HTMLDivElement | null>;
   input: string;
+  inputImages?: AgentInputImage[];
   inputHistory: string[];
   ansi: (input: string) => string;
   canControlAcp: boolean;
@@ -47,6 +49,7 @@ export type AgentsWorkbenchProps = {
   onAcpCancel: () => void;
   onAcpClearSession: () => void;
   onInputChange: (value: string) => void;
+  onInputImagesChange?: (images: AgentInputImage[]) => void;
   onSelectInputHistory: (value: string) => void;
   onNavigateInputHistory: (direction: "up" | "down") => void;
   onSendAcpInput: (

@@ -4,6 +4,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../components/create_agent_modal", () => ({
+  CODEX_THINKING_LEVEL_OPTIONS: [
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "xhigh", label: "XHigh" },
+    { value: "max", label: "Max" },
+    { value: "ultra", label: "Ultra" },
+  ],
   THINKING_LEVEL_OPTIONS: [
     { value: "low", label: "Low" },
     { value: "medium", label: "Medium" },
@@ -118,6 +126,7 @@ describe("Team management modals", () => {
           onSave={vi.fn()}
           chrome={chrome}
           supportsRuntimeProfile
+          isCodexProvider
         />
       </MantineProvider>
     );

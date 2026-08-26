@@ -29,6 +29,7 @@ import {
   resolveEffectiveToolCallStatus,
 } from "./acp_tool_bubble_shared";
 import { formatConversationPreview, unescapeLineBreaks } from "../conversation";
+import { AcpMediaGallery } from "./acp_media_gallery";
 
 export const ToolCallBubble = React.memo(
   function ToolCallBubble({
@@ -182,6 +183,11 @@ export const ToolCallBubble = React.memo(
             ) : null}
           </summary>
           <div className="px-2 pb-2">
+            {msg.media?.length ? (
+              <div className="pb-2">
+                <AcpMediaGallery media={msg.media} compact={true} />
+              </div>
+            ) : null}
             {showPendingRequestUserInputCard && requestUserInputQuestions ? (
               <RequestUserInputCard
                 toolCallId={msg.id}

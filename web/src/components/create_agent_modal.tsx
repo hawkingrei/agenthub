@@ -88,6 +88,14 @@ export const THINKING_LEVEL_OPTIONS = [
   { value: "high", label: "High" },
   { value: "max", label: "Max" },
 ];
+export const CODEX_THINKING_LEVEL_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "XHigh" },
+  { value: "max", label: "Max" },
+  { value: "ultra", label: "Ultra" },
+];
 export const CODEX_RUNTIME_MODEL_OPTIONS = [
   { value: "gpt-5.6-sol", label: "GPT-5.6-Sol" },
   { value: "gpt-5.6-terra", label: "GPT-5.6-Terra" },
@@ -334,7 +342,7 @@ export function CreateAgentModal({
                 description="Applied when the next session starts."
                 placeholder="Provider default"
                 value={thinkingLevel || null}
-                data={THINKING_LEVEL_OPTIONS}
+                data={isCodexPreset ? CODEX_THINKING_LEVEL_OPTIONS : THINKING_LEVEL_OPTIONS}
                 clearable
                 onChange={(value) => setThinkingLevel?.(value ?? "")}
               />
