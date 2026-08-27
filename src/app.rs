@@ -296,17 +296,18 @@ async fn run_main_server(
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
 
     tracing::info!("listening on {}", addr);
-    let server = axum::serve(tokio::net::TcpListener::bind(addr).await?, app)
-        .with_graceful_shutdown(async move {
-            if shutdown_rx.changed().await.is_err() {
-                // Receiver dropped before shutdown signal; let graceful shutdown future end.
-            }
-        })
-        .into_future();
-    tokio::pin!(server);
+    let mut server = Box::pin(
+        axum::serve(tokio::net::TcpListener::bind(addr).await?, app)
+            .with_graceful_shutdown(async move {
+                if shutdown_rx.changed().await.is_err() {
+                    // Receiver dropped before shutdown signal; let graceful shutdown future end.
+                }
+            })
+            .into_future(),
+    );
 
     let server_result = tokio::select! {
-        result = &mut server => {
+        result = server.as_mut() => {
             result
         }
         _ = wait_for_shutdown_signal() => {
@@ -314,6 +315,8 @@ async fn run_main_server(
             await_server_shutdown(server.as_mut()).await
         }
     };
+    // A timed-out graceful drain must not overlap daemon task and process cleanup.
+    drop(server);
     let cleanup_result = run_shutdown_cleanup(state, daemon_instance).await;
     match (server_result, cleanup_result) {
         (Ok(()), Ok(())) => Ok(()),
