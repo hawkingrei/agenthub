@@ -127,4 +127,3 @@ the daemon does not claim clean shutdown.
 
 - [Daemon task-group shutdown](../journal/2026-08-28-daemon-task-group.md)
 - [Daemon process supervision](../journal/2026-08-28-daemon-process-supervision.md)
-

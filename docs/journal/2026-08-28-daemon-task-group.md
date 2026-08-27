@@ -57,4 +57,3 @@ paths. Exact-head CI remains the authority for repository-wide and cross-platfor
 - Keep new detached tasks classified explicitly as request-scoped, bounded side effects, process
   supervisor cleanup, or daemon-task-group members.
 - Retain cross-platform coverage for task shutdown plus process-tree teardown.
-
