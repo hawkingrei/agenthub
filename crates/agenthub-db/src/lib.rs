@@ -3193,7 +3193,7 @@ mod tests {
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 19);
+        assert_eq!(table_count, 20);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)
