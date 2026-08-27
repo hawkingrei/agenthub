@@ -138,6 +138,16 @@ Stable contracts:
 
 ## Maintenance Rules
 
+- [ ] `P0` Land and validate exact-head CI for process-tree supervision and ordered daemon shutdown in
+  PR #1084. Keep terminal database state behind proven child-process exit.
+- [ ] `P1` Add a global agent-start scheduler with bounded concurrency, queue/start deadlines, and
+  spawn-failure backoff. Stable ownership boundary:
+  [features/daemon-instance-ownership.md](features/daemon-instance-ownership.md).
+- [ ] `P1` Add durable runtime delivery receipts over the Team mailbox so accepted, delivered, and
+  applied outcomes survive daemon restarts and retries.
+- [ ] `P2` Unify daemon background work under cancellation-aware task groups and await registered tasks
+  before releasing instance ownership.
+
 - [ ] `P1` Complete two-binary rollout evidence: validate the exact change head with Cargo and Bazel,
   prove Linux cross-builds, and inspect generated Debian/npm packages for exactly `agenthub` and
   `agenthubd`. Stable contract: [features/two-binary-runtime.md](features/two-binary-runtime.md);

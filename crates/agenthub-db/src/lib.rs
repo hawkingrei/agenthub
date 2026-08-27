@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 use anyhow::Context;
 
 pub mod control_store;
+mod daemon_generation;
 pub mod message_body_outbox;
 pub mod object_uploads;
 
@@ -23,6 +24,9 @@ pub use control_store::{
     AuditEvent, ControlStoreError, IdempotentReplay, SQLITE_CONSTRAINT_UNIQUE_CODE,
     is_unique_violation, next_fencing_generation, record_audit_event,
     require_guarded_write_applied, resolve_idempotent_replay,
+};
+pub use daemon_generation::{
+    DaemonGeneration, claim_daemon_generation, is_current_daemon_generation,
 };
 pub use object_uploads::{
     NewObjectUpload, NewObjectUploadSession, NewObjectUploadSessionPart,
@@ -290,6 +294,8 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         );
         anyhow::anyhow!("failed to open db at {}: {}", db_path.display(), err)
     })?;
+
+    daemon_generation::ensure_schema(&pool).await?;
 
     sqlx::query(
         r#"
@@ -3134,6 +3140,7 @@ mod tests {
                 'team_member_continuity_state',
                 'team_context_artifacts',
                 'team_context_flush_checkpoint',
+                'daemon_generations',
                 'object_uploads',
                 'object_download_metrics',
                 'object_download_failure_metrics',
@@ -3145,7 +3152,7 @@ mod tests {
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 18);
+        assert_eq!(table_count, 19);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)
