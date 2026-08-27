@@ -93,6 +93,8 @@ or re-executions of that file, not additional release artifacts.
   separately supervised service.
 - External provider commands continue to be discovered through their existing configured path or PATH.
 - Temporary Codex helper aliases do not change the release artifact count.
+- Daemon-owned local children follow the process-tree and shutdown ordering contract in
+  [Daemon Process Supervision](daemon-process-supervision.md).
 
 ## Open Risks
 

@@ -191,11 +191,11 @@ async fn wait_for_shutdown_signal() {
 }
 
 async fn run_shutdown_cleanup(state: crate::state::AppState) {
-    tracing::warn!("shutdown signal received; marking running agents exited");
-    if let Err(err) = state.agents.mark_exited_on_shutdown().await {
+    tracing::warn!("shutdown signal received; stopping supervised agent processes");
+    if let Err(err) = state.agents.stop_all_on_shutdown().await {
         tracing::error!(
             error = %err,
-            "shutdown cleanup failed to mark running agents exited"
+            "shutdown cleanup failed to stop supervised agent processes"
         );
     }
 }

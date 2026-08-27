@@ -16,7 +16,7 @@ use crate::push::PushService;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 impl AgentManager {
-    fn handle_matches_session(handle: Option<&AgentHandle>, session_id: &str) -> bool {
+    pub(super) fn handle_matches_session(handle: Option<&AgentHandle>, session_id: &str) -> bool {
         handle
             .map(|handle| handle.session_id.as_str() == session_id)
             .unwrap_or(false)
@@ -141,6 +141,7 @@ impl AgentManager {
         let idle_gc = self.idle_gc.clone();
         let inner = self.inner.clone();
         let push = self.push.clone();
+        let process_supervisor = self.process_supervisor.clone();
         let agent_id_clone = agent_id.clone();
         tokio::spawn(async move {
             let child = {
@@ -185,6 +186,7 @@ impl AgentManager {
                     success,
                 )
                 .await;
+                process_supervisor.forget(&session_id).await;
             }
         });
     }
@@ -623,7 +625,7 @@ mod tests {
             .expect("spawn newer child");
         let (output_tx, _rx) = broadcast::channel::<AgentOutput>(8);
         let handle = AgentHandle {
-            child: std::sync::Arc::new(Mutex::new(Some(child))),
+            child: std::sync::Arc::new(Mutex::new(Some(Box::new(child)))),
             output_tx,
             input: AgentInput::Stdin(std::sync::Arc::new(Mutex::new(None))),
             session_id: new_session_id.clone(),
@@ -665,7 +667,7 @@ mod tests {
         if let Some(handle) = state.agents.inner.write().await.remove(&agent_id) {
             let mut child_guard = handle.child.lock().await;
             if let Some(mut child) = child_guard.take() {
-                let _ = child.kill().await;
+                let _ = child.start_kill();
                 let _ = child.wait().await;
             }
         }
@@ -700,7 +702,7 @@ mod tests {
             .expect("spawn newer child");
         let (output_tx, _rx) = broadcast::channel::<AgentOutput>(8);
         let handle = AgentHandle {
-            child: std::sync::Arc::new(Mutex::new(Some(child))),
+            child: std::sync::Arc::new(Mutex::new(Some(Box::new(child)))),
             output_tx,
             input: AgentInput::Stdin(std::sync::Arc::new(Mutex::new(None))),
             session_id: new_session_id.clone(),
@@ -747,7 +749,7 @@ mod tests {
         if let Some(handle) = state.agents.inner.write().await.remove(&agent_id) {
             let mut child_guard = handle.child.lock().await;
             if let Some(mut child) = child_guard.take() {
-                let _ = child.kill().await;
+                let _ = child.start_kill();
                 let _ = child.wait().await;
             }
         }

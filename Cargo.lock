@@ -413,6 +413,7 @@ dependencies = [
  "jwt-simple",
  "mime_guess",
  "openssl",
+ "process-wrap",
  "prost",
  "protoc-bin-vendored",
  "rand 0.10.2",

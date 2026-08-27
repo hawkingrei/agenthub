@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
 use chrono::Utc;
 use sqlx::Row;
 use tokio::sync::{Mutex, broadcast};
@@ -10,10 +11,11 @@ use super::acp_provider::{
     ACP_PROVIDER_CODEX, AcpDefaultModeBehavior, AcpProviderSpec,
     codex_reasoning_effort_for_thinking_level, default_env_for_acp_provider,
 };
-use super::executor::LocalExecutionRequest;
+use super::executor::{LocalExecutionRequest, SpawnedLocalProcess};
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
+use super::supervisor::SharedSupervisedChild;
 use super::{
-    AGENT_STOP_WAIT_TIMEOUT, AgentHandle, AgentInput, AgentManager, build_runtime_start_policy,
+    AgentHandle, AgentInput, AgentManager, build_runtime_start_policy,
     ensure_team_runtime_workspace_layout, normalize_agent_loop_config, spawn_agent_loop_controller,
 };
 use crate::acp::{
@@ -69,7 +71,7 @@ pub(super) fn effective_acp_default_mode<'a>(
 }
 
 async fn observe_resumed_session_startup(
-    child: &Arc<Mutex<Option<tokio::process::Child>>>,
+    child: &SharedSupervisedChild,
     grace_period: Duration,
     poll_interval: Duration,
 ) -> ResumedSessionStartupState {
@@ -375,6 +377,7 @@ impl AgentManager {
                 agent,
                 actor_context,
             } => {
+                let _start_permit = self.process_supervisor.acquire_start_permit().await?;
                 self.reserve_agent_start(agent_id).await?;
                 let result = self.start_local_agent(agent, actor_context).await;
                 self.release_agent_start(agent_id).await;
@@ -540,6 +543,8 @@ impl AgentManager {
             command_path, start_policy.workdir, command_args
         );
         let local_execution_request = LocalExecutionRequest {
+            agent_id: agent.id.clone(),
+            session_id: session_id.clone(),
             command_path: command_path.clone(),
             args: command_args,
             workdir: start_policy.workdir.clone(),
@@ -588,13 +593,24 @@ impl AgentManager {
                 ));
             }
         };
-        let mut child = local_execution.child;
-        let mut stdout = child.stdout.take();
-        let stderr = child.stderr.take();
-        let stdin = child.stdin.take();
+        let SpawnedLocalProcess {
+            child,
+            registration,
+            runtime_location,
+        } = local_execution;
+        let (mut stdout, stderr, stdin) = {
+            let mut child_guard = child.lock().await;
+            let process = child_guard
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("spawned agent process is missing"))?;
+            (
+                process.stdout().take(),
+                process.stderr().take(),
+                process.stdin().take(),
+            )
+        };
 
         let (output_tx, _rx) = broadcast::channel(256);
-        let child = Arc::new(Mutex::new(Some(child)));
         let stdin = Arc::new(Mutex::new(stdin));
 
         let now = Utc::now().timestamp();
@@ -639,11 +655,31 @@ impl AgentManager {
                     "failed to update agent status after session-insert failure"
                 );
             }
+            if let Err(stop_err) = self.process_supervisor.stop_session(&session_id).await {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %stop_err,
+                    "failed to stop agent process after session-insert failure"
+                );
+            }
             return Err(err.into());
         }
 
-        self.update_agent_status(&agent.id, AgentStatus::Running)
-            .await?;
+        if let Err(err) = self
+            .update_agent_status(&agent.id, AgentStatus::Running)
+            .await
+        {
+            if let Err(stop_err) = self.process_supervisor.stop_session(&session_id).await {
+                tracing::error!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    error = %stop_err,
+                    "failed to stop agent process after running-status update failure"
+                );
+            }
+            return Err(err);
+        }
 
         let mut loop_controller = None;
         let mut resumed_provider_id = None::<String>;
@@ -654,7 +690,14 @@ impl AgentManager {
             acp_prompt_delivery_policy = Some(provider.prompt_delivery_policy);
             // Provider continuity is stored separately from the AgentHub runtime launch id
             // above so restarts can keep ACP memory while still recording a new local start.
-            let resume_session_id = self.get_persistent_session(&agent.id, provider.id).await?;
+            let resume_session_id = match self.get_persistent_session(&agent.id, provider.id).await
+            {
+                Ok(session_id) => session_id,
+                Err(err) => {
+                    let _ = self.process_supervisor.stop_session(&session_id).await;
+                    return Err(err);
+                }
+            };
             resumed_provider_id = Some(provider.id.to_string());
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
@@ -681,6 +724,7 @@ impl AgentManager {
                             "failed to update agent status after missing acp stdout"
                         );
                     }
+                    let _ = self.process_supervisor.stop_session(&session_id).await;
                     return Err(anyhow::anyhow!("acp stdout missing"));
                 }
             };
@@ -709,6 +753,7 @@ impl AgentManager {
                             "failed to update agent status after missing acp stdin"
                         );
                     }
+                    let _ = self.process_supervisor.stop_session(&session_id).await;
                     return Err(anyhow::anyhow!("acp stdin missing"));
                 }
             };
@@ -739,7 +784,7 @@ impl AgentManager {
                 stdin,
                 actor_context: actor_context.clone(),
                 prompt_delivery_policy: provider.prompt_delivery_policy,
-                runtime_location: local_execution.runtime_location,
+                runtime_location,
             })
             .await
             {
@@ -768,6 +813,7 @@ impl AgentManager {
                             "failed to update agent status after acp session spawn failure"
                         );
                     }
+                    let _ = self.process_supervisor.stop_session(&session_id).await;
                     return Err(err);
                 }
             };
@@ -884,6 +930,7 @@ impl AgentManager {
             let mut guard = self.inner.write().await;
             guard.insert(agent.id.clone(), handle);
         }
+        registration.commit();
 
         if !is_acp && let Some(stdout) = stdout {
             self.spawn_output_reader(
@@ -1020,12 +1067,39 @@ impl AgentManager {
                 .await?;
             return Ok(());
         }
-        let handle = {
-            let mut guard = self.inner.write().await;
-            guard.remove(agent_id)
+        let process = {
+            let guard = self.inner.read().await;
+            guard.get(agent_id).map(|handle| {
+                (
+                    handle.child.clone(),
+                    handle.output_tx.clone(),
+                    handle.session_id.clone(),
+                )
+            })
         };
-        if let Some(handle) = handle {
-            let session_id = handle.session_id.clone();
+        if let Some((child, output_tx, session_id)) = process {
+            self.process_supervisor
+                .stop_session_or_child(&session_id, &child)
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to stop agent process: agent_id={agent_id} session_id={session_id}"
+                    )
+                })?;
+
+            let removed = {
+                let mut guard = self.inner.write().await;
+                if AgentManager::handle_matches_session(guard.get(agent_id), &session_id) {
+                    guard.remove(agent_id)
+                } else {
+                    None
+                }
+            };
+            if let Some(handle) = removed
+                && let Some(controller) = handle.loop_controller
+            {
+                controller.stop();
+            }
             let now = Utc::now().timestamp();
             if let Err(err) = sqlx::query(
                 r#"
@@ -1058,41 +1132,14 @@ impl AgentManager {
                 );
             }
             self.emit_run_status(
-                handle.output_tx.clone(),
+                output_tx,
                 agent_id.to_string(),
-                session_id,
+                session_id.clone(),
                 "cancelled",
             )
             .await;
             if let Some(idle_gc) = &self.idle_gc {
                 idle_gc.remove_agent(agent_id).await;
-            }
-            let mut child_guard = handle.child.lock().await;
-            if let Some(mut child) = child_guard.take() {
-                if let Err(err) = child.kill().await {
-                    tracing::warn!(
-                        agent_id = %agent_id,
-                        error = %err,
-                        "failed to kill agent child process during stop"
-                    );
-                }
-                match tokio::time::timeout(AGENT_STOP_WAIT_TIMEOUT, child.wait()).await {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(err)) => {
-                        tracing::warn!(
-                            agent_id = %agent_id,
-                            error = %err,
-                            "failed to wait for agent child process during stop"
-                        );
-                    }
-                    Err(_) => {
-                        tracing::warn!(
-                            agent_id = %agent_id,
-                            timeout_secs = AGENT_STOP_WAIT_TIMEOUT.as_secs(),
-                            "timed out waiting for agent child process during stop"
-                        );
-                    }
-                }
             }
         }
         Ok(())
@@ -1180,6 +1227,7 @@ mod tests {
         observe_resumed_session_startup, should_force_fresh_session_after_resume_failures,
         should_retry_resumed_acp_session,
     };
+    use crate::agent::manager::supervisor::SharedSupervisedChild;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::process::Command;
@@ -1236,7 +1284,7 @@ mod tests {
             .arg("exit 1")
             .spawn()
             .expect("spawn failing child");
-        let child = Arc::new(Mutex::new(Some(child)));
+        let child: SharedSupervisedChild = Arc::new(Mutex::new(Some(Box::new(child))));
 
         let startup_state = observe_resumed_session_startup(
             &child,
@@ -1258,7 +1306,7 @@ mod tests {
             .arg("sleep 1")
             .spawn()
             .expect("spawn sleeping child");
-        let child = Arc::new(Mutex::new(Some(child)));
+        let child: SharedSupervisedChild = Arc::new(Mutex::new(Some(Box::new(child))));
 
         let startup_state = observe_resumed_session_startup(
             &child,
@@ -1270,7 +1318,7 @@ mod tests {
 
         let mut child_guard = child.lock().await;
         if let Some(mut child) = child_guard.take() {
-            let _ = child.kill().await;
+            let _ = child.start_kill();
             let _ = child.wait().await;
         }
     }
