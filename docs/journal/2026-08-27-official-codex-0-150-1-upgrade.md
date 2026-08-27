@@ -24,6 +24,8 @@ The previous baseline was official Codex 0.149.1 at
   command approval kind across the in-process and app-server ACP paths.
 - Explicitly ignore experimental MCP event-stream and realtime timeline notifications until ACP has
   a corresponding user-facing event contract.
+- Raise the distributed P2P workflow timeout from 20 to 30 minutes so a clean daemon build, the
+  blackbox integration, and post-job cache handling can all reach terminal state.
 
 ## Key Decisions
 
@@ -33,6 +35,9 @@ The previous baseline was official Codex 0.149.1 at
   completion state.
 - Preserve `FunctionCallOutput` entries without a `call_id`, matching upstream history semantics for
   external tool outputs.
+- Keep the P2P test scope unchanged and expand only its time budget. Both the exact-base run and the
+  first 0.150.1 run exhausted 20 minutes after successful daemon builds; the latter also completed
+  the blackbox integration before cancellation during post-job cache handling.
 
 ## Validation
 
