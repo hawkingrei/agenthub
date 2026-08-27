@@ -126,6 +126,10 @@ fn collab_agent_tool_name(tool: CollabAgentTool) -> &'static str {
         CollabAgentTool::ResumeAgent => "resume_agent",
         CollabAgentTool::Wait => "wait",
         CollabAgentTool::CloseAgent => "close_agent",
+        CollabAgentTool::SendMessage => "send_message",
+        CollabAgentTool::FollowupTask => "followup_task",
+        CollabAgentTool::InterruptAgent => "interrupt_agent",
+        CollabAgentTool::ListAgents => "list_agents",
     }
 }
 
@@ -136,6 +140,10 @@ fn collab_agent_tool_title(tool: CollabAgentTool) -> &'static str {
         CollabAgentTool::ResumeAgent => "Resume subagent",
         CollabAgentTool::Wait => "Wait for subagents",
         CollabAgentTool::CloseAgent => "Close subagent",
+        CollabAgentTool::SendMessage => "Message agent",
+        CollabAgentTool::FollowupTask => "Follow up agent task",
+        CollabAgentTool::InterruptAgent => "Interrupt agent",
+        CollabAgentTool::ListAgents => "List agents",
     }
 }
 
@@ -1566,6 +1574,7 @@ impl PromptState {
             CollabAgentToolCallStatus::InProgress => ToolCallStatus::InProgress,
             CollabAgentToolCallStatus::Completed => ToolCallStatus::Completed,
             CollabAgentToolCallStatus::Failed => ToolCallStatus::Failed,
+            CollabAgentToolCallStatus::Interrupted => ToolCallStatus::Failed,
         };
         let fields = ToolCallUpdateFields::new()
             .title(collab_agent_tool_title(item.tool))
@@ -1601,12 +1610,14 @@ impl PromptState {
             SubAgentActivityKind::Started => "started",
             SubAgentActivityKind::Interacted => "interacted",
             SubAgentActivityKind::Interrupted => "interrupted",
+            SubAgentActivityKind::Completed => "completed",
         };
         let status = match item.kind {
             SubAgentActivityKind::Started | SubAgentActivityKind::Interacted => {
                 ToolCallStatus::InProgress
             }
             SubAgentActivityKind::Interrupted => ToolCallStatus::Failed,
+            SubAgentActivityKind::Completed => ToolCallStatus::Completed,
         };
         let meta = subagent_meta(
             &item.agent_thread_id,
@@ -1981,6 +1992,7 @@ impl PromptState {
         let available_decisions = event.effective_available_decisions();
         let raw_input = serde_json::json!(&event);
         let ExecApprovalRequestEvent {
+            kind: _,
             call_id,
             plugin_id: _,
             script_path: _,
@@ -4194,7 +4206,9 @@ impl<A: Auth> ThreadActor<A> {
                     .await;
             }
             ResponseItem::FunctionCallOutput {
-                call_id, output, ..
+                call_id: Some(call_id),
+                output,
+                ..
             } => {
                 self.client
                     .send_tool_call_completed(call_id.clone(), serde_json::to_value(output).ok())
@@ -5031,6 +5045,33 @@ mod tests {
         ]);
 
         assert_eq!(message, "Model verification: trusted_access_for_cyber");
+    }
+
+    #[test]
+    fn collab_agent_tool_labels_cover_control_tools() {
+        let cases = [
+            (
+                CollabAgentTool::SendMessage,
+                "send_message",
+                "Message agent",
+            ),
+            (
+                CollabAgentTool::FollowupTask,
+                "followup_task",
+                "Follow up agent task",
+            ),
+            (
+                CollabAgentTool::InterruptAgent,
+                "interrupt_agent",
+                "Interrupt agent",
+            ),
+            (CollabAgentTool::ListAgents, "list_agents", "List agents"),
+        ];
+
+        for (tool, expected_name, expected_title) in cases {
+            assert_eq!(collab_agent_tool_name(tool), expected_name);
+            assert_eq!(collab_agent_tool_title(tool), expected_title);
+        }
     }
 
     #[test]
@@ -6436,6 +6477,7 @@ mod tests {
                             .send(Event {
                                 id: submission_id.clone(),
                                 msg: EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
+                                    kind: Default::default(),
                                     call_id: "call-id".to_string(),
                                     plugin_id: None,
                                     script_path: None,
@@ -6855,6 +6897,7 @@ mod tests {
                     .exec_approval(
                         &session_client,
                         ExecApprovalRequestEvent {
+                            kind: Default::default(),
                             call_id: "call-id".to_string(),
                             plugin_id: None,
                             script_path: None,
@@ -6945,6 +6988,7 @@ mod tests {
                     .exec_approval(
                         &session_client,
                         ExecApprovalRequestEvent {
+                            kind: Default::default(),
                             call_id: "call-id".to_string(),
                             plugin_id: None,
                             script_path: None,
@@ -7275,6 +7319,7 @@ mod tests {
                     .exec_approval(
                         &session_client,
                         ExecApprovalRequestEvent {
+                            kind: Default::default(),
                             call_id: "call-id".to_string(),
                             plugin_id: None,
                             script_path: None,
@@ -7359,6 +7404,7 @@ mod tests {
                     .exec_approval(
                         &session_client,
                         ExecApprovalRequestEvent {
+                            kind: Default::default(),
                             call_id: "call-id".to_string(),
                             plugin_id: None,
                             script_path: None,
@@ -7623,6 +7669,7 @@ mod tests {
                     .handle_event(
                         &session_client,
                         EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
+                            kind: Default::default(),
                             call_id: "call-id".to_string(),
                             plugin_id: None,
                             script_path: None,
