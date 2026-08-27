@@ -1,11 +1,13 @@
+mod delivery;
 mod immediate;
 mod prompts;
 mod types;
 mod worker;
 
-pub(crate) use immediate::{
-    dispatch_actor_mailbox_immediate_hint, plan_actor_mailbox_immediate_hint,
+pub(crate) use delivery::{
+    TeamMailboxRuntimeDeliveryWorker, TeamMailboxRuntimeDeliveryWorkerSettings,
 };
+pub(crate) use immediate::plan_actor_mailbox_immediate_hint;
 #[cfg(test)]
 pub(crate) use prompts::build_actor_mailbox_immediate_hint_prompt;
 #[allow(unused_imports)]

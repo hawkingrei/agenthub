@@ -2337,11 +2337,12 @@ impl AgentManager {
         agent_id: &str,
         input: &str,
         expected_session_id: Option<&str>,
+        delivery_id: &str,
     ) -> anyhow::Result<()> {
         let agent = self.get_agent(agent_id).await?;
         if agent.target_node_id.is_some() {
             return self
-                .send_input(agent_id, input, None, expected_session_id)
+                .send_input(agent_id, input, Some(delivery_id), expected_session_id)
                 .await;
         }
 
@@ -2365,12 +2366,12 @@ impl AgentManager {
                     .acp_prompt_delivery_policy
                     .unwrap_or(AcpPromptDeliveryPolicy::StrictFifo);
                 if !acp_accepts_best_effort_hint(&diagnostics, prompt_delivery_policy) {
-                    anyhow::bail!("agent ACP input is busy; skip best-effort mailbox hint");
+                    anyhow::bail!("agent ACP input is busy; defer mailbox hint");
                 }
             }
         }
 
-        self.send_input(agent_id, input, None, expected_session_id)
+        self.send_input(agent_id, input, Some(delivery_id), expected_session_id)
             .await
     }
 

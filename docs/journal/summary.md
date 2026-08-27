@@ -29,7 +29,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 | --- | --- | --- |
 | ACP runtime and provider integration | `docs/features/acp-runtime.md` | `*-acp-*.md`, `*-codex-acp-*.md`, `*-claude-acp-*.md` |
 | Team collaboration, channels, and tasks | `docs/features/agents-teams.md`, `docs/features/team-channels-threads.md`, `docs/features/team-execution-vocabulary.md` | `*-team-*.md`, `*-teams-*.md` |
-| Team mailbox and actor runtime | `docs/features/team-mailbox-intake-and-ownership.md`, `docs/features/actor-foundation.md` | `*-team-mailbox-*.md`, `*-actor-*.md` |
+| Team mailbox and actor runtime | `docs/features/team-mailbox-intake-and-ownership.md`, `docs/features/team-runtime-delivery-receipts.md`, `docs/features/actor-foundation.md` | `*-team-mailbox-*.md`, `*-runtime-delivery-*.md`, `*-actor-*.md` |
 | Workspace memory and continuity | `docs/features/team-workspace-memory-contract.md`, `docs/features/workspace-unified-ia.md` | `*-workspace-*.md`, `*-context-*.md`, `*-memory-*.md` |
 | Frontend, UI, and mobile surfaces | `docs/features/frontend-design.md`, `docs/features/workspace-unified-ia.md` | `*-web-*.md`, `*-frontend-*.md`, `*-mobile-*.md`, `*-ui-*.md` |
 | Agent nodes and distributed execution | `docs/features/agent-nodes.md`, `docs/features/distributed-node-architecture.md` | `*-node-*.md`, `*-distributed-*.md`, `*-p2p-*.md` |
@@ -315,6 +315,7 @@ Start with:
 - `2026-08-28-daemon-instance-ownership.md`
 - `2026-08-27-official-codex-0-150-1-upgrade.md`
 - `2026-08-28-daemon-process-supervision.md`
+- `2026-08-28-team-runtime-delivery-receipts.md`
 - `2026-08-28-agent-start-scheduler.md`
 
 ## Compaction Rules

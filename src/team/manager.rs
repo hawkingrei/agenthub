@@ -76,6 +76,7 @@ mod run_queries;
 mod run_summary;
 mod run_task_status_sync;
 mod runtime_context_lookup;
+mod runtime_delivery;
 mod runtime_run_members;
 mod runtime_team_runtime;
 mod runtime_view_builders;
@@ -150,6 +151,11 @@ use self::payload_utils::{
     filter_visible_team_runs, merge_json_value, redact_sensitive_json, resolve_task_context_patch,
 };
 use self::run_task_status_sync::load_linked_task_ids_for_runs;
+#[cfg(test)]
+pub(crate) use self::runtime_delivery::mailbox_runtime_delivery_id;
+pub(crate) use self::runtime_delivery::{
+    TeamRuntimeDeliveryReceipt, runtime_delivery_retry_delay_seconds,
+};
 use self::runtime_views::TeamMemberSpecView;
 use self::runtime_views::parse_team_member_specs;
 use self::support::maybe_attach_context_artifact_pointer;

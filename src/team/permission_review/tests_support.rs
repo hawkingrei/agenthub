@@ -34,6 +34,7 @@ impl TeamMailboxHintAgentNudger for TestMailboxHintAgentNudger {
         &self,
         actor_id: &str,
         expected_session_id: Option<&str>,
+        _delivery_id: &str,
         prompt: &str,
     ) -> anyhow::Result<()> {
         self.prompts.lock().await.push((

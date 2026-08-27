@@ -5,7 +5,10 @@ use sqlx::SqlitePool;
 use crate::agent::{
     AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
 };
-use crate::team::{TeamMailboxUnreadHintWorker, TeamMailboxUnreadHintWorkerSettings, TeamManager};
+use crate::team::{
+    TeamMailboxRuntimeDeliveryWorker, TeamMailboxRuntimeDeliveryWorkerSettings,
+    TeamMailboxUnreadHintWorker, TeamMailboxUnreadHintWorkerSettings, TeamManager,
+};
 
 use super::AppState;
 
@@ -36,6 +39,9 @@ impl AppState {
         }
         let _mailbox_hint_handle = TeamMailboxUnreadHintWorker::new(teams.clone(), agents.clone())
             .spawn(TeamMailboxUnreadHintWorkerSettings::default());
+        let _mailbox_delivery_handle =
+            TeamMailboxRuntimeDeliveryWorker::new(teams.clone(), agents.clone())
+                .spawn(TeamMailboxRuntimeDeliveryWorkerSettings::default());
         let trigger_manager = Arc::new(AgentTimeTriggerManager::new(db.clone()));
         let recovered_dispatching = trigger_manager.reset_inflight_on_startup().await?;
         if recovered_dispatching > 0 {

@@ -5438,6 +5438,13 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
     );
     assert_eq!(first_hint.payload["reason"], json!("direct_agent_message"));
     assert_eq!(first_hint.payload["target_actor_ids"], json!(["reviewer"]));
+    assert_eq!(
+        first_hint.payload["delivery_ids"],
+        json!([format!(
+            "team-mailbox:{}:{}:reviewer",
+            run.id, first_chat.message_id
+        )])
+    );
 
     let second_hint = hint_events
         .iter()
@@ -5453,6 +5460,13 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
     );
     assert_eq!(second_hint.payload["reason"], json!("direct_agent_message"));
     assert_eq!(second_hint.payload["target_actor_ids"], json!(["reviewer"]));
+    assert_eq!(
+        second_hint.payload["delivery_ids"],
+        json!([format!(
+            "team-mailbox:{}:{}:reviewer",
+            run.id, second_chat.message_id
+        )])
+    );
 
     let worker_status_hint = hint_events
         .iter()

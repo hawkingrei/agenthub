@@ -114,11 +114,20 @@ impl TeamMailboxUnreadHintWorker {
 
             let prompt =
                 build_actor_mailbox_unread_summary_prompt(&record.run_id, record.unread_count);
+            let delivery_id = format!(
+                "team-mailbox-summary:{}:{}:{}:{}:{}",
+                record.run_id,
+                record.actor_id,
+                runtime.session_id,
+                action.idle_anchor_ts,
+                action.unread_count
+            );
             match self
                 .agent_nudger
                 .nudge_mailbox_prompt(
                     record.actor_id.as_str(),
                     Some(runtime.session_id.as_str()),
+                    &delivery_id,
                     prompt.as_str(),
                 )
                 .await

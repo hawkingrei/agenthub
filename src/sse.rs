@@ -1888,8 +1888,9 @@ mod tests {
     async fn output_stream_emits_events_from_forwarders() {
         use futures::StreamExt;
 
+        let agent_id = format!("agent-forwarder-{}", Uuid::new_v4());
         let (tx, rx) = tokio::sync::broadcast::channel(8);
-        let mut stream = std::pin::pin!(super::output_stream(vec![("agent-x".to_string(), rx)]));
+        let mut stream = std::pin::pin!(super::output_stream(vec![(agent_id.clone(), rx)]));
 
         let first = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
             .await
@@ -1898,8 +1899,9 @@ mod tests {
             .expect("stream event should be ok");
         assert!(format!("{first:?}").contains("heartbeat"));
 
-        tx.send(sample_output(OutputStream::Stdout))
-            .expect("send broadcast output");
+        let mut output = sample_output(OutputStream::Stdout);
+        output.agent_id = agent_id.clone();
+        tx.send(output).expect("send broadcast output");
         let _second = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
             .await
             .expect("receive second event")
@@ -1907,7 +1909,7 @@ mod tests {
             .expect("stream event should be ok");
         #[cfg(debug_assertions)]
         {
-            let diagnostics = super::agent_sse_diagnostics("agent-x")
+            let diagnostics = super::agent_sse_diagnostics(&agent_id)
                 .expect("agent sse diagnostics should exist");
             assert_eq!(diagnostics.last_forwarded_event_id, Some(42));
             assert_eq!(diagnostics.last_emitted_event_id, Some(42));

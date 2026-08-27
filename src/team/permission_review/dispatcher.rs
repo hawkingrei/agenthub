@@ -11,7 +11,7 @@ use agenthub_team_actor::{
 use serde_json::{Value, json};
 
 use crate::agent::AgentManager;
-use crate::team::TeamManager;
+use crate::team::{TeamMailboxRuntimeDeliveryWorker, TeamManager};
 
 use super::payload::{
     build_permission_review_payload, build_permission_review_summary, extract_tool_name,
@@ -154,6 +154,7 @@ impl TeamPermissionReviewDispatcher {
         self.nudge_actor(
             review_target_actor_id.as_str(),
             &run_id,
+            response.message_id,
             TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE,
         )
         .await;
@@ -171,16 +172,18 @@ impl TeamPermissionReviewDispatcher {
         });
     }
 
-    async fn nudge_actor(&self, actor_id: &str, run_id: &str, payload_type: &str) {
+    async fn nudge_actor(&self, actor_id: &str, run_id: &str, message_id: i64, payload_type: &str) {
         let priority_label =
             actor_mailbox_priority_label(ActorMailboxPriorityClass::PermissionReview);
         let hint = format!(
             "New {priority_label} mailbox message type '{payload_type}' is pending in run '{run_id}'. Use agenthub actor inbox --run-id \"{run_id}\" to inspect pending messages and batch-handle this type before ack."
         );
-        if let Err(err) = self
-            .agent_nudger
-            .nudge_mailbox_prompt(actor_id, None, &hint)
-            .await
+        if let Err(err) = TeamMailboxRuntimeDeliveryWorker::with_agent_nudger(
+            self.teams.clone(),
+            self.agent_nudger.clone(),
+        )
+        .enqueue_prompt(run_id, message_id, &[actor_id.to_string()], &hint)
+        .await
         {
             tracing::debug!(
                 actor_id = %actor_id,

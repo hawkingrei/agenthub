@@ -27,11 +27,13 @@ pub(crate) use helpers::{
 #[cfg(test)]
 pub(crate) use mailbox_hint::build_actor_mailbox_immediate_hint_prompt;
 pub(crate) use mailbox_hint::{
-    ActorMailboxImmediateHintReason, TeamMailboxUnreadHintWorker,
-    TeamMailboxUnreadHintWorkerSettings, dispatch_actor_mailbox_immediate_hint,
-    plan_actor_mailbox_immediate_hint,
+    ActorMailboxImmediateHintReason, TeamMailboxRuntimeDeliveryWorker,
+    TeamMailboxRuntimeDeliveryWorkerSettings, TeamMailboxUnreadHintWorker,
+    TeamMailboxUnreadHintWorkerSettings, plan_actor_mailbox_immediate_hint,
 };
 pub(crate) use manager::TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX;
+#[cfg(test)]
+pub(crate) use manager::mailbox_runtime_delivery_id;
 #[allow(unused_imports)]
 pub use manager::{
     SendActorMessageInput, TeamContextLookupError, TeamContextRecord, TeamConversationStreamEvent,
@@ -43,7 +45,8 @@ pub use manager::{
     TeamspaceMemberRecord,
 };
 pub(crate) use manager::{
-    count_pending_conversation_body_migration, migrate_conversation_bodies_into_store,
+    TeamRuntimeDeliveryReceipt, count_pending_conversation_body_migration,
+    migrate_conversation_bodies_into_store, runtime_delivery_retry_delay_seconds,
 };
 pub use permission_review::{
     TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
