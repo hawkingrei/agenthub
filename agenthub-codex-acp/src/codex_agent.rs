@@ -308,8 +308,9 @@ fn repair_response_item_history(items: &mut Vec<ResponseItemEnvelope>) -> Histor
     let mut repaired = HistoryRepairStats::default();
     items.retain(|item| match &item.item {
         ResponseItem::FunctionCallOutput { call_id, .. } => {
-            let keep =
-                function_call_ids.contains(call_id) || local_shell_call_ids.contains(call_id);
+            let keep = call_id.as_ref().is_none_or(|call_id| {
+                function_call_ids.contains(call_id) || local_shell_call_ids.contains(call_id)
+            });
             if !keep {
                 repaired.dropped_orphan_function_call_outputs += 1;
             }
@@ -327,7 +328,10 @@ fn repair_response_item_history(items: &mut Vec<ResponseItemEnvelope>) -> Histor
     let mut function_output_call_ids = items
         .iter()
         .filter_map(|item| match &item.item {
-            ResponseItem::FunctionCallOutput { call_id, .. } => Some(call_id.clone()),
+            ResponseItem::FunctionCallOutput {
+                call_id: Some(call_id),
+                ..
+            } => Some(call_id.clone()),
             _ => None,
         })
         .collect::<HashSet<_>>();
@@ -350,7 +354,9 @@ fn repair_response_item_history(items: &mut Vec<ResponseItemEnvelope>) -> Histor
                     idx,
                     ResponseItemEnvelope::from(ResponseItem::FunctionCallOutput {
                         id: None,
-                        call_id: call_id.clone(),
+                        call_id: Some(call_id.clone()),
+                        name: None,
+                        namespace: None,
                         output: aborted_call_output(),
                         internal_chat_message_metadata_passthrough: None,
                     }),
@@ -380,7 +386,9 @@ fn repair_response_item_history(items: &mut Vec<ResponseItemEnvelope>) -> Histor
                     idx,
                     ResponseItemEnvelope::from(ResponseItem::FunctionCallOutput {
                         id: None,
-                        call_id: call_id.clone(),
+                        call_id: Some(call_id.clone()),
+                        name: None,
+                        namespace: None,
                         output: aborted_call_output(),
                         internal_chat_message_metadata_passthrough: None,
                     }),
@@ -438,8 +446,10 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
             RolloutItem::ResponseItem(response_item) => {
                 let keep = match &response_item.item {
                     ResponseItem::FunctionCallOutput { call_id, .. } => {
-                        let keep = function_call_ids.contains(call_id)
-                            || local_shell_call_ids.contains(call_id);
+                        let keep = call_id.as_ref().is_none_or(|call_id| {
+                            function_call_ids.contains(call_id)
+                                || local_shell_call_ids.contains(call_id)
+                        });
                         if !keep {
                             repaired.dropped_orphan_function_call_outputs += 1;
                         }
@@ -472,7 +482,10 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
         .iter()
         .filter_map(|item| match item {
             RolloutItem::ResponseItem(item) => match &item.item {
-                ResponseItem::FunctionCallOutput { call_id, .. } => Some(call_id.clone()),
+                ResponseItem::FunctionCallOutput {
+                    call_id: Some(call_id),
+                    ..
+                } => Some(call_id.clone()),
                 _ => None,
             },
             _ => None,
@@ -504,7 +517,9 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                     RolloutItem::ResponseItem(ResponseItemEnvelope::from(
                         ResponseItem::FunctionCallOutput {
                             id: None,
-                            call_id: call_id.clone(),
+                            call_id: Some(call_id.clone()),
+                            name: None,
+                            namespace: None,
                             output: aborted_call_output(),
                             internal_chat_message_metadata_passthrough: None,
                         },
@@ -538,7 +553,9 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
                     RolloutItem::ResponseItem(ResponseItemEnvelope::from(
                         ResponseItem::FunctionCallOutput {
                             id: None,
-                            call_id: call_id.clone(),
+                            call_id: Some(call_id.clone()),
+                            name: None,
+                            namespace: None,
                             output: aborted_call_output(),
                             internal_chat_message_metadata_passthrough: None,
                         },
@@ -982,7 +999,7 @@ impl CodexAgent {
 mod tests {
     use super::{
         HistoryRepairStats, codex_mcp_server_config, persist_repaired_initial_history,
-        repair_initial_history, repair_response_item_history,
+        repair_initial_history, repair_response_item_history, repair_rollout_items,
     };
     use agent_client_protocol::schema::v1::{
         EnvVariable, HttpHeader, McpServer, McpServerHttp, McpServerSse, McpServerStdio,
@@ -1274,6 +1291,118 @@ mod tests {
     }
 
     #[test]
+    fn repair_response_item_history_preserves_external_function_outputs() {
+        let mut history = vec![ResponseItemEnvelope::from(
+            ResponseItem::FunctionCallOutput {
+                id: None,
+                call_id: None,
+                name: Some("history.read_item".to_string()),
+                namespace: Some("history".to_string()),
+                output: FunctionCallOutputPayload::from_text("ok".to_string()),
+                internal_chat_message_metadata_passthrough: None,
+            },
+        )];
+
+        let repaired = repair_response_item_history(&mut history);
+
+        assert_eq!(repaired, HistoryRepairStats::default());
+        assert!(matches!(
+            &history[0].item,
+            ResponseItem::FunctionCallOutput {
+                call_id: None,
+                name: Some(name),
+                namespace: Some(namespace),
+                output,
+                ..
+            } if name == "history.read_item"
+                && namespace == "history"
+                && output.text_content() == Some("ok")
+        ));
+    }
+
+    #[test]
+    fn repair_rollout_items_preserves_paired_and_external_function_outputs() {
+        let mut items = vec![
+            RolloutItem::ResponseItem(ResponseItemEnvelope::from(ResponseItem::FunctionCall {
+                id: None,
+                name: "history.read_item".to_string(),
+                namespace: Some("history".to_string()),
+                arguments: "{}".to_string(),
+                call_id: "paired".to_string(),
+                encrypted_function_args: None,
+                internal_chat_message_metadata_passthrough: None,
+            })),
+            RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                ResponseItem::FunctionCallOutput {
+                    id: None,
+                    call_id: Some("paired".to_string()),
+                    name: None,
+                    namespace: None,
+                    output: FunctionCallOutputPayload::from_text("paired output".to_string()),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            )),
+            RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                ResponseItem::FunctionCallOutput {
+                    id: None,
+                    call_id: None,
+                    name: Some("history.read_item".to_string()),
+                    namespace: Some("history".to_string()),
+                    output: FunctionCallOutputPayload::from_text("external output".to_string()),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            )),
+            RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                ResponseItem::FunctionCallOutput {
+                    id: None,
+                    call_id: Some("orphan".to_string()),
+                    name: None,
+                    namespace: None,
+                    output: FunctionCallOutputPayload::from_text("orphan output".to_string()),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            )),
+        ];
+
+        let repaired = repair_rollout_items(&mut items);
+
+        assert_eq!(
+            repaired,
+            HistoryRepairStats {
+                dropped_orphan_function_call_outputs: 1,
+                ..HistoryRepairStats::default()
+            }
+        );
+        assert_eq!(items.len(), 3);
+        assert!(matches!(
+            &items[1],
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::FunctionCallOutput {
+                    call_id: Some(call_id),
+                    output,
+                    ..
+                },
+                ..
+            }) if call_id == "paired" && output.text_content() == Some("paired output")
+        ));
+        assert!(matches!(
+            &items[2],
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::FunctionCallOutput {
+                    call_id: None,
+                    name: Some(name),
+                    namespace: Some(namespace),
+                    output,
+                    ..
+                },
+                ..
+            }) if name == "history.read_item"
+                && namespace == "history"
+                && output.text_content() == Some("external output")
+        ));
+    }
+
+    #[test]
     fn repair_initial_history_updates_compacted_replacement_history() {
         let history = InitialHistory::Forked(vec![RolloutItem::Compacted(CompactedItem {
             message: "compacted".to_string(),
@@ -1320,7 +1449,8 @@ mod tests {
             ResponseItem::FunctionCallOutput {
                 call_id, output, ..
             }
-                if call_id == "shell-1" && output.text_content() == Some("aborted")
+                if call_id.as_deref() == Some("shell-1")
+                    && output.text_content() == Some("aborted")
         ));
     }
 }

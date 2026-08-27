@@ -961,6 +961,7 @@ impl AppServerCodexThread {
                 Ok(Some(Event {
                     id: submission_id,
                     msg: EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
+                        kind: codex_protocol::approvals::ExecApprovalKind::Command,
                         call_id: params.item_id,
                         plugin_id: None,
                         script_path: None,
@@ -1149,7 +1150,11 @@ impl AppServerCodexThread {
             | ServerNotification::TurnModerationMetadata(_)
             | ServerNotification::EnvironmentConnected(_)
             | ServerNotification::EnvironmentDisconnected(_)
-            | ServerNotification::RawResponseCompleted(_) => Ok(None),
+            | ServerNotification::RawResponseCompleted(_)
+            | ServerNotification::McpServerEventStream(_)
+            | ServerNotification::ThreadRealtimeItemStarted(_)
+            | ServerNotification::ThreadRealtimeItemTranscriptDelta(_)
+            | ServerNotification::ThreadRealtimeItemCompleted(_) => Ok(None),
             ServerNotification::FileChangePatchUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
                 Ok(submission_id.map(|id| Event {
@@ -2572,6 +2577,18 @@ fn app_server_collab_item_to_core(item: ThreadItem) -> Option<CoreTurnItem> {
                         codex_app_server_protocol::CollabAgentTool::CloseAgent => {
                             CoreCollabAgentTool::CloseAgent
                         }
+                        codex_app_server_protocol::CollabAgentTool::SendMessage => {
+                            CoreCollabAgentTool::SendMessage
+                        }
+                        codex_app_server_protocol::CollabAgentTool::FollowupTask => {
+                            CoreCollabAgentTool::FollowupTask
+                        }
+                        codex_app_server_protocol::CollabAgentTool::InterruptAgent => {
+                            CoreCollabAgentTool::InterruptAgent
+                        }
+                        codex_app_server_protocol::CollabAgentTool::ListAgents => {
+                            CoreCollabAgentTool::ListAgents
+                        }
                     },
                     status: match status {
                         codex_app_server_protocol::CollabAgentToolCallStatus::InProgress => {
@@ -2582,6 +2599,9 @@ fn app_server_collab_item_to_core(item: ThreadItem) -> Option<CoreTurnItem> {
                         }
                         codex_app_server_protocol::CollabAgentToolCallStatus::Failed => {
                             CoreCollabAgentToolCallStatus::Failed
+                        }
+                        codex_app_server_protocol::CollabAgentToolCallStatus::Interrupted => {
+                            CoreCollabAgentToolCallStatus::Interrupted
                         }
                     },
                     sender_thread_id: ThreadId::from_string(&sender_thread_id).ok()?,
@@ -2610,6 +2630,9 @@ fn app_server_collab_item_to_core(item: ThreadItem) -> Option<CoreTurnItem> {
                 }
                 codex_app_server_protocol::SubAgentActivityKind::Interrupted => {
                     CoreSubAgentActivityKind::Interrupted
+                }
+                codex_app_server_protocol::SubAgentActivityKind::Completed => {
+                    CoreSubAgentActivityKind::Completed
                 }
             },
             agent_thread_id: ThreadId::from_string(&agent_thread_id).ok()?,
@@ -3498,6 +3521,68 @@ mod tests {
         assert_eq!(item.agent_thread_id, child_thread_id);
         assert_eq!(item.agent_path.as_str(), "/root/reviewer");
         assert_eq!(item.kind, CoreSubAgentActivityKind::Started);
+    }
+
+    #[test]
+    fn completed_subagent_activity_translates_to_core_completion() {
+        let child_thread_id = ThreadId::new();
+        let item = app_server_collab_item_to_core(ThreadItem::SubAgentActivity {
+            id: "activity-completed".to_string(),
+            kind: codex_app_server_protocol::SubAgentActivityKind::Completed,
+            agent_thread_id: child_thread_id.to_string(),
+            agent_path: "/root/reviewer".to_string(),
+        })
+        .expect("completed subagent activity");
+
+        let CoreTurnItem::SubAgentActivity(item) = item else {
+            panic!("expected subagent activity");
+        };
+        assert_eq!(item.agent_thread_id, child_thread_id);
+        assert_eq!(item.kind, CoreSubAgentActivityKind::Completed);
+    }
+
+    #[test]
+    fn control_agent_tools_and_interrupted_status_translate_to_core() {
+        let sender_thread_id = ThreadId::new();
+        let cases = [
+            (
+                codex_app_server_protocol::CollabAgentTool::SendMessage,
+                CoreCollabAgentTool::SendMessage,
+            ),
+            (
+                codex_app_server_protocol::CollabAgentTool::FollowupTask,
+                CoreCollabAgentTool::FollowupTask,
+            ),
+            (
+                codex_app_server_protocol::CollabAgentTool::InterruptAgent,
+                CoreCollabAgentTool::InterruptAgent,
+            ),
+            (
+                codex_app_server_protocol::CollabAgentTool::ListAgents,
+                CoreCollabAgentTool::ListAgents,
+            ),
+        ];
+
+        for (tool, expected_tool) in cases {
+            let item = app_server_collab_item_to_core(ThreadItem::CollabAgentToolCall {
+                id: "control-call".to_string(),
+                tool,
+                status: codex_app_server_protocol::CollabAgentToolCallStatus::Interrupted,
+                sender_thread_id: sender_thread_id.to_string(),
+                receiver_thread_ids: Vec::new(),
+                prompt: None,
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::new(),
+            })
+            .expect("control-agent tool call");
+
+            let CoreTurnItem::CollabAgentToolCall(item) = item else {
+                panic!("expected collab-agent tool call");
+            };
+            assert_eq!(item.tool, expected_tool);
+            assert_eq!(item.status, CoreCollabAgentToolCallStatus::Interrupted);
+        }
     }
 
     #[test]
