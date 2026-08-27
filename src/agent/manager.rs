@@ -7,6 +7,7 @@ mod runtime;
 mod session;
 mod start_plan;
 mod store;
+mod supervisor;
 mod worktree;
 
 #[cfg(test)]
@@ -21,7 +22,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use tokio::io::AsyncWriteExt;
-use tokio::process::{Child, ChildStdin, Command};
+use tokio::process::{ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use uuid::Uuid;
 
@@ -36,6 +37,7 @@ use self::store::{
     AgentInsertRecord, AgentSchemaCaps, RemoteManagedAgentUpsert, decode_agent_record,
     get_agent_row, insert_agent_record, list_agent_rows, upsert_remote_managed_agent_record,
 };
+use self::supervisor::{AgentProcessSupervisor, SharedSupervisedChild};
 use self::worktree::git_command_without_fsmonitor;
 use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
@@ -69,6 +71,7 @@ pub struct AgentManager {
     push: Arc<PushService>,
     auth: Arc<AuthService>,
     local_executor: Arc<dyn AgentExecutor>,
+    process_supervisor: AgentProcessSupervisor,
     codex_acp_binary: String,
     acp_default_mode: Option<String>,
     codex_acp_multi_agent_enabled: bool,
@@ -85,7 +88,6 @@ const ACTOR_RUNTIME_TEAM_ID_ENV: &str = "AGENTHUB_ACTOR_TEAM_ID";
 const ACTOR_RUNTIME_CURRENT_RUN_ID_ENV: &str = "AGENTHUB_ACTOR_CURRENT_RUN_ID";
 const ACTOR_RUNTIME_ACTOR_ID_ENV: &str = "AGENTHUB_ACTOR_ID";
 const ACTOR_RUNTIME_CHANNEL_ENV: &str = "AGENTHUB_ACTOR_CHANNEL";
-const AGENT_STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
 const INTERNAL_AGENT_MANAGE_PERMISSION: &str = "agent:manage";
@@ -701,7 +703,7 @@ fn spawn_agent_loop_controller(
 }
 
 pub struct AgentHandle {
-    child: Arc<Mutex<Option<Child>>>,
+    child: SharedSupervisedChild,
     output_tx: broadcast::Sender<AgentOutput>,
     input: AgentInput,
     session_id: String,
@@ -787,13 +789,18 @@ impl AgentManager {
         auth: Arc<AuthService>,
         internal_peer_client: Option<InternalGrpcPeerClientConfig>,
     ) -> Self {
+        let process_supervisor = AgentProcessSupervisor::default();
         Self {
             db,
             event_dbs,
             idle_gc,
             push,
             auth,
-            local_executor: Arc::new(LocalExecutor::new(ProxyPolicy::new(proxy_env))),
+            local_executor: Arc::new(LocalExecutor::new(
+                ProxyPolicy::new(proxy_env),
+                process_supervisor.clone(),
+            )),
+            process_supervisor,
             codex_acp_binary,
             acp_default_mode,
             codex_acp_multi_agent_enabled,

@@ -474,6 +474,26 @@ impl AgentManager {
     }
 
     #[tracing::instrument(skip(self), err)]
+    pub async fn stop_all_on_shutdown(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
+        let _shutdown_guard = self.process_supervisor.begin_shutdown().await;
+        self.process_supervisor.stop_all().await?;
+
+        let stopped_handles = {
+            let mut guard = self.inner.write().await;
+            guard.drain().map(|(_, handle)| handle).collect::<Vec<_>>()
+        };
+        for handle in stopped_handles {
+            if let Some(controller) = handle.loop_controller {
+                controller.stop();
+            }
+        }
+
+        // Persist terminal state only after every supervised local process tree
+        // has been reaped successfully.
+        self.mark_exited_on_shutdown().await
+    }
+
+    #[tracing::instrument(skip(self), err)]
     pub async fn mark_exited_on_shutdown(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
         self.mark_running_agents_exited(AgentSessionExitMarkReason::Shutdown)
             .await
@@ -617,8 +637,12 @@ impl AgentManager {
 
 #[cfg(test)]
 mod tests {
+    use std::process::Stdio;
+
     use chrono::Utc;
     use sqlx::{Row, SqlitePool};
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
     use tokio::time::Duration;
     use uuid::Uuid;
 
@@ -715,7 +739,7 @@ mod tests {
         let stdin = child.stdin.take();
         let (output_tx, _output_rx) = tokio::sync::broadcast::channel(8);
         let handle = super::super::AgentHandle {
-            child: std::sync::Arc::new(tokio::sync::Mutex::new(Some(child))),
+            child: std::sync::Arc::new(tokio::sync::Mutex::new(Some(Box::new(child)))),
             output_tx,
             input: super::super::AgentInput::Stdin(std::sync::Arc::new(tokio::sync::Mutex::new(
                 stdin,
@@ -1210,6 +1234,90 @@ mod tests {
         .await
         .expect("count running agents after cleanup");
         assert_eq!(running_agents, 0);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn shutdown_marks_terminal_state_only_after_process_tree_exits() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "shutdown-process-ordering").await;
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("trap 'sleep 1; exit 0' TERM; printf 'ready\\n'; while :; do sleep 10; done")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let mut process = super::super::supervisor::spawn_supervised(command)
+            .expect("spawn supervised shutdown test process");
+        let stdout = process.stdout().take().expect("take process stdout");
+        let mut lines = BufReader::new(stdout).lines();
+        assert_eq!(
+            lines
+                .next_line()
+                .await
+                .expect("read readiness line")
+                .as_deref(),
+            Some("ready")
+        );
+
+        let (output_tx, _output_rx) = tokio::sync::broadcast::channel(8);
+        let child = std::sync::Arc::new(tokio::sync::Mutex::new(Some(process)));
+        state
+            .agents
+            .process_supervisor
+            .track_test_process(super::super::supervisor::StopTarget {
+                agent_id: agent_id.clone(),
+                session_id: session_id.clone(),
+                child: child.clone(),
+            })
+            .await
+            .expect("track supervised shutdown test process");
+        let handle = super::super::AgentHandle {
+            child,
+            output_tx,
+            input: super::super::AgentInput::Stdin(std::sync::Arc::new(tokio::sync::Mutex::new(
+                None,
+            ))),
+            session_id: session_id.clone(),
+            actor_context: None,
+            acp_prompt_delivery_policy: None,
+            loop_controller: None,
+        };
+        state
+            .agents
+            .inner
+            .write()
+            .await
+            .insert(agent_id.clone(), handle);
+
+        let agents = state.agents.clone();
+        let shutdown = tokio::spawn(async move { agents.stop_all_on_shutdown().await });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let status_during_stop: String =
+            sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = ?1")
+                .bind(&session_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load session status during supervised stop");
+        assert_eq!(status_during_stop, "running");
+
+        let summary = shutdown
+            .await
+            .expect("join shutdown task")
+            .expect("stop all supervised processes");
+        assert_eq!(summary.sessions_marked_exited, 1);
+        assert_eq!(summary.agents_marked_exited, 1);
+
+        let session_row = sqlx::query("SELECT status, ended_at FROM agent_sessions WHERE id = ?1")
+            .bind(&session_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load terminal session state");
+        assert_eq!(session_row.get::<String, _>("status"), "exited");
+        assert!(session_row.get::<Option<i64>, _>("ended_at").is_some());
     }
 
     #[tokio::test]
