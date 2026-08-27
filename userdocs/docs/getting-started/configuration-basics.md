@@ -105,21 +105,21 @@ ACP (Agent Control Protocol) provider settings.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `binary` | string | `"agenthub-acp"` | Canonical AgentHub ACP adapter binary name or path |
+| `binary` | string | `"agenthubd"` | Built-in daemon binary name or a legacy custom Codex ACP override |
 | `default_mode` | string | `"full-access"` | Default Codex ACP mode (`read-only`, `auto`, or `full-access`; `yolo` normalizes to `full-access`) |
 | `multi_agent_enabled` | boolean | `true` | Force Codex ACP `Feature::Collab` on AgentHub-managed sessions |
 
-The canonical Codex command for new agents is `agenthub-acp codex`. The
-`codex_acp.binary` setting points to the adapter executable only and should not
-include the `codex` subcommand argument. Existing deployments can still set it
-to `agenthub-codex-acp` or another compatible Codex ACP executable.
+The canonical Codex command for new agents is `agenthubd acp codex`. Existing
+deployments can keep a compatible custom Codex ACP executable in
+`codex_acp.binary`, but new custom agents should store their explicit command
+path rather than adding daemon subcommand arguments to this setting.
 
 If you point `codex_acp.binary` at a custom binary, verify it against the ACP
 protocol surface used by the exact AgentHub release before mixing versions in a
 shared deployment.
 
 Other ACP adapters are configured per agent command rather than through this
-section. For Claude, prefer the AgentHub-distributed `agenthub-acp claude`
+section. For Claude, prefer the AgentHub-distributed `agenthubd acp claude`
 command. Compatibility commands `claude-agent-acp` and `claude-code-acp-rs --acp`
 are also recognized. Configure Anthropic credentials through the adapter-supported
 environment or Claude settings files.

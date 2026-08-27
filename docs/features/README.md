@@ -102,6 +102,7 @@ when adding or compacting specs so this directory stays navigable.
 - `docs/features/web-static-assets-and-pwa.md`
 - `docs/features/npm-binary-distribution.md`
 - `docs/features/debian-systemd-distribution.md`
+- `docs/features/two-binary-runtime.md`
 - `docs/features/app-linkers.md`
 - `docs/features/slock-oauth-linkers.md`
 

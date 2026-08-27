@@ -39,9 +39,9 @@ describe("agent presets", () => {
     const claude = getAgentPreset("claude");
     const claudeAgent = getAgentPreset("claude_agent");
     const claudeCodeRs = getAgentPreset("claude_code_rs");
-    expect(formatAgentCommand(codex)).toBe("agenthub-acp codex");
+    expect(formatAgentCommand(codex)).toBe("agenthubd acp codex");
     expect(formatAgentCommand(gemini)).toBe("gemini --acp");
-    expect(formatAgentCommand(claude)).toBe("agenthub-acp claude");
+    expect(formatAgentCommand(claude)).toBe("agenthubd acp claude");
     expect(formatAgentCommand(claudeAgent)).toBe("claude-agent-acp");
     expect(formatAgentCommand(claudeCodeRs)).toBe("claude-code-acp-rs --acp");
   });
@@ -55,6 +55,8 @@ describe("agent presets", () => {
     expect(resolveAcpProvider("/opt/bin/agenthub-acp codex")).toBe("codex");
     expect(resolveAcpProvider("agenthub-acp claude")).toBe("claude");
     expect(resolveAcpProvider("/opt/bin/agenthub-acp claude")).toBe("claude");
+    expect(resolveAcpProvider("agenthubd acp codex")).toBe("codex");
+    expect(resolveAcpProvider("/opt/bin/agenthubd acp claude")).toBe("claude");
     expect(resolveAcpProvider("claude-agent-acp")).toBe("claude");
     expect(resolveAcpProvider("/opt/bin/claude-code-acp-rs")).toBe("claude");
     expect(resolveAcpProvider("claude-code-acp-rs --acp")).toBe("claude");
@@ -66,6 +68,7 @@ describe("agent presets", () => {
   it("resolves ACP providers split between command and args", () => {
     expect(resolveAcpProviderForAgent("agenthub-acp", ["codex"])).toBe("codex");
     expect(resolveAcpProviderForAgent("agenthub-acp", ["claude"])).toBe("claude");
+    expect(resolveAcpProviderForAgent("agenthubd", ["acp", "codex"])).toBe("codex");
   });
 
   it("formats agent model label from args or provider", () => {

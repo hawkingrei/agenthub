@@ -533,14 +533,15 @@ impl AgentManager {
 
         let acp_provider = self.acp_provider_spec_for_agent(&agent.command, &agent.args);
         let is_acp = acp_provider.is_some();
-        let command_path = self.resolve_command_path(&agent.command, acp_provider);
+        let (command_path, command_args) =
+            self.resolve_launch_command(&agent.command, &agent.args, acp_provider);
         let spawn_summary = format!(
             "command={} workdir={} args={:?}",
-            command_path, start_policy.workdir, agent.args
+            command_path, start_policy.workdir, command_args
         );
         let local_execution_request = LocalExecutionRequest {
             command_path: command_path.clone(),
-            args: agent.args.clone(),
+            args: command_args,
             workdir: start_policy.workdir.clone(),
             actor_context: actor_context.clone(),
             extra_env: default_env_for_acp_provider(

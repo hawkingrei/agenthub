@@ -7,4 +7,5 @@ npm install -g @linkerdog/agenthub
 agenthub --help
 ```
 
-This package selects a platform-specific native `agenthub` binary at runtime.
+This package selects a platform package containing the native `agenthub` CLI and sibling
+`agenthubd` runtime.

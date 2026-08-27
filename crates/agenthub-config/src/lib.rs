@@ -388,7 +388,7 @@ impl AppConfig {
         self.codex_acp
             .as_ref()
             .and_then(|c| c.binary.clone())
-            .unwrap_or_else(|| "agenthub-acp".to_string())
+            .unwrap_or_else(|| "agenthubd".to_string())
     }
 
     pub fn codex_acp_default_mode(&self) -> Option<String> {
@@ -1247,9 +1247,9 @@ mod tests {
     }
 
     #[test]
-    fn codex_acp_binary_defaults_to_canonical_adapter() {
+    fn codex_acp_binary_defaults_to_daemon() {
         let config = AppConfig::default();
-        assert_eq!(config.codex_acp_binary(), "agenthub-acp");
+        assert_eq!(config.codex_acp_binary(), "agenthubd");
     }
 
     #[test]

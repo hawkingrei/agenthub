@@ -8,8 +8,7 @@ on:
 env:
   BAZEL_BUILD_TARGETS: >-
     //:agenthub
-    //agenthub-codex-acp:agenthub_codex_acp_bin
-    //crates/agenthub-acp-adapter:agenthub_acp_adapter_bin
+    //crates/agenthub-daemon:agenthubd
   BAZEL_ROOT_RUNTIME_PREREQ_TARGETS: >-
     //:agenthub
   BAZEL_ROOT_TEST_TARGETS: >-
@@ -20,6 +19,7 @@ env:
     //crates/agenthub-acp-adapter:agenthub_acp_adapter_tests
     //crates/agenthub-acp-core:agenthub_acp_core_tests
     //crates/agenthub-acp:agenthub_acp_tests
+    //crates/agenthub-daemon:agenthub_daemon_tests
     //crates/agenthub-config:agenthub_config_tests
     //crates/agenthub-db:agenthub_db_tests
     //crates/agenthub-internal-p2p:agenthub_internal_p2p_tests
@@ -39,6 +39,7 @@ env:
     //crates/agenthub-acp-adapter:agenthub_acp_adapter_tests
     //crates/agenthub-acp-core:agenthub_acp_core_tests
     //crates/agenthub-acp:agenthub_acp_tests
+    //crates/agenthub-daemon:agenthub_daemon_tests
     //crates/agenthub-config:agenthub_config_tests
     //crates/agenthub-db:agenthub_db_tests
     //crates/agenthub-internal-p2p:agenthub_internal_p2p_tests

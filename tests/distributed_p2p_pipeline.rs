@@ -395,7 +395,7 @@ fn spawn_node(
     let stdout = File::create(&stdout_path).with_context(|| format!("create {name} stdout log"))?;
     let stderr = File::create(&stderr_path).with_context(|| format!("create {name} stderr log"))?;
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let binary_path = resolve_agenthub_binary_path();
+    let binary_path = resolve_agenthubd_binary_path();
     let coverage_profile_dir = child_coverage_profile_dir(name)?;
 
     let mut command = Command::new(&binary_path);
@@ -413,7 +413,7 @@ fn spawn_node(
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .spawn()
-        .with_context(|| format!("spawn {name} agenthub binary at {}", binary_path.display()))?;
+        .with_context(|| format!("spawn {name} agenthubd binary at {}", binary_path.display()))?;
 
     Ok(SpawnedNode {
         name: name.to_string(),
@@ -439,8 +439,8 @@ fn child_coverage_profile_dir(name: &str) -> anyhow::Result<Option<PathBuf>> {
     Ok(Some(profile_dir))
 }
 
-fn resolve_agenthub_binary_path() -> PathBuf {
-    if let Ok(path) = std::env::var("CARGO_BIN_EXE_agenthub") {
+fn resolve_agenthubd_binary_path() -> PathBuf {
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_agenthubd") {
         return PathBuf::from(path);
     }
 
@@ -448,8 +448,8 @@ fn resolve_agenthub_binary_path() -> PathBuf {
     current
         .parent()
         .and_then(|parent| parent.parent())
-        .map(|dir| dir.join(format!("agenthub{}", std::env::consts::EXE_SUFFIX)))
-        .expect("resolve target dir for agenthub binary")
+        .map(|dir| dir.join(format!("agenthubd{}", std::env::consts::EXE_SUFFIX)))
+        .expect("resolve target dir for agenthubd binary")
 }
 
 fn reserve_addr() -> anyhow::Result<SocketAddr> {

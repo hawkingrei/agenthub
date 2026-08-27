@@ -8,10 +8,6 @@ description = "AgentHub ACP provider adapter entrypoint"
 repository = "https://github.com/hawkingrei/agenthub"
 homepage = "https://github.com/hawkingrei/agenthub"
 
-[[bin]]
-name = "agenthub-acp"
-path = "src/main.rs"
-
 [lib]
 name = "agenthub_acp_adapter"
 path = "src/lib.rs"

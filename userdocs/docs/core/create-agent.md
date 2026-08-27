@@ -10,7 +10,7 @@ Open **Agents**, select **Create Agent**, and configure one durable runtime.
 
 - **Name**: a human-readable runtime label.
 - **Command or preset**: the installed ACP entry point, such as
-  `agenthub-acp codex`.
+  `agenthubd acp codex`.
 - **Execution node**: `Main Node` or a registered remote node. Only root
   operators can select and manage remote nodes.
 - **Workspace mode**:

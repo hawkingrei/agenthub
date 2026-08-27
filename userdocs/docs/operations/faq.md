@@ -11,9 +11,8 @@ reconnects to live SSE when it returns.
 
 ## Which binaries do I need?
 
-Install both `agenthub` and `agenthub-acp` from the same release for the default
-Codex or Claude runtime presets. Debian packages contain both. GitHub publishes
-separate archives. The npm wrapper currently installs only `agenthub`.
+Install both `agenthub` and `agenthubd` from the same release. Debian and npm
+platform packages contain both. GitHub publishes separate archives.
 
 ## Which platforms have official binaries?
 

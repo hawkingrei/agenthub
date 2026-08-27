@@ -6,9 +6,8 @@ Active backlog only. Keep this file small and current.
 
 - [ ] `P0` Restore Homebrew channel parity before advertising it as a current complete install. The
   `linkerdog/homebrew-tap` formula still points to `v0.0.7` and installs the legacy
-  `agenthub-codex-acp` helper, while current GitHub artifacts publish `agenthub-acp`. Update and
-  validate the formula against the intended formal release, including both binary versions and
-  `brew services` startup. Evidence:
+  `agenthub-codex-acp` helper. Update and validate the formula against the intended formal release,
+  install `agenthub` plus `agenthubd`, and run `agenthubd` under `brew services`. Evidence:
   [journal/2026-08-13-user-documentation-release-readiness.md](journal/2026-08-13-user-documentation-release-readiness.md).
 - [ ] `P1` Remediate dependency-graph regressions exposed by returning Codex to official
   `openai/codex@ff29a44391deccde0aba0f8390337d7f3c319ea4`, and replace the separate
@@ -137,6 +136,11 @@ Stable contracts:
 - [x] `P1` Stage SQLite retirement by responsibility, not by a flag flip: Phase 1 `cf_body` dual-write, durable SQLite outbox, startup drainer, and SQLite compatibility reads are landed; `cf_index` is now a rebuildable, guarded delivery projection. Dual-read comparison and full rebuild/backup-restore recovery evidence are now landed for the `cf_body`/`cf_index` layer: a disaster-recovery test proves a RocksDB checkpoint restores correctly after the source store is deleted entirely and passes the same integrity gates (`check_index_refs_have_bodies`/`check_index_refs_have_authority`) an operator would run, and a simulated total `cf_index` loss is fully rebuilt from SQLite authority alone with zero gaps/orphans. The transactional `ControlStore` contract (conditional updates, uniqueness, audit, per-entity rollback) is now defined and its Phase 1 foundation (`crates/agenthub-db/src/control_store.rs`) is landed; SQLite remains the control-plane authority (no engine change, per the spec's Non-Goals). Phase 3 backfill is done for every call site identified when the spec was written: `teamspace.rs`'s CAS guards, generation-fencing, and audit writes; `conversation_idempotency.rs`'s and `mailbox_threads.rs`'s idempotency-replay decisions; a third, previously-undiscovered duplicate matcher in `src/api/teams/errors.rs`; and the `SQLITE_CONSTRAINT_UNIQUE_CODE` redeclarations in `manager_consts.rs` and (dead code) `src/api/teams.rs` are gone. `channel_mutations.rs`'s bootstrap-uniqueness matcher was deliberately left alone (different, OR-of-two-conditions shape). All behavior-preserving; all existing tests pass unchanged. Remaining work is Phase 2 only: new control-plane authority code (Teamspace multi-user membership, goal/fork conflict escalation, future permission tables) routes through `ControlStore` from the start instead of hand-rolling a new guard/matcher -- an ongoing discipline applied as that work lands, not a standalone task. RocksDB indexes and LanceDB archives must not become control-plane authority by implication. Stable contracts: [features/message-storage-tiering.md](features/message-storage-tiering.md), [features/control-store.md](features/control-store.md); evidence: [journal/2026-06-10-message-store-foundation-crate.md](journal/2026-06-10-message-store-foundation-crate.md).
 
 ## Maintenance Rules
+
+- [ ] `P1` Complete two-binary rollout evidence: validate the exact change head with Cargo and Bazel,
+  prove Linux cross-builds, and inspect generated Debian/npm packages for exactly `agenthub` and
+  `agenthubd`. Stable contract: [features/two-binary-runtime.md](features/two-binary-runtime.md);
+  checkpoint: [journal/2026-08-27-two-binary-runtime-consolidation.md](journal/2026-08-27-two-binary-runtime-consolidation.md).
 
 - Keep only open work here. Remove completed items after evidence lands in a journal, PR, or canonical feature spec.
 - Prefer canonical feature specs in [features/](features/) over stale micro-journal references whenever the contract is already stable.

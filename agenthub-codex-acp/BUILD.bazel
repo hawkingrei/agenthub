@@ -1,7 +1,9 @@
 load("@crate_index//:defs.bzl", "aliases", "all_crate_deps")
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
 
 rust_library(
     name = "agenthub_codex_acp_runtime",
@@ -16,18 +18,6 @@ rust_library(
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [
         "//crates/agenthub-managed-skills:agenthub_managed_skills",
-    ],
-    proc_macro_deps = all_crate_deps(proc_macro = True),
-)
-
-rust_binary(
-    name = "agenthub_codex_acp_bin",
-    srcs = glob(["src/**/*.rs"]),
-    crate_root = "src/main.rs",
-    edition = "2024",
-    aliases = aliases(),
-    deps = all_crate_deps(normal = True) + [
-        ":agenthub_codex_acp_runtime",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )

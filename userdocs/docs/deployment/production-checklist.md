@@ -10,7 +10,7 @@ upgrade.
 ## Artifact Preflight
 
 - Select one exact release tag and verify `SHA256SUMS.txt`.
-- Install `agenthub` and `agenthub-acp` from that same release.
+- Install `agenthub` and `agenthubd` from that same release.
 - Confirm both `--version` commands before rollout.
 - Validate the official binary on the oldest Linux environment you intend to
   support; the project's glibc floor is not yet frozen.

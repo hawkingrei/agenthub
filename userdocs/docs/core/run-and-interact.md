@@ -41,8 +41,8 @@ For new Codex agents, use the generic AgentHub adapter command:
 
 | Adapter | Command | Notes |
 |---------|---------|-------|
-| AgentHub Codex ACP | `agenthub-acp codex` | Recommended. Shipped with AgentHub and backed by the AgentHub Codex adapter. |
-| Legacy Codex ACP override | `agenthub-codex-acp` or custom path | Existing deployments can still point `codex_acp.binary` at a compatible executable, but current AgentHub release packages should use `agenthub-acp codex`. |
+| AgentHub Codex ACP | `agenthubd acp codex` | Recommended. Shipped in the daemon and backed by the AgentHub Codex adapter. |
+| Legacy Codex ACP override | `agenthub-codex-acp` or custom path | Existing stored commands remain compatible, but current releases use `agenthubd acp codex`. |
 
 ## Claude ACP Runtimes
 
@@ -51,7 +51,7 @@ agents:
 
 | Adapter | Command | Notes |
 |---------|---------|-------|
-| AgentHub Claude ACP | `agenthub-acp claude` | Recommended. Shipped with AgentHub and runs Claude Code through ACP server mode. |
+| AgentHub Claude ACP | `agenthubd acp claude` | Recommended. Shipped in the daemon and runs Claude Code through ACP server mode. |
 | Claude Agent SDK ACP | `claude-agent-acp` | Compatibility path provided by `@agentclientprotocol/claude-agent-acp`; runs in ACP mode by default. |
 | Claude Code ACP Rust | `claude-code-acp-rs --acp` | Compatibility path provided by `claude-code-acp-rs`; `--acp` is required for interactive ACP mode. |
 

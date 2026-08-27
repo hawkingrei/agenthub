@@ -59,8 +59,8 @@ impl AgentExecutor for LocalExecutor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         // Keep PATH-based resolution, but stabilize sibling helper discovery when
-        // AgentHub itself was launched from a build output directory with the ACP
-        // adapter next to it.
+        // AgentHub itself was launched from a build output directory with the
+        // daemon next to it.
         if let Some(path) = synthesized_child_path(
             &request.command_path,
             std::env::var_os("PATH"),
@@ -129,8 +129,8 @@ fn synthesized_child_path(
 fn resolve_runtime_sibling_bin_dir(current_exe: Option<&Path>) -> Option<PathBuf> {
     let current = current_exe?;
     let parent = current.parent()?;
-    // Test binaries run from `target/*/deps`, but the shipped adapter lives in the
-    // parent bin directory next to the main AgentHub binary.
+    // Test binaries run from `target/*/deps`, but shipped runtime binaries live
+    // together in the parent bin directory.
     let sibling_dir = if parent.file_name().and_then(|name| name.to_str()) == Some("deps") {
         parent.parent()?
     } else {

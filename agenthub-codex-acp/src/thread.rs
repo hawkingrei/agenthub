@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     ffi::OsStr,
     path::{Component, Path, PathBuf},
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex, OnceLock},
 };
 
 use agent_client_protocol::schema::v1::{
@@ -2779,10 +2779,19 @@ fn build_exec_permission_options(
     options
 }
 
+static RUNTIME_ACTOR_CLI_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+pub(crate) fn configure_runtime_actor_cli_path(path: Option<PathBuf>) {
+    drop(RUNTIME_ACTOR_CLI_PATH.set(path));
+}
+
 fn resolve_runtime_actor_cli_path() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| std::fs::canonicalize(&path).ok())
+    match RUNTIME_ACTOR_CLI_PATH.get() {
+        Some(path) => path.clone(),
+        None => std::env::current_exe()
+            .ok()
+            .and_then(|path| std::fs::canonicalize(&path).ok()),
+    }
 }
 
 fn canonicalize_runtime_actor_cli_path(path: &str) -> Option<PathBuf> {

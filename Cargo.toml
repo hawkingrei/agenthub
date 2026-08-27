@@ -2,6 +2,7 @@
 members = [
     ".",
     "agenthub-codex-acp",
+    "crates/agenthub-daemon",
     "crates/agenthub-acp-adapter",
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
@@ -29,8 +30,6 @@ members = [
     "crates/agenthub-message-store",
     "crates/agenthub-object-store",
 ]
-exclude = ["cmd/agenthub"]
-
 [patch.crates-io]
 sacp = { git = "https://github.com/hawkingrei/symposium-acp", rev = "c731bb045d1375af48b0446af728aea52503b30b" }
 tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "132f5b39c862e3a970f731d709608b3e6276d5f6" }

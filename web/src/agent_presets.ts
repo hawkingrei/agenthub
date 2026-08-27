@@ -18,8 +18,8 @@ const PRESETS: AgentPreset[] = [
   {
     id: "codex",
     label: "Codex ACP",
-    command: "agenthub-acp",
-    args: ["codex"],
+    command: "agenthubd",
+    args: ["acp", "codex"],
     provider: "codex",
   },
   {
@@ -39,8 +39,8 @@ const PRESETS: AgentPreset[] = [
   {
     id: "claude",
     label: "Claude ACP",
-    command: "agenthub-acp",
-    args: ["claude"],
+    command: "agenthubd",
+    args: ["acp", "claude"],
     provider: "claude",
   },
   {
@@ -144,7 +144,15 @@ function resolveAcpProviderFromCommandAndArgs(
   if (name === "agenthub-acp") {
     return resolveAgenthubAcpProvider([...tokens.slice(1), ...args]);
   }
+  if (name === "agenthubd") {
+    return resolveDaemonAcpProvider([...tokens.slice(1), ...args]);
+  }
   return COMMAND_PROVIDER_MAP.get(name) ?? null;
+}
+
+function resolveDaemonAcpProvider(args: string[]): string | null {
+  if (args[0]?.trim().toLowerCase() !== "acp") return null;
+  return resolveAgenthubAcpProvider(args.slice(1));
 }
 
 function resolveAgenthubAcpProvider(args: string[]): string | null {

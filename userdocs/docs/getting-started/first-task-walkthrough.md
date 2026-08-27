@@ -16,7 +16,7 @@ you to initialize the root operator.
 
 1. Open **Agents** and select **Create Agent**.
 2. Set a clear name, such as `docs-pilot`.
-3. Choose the `agenthub-acp codex` preset or another installed ACP provider.
+3. Choose the `agenthubd acp codex` preset or another installed ACP provider.
 4. Choose a workspace mode:
    - `create_worktree` for isolated repository work.
    - `use_existing` when you intentionally want to use an existing directory.

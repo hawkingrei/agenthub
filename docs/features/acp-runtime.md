@@ -66,16 +66,16 @@ ACP runtime concerns should stay split across three orthogonal layers:
 
 Codex and Claude are special cases inside the provider adapter layer:
 
-- `agenthub-acp codex` is AgentHub's canonical distributed Codex ACP adapter path. It uses the
+- `agenthubd acp codex` is AgentHub's canonical distributed Codex ACP adapter path. It uses the
   upstream Codex app-server/thread protocol internally. AgentHub's main process and web surfaces
   should continue to consume ACP requests, ACP notifications, and AgentHub-normalized ACP event JSON
   as the stable boundary. Codex-native state may be exposed only through explicit diagnostics
   metadata, not by making the primary runtime path Codex-specific.
-- `agenthub-acp claude` is AgentHub's distributed Claude ACP adapter path. It wraps the Rust
+- `agenthubd acp claude` is AgentHub's distributed Claude ACP adapter path. It wraps the Rust
   `claude-code-acp-rs` library and always starts ACP server mode for AgentHub-managed sessions,
   while still leaving Claude credentials and model settings in the adapter-supported Anthropic
-  environment or Claude settings files. The generic `agenthub-acp` binary is provider-selected by
-  subcommand so additional ACP adapters can share the same release entrypoint later.
+  environment or Claude settings files. The daemon is provider-selected by the internal `acp`
+  subcommand so additional built-in ACP adapters can share the same native file later.
 
 ### 4) Conversation/Debug Surfaces
 
@@ -227,11 +227,11 @@ ACP permission requests are first-class runtime records:
   not an abort/cancel outcome.
 - Gemini/Kimi/Claude ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
 - Gemini CLI bootstrap should track the current upstream ACP contract (`gemini --acp`) while continuing to tolerate the legacy `--experimental-acp` flag in provider detection for backward compatibility.
-- Codex ACP support has a canonical AgentHub-distributed command: `agenthub-acp codex`.
+- Codex ACP support has a canonical AgentHub-distributed command: `agenthubd acp codex`.
   Compatibility detection still recognizes `agenthub-codex-acp` and `codex-acp` as Codex ACP
   runtimes for existing deployments and custom overrides, but current AgentHub release assets should
-  publish the canonical `agenthub-acp` entrypoint instead of the legacy `agenthub-codex-acp` binary.
-- Claude ACP support has a canonical AgentHub-distributed command: `agenthub-acp claude`.
+  publish `agenthubd` instead of either legacy adapter binary.
+- Claude ACP support has a canonical AgentHub-distributed command: `agenthubd acp claude`.
   Compatibility detection still recognizes `claude-agent-acp` as an ACP runtime directly, and
   recognizes `claude-code-acp-rs` only when launched with `--acp` so headless or diagnostic Claude
   Code invocations are not misclassified as interactive ACP sessions.
@@ -328,12 +328,12 @@ ACP permission requests are first-class runtime records:
   regression should be tracked and remediated upstream or through ordinary dependency constraints,
   not by silently switching AgentHub back to a downstream Codex fork.
 - AgentHub owns Codex subagent enablement through `codex_acp.multi_agent_enabled` (default
-  `true`). When launching Codex ACP through `agenthub-acp codex`, `agenthub-codex-acp`, or another
+  `true`). When launching Codex ACP through `agenthubd acp codex`, `agenthub-codex-acp`, or another
   recognized Codex ACP command, AgentHub should pass an explicit
   `AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED=1|0` child-process env override so ACP sessions expose
   Codex `Feature::Collab` deterministically without depending on per-user `~/.codex/config.toml`
   toggles.
-- `agenthub-acp` should materialize AgentHub-managed Codex skills under
+- The daemon's Codex ACP worker should materialize AgentHub-managed Codex skills under
   `~/.agents/skills/agenthub-runtime/.../SKILL.md` during ACP session bootstrap, then inject those
   file-backed skills through ACP `<skill>` wrappers so the Codex adapter can translate them into
   native Codex `UserInput::Skill` items.

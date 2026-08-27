@@ -107,7 +107,7 @@ When server-side URL ingestion is enabled:
   permissions for the service account to the workspaces it should touch.
 - Keep HTTP and gRPC listeners private; terminate external access with TLS.
 - Back up the complete data set and test restore before upgrades.
-- Keep the main binary and `agenthub-acp` on the same release.
+- Keep the CLI and `agenthubd` on the same release.
 - Patch the host, browser, ACP providers, and AgentHub dependencies promptly.
 - Review authentication audits, node registration, permission decisions, and
   unexpected process/network activity.

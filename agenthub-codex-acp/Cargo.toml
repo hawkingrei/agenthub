@@ -8,10 +8,6 @@ description = "AgentHub Codex ACP runtime used by the generic ACP adapter"
 repository = "https://github.com/hawkingrei/agenthub"
 homepage = "https://github.com/hawkingrei/agenthub"
 
-[[bin]]
-name = "agenthub-codex-acp"
-path = "src/main.rs"
-
 [lib]
 name = "agenthub_codex_acp_runtime"
 path = "src/lib.rs"
