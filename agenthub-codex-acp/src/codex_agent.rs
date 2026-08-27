@@ -999,7 +999,7 @@ impl CodexAgent {
 mod tests {
     use super::{
         HistoryRepairStats, codex_mcp_server_config, persist_repaired_initial_history,
-        repair_initial_history, repair_response_item_history,
+        repair_initial_history, repair_response_item_history, repair_rollout_items,
     };
     use agent_client_protocol::schema::v1::{
         EnvVariable, HttpHeader, McpServer, McpServerHttp, McpServerSse, McpServerStdio,
@@ -1317,6 +1317,88 @@ mod tests {
             } if name == "history.read_item"
                 && namespace == "history"
                 && output.text_content() == Some("ok")
+        ));
+    }
+
+    #[test]
+    fn repair_rollout_items_preserves_paired_and_external_function_outputs() {
+        let mut items = vec![
+            RolloutItem::ResponseItem(ResponseItemEnvelope::from(ResponseItem::FunctionCall {
+                id: None,
+                name: "history.read_item".to_string(),
+                namespace: Some("history".to_string()),
+                arguments: "{}".to_string(),
+                call_id: "paired".to_string(),
+                encrypted_function_args: None,
+                internal_chat_message_metadata_passthrough: None,
+            })),
+            RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                ResponseItem::FunctionCallOutput {
+                    id: None,
+                    call_id: Some("paired".to_string()),
+                    name: None,
+                    namespace: None,
+                    output: FunctionCallOutputPayload::from_text("paired output".to_string()),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            )),
+            RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                ResponseItem::FunctionCallOutput {
+                    id: None,
+                    call_id: None,
+                    name: Some("history.read_item".to_string()),
+                    namespace: Some("history".to_string()),
+                    output: FunctionCallOutputPayload::from_text("external output".to_string()),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            )),
+            RolloutItem::ResponseItem(ResponseItemEnvelope::from(
+                ResponseItem::FunctionCallOutput {
+                    id: None,
+                    call_id: Some("orphan".to_string()),
+                    name: None,
+                    namespace: None,
+                    output: FunctionCallOutputPayload::from_text("orphan output".to_string()),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            )),
+        ];
+
+        let repaired = repair_rollout_items(&mut items);
+
+        assert_eq!(
+            repaired,
+            HistoryRepairStats {
+                dropped_orphan_function_call_outputs: 1,
+                ..HistoryRepairStats::default()
+            }
+        );
+        assert_eq!(items.len(), 3);
+        assert!(matches!(
+            &items[1],
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::FunctionCallOutput {
+                    call_id: Some(call_id),
+                    output,
+                    ..
+                },
+                ..
+            }) if call_id == "paired" && output.text_content() == Some("paired output")
+        ));
+        assert!(matches!(
+            &items[2],
+            RolloutItem::ResponseItem(ResponseItemEnvelope {
+                item: ResponseItem::FunctionCallOutput {
+                    call_id: None,
+                    name: Some(name),
+                    namespace: Some(namespace),
+                    output,
+                    ..
+                },
+                ..
+            }) if name == "history.read_item"
+                && namespace == "history"
+                && output.text_content() == Some("external output")
         ));
     }
 

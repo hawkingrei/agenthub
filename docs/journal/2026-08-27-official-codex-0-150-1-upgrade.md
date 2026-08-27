@@ -37,7 +37,7 @@ The previous baseline was official Codex 0.149.1 at
 ## Validation
 
 - `cargo check --locked -p agenthub-codex-acp-runtime -p agenthub-acp-adapter -p agenthub-daemon`
-- `cargo test --locked -p agenthub-codex-acp-runtime --lib` (139 passed)
+- `cargo test --locked -p agenthub-codex-acp-runtime --lib` (140 passed)
 - `cargo clippy --locked -p agenthub-codex-acp-runtime -p agenthub-acp-adapter -p agenthub-daemon --all-targets -- -D warnings`
 - `cargo fmt --all -- --check`
 - `cargo metadata --locked --format-version 1 --no-deps` reports only the `agenthub` and
