@@ -139,6 +139,11 @@ Allowed transitions:
 
 Delivery status must not imply that the target actor accepted, ignored, or completed the work.
 
+Runtime prompt submission is a separate delivery projection. Its stable identity, lease, retry, and
+session acknowledgement contracts are defined in
+[`team-runtime-delivery-receipts.md`](team-runtime-delivery-receipts.md). A runtime receipt must never
+advance `team_actor_messages.status` or handling disposition.
+
 ### 4) Handling Disposition Contract
 
 Handling disposition is separate from delivery status and models actor-level work decisions:
@@ -348,6 +353,8 @@ Rules:
   unread-discovery surface.
 - Existing `actor_receive` and `actor_ack` flows should be treated as compatibility behavior until
   explicit triage/claim commands replace them.
+- Runtime-hint retry and restart recovery should be diagnosed from
+  `team_runtime_delivery_receipts`, not inferred from mailbox acknowledgement state.
 
 ## Open Risks
 
@@ -367,3 +374,4 @@ Rules:
 - `docs/journal/2026-02-22-team-task-routing-user-actor-semantics.md`
 - `docs/journal/2026-03-05-team-mcp-enforcement-external-review.md`
 - `docs/journal/2026-05-21-team-spec-refresh-from-external-daemon-review.md`
+- `docs/journal/2026-08-28-team-runtime-delivery-receipts.md`

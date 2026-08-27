@@ -25,6 +25,7 @@ pub(crate) struct ActorMailboxImmediateHintPlan {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ActorMailboxImmediateHintDelivery {
+    pub delivery_ids: Vec<String>,
     pub sent_actor_ids: Vec<String>,
     pub failed_actor_ids: Vec<String>,
 }
@@ -71,6 +72,7 @@ pub trait TeamMailboxHintAgentNudger: Send + Sync {
         &self,
         actor_id: &str,
         expected_session_id: Option<&str>,
+        delivery_id: &str,
         prompt: &str,
     ) -> anyhow::Result<()>;
 }
@@ -101,9 +103,10 @@ impl TeamMailboxHintAgentNudger for AgentManager {
         &self,
         actor_id: &str,
         expected_session_id: Option<&str>,
+        delivery_id: &str,
         prompt: &str,
     ) -> anyhow::Result<()> {
-        self.send_mailbox_hint_input(actor_id, prompt, expected_session_id)
+        self.send_mailbox_hint_input(actor_id, prompt, expected_session_id, delivery_id)
             .await
     }
 }

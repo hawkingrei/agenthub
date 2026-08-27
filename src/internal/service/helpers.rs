@@ -203,7 +203,9 @@ pub(super) async fn maybe_notify_actor_new_mailbox_message_type(
             "coordinator_channel_mention"
         }
     };
-    let delivery = dispatch_actor_mailbox_immediate_hint(deps.agents.as_ref(), run_id, &plan).await;
+    let delivery = TeamMailboxRuntimeDeliveryWorker::new(deps.teams.clone(), deps.agents.clone())
+        .enqueue_and_dispatch(run_id, send_result.message_id, &plan)
+        .await?;
     if let Err(err) = deps
         .teams
         .append_run_event(
@@ -212,6 +214,7 @@ pub(super) async fn maybe_notify_actor_new_mailbox_message_type(
             serde_json::json!({
                 "status": if delivery.failed_actor_ids.is_empty() { "sent" } else if delivery.sent_actor_ids.is_empty() { "send_failed" } else { "partial" },
                 "message_id": send_result.message_id,
+                "delivery_ids": delivery.delivery_ids,
                 "reason": reason_label,
                 "target_actor_ids": plan.target_actor_ids,
                 "sent_actor_ids": delivery.sent_actor_ids,

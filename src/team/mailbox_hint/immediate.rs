@@ -3,10 +3,8 @@ use std::collections::BTreeSet;
 use agenthub_team_actor::{ActorIdentityKind, ActorSendResponse};
 use serde_json::Value;
 
-use super::prompts::build_actor_mailbox_immediate_hint_prompt;
 use super::types::{
-    ActorMailboxImmediateHintDelivery, ActorMailboxImmediateHintPlan,
-    ActorMailboxImmediateHintReason, ActorMailboxPriorityClass, TeamMailboxHintAgentNudger,
+    ActorMailboxImmediateHintPlan, ActorMailboxImmediateHintReason, ActorMailboxPriorityClass,
 };
 use crate::team::TeamManager;
 
@@ -89,38 +87,6 @@ pub(crate) async fn plan_actor_mailbox_immediate_hint(
             .await?
             .immediate_hint,
     )
-}
-
-pub(crate) async fn dispatch_actor_mailbox_immediate_hint(
-    nudger: &dyn TeamMailboxHintAgentNudger,
-    run_id: &str,
-    plan: &ActorMailboxImmediateHintPlan,
-) -> ActorMailboxImmediateHintDelivery {
-    let prompt = build_actor_mailbox_immediate_hint_prompt(run_id, plan.reason);
-    let mut sent_actor_ids = Vec::new();
-    let mut failed_actor_ids = Vec::new();
-    for target_actor_id in &plan.target_actor_ids {
-        match nudger
-            .nudge_mailbox_prompt(target_actor_id, None, prompt.as_str())
-            .await
-        {
-            Ok(()) => sent_actor_ids.push(target_actor_id.clone()),
-            Err(err) => {
-                tracing::debug!(
-                    run_id = %run_id,
-                    actor_id = %target_actor_id,
-                    reason = ?plan.reason,
-                    "skip mailbox hint push because agent input is unavailable: {}",
-                    err
-                );
-                failed_actor_ids.push(target_actor_id.clone());
-            }
-        }
-    }
-    ActorMailboxImmediateHintDelivery {
-        sent_actor_ids,
-        failed_actor_ids,
-    }
 }
 
 fn is_channel_payload(payload: &Value) -> bool {

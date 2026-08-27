@@ -586,6 +586,33 @@ async fn create_full_test_schema(pool: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE team_runtime_delivery_receipts (
+            delivery_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            message_id INTEGER NOT NULL,
+            actor_id TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            state TEXT NOT NULL CHECK (state IN ('pending', 'in_flight', 'delivered')),
+            attempt INTEGER NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+            next_retry_at INTEGER,
+            lease_expires_at INTEGER,
+            last_error TEXT,
+            session_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            delivered_at INTEGER,
+            UNIQUE(run_id, message_id, actor_id),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id),
+            FOREIGN KEY(message_id) REFERENCES team_actor_messages(id) ON DELETE CASCADE
+        );
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("create team_runtime_delivery_receipts");
+
+    sqlx::query(
+        r#"
         CREATE TABLE team_actor_thread_claims (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,

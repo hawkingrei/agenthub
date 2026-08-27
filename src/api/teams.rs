@@ -47,12 +47,11 @@ use crate::state::AppState;
 use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport, TeamChannelRecord,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
-    TeamDefinitionRecord, TeamMemoryFlushRequest, TeamReplyObligationRecord, TeamRunEventRecord,
-    TeamRunRecord, TeamRunStatus, TeamRuntimeRecord, TeamStepRecord, TeamStepStatus,
-    TeamTaskCreateInput, TeamTaskExecutionPlan, TeamTaskNoteRecord, TeamTaskPriority,
-    TeamTaskRecord, TeamTaskStepExecutionSpec, TeamThreadReplyRecord,
-    dispatch_actor_mailbox_immediate_hint, effective_team_member_skills,
-    ensure_team_runtime_started, force_team_member_new_session,
+    TeamDefinitionRecord, TeamMailboxRuntimeDeliveryWorker, TeamMemoryFlushRequest,
+    TeamReplyObligationRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus, TeamRuntimeRecord,
+    TeamStepRecord, TeamStepStatus, TeamTaskCreateInput, TeamTaskExecutionPlan, TeamTaskNoteRecord,
+    TeamTaskPriority, TeamTaskRecord, TeamTaskStepExecutionSpec, TeamThreadReplyRecord,
+    effective_team_member_skills, ensure_team_runtime_started, force_team_member_new_session,
     normalize_optional_idempotency_key_input, parse_task_execution_plan,
     plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
@@ -2676,14 +2675,16 @@ async fn maybe_notify_actor_new_mailbox_message_type(
             "coordinator_channel_mention"
         }
     };
-    let delivery =
-        dispatch_actor_mailbox_immediate_hint(state.agents.as_ref(), run_id, &plan).await;
+    let delivery = TeamMailboxRuntimeDeliveryWorker::new(state.teams.clone(), state.agents.clone())
+        .enqueue_and_dispatch(run_id, send_result.message_id, &plan)
+        .await?;
     append_actor_mailbox_type_hint_event(
         state,
         run_id,
         serde_json::json!({
             "status": if delivery.failed_actor_ids.is_empty() { "sent" } else if delivery.sent_actor_ids.is_empty() { "send_failed" } else { "partial" },
             "message_id": send_result.message_id,
+            "delivery_ids": delivery.delivery_ids,
             "reason": reason_label,
             "target_actor_ids": plan.target_actor_ids,
             "sent_actor_ids": delivery.sent_actor_ids,

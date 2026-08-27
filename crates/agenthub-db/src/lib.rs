@@ -806,6 +806,32 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS team_runtime_delivery_receipts (
+            delivery_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            message_id INTEGER NOT NULL,
+            actor_id TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('pending', 'in_flight', 'delivered')),
+            attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt >= 0),
+            next_retry_at INTEGER,
+            lease_expires_at INTEGER,
+            last_error TEXT,
+            session_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            delivered_at INTEGER,
+            UNIQUE(run_id, message_id, actor_id),
+            FOREIGN KEY(run_id) REFERENCES team_runs(id),
+            FOREIGN KEY(message_id) REFERENCES team_actor_messages(id) ON DELETE CASCADE
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS team_actor_thread_claims (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
@@ -1287,6 +1313,20 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     {
         tracing::warn!(
             "db init: failed to create idx_team_actor_messages_remote_pending: {}",
+            err
+        );
+    }
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_runtime_delivery_receipts_due
+        ON team_runtime_delivery_receipts(state, next_retry_at, lease_expires_at, created_at);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_runtime_delivery_receipts_due: {}",
             err
         );
     }
@@ -3129,6 +3169,7 @@ mod tests {
                 'team_conversations',
                 'team_conversation_messages',
                 'team_actor_messages',
+                'team_runtime_delivery_receipts',
                 'team_goal_leases',
                 'team_goal_forks',
                 'team_member_continuity_state',
@@ -3145,13 +3186,27 @@ mod tests {
         .fetch_one(&pool)
         .await
         .expect("count tables");
-        assert_eq!(table_count, 18);
+        assert_eq!(table_count, 19);
 
         let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&pool)
             .await
             .expect("read pragma foreign_keys");
         assert_eq!(fk_enabled, 1);
+
+        let receipt_message_cascade: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM pragma_foreign_key_list('team_runtime_delivery_receipts')
+            WHERE "table" = 'team_actor_messages'
+              AND "from" = 'message_id'
+              AND on_delete = 'CASCADE'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read runtime delivery receipt foreign key");
+        assert_eq!(receipt_message_cascade, 1);
 
         let fk_err = sqlx::query(
             r#"

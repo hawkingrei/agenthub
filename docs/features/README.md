@@ -83,6 +83,7 @@ when adding or compacting specs so this directory stays navigable.
 - `docs/features/teams-collaboration-playbook.md`
 - `docs/features/actor-foundation.md`
 - `docs/features/team-mailbox-intake-and-ownership.md`
+- `docs/features/team-runtime-delivery-receipts.md`
 - `docs/features/team-conversation-event-bus.md`
 - `docs/features/backend-runtime-logic.md`
 - `docs/features/runtime-diagnostics.md`
