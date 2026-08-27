@@ -97,6 +97,26 @@ fn log_config_details(
         "config codex_acp_multi_agent_enabled: {}",
         config.codex_acp_multi_agent_enabled()
     );
+    tracing::info!(
+        "config agent_runtime.start_max_concurrent: {}",
+        config.agent_start_max_concurrent()
+    );
+    tracing::info!(
+        "config agent_runtime.start_queue_timeout_seconds: {}",
+        config.agent_start_queue_timeout().as_secs()
+    );
+    tracing::info!(
+        "config agent_runtime.start_timeout_seconds: {}",
+        config.agent_start_timeout().as_secs()
+    );
+    tracing::info!(
+        "config agent_runtime.spawn_backoff_initial_millis: {}",
+        config.agent_spawn_backoff_initial().as_millis()
+    );
+    tracing::info!(
+        "config agent_runtime.spawn_backoff_max_millis: {}",
+        config.agent_spawn_backoff_max().as_millis()
+    );
     if config.server_role() == ServerRole::Node {
         tracing::info!("config push settings: disabled in node mode");
     } else {

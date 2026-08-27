@@ -13,7 +13,12 @@ pub(super) struct GitWorktreeEntry {
 
 pub(super) fn git_command_without_fsmonitor() -> Command {
     let mut command = Command::new("git");
-    command.arg("-c").arg("core.fsmonitor=false");
+    command
+        .arg("-c")
+        .arg("core.fsmonitor=false")
+        // Start deadlines cancel preparation futures; their Git subprocesses
+        // must not outlive the canceled start attempt.
+        .kill_on_drop(true);
     command
 }
 

@@ -95,8 +95,6 @@ Stable contracts:
 - [ ] `P0` Add an exclusive daemon instance lock scoped by canonical database path plus node ID, and
   persist a daemon generation so stale owners cannot publish runtime state after replacement. Stable
   process ownership contract: [features/daemon-process-supervision.md](features/daemon-process-supervision.md).
-- [ ] `P1` Add globally bounded local-start admission with queue timeout, spawn timeout, and
-  failure-class backoff. Preserve the supervisor lifecycle gate and per-agent duplicate-start guard.
 - [ ] `P1` Add durable Team mailbox delivery receipts for runtime-bound messages, including stable
   delivery IDs, idempotent acknowledgement, retry state, and restart recovery.
 - [ ] `P2` Move daemon background workers and runtime watchers into one cancellation-aware task group
