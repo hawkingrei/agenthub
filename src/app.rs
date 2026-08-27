@@ -279,7 +279,9 @@ fn pyroscope_bootstrap_options(
 
 pub async fn run() -> anyhow::Result<()> {
     match crate::cli::parse_root_cli_from_env() {
-        Ok(crate::cli::RootCliCommand::Serve) => {}
+        Ok(crate::cli::RootCliCommand::Serve) => {
+            return crate::daemon_binary::launch_daemon().await;
+        }
         Ok(crate::cli::RootCliCommand::Init { args }) => {
             return crate::init_cli::run_from_args(&args).await;
         }
@@ -305,7 +307,9 @@ pub async fn run() -> anyhow::Result<()> {
             return Err(err.into());
         }
     }
+}
 
+pub async fn run_daemon() -> anyhow::Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let (config, info) = agenthub_config::AppConfig::load_with_info()?;
     let log_path = config.log_path();

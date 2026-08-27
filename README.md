@@ -58,12 +58,11 @@ Recommended installation paths:
 
 - Ubuntu/Debian: install the matching `.deb` from the
   [latest release](https://github.com/hawkingrei/agenthub/releases/latest). It
-  includes `agenthub`, `agenthub-acp`, and a systemd service.
-- macOS or portable Linux: install the matching `agenthub` and `agenthub-acp`
+  includes `agenthub`, `agenthubd`, and a systemd service.
+- macOS or portable Linux: install the matching `agenthub` and `agenthubd`
   archives from the same release and verify them with `SHA256SUMS.txt`.
-- npm: `npm install -g @linkerdog/agenthub` installs only the `agenthub`
-  control-plane binary; install the matching `agenthub-acp` release archive
-  separately before running the default Codex or Claude adapters.
+- npm: `npm install -g @linkerdog/agenthub` installs both native files through
+  the matching platform package.
 
 The Homebrew tap currently trails the primary release channel and installs a
 legacy ACP helper. Use release archives for a new complete installation until
@@ -73,9 +72,9 @@ After installing both binaries:
 
 ```bash
 agenthub --version
-agenthub-acp --version
+agenthubd --version
 agenthub init
-agenthub
+agenthubd
 ```
 
 Then open `http://localhost:8080`. For package-specific commands, checksum

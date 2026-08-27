@@ -16,12 +16,11 @@ Windows and macOS Intel binaries are not currently published.
 
 For a complete agent runtime, install both executables from the same release:
 
-- `agenthub`: the control plane and embedded web UI
-- `agenthub-acp`: the provider adapter used by the default Codex and Claude
-  runtime commands
+- `agenthub`: the administration and actor CLI
+- `agenthubd`: the control plane, embedded web UI, and built-in provider workers
 
 The Debian package contains both executables. GitHub publishes them as separate
-archives. The npm wrapper currently contains only `agenthub`.
+archives. npm platform packages contain both files.
 
 :::caution Linux runtime baseline
 
@@ -35,12 +34,12 @@ release notes for release-specific compatibility evidence.
 
 ## Choose an Installation Method
 
-| Method | Best for | Includes `agenthub-acp` | Service integration |
+| Method | Best for | Includes `agenthubd` | Service integration |
 | --- | --- | --- | --- |
 | Debian package | Ubuntu/Debian servers | Yes | systemd unit included |
 | GitHub archives | macOS and portable Linux installs | Install the matching archive | Manual |
-| npm | Existing Node.js environments | No | Manual |
-| Homebrew tap | Legacy installations only | Legacy helper only | Homebrew service |
+| npm | Existing Node.js environments | Yes | Manual |
+| Homebrew tap | Legacy installations only | No current two-binary guarantee | Homebrew service |
 
 ## Debian Package
 
@@ -66,7 +65,7 @@ package name.
 The package installs:
 
 - `/usr/bin/agenthub`
-- `/usr/bin/agenthub-acp`
+- `/usr/bin/agenthubd`
 - `agenthub.service`
 
 It also creates an `agenthub` system user, enables the service, and attempts to
@@ -81,7 +80,7 @@ Check the installation:
 
 ```bash
 agenthub --version
-agenthub-acp --version
+agenthubd --version
 sudo systemctl status agenthub.service --no-pager
 sudo journalctl -u agenthub.service -n 100 --no-pager
 ```
@@ -107,7 +106,7 @@ sudo systemctl restart agenthub.service
 ## GitHub Release Archives
 
 Use release archives for macOS or a user-managed Linux installation. This
-example downloads the latest matching `agenthub` and `agenthub-acp` archives.
+example downloads the latest matching `agenthub` and `agenthubd` archives.
 
 Set `TARGET` to one of:
 
@@ -121,7 +120,7 @@ mkdir -p agenthub-install
 cd agenthub-install
 gh release download --repo hawkingrei/agenthub \
   --pattern "agenthub-[0-9]*-${TARGET}.tar.gz" \
-  --pattern "agenthub-acp-*-${TARGET}.tar.gz" \
+  --pattern "agenthubd-*-${TARGET}.tar.gz" \
   --pattern SHA256SUMS.txt
 ```
 
@@ -141,10 +140,10 @@ Extract and install both binaries into a user-owned directory:
 
 ```bash
 tar -xzf agenthub-[0-9]*-${TARGET}.tar.gz
-tar -xzf agenthub-acp-*-${TARGET}.tar.gz
+tar -xzf agenthubd-*-${TARGET}.tar.gz
 mkdir -p "$HOME/.local/bin"
 install -m 0755 agenthub-[0-9]*-${TARGET}/agenthub "$HOME/.local/bin/agenthub"
-install -m 0755 agenthub-acp-*-${TARGET}/agenthub-acp "$HOME/.local/bin/agenthub-acp"
+install -m 0755 agenthubd-*-${TARGET}/agenthubd "$HOME/.local/bin/agenthubd"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -152,11 +151,11 @@ Persist the `PATH` update in your shell profile, then verify both commands:
 
 ```bash
 agenthub --version
-agenthub-acp --version
+agenthubd --version
 ```
 
-Keep the two archives on the same release tag. Mixing the control plane with a
-different ACP adapter generation can cause provider startup or protocol errors.
+Keep the two archives on the same release tag. Mixing the CLI with a different
+daemon generation can cause command, provider, or protocol errors.
 
 ## npm
 
@@ -168,10 +167,8 @@ npm install -g @linkerdog/agenthub
 agenthub --version
 ```
 
-The npm wrapper installs only the native `agenthub` control-plane binary. To
-run the default Codex or Claude agent commands, also install the matching
-`agenthub-acp` archive from the same GitHub release by following the archive
-instructions above.
+The selected npm platform package installs both native files. The wrapper invokes
+`agenthub`; the CLI locates the sibling `agenthubd` when starting the service.
 
 If npm reports that the platform package is missing, confirm that optional
 dependencies are enabled and reinstall:
@@ -186,9 +183,9 @@ npm install -g @linkerdog/agenthub@latest --include=optional
 :::warning
 
 The `linkerdog/homebrew-tap` formula currently trails the primary GitHub and npm
-release channels and installs the legacy `agenthub-codex-acp` helper instead of
-the current `agenthub-acp` adapter. Do not use it for a new installation that
-needs the current complete runtime. Use the GitHub archives instead.
+release channels and does not provide the current two-binary layout. Do not use
+it for a new installation that needs the complete runtime. Use the GitHub
+archives instead.
 
 :::
 
@@ -199,8 +196,7 @@ before deciding whether to migrate:
 brew update
 brew info linkerdog/homebrew-tap/agenthub
 agenthub --version
-command -v agenthub-acp
-command -v agenthub-codex-acp
+command -v agenthubd
 ```
 
 ## First Startup
@@ -228,10 +224,10 @@ default_root = "/home/you/.agenthub/worktrees"
 
 On macOS, replace the Linux paths with paths under your home directory.
 
-Start AgentHub in the foreground:
+Start the daemon in the foreground:
 
 ```bash
-agenthub
+agenthubd
 ```
 
 Then open [http://localhost:8080](http://localhost:8080), create the first
@@ -267,8 +263,7 @@ npm install -g @linkerdog/agenthub@latest --include=optional
 agenthub --version
 ```
 
-Upgrade the separately installed `agenthub-acp` archive to the matching release
-at the same time.
+The npm platform package upgrades the sibling daemon at the same time.
 
 ## Uninstall
 
@@ -293,7 +288,7 @@ Remove the installed binaries from `$HOME/.local/bin`. Runtime state under
 npm uninstall -g @linkerdog/agenthub
 ```
 
-This does not remove `~/.agenthub` or a separately installed `agenthub-acp`.
+This does not remove `~/.agenthub`.
 
 ## Install the Web App Shell
 

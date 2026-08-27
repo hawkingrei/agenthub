@@ -97,6 +97,9 @@ function parseAgentCommand(agent: AgentRecord): {
 
 function isClaudeAcpRuntime(agent: AgentRecord): boolean {
   const { commandName, args } = parseAgentCommand(agent);
+  if (commandName === "agenthubd") {
+    return args[0] === "acp" && args[1] === "claude";
+  }
   if (commandName === "agenthub-acp") {
     return args[0] === "claude";
   }
@@ -108,6 +111,9 @@ function isClaudeAcpRuntime(agent: AgentRecord): boolean {
 
 function isCodexAcpRuntime(agent: AgentRecord): boolean {
   const { commandName, args } = parseAgentCommand(agent);
+  if (commandName === "agenthubd") {
+    return args[0] === "acp" && args[1] === "codex";
+  }
   if (commandName === "agenthub-acp") {
     return args[0] === "codex";
   }

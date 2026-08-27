@@ -10,6 +10,9 @@ pub(super) const ACP_PROVIDER_KIMI: &str = "kimi";
 pub(super) const ACP_PROVIDER_CLAUDE: &str = "claude";
 pub(super) const AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV: &str =
     "AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED";
+const DAEMON_BINARY: &str = "agenthubd";
+const LEGACY_ACP_ADAPTER_BINARY: &str = "agenthub-acp";
+const LEGACY_CODEX_ACP_BINARY: &str = "agenthub-codex-acp";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum AcpDefaultModeBehavior {
@@ -111,6 +114,47 @@ impl AgentManager {
         }
         command.to_string()
     }
+
+    pub(super) fn resolve_launch_command(
+        &self,
+        command: &str,
+        args: &[String],
+        provider: Option<AcpProviderSpec>,
+    ) -> (String, Vec<String>) {
+        let resolved_command = self.resolve_command_path(command, provider);
+        if resolved_command != command {
+            return (resolved_command, args.to_vec());
+        }
+        let daemon_command = if provider.map(|spec| spec.id) == Some(ACP_PROVIDER_CODEX)
+            && command_executable_name(&self.codex_acp_binary) == Some(DAEMON_BINARY)
+        {
+            self.codex_acp_binary.as_str()
+        } else {
+            DAEMON_BINARY
+        };
+        if let Some(command) = rewrite_legacy_builtin_command(command, args, daemon_command) {
+            return command;
+        }
+        (resolved_command, args.to_vec())
+    }
+}
+
+fn rewrite_legacy_builtin_command(
+    command: &str,
+    args: &[String],
+    daemon_command: &str,
+) -> Option<(String, Vec<String>)> {
+    let provider = match command {
+        LEGACY_ACP_ADAPTER_BINARY => None,
+        LEGACY_CODEX_ACP_BINARY | "codex-acp" => Some("codex"),
+        _ => return None,
+    };
+    let mut daemon_args = vec!["acp".to_string()];
+    if let Some(provider) = provider {
+        daemon_args.push(provider.to_string());
+    }
+    daemon_args.extend_from_slice(args);
+    Some((daemon_command.to_string(), daemon_args))
 }
 
 #[cfg(test)]
@@ -128,8 +172,11 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
     args: &[String],
 ) -> Option<AcpProviderSpec> {
     let command_name = command_executable_name(command);
-    if command_name == Some("agenthub-acp") {
+    if command_name == Some(LEGACY_ACP_ADAPTER_BINARY) {
         return agenthub_acp_provider_spec_for_args(args);
+    }
+    if command_name == Some(DAEMON_BINARY) {
+        return daemon_acp_provider_spec_for_args(args);
     }
 
     let provider = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
@@ -170,12 +217,25 @@ fn agenthub_acp_provider_spec_for_args(args: &[String]) -> Option<AcpProviderSpe
     }
 }
 
+fn daemon_acp_provider_spec_for_args(args: &[String]) -> Option<AcpProviderSpec> {
+    if args.first().map(String::as_str) != Some("acp") {
+        return None;
+    }
+    agenthub_acp_provider_spec_for_args(&args[1..])
+}
+
 fn should_use_configured_codex_binary(codex_acp_binary: &str, command: &str) -> bool {
     if command == codex_acp_binary {
         return false;
     }
     let command_name = command_executable_name(command);
-    command_name != Some("agenthub-acp")
+    if command_executable_name(codex_acp_binary) == Some(DAEMON_BINARY) {
+        return false;
+    }
+    !matches!(
+        command_name,
+        Some(LEGACY_ACP_ADAPTER_BINARY | DAEMON_BINARY)
+    )
 }
 
 pub(super) fn default_env_for_acp_provider(
@@ -256,7 +316,7 @@ fn acp_provider_for_command_with_binary(
         "gemini" => Some(AcpProviderSpec::GEMINI),
         "kimi" => Some(AcpProviderSpec::KIMI),
         "claude-agent-acp" | "claude-code-acp-rs" => Some(AcpProviderSpec::CLAUDE),
-        "agenthub-codex-acp" | "codex-acp" => Some(AcpProviderSpec::CODEX),
+        LEGACY_CODEX_ACP_BINARY | "codex-acp" => Some(AcpProviderSpec::CODEX),
         name => {
             let target_name = command_executable_name(codex_acp_binary);
             if target_name == Some(name) {
@@ -281,10 +341,11 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
 
     use super::{
-        ACP_PROVIDER_CODEX, AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, AcpProviderSpec,
+        ACP_PROVIDER_CLAUDE, ACP_PROVIDER_CODEX, AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV,
+        AcpProviderSpec, acp_provider_for_agent_with_binary,
         acp_provider_spec_for_agent_with_binary, claude_max_thinking_tokens_for_thinking_level,
         codex_reasoning_effort_for_thinking_level, default_env_for_acp_provider,
-        should_use_configured_codex_binary,
+        rewrite_legacy_builtin_command, should_use_configured_codex_binary,
     };
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -393,6 +454,77 @@ mod tests {
             "/opt/agenthub/bin/agenthub-codex-acp",
             "codex-acp"
         ));
+        assert!(!should_use_configured_codex_binary(
+            "agenthubd",
+            "agenthub-codex-acp"
+        ));
+    }
+
+    #[test]
+    fn recognizes_daemon_provider_workers() {
+        assert_eq!(
+            acp_provider_for_agent_with_binary(
+                "agenthubd",
+                "agenthubd",
+                &["acp".to_string(), "codex".to_string()],
+            ),
+            Some(ACP_PROVIDER_CODEX)
+        );
+        assert_eq!(
+            acp_provider_for_agent_with_binary(
+                "agenthubd",
+                "/opt/bin/agenthubd",
+                &["acp".to_string(), "claude".to_string()],
+            ),
+            Some(ACP_PROVIDER_CLAUDE)
+        );
+        assert_eq!(
+            acp_provider_for_agent_with_binary("agenthubd", "agenthubd", &[]),
+            None
+        );
+    }
+
+    #[test]
+    fn rewrites_only_bare_legacy_builtin_commands() {
+        assert_eq!(
+            rewrite_legacy_builtin_command(
+                "agenthub-acp",
+                &["claude".to_string(), "--quiet".to_string()],
+                "agenthubd",
+            ),
+            Some((
+                "agenthubd".to_string(),
+                vec![
+                    "acp".to_string(),
+                    "claude".to_string(),
+                    "--quiet".to_string()
+                ]
+            ))
+        );
+        assert_eq!(
+            rewrite_legacy_builtin_command(
+                "agenthub-codex-acp",
+                &["-c".to_string(), "model=gpt-5".to_string()],
+                "/opt/agenthub/bin/agenthubd",
+            ),
+            Some((
+                "/opt/agenthub/bin/agenthubd".to_string(),
+                vec![
+                    "acp".to_string(),
+                    "codex".to_string(),
+                    "-c".to_string(),
+                    "model=gpt-5".to_string()
+                ]
+            ))
+        );
+        assert_eq!(
+            rewrite_legacy_builtin_command(
+                "/opt/bin/agenthub-acp",
+                &["codex".to_string()],
+                "agenthubd",
+            ),
+            None
+        );
     }
 
     #[test]

@@ -10,7 +10,7 @@ User=agenthub
 Group=agenthub
 Environment=HOME=/var/lib/agenthub
 WorkingDirectory=/var/lib/agenthub
-ExecStart=/usr/bin/agenthub
+ExecStart=/usr/bin/agenthubd
 Restart=on-failure
 RestartSec=5s
 NoNewPrivileges=true

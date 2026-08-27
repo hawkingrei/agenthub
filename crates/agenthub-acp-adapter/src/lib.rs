@@ -92,8 +92,18 @@ impl From<ClaudeCli> for UpstreamCli {
 }
 
 pub async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
+    run_with_runtime_paths(cli, None, None).await
+}
+
+pub async fn run_with_runtime_paths(
+    cli: Cli,
+    codex_linux_sandbox_exe: Option<PathBuf>,
+    actor_cli_path: Option<PathBuf>,
+) -> anyhow::Result<()> {
     match cli.provider {
-        ProviderCommand::Codex(codex) => run_codex_runtime(codex).await,
+        ProviderCommand::Codex(codex) => {
+            run_codex_runtime(codex, codex_linux_sandbox_exe, actor_cli_path).await
+        }
         ProviderCommand::Claude(claude) => {
             let upstream_cli = UpstreamCli::from(claude);
             claude_code_acp::run_acp_with_cli(&upstream_cli).await
@@ -101,14 +111,61 @@ pub async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
     }
 }
 
+pub async fn run_with_shutdown(
+    cli: Cli,
+    codex_linux_sandbox_exe: Option<PathBuf>,
+    actor_cli_path: Option<PathBuf>,
+) -> anyhow::Result<()> {
+    let result = tokio::select! {
+        result = run_with_runtime_paths(cli, codex_linux_sandbox_exe, actor_cli_path) => result,
+        result = wait_for_shutdown_signal() => result,
+    };
+    shutdown();
+    result
+}
+
+async fn wait_for_shutdown_signal() -> anyhow::Result<()> {
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => result?,
+        _ = async {
+            #[cfg(unix)]
+            {
+                let mut sigterm = tokio::signal::unix::signal(
+                    tokio::signal::unix::SignalKind::terminate(),
+                )?;
+                sigterm.recv().await;
+                Ok::<(), std::io::Error>(())
+            }
+            #[cfg(not(unix))]
+            {
+                std::future::pending::<std::io::Result<()>>().await
+            }
+        } => {},
+    }
+    Ok(())
+}
+
 #[cfg(not(test))]
-async fn run_codex_runtime(codex: CodexCli) -> anyhow::Result<()> {
-    agenthub_codex_acp_runtime::run_main(None, CliConfigOverrides::from(codex)).await?;
+async fn run_codex_runtime(
+    codex: CodexCli,
+    codex_linux_sandbox_exe: Option<PathBuf>,
+    actor_cli_path: Option<PathBuf>,
+) -> anyhow::Result<()> {
+    agenthub_codex_acp_runtime::run_main(
+        codex_linux_sandbox_exe,
+        actor_cli_path,
+        CliConfigOverrides::from(codex),
+    )
+    .await?;
     Ok(())
 }
 
 #[cfg(test)]
-async fn run_codex_runtime(codex: CodexCli) -> anyhow::Result<()> {
+async fn run_codex_runtime(
+    codex: CodexCli,
+    _codex_linux_sandbox_exe: Option<PathBuf>,
+    _actor_cli_path: Option<PathBuf>,
+) -> anyhow::Result<()> {
     let overrides = CliConfigOverrides::from(codex);
     if overrides
         .raw_overrides

@@ -601,6 +601,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "agenthub-daemon"
+version = "0.0.10"
+dependencies = [
+ "agenthub",
+ "agenthub-acp-adapter",
+ "anyhow",
+ "clap",
+ "codex-arg0",
+ "tokio",
+]
+
+[[package]]
 name = "agenthub-db"
 version = "0.0.10"
 dependencies = [

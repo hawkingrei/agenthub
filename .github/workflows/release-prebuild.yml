@@ -77,15 +77,15 @@ jobs:
         run: |
           cross build --locked --release --target ${{ matrix.target }} --bin agenthub --features ${{ matrix.agenthub_features }}
 
-      - name: Build agenthub-acp (native)
+      - name: Build agenthubd (native)
         if: '!matrix.cross'
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-acp-adapter
+          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-daemon --bin agenthubd ${{ matrix.agenthub_features && format('--features {0}', matrix.agenthub_features) || '' }}
 
-      - name: Build agenthub-acp (cross)
+      - name: Build agenthubd (cross)
         if: matrix.cross
         run: |
-          cross build --locked --release --target ${{ matrix.target }} -p agenthub-acp-adapter --features release-vendored-openssl
+          cross build --locked --release --target ${{ matrix.target }} -p agenthub-daemon --bin agenthubd --features ${{ matrix.agenthub_features }}
 
       - name: Package
         shell: bash
@@ -120,7 +120,7 @@ jobs:
           }
 
           package_binary "agenthub"
-          package_binary "agenthub-acp"
+          package_binary "agenthubd"
 
           if [[ "${OS_NAME}" == "linux" ]]; then
             build/deb/package.sh \

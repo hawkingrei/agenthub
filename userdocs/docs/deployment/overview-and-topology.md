@@ -23,8 +23,8 @@ mailbox delivery while keeping AgentHub as the main control plane.
 
 Prepare these components before rollout:
 
-1. Matching `agenthub` and `agenthub-acp` release binaries when using the
-   bundled ACP presets (or a source build for development)
+1. Matching `agenthub` and `agenthubd` release binaries (or a source build for
+   development)
 2. A valid `config.toml`
 3. Writable runtime home (default under `~/.agenthub/`)
 
@@ -36,7 +36,7 @@ Use this for personal or small internal deployments. Install the release pair,
 write `~/.agenthub/config.toml`, and start the server:
 
 ```bash
-agenthub
+agenthubd
 ```
 
 Release builds embed the web UI. Source builds and frontend development belong
@@ -64,7 +64,7 @@ Use this when execution must span multiple machines:
 
 #### Distributed node prerequisites
 
-Every participating node still runs the same `agenthub` binary. The difference
+Every participating node runs the same `agenthubd` binary. The difference
 is which node acts as the main control plane and which nodes are registered as
 remote execution targets.
 

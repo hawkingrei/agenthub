@@ -225,8 +225,8 @@ describe("useAppAgents", () => {
       "token-1",
       expect.objectContaining({
         name: "codex-agent",
-        command: "agenthub-acp",
-        args: ["codex"],
+        command: "agenthubd",
+        args: ["acp", "codex"],
         codex_acp_default_mode: "full-access",
       })
     );

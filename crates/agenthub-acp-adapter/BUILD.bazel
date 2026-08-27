@@ -1,5 +1,5 @@
 load("@crate_index//:defs.bzl", "aliases", "all_crate_deps")
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -14,18 +14,6 @@ rust_library(
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [
         "//agenthub-codex-acp:agenthub_codex_acp_runtime",
-    ],
-    proc_macro_deps = all_crate_deps(proc_macro = True),
-)
-
-rust_binary(
-    name = "agenthub_acp_adapter_bin",
-    srcs = glob(["src/**/*.rs"]),
-    crate_root = "src/main.rs",
-    edition = "2024",
-    aliases = aliases(),
-    deps = all_crate_deps(normal = True) + [
-        ":agenthub_acp_adapter",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )

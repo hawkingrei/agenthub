@@ -21,8 +21,9 @@ agenthub/
   tests/                  # Integration and blackbox tests
   docs/                   # Internal engineering docs and journals
   skills/                 # Team/agent runtime skill definitions
-  agenthub-codex-acp/     # Codex ACP runtime workspace member; compatibility binary lives here
-  crates/agenthub-acp-adapter/ # Generic ACP provider adapter workspace member
+  agenthub-codex-acp/     # Codex ACP runtime library embedded in the daemon
+  crates/agenthub-acp-adapter/ # Generic ACP provider adapter library
+  crates/agenthub-daemon/ # Long-running server and built-in provider worker binary
 ```
 
 ## Local Startup
@@ -57,12 +58,12 @@ Runtime state defaults to `~/.agenthub/`.
 make run
 ```
 
-`make run` builds the embedded web UI as part of the normal local startup path.
+`make run` builds the embedded web UI and both native executables, then starts `agenthubd`.
 
 Open `http://localhost:8080`.
 
-AgentHub stays single-binary. Runtime helpers such as the actor CLI are
-subcommands of the same binary:
+AgentHub ships two native executables. Runtime helpers and built-in provider workers are
+subcommands or multicall modes of `agenthub` and `agenthubd`; they are not separate release files:
 
 ```bash
 cargo run -- actor --help

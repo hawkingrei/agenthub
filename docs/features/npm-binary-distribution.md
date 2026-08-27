@@ -13,7 +13,7 @@ That blocks the common operator flow of:
 
 ## Scope
 
-- npm distribution for the `agenthub` CLI binary
+- npm distribution for the `agenthub` CLI and its sibling `agenthubd`
 - package naming under the `@linkerdog` scope
 - release-time publish automation
 - supported platform contract for npm-distributed binaries
@@ -40,11 +40,12 @@ Repository package skeletons live under `build/npm/` because they are release/di
 not runtime app packages.
 
 The main package exposes the `agenthub` executable through a small Node launcher that resolves the
-correct optional dependency for the current platform.
+correct optional dependency for the current platform. Each platform package places `agenthubd` next
+to the CLI so the launcher can start the service through the normal sibling lookup contract.
 
 ### Binary Packaging Contract
 
-- platform packages contain the native `agenthub` binary only
+- platform packages contain the native `agenthub` and `agenthubd` files from one release build
 - the wrapper package contains the executable shim and declares platform packages as
   `optionalDependencies`
 - release-time publish reuses the same Rust build artifacts already produced for GitHub releases
@@ -81,6 +82,7 @@ Unsupported targets must fail with a clear runtime message from the wrapper pack
 
 - Node unit coverage for platform package resolution in the wrapper launcher
 - workflow dry validation by checking staged package version rewriting and artifact extraction logic
+- staged platform-package inspection for both native executable files
 - manual release verification:
   - semver tag publishes wrapper + platform packages
   - preview tag skips npm publish without failing the overall release flow
@@ -90,3 +92,12 @@ Unsupported targets must fail with a clear runtime message from the wrapper pack
 - repository maintainers must provide `NPM_TOKEN` with publish access to the `@linkerdog` scope
 - package versions are derived from the release tag without the leading `v`
 - GitHub release archives remain available for direct binary download even when npm publish is used
+
+## Open Risks
+
+- Published package inspection is still required for the first release that adopts the two-file
+  platform package.
+
+## Source Journals
+
+- [Two-binary runtime consolidation](../journal/2026-08-27-two-binary-runtime-consolidation.md)

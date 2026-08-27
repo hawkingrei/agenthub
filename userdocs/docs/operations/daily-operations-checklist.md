@@ -7,7 +7,7 @@ sidebar_position: 1
 ## Before Admitting Work
 
 - `curl --fail http://127.0.0.1:8080/health` returns `ok`.
-- The deployed `agenthub` and `agenthub-acp` versions match.
+- The deployed `agenthub` and `agenthubd` versions match.
 - Disk space is healthy for the data directory, worktrees, and local objects.
 - Required remote nodes show a recent last-seen signal.
 - No unresolved backup, migration, or provider incident is in progress.

@@ -12,7 +12,7 @@ known.
 
 ```bash
 agenthub --version
-agenthub-acp --version
+agenthubd --version
 curl --fail http://127.0.0.1:8080/health
 df -h
 ```
@@ -63,10 +63,10 @@ state.
 2. Run the configured command as that same OS user:
 
    ```bash
-   agenthub-acp --version
+   agenthubd --version
    ```
 
-3. Confirm `agenthub` and `agenthub-acp` come from the same release.
+3. Confirm `agenthub` and `agenthubd` come from the same release.
 4. Verify provider credentials in the service environment, not only your
    interactive shell.
 5. For `create_worktree`, inspect repository/ref validity and the selected
@@ -162,7 +162,7 @@ routing error.
 
 Include:
 
-- exact `agenthub` and `agenthub-acp` versions and install channel;
+- exact `agenthub` and `agenthubd` versions and install channel;
 - OS/architecture and, for Linux, `ldd --version`;
 - deployment mode, browser, and reverse proxy;
 - sanitized config sections relevant to the failure;

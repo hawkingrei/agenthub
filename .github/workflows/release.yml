@@ -93,15 +93,15 @@ jobs:
         run: |
           cross build --locked --release --target ${{ matrix.target }} --bin agenthub --features ${{ matrix.agenthub_features }}
 
-      - name: Build agenthub-acp (native)
+      - name: Build agenthubd (native)
         if: '!matrix.cross'
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-acp-adapter
+          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-daemon --bin agenthubd ${{ matrix.agenthub_features && format('--features {0}', matrix.agenthub_features) || '' }}
 
-      - name: Build agenthub-acp (cross)
+      - name: Build agenthubd (cross)
         if: matrix.cross
         run: |
-          cross build --locked --release --target ${{ matrix.target }} -p agenthub-acp-adapter --features release-vendored-openssl
+          cross build --locked --release --target ${{ matrix.target }} -p agenthub-daemon --bin agenthubd --features ${{ matrix.agenthub_features }}
 
       - name: Package
         shell: bash
@@ -136,7 +136,7 @@ jobs:
           }
 
           package_binary "agenthub"
-          package_binary "agenthub-acp"
+          package_binary "agenthubd"
 
           if [[ "${OS_NAME}" == "linux" ]]; then
             build/deb/package.sh \
@@ -224,7 +224,8 @@ jobs:
           stage_platform_package() {
             local source_dir="$1"
             local stage_dir="$2"
-            local archive_name="$3"
+            local cli_archive_name="$3"
+            local daemon_archive_name="$4"
 
             rm -rf "${stage_dir}"
             mkdir -p "${stage_dir}"
@@ -233,33 +234,43 @@ jobs:
 
             local unpack_dir="${stage_dir}/.unpack"
             mkdir -p "${unpack_dir}"
-            tar -xzf "${ROOT_DIR}/dist/${archive_name}" -C "${unpack_dir}"
-            local binary_path
-            binary_path="$(find "${unpack_dir}" -type f -name agenthub | head -n 1)"
-            if [[ -z "${binary_path}" ]]; then
-              echo "::error::Unable to locate agenthub binary in ${archive_name}"
-              exit 1
-            fi
             mkdir -p "${stage_dir}/bin"
-            cp "${binary_path}" "${stage_dir}/bin/agenthub"
-            chmod +x "${stage_dir}/bin/agenthub"
+            local archive_name
+            local binary_name
+            for entry in "${cli_archive_name}:agenthub" "${daemon_archive_name}:agenthubd"; do
+              archive_name="${entry%%:*}"
+              binary_name="${entry##*:}"
+              rm -rf "${unpack_dir:?}/"*
+              tar -xzf "${ROOT_DIR}/dist/${archive_name}" -C "${unpack_dir}"
+              local binary_path
+              binary_path="$(find "${unpack_dir}" -type f -name "${binary_name}" | head -n 1)"
+              if [[ -z "${binary_path}" ]]; then
+                echo "::error::Unable to locate ${binary_name} binary in ${archive_name}"
+                exit 1
+              fi
+              cp "${binary_path}" "${stage_dir}/bin/${binary_name}"
+              chmod +x "${stage_dir}/bin/${binary_name}"
+            done
             rm -rf "${unpack_dir}"
           }
 
           stage_platform_package \
             "${ROOT_DIR}/build/npm/agenthub-darwin-arm64" \
             "${STAGE_ROOT}/agenthub-darwin-arm64" \
-            "agenthub-${PACKAGE_VERSION}-darwin-arm64.tar.gz"
+            "agenthub-${PACKAGE_VERSION}-darwin-arm64.tar.gz" \
+            "agenthubd-${PACKAGE_VERSION}-darwin-arm64.tar.gz"
 
           stage_platform_package \
             "${ROOT_DIR}/build/npm/agenthub-linux-arm64" \
             "${STAGE_ROOT}/agenthub-linux-arm64" \
-            "agenthub-${PACKAGE_VERSION}-linux-arm64.tar.gz"
+            "agenthub-${PACKAGE_VERSION}-linux-arm64.tar.gz" \
+            "agenthubd-${PACKAGE_VERSION}-linux-arm64.tar.gz"
 
           stage_platform_package \
             "${ROOT_DIR}/build/npm/agenthub-linux-x64" \
             "${STAGE_ROOT}/agenthub-linux-x64" \
-            "agenthub-${PACKAGE_VERSION}-linux-amd64.tar.gz"
+            "agenthub-${PACKAGE_VERSION}-linux-amd64.tar.gz" \
+            "agenthubd-${PACKAGE_VERSION}-linux-amd64.tar.gz"
 
           rm -rf "${STAGE_ROOT}/agenthub"
           mkdir -p "${STAGE_ROOT}/agenthub"
@@ -407,7 +418,7 @@ jobs:
             echo
             echo "Each binary archive contains one release binary plus the bundled \`README.md\`"
             echo "and \`LICENSE\` file when present."
-            echo "Linux \`.deb\` packages install \`agenthub\`, \`agenthub-acp\`, and a default"
+            echo "Linux \`.deb\` packages install \`agenthub\`, \`agenthubd\`, and a default"
             echo "systemd service that runs as the \`agenthub\` user with data under"
             echo "\`/var/lib/agenthub\`."
             echo

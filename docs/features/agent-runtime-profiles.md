@@ -45,9 +45,9 @@ Provider adapters translate the neutral profile into their native startup
 configuration:
 
 - Codex maps `model` and `thinking_level` to the Codex ACP adapter startup
-  options supported by `agenthub-acp codex`.
+  options supported by `agenthubd acp codex`.
 - Claude Code maps `model` and `thinking_level` to the Claude ACP adapter
-  startup options supported by `agenthub-acp claude` / Claude Code settings.
+  startup options supported by `agenthubd acp claude` / Claude Code settings.
 
 The main AgentHub backend should validate and persist the neutral profile, but it
 should not encode provider-specific credential lookup or session internals.

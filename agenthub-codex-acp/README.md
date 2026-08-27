@@ -6,14 +6,14 @@ permissions, commands, plans, modes, and MCP servers.
 
 ## Usage
 
-For new AgentHub agents, prefer the generic adapter command:
+For new AgentHub agents, use the daemon's built-in provider worker:
 
 ```
-agenthub-acp codex
+agenthubd acp codex
 ```
 
-This compatibility binary remains supported for existing configurations and can
-still be run directly:
+Stored bare compatibility commands are rewritten to the daemon worker at spawn
+time:
 
 ```
 agenthub-codex-acp
@@ -21,7 +21,7 @@ agenthub-codex-acp
 
 ## Notes
 
-- No npm distribution; binary-only.
+- This package is library-only and is embedded in `agenthubd`.
 
 ## License
 

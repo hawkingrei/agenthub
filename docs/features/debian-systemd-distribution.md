@@ -9,7 +9,7 @@ creates a stable runtime identity, and starts AgentHub through systemd by defaul
 ## Scope
 
 - Debian package assets for Linux `amd64` and `arm64` release targets.
-- Installation of both `agenthub` and `agenthub-acp`.
+- Installation of both `agenthub` and `agenthubd`.
 - A default `agenthub.service` systemd unit.
 - Package maintainer scripts that create the service user, create the runtime layout, and enable/start
   the service on install.
@@ -31,7 +31,7 @@ The package script stages a Debian package root and invokes `dpkg-deb --build --
 The package installs:
 
 - `/usr/bin/agenthub`
-- `/usr/bin/agenthub-acp`
+- `/usr/bin/agenthubd`
 - `/usr/lib/systemd/system/agenthub.service`
 - `/usr/share/doc/agenthub/README.md`
 
@@ -39,7 +39,7 @@ The service runs as the `agenthub` system user with:
 
 - `HOME=/var/lib/agenthub`
 - `WorkingDirectory=/var/lib/agenthub`
-- `ExecStart=/usr/bin/agenthub`
+- `ExecStart=/usr/bin/agenthubd`
 
 The existing AgentHub config lookup therefore resolves to
 `/var/lib/agenthub/.agenthub/config.toml` without adding a new config-path CLI flag.
@@ -118,3 +118,4 @@ Operators can edit that file and restart `agenthub.service`.
 ## Source Journals
 
 - [2026-06-13 Debian systemd release package](../journal/2026-06-13-debian-systemd-release-package.md)
+- [Two-binary runtime consolidation](../journal/2026-08-27-two-binary-runtime-consolidation.md)

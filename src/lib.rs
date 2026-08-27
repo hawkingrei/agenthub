@@ -11,6 +11,7 @@ mod app;
 mod auth;
 mod cli;
 mod cli_error;
+mod daemon_binary;
 mod diagnostics;
 mod doctor_cli;
 mod init_cli;
@@ -28,7 +29,7 @@ mod state;
 mod team;
 mod web;
 
-pub use app::run;
+pub use app::{run, run_daemon};
 pub use cli_error::report_cli_error;
 
 #[cfg(test)]
@@ -39,9 +40,13 @@ mod release_feature_tests {
     const OBJECT_STORE_CARGO_TOML: &str =
         include_str!("../crates/agenthub-object-store/Cargo.toml");
     const ACP_ADAPTER_CARGO_TOML: &str = include_str!("../crates/agenthub-acp-adapter/Cargo.toml");
+    const DAEMON_CARGO_TOML: &str = include_str!("../crates/agenthub-daemon/Cargo.toml");
+    const CODEX_RUNTIME_CARGO_TOML: &str = include_str!("../agenthub-codex-acp/Cargo.toml");
     const RELEASE_WORKFLOW: &str = include_str!("../.github/workflows/release.yml");
     const RELEASE_PREBUILD_WORKFLOW: &str =
         include_str!("../.github/workflows/release-prebuild.yml");
+    const DEB_PACKAGE_SCRIPT: &str = include_str!("../build/deb/package.sh");
+    const SYSTEMD_UNIT: &str = include_str!("../build/deb/agenthub.service");
     const TODO_MD: &str = include_str!("../docs/todo.md");
     const S3_RELEASE_JOURNAL: &str =
         include_str!("../docs/journal/2026-08-08-object-store-s3-release-enablement.md");
@@ -175,9 +180,13 @@ mod release_feature_tests {
     }
 
     #[test]
-    fn release_prebuild_trims_legacy_package() {
+    fn release_builds_exactly_the_cli_and_daemon_entrypoints() {
         let adapter_manifest: Value =
             toml::from_str(ACP_ADAPTER_CARGO_TOML).expect("parse ACP adapter Cargo.toml");
+        let daemon_manifest: Value =
+            toml::from_str(DAEMON_CARGO_TOML).expect("parse daemon Cargo.toml");
+        let codex_runtime_manifest: Value =
+            toml::from_str(CODEX_RUNTIME_CARGO_TOML).expect("parse Codex runtime Cargo.toml");
         let adapter_dependencies = adapter_manifest["dependencies"]
             .as_table()
             .expect("ACP adapter dependencies");
@@ -191,6 +200,19 @@ mod release_feature_tests {
                 .is_some(),
             "agenthub-acp-adapter should depend on the non-legacy Codex ACP runtime package"
         );
+        assert!(
+            adapter_manifest.get("bin").is_none(),
+            "ACP adapter must remain a library inside agenthubd"
+        );
+        assert!(
+            codex_runtime_manifest.get("bin").is_none(),
+            "Codex ACP runtime must remain a library inside agenthubd"
+        );
+        assert_eq!(
+            daemon_manifest["bin"][0]["name"],
+            Value::String("agenthubd".to_string()),
+            "daemon package must expose the canonical agenthubd binary"
+        );
         for (name, workflow) in [
             ("release.yml", RELEASE_WORKFLOW),
             ("release-prebuild.yml", RELEASE_PREBUILD_WORKFLOW),
@@ -200,13 +222,28 @@ mod release_feature_tests {
                 "{name} must package the canonical agenthub binary"
             );
             assert!(
-                workflow.contains("package_binary \"agenthub-acp\""),
-                "{name} must package the canonical agenthub-acp binary"
+                workflow.contains("package_binary \"agenthubd\""),
+                "{name} must package the canonical agenthubd binary"
             );
             assert!(
-                !workflow.contains("package_binary \"agenthub-codex-acp\""),
-                "{name} must not package the legacy Codex ACP compatibility binary"
+                !workflow.contains("package_binary \"agenthub-acp\"")
+                    && !workflow.contains("package_binary \"agenthub-codex-acp\""),
+                "{name} must not package legacy ACP entrypoints"
             );
         }
+        assert!(
+            RELEASE_WORKFLOW.contains("daemon_archive_name")
+                && RELEASE_WORKFLOW.contains("${stage_dir}/bin/${binary_name}"),
+            "npm staging must install both release binaries into each platform package"
+        );
+        assert!(
+            DEB_PACKAGE_SCRIPT.contains("for binary in agenthub agenthubd")
+                && !DEB_PACKAGE_SCRIPT.contains("usr/bin/agenthub-acp"),
+            "Debian packages must install exactly the CLI and daemon"
+        );
+        assert!(
+            SYSTEMD_UNIT.contains("ExecStart=/usr/bin/agenthubd"),
+            "systemd must execute the daemon directly"
+        );
     }
 }

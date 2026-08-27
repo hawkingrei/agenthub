@@ -33,7 +33,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 | Workspace memory and continuity | `docs/features/team-workspace-memory-contract.md`, `docs/features/workspace-unified-ia.md` | `*-workspace-*.md`, `*-context-*.md`, `*-memory-*.md` |
 | Frontend, UI, and mobile surfaces | `docs/features/frontend-design.md`, `docs/features/workspace-unified-ia.md` | `*-web-*.md`, `*-frontend-*.md`, `*-mobile-*.md`, `*-ui-*.md` |
 | Agent nodes and distributed execution | `docs/features/agent-nodes.md`, `docs/features/distributed-node-architecture.md` | `*-node-*.md`, `*-distributed-*.md`, `*-p2p-*.md` |
-| Release, packaging, and install paths | `docs/features/npm-binary-distribution.md`, `docs/features/debian-systemd-distribution.md` | `*-release-*.md`, `*-npm-*.md`, `*-debian-*.md`, `*-homebrew-*.md` |
+| Release, packaging, and install paths | `docs/features/two-binary-runtime.md`, `docs/features/npm-binary-distribution.md`, `docs/features/debian-systemd-distribution.md` | `*-release-*.md`, `*-binary-*.md`, `*-npm-*.md`, `*-debian-*.md`, `*-homebrew-*.md` |
 | CI, Bazel, coverage, and dependencies | `docs/developer-setup.md` | `*-ci-*.md`, `*-bazel-*.md`, `*-codecov-*.md`, `*-dependabot-*.md` |
 | Access control, auth, and permissions | `docs/features/access-control-and-roles.md`, `docs/features/acp-runtime.md` | `*-auth-*.md`, `*-access-control-*.md`, `*-permission-*.md` |
 | Message archive, metadata, and object storage | `docs/features/logical-message-metadata-contract.md`, `docs/features/message-archive-lancedb.md`, `docs/features/object-storage-opendal.md` | `*-message-*.md`, `*-metadata-*.md`, `*-lancedb-*.md`, `*-object-storage-*.md` |
@@ -310,6 +310,7 @@ Start with:
 - `2026-08-17-message-index-repair-corruption-visibility.md`
 - `2026-08-19-safe-paths-removal.md`
 - `2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md`
+- `2026-08-27-two-binary-runtime-consolidation.md`
 
 ## Compaction Rules
 

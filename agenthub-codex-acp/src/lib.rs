@@ -385,8 +385,10 @@ fn apply_agenthub_multi_agent_override<T: CollabFeatureState>(
 /// If unable to parse the config or start the program.
 pub async fn run_main(
     codex_linux_sandbox_exe: Option<PathBuf>,
+    runtime_actor_cli_path: Option<PathBuf>,
     cli_config_overrides: CliConfigOverrides,
 ) -> IoResult<()> {
+    thread::configure_runtime_actor_cli_path(runtime_actor_cli_path);
     // Parse CLI overrides and load configuration
     let cli_kv_overrides = cli_config_overrides.parse_overrides().map_err(|e| {
         std::io::Error::new(
