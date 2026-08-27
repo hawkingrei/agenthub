@@ -352,7 +352,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn stop_all_force_kills_and_reaps_process_groups() {
+    async fn stop_all_force_kills_process_groups_and_reaps_leaders() {
         let supervisor =
             AgentProcessSupervisor::new(Duration::from_millis(100), Duration::from_secs(2));
         let mut command = Command::new("sh");
@@ -386,12 +386,16 @@ mod tests {
 
         let status = Command::new("sh")
             .arg("-c")
-            .arg("kill -0 \"$1\" 2>/dev/null")
+            .arg(
+                "kill -0 \"$1\" 2>/dev/null || exit 1; \
+                 state=$(ps -o stat= -p \"$1\" | tr -d '[:space:]'); \
+                 test -n \"$state\" && case \"$state\" in Z*) exit 1;; esac",
+            )
             .arg("agenthub-supervisor-test")
             .arg(descendant_pid)
             .status()
             .await
             .expect("probe descendant process");
-        assert!(!status.success(), "descendant process should be reaped");
+        assert!(!status.success(), "descendant process should be terminated");
     }
 }
