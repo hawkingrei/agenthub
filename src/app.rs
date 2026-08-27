@@ -279,33 +279,27 @@ fn pyroscope_bootstrap_options(
 
 pub async fn run() -> anyhow::Result<()> {
     match crate::cli::parse_root_cli_from_env() {
-        Ok(crate::cli::RootCliCommand::Serve) => {
-            return crate::daemon_binary::launch_daemon().await;
-        }
+        Ok(crate::cli::RootCliCommand::Serve) => crate::daemon_binary::launch_daemon().await,
         Ok(crate::cli::RootCliCommand::Init { args }) => {
-            return crate::init_cli::run_from_args(&args).await;
+            crate::init_cli::run_from_args(&args).await
         }
         Ok(crate::cli::RootCliCommand::Doctor { args }) => {
-            return crate::doctor_cli::run_from_args(&args).await;
+            crate::doctor_cli::run_from_args(&args).await
         }
         Ok(crate::cli::RootCliCommand::Actor { args }) => {
-            return crate::actor_cli::run_from_args(&args).await;
+            crate::actor_cli::run_from_args(&args).await
         }
         Ok(crate::cli::RootCliCommand::Migrate { args }) => {
-            return crate::migrate_cli::run_from_args(&args).await;
+            crate::migrate_cli::run_from_args(&args).await
         }
-        Ok(crate::cli::RootCliCommand::LegacyActorMcp) => {
-            return Err(anyhow::anyhow!(
-                "`agenthub actor-mcp` has been removed. Use `agenthub actor ...` instead."
-            ));
-        }
+        Ok(crate::cli::RootCliCommand::LegacyActorMcp) => Err(anyhow::anyhow!(
+            "`agenthub actor-mcp` has been removed. Use `agenthub actor ...` instead."
+        )),
         Err(err) if crate::cli::is_non_error_clap_exit(&err) => {
             err.print()?;
-            return Ok(());
+            Ok(())
         }
-        Err(err) => {
-            return Err(err.into());
-        }
+        Err(err) => Err(err.into()),
     }
 }
 
