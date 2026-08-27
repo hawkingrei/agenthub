@@ -57,13 +57,10 @@ fn bind_internal_grpc_incoming(listen_addr: &str) -> anyhow::Result<(SocketAddr,
     Ok((bound_addr, incoming))
 }
 
-pub async fn maybe_spawn_internal_grpc(
-    state: AppState,
-    config: &AppConfig,
-) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
+pub async fn maybe_spawn_internal_grpc(state: AppState, config: &AppConfig) -> anyhow::Result<()> {
     if !config.internal_grpc_enabled() {
         tracing::info!("internal gRPC disabled");
-        return Ok(None);
+        return Ok(());
     }
 
     install_rustls_crypto_provider();
@@ -117,21 +114,20 @@ pub async fn maybe_spawn_internal_grpc(
             TeamInternalControlService::new(deps, authz, mode, cert_dir, bootstrap_token),
         );
 
-    let handle = tokio::spawn(async move {
-        if let Err(err) = server_builder
-            .add_service(service)
-            .serve_with_incoming(incoming)
-            .await
-        {
-            tracing::error!(
-                error = %err,
-                error_debug = ?err,
-                "internal gRPC server exited with error"
-            );
-        }
-    });
+    let cancellation = state.agents.daemon_tasks().background_cancellation();
+    state
+        .agents
+        .daemon_tasks()
+        .spawn_background_worker("internal-grpc-server", async move {
+            server_builder
+                .add_service(service)
+                .serve_with_incoming_shutdown(incoming, cancellation.cancelled_owned())
+                .await
+                .context("internal gRPC server exited with error")?;
+            Ok(())
+        })?;
     tracing::info!("internal gRPC listening on {}", bound_addr);
-    Ok(Some(handle))
+    Ok(())
 }
 
 #[cfg(test)]

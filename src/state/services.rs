@@ -55,7 +55,7 @@ impl AppState {
             &agents,
             &acp_permissions,
             internal_peer_client.as_ref(),
-        );
+        )?;
 
         Ok((agents, teams, push, auth, acp_permissions))
     }

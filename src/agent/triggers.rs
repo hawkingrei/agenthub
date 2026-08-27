@@ -99,18 +99,27 @@ impl AgentTimeTriggerWorker {
         Self { triggers, delivery }
     }
 
-    pub fn spawn(self, settings: AgentTimeTriggerWorkerSettings) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
+    pub fn spawn(
+        self,
+        daemon_tasks: &crate::daemon_tasks::DaemonTaskGroup,
+        settings: AgentTimeTriggerWorkerSettings,
+    ) -> anyhow::Result<()> {
+        let cancellation = daemon_tasks.background_cancellation();
+        daemon_tasks.spawn_background_worker("agent-time-triggers", async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(
                 settings.poll_interval_secs.max(1) as u64,
             ));
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                ticker.tick().await;
+                tokio::select! {
+                    _ = cancellation.cancelled() => break,
+                    _ = ticker.tick() => {}
+                }
                 if let Err(error) = self.dispatch_once(settings.max_dispatch_per_tick).await {
                     tracing::warn!(?error, "agent time trigger worker tick failed");
                 }
             }
+            Ok(())
         })
     }
 

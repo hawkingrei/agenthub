@@ -100,8 +100,8 @@ releases the advisory lock, while retaining the inode prevents lock-file replace
 - Generation checks currently fence daemon lifecycle boundaries. Entity-specific asynchronous work
   should carry its own existing lease/generation or adopt this daemon token when cross-generation
   publication becomes possible.
-- Process supervision, global spawn scheduling, durable delivery receipts, and unified task shutdown
-  remain separate runtime-hardening slices.
+- Generation checks fence daemon lifecycle boundaries, while process supervision, start scheduling,
+  delivery receipts, and task shutdown retain their separate domain contracts.
 
 ## Source Journals
 

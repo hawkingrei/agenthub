@@ -90,11 +90,6 @@ Stable contracts:
   `acp_tool_fold.tsx`'s `IntersectionObserver` auto-collapse silently closes a manually-opened tool card
   when it scrolls out of view. Evidence: [journal/2026-08-16-frontend-uiux-review-round1-fixes.md](journal/2026-08-16-frontend-uiux-review-round1-fixes.md).
 
-## Daemon Runtime Reliability
-
-- [ ] `P2` Move daemon background workers and runtime watchers into one cancellation-aware task group
-  with ordered shutdown, bounded joins, and surfaced teardown failures.
-
 ## Backend Correctness
 
 - [ ] `P1` Close out the remaining findings from the 2026-08-16 code-only Rust backend review: the

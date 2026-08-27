@@ -412,6 +412,7 @@ impl AgentManager {
                         controller.reconfigure(config)?;
                     } else {
                         handle.loop_controller = Some(spawn_agent_loop_controller(
+                            &self.daemon_tasks,
                             self.event_dbs.clone(),
                             self.idle_gc.clone(),
                             handle.output_tx.clone(),
@@ -419,7 +420,7 @@ impl AgentManager {
                             agent_id.to_string(),
                             handle.session_id.clone(),
                             config,
-                        ));
+                        )?);
                     }
                 }
                 (_, None) => {

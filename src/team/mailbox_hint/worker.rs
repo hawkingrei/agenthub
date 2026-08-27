@@ -44,19 +44,25 @@ impl TeamMailboxUnreadHintWorker {
 
     pub fn spawn(
         self,
+        daemon_tasks: &crate::daemon_tasks::DaemonTaskGroup,
         settings: TeamMailboxUnreadHintWorkerSettings,
-    ) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
+    ) -> anyhow::Result<()> {
+        let cancellation = daemon_tasks.background_cancellation();
+        daemon_tasks.spawn_background_worker("team-mailbox-unread-hints", async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(
                 settings.poll_interval_secs.max(1) as u64,
             ));
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                ticker.tick().await;
+                tokio::select! {
+                    _ = cancellation.cancelled() => break,
+                    _ = ticker.tick() => {}
+                }
                 if let Err(err) = self.dispatch_once(settings).await {
                     tracing::warn!("team mailbox unread hint tick failed: {}", err);
                 }
             }
+            Ok(())
         })
     }
 

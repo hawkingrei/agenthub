@@ -13,6 +13,7 @@ mod cli;
 mod cli_error;
 mod daemon_binary;
 mod daemon_instance;
+mod daemon_tasks;
 mod diagnostics;
 mod doctor_cli;
 mod init_cli;
