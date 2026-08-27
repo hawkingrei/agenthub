@@ -19,6 +19,7 @@ run-server: build-web
 	cargo run -p agenthub-daemon --bin agenthubd --
 
 test:
+	cargo build -p agenthub-daemon --bin agenthubd
 	cargo test
 	cd web && npm test
 

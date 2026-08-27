@@ -21,6 +21,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Verify internal protobuf codegen
         run: make proto-check
+      - name: Build daemon
+        run: cargo build --locked -p agenthub-daemon --bin agenthubd
       - name: Run distributed p2p blackbox integration
         run: cargo test --locked --test distributed_p2p_pipeline -- --nocapture
       - name: Upload p2p node logs

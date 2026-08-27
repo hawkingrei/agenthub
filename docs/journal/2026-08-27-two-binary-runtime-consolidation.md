@@ -55,6 +55,8 @@ cargo test --locked -p agenthub-daemon --lib
 cargo test --locked -p agenthub-acp-adapter --lib
 CARGO_INCREMENTAL=0 cargo test --locked -p agenthub --lib release_feature_tests -- --nocapture
 CARGO_INCREMENTAL=0 cargo test --locked -p agenthub --lib daemon_binary::tests -- --nocapture
+cargo build --locked -p agenthub-daemon --bin agenthubd
+CARGO_INCREMENTAL=0 cargo test --locked --test distributed_p2p_pipeline -- --nocapture
 ./node_modules/.bin/vitest run src/agent_presets.test.ts src/use_app_agents.test.tsx \
   src/pages/team/use_team_management_actions.test.tsx \
   src/components/agent_node_detail_shared.test.ts
@@ -71,6 +73,10 @@ selection has 39, and the npm launcher has 4. The production web build and full 
 metadata contains only `agenthub` and `agenthubd`; the source tree contains exactly two Bazel
 `rust_binary` rules and no other Rust, Go, or Python native entrypoint. `cargo fmt --all -- --check`,
 `git diff --check`, and the Debian shell syntax check pass.
+
+The distributed P2P blackbox workflow initially failed because it built only `agenthub`; the CLI
+correctly reported that its sibling daemon was absent. The harness now builds and launches
+`agenthubd` directly, and the two-node relay/ack integration passes locally in 22.49 seconds.
 
 `actionlint` reports no new workflow semantic errors. Its remaining diagnostics reproduce on the base
 workflow: the prebuild script interpolates `github.head_ref` directly, and existing shell snippets
