@@ -47,17 +47,23 @@ impl TeamMailboxRuntimeDeliveryWorker {
 
     pub fn spawn(
         self,
+        daemon_tasks: &crate::daemon_tasks::DaemonTaskGroup,
         settings: TeamMailboxRuntimeDeliveryWorkerSettings,
-    ) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
+    ) -> anyhow::Result<()> {
+        let cancellation = daemon_tasks.background_cancellation();
+        daemon_tasks.spawn_background_worker("team-mailbox-runtime-delivery", async move {
             let mut ticker = tokio::time::interval(settings.poll_interval);
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                ticker.tick().await;
+                tokio::select! {
+                    _ = cancellation.cancelled() => break,
+                    _ = ticker.tick() => {}
+                }
                 if let Err(error) = self.dispatch_once(settings).await {
                     tracing::warn!(error = %error, "team mailbox runtime delivery tick failed");
                 }
             }
+            Ok(())
         })
     }
 

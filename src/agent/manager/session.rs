@@ -902,6 +902,7 @@ impl AgentManager {
                 agent.agent_loop_prompt.as_deref(),
             ) {
                 loop_controller = Some(spawn_agent_loop_controller(
+                    &self.daemon_tasks,
                     self.event_dbs.clone(),
                     self.idle_gc.clone(),
                     output_tx.clone(),
@@ -909,7 +910,7 @@ impl AgentManager {
                     agent.id.clone(),
                     session_id.clone(),
                     config,
-                ));
+                )?);
             }
             AgentInput::Acp(handle.clone())
         } else {
@@ -941,7 +942,7 @@ impl AgentManager {
                 output_tx.clone(),
                 false,
             )
-            .await;
+            .await?;
         }
 
         if let Some(stderr) = stderr {
@@ -953,11 +954,11 @@ impl AgentManager {
                 output_tx.clone(),
                 is_acp,
             )
-            .await;
+            .await?;
         }
 
         self.spawn_exit_watcher(agent.id.clone(), session_id.clone())
-            .await;
+            .await?;
 
         self.emit_run_status(
             output_tx.clone(),

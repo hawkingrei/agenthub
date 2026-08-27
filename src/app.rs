@@ -16,6 +16,7 @@ use agenthub_config::ServerRole;
 use agenthub_logging::{LogSpec, init_tracing, split_log_path};
 
 const SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
+const DAEMON_TASK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn log_config_details(
     config: &agenthub_config::AppConfig,
@@ -190,13 +191,44 @@ async fn wait_for_shutdown_signal() {
     }
 }
 
-async fn run_shutdown_cleanup(state: crate::state::AppState) {
-    tracing::warn!("shutdown signal received; stopping supervised agent processes");
-    if let Err(err) = state.agents.stop_all_on_shutdown().await {
+async fn run_shutdown_cleanup(state: crate::state::AppState) -> anyhow::Result<()> {
+    tracing::warn!("daemon shutdown started");
+    let daemon_tasks = state.agents.daemon_tasks().clone();
+    let mut failures = Vec::new();
+
+    if let Err(error) = daemon_tasks
+        .shutdown_background(DAEMON_TASK_SHUTDOWN_TIMEOUT)
+        .await
+    {
+        tracing::error!(error = %error, "daemon background task shutdown failed");
+        failures.push(error.to_string());
+    }
+
+    if let Err(error) = state.agents.stop_all_on_shutdown().await {
         tracing::error!(
-            error = %err,
+            error = %error,
             "shutdown cleanup failed to stop supervised agent processes"
         );
+        failures.push(error.to_string());
+    }
+
+    if let Err(error) = daemon_tasks
+        .shutdown_runtime(DAEMON_TASK_SHUTDOWN_TIMEOUT)
+        .await
+    {
+        tracing::error!(error = %error, "daemon runtime task shutdown failed");
+        failures.push(error.to_string());
+    }
+
+    if failures.is_empty() {
+        tracing::info!("daemon shutdown complete");
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "daemon shutdown reported {} failure(s): {}",
+            failures.len(),
+            failures.join("; ")
+        )
     }
 }
 
@@ -221,7 +253,7 @@ async fn run_main_server(
     config: &agenthub_config::AppConfig,
     web_dir: Option<&str>,
 ) -> anyhow::Result<()> {
-    let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), config).await?;
+    crate::internal::maybe_spawn_internal_grpc(state.clone(), config).await?;
     let api_router = crate::api::router(state.clone());
     let app = build_app_router(state.clone(), api_router, web_dir);
 
@@ -238,17 +270,24 @@ async fn run_main_server(
         .into_future();
     tokio::pin!(server);
 
-    tokio::select! {
+    let server_result = tokio::select! {
         result = &mut server => {
-            result?;
+            result
         }
         _ = wait_for_shutdown_signal() => {
-            run_shutdown_cleanup(state).await;
             let _ = shutdown_tx.send(true);
-            await_server_shutdown(server.as_mut()).await?;
+            await_server_shutdown(server.as_mut()).await
         }
+    };
+    let cleanup_result = run_shutdown_cleanup(state).await;
+    match (server_result, cleanup_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(server_error), Ok(())) => Err(server_error.into()),
+        (Ok(()), Err(cleanup_error)) => Err(cleanup_error),
+        (Err(server_error), Err(cleanup_error)) => anyhow::bail!(
+            "public HTTP server failed: {server_error}; daemon shutdown also failed: {cleanup_error:#}"
+        ),
     }
-    Ok(())
 }
 
 async fn run_node_server(
@@ -259,10 +298,9 @@ async fn run_node_server(
         node_id = %config.server_node_id()?,
         "node mode active; public HTTP server disabled"
     );
-    let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), config).await?;
+    crate::internal::maybe_spawn_internal_grpc(state.clone(), config).await?;
     wait_for_shutdown_signal().await;
-    run_shutdown_cleanup(state).await;
-    Ok(())
+    run_shutdown_cleanup(state).await
 }
 
 fn pyroscope_bootstrap_options(
@@ -674,5 +712,29 @@ mod tests {
         super::await_server_shutdown(server.as_mut())
             .await
             .expect("forced shutdown result");
+    }
+
+    #[tokio::test]
+    async fn shutdown_cleanup_reports_failures_from_both_task_phases() {
+        let state = crate::api::team_tests::build_test_state().await;
+        state
+            .agents
+            .daemon_tasks()
+            .spawn_background_job("background-failure", async {
+                anyhow::bail!("background probe")
+            })
+            .expect("spawn background failure");
+        state
+            .agents
+            .daemon_tasks()
+            .spawn_runtime_task("runtime-failure", async { anyhow::bail!("runtime probe") })
+            .expect("spawn runtime failure");
+
+        let error = super::run_shutdown_cleanup(state)
+            .await
+            .expect_err("surface both task-phase failures");
+        let message = error.to_string();
+        assert!(message.contains("background-failure"));
+        assert!(message.contains("runtime-failure"));
     }
 }

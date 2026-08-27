@@ -72,6 +72,7 @@ pub struct AgentManager {
     auth: Arc<AuthService>,
     local_executor: Arc<dyn AgentExecutor>,
     process_supervisor: AgentProcessSupervisor,
+    daemon_tasks: crate::daemon_tasks::DaemonTaskGroup,
     codex_acp_binary: String,
     acp_default_mode: Option<String>,
     codex_acp_multi_agent_enabled: bool,
@@ -636,7 +637,9 @@ async fn emit_agent_loop_prompt(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_agent_loop_controller(
+    daemon_tasks: &crate::daemon_tasks::DaemonTaskGroup,
     event_dbs: AgentEventDbRouter,
     idle_gc: Option<AgentEventIdleGc>,
     output_tx: broadcast::Sender<AgentOutput>,
@@ -644,9 +647,10 @@ fn spawn_agent_loop_controller(
     agent_id: String,
     session_id: String,
     initial: AgentLoopConfig,
-) -> AgentLoopController {
+) -> anyhow::Result<AgentLoopController> {
     let (tx, mut rx) = mpsc::unbounded_channel();
-    tokio::spawn(async move {
+    let cancellation = daemon_tasks.runtime_cancellation();
+    daemon_tasks.spawn_runtime_task(format!("agent-loop:{agent_id}:{session_id}"), async move {
         let mut config = initial;
         let mut output_rx = output_tx.subscribe();
         let mut deadline =
@@ -655,6 +659,7 @@ fn spawn_agent_loop_controller(
 
         loop {
             tokio::select! {
+                _ = cancellation.cancelled() => break,
                 command = rx.recv() => match command {
                     Some(AgentLoopCommand::Reconfigure(next)) => {
                         config = next;
@@ -698,8 +703,9 @@ fn spawn_agent_loop_controller(
                 }
             }
         }
-    });
-    AgentLoopController { tx }
+        Ok(())
+    })?;
+    Ok(AgentLoopController { tx })
 }
 
 pub struct AgentHandle {
@@ -801,6 +807,7 @@ impl AgentManager {
                 process_supervisor.clone(),
             )),
             process_supervisor,
+            daemon_tasks: crate::daemon_tasks::DaemonTaskGroup::default(),
             codex_acp_binary,
             acp_default_mode,
             codex_acp_multi_agent_enabled,
@@ -840,6 +847,10 @@ impl AgentManager {
         if let Ok(mut guard) = self.permission_review_dispatcher.write() {
             *guard = dispatcher;
         }
+    }
+
+    pub(crate) fn daemon_tasks(&self) -> &crate::daemon_tasks::DaemonTaskGroup {
+        &self.daemon_tasks
     }
 
     fn schedule_index_read_repair(

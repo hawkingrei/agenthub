@@ -67,5 +67,6 @@ tool, as it already does for the patched Codex code-mode protocol crate.
 - Add database-path plus node-ID instance locking and daemon generation fencing.
 - Add globally bounded start admission, timeout, and spawn-failure backoff.
 - Add durable Team mailbox runtime delivery receipts.
-- Move daemon background work into a unified cancellation-aware task group.
+- Keep the unified cancellation-aware task-group contract documented in
+  [Daemon Task Lifecycle](../features/daemon-task-lifecycle.md).
 - Run exact-head Bazel validation and cross-platform CI, including Windows Job Object coverage.

@@ -13,7 +13,7 @@ pub(super) fn configure_team_services(
     agents: &Arc<AgentManager>,
     acp_permissions: &Arc<AcpPermissionService>,
     internal_peer_client: Option<&crate::internal::client::InternalGrpcPeerClientConfig>,
-) {
+) -> anyhow::Result<()> {
     if let Some(peer_client) = internal_peer_client {
         teams.configure_internal_grpc_relay(
             Path::new(&peer_client.cert_dir),
@@ -21,13 +21,15 @@ pub(super) fn configure_team_services(
         );
         teams.configure_internal_grpc_peer_client(Some(peer_client.clone()));
     }
-    teams
-        .clone()
-        .spawn_remote_relay_worker(TeamRemoteRelayWorkerSettings::default());
+    teams.clone().spawn_remote_relay_worker(
+        agents.daemon_tasks(),
+        TeamRemoteRelayWorkerSettings::default(),
+    )?;
     agents.set_permission_review_dispatcher(Some(Arc::new(TeamPermissionReviewDispatcher::new(
         teams.clone(),
         agents.clone(),
         acp_permissions.clone(),
         TeamPermissionReviewDispatcherSettings::default(),
     ))));
+    Ok(())
 }

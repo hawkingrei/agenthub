@@ -97,9 +97,6 @@ Stable contracts:
   process ownership contract: [features/daemon-process-supervision.md](features/daemon-process-supervision.md).
 - [ ] `P1` Add globally bounded local-start admission with queue timeout, spawn timeout, and
   failure-class backoff. Preserve the supervisor lifecycle gate and per-agent duplicate-start guard.
-- [ ] `P2` Move daemon background workers and runtime watchers into one cancellation-aware task group
-  with ordered shutdown, bounded joins, and surfaced teardown failures.
-
 ## Backend Correctness
 
 - [ ] `P1` Close out the remaining findings from the 2026-08-16 code-only Rust backend review: the

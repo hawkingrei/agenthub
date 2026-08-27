@@ -81,14 +81,35 @@ impl AgentManager {
         reader: R,
         output_tx: broadcast::Sender<AgentOutput>,
         detect_acp_messages: bool,
-    ) where
+    ) -> anyhow::Result<()>
+    where
         R: tokio::io::AsyncRead + Unpin + Send + 'static,
     {
         let event_dbs = self.event_dbs.clone();
         let idle_gc = self.idle_gc.clone();
-        tokio::spawn(async move {
+        let cancellation = self.daemon_tasks.runtime_cancellation();
+        let task_name = format!("agent-output:{agent_id}:{session_id}:{stream:?}");
+        self.daemon_tasks.spawn_runtime_task(task_name, async move {
             let mut lines = BufReader::new(reader).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
+            loop {
+                let line = tokio::select! {
+                    _ = cancellation.cancelled() => break,
+                    line = lines.next_line() => line,
+                };
+                let line = match line {
+                    Ok(Some(line)) => line,
+                    Ok(None) => break,
+                    Err(error) => {
+                        tracing::warn!(
+                            agent_id = %agent_id,
+                            session_id = %session_id,
+                            stream = ?stream,
+                            error = %error,
+                            "agent output reader failed"
+                        );
+                        break;
+                    }
+                };
                 let is_acp = detect_acp_messages && is_acp_message(&line);
                 let stream = if is_acp {
                     OutputStream::Acp
@@ -132,10 +153,15 @@ impl AgentManager {
                 };
                 let _ = output_tx.send(output);
             }
-        });
+            Ok(())
+        })
     }
 
-    pub(super) async fn spawn_exit_watcher(&self, agent_id: String, session_id: String) {
+    pub(super) async fn spawn_exit_watcher(
+        &self,
+        agent_id: String,
+        session_id: String,
+    ) -> anyhow::Result<()> {
         let db = self.db.clone();
         let event_dbs = self.event_dbs.clone();
         let idle_gc = self.idle_gc.clone();
@@ -143,52 +169,60 @@ impl AgentManager {
         let push = self.push.clone();
         let process_supervisor = self.process_supervisor.clone();
         let agent_id_clone = agent_id.clone();
-        tokio::spawn(async move {
-            let child = {
-                let guard = inner.read().await;
-                guard.get(&agent_id).map(|h| h.child.clone())
-            };
-
-            if let Some(child_mutex) = child {
-                let success = loop {
-                    let poll_result = {
-                        let mut child_guard = child_mutex.lock().await;
-                        let child = match child_guard.as_mut() {
-                            Some(child) => child,
-                            None => return,
-                        };
-                        child.try_wait()
-                    };
-                    match poll_result {
-                        Ok(Some(status)) => break status.success(),
-                        Ok(None) => {
-                            tokio::time::sleep(Duration::from_millis(100)).await;
-                        }
-                        Err(err) => {
-                            tracing::warn!(
-                                agent_id = %agent_id_clone,
-                                session_id = %session_id,
-                                error = %err,
-                                "spawn_exit_watcher failed to poll child status"
-                            );
-                            break false;
-                        }
-                    }
+        let cancellation = self.daemon_tasks.runtime_cancellation();
+        self.daemon_tasks.spawn_runtime_task(
+            format!("agent-exit:{agent_id}:{session_id}"),
+            async move {
+                let child = {
+                    let guard = inner.read().await;
+                    guard.get(&agent_id).map(|h| h.child.clone())
                 };
-                Self::finalize_process_exit(
-                    &db,
-                    &event_dbs,
-                    idle_gc,
-                    &inner,
-                    &push,
-                    &agent_id_clone,
-                    &session_id,
-                    success,
-                )
-                .await;
-                process_supervisor.forget(&session_id).await;
-            }
-        });
+
+                if let Some(child_mutex) = child {
+                    let success = loop {
+                        let poll_result = {
+                            let mut child_guard = child_mutex.lock().await;
+                            let child = match child_guard.as_mut() {
+                                Some(child) => child,
+                                None => return Ok(()),
+                            };
+                            child.try_wait()
+                        };
+                        match poll_result {
+                            Ok(Some(status)) => break status.success(),
+                            Ok(None) => {
+                                tokio::select! {
+                                    _ = cancellation.cancelled() => return Ok(()),
+                                    _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                                }
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    agent_id = %agent_id_clone,
+                                    session_id = %session_id,
+                                    error = %err,
+                                    "spawn_exit_watcher failed to poll child status"
+                                );
+                                break false;
+                            }
+                        }
+                    };
+                    Self::finalize_process_exit(
+                        &db,
+                        &event_dbs,
+                        idle_gc,
+                        &inner,
+                        &push,
+                        &agent_id_clone,
+                        &session_id,
+                        success,
+                    )
+                    .await;
+                    process_supervisor.forget(&session_id).await;
+                }
+                Ok(())
+            },
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -457,7 +491,8 @@ mod tests {
                 output_tx,
                 detect_acp_messages,
             )
-            .await;
+            .await
+            .expect("spawn output reader");
 
         for line in lines {
             writer.write_all(line.as_bytes()).await.expect("write line");

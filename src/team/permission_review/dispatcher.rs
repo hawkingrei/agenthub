@@ -46,6 +46,7 @@ pub struct TeamPermissionReviewDispatcher {
     agent_nudger: Arc<dyn TeamMailboxHintAgentNudger>,
     permissions: Arc<AcpPermissionService>,
     settings: TeamPermissionReviewDispatcherSettings,
+    daemon_tasks: Option<crate::daemon_tasks::DaemonTaskGroup>,
 }
 
 impl TeamPermissionReviewDispatcher {
@@ -55,9 +56,17 @@ impl TeamPermissionReviewDispatcher {
         permissions: Arc<AcpPermissionService>,
         settings: TeamPermissionReviewDispatcherSettings,
     ) -> Self {
-        Self::with_agent_nudger(teams, agents, permissions, settings)
+        let daemon_tasks = agents.daemon_tasks().clone();
+        Self {
+            teams,
+            agent_nudger: agents,
+            permissions,
+            settings,
+            daemon_tasks: Some(daemon_tasks),
+        }
     }
 
+    #[cfg(test)]
     pub fn with_agent_nudger(
         teams: Arc<TeamManager>,
         agent_nudger: Arc<dyn TeamMailboxHintAgentNudger>,
@@ -69,6 +78,7 @@ impl TeamPermissionReviewDispatcher {
             agent_nudger,
             permissions,
             settings,
+            daemon_tasks: None,
         }
     }
 
@@ -164,12 +174,29 @@ impl TeamPermissionReviewDispatcher {
 
     fn spawn_human_review_fallback(&self, request: AcpPermissionReviewRequest) {
         let dispatcher = self.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(dispatcher.settings.human_fallback_delay).await;
-            let _ = dispatcher
-                .notify_human_review_if_pending(&request, "review_timeout")
-                .await;
-        });
+        let Some(daemon_tasks) = self.daemon_tasks.as_ref() else {
+            tokio::spawn(async move {
+                tokio::time::sleep(dispatcher.settings.human_fallback_delay).await;
+                let _ = dispatcher
+                    .notify_human_review_if_pending(&request, "review_timeout")
+                    .await;
+            });
+            return;
+        };
+        let cancellation = daemon_tasks.background_cancellation();
+        let task_name = format!("permission-review-fallback:{}", request.request_id);
+        if let Err(error) = daemon_tasks.spawn_background_job(task_name, async move {
+            tokio::select! {
+                _ = cancellation.cancelled() => Ok(()),
+                _ = tokio::time::sleep(dispatcher.settings.human_fallback_delay) => {
+                    dispatcher
+                        .notify_human_review_if_pending(&request, "review_timeout")
+                        .await
+                }
+            }
+        }) {
+            tracing::warn!(error = %error, "permission review fallback rejected during shutdown");
+        }
     }
 
     async fn nudge_actor(&self, actor_id: &str, run_id: &str, message_id: i64, payload_type: &str) {

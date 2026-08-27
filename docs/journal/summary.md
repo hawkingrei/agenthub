@@ -315,6 +315,7 @@ Start with:
 - `2026-08-27-official-codex-0-150-1-upgrade.md`
 - `2026-08-28-daemon-process-supervision.md`
 - `2026-08-28-team-runtime-delivery-receipts.md`
+- `2026-08-28-daemon-task-group.md`
 
 ## Compaction Rules
 
