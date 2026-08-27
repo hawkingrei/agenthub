@@ -9,6 +9,11 @@ const DEFAULT_CODEX_ACP_MODE: &str = "full-access";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
 const MAIN_SERVER_NODE_ID: &str = "main";
+const DEFAULT_AGENT_START_MAX_CONCURRENT: usize = 4;
+const DEFAULT_AGENT_START_QUEUE_TIMEOUT_SECONDS: u64 = 30;
+const DEFAULT_AGENT_START_TIMEOUT_SECONDS: u64 = 120;
+const DEFAULT_AGENT_SPAWN_BACKOFF_INITIAL_MILLIS: u64 = 250;
+const DEFAULT_AGENT_SPAWN_BACKOFF_MAX_MILLIS: u64 = 30_000;
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoadInfo {
@@ -20,6 +25,7 @@ pub struct ConfigLoadInfo {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct AppConfig {
     pub server: Option<ServerConfig>,
+    pub agent_runtime: Option<AgentRuntimeConfig>,
     pub web: Option<WebConfig>,
     pub proxy: Option<ProxyConfig>,
     pub worktree: Option<WorktreeConfig>,
@@ -33,6 +39,15 @@ pub struct AppConfig {
     pub internal_grpc: Option<InternalGrpcConfig>,
     pub web_dir: Option<String>,
     pub log_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentRuntimeConfig {
+    pub start_max_concurrent: Option<usize>,
+    pub start_queue_timeout_seconds: Option<u64>,
+    pub start_timeout_seconds: Option<u64>,
+    pub spawn_backoff_initial_millis: Option<u64>,
+    pub spawn_backoff_max_millis: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -196,6 +211,55 @@ pub struct InternalGrpcBootstrapConfig {
 }
 
 impl AppConfig {
+    pub fn agent_start_max_concurrent(&self) -> usize {
+        self.agent_runtime
+            .as_ref()
+            .and_then(|config| config.start_max_concurrent)
+            .unwrap_or(DEFAULT_AGENT_START_MAX_CONCURRENT)
+            .clamp(1, 64)
+    }
+
+    pub fn agent_start_queue_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(
+            self.agent_runtime
+                .as_ref()
+                .and_then(|config| config.start_queue_timeout_seconds)
+                .unwrap_or(DEFAULT_AGENT_START_QUEUE_TIMEOUT_SECONDS)
+                .clamp(1, 300),
+        )
+    }
+
+    pub fn agent_start_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(
+            self.agent_runtime
+                .as_ref()
+                .and_then(|config| config.start_timeout_seconds)
+                .unwrap_or(DEFAULT_AGENT_START_TIMEOUT_SECONDS)
+                .clamp(1, 900),
+        )
+    }
+
+    pub fn agent_spawn_backoff_initial(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(
+            self.agent_runtime
+                .as_ref()
+                .and_then(|config| config.spawn_backoff_initial_millis)
+                .unwrap_or(DEFAULT_AGENT_SPAWN_BACKOFF_INITIAL_MILLIS)
+                .clamp(10, 60_000),
+        )
+    }
+
+    pub fn agent_spawn_backoff_max(&self) -> std::time::Duration {
+        let initial = self.agent_spawn_backoff_initial();
+        std::time::Duration::from_millis(
+            self.agent_runtime
+                .as_ref()
+                .and_then(|config| config.spawn_backoff_max_millis)
+                .unwrap_or(DEFAULT_AGENT_SPAWN_BACKOFF_MAX_MILLIS)
+                .clamp(initial.as_millis() as u64, 300_000),
+        )
+    }
+
     pub fn nowledge_mem_profile(&self, name: &str) -> anyhow::Result<NowledgeMemProfileConfig> {
         let name = name.trim();
         if name.is_empty() {
@@ -872,10 +936,62 @@ fn detect_env_overrides() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, MessageBodyStoreConfig,
-        NowledgeMemConfig, NowledgeMemProfileConfig, NowledgeMemTeamBindingConfig,
-        ObjectStoreConfig, ServerConfig, ServerRole, WorktreeConfig,
+        AgentRuntimeConfig, AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig,
+        MessageBodyStoreConfig, NowledgeMemConfig, NowledgeMemProfileConfig,
+        NowledgeMemTeamBindingConfig, ObjectStoreConfig, ServerConfig, ServerRole, WorktreeConfig,
     };
+
+    #[test]
+    fn agent_runtime_start_settings_use_bounded_defaults() {
+        let config = AppConfig::default();
+
+        assert_eq!(config.agent_start_max_concurrent(), 4);
+        assert_eq!(config.agent_start_queue_timeout().as_secs(), 30);
+        assert_eq!(config.agent_start_timeout().as_secs(), 120);
+        assert_eq!(config.agent_spawn_backoff_initial().as_millis(), 250);
+        assert_eq!(config.agent_spawn_backoff_max().as_millis(), 30_000);
+    }
+
+    #[test]
+    fn agent_runtime_start_settings_clamp_invalid_ranges() {
+        let config = AppConfig {
+            agent_runtime: Some(AgentRuntimeConfig {
+                start_max_concurrent: Some(0),
+                start_queue_timeout_seconds: Some(0),
+                start_timeout_seconds: Some(10_000),
+                spawn_backoff_initial_millis: Some(70_000),
+                spawn_backoff_max_millis: Some(10),
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(config.agent_start_max_concurrent(), 1);
+        assert_eq!(config.agent_start_queue_timeout().as_secs(), 1);
+        assert_eq!(config.agent_start_timeout().as_secs(), 900);
+        assert_eq!(config.agent_spawn_backoff_initial().as_millis(), 60_000);
+        assert_eq!(config.agent_spawn_backoff_max().as_millis(), 60_000);
+    }
+
+    #[test]
+    fn agent_runtime_start_settings_deserialize_from_toml() {
+        let config: AppConfig = toml::from_str(
+            r#"
+            [agent_runtime]
+            start_max_concurrent = 8
+            start_queue_timeout_seconds = 12
+            start_timeout_seconds = 45
+            spawn_backoff_initial_millis = 100
+            spawn_backoff_max_millis = 5000
+            "#,
+        )
+        .expect("deserialize agent runtime settings");
+
+        assert_eq!(config.agent_start_max_concurrent(), 8);
+        assert_eq!(config.agent_start_queue_timeout().as_secs(), 12);
+        assert_eq!(config.agent_start_timeout().as_secs(), 45);
+        assert_eq!(config.agent_spawn_backoff_initial().as_millis(), 100);
+        assert_eq!(config.agent_spawn_backoff_max().as_millis(), 5_000);
+    }
 
     #[test]
     fn message_body_store_is_opt_in() {

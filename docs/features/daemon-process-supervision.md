@@ -21,8 +21,9 @@ terminal state.
 - Replacing ACP as the provider integration boundary.
 - Moving provider workers into the daemon process.
 - Changing remote-node process ownership; a remote daemon supervises its own local children.
-- Defining global start admission, retry backoff, or durable mailbox delivery receipts. Those are
-  separate runtime-reliability phases. Task cancellation and join ordering are defined by
+- Defining global start admission, retry backoff, durable mailbox delivery receipts, or Tokio task
+  ownership. Those contracts are defined by [Agent Start Scheduling](agent-start-scheduling.md),
+  [Team Runtime Delivery Receipts](team-runtime-delivery-receipts.md), and
   [Daemon Task Lifecycle](daemon-task-lifecycle.md).
 
 ## Architecture
@@ -102,11 +103,6 @@ cleanup, and daemon shutdown mutually exclusive for one process.
 
 ## Open Risks
 
-- Daemon instance locking and generation fencing are not yet implemented, so two daemon processes
-  can still contend for one database/node identity.
-- Start admission is still per-agent rather than globally bounded, and spawn failures have no shared
-  backoff policy.
-- Team mailbox runtime delivery still lacks durable delivery receipts.
 - Cross-platform CI must exercise the Windows Job Object path; local Unix tests cover process groups.
 
 ## Source Journals

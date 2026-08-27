@@ -102,8 +102,8 @@ duplicate, but external providers are not assumed to provide exactly-once execut
   abandonment policy is intentionally deferred.
 - Stable IDs expose duplicate submissions for diagnosis but cannot force third-party providers to
   deduplicate execution.
-- The worker is currently started as a detached Tokio task; ordered cancellation and bounded join
-  belong to the daemon task-group contract.
+- The worker belongs to the daemon background task phase and is canceled and joined before supervised
+  agent process shutdown.
 
 ## Source Journals
 

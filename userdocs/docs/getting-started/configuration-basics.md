@@ -99,6 +99,31 @@ Worktree creation settings.
 |--------|------|---------|-------------|
 | `default_root` | string | `"~/.agenthub/worktrees"` | Base directory for new worktrees |
 
+### `[agent_runtime]` Section
+
+Local agent start admission and failure protection.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `start_max_concurrent` | integer | `4` | Maximum local starts admitted at once (1-64) |
+| `start_queue_timeout_seconds` | integer | `30` | Maximum wait for a local-start permit (1-300) |
+| `start_timeout_seconds` | integer | `120` | Maximum time for an admitted local start, including workspace and ACP setup (1-900) |
+| `spawn_backoff_initial_millis` | integer | `250` | Initial delay after an executable spawn failure (10-60000) |
+| `spawn_backoff_max_millis` | integer | `30000` | Maximum exponential spawn delay (initial-300000) |
+
+```toml
+[agent_runtime]
+start_max_concurrent = 4
+start_queue_timeout_seconds = 30
+start_timeout_seconds = 120
+spawn_backoff_initial_millis = 250
+spawn_backoff_max_millis = 30000
+```
+
+These limits apply independently on every daemon node. Remote starts consume capacity on the node
+that launches the process, not on the node that forwards the request. Out-of-range values are
+clamped and effective values are logged at startup.
+
 ### `[codex_acp]` Section
 
 ACP (Agent Control Protocol) provider settings.

@@ -90,13 +90,6 @@ Stable contracts:
   `acp_tool_fold.tsx`'s `IntersectionObserver` auto-collapse silently closes a manually-opened tool card
   when it scrolls out of view. Evidence: [journal/2026-08-16-frontend-uiux-review-round1-fixes.md](journal/2026-08-16-frontend-uiux-review-round1-fixes.md).
 
-## Daemon Runtime Reliability
-
-- [ ] `P0` Add an exclusive daemon instance lock scoped by canonical database path plus node ID, and
-  persist a daemon generation so stale owners cannot publish runtime state after replacement. Stable
-  process ownership contract: [features/daemon-process-supervision.md](features/daemon-process-supervision.md).
-- [ ] `P1` Add globally bounded local-start admission with queue timeout, spawn timeout, and
-  failure-class backoff. Preserve the supervisor lifecycle gate and per-agent duplicate-start guard.
 ## Backend Correctness
 
 - [ ] `P1` Close out the remaining findings from the 2026-08-16 code-only Rust backend review: the
@@ -144,6 +137,16 @@ Stable contracts:
 - [x] `P1` Stage SQLite retirement by responsibility, not by a flag flip: Phase 1 `cf_body` dual-write, durable SQLite outbox, startup drainer, and SQLite compatibility reads are landed; `cf_index` is now a rebuildable, guarded delivery projection. Dual-read comparison and full rebuild/backup-restore recovery evidence are now landed for the `cf_body`/`cf_index` layer: a disaster-recovery test proves a RocksDB checkpoint restores correctly after the source store is deleted entirely and passes the same integrity gates (`check_index_refs_have_bodies`/`check_index_refs_have_authority`) an operator would run, and a simulated total `cf_index` loss is fully rebuilt from SQLite authority alone with zero gaps/orphans. The transactional `ControlStore` contract (conditional updates, uniqueness, audit, per-entity rollback) is now defined and its Phase 1 foundation (`crates/agenthub-db/src/control_store.rs`) is landed; SQLite remains the control-plane authority (no engine change, per the spec's Non-Goals). Phase 3 backfill is done for every call site identified when the spec was written: `teamspace.rs`'s CAS guards, generation-fencing, and audit writes; `conversation_idempotency.rs`'s and `mailbox_threads.rs`'s idempotency-replay decisions; a third, previously-undiscovered duplicate matcher in `src/api/teams/errors.rs`; and the `SQLITE_CONSTRAINT_UNIQUE_CODE` redeclarations in `manager_consts.rs` and (dead code) `src/api/teams.rs` are gone. `channel_mutations.rs`'s bootstrap-uniqueness matcher was deliberately left alone (different, OR-of-two-conditions shape). All behavior-preserving; all existing tests pass unchanged. Remaining work is Phase 2 only: new control-plane authority code (Teamspace multi-user membership, goal/fork conflict escalation, future permission tables) routes through `ControlStore` from the start instead of hand-rolling a new guard/matcher -- an ongoing discipline applied as that work lands, not a standalone task. RocksDB indexes and LanceDB archives must not become control-plane authority by implication. Stable contracts: [features/message-storage-tiering.md](features/message-storage-tiering.md), [features/control-store.md](features/control-store.md); evidence: [journal/2026-06-10-message-store-foundation-crate.md](journal/2026-06-10-message-store-foundation-crate.md).
 
 ## Maintenance Rules
+
+- [ ] `P0` Land and validate exact-head CI for process-tree supervision and ordered daemon shutdown in
+  PR #1084. Keep terminal database state behind proven child-process exit.
+- [ ] `P1` Add a global agent-start scheduler with bounded concurrency, queue/start deadlines, and
+  spawn-failure backoff. Stable ownership boundary:
+  [features/daemon-instance-ownership.md](features/daemon-instance-ownership.md).
+- [ ] `P1` Add durable runtime delivery receipts over the Team mailbox so accepted, delivered, and
+  applied outcomes survive daemon restarts and retries.
+- [ ] `P2` Unify daemon background work under cancellation-aware task groups and await registered tasks
+  before releasing instance ownership.
 
 - [ ] `P1` Complete two-binary rollout evidence: validate the exact change head with Cargo and Bazel,
   prove Linux cross-builds, and inspect generated Debian/npm packages for exactly `agenthub` and

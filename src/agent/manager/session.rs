@@ -377,9 +377,42 @@ impl AgentManager {
                 agent,
                 actor_context,
             } => {
-                let _start_permit = self.process_supervisor.acquire_start_permit().await?;
                 self.reserve_agent_start(agent_id).await?;
-                let result = self.start_local_agent(agent, actor_context).await;
+                let result = async {
+                    let admission = self.start_scheduler.acquire(agent_id).await?;
+                    let session_tracker = Arc::new(Mutex::new(None));
+                    match tokio::time::timeout(
+                        admission.start_timeout(),
+                        async {
+                            let _start_permit =
+                                self.process_supervisor.acquire_start_permit().await?;
+                            self.start_local_agent(
+                                agent,
+                                actor_context,
+                                session_tracker.clone(),
+                            )
+                            .await
+                        },
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => {
+                            self.cleanup_timed_out_start(agent_id, &session_tracker)
+                                .await
+                                .with_context(|| {
+                                    format!(
+                                        "agent start timed out and cleanup failed: agent_id={agent_id}"
+                                    )
+                                })?;
+                            anyhow::bail!(
+                                "agent start timed out: agent_id={agent_id} timeout_ms={}",
+                                admission.start_timeout().as_millis()
+                            );
+                        }
+                    }
+                }
+                .await;
                 self.release_agent_start(agent_id).await;
                 result
             }
@@ -407,8 +440,9 @@ impl AgentManager {
         &self,
         agent: crate::agent::AgentRecord,
         actor_context: Option<AcpActorSkillContext>,
+        session_tracker: Arc<Mutex<Option<String>>>,
     ) -> anyhow::Result<String> {
-        self.start_local_agent_with_resume_fallback(agent, actor_context, true)
+        self.start_local_agent_with_resume_fallback(agent, actor_context, true, session_tracker)
             .await
     }
 
@@ -417,10 +451,12 @@ impl AgentManager {
         agent: crate::agent::AgentRecord,
         actor_context: Option<AcpActorSkillContext>,
         allow_resume_retry: bool,
+        session_tracker: Arc<Mutex<Option<String>>>,
     ) -> anyhow::Result<String> {
         // This UUID tracks the current AgentHub runtime launch only. ACP/Codex continuity
         // can still resume a previously persisted provider session later in this method.
         let session_id = Uuid::new_v4().to_string();
+        *session_tracker.lock().await = Some(session_id.clone());
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
         let persisted_workdir = super::expand_tilde(&agent.workdir);
         let persisted_worktree_repo = agent.worktree_repo.as_deref().map(super::expand_tilde);
@@ -563,6 +599,7 @@ impl AgentManager {
         {
             Ok(execution) => execution,
             Err(err) => {
+                let backoff = self.start_scheduler.record_spawn_failure(&agent.id).await;
                 if let Err(record_err) = self
                     .record_failed_session(&agent.id, &session_id, &err.to_string())
                     .await
@@ -587,12 +624,14 @@ impl AgentManager {
                 }
                 tracing::error!("spawn failed: {} error={}", spawn_summary, err);
                 return Err(anyhow::anyhow!(
-                    "spawn failed: {} error={}",
+                    "spawn failed: {} error={} retry_after_ms={}",
                     spawn_summary,
-                    err
+                    err,
+                    backoff.as_millis()
                 ));
             }
         };
+        self.start_scheduler.clear_spawn_failures(&agent.id).await;
         let SpawnedLocalProcess {
             child,
             registration,
@@ -1048,12 +1087,60 @@ impl AgentManager {
                     agent,
                     actor_context,
                     false,
+                    session_tracker,
                 ))
                 .await;
             }
         }
 
         Ok(session_id)
+    }
+
+    async fn cleanup_timed_out_start(
+        &self,
+        agent_id: &str,
+        session_tracker: &Arc<Mutex<Option<String>>>,
+    ) -> anyhow::Result<()> {
+        let session_id = session_tracker.lock().await.clone();
+        if let Some(session_id) = session_id.as_deref() {
+            self.process_supervisor
+                .stop_session(session_id)
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to stop timed-out agent process: agent_id={agent_id} session_id={session_id}"
+                    )
+                })?;
+            let removed = {
+                let mut guard = self.inner.write().await;
+                if Self::handle_matches_session(guard.get(agent_id), session_id) {
+                    guard.remove(agent_id)
+                } else {
+                    None
+                }
+            };
+            if let Some(handle) = removed
+                && let Some(controller) = handle.loop_controller
+            {
+                controller.stop();
+            }
+            self.record_failed_session(agent_id, session_id, "agent start timed out")
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to record timed-out agent start: agent_id={agent_id} session_id={session_id}"
+                    )
+                })?;
+        }
+        self.update_agent_status(agent_id, AgentStatus::Failed)
+            .await
+            .with_context(|| {
+                format!("failed to update agent status after start timeout: agent_id={agent_id}")
+            })?;
+        if let Some(idle_gc) = &self.idle_gc {
+            idle_gc.remove_agent(agent_id).await;
+        }
+        Ok(())
     }
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
@@ -1154,7 +1241,12 @@ impl AgentManager {
     ) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
         let seq = Uuid::now_v7().to_string();
-        if let Err(err) = sqlx::query(
+        let mut transaction = self.db.begin().await.with_context(|| {
+            format!(
+                "failed to begin failed-session transaction: agent_id={agent_id} session_id={session_id}"
+            )
+        })?;
+        sqlx::query(
             r#"
             INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
             VALUES (?1, ?2, 'failed', ?3, ?4)
@@ -1164,17 +1256,14 @@ impl AgentManager {
         .bind(agent_id)
         .bind(now)
         .bind(now)
-        .execute(&self.db)
+        .execute(&mut *transaction)
         .await
-        {
-            tracing::warn!(
-                agent_id = %agent_id,
-                session_id = %session_id,
-                error = %err,
-                "failed to persist failed agent session row"
-            );
-        }
-        if let Err(err) = sqlx::query(
+        .with_context(|| {
+            format!(
+                "failed to insert failed agent session row: agent_id={agent_id} session_id={session_id}"
+            )
+        })?;
+        sqlx::query(
             r#"
             UPDATE agent_sessions
             SET status = 'failed', ended_at = ?1
@@ -1184,16 +1273,18 @@ impl AgentManager {
         .bind(now)
         .bind(session_id)
         .bind(agent_id)
-        .execute(&self.db)
+        .execute(&mut *transaction)
         .await
-        {
-            tracing::warn!(
-                agent_id = %agent_id,
-                session_id = %session_id,
-                error = %err,
-                "failed to update failed agent session row"
-            );
-        }
+        .with_context(|| {
+            format!(
+                "failed to update failed agent session row: agent_id={agent_id} session_id={session_id}"
+            )
+        })?;
+        transaction.commit().await.with_context(|| {
+            format!(
+                "failed to commit failed-session transaction: agent_id={agent_id} session_id={session_id}"
+            )
+        })?;
 
         let failure_message = format!("start failed: {}", message);
         if let Err(err) = persist_agent_event(
@@ -1222,6 +1313,12 @@ impl AgentManager {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use sqlx::Row;
+
     use super::{
         RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY, RESUMED_ACP_SESSION_GRACE_PERIOD,
         RESUMED_ACP_SESSION_POLL_INTERVAL, ResumedSessionStartupState,
@@ -1229,10 +1326,82 @@ mod tests {
         should_retry_resumed_acp_session,
     };
     use crate::agent::manager::supervisor::SharedSupervisedChild;
+    use crate::agent::manager::{
+        AgentManager, AgentStartSchedulerSettings,
+        executor::{AgentExecutor, LocalExecutionRequest, SpawnedLocalProcess},
+    };
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::process::Command;
     use tokio::sync::Mutex;
+
+    #[derive(Debug, Default)]
+    struct HangingExecutor;
+
+    #[async_trait]
+    impl AgentExecutor for HangingExecutor {
+        async fn spawn_process(
+            &self,
+            _request: LocalExecutionRequest,
+        ) -> anyhow::Result<SpawnedLocalProcess> {
+            std::future::pending().await
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct FailingExecutor {
+        attempts: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl AgentExecutor for FailingExecutor {
+        async fn spawn_process(
+            &self,
+            _request: LocalExecutionRequest,
+        ) -> anyhow::Result<SpawnedLocalProcess> {
+            self.attempts.fetch_add(1, Ordering::SeqCst);
+            anyhow::bail!("synthetic spawn failure")
+        }
+    }
+
+    async fn build_scheduled_test_manager(
+        executor: Arc<dyn AgentExecutor>,
+        settings: AgentStartSchedulerSettings,
+    ) -> (AgentManager, String) {
+        let state = crate::api::team_tests::build_test_state().await;
+        let mut agents = AgentManager::new(
+            state.db.clone(),
+            state.agents.event_dbs.clone(),
+            None,
+            state.push.clone(),
+            Vec::new(),
+            "agenthubd".to_string(),
+            None,
+            true,
+            state.acp_permissions.clone(),
+            state.auth.clone(),
+        )
+        .with_start_scheduler_settings(settings);
+        agents.local_executor = executor;
+
+        let agent_id = format!("scheduled-agent-{}", uuid::Uuid::new_v4());
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, '/tmp', 'synthetic-agent', '[]', 'use_existing', 'stopped', ?3, ?3)
+            "#,
+        )
+        .bind(&agent_id)
+        .bind(&agent_id)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert scheduled test agent");
+        (agents, agent_id)
+    }
 
     #[test]
     fn should_retry_resumed_acp_session_only_on_failed_matching_resume() {
@@ -1275,6 +1444,67 @@ mod tests {
         assert!(should_force_fresh_session_after_resume_failures(
             RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY + 1
         ));
+    }
+
+    #[tokio::test]
+    async fn start_timeout_persists_failure_before_releasing_reservation() {
+        let settings = AgentStartSchedulerSettings {
+            max_concurrent_starts: 1,
+            queue_timeout: Duration::from_millis(100),
+            start_timeout: Duration::from_millis(25),
+            spawn_backoff_initial: Duration::from_millis(20),
+            spawn_backoff_max: Duration::from_millis(40),
+        };
+        let (agents, agent_id) =
+            build_scheduled_test_manager(Arc::new(HangingExecutor), settings).await;
+
+        let error = agents
+            .start_agent(&agent_id)
+            .await
+            .expect_err("hanging start must time out");
+        assert!(error.to_string().contains("agent start timed out"));
+        assert!(!agents.starting.lock().await.contains(&agent_id));
+
+        let agent_status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+            .bind(&agent_id)
+            .fetch_one(&agents.db)
+            .await
+            .expect("read timed-out agent status");
+        assert_eq!(agent_status, "failed");
+        let session = sqlx::query(
+            "SELECT status, ended_at FROM agent_sessions WHERE agent_id = ?1 ORDER BY started_at DESC LIMIT 1",
+        )
+        .bind(&agent_id)
+        .fetch_one(&agents.db)
+        .await
+        .expect("read timed-out session");
+        assert_eq!(session.get::<String, _>("status"), "failed");
+        assert!(session.get::<Option<i64>, _>("ended_at").is_some());
+    }
+
+    #[tokio::test]
+    async fn spawn_failure_backoff_rejects_immediate_retry_without_respawn() {
+        let settings = AgentStartSchedulerSettings {
+            max_concurrent_starts: 1,
+            queue_timeout: Duration::from_millis(100),
+            start_timeout: Duration::from_secs(1),
+            spawn_backoff_initial: Duration::from_secs(1),
+            spawn_backoff_max: Duration::from_secs(2),
+        };
+        let executor = Arc::new(FailingExecutor::default());
+        let (agents, agent_id) = build_scheduled_test_manager(executor.clone(), settings).await;
+
+        let first_error = agents
+            .start_agent(&agent_id)
+            .await
+            .expect_err("synthetic spawn must fail");
+        assert!(first_error.to_string().contains("retry_after_ms"));
+        let retry_error = agents
+            .start_agent(&agent_id)
+            .await
+            .expect_err("immediate retry must hit spawn backoff");
+        assert!(retry_error.to_string().contains("spawn backoff active"));
+        assert_eq!(executor.attempts.load(Ordering::SeqCst), 1);
     }
 
     #[cfg(unix)]

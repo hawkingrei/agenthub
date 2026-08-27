@@ -6,6 +6,7 @@ mod process;
 mod runtime;
 mod session;
 mod start_plan;
+mod start_scheduler;
 mod store;
 mod supervisor;
 mod worktree;
@@ -33,6 +34,8 @@ use self::nodes::{
     delete_agent_node_record, get_agent_node_row, insert_agent_node_record, list_agent_node_rows,
     touch_agent_node_last_seen, update_agent_node_record,
 };
+use self::start_scheduler::AgentStartScheduler;
+pub(crate) use self::start_scheduler::AgentStartSchedulerSettings;
 use self::store::{
     AgentInsertRecord, AgentSchemaCaps, RemoteManagedAgentUpsert, decode_agent_record,
     get_agent_row, insert_agent_record, list_agent_rows, upsert_remote_managed_agent_record,
@@ -73,6 +76,7 @@ pub struct AgentManager {
     local_executor: Arc<dyn AgentExecutor>,
     process_supervisor: AgentProcessSupervisor,
     daemon_tasks: crate::daemon_tasks::DaemonTaskGroup,
+    start_scheduler: AgentStartScheduler,
     codex_acp_binary: String,
     acp_default_mode: Option<String>,
     codex_acp_multi_agent_enabled: bool,
@@ -808,6 +812,7 @@ impl AgentManager {
             )),
             process_supervisor,
             daemon_tasks: crate::daemon_tasks::DaemonTaskGroup::default(),
+            start_scheduler: AgentStartScheduler::default(),
             codex_acp_binary,
             acp_default_mode,
             codex_acp_multi_agent_enabled,
@@ -819,6 +824,14 @@ impl AgentManager {
             starting: Arc::new(Mutex::new(HashSet::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    pub(crate) fn with_start_scheduler_settings(
+        mut self,
+        settings: AgentStartSchedulerSettings,
+    ) -> Self {
+        self.start_scheduler = AgentStartScheduler::new(settings);
+        self
     }
 
     /// Attach the rebuildable message index store. Agent event reads use it only when the per-agent
