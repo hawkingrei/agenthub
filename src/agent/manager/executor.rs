@@ -3,10 +3,13 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use async_trait::async_trait;
-use tokio::process::{Child, Command};
+use tokio::process::Command;
 
 use crate::acp::{AcpActorSkillContext, AcpRuntimeLocation};
 
+use super::supervisor::{
+    AgentProcessSupervisor, PendingProcessRegistration, SharedSupervisedChild,
+};
 use super::{
     ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV, ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
     ACTOR_RUNTIME_TEAM_ID_ENV, ProxyPolicy,
@@ -14,6 +17,8 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub(super) struct LocalExecutionRequest {
+    pub agent_id: String,
+    pub session_id: String,
     pub command_path: String,
     pub args: Vec<String>,
     pub workdir: String,
@@ -22,7 +27,8 @@ pub(super) struct LocalExecutionRequest {
 }
 
 pub(super) struct SpawnedLocalProcess {
-    pub child: Child,
+    pub child: SharedSupervisedChild,
+    pub registration: PendingProcessRegistration,
     pub runtime_location: AcpRuntimeLocation,
 }
 
@@ -37,11 +43,18 @@ pub(super) trait AgentExecutor: Send + Sync {
 #[derive(Debug, Clone)]
 pub(super) struct LocalExecutor {
     proxy_policy: ProxyPolicy,
+    process_supervisor: AgentProcessSupervisor,
 }
 
 impl LocalExecutor {
-    pub(super) fn new(proxy_policy: ProxyPolicy) -> Self {
-        Self { proxy_policy }
+    pub(super) fn new(
+        proxy_policy: ProxyPolicy,
+        process_supervisor: AgentProcessSupervisor,
+    ) -> Self {
+        Self {
+            proxy_policy,
+            process_supervisor,
+        }
     }
 }
 
@@ -93,9 +106,13 @@ impl AgentExecutor for LocalExecutor {
             }
         }
 
-        let child = command.spawn()?;
+        let (child, registration) = self
+            .process_supervisor
+            .spawn(request.agent_id, request.session_id, command)
+            .await?;
         Ok(SpawnedLocalProcess {
             child,
+            registration,
             runtime_location: AcpRuntimeLocation::LocalProcess,
         })
     }
@@ -154,6 +171,7 @@ mod tests {
         synthesized_child_path,
     };
     use crate::agent::manager::ProxyPolicy;
+    use crate::agent::manager::supervisor::AgentProcessSupervisor;
 
     fn temp_workdir(prefix: &str) -> std::path::PathBuf {
         let unique = Uuid::new_v4();
@@ -166,8 +184,11 @@ mod tests {
         let workdir = temp_workdir("agenthub-executor-extra-env");
         std::fs::create_dir_all(&workdir).expect("create temp workdir");
 
-        let executor = LocalExecutor::new(ProxyPolicy::default());
+        let process_supervisor = AgentProcessSupervisor::default();
+        let executor = LocalExecutor::new(ProxyPolicy::default(), process_supervisor.clone());
         let request = LocalExecutionRequest {
+            agent_id: "agent-executor-test".to_string(),
+            session_id: "session-executor-test".to_string(),
             command_path: "/bin/sh".to_string(),
             args: vec![
                 "-c".to_string(),
@@ -182,15 +203,16 @@ mod tests {
             .spawn_process(request)
             .await
             .expect("spawn process");
-        let output = spawned
-            .child
-            .wait_with_output()
+        spawned.registration.commit();
+        let child = spawned.child.lock().await.take().expect("take child");
+        let output = Box::into_pin(child.wait_with_output())
             .await
             .expect("wait for process output");
 
         assert!(output.status.success(), "process should exit successfully");
         let stdout = String::from_utf8(output.stdout).expect("decode stdout");
         assert_eq!(stdout.trim(), "RUST_BACKTRACE=1");
+        process_supervisor.forget("session-executor-test").await;
 
         let _ = std::fs::remove_dir_all(&workdir);
     }

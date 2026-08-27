@@ -34,7 +34,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 | Frontend, UI, and mobile surfaces | `docs/features/frontend-design.md`, `docs/features/workspace-unified-ia.md` | `*-web-*.md`, `*-frontend-*.md`, `*-mobile-*.md`, `*-ui-*.md` |
 | Agent nodes and distributed execution | `docs/features/agent-nodes.md`, `docs/features/distributed-node-architecture.md` | `*-node-*.md`, `*-distributed-*.md`, `*-p2p-*.md` |
 | Release, packaging, and install paths | `docs/features/two-binary-runtime.md`, `docs/features/npm-binary-distribution.md`, `docs/features/debian-systemd-distribution.md` | `*-release-*.md`, `*-binary-*.md`, `*-npm-*.md`, `*-debian-*.md`, `*-homebrew-*.md` |
-| Daemon lifecycle and ownership | `docs/features/daemon-instance-ownership.md` | `*-daemon-*.md`, `*-runtime-process-*.md` |
+| Daemon lifecycle and process ownership | `docs/features/daemon-instance-ownership.md`, `docs/features/daemon-process-supervision.md`, `docs/features/two-binary-runtime.md` | `*-daemon-*.md`, `*-runtime-process-*.md`, `*-process-supervision*.md` |
 | CI, Bazel, coverage, and dependencies | `docs/developer-setup.md` | `*-ci-*.md`, `*-bazel-*.md`, `*-codecov-*.md`, `*-dependabot-*.md` |
 | Access control, auth, and permissions | `docs/features/access-control-and-roles.md`, `docs/features/acp-runtime.md` | `*-auth-*.md`, `*-access-control-*.md`, `*-permission-*.md` |
 | Message archive, metadata, and object storage | `docs/features/logical-message-metadata-contract.md`, `docs/features/message-archive-lancedb.md`, `docs/features/object-storage-opendal.md` | `*-message-*.md`, `*-metadata-*.md`, `*-lancedb-*.md`, `*-object-storage-*.md` |
@@ -314,6 +314,7 @@ Start with:
 - `2026-08-27-two-binary-runtime-consolidation.md`
 - `2026-08-28-daemon-instance-ownership.md`
 - `2026-08-27-official-codex-0-150-1-upgrade.md`
+- `2026-08-28-daemon-process-supervision.md`
 
 ## Compaction Rules
 
