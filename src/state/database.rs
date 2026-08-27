@@ -1,3 +1,4 @@
+#[cfg(test)]
 use agenthub_config::ServerRole;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -5,14 +6,19 @@ use uuid::Uuid;
 use super::AppState;
 
 impl AppState {
+    #[cfg(test)]
     pub(super) async fn setup_database(
         config: &agenthub_config::AppConfig,
     ) -> anyhow::Result<SqlitePool> {
-        let db = agenthub_db::init_db().await?;
+        let db = Self::open_database().await?;
         if config.server_role() == ServerRole::Main {
             Self::ensure_root(&db).await?;
         }
         Ok(db)
+    }
+
+    pub(super) async fn open_database() -> anyhow::Result<SqlitePool> {
+        agenthub_db::init_db().await
     }
 
     pub(super) async fn ensure_root(db: &SqlitePool) -> anyhow::Result<()> {

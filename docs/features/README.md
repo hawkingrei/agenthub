@@ -104,7 +104,9 @@ when adding or compacting specs so this directory stays navigable.
 - `docs/features/npm-binary-distribution.md`
 - `docs/features/debian-systemd-distribution.md`
 - `docs/features/two-binary-runtime.md`
+- `docs/features/daemon-instance-ownership.md`
 - `docs/features/daemon-process-supervision.md`
+- `docs/features/agent-start-scheduling.md`
 - `docs/features/app-linkers.md`
 - `docs/features/slock-oauth-linkers.md`
 

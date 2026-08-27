@@ -97,6 +97,26 @@ fn log_config_details(
         "config codex_acp_multi_agent_enabled: {}",
         config.codex_acp_multi_agent_enabled()
     );
+    tracing::info!(
+        "config agent_runtime.start_max_concurrent: {}",
+        config.agent_start_max_concurrent()
+    );
+    tracing::info!(
+        "config agent_runtime.start_queue_timeout_seconds: {}",
+        config.agent_start_queue_timeout().as_secs()
+    );
+    tracing::info!(
+        "config agent_runtime.start_timeout_seconds: {}",
+        config.agent_start_timeout().as_secs()
+    );
+    tracing::info!(
+        "config agent_runtime.spawn_backoff_initial_millis: {}",
+        config.agent_spawn_backoff_initial().as_millis()
+    );
+    tracing::info!(
+        "config agent_runtime.spawn_backoff_max_millis: {}",
+        config.agent_spawn_backoff_max().as_millis()
+    );
     if config.server_role() == ServerRole::Node {
         tracing::info!("config push settings: disabled in node mode");
     } else {
@@ -190,7 +210,17 @@ async fn wait_for_shutdown_signal() {
     }
 }
 
-async fn run_shutdown_cleanup(state: crate::state::AppState) {
+async fn run_shutdown_cleanup(
+    state: crate::state::AppState,
+    daemon_instance: &crate::daemon_instance::DaemonInstanceGuard,
+) {
+    if let Err(err) = daemon_instance.verify_current(&state.db).await {
+        tracing::error!(
+            error = %err,
+            "shutdown cleanup skipped because daemon ownership is stale"
+        );
+        return;
+    }
     tracing::warn!("shutdown signal received; stopping supervised agent processes");
     if let Err(err) = state.agents.stop_all_on_shutdown().await {
         tracing::error!(
@@ -220,6 +250,7 @@ async fn run_main_server(
     state: crate::state::AppState,
     config: &agenthub_config::AppConfig,
     web_dir: Option<&str>,
+    daemon_instance: &crate::daemon_instance::DaemonInstanceGuard,
 ) -> anyhow::Result<()> {
     let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), config).await?;
     let api_router = crate::api::router(state.clone());
@@ -243,7 +274,7 @@ async fn run_main_server(
             result?;
         }
         _ = wait_for_shutdown_signal() => {
-            run_shutdown_cleanup(state).await;
+            run_shutdown_cleanup(state, daemon_instance).await;
             let _ = shutdown_tx.send(true);
             await_server_shutdown(server.as_mut()).await?;
         }
@@ -254,6 +285,7 @@ async fn run_main_server(
 async fn run_node_server(
     state: crate::state::AppState,
     config: &agenthub_config::AppConfig,
+    daemon_instance: &crate::daemon_instance::DaemonInstanceGuard,
 ) -> anyhow::Result<()> {
     tracing::info!(
         node_id = %config.server_node_id()?,
@@ -261,7 +293,7 @@ async fn run_node_server(
     );
     let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), config).await?;
     wait_for_shutdown_signal().await;
-    run_shutdown_cleanup(state).await;
+    run_shutdown_cleanup(state, daemon_instance).await;
     Ok(())
 }
 
@@ -318,12 +350,21 @@ pub async fn run_daemon() -> anyhow::Result<()> {
         web_dir.as_deref(),
     );
     validate_startup_config(&config)?;
+    let node_id = config.server_node_id()?;
+    let mut daemon_instance = crate::daemon_instance::DaemonInstanceGuard::acquire(
+        &agenthub_db::default_db_path(),
+        &node_id,
+    )?;
     let _pyroscope =
         agenthub_pyroscope::maybe_start_from_env(pyroscope_bootstrap_options(config.server_role()));
-    let state = crate::state::AppState::init(config.clone()).await?;
+    let state =
+        crate::state::AppState::init_for_daemon(config.clone(), &mut daemon_instance).await?;
+    daemon_instance.verify_current(&state.db).await?;
     match config.server_role() {
-        ServerRole::Main => run_main_server(state, &config, web_dir.as_deref()).await,
-        ServerRole::Node => run_node_server(state, &config).await,
+        ServerRole::Main => {
+            run_main_server(state, &config, web_dir.as_deref(), &daemon_instance).await
+        }
+        ServerRole::Node => run_node_server(state, &config, &daemon_instance).await,
     }
 }
 

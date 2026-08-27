@@ -51,14 +51,28 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn init(config: agenthub_config::AppConfig) -> anyhow::Result<Self> {
+    pub(crate) async fn init_for_daemon(
+        config: agenthub_config::AppConfig,
+        daemon_instance: &mut crate::daemon_instance::DaemonInstanceGuard,
+    ) -> anyhow::Result<Self> {
+        Self::init_inner(config, daemon_instance).await
+    }
+
+    async fn init_inner(
+        config: agenthub_config::AppConfig,
+        daemon_instance: &mut crate::daemon_instance::DaemonInstanceGuard,
+    ) -> anyhow::Result<Self> {
+        let db = Self::open_database().await?;
+        daemon_instance.claim_generation(&db).await?;
+        if config.server_role() == agenthub_config::ServerRole::Main {
+            Self::ensure_root(&db).await?;
+        }
         if let Err(error) = Self::ensure_global_gitignore_agenthubmemory() {
             tracing::warn!(
                 ?error,
                 "failed to ensure global gitignore entry for .agenthubmemory"
             );
         }
-        let db = Self::setup_database(&config).await?;
         let linker_http = crate::linkers::AppLinkerService::default_http_client();
         let event_dbs = agenthub_db::AgentEventDbRouter::with_default_base_dir();
 

@@ -4,7 +4,7 @@ use agenthub_config::ServerRole;
 use sqlx::SqlitePool;
 
 use crate::acp::AcpPermissionService;
-use crate::agent::AgentManager;
+use crate::agent::{AgentManager, AgentStartSchedulerSettings};
 use crate::auth::AuthService;
 use crate::push::PushService;
 use crate::team::TeamManager;
@@ -59,6 +59,13 @@ pub(super) fn build_agent_manager(args: AgentManagerBuildArgs<'_>) -> Arc<AgentM
             args.auth,
             args.internal_peer_client,
         )
+        .with_start_scheduler_settings(AgentStartSchedulerSettings {
+            max_concurrent_starts: args.config.agent_start_max_concurrent(),
+            queue_timeout: args.config.agent_start_queue_timeout(),
+            start_timeout: args.config.agent_start_timeout(),
+            spawn_backoff_initial: args.config.agent_spawn_backoff_initial(),
+            spawn_backoff_max: args.config.agent_spawn_backoff_max(),
+        })
         .with_message_index(args.message_index)
         .with_read_repair_scheduler(args.read_repair),
     )
