@@ -10,6 +10,7 @@ creates a stable runtime identity, and starts AgentHub through systemd by defaul
 
 - Debian package assets for Linux `amd64` and `arm64` release targets.
 - Installation of both `agenthub` and `agenthubd`.
+- Installation of the version-matched official `codex-code-mode-host` companion executable.
 - A default `agenthub.service` systemd unit.
 - Package maintainer scripts that create the service user, create the runtime layout, and enable/start
   the service on install.
@@ -32,6 +33,7 @@ The package installs:
 
 - `/usr/bin/agenthub`
 - `/usr/bin/agenthubd`
+- `/usr/bin/codex-code-mode-host`
 - `/usr/lib/systemd/system/agenthub.service`
 - `/usr/share/doc/agenthub/README.md`
 
@@ -92,6 +94,8 @@ Operators can edit that file and restart `agenthub.service`.
 
 - `sh -n` for Debian maintainer scripts.
 - `bash -n build/deb/package.sh`.
+- Package inspection confirming that `codex-code-mode-host` is a regular executable and exposes the
+  expected host CLI while provenance is enforced by the pinned archive digest.
 - A package-script smoke test with dummy executable inputs to confirm `dpkg-deb` can build both
   `amd64` and `arm64` metadata.
 - Release Prebuild push-to-main evidence that Linux targets upload both `.tar.gz` and `.deb`
@@ -119,3 +123,4 @@ Operators can edit that file and restart `agenthub.service`.
 
 - [2026-06-13 Debian systemd release package](../journal/2026-06-13-debian-systemd-release-package.md)
 - [Two-binary runtime consolidation](../journal/2026-08-27-two-binary-runtime-consolidation.md)
+- [Code Mode Host companion packaging](../journal/2026-08-28-code-mode-host-companion.md)

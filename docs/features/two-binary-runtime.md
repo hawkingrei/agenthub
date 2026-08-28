@@ -9,10 +9,11 @@ skew, and discovery failure modes.
 
 ## Scope
 
-- Define the two native executables shipped by official builds.
+- Define the two native executables built and owned by AgentHub.
 - Separate user-facing CLI behavior from long-running daemon ownership.
 - Embed built-in Codex and Claude ACP worker modes in the daemon executable.
-- Preserve Codex multicall helper behavior without publishing additional native files.
+- Preserve Codex multicall behavior without publishing additional AgentHub executables.
+- Package the upstream Code Mode Host as an explicitly allowed, version-matched runtime companion.
 - Preserve existing stored agent records that use the former bare built-in adapter commands.
 
 ## Non-Goals
@@ -24,12 +25,16 @@ skew, and discovery failure modes.
 
 ## Architecture
 
-Official artifacts contain exactly two native executable files:
+AgentHub builds and owns exactly two native executables:
 
 | Executable | Ownership |
 | --- | --- |
 | `agenthub` | User-facing administration and actor CLI. A no-argument invocation remains a compatibility launcher for the sibling daemon. |
 | `agenthubd` | Long-running main/node server plus internal stdio provider worker and Codex multicall modes. |
+
+Official packages also contain `codex-code-mode-host`. It is an upstream runtime companion, not an
+AgentHub command or service. AgentHub downloads the official artifact matching the pinned Codex
+dependency and verifies a checked-in SHA-256 digest before packaging it.
 
 The daemon dispatches these process roles before starting an async runtime:
 
@@ -40,16 +45,19 @@ The daemon dispatches these process roles before starting an async runtime:
 
 Provider workers remain separate child processes for isolation, but every built-in worker executes the
 same `agenthubd` file. Codex-created sandbox, exec, filesystem, and patch helpers are temporary aliases
-or re-executions of that file, not additional release artifacts.
+or re-executions of that file, not additional release artifacts. Code Mode is the exception: its V8
+runtime remains in the separately built upstream companion process.
 
 ## Contracts
 
 ### Artifact Contract
 
-- Cargo metadata and Bazel native binary rules expose only `agenthub` and `agenthubd`.
+- AgentHub Cargo metadata and Bazel native binary rules expose only `agenthub` and `agenthubd`.
 - The repository contains no excluded standalone Cargo manifest that can redefine either executable.
 - Release archives publish one archive for each executable and target.
-- Debian and npm platform packages install both executable files from the same release version.
+- The `agenthubd` archive, Debian package, and npm platform package also contain the official
+  `codex-code-mode-host` artifact matching the pinned Codex version and target.
+- The companion download must fail closed on an unsupported target or SHA-256 mismatch.
 - The default systemd unit executes `agenthubd` directly.
 
 ### CLI And Daemon Contract
@@ -74,25 +82,32 @@ or re-executions of that file, not additional release artifacts.
 - Normal daemon startup does not load Codex dotenv state or mutate PATH for helper aliases.
 - The daemon passes the sibling `agenthub` path explicitly to the Codex runtime. The runtime must not
   treat `current_exe()` (`agenthubd`) as the actor CLI.
+- The daemon archive and installed layouts place `codex-code-mode-host` beside `agenthubd` so Codex
+  install-context discovery resolves the host without PATH-dependent fallback.
+- `codex-code-mode-host` is not a daemon mode and must not be supervised as an AgentHub service.
 
 ## Validation Matrix
 
 | Boundary | Required evidence |
 | --- | --- |
-| Native artifact count | `cargo metadata --locked --format-version 1 --no-deps` lists only `agenthub` and `agenthubd`; source scan finds two Bazel `rust_binary` rules. |
+| AgentHub artifact count | `cargo metadata --locked --format-version 1 --no-deps` lists only `agenthub` and `agenthubd`; source scan finds two AgentHub Bazel `rust_binary` rules. |
 | Daemon dispatch | Unit tests cover default server mode, both provider modes, Codex helper aliases, and hidden helper arguments. |
 | Stored command compatibility | Backend tests cover exact bare legacy rewrites, new provider detection, and non-rewrite of absolute custom paths. |
 | Actor CLI identity | Unit tests prove daemon-to-sibling CLI resolution and explicit runtime propagation. |
-| Packaging | Release workflow tests assert two archive names; Debian package inspection and npm package tests confirm both executable files. |
+| Companion provenance | Packaging tests assert the Codex version/revision coupling, supported target mapping, and pinned archive digests. |
+| Packaging | Release workflow tests assert two AgentHub archive names; archive, Debian, and npm inspection confirm the companion is placed beside the daemon. |
 | Runtime | Focused Cargo and Bazel checks pass on the exact change head; release cross-builds remain a rollout gate. |
 
 ## Operational Notes
 
-- Operators should install the two files from the same release.
+- Operators should install the AgentHub executable pair and Code Mode Host companion from the same
+  release package set.
 - `agenthubd acp ...` is an internal subprocess interface. It is documented for diagnostics, not as a
   separately supervised service.
 - External provider commands continue to be discovered through their existing configured path or PATH.
-- Temporary Codex helper aliases do not change the release artifact count.
+- Temporary Codex helper aliases do not change the AgentHub executable count.
+- The Code Mode Host companion is allowed because it preserves V8 process isolation and avoids adding
+  OpenAI's V8 build toolchain to AgentHub's Cargo and Bazel graphs.
 - Daemon-owned local children follow the process-tree and shutdown ordering contract in
   [Daemon Process Supervision](daemon-process-supervision.md).
 
@@ -100,12 +115,13 @@ or re-executions of that file, not additional release artifacts.
 
 - Release cross-build and published archive evidence is required before removing all upgrade guidance
   for the former adapter executables.
-- Third-party packaging that installs only the CLI must add the sibling daemon before adopting this
-  contract.
+- Third-party packaging that installs only the CLI must add the sibling daemon and version-matched
+  Code Mode Host companion before adopting this contract.
 - The helper-mode recognizer is coupled to the pinned Codex revision and must be reviewed with every
   Codex upgrade.
 
 ## Source Journals
 
 - [Two-binary runtime consolidation](../journal/2026-08-27-two-binary-runtime-consolidation.md)
+- [Code Mode Host companion packaging](../journal/2026-08-28-code-mode-host-companion.md)
 - [Release vendored OpenSSL and partial assets](../journal/2026-04-20-release-vendored-openssl-and-partial-assets.md)

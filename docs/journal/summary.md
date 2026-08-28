@@ -318,6 +318,7 @@ Start with:
 - `2026-08-28-team-runtime-delivery-receipts.md`
 - `2026-08-28-daemon-task-group.md`
 - `2026-08-28-agent-start-scheduler.md`
+- `2026-08-28-code-mode-host-companion.md`
 
 ## Compaction Rules
 
