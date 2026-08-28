@@ -39,6 +39,7 @@ mod release_feature_tests {
     use toml::Value;
 
     const ROOT_CARGO_TOML: &str = include_str!("../Cargo.toml");
+    const CARGO_LOCK: &str = include_str!("../Cargo.lock");
     const OBJECT_STORE_CARGO_TOML: &str =
         include_str!("../crates/agenthub-object-store/Cargo.toml");
     const ACP_ADAPTER_CARGO_TOML: &str = include_str!("../crates/agenthub-acp-adapter/Cargo.toml");
@@ -47,7 +48,10 @@ mod release_feature_tests {
     const RELEASE_WORKFLOW: &str = include_str!("../.github/workflows/release.yml");
     const RELEASE_PREBUILD_WORKFLOW: &str =
         include_str!("../.github/workflows/release-prebuild.yml");
+    const CODE_MODE_HOST_FETCH_SCRIPT: &str =
+        include_str!("../build/codex/fetch-code-mode-host.sh");
     const DEB_PACKAGE_SCRIPT: &str = include_str!("../build/deb/package.sh");
+    const BAZEL_MODULE: &str = include_str!("../MODULE.bazel");
     const SYSTEMD_UNIT: &str = include_str!("../build/deb/agenthub.service");
     const TODO_MD: &str = include_str!("../docs/todo.md");
     const S3_RELEASE_JOURNAL: &str =
@@ -235,13 +239,73 @@ mod release_feature_tests {
         }
         assert!(
             RELEASE_WORKFLOW.contains("daemon_archive_name")
-                && RELEASE_WORKFLOW.contains("${stage_dir}/bin/${binary_name}"),
-            "npm staging must install both release binaries into each platform package"
+                && RELEASE_WORKFLOW.contains("${stage_dir}/bin/${binary_name}")
+                && RELEASE_WORKFLOW.contains("${stage_dir}/bin/codex-code-mode-host"),
+            "npm staging must install both AgentHub binaries and the Code Mode Host companion"
         );
         assert!(
-            DEB_PACKAGE_SCRIPT.contains("for binary in agenthub agenthubd")
+            DEB_PACKAGE_SCRIPT.contains("for binary in agenthub agenthubd codex-code-mode-host")
+                && DEB_PACKAGE_SCRIPT.contains(
+                    "${binary_dir}/codex-code-mode-host\" \"${package_root}/usr/bin/codex-code-mode-host"
+                )
                 && !DEB_PACKAGE_SCRIPT.contains("usr/bin/agenthub-acp"),
-            "Debian packages must install exactly the CLI and daemon"
+            "Debian packages must install the CLI, daemon, and Code Mode Host companion"
+        );
+        for (name, workflow) in [
+            ("release.yml", RELEASE_WORKFLOW),
+            ("release-prebuild.yml", RELEASE_PREBUILD_WORKFLOW),
+        ] {
+            assert!(
+                workflow.contains("bash build/codex/fetch-code-mode-host.sh")
+                    && workflow.contains(
+                        "cp \"target/${TARGET}/release/codex-code-mode-host\" \"${package_dir}/\""
+                    ),
+                "{name} must fetch and place the Code Mode Host beside agenthubd"
+            );
+        }
+        let codex_rev = codex_runtime_manifest["dependencies"]["codex-core"]["rev"]
+            .as_str()
+            .expect("Codex runtime revision");
+        let cargo_lock: Value = toml::from_str(CARGO_LOCK).expect("parse Cargo.lock");
+        let codex_version = cargo_lock["package"]
+            .as_array()
+            .expect("Cargo.lock packages")
+            .iter()
+            .find(|package| package["name"].as_str() == Some("codex-core"))
+            .and_then(|package| package["version"].as_str())
+            .expect("pinned codex-core version");
+        assert!(
+            CODE_MODE_HOST_FETCH_SCRIPT.contains(&format!("CODEX_VERSION=\"{codex_version}\""))
+                && CODE_MODE_HOST_FETCH_SCRIPT.contains(&format!("CODEX_REV=\"{codex_rev}\""))
+                && BAZEL_MODULE.contains(&format!("commit = \"{codex_rev}\""))
+                && CODE_MODE_HOST_FETCH_SCRIPT
+                    .contains("github.com/openai/codex/releases/download"),
+            "Code Mode Host artifacts must remain version-matched and checksum-pinned"
+        );
+        for target in [
+            "aarch64-apple-darwin",
+            "aarch64-unknown-linux-gnu",
+            "x86_64-unknown-linux-gnu",
+        ] {
+            assert!(
+                CODE_MODE_HOST_FETCH_SCRIPT.contains(target),
+                "Code Mode Host fetch script must support {target}"
+            );
+        }
+        let pinned_digests = CODE_MODE_HOST_FETCH_SCRIPT
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("archive_sha256=\"")?
+                    .strip_suffix('"')
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(pinned_digests.len(), 3, "pin one digest per release target");
+        assert!(
+            pinned_digests
+                .iter()
+                .all(|digest| digest.len() == 64 && digest.chars().all(|ch| ch.is_ascii_hexdigit())),
+            "Code Mode Host archive digests must be SHA-256 hex strings"
         );
         assert!(
             SYSTEMD_UNIT.contains("ExecStart=/usr/bin/agenthubd"),

@@ -103,6 +103,13 @@ jobs:
         run: |
           cross build --locked --release --target ${{ matrix.target }} -p agenthub-daemon --bin agenthubd --features ${{ matrix.agenthub_features }}
 
+      - name: Fetch pinned Codex Code Mode Host
+        shell: bash
+        run: |
+          bash build/codex/fetch-code-mode-host.sh \
+            "${{ matrix.target }}" \
+            "target/${{ matrix.target }}/release/codex-code-mode-host"
+
       - name: Package
         shell: bash
         run: |
@@ -127,6 +134,9 @@ jobs:
             local package_dir="dist/${package_name}"
             mkdir -p "${package_dir}"
             cp "target/${TARGET}/release/${binary_name}" "${package_dir}/"
+            if [[ "${binary_name}" == "agenthubd" ]]; then
+              cp "target/${TARGET}/release/codex-code-mode-host" "${package_dir}/"
+            fi
             cp README.md "${package_dir}/"
             if [[ -f LICENSE ]]; then
               cp LICENSE "${package_dir}/"
@@ -250,6 +260,16 @@ jobs:
               fi
               cp "${binary_path}" "${stage_dir}/bin/${binary_name}"
               chmod +x "${stage_dir}/bin/${binary_name}"
+              if [[ "${binary_name}" == "agenthubd" ]]; then
+                local host_path
+                host_path="$(find "${unpack_dir}" -type f -name codex-code-mode-host | head -n 1)"
+                if [[ -z "${host_path}" ]]; then
+                  echo "::error::Unable to locate codex-code-mode-host in ${archive_name}"
+                  exit 1
+                fi
+                cp "${host_path}" "${stage_dir}/bin/codex-code-mode-host"
+                chmod +x "${stage_dir}/bin/codex-code-mode-host"
+              fi
             done
             rm -rf "${unpack_dir}"
           }
@@ -416,9 +436,10 @@ jobs:
               echo "- \`${asset}\`"
             done
             echo
-            echo "Each binary archive contains one release binary plus the bundled \`README.md\`"
-            echo "and \`LICENSE\` file when present."
-            echo "Linux \`.deb\` packages install \`agenthub\`, \`agenthubd\`, and a default"
+            echo "Each archive contains its named AgentHub binary plus the bundled \`README.md\`"
+            echo "and \`LICENSE\` file when present. The \`agenthubd\` archive also includes the"
+            echo "version-matched official \`codex-code-mode-host\` companion executable."
+            echo "Linux \`.deb\` packages install \`agenthub\`, \`agenthubd\`, the Code Mode Host, and a default"
             echo "systemd service that runs as the \`agenthub\` user with data under"
             echo "\`/var/lib/agenthub\`."
             echo

@@ -150,7 +150,8 @@ Stable contracts:
 
 - [ ] `P1` Complete two-binary rollout evidence: validate the exact change head with Cargo and Bazel,
   prove Linux cross-builds, and inspect generated Debian/npm packages for exactly `agenthub` and
-  `agenthubd`. Stable contract: [features/two-binary-runtime.md](features/two-binary-runtime.md);
+  `agenthubd` AgentHub-owned executables plus the version-matched `codex-code-mode-host` companion.
+  Stable contract: [features/two-binary-runtime.md](features/two-binary-runtime.md);
   checkpoint: [journal/2026-08-27-two-binary-runtime-consolidation.md](journal/2026-08-27-two-binary-runtime-consolidation.md).
 
 - Keep only open work here. Remove completed items after evidence lands in a journal, PR, or canonical feature spec.
