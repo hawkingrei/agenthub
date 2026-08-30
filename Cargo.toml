@@ -125,7 +125,7 @@ agenthub-message-store = { path = "crates/agenthub-message-store" }
 agenthub-object-store = { path = "crates/agenthub-object-store" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
 agent-client-protocol = { version = "2.0.0", features = ["unstable"] }
-prost = "=0.14.3"
+prost = "=0.14.4"
 tonic-prost = "=0.14.3"
 tonic = { version = "=0.14.6", features = ["transport", "tls-native-roots"] }
 rcgen = "0.14"
