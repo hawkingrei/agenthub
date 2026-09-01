@@ -275,7 +275,7 @@ The package preserves `/var/lib/agenthub` during upgrades.
 ### GitHub archives
 
 Stop the foreground process or your service manager, download both archives
-from the same new release, verify their checksums, and replace `agenthub`,
+from the same new release, verify their checksums, and replace `agenthub`
 and `agenthubd` together. Keep `~/.agenthub` unchanged. Check the release notes
 before changing the separately installed Codex version.
 
