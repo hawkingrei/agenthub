@@ -846,13 +846,108 @@ fn closed_channel_error(operation: &str) -> IoError {
 
 #[cfg(test)]
 mod tests {
-    use super::{CodexRuntime, SUPPORTED_CODEX_VERSION, parse_codex_version};
+    use super::{
+        CodexRuntime, SUPPORTED_CODEX_VERSION, TypedRequestError, parse_codex_version,
+        validate_initialize_response,
+    };
     #[cfg(unix)]
     use super::{StdioAppServerClient, StdioServerEvent};
     #[cfg(unix)]
-    use codex_app_server_protocol::{ClientRequest, JSONRPCErrorError, RequestId, ServerRequest};
+    use codex_app_server_protocol::{
+        ClientRequest, JSONRPCErrorError, JSONRPCResponse, RequestId, ServerNotification,
+        ServerRequest,
+    };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
+    use std::path::{Path, PathBuf};
+    #[cfg(unix)]
+    use std::time::Duration;
+
+    #[cfg(unix)]
+    fn write_executable(path: &Path, script: &str) {
+        std::fs::write(path, script).expect("write fake Codex runtime");
+        let mut permissions = std::fs::metadata(path)
+            .expect("read fake runtime metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions).expect("make fake runtime executable");
+    }
+
+    #[cfg(unix)]
+    async fn resolve_fake_runtime(
+        temp_dir: &tempfile::TempDir,
+        app_server_body: &str,
+    ) -> CodexRuntime {
+        let runtime_path = temp_dir.path().join("codex");
+        let script = format!(
+            r#"#!/bin/sh
+set -eu
+if [ "${{1:-}}" = "--version" ]; then
+  printf '%s\n' 'codex-cli {SUPPORTED_CODEX_VERSION}'
+  exit 0
+fi
+{app_server_body}
+"#
+        );
+        write_executable(&runtime_path, &script);
+        CodexRuntime::resolve(runtime_path, Vec::new(), false)
+            .await
+            .expect("resolve fake Codex runtime")
+    }
+
+    #[cfg(unix)]
+    fn initialized_app_server(body: &str) -> String {
+        format!(
+            r#"if [ "${{1:-}}" != "app-server" ]; then
+  exit 64
+fi
+IFS= read -r initialize_request
+printf '%s\n' '{{"id":"initialize","result":{{"userAgent":"codex_cli_rs/{SUPPORTED_CODEX_VERSION}","codexHome":"/tmp","platformFamily":"unix","platformOs":"linux"}}}}'
+IFS= read -r initialized_notification
+{body}
+"#
+        )
+    }
+
+    #[cfg(unix)]
+    async fn wait_for_json_lines(path: &Path, expected: usize) -> Vec<serde_json::Value> {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if let Ok(contents) = std::fs::read_to_string(path) {
+                    let lines = contents.lines().collect::<Vec<_>>();
+                    if lines.len() >= expected {
+                        return lines
+                            .into_iter()
+                            .map(|line| serde_json::from_str(line).expect("parse recorded JSONL"))
+                            .collect();
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("fake runtime should record complete JSONL responses")
+    }
+
+    #[cfg(unix)]
+    async fn wait_for_path(path: &Path) {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !path.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("fake runtime should reach synchronization point");
+    }
+
+    #[cfg(unix)]
+    fn memory_reset(request_id: i64) -> ClientRequest {
+        ClientRequest::MemoryReset {
+            request_id: RequestId::Integer(request_id),
+            params: None,
+        }
+    }
 
     #[test]
     fn parses_official_codex_version_output() {
@@ -865,6 +960,139 @@ mod tests {
     #[test]
     fn rejects_version_output_without_numeric_token() {
         assert_eq!(parse_codex_version("codex-cli unknown\n"), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn typed_request_errors_preserve_method_and_source_context() {
+        let transport = TypedRequestError::Transport {
+            method: "thread/start".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::BrokenPipe, "closed"),
+        };
+        assert_eq!(
+            transport.to_string(),
+            "thread/start transport error: closed"
+        );
+        assert!(std::error::Error::source(&transport).is_some());
+
+        let server = TypedRequestError::Server {
+            method: "turn/start".to_string(),
+            source: JSONRPCErrorError {
+                code: -32000,
+                message: "provider rejected request".to_string(),
+                data: Some(serde_json::json!({ "retryable": false })),
+            },
+        };
+        assert!(server.to_string().contains("turn/start failed"));
+        assert!(server.to_string().contains("code -32000"));
+        assert!(server.to_string().contains("retryable"));
+        assert!(std::error::Error::source(&server).is_none());
+
+        let decode_source = serde_json::from_value::<u64>(serde_json::json!("not-a-number"))
+            .expect_err("string must not decode as u64");
+        let deserialize = TypedRequestError::Deserialize {
+            method: "memory/reset".to_string(),
+            source: decode_source,
+        };
+        assert!(
+            deserialize
+                .to_string()
+                .contains("memory/reset response decode error")
+        );
+        assert!(std::error::Error::source(&deserialize).is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn initialize_response_validation_rejects_invalid_or_incompatible_metadata() {
+        let response = |result| JSONRPCResponse {
+            id: RequestId::String("initialize".to_string()),
+            result,
+        };
+        assert!(
+            validate_initialize_response(response(serde_json::json!({
+                "userAgent": format!("codex_cli_rs/{SUPPORTED_CODEX_VERSION}"),
+                "codexHome": "/tmp",
+                "platformFamily": "unix",
+                "platformOs": "linux"
+            })))
+            .is_ok()
+        );
+
+        let invalid = validate_initialize_response(response(serde_json::json!({})))
+            .expect_err("missing initialize fields must fail");
+        assert_eq!(invalid.kind(), std::io::ErrorKind::InvalidData);
+
+        let unrecognized = validate_initialize_response(response(serde_json::json!({
+            "userAgent": "codex_cli_rs",
+            "codexHome": "/tmp",
+            "platformFamily": "unix",
+            "platformOs": "linux"
+        })))
+        .expect_err("unversioned user agent must fail");
+        assert_eq!(unrecognized.kind(), std::io::ErrorKind::InvalidData);
+        assert!(unrecognized.to_string().contains("unrecognized user agent"));
+
+        let incompatible = validate_initialize_response(response(serde_json::json!({
+            "userAgent": "codex_cli_rs/0.149.0",
+            "codexHome": "/tmp",
+            "platformFamily": "unix",
+            "platformOs": "linux"
+        })))
+        .expect_err("incompatible app-server must fail");
+        assert_eq!(incompatible.kind(), std::io::ErrorKind::Unsupported);
+        assert!(incompatible.to_string().contains("does not match"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reports_runtime_path_and_version_preflight_failures() {
+        let empty = CodexRuntime::resolve(PathBuf::new(), Vec::new(), false)
+            .await
+            .expect_err("empty runtime path must fail");
+        assert_eq!(empty.kind(), std::io::ErrorKind::InvalidInput);
+
+        let directory = tempfile::tempdir().expect("create temp directory");
+        let not_a_file = CodexRuntime::resolve(directory.path(), Vec::new(), false)
+            .await
+            .expect_err("runtime directory must fail");
+        assert_eq!(not_a_file.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(not_a_file.to_string().contains("is not a file"));
+
+        for (script, kind, message) in [
+            (
+                "#!/bin/sh\nprintf '%s\\n' 'version failed' >&2\nexit 17\n",
+                std::io::ErrorKind::Other,
+                "failed version preflight",
+            ),
+            (
+                "#!/bin/sh\nprintf '%s\\n' 'codex-cli unknown'\n",
+                std::io::ErrorKind::InvalidData,
+                "unrecognized version string",
+            ),
+        ] {
+            let temp_dir = tempfile::tempdir().expect("create temp directory");
+            let runtime_path = temp_dir.path().join("codex");
+            write_executable(&runtime_path, script);
+            let error = CodexRuntime::resolve(runtime_path, Vec::new(), false)
+                .await
+                .expect_err("invalid version preflight must fail");
+            assert_eq!(error.kind(), kind);
+            assert!(error.to_string().contains(message));
+        }
+
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let runtime_path = temp_dir.path().join("codex");
+        std::fs::write(
+            &runtime_path,
+            format!("#!/bin/sh\nprintf '%s\\n' 'codex-cli {SUPPORTED_CODEX_VERSION}'\n"),
+        )
+        .expect("write non-executable runtime");
+        let not_executable = CodexRuntime::resolve(runtime_path, Vec::new(), false)
+            .await
+            .expect_err("non-executable runtime must fail");
+        assert_eq!(not_executable.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(not_executable.to_string().contains("failed to execute"));
     }
 
     #[tokio::test]
@@ -903,6 +1131,323 @@ mod tests {
                 .to_string()
                 .contains("unsupported Codex runtime version 0.149.0")
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn initialization_surfaces_server_error_invalid_json_and_eof() {
+        for (body, kind, message) in [
+            (
+                r#"IFS= read -r initialize_request
+printf '%s\n' '{"id":"initialize","error":{"code":-32000,"message":"not ready"}}'
+"#,
+                std::io::ErrorKind::Other,
+                "rejected initialize",
+            ),
+            (
+                r#"IFS= read -r initialize_request
+printf '%s\n' '{invalid-json'
+"#,
+                std::io::ErrorKind::InvalidData,
+                "invalid JSONL",
+            ),
+            (
+                r#"IFS= read -r initialize_request
+exit 0
+"#,
+                std::io::ErrorKind::UnexpectedEof,
+                "closed during initialize",
+            ),
+        ] {
+            let temp_dir = tempfile::tempdir().expect("create temp directory");
+            let runtime = resolve_fake_runtime(&temp_dir, body).await;
+            let error = match StdioAppServerClient::start(&runtime, temp_dir.path()).await {
+                Ok(_) => panic!("invalid initialize sequence must fail"),
+                Err(error) => error,
+            };
+            assert_eq!(error.kind(), kind);
+            assert!(error.to_string().contains(message));
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn initialization_buffers_supported_events_and_rejects_unknown_requests() {
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let response_path = temp_dir.path().join("initialize-response.jsonl");
+        let body = format!(
+            r#"IFS= read -r initialize_request
+printf '\n'
+printf '%s\n' '{{"id":100,"result":{{"ignored":true}}}}'
+printf '%s\n' '{{"id":101,"error":{{"code":-32000,"message":"ignored"}}}}'
+printf '%s\n' '{{"method":"thread/deleted","params":{{"threadId":"thread-init"}}}}'
+printf '%s\n' '{{"id":9,"method":"attestation/generate","params":{{}}}}'
+printf '%s\n' '{{"id":10,"method":"unknown/request","params":{{}}}}'
+printf '%s\n' '{{"id":"initialize","result":{{"userAgent":"codex_cli_rs/{SUPPORTED_CODEX_VERSION}","codexHome":"/tmp","platformFamily":"unix","platformOs":"linux"}}}}'
+IFS= read -r unsupported_response
+printf '%s\n' "$unsupported_response" > '{response_path}'
+IFS= read -r initialized_notification
+while IFS= read -r ignored; do :; done
+"#,
+            response_path = response_path.display(),
+        );
+        let runtime = resolve_fake_runtime(&temp_dir, &body).await;
+        let mut client = StdioAppServerClient::start(&runtime, temp_dir.path())
+            .await
+            .expect("start fake app-server");
+
+        let notification = client.next_event().await.expect("buffered notification");
+        let StdioServerEvent::ServerNotification(notification) = notification else {
+            panic!("expected buffered server notification");
+        };
+        let ServerNotification::ThreadDeleted(params) = *notification else {
+            panic!("expected thread/deleted notification");
+        };
+        assert_eq!(params.thread_id, "thread-init");
+
+        let request = client.next_event().await.expect("buffered server request");
+        let StdioServerEvent::ServerRequest(request) = request else {
+            panic!("expected buffered server request");
+        };
+        assert!(matches!(
+            *request,
+            ServerRequest::AttestationGenerate { .. }
+        ));
+
+        let responses = wait_for_json_lines(&response_path, 1).await;
+        assert_eq!(responses[0]["id"], serde_json::json!(10));
+        assert_eq!(responses[0]["error"]["code"], serde_json::json!(-32601));
+        assert!(
+            responses[0]["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("unknown/request"))
+        );
+
+        client.shutdown().await.expect("stop fake app-server");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reports_app_server_spawn_failure_after_successful_preflight() {
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let runtime = resolve_fake_runtime(
+            &temp_dir,
+            &initialized_app_server("while IFS= read -r ignored; do :; done\n"),
+        )
+        .await;
+        std::fs::remove_file(runtime.binary()).expect("remove temporary fake runtime");
+
+        let error = match StdioAppServerClient::start(&runtime, temp_dir.path()).await {
+            Ok(_) => panic!("removed app-server executable must fail"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert!(error.to_string().contains("failed to start"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn correlates_out_of_order_responses_and_maps_typed_errors() {
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let runtime = resolve_fake_runtime(
+            &temp_dir,
+            &initialized_app_server(
+                r#"IFS= read -r first_request
+IFS= read -r second_request
+printf '%s\n' '{"id":999,"result":{"ignored":true}}'
+printf '%s\n' '{"id":998,"error":{"code":-32001,"message":"ignored"}}'
+printf '%s\n' '{"id":22,"result":{"value":2}}'
+printf '%s\n' '{"id":21,"error":{"code":-32000,"message":"provider rejected request","data":{"retryable":false}}}'
+IFS= read -r third_request
+printf '%s\n' '{"id":23,"result":"not-a-number"}'
+while IFS= read -r ignored; do :; done
+"#,
+            ),
+        )
+        .await;
+        let client = StdioAppServerClient::start(&runtime, temp_dir.path())
+            .await
+            .expect("start fake app-server");
+        let first = client.request_handle();
+        let second = client.request_handle();
+
+        let (first_result, second_result) = tokio::join!(
+            first.request_typed::<serde_json::Value>(memory_reset(21)),
+            second.request_typed::<serde_json::Value>(memory_reset(22)),
+        );
+        let first_error = first_result.expect_err("first request must receive server error");
+        let TypedRequestError::Server { method, source } = first_error else {
+            panic!("expected typed server error");
+        };
+        assert_eq!(method, "memory/reset");
+        assert_eq!(source.code, -32000);
+        assert_eq!(source.data, Some(serde_json::json!({ "retryable": false })));
+        assert_eq!(
+            second_result.expect("second request must correlate by id"),
+            serde_json::json!({ "value": 2 })
+        );
+
+        let deserialize = client
+            .request_typed::<u64>(memory_reset(23))
+            .await
+            .expect_err("invalid typed response must fail");
+        assert!(matches!(deserialize, TypedRequestError::Deserialize { .. }));
+
+        client.shutdown().await.expect("stop fake app-server");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn forwards_live_events_and_writes_server_request_responses() {
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let response_path = temp_dir.path().join("live-responses.jsonl");
+        let body = initialized_app_server(&format!(
+            r#"printf '%s\n' '{{"method":"thread/deleted","params":{{"threadId":"thread-live"}}}}'
+printf '%s\n' '{{"id":31,"method":"attestation/generate","params":{{}}}}'
+IFS= read -r resolved_response
+printf '%s\n' "$resolved_response" > '{response_path}'
+printf '%s\n' '{{"id":32,"method":"unknown/request","params":{{}}}}'
+IFS= read -r rejected_response
+printf '%s\n' "$rejected_response" >> '{response_path}'
+while IFS= read -r ignored; do :; done
+"#,
+            response_path = response_path.display(),
+        ));
+        let runtime = resolve_fake_runtime(&temp_dir, &body).await;
+        let mut client = StdioAppServerClient::start(&runtime, temp_dir.path())
+            .await
+            .expect("start fake app-server");
+
+        let notification = client.next_event().await.expect("live notification");
+        let StdioServerEvent::ServerNotification(notification) = notification else {
+            panic!("expected live server notification");
+        };
+        assert!(matches!(
+            *notification,
+            ServerNotification::ThreadDeleted(_)
+        ));
+
+        let request = client.next_event().await.expect("live server request");
+        let StdioServerEvent::ServerRequest(request) = request else {
+            panic!("expected live server request");
+        };
+        assert!(matches!(
+            *request,
+            ServerRequest::AttestationGenerate { .. }
+        ));
+        client
+            .resolve_server_request(RequestId::Integer(31), serde_json::json!({ "token": "ok" }))
+            .await
+            .expect("resolve server request");
+
+        let responses = wait_for_json_lines(&response_path, 2).await;
+        assert_eq!(responses[0]["id"], serde_json::json!(31));
+        assert_eq!(responses[0]["result"], serde_json::json!({ "token": "ok" }));
+        assert_eq!(responses[1]["id"], serde_json::json!(32));
+        assert_eq!(responses[1]["error"]["code"], serde_json::json!(-32601));
+
+        client.shutdown().await.expect("stop fake app-server");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn disconnect_fails_pending_requests_and_closes_command_channels() {
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let runtime = resolve_fake_runtime(
+            &temp_dir,
+            &initialized_app_server(
+                r#"IFS= read -r client_request
+printf '%s\n' '{invalid-json'
+"#,
+            ),
+        )
+        .await;
+        let mut client = StdioAppServerClient::start(&runtime, temp_dir.path())
+            .await
+            .expect("start fake app-server");
+        let handle = client.request_handle();
+
+        let error = handle
+            .request_typed::<serde_json::Value>(memory_reset(41))
+            .await
+            .expect_err("disconnect must fail pending request");
+        let TypedRequestError::Transport { source, .. } = error else {
+            panic!("expected transport error");
+        };
+        assert_eq!(source.kind(), std::io::ErrorKind::BrokenPipe);
+        assert!(source.to_string().contains("invalid JSONL"));
+
+        let event = client.next_event().await.expect("disconnect event");
+        let StdioServerEvent::Disconnected { message } = event else {
+            panic!("expected disconnect event");
+        };
+        assert!(message.contains("invalid JSONL"));
+
+        let resolve_error = client
+            .resolve_server_request(RequestId::Integer(42), serde_json::json!({}))
+            .await
+            .expect_err("closed worker must reject responses");
+        assert_eq!(resolve_error.kind(), std::io::ErrorKind::BrokenPipe);
+        let reject_error = client
+            .reject_server_request(
+                RequestId::Integer(43),
+                JSONRPCErrorError {
+                    code: -32601,
+                    message: "unsupported".to_string(),
+                    data: None,
+                },
+            )
+            .await
+            .expect_err("closed worker must reject errors");
+        assert_eq!(reject_error.kind(), std::io::ErrorKind::BrokenPipe);
+
+        client.shutdown().await.expect("join disconnected worker");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn duplicate_in_flight_request_ids_are_rejected_without_losing_first_response() {
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let accepted_path = temp_dir.path().join("first-request-accepted");
+        let release_path = temp_dir.path().join("release-first-response");
+        let runtime = resolve_fake_runtime(
+            &temp_dir,
+            &initialized_app_server(&format!(
+                r#"IFS= read -r first_request
+: > '{accepted_path}'
+while [ ! -f '{release_path}' ]; do sleep 0.01; done
+printf '%s\n' '{{"id":44,"result":{{"accepted":true}}}}'
+while IFS= read -r ignored; do :; done
+"#,
+                accepted_path = accepted_path.display(),
+                release_path = release_path.display(),
+            )),
+        )
+        .await;
+        let client = StdioAppServerClient::start(&runtime, temp_dir.path())
+            .await
+            .expect("start fake app-server");
+        let first = client.request_handle();
+        let second = client.request_handle();
+
+        let first_task = tokio::spawn(async move { first.request(memory_reset(44)).await });
+        wait_for_path(&accepted_path).await;
+        let duplicate = second
+            .request(memory_reset(44))
+            .await
+            .expect_err("duplicate id must fail");
+        std::fs::write(&release_path, b"release").expect("release first response");
+        let first_result = first_task.await.expect("join first request");
+        assert_eq!(
+            first_result
+                .expect("first request transport")
+                .expect("first request response"),
+            serde_json::json!({ "accepted": true })
+        );
+        assert_eq!(duplicate.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(duplicate.to_string().contains("duplicate"));
+
+        client.shutdown().await.expect("stop fake app-server");
     }
 
     #[cfg(unix)]

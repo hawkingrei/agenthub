@@ -67,6 +67,7 @@ working service-context egress.
 cargo fmt --all -- --check
 cargo check --locked -p agenthub-codex-acp-runtime -p agenthub-acp-adapter -p agenthub-daemon
 cargo test --locked -p agenthub-codex-acp-runtime stdio_app_server --lib -- --nocapture
+cargo llvm-cov --locked -p agenthub-codex-acp-runtime --lib --lcov --output-path /tmp/agenthub-codex.lcov
 cargo test --locked -p agenthub-acp-adapter --lib -- --nocapture
 cargo test --locked -p agenthub-daemon --lib -- --nocapture
 cargo test --locked -p agenthub-config codex_runtime_binary -- --nocapture
@@ -77,11 +78,12 @@ bazel test //agenthub-codex-acp:agenthub_codex_acp_tests //crates/agenthub-acp-a
 git diff --check
 ```
 
-The focused stdio test uses a fake installed Codex executable to verify version
-preflight, propagated config and feature arguments, the app-server initialize
-handshake, typed request correlation, and graceful shutdown without requiring
-network access or user credentials. Focused thread-parameter coverage verifies
-that merged ACP MCP servers cross the external app-server boundary.
+The focused stdio tests use fake installed Codex executables to verify version
+preflight, propagated config and feature arguments, initialize failures and
+buffered events, out-of-order typed request correlation, reverse requests,
+disconnect propagation, duplicate request IDs, and graceful shutdown without
+requiring network access or user credentials. Focused thread-parameter coverage
+verifies that merged ACP MCP servers cross the external app-server boundary.
 
 ## Results
 
@@ -89,9 +91,18 @@ that merged ACP MCP servers cross the external app-server boundary.
 - The focused Cargo check passed for the runtime, adapter, and daemon. A final
   targeted Clippy run with warnings denied also passed for all three packages
   and all targets.
-- The Codex ACP runtime library passed all 141 tests. This includes installed
+- The Codex ACP runtime library passed all 151 tests. This includes installed
   runtime discovery/version failures, JSONL app-server lifecycle coverage, and
   the merged MCP server process-boundary regression.
+- Focused `cargo-llvm-cov` v0.9.0 measurement increased
+  `stdio_app_server.rs` line coverage from `452/766` (`59.0%`) to `1136/1226`
+  (`92.7%`). New tests correlate responses by JSON-RPC request ID and use
+  explicit synchronization for duplicate-ID concurrency instead of relying on
+  pipe ordering.
+- Review follow-up removed the stale Code Mode companion instruction from the
+  production upgrade runbook and made the portable-install contract assert the
+  Codex npm package shape without duplicating the version derived from
+  `Cargo.lock`.
 - The adapter, config, and daemon libraries passed 9, 41, and 4 tests
   respectively. The release-contract suite passed 6 tests, the provider proxy
   propagation regression passed, and the `all` channel mailbox broadcast

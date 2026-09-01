@@ -287,7 +287,7 @@ mod release_feature_tests {
             "supported source build and run paths must build only AgentHub-owned executables"
         );
         assert!(
-            USER_INSTALLATION_DOC.contains("@openai/codex@0.150.1")
+            USER_INSTALLATION_DOC.contains("npm install -g @openai/codex@")
                 && USER_INSTALLATION_DOC.contains("runtime_binary")
                 && !USER_INSTALLATION_DOC.contains("agenthubd-*-${TARGET}/codex-code-mode-host"),
             "portable install instructions must require the supported external Codex runtime"

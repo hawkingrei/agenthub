@@ -82,7 +82,7 @@ is not release evidence.
 1. Stop new task submissions and let important active runs finish.
 2. Stop the service.
 3. Capture a consistent data/config snapshot and record both binary versions.
-4. Install the new matching AgentHub binary pair and Code Mode companion.
+4. Install the new matching AgentHub binary pair and supported official Codex CLI.
 5. Start the service and verify `GET /health` returns `ok`.
 6. Sign in, create/start a disposable agent, receive output, and replay it after
    a browser refresh.
