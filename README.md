@@ -66,7 +66,7 @@ Recommended installation paths:
 
 Codex-backed agents additionally require the official Codex CLI version
 `0.150.1`. Install it separately and ensure the daemon can execute it as
-`codex`, or configure an absolute path with `codex_acp.runtime_binary`.
+`codex`, or configure an absolute path with `[codex_acp].runtime_binary`.
 
 The Homebrew tap currently trails the primary release channel and installs a
 legacy ACP helper. Use release archives for a new complete installation until
