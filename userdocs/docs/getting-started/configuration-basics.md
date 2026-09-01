@@ -391,6 +391,13 @@ http = "http://proxy.company.com:8080"
 https = "http://proxy.company.com:8080"
 ```
 
+AgentHub applies configured proxy values to locally spawned ACP provider
+processes using both upper- and lower-case environment variable forms. For a
+systemd-managed daemon, this TOML section is the preferred provider-egress
+configuration boundary; variables exported only in an interactive shell are
+not reliably part of the service environment. Restart the daemon after changing
+these values.
+
 ## Environment Boundary
 
 The server does not currently apply environment overrides for normal TOML

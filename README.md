@@ -58,21 +58,25 @@ Recommended installation paths:
 
 - Ubuntu/Debian: install the matching `.deb` from the
   [latest release](https://github.com/hawkingrei/agenthub/releases/latest). It
-  includes `agenthub`, `agenthubd`, and a systemd service.
+  includes `agenthub`, `agenthubd`, the version-matched
+  `codex-code-mode-host`, and a systemd service.
 - macOS or portable Linux: install the matching `agenthub` and `agenthubd`
-  archives from the same release and verify them with `SHA256SUMS.txt`.
-- npm: `npm install -g @linkerdog/agenthub` installs both native files through
-  the matching platform package.
+  archives from the same release, install the Code Mode companion contained in
+  the daemon archive beside `agenthubd`, and verify them with
+  `SHA256SUMS.txt`.
+- npm: `npm install -g @linkerdog/agenthub` installs both AgentHub executables
+  and the companion through the matching platform package.
 
 The Homebrew tap currently trails the primary release channel and installs a
 legacy ACP helper. Use release archives for a new complete installation until
 the formula is brought back into version and adapter parity.
 
-After installing both binaries:
+After installing the complete runtime:
 
 ```bash
 agenthub --version
 agenthubd --version
+test -x "$(dirname "$(command -v agenthubd)")/codex-code-mode-host"
 agenthub init
 agenthubd
 ```

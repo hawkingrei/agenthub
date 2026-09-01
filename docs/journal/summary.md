@@ -320,6 +320,17 @@ Start with:
 - `2026-08-28-agent-start-scheduler.md`
 - `2026-08-28-code-mode-host-companion.md`
 
+### 2026-09
+
+Main shape:
+
+- ACP installation and service-context recovery closed gaps left after the
+  Code Mode companion packaging rollout.
+
+Start with:
+
+- `2026-09-01-acp-install-proxy-recovery.md`
+
 ## Compaction Rules
 
 - Keep original dated journals when they contain validation evidence, PR context, or detailed

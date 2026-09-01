@@ -50,9 +50,14 @@ mod release_feature_tests {
         include_str!("../.github/workflows/release-prebuild.yml");
     const CODE_MODE_HOST_FETCH_SCRIPT: &str =
         include_str!("../build/codex/fetch-code-mode-host.sh");
+    const ROOT_MAKEFILE: &str = include_str!("../Makefile");
     const DEB_PACKAGE_SCRIPT: &str = include_str!("../build/deb/package.sh");
     const BAZEL_MODULE: &str = include_str!("../MODULE.bazel");
     const SYSTEMD_UNIT: &str = include_str!("../build/deb/agenthub.service");
+    const USER_INSTALLATION_DOC: &str =
+        include_str!("../userdocs/docs/getting-started/installation.md");
+    const USER_TROUBLESHOOTING_DOC: &str =
+        include_str!("../userdocs/docs/operations/troubleshooting.md");
     const TODO_MD: &str = include_str!("../docs/todo.md");
     const S3_RELEASE_JOURNAL: &str =
         include_str!("../docs/journal/2026-08-08-object-store-s3-release-enablement.md");
@@ -310,6 +315,35 @@ mod release_feature_tests {
         assert!(
             SYSTEMD_UNIT.contains("ExecStart=/usr/bin/agenthubd"),
             "systemd must execute the daemon directly"
+        );
+    }
+
+    #[test]
+    fn source_and_portable_installs_stage_the_code_mode_host() {
+        assert!(
+            ROOT_MAKEFILE.contains("build: build-code-mode-host")
+                && ROOT_MAKEFILE.contains("run-server: build-web build-code-mode-host")
+                && ROOT_MAKEFILE.contains("bash build/codex/fetch-code-mode-host.sh"),
+            "supported source build and run paths must stage the pinned Code Mode Host"
+        );
+        assert!(
+            USER_INSTALLATION_DOC.contains("agenthubd-*-${TARGET}/codex-code-mode-host")
+                && USER_INSTALLATION_DOC.contains("\"$HOME/.local/bin/codex-code-mode-host\"")
+                && USER_INSTALLATION_DOC
+                    .contains("$(dirname \"$(command -v agenthubd)\")/codex-code-mode-host"),
+            "portable install instructions must install and verify the daemon companion"
+        );
+    }
+
+    #[test]
+    fn provider_timeout_recovery_uses_service_loaded_proxy_config() {
+        assert!(
+            USER_TROUBLESHOOTING_DOC.contains("Falling back from WebSockets to HTTPS transport.")
+                && USER_TROUBLESHOOTING_DOC.contains("request timed out")
+                && USER_TROUBLESHOOTING_DOC.contains("[proxy]")
+                && USER_TROUBLESHOOTING_DOC
+                    .contains("Persisted mailbox rows are diagnostic evidence"),
+            "troubleshooting must distinguish provider egress failure from mailbox fan-out"
         );
     }
 }

@@ -99,10 +99,11 @@ Unsupported targets must fail with a clear runtime message from the wrapper pack
 
 ## Open Risks
 
-- Published package inspection is still required for the first release that adopts the two-file
-  platform package.
+- Published package inspection is still required for the first release that adopts the complete
+  platform package with both AgentHub executables and the Code Mode companion.
 
 ## Source Journals
 
 - [Two-binary runtime consolidation](../journal/2026-08-27-two-binary-runtime-consolidation.md)
 - [Code Mode Host companion packaging](../journal/2026-08-28-code-mode-host-companion.md)
+- [ACP install and proxy recovery](../journal/2026-09-01-acp-install-proxy-recovery.md)

@@ -34,7 +34,8 @@ AgentHub builds and owns exactly two native executables:
 
 Official packages also contain `codex-code-mode-host`. It is an upstream runtime companion, not an
 AgentHub command or service. AgentHub downloads the official artifact matching the pinned Codex
-dependency and verifies a checked-in SHA-256 digest before packaging it.
+dependency and verifies a checked-in SHA-256 digest before packaging it. The source-development
+`make build` and `make run` paths stage the same pinned companion beside the debug daemon.
 
 The daemon dispatches these process roles before starting an async runtime:
 
@@ -84,6 +85,8 @@ runtime remains in the separately built upstream companion process.
   treat `current_exe()` (`agenthubd`) as the actor CLI.
 - The daemon archive and installed layouts place `codex-code-mode-host` beside `agenthubd` so Codex
   install-context discovery resolves the host without PATH-dependent fallback.
+- The supported Makefile build/run path places the companion in the active Cargo debug target
+  directory before launching `agenthubd`.
 - `codex-code-mode-host` is not a daemon mode and must not be supervised as an AgentHub service.
 
 ## Validation Matrix
@@ -96,6 +99,7 @@ runtime remains in the separately built upstream companion process.
 | Actor CLI identity | Unit tests prove daemon-to-sibling CLI resolution and explicit runtime propagation. |
 | Companion provenance | Packaging tests assert the Codex version/revision coupling, supported target mapping, and pinned archive digests. |
 | Packaging | Release workflow tests assert two AgentHub archive names; archive, Debian, and npm inspection confirm the companion is placed beside the daemon. |
+| Source development | Makefile contract tests confirm `make build` and `make run` stage the pinned companion beside the debug daemon. |
 | Runtime | Focused Cargo and Bazel checks pass on the exact change head; release cross-builds remain a rollout gate. |
 
 ## Operational Notes
@@ -108,6 +112,8 @@ runtime remains in the separately built upstream companion process.
 - Temporary Codex helper aliases do not change the AgentHub executable count.
 - The Code Mode Host companion is allowed because it preserves V8 process isolation and avoids adding
   OpenAI's V8 build toolchain to AgentHub's Cargo and Bazel graphs.
+- Direct ad hoc `cargo run` invocations do not stage release companions. Contributors should use
+  `make run` when exercising Code Mode from a source checkout.
 - Daemon-owned local children follow the process-tree and shutdown ordering contract in
   [Daemon Process Supervision](daemon-process-supervision.md).
 
@@ -124,4 +130,5 @@ runtime remains in the separately built upstream companion process.
 
 - [Two-binary runtime consolidation](../journal/2026-08-27-two-binary-runtime-consolidation.md)
 - [Code Mode Host companion packaging](../journal/2026-08-28-code-mode-host-companion.md)
+- [ACP install and proxy recovery](../journal/2026-09-01-acp-install-proxy-recovery.md)
 - [Release vendored OpenSSL and partial assets](../journal/2026-04-20-release-vendored-openssl-and-partial-assets.md)

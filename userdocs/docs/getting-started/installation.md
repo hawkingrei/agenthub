@@ -14,13 +14,16 @@ AgentHub publishes native binaries for these platforms:
 
 Windows and macOS Intel binaries are not currently published.
 
-For a complete agent runtime, install both executables from the same release:
+For a complete agent runtime, install both AgentHub executables and the Codex
+Code Mode companion from the same release:
 
 - `agenthub`: the administration and actor CLI
 - `agenthubd`: the control plane, embedded web UI, and built-in provider workers
+- `codex-code-mode-host`: the version-matched companion used by Codex Code Mode
 
-The Debian package contains both executables. GitHub publishes them as separate
-archives. npm platform packages contain both files.
+The Debian package contains all three files. GitHub publishes the CLI and daemon
+as separate archives; the daemon archive also contains the companion. npm
+platform packages contain all three files.
 
 :::caution Linux runtime baseline
 
@@ -66,6 +69,7 @@ The package installs:
 
 - `/usr/bin/agenthub`
 - `/usr/bin/agenthubd`
+- `/usr/bin/codex-code-mode-host`
 - `agenthub.service`
 
 It also creates an `agenthub` system user, enables the service, and attempts to
@@ -136,7 +140,9 @@ On Linux:
 grep -- "-${TARGET}.tar.gz$" SHA256SUMS.txt | sha256sum -c -
 ```
 
-Extract and install both binaries into a user-owned directory:
+Extract the two archives and install the CLI, daemon, and companion into one
+user-owned directory. Codex resolves the companion beside `agenthubd`, so do
+not omit the third `install` command:
 
 ```bash
 tar -xzf agenthub-[0-9]*-${TARGET}.tar.gz
@@ -144,18 +150,24 @@ tar -xzf agenthubd-*-${TARGET}.tar.gz
 mkdir -p "$HOME/.local/bin"
 install -m 0755 agenthub-[0-9]*-${TARGET}/agenthub "$HOME/.local/bin/agenthub"
 install -m 0755 agenthubd-*-${TARGET}/agenthubd "$HOME/.local/bin/agenthubd"
+install -m 0755 \
+  agenthubd-*-${TARGET}/codex-code-mode-host \
+  "$HOME/.local/bin/codex-code-mode-host"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Persist the `PATH` update in your shell profile, then verify both commands:
+Persist the `PATH` update in your shell profile, then verify the complete
+runtime layout:
 
 ```bash
 agenthub --version
 agenthubd --version
+test -x "$(dirname "$(command -v agenthubd)")/codex-code-mode-host"
 ```
 
-Keep the two archives on the same release tag. Mixing the CLI with a different
-daemon generation can cause command, provider, or protocol errors.
+Keep the two archives on the same release tag and keep the companion from the
+daemon archive beside the installed daemon. Mixing generations can cause
+command, provider, or protocol errors.
 
 ## npm
 
@@ -167,8 +179,9 @@ npm install -g @linkerdog/agenthub
 agenthub --version
 ```
 
-The selected npm platform package installs both native files. The wrapper invokes
-`agenthub`; the CLI locates the sibling `agenthubd` when starting the service.
+The selected npm platform package installs both AgentHub executables and the
+Code Mode companion. The wrapper invokes `agenthub`; the CLI locates the sibling
+`agenthubd` when starting the service.
 
 If npm reports that the platform package is missing, confirm that optional
 dependencies are enabled and reinstall:
@@ -253,8 +266,9 @@ The package preserves `/var/lib/agenthub` during upgrades.
 ### GitHub archives
 
 Stop the foreground process or your service manager, download both archives
-from the same new release, verify their checksums, and replace both binaries.
-Keep `~/.agenthub` unchanged.
+from the same new release, verify their checksums, and replace `agenthub`,
+`agenthubd`, and the daemon archive's `codex-code-mode-host` together. Keep
+`~/.agenthub` unchanged.
 
 ### npm
 
@@ -279,8 +293,9 @@ all instance state.
 
 ### Archive installation
 
-Remove the installed binaries from `$HOME/.local/bin`. Runtime state under
-`~/.agenthub` is not removed automatically.
+Remove `agenthub`, `agenthubd`, and `codex-code-mode-host` from
+`$HOME/.local/bin`. Runtime state under `~/.agenthub` is not removed
+automatically.
 
 ### npm installation
 

@@ -217,6 +217,63 @@ mod tests {
         let _ = std::fs::remove_dir_all(&workdir);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_executor_applies_proxy_policy_to_provider_child() {
+        let workdir = temp_workdir("agenthub-executor-proxy-env");
+        std::fs::create_dir_all(&workdir).expect("create temp workdir");
+
+        let process_supervisor = AgentProcessSupervisor::default();
+        let executor = LocalExecutor::new(
+            ProxyPolicy::new(vec![
+                (
+                    "HTTP_PROXY".to_string(),
+                    "http://proxy.example:8080".to_string(),
+                ),
+                (
+                    "https_proxy".to_string(),
+                    "http://secure-proxy.example:8443".to_string(),
+                ),
+            ]),
+            process_supervisor.clone(),
+        );
+        let request = LocalExecutionRequest {
+            agent_id: "agent-executor-proxy-test".to_string(),
+            session_id: "session-executor-proxy-test".to_string(),
+            command_path: "/bin/sh".to_string(),
+            args: vec![
+                "-c".to_string(),
+                "printf 'HTTP_PROXY=%s\\nhttps_proxy=%s\\n' \"$HTTP_PROXY\" \"$https_proxy\""
+                    .to_string(),
+            ],
+            workdir: workdir.to_string_lossy().to_string(),
+            actor_context: None,
+            extra_env: Vec::new(),
+        };
+
+        let spawned = executor
+            .spawn_process(request)
+            .await
+            .expect("spawn process");
+        spawned.registration.commit();
+        let child = spawned.child.lock().await.take().expect("take child");
+        let output = Box::into_pin(child.wait_with_output())
+            .await
+            .expect("wait for process output");
+
+        assert!(output.status.success(), "process should exit successfully");
+        let stdout = String::from_utf8(output.stdout).expect("decode stdout");
+        assert_eq!(
+            stdout,
+            "HTTP_PROXY=http://proxy.example:8080\nhttps_proxy=http://secure-proxy.example:8443\n"
+        );
+        process_supervisor
+            .forget("session-executor-proxy-test")
+            .await;
+
+        let _ = std::fs::remove_dir_all(&workdir);
+    }
+
     #[test]
     fn synthesized_child_path_prepends_sibling_bin_dir_for_bare_commands() {
         let current_exe = PathBuf::from("/tmp/agenthub/target/debug/agenthub");

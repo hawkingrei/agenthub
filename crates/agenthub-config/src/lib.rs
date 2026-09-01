@@ -938,7 +938,8 @@ mod tests {
     use super::{
         AgentRuntimeConfig, AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig,
         MessageBodyStoreConfig, NowledgeMemConfig, NowledgeMemProfileConfig,
-        NowledgeMemTeamBindingConfig, ObjectStoreConfig, ServerConfig, ServerRole, WorktreeConfig,
+        NowledgeMemTeamBindingConfig, ObjectStoreConfig, ProxyConfig, ServerConfig, ServerRole,
+        WorktreeConfig,
     };
 
     #[test]
@@ -1351,6 +1352,50 @@ mod tests {
         };
         assert_eq!(config.history_event_retention_days(), None);
         assert_eq!(config.history_delete_batch_size(), 100);
+    }
+
+    #[test]
+    fn proxy_config_expands_for_service_managed_provider_children() {
+        assert!(AppConfig::default().proxy_env().is_empty());
+
+        let config = AppConfig {
+            proxy: Some(ProxyConfig {
+                http: Some("http://proxy.example:8080".to_string()),
+                https: Some("http://secure-proxy.example:8443".to_string()),
+                all: Some("socks5://proxy.example:1080".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            config.proxy_env(),
+            vec![
+                (
+                    "HTTP_PROXY".to_string(),
+                    "http://proxy.example:8080".to_string()
+                ),
+                (
+                    "http_proxy".to_string(),
+                    "http://proxy.example:8080".to_string()
+                ),
+                (
+                    "HTTPS_PROXY".to_string(),
+                    "http://secure-proxy.example:8443".to_string()
+                ),
+                (
+                    "https_proxy".to_string(),
+                    "http://secure-proxy.example:8443".to_string()
+                ),
+                (
+                    "ALL_PROXY".to_string(),
+                    "socks5://proxy.example:1080".to_string()
+                ),
+                (
+                    "all_proxy".to_string(),
+                    "socks5://proxy.example:1080".to_string()
+                ),
+            ]
+        );
     }
 
     #[test]

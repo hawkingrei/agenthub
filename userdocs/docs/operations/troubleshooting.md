@@ -77,6 +77,76 @@ state.
 `agent is already running` means the single-runtime guard is active. Stop the
 existing runtime rather than retrying starts in a loop.
 
+## Codex Code Mode Host Is Missing
+
+This failure means the Codex worker found `agenthubd` but could not find its
+version-matched Code Mode companion beside the daemon:
+
+```text
+Code Mode is unavailable because failed to spawn code-mode host ...: host executable was not found
+```
+
+Inspect the installed layout without changing it:
+
+```bash
+daemon_path="$(command -v agenthubd)"
+host_path="$(dirname "$daemon_path")/codex-code-mode-host"
+test -x "$host_path"
+"$host_path" --help
+```
+
+If either check fails, reinstall the complete daemon package or archive from
+the same AgentHub release. For a portable archive install, copy both files from
+the extracted daemon directory:
+
+```bash
+install -m 0755 /path/to/extracted-agenthubd/agenthubd "$HOME/.local/bin/agenthubd"
+install -m 0755 \
+  /path/to/extracted-agenthubd/codex-code-mode-host \
+  "$HOME/.local/bin/codex-code-mode-host"
+```
+
+Do not substitute a companion from an unrelated Codex or AgentHub release.
+The host protocol follows AgentHub's pinned Codex revision, and a mismatched
+binary can fail after startup even when the path exists.
+
+## Team Message Arrives but the Agent Does Not Reply
+
+If a Team or `all` channel message is persisted but no agent reply appears,
+check the provider log before changing mailbox state. This pair indicates an
+egress failure rather than a channel fan-out failure:
+
+```text
+Falling back from WebSockets to HTTPS transport.
+request timed out
+```
+
+For a service-managed daemon, configure provider egress in the AgentHub config
+loaded by that service. Do not assume proxy variables exported by an
+interactive shell are present in systemd:
+
+```toml
+[proxy]
+http = "http://proxy.company.com:8080"
+https = "http://proxy.company.com:8080"
+```
+
+Debian installations load
+`/var/lib/agenthub/.agenthub/config.toml`; user-managed archive and npm
+installations normally load `~/.agenthub/config.toml`. Restart the matching
+service after editing the file:
+
+```bash
+sudo systemctl restart agenthub.service
+systemctl --user restart agenthub.service
+```
+
+Run only the command for the service scope you actually use. A foreground
+daemon must be stopped and started directly instead. After a daemon restart,
+start the affected agent or Team again, then confirm the timeout does not recur
+before resending messages. Persisted mailbox rows are diagnostic evidence; do
+not delete or rewrite them to hide a provider connectivity failure.
+
 ## No or Stale Output
 
 - Read the connection badge first. `SSE idle` is normal without a running

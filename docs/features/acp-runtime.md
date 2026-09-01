@@ -56,6 +56,10 @@ ACP runtime concerns should stay split across three orthogonal layers:
 - Proxy policy layer:
   - Applies egress policy (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`) to a chosen runtime placement.
   - Must stay provider-agnostic so local and remote runtimes reuse the same policy model.
+  - Service-managed local runtimes should take explicit provider proxy values from the daemon's
+    `[proxy]` configuration. Interactive-shell exports are not a reliable systemd boundary.
+  - Configured HTTP, HTTPS, and all-protocol values are applied to local provider children in both
+    upper- and lower-case environment variable forms.
 
 ### 3) End-to-End Event Path
 
@@ -353,6 +357,10 @@ ACP permission requests are first-class runtime records:
 - Keep debug capabilities available without exposing internal-only controls in primary user path.
 - Treat in-memory runtime ownership as authoritative for live SSE; use persisted status as a recoverable cache that may require reconciliation after abrupt exits.
 - Keep provider metadata, runtime placement, and proxy policy explicit in code so future P2P work extends stable seams instead of forking provider-specific paths.
+- When `Falling back from WebSockets to HTTPS transport` is followed by `request timed out`, verify
+  provider egress from the daemon's service context before treating pending Team mailbox rows as a
+  routing failure. Configure required egress in the service-loaded `[proxy]` section and restart the
+  affected runtime.
 - Team/operator recovery may explicitly clear a persisted ACP session and force a new session for a
   selected member when provider history is irrecoverably dirty; this should remain a targeted
   recovery path, not the normal resume flow.
@@ -416,3 +424,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-07-19-acp-ui-compaction-wave2.md`
 - `docs/journal/2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md`
 - `docs/journal/2026-08-09-feature-docs-compaction-wave2-closeout.md`
+- `docs/journal/2026-09-01-acp-install-proxy-recovery.md`

@@ -152,7 +152,8 @@ Stable contracts:
   prove Linux cross-builds, and inspect generated Debian/npm packages for exactly `agenthub` and
   `agenthubd` AgentHub-owned executables plus the version-matched `codex-code-mode-host` companion.
   Stable contract: [features/two-binary-runtime.md](features/two-binary-runtime.md);
-  checkpoint: [journal/2026-08-27-two-binary-runtime-consolidation.md](journal/2026-08-27-two-binary-runtime-consolidation.md).
+  checkpoints: [journal/2026-08-27-two-binary-runtime-consolidation.md](journal/2026-08-27-two-binary-runtime-consolidation.md),
+  [journal/2026-09-01-acp-install-proxy-recovery.md](journal/2026-09-01-acp-install-proxy-recovery.md).
 
 - Keep only open work here. Remove completed items after evidence lands in a journal, PR, or canonical feature spec.
 - Prefer canonical feature specs in [features/](features/) over stale micro-journal references whenever the contract is already stable.

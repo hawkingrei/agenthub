@@ -33,6 +33,7 @@ rust_library(
         "Cargo.lock",
         "Cargo.toml",
         "MODULE.bazel",
+        "Makefile",
         "//agenthub-codex-acp:Cargo.toml",
         "//crates/agenthub-acp-adapter:Cargo.toml",
         "//crates/agenthub-daemon:Cargo.toml",
@@ -44,6 +45,8 @@ rust_library(
         "build/deb/package.sh",
         "docs/journal/2026-08-08-object-store-s3-release-enablement.md",
         "docs/todo.md",
+        "userdocs/docs/getting-started/installation.md",
+        "userdocs/docs/operations/troubleshooting.md",
         "web/index.html",
     ] + glob(
         ["web/dist/**"],

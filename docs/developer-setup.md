@@ -58,12 +58,17 @@ Runtime state defaults to `~/.agenthub/`.
 make run
 ```
 
-`make run` builds the embedded web UI and both native executables, then starts `agenthubd`.
+`make run` builds the embedded web UI and both AgentHub executables, stages the
+checksum-pinned Codex Code Mode Host beside the debug daemon, then starts
+`agenthubd`. The first run requires network access to download the host artifact
+matching AgentHub's pinned Codex revision.
 
 Open `http://localhost:8080`.
 
-AgentHub ships two native executables. Runtime helpers and built-in provider workers are
-subcommands or multicall modes of `agenthub` and `agenthubd`; they are not separate release files:
+AgentHub builds and owns two native executables. Runtime helpers and built-in
+provider workers are subcommands or multicall modes of `agenthub` and
+`agenthubd`; the upstream `codex-code-mode-host` remains a separate
+version-matched runtime companion:
 
 ```bash
 cargo run -- actor --help
