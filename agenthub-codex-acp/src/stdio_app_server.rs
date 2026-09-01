@@ -345,8 +345,12 @@ impl StdioAppServerClient {
             Ok(events) => events,
             Err(err) => {
                 drop(writer);
-                drop(child.start_kill());
-                drop(child.wait().await);
+                if let Err(cleanup_err) = kill_child(&mut child).await {
+                    warn!(
+                        error = %cleanup_err,
+                        "failed to clean up Codex app-server after initialize failure"
+                    );
+                }
                 return Err(err);
             }
         };
@@ -765,8 +769,7 @@ async fn run_worker(
         drop(event_tx.send(StdioServerEvent::Disconnected {
             message: disconnect_message,
         }));
-        drop(child.start_kill());
-        drop(child.wait().await);
+        drop(kill_child(&mut child).await);
     }
 }
 
@@ -778,13 +781,36 @@ async fn stop_child(
         drop(writer.shutdown().await);
         drop(writer);
     }
-    match timeout(SHUTDOWN_TIMEOUT, child.wait()).await {
-        Ok(result) => result.map(|_| ()),
-        Err(_) => {
-            child.start_kill()?;
-            child.wait().await.map(|_| ())
-        }
+    match wait_for_child_exit(child, SHUTDOWN_TIMEOUT).await {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::TimedOut => kill_child(child).await,
+        Err(err) => Err(err),
     }
+}
+
+async fn kill_child(child: &mut Child) -> IoResult<()> {
+    let kill_result = child.start_kill();
+    let wait_result = wait_for_child_exit(child, SHUTDOWN_TIMEOUT).await;
+    match (kill_result, wait_result) {
+        (_, Ok(())) => Ok(()),
+        (Ok(()), Err(wait_err)) => Err(wait_err),
+        (Err(kill_err), Err(wait_err)) => Err(IoError::new(
+            wait_err.kind(),
+            format!("failed to kill Codex app-server: {kill_err}; {wait_err}"),
+        )),
+    }
+}
+
+async fn wait_for_child_exit(child: &mut Child, wait_timeout: Duration) -> IoResult<()> {
+    timeout(wait_timeout, child.wait())
+        .await
+        .map_err(|_| {
+            IoError::new(
+                ErrorKind::TimedOut,
+                "timed out waiting for Codex app-server child to exit",
+            )
+        })?
+        .map(|_| ())
 }
 
 async fn read_message(
@@ -851,7 +877,7 @@ mod tests {
         validate_initialize_response,
     };
     #[cfg(unix)]
-    use super::{StdioAppServerClient, StdioServerEvent};
+    use super::{StdioAppServerClient, StdioServerEvent, kill_child, wait_for_child_exit};
     #[cfg(unix)]
     use codex_app_server_protocol::{
         ClientRequest, JSONRPCErrorError, JSONRPCResponse, RequestId, ServerNotification,
@@ -1168,6 +1194,27 @@ exit 0
             assert_eq!(error.kind(), kind);
             assert!(error.to_string().contains(message));
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn child_exit_wait_is_bounded_when_process_remains_alive() {
+        let mut child = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg("exec sleep 60")
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawn long-running child");
+
+        let error = wait_for_child_exit(&mut child, Duration::from_millis(25))
+            .await
+            .expect_err("live child wait must time out");
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(error.to_string().contains("timed out waiting"));
+
+        kill_child(&mut child)
+            .await
+            .expect("kill long-running child after timeout assertion");
     }
 
     #[cfg(unix)]
