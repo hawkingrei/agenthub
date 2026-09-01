@@ -6,7 +6,7 @@ usage() {
 Usage:
   build/deb/package.sh --version VERSION --arch amd64|arm64 --target TARGET --output-dir DIST
 
-The target release directory must contain agenthub, agenthubd, and codex-code-mode-host.
+The target release directory must contain agenthub and agenthubd.
 USAGE
 }
 
@@ -59,7 +59,7 @@ case "${arch}" in
 esac
 
 binary_dir="target/${target}/release"
-for binary in agenthub agenthubd codex-code-mode-host; do
+for binary in agenthub agenthubd; do
   if [[ ! -x "${binary_dir}/${binary}" ]]; then
     echo "missing executable ${binary_dir}/${binary}" >&2
     exit 1
@@ -90,7 +90,6 @@ install -d -m 0755 "${package_root}/usr/share/doc/agenthub"
 
 install -m 0755 "${binary_dir}/agenthub" "${package_root}/usr/bin/agenthub"
 install -m 0755 "${binary_dir}/agenthubd" "${package_root}/usr/bin/agenthubd"
-install -m 0755 "${binary_dir}/codex-code-mode-host" "${package_root}/usr/bin/codex-code-mode-host"
 install -m 0644 build/deb/agenthub.service "${package_root}/usr/lib/systemd/system/agenthub.service"
 install -m 0755 build/deb/DEBIAN/postinst "${package_root}/DEBIAN/postinst"
 install -m 0755 build/deb/DEBIAN/prerm "${package_root}/DEBIAN/prerm"

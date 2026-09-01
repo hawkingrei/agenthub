@@ -10,10 +10,11 @@ upgrade.
 ## Artifact Preflight
 
 - Select one exact release tag and verify `SHA256SUMS.txt`.
-- Install `agenthub`, `agenthubd`, and the daemon archive's
-  `codex-code-mode-host` companion from that same release.
-- Confirm both `--version` commands and verify the companion is executable
-  beside `agenthubd` before rollout.
+- Install `agenthub` and `agenthubd` from that same release.
+- Confirm both AgentHub `--version` commands before rollout.
+- For Codex-backed agents, install the supported official Codex CLI separately,
+  confirm `codex --version`, and configure an absolute
+  `[codex_acp].runtime_binary` path for managed services.
 - Validate the official binary on the oldest Linux environment you intend to
   support; the project's glibc floor is not yet frozen.
 - If using S3, smoke test the release artifact against the exact provider and

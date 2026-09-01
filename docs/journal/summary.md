@@ -324,8 +324,10 @@ Start with:
 
 Main shape:
 
-- ACP installation and service-context recovery closed gaps left after the
-  Code Mode companion packaging rollout.
+- Codex runtime ownership moved to an installed official `codex app-server`
+  child while the built-in adapter remained a mode of the single `agenthubd`
+  daemon binary. Service-context proxy recovery remains the provider-egress
+  boundary.
 
 Start with:
 

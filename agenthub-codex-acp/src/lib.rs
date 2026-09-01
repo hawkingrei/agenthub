@@ -15,9 +15,7 @@ use agent_client_protocol::schema::v1::{
 use agent_client_protocol::{Agent, Client, ConnectionTo};
 use codex_core::config::ManagedFeatures;
 use codex_core::config::{Config, ConfigOverrides};
-use codex_exec_server::{EnvironmentManager, ExecServerRuntimePaths};
 use codex_features::{Feature, Features};
-use codex_http_client::{HttpClientFactory, OutboundProxyPolicy};
 use codex_utils_cli::CliConfigOverrides;
 use std::fmt;
 use std::future::Future;
@@ -43,6 +41,7 @@ mod codex_agent;
 #[cfg(target_os = "linux")]
 mod linux_memfd_compat;
 mod prompt_args;
+mod stdio_app_server;
 mod thread;
 
 pub static ACP_CLIENT: OnceLock<Arc<ConnectionTo<Client>>> = OnceLock::new();
@@ -85,38 +84,6 @@ impl<F: Future> Future for LocalSendFuture<F> {
 
 fn local_send_future<F: Future>(future: F) -> LocalSendFuture<F> {
     LocalSendFuture(future)
-}
-
-pub(crate) async fn build_environment_manager(
-    config: &Config,
-) -> Result<Arc<EnvironmentManager>, agent_client_protocol::Error> {
-    let current_exe = std::env::current_exe().map_err(|err| {
-        agent_client_protocol::Error::internal_error().data(format!(
-            "failed to determine current executable path: {err}"
-        ))
-    })?;
-    let runtime_paths = ExecServerRuntimePaths::from_optional_paths(
-        Some(current_exe),
-        config.codex_linux_sandbox_exe.clone(),
-    )
-    .map_err(|err| {
-        agent_client_protocol::Error::internal_error().data(format!(
-            "failed to resolve exec-server runtime paths: {err}"
-        ))
-    })?;
-    let http_client_factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
-    EnvironmentManager::from_codex_home(
-        &config.codex_home,
-        Some(runtime_paths),
-        http_client_factory,
-    )
-    .await
-    .map(Arc::new)
-    .map_err(|err| {
-        agent_client_protocol::Error::internal_error().data(format!(
-            "failed to initialize exec-server environment: {err}"
-        ))
-    })
 }
 
 #[cfg(test)]
@@ -240,31 +207,6 @@ where
     }
 }
 
-fn responses_websocket_feature_opt_in_enabled(features: &Features) -> bool {
-    features.enabled(Feature::ResponsesWebsockets)
-        || features.enabled(Feature::ResponsesWebsocketsV2)
-}
-
-fn should_disable_implicit_responses_websockets(
-    supports_websockets: bool,
-    features: &Features,
-) -> bool {
-    supports_websockets && !responses_websocket_feature_opt_in_enabled(features)
-}
-
-fn normalize_responses_websocket_support(config: &mut Config) {
-    if should_disable_implicit_responses_websockets(
-        config.model_provider.supports_websockets,
-        &config.features,
-    ) {
-        tracing::info!(
-            model_provider_id = %config.model_provider_id,
-            "disabling implicit responses websocket support because websocket features are not enabled"
-        );
-        config.model_provider.supports_websockets = false;
-    }
-}
-
 trait CollabFeatureState {
     fn collab_enabled(&self) -> bool;
     fn try_enable_collab(&mut self) -> Result<(), String>;
@@ -384,11 +326,12 @@ fn apply_agenthub_multi_agent_override<T: CollabFeatureState>(
 ///
 /// If unable to parse the config or start the program.
 pub async fn run_main(
-    codex_linux_sandbox_exe: Option<PathBuf>,
+    codex_binary: PathBuf,
     runtime_actor_cli_path: Option<PathBuf>,
     cli_config_overrides: CliConfigOverrides,
 ) -> IoResult<()> {
     thread::configure_runtime_actor_cli_path(runtime_actor_cli_path);
+    let app_server_overrides = cli_config_overrides.raw_overrides.clone();
     // Parse CLI overrides and load configuration
     let cli_kv_overrides = cli_config_overrides.parse_overrides().map_err(|e| {
         std::io::Error::new(
@@ -397,10 +340,7 @@ pub async fn run_main(
         )
     })?;
 
-    let config_overrides = ConfigOverrides {
-        codex_linux_sandbox_exe,
-        ..ConfigOverrides::default()
-    };
+    let config_overrides = ConfigOverrides::default();
 
     let mut config =
         Config::load_with_cli_overrides_and_harness_overrides(cli_kv_overrides, config_overrides)
@@ -467,7 +407,7 @@ pub async fn run_main(
         tracing::warn!(warning = %warning, "agenthub-codex-acp startup warning");
     }
 
-    match resolve_agenthub_multi_agent_enabled_override() {
+    let multi_agent_enabled = match resolve_agenthub_multi_agent_enabled_override() {
         Ok(enabled) => {
             if let Err(err) = apply_agenthub_multi_agent_override(&mut config.features, enabled) {
                 tracing::warn!(
@@ -475,23 +415,39 @@ pub async fn run_main(
                     "failed to apply AgentHub multi_agent feature override for agenthub-codex-acp",
                 );
             }
+            enabled
         }
         Err(err) => {
             tracing::warn!(
                 error = %err,
                 "ignoring invalid AgentHub multi_agent feature override for agenthub-codex-acp",
             );
+            None
         }
-    }
-    normalize_responses_websocket_support(&mut config);
+    };
+    let runtime = stdio_app_server::CodexRuntime::resolve(
+        codex_binary,
+        app_server_overrides,
+        matches!(multi_agent_enabled, Some(true)),
+    )
+    .await?;
+    tracing::info!(
+        codex_binary = %runtime.binary().display(),
+        codex_version = stdio_app_server::SUPPORTED_CODEX_VERSION,
+        "validated official Codex app-server runtime"
+    );
 
     // Run the I/O task to handle the actual communication
     LocalSet::new()
         .run_until(async move {
             let agent = LocalCodexAgent(Rc::new(
-                codex_agent::CodexAgent::new(config).await.map_err(|err| {
-                    std::io::Error::other(format!("failed to initialize Codex ACP agent: {err}"))
-                })?,
+                codex_agent::CodexAgent::new(config, runtime)
+                    .await
+                    .map_err(|err| {
+                        std::io::Error::other(format!(
+                            "failed to initialize Codex ACP agent: {err}"
+                        ))
+                    })?,
             ));
             let transport = agent_client_protocol::ByteStreams::new(
                 tokio::io::stdout().compat_write(),
@@ -612,12 +568,10 @@ mod tests {
         AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV,
         apply_agenthub_multi_agent_override, parse_agenthub_multi_agent_enabled_env,
         prepare_agenthub_codex_acp_otel, resolve_agenthub_codex_acp_otel_enabled,
-        resolve_agenthub_multi_agent_enabled_override, responses_websocket_feature_opt_in_enabled,
-        rewrite_misleading_timeout_message, should_disable_implicit_responses_websockets,
+        resolve_agenthub_multi_agent_enabled_override, rewrite_misleading_timeout_message,
     };
-    use codex_core::config::ConfigBuilder;
     use codex_features::{Feature, Features};
-    use std::sync::{Arc, Mutex, MutexGuard};
+    use std::sync::{Mutex, MutexGuard};
     use tracing::Level;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -723,25 +677,6 @@ mod tests {
                 "THIRD_PARTY_NOTICES.md missing {expected}"
             );
         }
-    }
-
-    #[tokio::test]
-    async fn build_environment_manager_initializes_from_codex_home() {
-        let codex_home =
-            std::env::temp_dir().join(format!("agenthub-codex-home-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&codex_home).expect("create codex home");
-        let config = ConfigBuilder::default()
-            .codex_home(codex_home.clone())
-            .fallback_cwd(Some(codex_home))
-            .build()
-            .await
-            .expect("build config");
-
-        let manager = super::build_environment_manager(&config)
-            .await
-            .expect("environment manager");
-
-        assert_eq!(Arc::strong_count(&manager), 1);
     }
 
     #[test]
@@ -889,41 +824,6 @@ mod tests {
         unsafe {
             std::env::remove_var(AGENTHUB_CODEX_ACP_OTEL_ENABLED_ENV);
         }
-    }
-
-    #[test]
-    fn implicit_responses_websockets_are_disabled_without_feature_opt_in() {
-        let features = Features::with_defaults();
-
-        assert!(!responses_websocket_feature_opt_in_enabled(&features));
-        assert!(should_disable_implicit_responses_websockets(
-            true, &features
-        ));
-        assert!(!should_disable_implicit_responses_websockets(
-            false, &features
-        ));
-    }
-
-    #[test]
-    fn explicit_responses_websocket_feature_keeps_provider_websocket_support() {
-        let mut features = Features::with_defaults();
-        features.enable(codex_features::Feature::ResponsesWebsockets);
-
-        assert!(responses_websocket_feature_opt_in_enabled(&features));
-        assert!(!should_disable_implicit_responses_websockets(
-            true, &features
-        ));
-    }
-
-    #[test]
-    fn explicit_responses_websocket_v2_feature_keeps_provider_websocket_support() {
-        let mut features = Features::with_defaults();
-        features.enable(codex_features::Feature::ResponsesWebsocketsV2);
-
-        assert!(responses_websocket_feature_opt_in_enabled(&features));
-        assert!(!should_disable_implicit_responses_websockets(
-            true, &features
-        ));
     }
 
     #[test]

@@ -77,38 +77,38 @@ state.
 `agent is already running` means the single-runtime guard is active. Stop the
 existing runtime rather than retrying starts in a loop.
 
-## Codex Code Mode Host Is Missing
+## Codex Runtime Or Code Mode Is Unavailable
 
-This failure means the Codex worker found `agenthubd` but could not find its
-version-matched Code Mode companion beside the daemon:
+AgentHub requires the supported official Codex CLI and starts
+`codex app-server --stdio` for Codex-backed sessions. A missing runtime now
+fails during provider startup with an actionable path/version error. The
+following older-looking message comes from an incomplete official Codex
+installation, not from a missing AgentHub package artifact:
 
 ```text
 Code Mode is unavailable because failed to spawn code-mode host ...: host executable was not found
 ```
 
-Inspect the installed layout without changing it:
+Inspect the runtime as the same OS user and `HOME` used by the daemon:
 
 ```bash
-daemon_path="$(command -v agenthubd)"
-host_path="$(dirname "$daemon_path")/codex-code-mode-host"
-test -x "$host_path"
-"$host_path" --help
+codex --version
+codex app-server --help
 ```
 
-If either check fails, reinstall the complete daemon package or archive from
-the same AgentHub release. For a portable archive install, copy both files from
-the extracted daemon directory:
+AgentHub currently requires `codex-cli 0.150.1`. For a managed service, do not
+assume an interactive-shell PATH is available. Configure the absolute official
+Codex path in the service-loaded AgentHub config:
 
-```bash
-install -m 0755 /path/to/extracted-agenthubd/agenthubd "$HOME/.local/bin/agenthubd"
-install -m 0755 \
-  /path/to/extracted-agenthubd/codex-code-mode-host \
-  "$HOME/.local/bin/codex-code-mode-host"
+```toml
+[codex_acp]
+runtime_binary = "/opt/codex/bin/codex"
 ```
 
-Do not substitute a companion from an unrelated Codex or AgentHub release.
-The host protocol follows AgentHub's pinned Codex revision, and a mismatched
-binary can fail after startup even when the path exists.
+If `codex --version` succeeds but Codex itself still reports a missing
+`codex-code-mode-host`, reinstall that exact official Codex distribution. Do
+not copy a helper from an AgentHub archive or an unrelated Codex release;
+helper discovery and version coupling belong to Codex.
 
 ## Team Message Arrives but the Agent Does Not Reply
 
@@ -120,6 +120,10 @@ egress failure rather than a channel fan-out failure:
 Falling back from WebSockets to HTTPS transport.
 request timed out
 ```
+
+The WebSocket fallback line alone is not a failure; official Codex owns
+transport selection. Treat it as an outage only when the fallback request also
+times out or returns another provider error.
 
 For a service-managed daemon, configure provider egress in the AgentHub config
 loaded by that service. Do not assume proxy variables exported by an

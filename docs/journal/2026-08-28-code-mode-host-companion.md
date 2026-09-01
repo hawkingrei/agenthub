@@ -1,5 +1,8 @@
 # Summary
 
+> Superseded on 2026-09-01 by the installed official Codex app-server runtime
+> contract in [ACP install and proxy recovery](2026-09-01-acp-install-proxy-recovery.md).
+
 Added the official Codex Code Mode Host as a checksum-pinned release companion while keeping
 AgentHub's owned executable surface limited to `agenthub` and `agenthubd`.
 

@@ -28,9 +28,9 @@ object-store-s3 = ["agenthub/object-store-s3"]
 [dependencies]
 agenthub = { path = "../.." }
 agenthub-acp-adapter = { path = "../agenthub-acp-adapter" }
+agenthub-config = { path = "../agenthub-config" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-codex-arg0 = { git = "https://github.com/openai/codex", rev = "90854393966b21e9ebfd21b122334eb09a20c93d" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [lints.rust]

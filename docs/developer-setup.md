@@ -8,6 +8,7 @@ This guide covers local source development for AgentHub contributors.
 - Node.js 20+
 - Bazel / Bazelisk (optional, for Bazel-driven checks)
 - Git
+- Official Codex CLI 0.150.1 (required for Codex-backed agents)
 
 ## Repository Layout
 
@@ -58,19 +59,18 @@ Runtime state defaults to `~/.agenthub/`.
 make run
 ```
 
-`make run` builds the embedded web UI and both AgentHub executables, stages the
-checksum-pinned Codex Code Mode Host beside the debug daemon, then starts
-`agenthubd`. The first run requires network access to download the host artifact
-matching AgentHub's pinned Codex revision.
+`make run` builds the embedded web UI and both AgentHub executables, then starts
+`agenthubd`.
 
 Open `http://localhost:8080`.
 
-AgentHub builds and owns two native executables. Runtime helpers and built-in
-provider workers are subcommands or multicall modes of `agenthub` and
-`agenthubd`; the upstream `codex-code-mode-host` remains a separate
-version-matched runtime companion:
+AgentHub builds and owns two native executables. Built-in provider workers are
+subcommands of `agenthubd`; `agenthubd acp codex` starts the installed official
+`codex app-server --stdio` process on demand. Verify the compatible Codex
+runtime before testing Codex-backed agents:
 
 ```bash
+codex --version
 cargo run -- actor --help
 cargo run -- actor team-members --help
 ```

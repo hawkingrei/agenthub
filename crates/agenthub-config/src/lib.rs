@@ -97,6 +97,7 @@ pub struct WorktreeConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CodexAcpConfig {
     pub binary: Option<String>,
+    pub runtime_binary: Option<String>,
     pub default_mode: Option<String>,
     pub multi_agent_enabled: Option<bool>,
 }
@@ -453,6 +454,16 @@ impl AppConfig {
             .as_ref()
             .and_then(|c| c.binary.clone())
             .unwrap_or_else(|| "agenthubd".to_string())
+    }
+
+    pub fn codex_runtime_binary(&self) -> String {
+        self.codex_acp
+            .as_ref()
+            .and_then(|config| config.runtime_binary.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(expand_tilde)
+            .unwrap_or_else(|| "codex".to_string())
     }
 
     pub fn codex_acp_default_mode(&self) -> Option<String> {
@@ -1418,6 +1429,7 @@ mod tests {
         let config = AppConfig {
             codex_acp: Some(CodexAcpConfig {
                 binary: Some("agenthub-codex-acp".to_string()),
+                runtime_binary: None,
                 default_mode: None,
                 multi_agent_enabled: None,
             }),
@@ -1427,10 +1439,35 @@ mod tests {
     }
 
     #[test]
+    fn codex_runtime_binary_defaults_to_path_lookup() {
+        assert_eq!(AppConfig::default().codex_runtime_binary(), "codex");
+    }
+
+    #[test]
+    fn codex_runtime_binary_expands_configured_path() {
+        let config = AppConfig {
+            codex_acp: Some(CodexAcpConfig {
+                binary: None,
+                runtime_binary: Some("  ~/.local/bin/codex  ".to_string()),
+                default_mode: None,
+                multi_agent_enabled: None,
+            }),
+            ..Default::default()
+        };
+
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        assert_eq!(
+            config.codex_runtime_binary(),
+            format!("{home}/.local/bin/codex")
+        );
+    }
+
+    #[test]
     fn codex_acp_default_mode_preserves_configured_value() {
         let config = AppConfig {
             codex_acp: Some(CodexAcpConfig {
                 binary: None,
+                runtime_binary: None,
                 default_mode: Some(" full-access ".to_string()),
                 multi_agent_enabled: None,
             }),
@@ -1448,6 +1485,7 @@ mod tests {
             let config = AppConfig {
                 codex_acp: Some(CodexAcpConfig {
                     binary: None,
+                    runtime_binary: None,
                     default_mode: Some(format!(" {alias} ")),
                     multi_agent_enabled: None,
                 }),
@@ -1522,6 +1560,7 @@ mod tests {
         let config = AppConfig {
             codex_acp: Some(CodexAcpConfig {
                 binary: None,
+                runtime_binary: None,
                 default_mode: Some("   ".to_string()),
                 multi_agent_enabled: None,
             }),
@@ -1544,6 +1583,7 @@ mod tests {
         let config = AppConfig {
             codex_acp: Some(CodexAcpConfig {
                 binary: None,
+                runtime_binary: None,
                 default_mode: None,
                 multi_agent_enabled: Some(false),
             }),

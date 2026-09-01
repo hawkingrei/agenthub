@@ -553,18 +553,12 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
- "codex-app-server-client",
  "codex-app-server-protocol",
  "codex-apply-patch",
- "codex-arg0",
  "codex-config",
  "codex-core",
- "codex-exec-server",
- "codex-extension-api",
  "codex-features",
- "codex-feedback",
  "codex-history",
- "codex-http-client",
  "codex-login",
  "codex-mcp-server",
  "codex-models-manager",
@@ -607,9 +601,9 @@ version = "0.0.10"
 dependencies = [
  "agenthub",
  "agenthub-acp-adapter",
+ "agenthub-config",
  "anyhow",
  "clap",
- "codex-arg0",
  "tokio",
 ]
 
@@ -2884,15 +2878,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-agent-extension"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-core",
- "codex-protocol",
-]
-
-[[package]]
 name = "codex-agent-graph-store"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -2989,117 +2974,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-app-server"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "anyhow",
- "axum",
- "base64 0.22.1",
- "chrono",
- "clap",
- "codex-agent-extension",
- "codex-analytics",
- "codex-app-server-protocol",
- "codex-app-server-transport",
- "codex-arg0",
- "codex-aws-auth",
- "codex-backend-client",
- "codex-chatgpt",
- "codex-cloud-config",
- "codex-code-mode",
- "codex-config",
- "codex-connectors",
- "codex-core",
- "codex-core-plugins",
- "codex-diagnostics",
- "codex-exec-server",
- "codex-extension-api",
- "codex-external-agent-migration",
- "codex-features",
- "codex-feedback",
- "codex-file-search",
- "codex-file-watcher",
- "codex-git-attribution",
- "codex-git-utils",
- "codex-goal-extension",
- "codex-guardian-v2",
- "codex-history-notes-extension",
- "codex-home",
- "codex-hooks",
- "codex-http-client",
- "codex-image-generation-extension",
- "codex-login",
- "codex-mcp",
- "codex-mcp-extension",
- "codex-memories-extension",
- "codex-memories-write",
- "codex-model-provider",
- "codex-models-manager",
- "codex-otel",
- "codex-plugin",
- "codex-protocol",
- "codex-queue-extension",
- "codex-rmcp-client",
- "codex-rollout",
- "codex-sandboxing",
- "codex-shell-command",
- "codex-skills",
- "codex-skills-extension",
- "codex-state",
- "codex-thread-store",
- "codex-tools",
- "codex-utils-absolute-path",
- "codex-utils-cli",
- "codex-utils-json-to-toml",
- "codex-utils-path-uri",
- "codex-utils-pty",
- "codex-web-search-extension",
- "codex-windows-sandbox",
- "futures",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 2.0.20",
- "time",
- "tokio",
- "tokio-util",
- "toml 0.9.12+spec-1.1.0",
- "toml_edit 0.24.1+spec-1.1.0",
- "tracing",
- "tracing-subscriber",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "codex-app-server-client"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-app-server",
- "codex-app-server-protocol",
- "codex-arg0",
- "codex-config",
- "codex-core",
- "codex-exec-server",
- "codex-feedback",
- "codex-protocol",
- "codex-uds",
- "codex-utils-absolute-path",
- "codex-utils-rustls-provider",
- "futures",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite 0.28.0",
- "toml 0.9.12+spec-1.1.0",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "codex-app-server-protocol"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -3132,44 +3006,6 @@ dependencies = [
 name = "codex-app-server-protocol-noop-macros"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-
-[[package]]
-name = "codex-app-server-transport"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "anyhow",
- "axum",
- "base64 0.22.1",
- "clap",
- "codex-api",
- "codex-app-server-protocol",
- "codex-core",
- "codex-login",
- "codex-model-provider",
- "codex-state",
- "codex-uds",
- "codex-utils-absolute-path",
- "codex-utils-rustls-provider",
- "constant_time_eq 0.3.1",
- "futures",
- "gethostname",
- "hmac 0.12.1",
- "httpdate",
- "jsonwebtoken 9.3.1",
- "owo-colors",
- "rand 0.9.4",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "time",
- "tokio",
- "tokio-tungstenite 0.28.0",
- "tokio-util",
- "tracing",
- "url",
- "uuid",
-]
 
 [[package]]
 name = "codex-apply-patch"
@@ -3260,25 +3096,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-chatgpt"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "anyhow",
- "clap",
- "codex-connectors",
- "codex-core",
- "codex-git-utils",
- "codex-http-client",
- "codex-login",
- "codex-model-provider",
- "codex-plugin",
- "codex-utils-cli",
- "serde",
- "tokio",
-]
-
-[[package]]
 name = "codex-client"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -3288,29 +3105,6 @@ dependencies = [
  "futures",
  "http 1.4.0",
  "rand 0.9.4",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "codex-cloud-config"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "codex-backend-client",
- "codex-config",
- "codex-core",
- "codex-http-client",
- "codex-login",
- "codex-otel",
- "codex-protocol",
- "hmac 0.12.1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.20",
  "tokio",
  "tracing",
 ]
@@ -3428,21 +3222,6 @@ dependencies = [
  "tokio",
  "tracing",
  "urlencoding",
-]
-
-[[package]]
-name = "codex-connectors-extension"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-connectors",
- "codex-core-plugins",
- "codex-file-system",
- "codex-plugin",
- "codex-utils-path-uri",
- "serde_json",
- "thiserror 2.0.20",
- "tracing",
 ]
 
 [[package]]
@@ -3738,34 +3517,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-external-agent-migration"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "chrono",
- "codex-analytics",
- "codex-config",
- "codex-core",
- "codex-core-plugins",
- "codex-hooks",
- "codex-login",
- "codex-memories-write",
- "codex-otel",
- "codex-plugin",
- "codex-protocol",
- "codex-rollout",
- "codex-thread-store",
- "codex-utils-output-truncation",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2 0.10.9",
- "tokio",
- "toml 0.9.12+spec-1.1.0",
- "tracing",
-]
-
-[[package]]
 name = "codex-features"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -3822,16 +3573,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-file-watcher"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "notify",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "codex-git-attribution"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -3871,46 +3612,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-goal-extension"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-analytics",
- "codex-core",
- "codex-extension-api",
- "codex-otel",
- "codex-protocol",
- "codex-rollout",
- "codex-state",
- "codex-tools",
- "codex-utils-template",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "codex-guardian-v2"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-api",
- "codex-core",
- "codex-extension-api",
- "codex-features",
- "codex-http-client",
- "codex-login",
- "codex-model-provider",
- "codex-protocol",
- "http 1.4.0",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "codex-history"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -3918,24 +3619,6 @@ dependencies = [
  "codex-protocol",
  "schemars 0.8.22",
  "serde",
-]
-
-[[package]]
-name = "codex-history-notes-extension"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-api",
- "codex-client",
- "codex-core",
- "codex-extension-api",
- "codex-login",
- "codex-model-provider",
- "codex-protocol",
- "codex-tools",
- "codex-utils-output-truncation",
- "http 1.4.0",
- "serde_json",
 ]
 
 [[package]]
@@ -4139,30 +3822,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-mcp-extension"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-config",
- "codex-connectors",
- "codex-connectors-extension",
- "codex-core",
- "codex-core-plugins",
- "codex-exec-server",
- "codex-extension-api",
- "codex-features",
- "codex-mcp",
- "codex-plugin",
- "codex-protocol",
- "codex-utils-absolute-path",
- "codex-utils-path-uri",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "codex-mcp-server"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -4194,26 +3853,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-memories-extension"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-core",
- "codex-extension-api",
- "codex-features",
- "codex-otel",
- "codex-tools",
- "codex-utils-absolute-path",
- "codex-utils-output-truncation",
- "codex-utils-template",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
 name = "codex-memories-read"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -4221,38 +3860,6 @@ dependencies = [
  "codex-protocol",
  "codex-shell-command",
  "codex-utils-absolute-path",
-]
-
-[[package]]
-name = "codex-memories-write"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "anyhow",
- "chrono",
- "codex-backend-client",
- "codex-config",
- "codex-core",
- "codex-features",
- "codex-git-utils",
- "codex-login",
- "codex-model-provider",
- "codex-otel",
- "codex-protocol",
- "codex-rollout",
- "codex-rollout-trace",
- "codex-secrets",
- "codex-state",
- "codex-terminal-detection",
- "codex-utils-absolute-path",
- "codex-utils-output-truncation",
- "codex-utils-template",
- "futures",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -4449,22 +4056,6 @@ dependencies = [
  "ts-rs",
  "uuid",
  "wildmatch",
-]
-
-[[package]]
-name = "codex-queue-extension"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-core",
- "codex-extension-api",
- "codex-protocol",
- "codex-thread-store",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -4773,17 +4364,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-uds"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "async-io",
- "tokio",
- "tokio-util",
- "uds_windows",
-]
-
-[[package]]
 name = "codex-utils-absolute-path"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
@@ -4969,27 +4549,6 @@ dependencies = [
 name = "codex-utils-template"
 version = "0.150.1"
 source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-
-[[package]]
-name = "codex-web-search-extension"
-version = "0.150.1"
-source = "git+https://github.com/openai/codex?rev=90854393966b21e9ebfd21b122334eb09a20c93d#90854393966b21e9ebfd21b122334eb09a20c93d"
-dependencies = [
- "codex-api",
- "codex-core",
- "codex-extension-api",
- "codex-extension-items",
- "codex-login",
- "codex-model-provider",
- "codex-model-provider-info",
- "codex-otel",
- "codex-protocol",
- "codex-tools",
- "http 1.4.0",
- "schemars 0.8.22",
- "serde_json",
- "url",
-]
 
 [[package]]
 name = "codex-websocket-client"
@@ -9807,12 +9366,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "is_ci"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7655c9839580ee829dfacba1d1278c2b7883e50a277ff7541299489d6bdfdc45"
-
-[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12551,16 +12104,6 @@ name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
-
-[[package]]
-name = "owo-colors"
-version = "4.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
-dependencies = [
- "supports-color 2.1.0",
- "supports-color 3.0.2",
-]
 
 [[package]]
 name = "p256"
@@ -16406,25 +15949,6 @@ dependencies = [
  "ml-dsa",
  "rand 0.8.7",
  "rsa",
-]
-
-[[package]]
-name = "supports-color"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6398cde53adc3c4557306a96ce67b302968513830a77a95b2b17305d9719a89"
-dependencies = [
- "is-terminal",
- "is_ci",
-]
-
-[[package]]
-name = "supports-color"
-version = "3.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c64fc7232dd8d2e4ac5ce4ef302b1d81e0b80d055b9d77c7c4f51f6aa4c867d6"
-dependencies = [
- "is_ci",
 ]
 
 [[package]]

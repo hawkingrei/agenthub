@@ -5,10 +5,6 @@ use std::time::Duration;
 
 use agent_client_protocol::Error;
 use agent_client_protocol::schema::v1::SessionId;
-use codex_app_server_client::{
-    DEFAULT_IN_PROCESS_CHANNEL_CAPACITY, InProcessAppServerClient, InProcessAppServerRequestHandle,
-    InProcessClientStartArgs, InProcessServerEvent, TypedRequestError,
-};
 use codex_app_server_protocol::{
     ClientRequest, CodexErrorInfo as AppServerCodexErrorInfo, CommandExecutionApprovalDecision,
     CommandExecutionRequestApprovalResponse, FileChangeApprovalDecision,
@@ -22,10 +18,7 @@ use codex_app_server_protocol::{
     TurnInterruptParams, TurnInterruptResponse, TurnStartParams, TurnStartResponse, TurnStatus,
     TurnSteerParams, TurnSteerResponse,
 };
-use codex_arg0::Arg0DispatchPaths;
-use codex_config::{CloudConfigBundleLoader, LoaderOverrides};
 use codex_core::config::Config;
-use codex_feedback::CodexFeedback;
 use codex_protocol::approvals::{
     ApplyPatchApprovalRequestEvent, ElicitationAction, ElicitationRequest, ElicitationRequestEvent,
     ExecApprovalRequestEvent,
@@ -68,28 +61,34 @@ use codex_shell_command::parse_command::parse_command;
 use tokio::sync::Mutex;
 use tracing::warn;
 
-use crate::build_environment_manager;
+use crate::stdio_app_server::{
+    CodexRuntime, StdioAppServerClient, StdioAppServerRequestHandle, StdioServerEvent,
+    TypedRequestError,
+};
 use crate::thread::CodexThreadImpl;
 
-const ACP_CLIENT_NAME: &str = "agenthub-codex-acp";
 const DYNAMIC_TOOL_CALLBACK_UNSUPPORTED_MESSAGE: &str =
     "dynamic tool callbacks are not supported by agenthub-codex-acp";
 const ATTESTATION_GENERATION_UNSUPPORTED_MESSAGE: &str =
     "attestation generation is not supported by agenthub-codex-acp";
-// The in-process client exposes event reads and server-request replies through
-// the same client object. Do not hold its mutex forever while waiting for
-// provider events, otherwise permission replies and interrupts can be starved.
+// Event reads and server-request replies share the same child-process client.
+// Do not hold its mutex forever while waiting for provider events, otherwise
+// permission replies and interrupts can be starved.
 const APP_SERVER_EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 pub async fn start_new_thread(
     config: Config,
+    runtime: &CodexRuntime,
 ) -> Result<(SessionId, Arc<dyn CodexThreadImpl>), Error> {
-    let client: InProcessAppServerClient = start_client(&config).await?;
+    let client = start_client(&config, runtime).await?;
     let request_handle = client.request_handle();
     let response: ThreadStartResponse = client
         .request_typed::<ThreadStartResponse>(ClientRequest::ThreadStart {
             request_id: RequestId::Integer(1),
-            params: thread_start_params_from_config(&config),
+            params: thread_start_params_from_config(&config).map_err(|err| {
+                Error::internal_error()
+                    .data(format!("failed to serialize Codex thread config: {err}"))
+            })?,
         })
         .await
         .map_err(app_server_internal_error)?;
@@ -110,13 +109,17 @@ pub async fn start_new_thread(
 pub async fn resume_thread(
     config: Config,
     session_id: &SessionId,
+    runtime: &CodexRuntime,
 ) -> Result<Arc<dyn CodexThreadImpl>, Error> {
-    let client: InProcessAppServerClient = start_client(&config).await?;
+    let client = start_client(&config, runtime).await?;
     let request_handle = client.request_handle();
     let response: ThreadResumeResponse = client
         .request_typed::<ThreadResumeResponse>(ClientRequest::ThreadResume {
             request_id: RequestId::Integer(1),
-            params: thread_resume_params_from_config(&config, session_id),
+            params: thread_resume_params_from_config(&config, session_id).map_err(|err| {
+                Error::internal_error()
+                    .data(format!("failed to serialize Codex thread config: {err}"))
+            })?,
         })
         .await
         .map_err(app_server_internal_error)?;
@@ -133,8 +136,8 @@ pub async fn resume_thread(
 }
 
 struct AppServerCodexThread {
-    client: Mutex<Option<InProcessAppServerClient>>,
-    request_handle: InProcessAppServerRequestHandle,
+    client: Mutex<Option<StdioAppServerClient>>,
+    request_handle: StdioAppServerRequestHandle,
     state: Mutex<AppServerState>,
 }
 
@@ -269,8 +272,8 @@ struct OverrideTurnContextArgs {
 
 impl AppServerCodexThread {
     fn new(
-        client: InProcessAppServerClient,
-        request_handle: InProcessAppServerRequestHandle,
+        client: StdioAppServerClient,
+        request_handle: StdioAppServerRequestHandle,
         thread_id: String,
         config: Config,
         next_request_id: i64,
@@ -744,7 +747,10 @@ impl AppServerCodexThread {
                 params: thread_resume_params_from_config(
                     &updated_config,
                     &SessionId::new(thread_id),
-                ),
+                )
+                .map_err(|err| {
+                    CodexErr::Fatal(format!("failed to serialize Codex thread config: {err}"))
+                })?,
             })
             .await
             .map_err(typed_request_error_to_codex)?;
@@ -921,21 +927,16 @@ impl AppServerCodexThread {
 
     async fn translate_server_event(
         &self,
-        event: InProcessServerEvent,
+        event: StdioServerEvent,
     ) -> Result<Option<Event>, CodexErr> {
         match event {
-            InProcessServerEvent::Lagged { skipped } => {
-                warn!(
-                    "dropping best-effort app-server notifications because consumer lagged by {skipped} events"
-                );
-                Ok(None)
-            }
-            InProcessServerEvent::ServerRequest(request) => {
+            StdioServerEvent::ServerRequest(request) => {
                 self.translate_server_request(*request).await
             }
-            InProcessServerEvent::ServerNotification(notification) => {
+            StdioServerEvent::ServerNotification(notification) => {
                 self.translate_server_notification(*notification).await
             }
+            StdioServerEvent::Disconnected { message } => Err(CodexErr::Fatal(message)),
         }
     }
 
@@ -3224,32 +3225,13 @@ fn app_server_web_search_action_to_core(
     }
 }
 
-async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error> {
-    InProcessAppServerClient::start(InProcessClientStartArgs {
-        arg0_paths: Arg0DispatchPaths::default(),
-        config: Arc::new(config.clone()),
-        cli_overrides: Vec::new(),
-        loader_overrides: LoaderOverrides::default(),
-        strict_config: false,
-        cloud_config_bundle: CloudConfigBundleLoader::default(),
-        feedback: CodexFeedback::new(),
-        log_db: None,
-        state_db: None,
-        environment_manager: build_environment_manager(config).await?,
-        config_warnings: Vec::new(),
-        session_source: codex_protocol::protocol::SessionSource::Unknown,
-        enable_codex_api_key_env: false,
-        client_name: ACP_CLIENT_NAME.to_string(),
-        client_version: env!("CARGO_PKG_VERSION").to_string(),
-        experimental_api: true,
-        // We do not handle `openai/form` elicitation requests in the ACP
-        // adapter, so do not advertise support for them.
-        mcp_server_openai_form_elicitation: false,
-        opt_out_notification_methods: Vec::new(),
-        channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
-    })
-    .await
-    .map_err(|err| Error::internal_error().data(err.to_string()))
+async fn start_client(
+    config: &Config,
+    runtime: &CodexRuntime,
+) -> Result<StdioAppServerClient, Error> {
+    StdioAppServerClient::start(runtime, config.cwd.as_path())
+        .await
+        .map_err(|err| Error::internal_error().data(err.to_string()))
 }
 
 fn permissions_request_event_from_params(
@@ -3332,8 +3314,8 @@ fn model_verification_to_core(
     }
 }
 
-fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {
-    ThreadStartParams {
+fn thread_start_params_from_config(config: &Config) -> serde_json::Result<ThreadStartParams> {
+    Ok(ThreadStartParams {
         model: config.model.clone(),
         model_provider: Some(config.model_provider_id.clone()),
         cwd: Some(config.cwd.to_string_lossy().to_string()),
@@ -3344,14 +3326,17 @@ fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {
                 .permissions
                 .legacy_sandbox_policy(config.cwd.as_path()),
         ),
-        config: config_request_overrides_from_config(config),
+        config: config_request_overrides_from_config(config)?,
         ephemeral: Some(config.ephemeral),
         ..ThreadStartParams::default()
-    }
+    })
 }
 
-fn thread_resume_params_from_config(config: &Config, session_id: &SessionId) -> ThreadResumeParams {
-    ThreadResumeParams {
+fn thread_resume_params_from_config(
+    config: &Config,
+    session_id: &SessionId,
+) -> serde_json::Result<ThreadResumeParams> {
+    Ok(ThreadResumeParams {
         thread_id: session_id.0.to_string(),
         model: config.model.clone(),
         model_provider: Some(config.model_provider_id.clone()),
@@ -3363,9 +3348,9 @@ fn thread_resume_params_from_config(config: &Config, session_id: &SessionId) -> 
                 .permissions
                 .legacy_sandbox_policy(config.cwd.as_path()),
         ),
-        config: config_request_overrides_from_config(config),
+        config: config_request_overrides_from_config(config)?,
         ..ThreadResumeParams::default()
-    }
+    })
 }
 
 fn sandbox_mode_from_policy(
@@ -3385,8 +3370,9 @@ fn sandbox_mode_from_policy(
 
 fn config_request_overrides_from_config(
     config: &Config,
-) -> Option<HashMap<String, serde_json::Value>> {
-    config
+) -> serde_json::Result<Option<HashMap<String, serde_json::Value>>> {
+    let mut overrides = HashMap::new();
+    if let Some(profile) = config
         .config_layer_stack
         .get_active_user_layer()
         .and_then(|layer| match &layer.name {
@@ -3396,12 +3382,25 @@ fn config_request_overrides_from_config(
             } => Some(profile),
             _ => None,
         })
-        .map(|profile| {
-            HashMap::from([(
-                "profile".to_string(),
-                serde_json::Value::String(profile.clone()),
-            )])
-        })
+    {
+        overrides.insert(
+            "profile".to_string(),
+            serde_json::Value::String(profile.clone()),
+        );
+    }
+
+    let mcp_servers = config.mcp_servers.get();
+    if !mcp_servers.is_empty() {
+        // ACP-provided servers exist only in this process's merged Config. The
+        // external app-server reloads its own config, so project the complete
+        // effective map into the per-thread override.
+        overrides.insert(
+            "mcp_servers".to_string(),
+            serde_json::to_value(mcp_servers)?,
+        );
+    }
+
+    Ok((!overrides.is_empty()).then_some(overrides))
 }
 
 fn elicitation_request_key(server_name: &str, request_id: &McpRequestId) -> String {
@@ -4107,32 +4106,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn attestation_generate_requests_are_rejected() {
-        let state = test_state_with_active_turn(None).await;
-        let config = state.config.clone();
-        let client = start_client(&config).await.expect("start client");
-        let request_handle = client.request_handle();
-        let thread = AppServerCodexThread::new(
-            client,
-            request_handle,
-            "thread-1".to_string(),
-            config,
-            1,
-            ThreadStatus::Idle,
-            Vec::new(),
-        );
-
-        let result = thread
-            .translate_server_request(ServerRequest::AttestationGenerate {
-                request_id: RequestId::Integer(7),
-                params: codex_app_server_protocol::AttestationGenerateParams {},
-            })
-            .await;
-
-        assert!(matches!(result, Ok(None)));
-    }
-
-    #[tokio::test]
     async fn submission_id_for_turn_falls_back_to_turn_id_when_local_state_is_missing() {
         let state = test_state_with_active_turn(None).await;
 
@@ -4376,6 +4349,34 @@ mod tests {
         };
         assert_eq!(params.cwd, Some(state.config.cwd.to_path_buf()));
         assert_eq!(params.runtime_workspace_roots, None);
+    }
+
+    #[tokio::test]
+    async fn thread_start_config_forwards_merged_mcp_servers() {
+        let mut state = test_state_with_active_turn(None).await;
+        let server = serde_json::from_value(serde_json::json!({
+            "command": "agenthub",
+            "args": ["actor", "mailbox"]
+        }))
+        .expect("deserialize MCP server config");
+        state
+            .config
+            .mcp_servers
+            .set(HashMap::from([("agenthub".to_string(), server)]))
+            .expect("set MCP server config");
+
+        let params =
+            thread_start_params_from_config(&state.config).expect("serialize thread config");
+        let config = params.config.expect("thread config overrides");
+
+        assert_eq!(
+            config["mcp_servers"]["agenthub"]["command"],
+            serde_json::json!("agenthub")
+        );
+        assert_eq!(
+            config["mcp_servers"]["agenthub"]["args"],
+            serde_json::json!(["actor", "mailbox"])
+        );
     }
 
     #[test]

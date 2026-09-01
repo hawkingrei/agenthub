@@ -45,14 +45,14 @@ mod release_feature_tests {
     const ACP_ADAPTER_CARGO_TOML: &str = include_str!("../crates/agenthub-acp-adapter/Cargo.toml");
     const DAEMON_CARGO_TOML: &str = include_str!("../crates/agenthub-daemon/Cargo.toml");
     const CODEX_RUNTIME_CARGO_TOML: &str = include_str!("../agenthub-codex-acp/Cargo.toml");
+    const CODEX_STDIO_APP_SERVER_SOURCE: &str =
+        include_str!("../agenthub-codex-acp/src/stdio_app_server.rs");
+    const BAZEL_MODULE: &str = include_str!("../MODULE.bazel");
     const RELEASE_WORKFLOW: &str = include_str!("../.github/workflows/release.yml");
     const RELEASE_PREBUILD_WORKFLOW: &str =
         include_str!("../.github/workflows/release-prebuild.yml");
-    const CODE_MODE_HOST_FETCH_SCRIPT: &str =
-        include_str!("../build/codex/fetch-code-mode-host.sh");
     const ROOT_MAKEFILE: &str = include_str!("../Makefile");
     const DEB_PACKAGE_SCRIPT: &str = include_str!("../build/deb/package.sh");
-    const BAZEL_MODULE: &str = include_str!("../MODULE.bazel");
     const SYSTEMD_UNIT: &str = include_str!("../build/deb/agenthub.service");
     const USER_INSTALLATION_DOC: &str =
         include_str!("../userdocs/docs/getting-started/installation.md");
@@ -245,72 +245,31 @@ mod release_feature_tests {
         assert!(
             RELEASE_WORKFLOW.contains("daemon_archive_name")
                 && RELEASE_WORKFLOW.contains("${stage_dir}/bin/${binary_name}")
-                && RELEASE_WORKFLOW.contains("${stage_dir}/bin/codex-code-mode-host"),
-            "npm staging must install both AgentHub binaries and the Code Mode Host companion"
+                && !RELEASE_WORKFLOW.contains("codex-code-mode-host"),
+            "npm staging must install both AgentHub binaries without a Codex helper"
         );
         assert!(
-            DEB_PACKAGE_SCRIPT.contains("for binary in agenthub agenthubd codex-code-mode-host")
-                && DEB_PACKAGE_SCRIPT.contains(
-                    "${binary_dir}/codex-code-mode-host\" \"${package_root}/usr/bin/codex-code-mode-host"
-                )
+            DEB_PACKAGE_SCRIPT.contains("for binary in agenthub agenthubd")
+                && !DEB_PACKAGE_SCRIPT.contains("codex-code-mode-host")
                 && !DEB_PACKAGE_SCRIPT.contains("usr/bin/agenthub-acp"),
-            "Debian packages must install the CLI, daemon, and Code Mode Host companion"
+            "Debian packages must install only AgentHub-owned executables"
         );
         for (name, workflow) in [
             ("release.yml", RELEASE_WORKFLOW),
             ("release-prebuild.yml", RELEASE_PREBUILD_WORKFLOW),
         ] {
             assert!(
-                workflow.contains("bash build/codex/fetch-code-mode-host.sh")
-                    && workflow.contains(
-                        "cp \"target/${TARGET}/release/codex-code-mode-host\" \"${package_dir}/\""
-                    ),
-                "{name} must fetch and place the Code Mode Host beside agenthubd"
+                !workflow.contains("codex-code-mode-host")
+                    && !workflow.contains("fetch-code-mode-host"),
+                "{name} must not fetch or package Codex helper artifacts"
             );
         }
-        let codex_rev = codex_runtime_manifest["dependencies"]["codex-core"]["rev"]
-            .as_str()
-            .expect("Codex runtime revision");
-        let cargo_lock: Value = toml::from_str(CARGO_LOCK).expect("parse Cargo.lock");
-        let codex_version = cargo_lock["package"]
-            .as_array()
-            .expect("Cargo.lock packages")
-            .iter()
-            .find(|package| package["name"].as_str() == Some("codex-core"))
-            .and_then(|package| package["version"].as_str())
-            .expect("pinned codex-core version");
         assert!(
-            CODE_MODE_HOST_FETCH_SCRIPT.contains(&format!("CODEX_VERSION=\"{codex_version}\""))
-                && CODE_MODE_HOST_FETCH_SCRIPT.contains(&format!("CODEX_REV=\"{codex_rev}\""))
-                && BAZEL_MODULE.contains(&format!("commit = \"{codex_rev}\""))
-                && CODE_MODE_HOST_FETCH_SCRIPT
-                    .contains("github.com/openai/codex/releases/download"),
-            "Code Mode Host artifacts must remain version-matched and checksum-pinned"
-        );
-        for target in [
-            "aarch64-apple-darwin",
-            "aarch64-unknown-linux-gnu",
-            "x86_64-unknown-linux-gnu",
-        ] {
-            assert!(
-                CODE_MODE_HOST_FETCH_SCRIPT.contains(target),
-                "Code Mode Host fetch script must support {target}"
-            );
-        }
-        let pinned_digests = CODE_MODE_HOST_FETCH_SCRIPT
-            .lines()
-            .filter_map(|line| {
-                line.trim()
-                    .strip_prefix("archive_sha256=\"")?
-                    .strip_suffix('"')
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(pinned_digests.len(), 3, "pin one digest per release target");
-        assert!(
-            pinned_digests
-                .iter()
-                .all(|digest| digest.len() == 64 && digest.chars().all(|ch| ch.is_ascii_hexdigit())),
-            "Code Mode Host archive digests must be SHA-256 hex strings"
+            daemon_manifest["dependencies"].get("codex-arg0").is_none()
+                && codex_runtime_manifest["dependencies"]
+                    .get("codex-app-server-client")
+                    .is_none(),
+            "AgentHub must delegate Codex helper and app-server process ownership to installed Codex"
         );
         assert!(
             SYSTEMD_UNIT.contains("ExecStart=/usr/bin/agenthubd"),
@@ -319,20 +278,61 @@ mod release_feature_tests {
     }
 
     #[test]
-    fn source_and_portable_installs_stage_the_code_mode_host() {
+    fn source_and_portable_installs_require_external_codex() {
         assert!(
-            ROOT_MAKEFILE.contains("build: build-code-mode-host")
-                && ROOT_MAKEFILE.contains("run-server: build-web build-code-mode-host")
+            ROOT_MAKEFILE.contains("build:\n")
+                && ROOT_MAKEFILE.contains("run-server: build-web")
                 && ROOT_MAKEFILE.contains("export CARGO_TARGET_DIR")
-                && ROOT_MAKEFILE.contains("bash build/codex/fetch-code-mode-host.sh"),
-            "supported source build and run paths must stage the pinned Code Mode Host beside the daemon"
+                && !ROOT_MAKEFILE.contains("code-mode-host"),
+            "supported source build and run paths must build only AgentHub-owned executables"
         );
         assert!(
-            USER_INSTALLATION_DOC.contains("agenthubd-*-${TARGET}/codex-code-mode-host")
-                && USER_INSTALLATION_DOC.contains("\"$HOME/.local/bin/codex-code-mode-host\"")
-                && USER_INSTALLATION_DOC
-                    .contains("$(dirname \"$(command -v agenthubd)\")/codex-code-mode-host"),
-            "portable install instructions must install and verify the daemon companion"
+            USER_INSTALLATION_DOC.contains("@openai/codex@0.150.1")
+                && USER_INSTALLATION_DOC.contains("runtime_binary")
+                && !USER_INSTALLATION_DOC.contains("agenthubd-*-${TARGET}/codex-code-mode-host"),
+            "portable install instructions must require the supported external Codex runtime"
+        );
+    }
+
+    #[test]
+    fn installed_codex_version_matches_protocol_and_bazel_pins() {
+        let runtime_manifest: Value =
+            toml::from_str(CODEX_RUNTIME_CARGO_TOML).expect("parse Codex runtime Cargo.toml");
+        let dependencies = runtime_manifest["dependencies"]
+            .as_table()
+            .expect("Codex runtime dependencies");
+        let protocol_rev = dependencies["codex-app-server-protocol"]["rev"]
+            .as_str()
+            .expect("Codex app-server protocol revision");
+        assert!(
+            dependencies
+                .iter()
+                .filter(|(name, _)| name.starts_with("codex-"))
+                .all(|(_, dependency)| dependency["rev"].as_str() == Some(protocol_rev)),
+            "all direct Codex dependencies must use the reviewed app-server protocol revision"
+        );
+        assert!(
+            BAZEL_MODULE.contains(&format!("commit = \"{protocol_rev}\"")),
+            "Bazel must use the same official Codex revision as Cargo"
+        );
+
+        let cargo_lock: Value = toml::from_str(CARGO_LOCK).expect("parse Cargo.lock");
+        let protocol_version = cargo_lock["package"]
+            .as_array()
+            .expect("Cargo.lock packages")
+            .iter()
+            .find(|package| package["name"].as_str() == Some("codex-app-server-protocol"))
+            .and_then(|package| package["version"].as_str())
+            .expect("Codex app-server protocol version");
+        assert!(
+            CODEX_STDIO_APP_SERVER_SOURCE.contains(&format!(
+                "SUPPORTED_CODEX_VERSION: &str = \"{protocol_version}\""
+            )),
+            "installed Codex preflight version must match the compiled app-server protocol"
+        );
+        assert!(
+            USER_INSTALLATION_DOC.contains(&format!("@openai/codex@{protocol_version}")),
+            "installation docs must name the supported official Codex version"
         );
     }
 

@@ -3,7 +3,10 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["Cargo.toml"])
+exports_files([
+    "Cargo.toml",
+    "src/stdio_app_server.rs",
+])
 
 rust_library(
     name = "agenthub_codex_acp_runtime",

@@ -88,6 +88,10 @@ fn log_config_details(
     }
     tracing::info!("config codex_acp_binary: {}", config.codex_acp_binary());
     tracing::info!(
+        "config codex_runtime_binary: {}",
+        config.codex_runtime_binary()
+    );
+    tracing::info!(
         "config codex_acp_default_mode: {}",
         config
             .codex_acp_default_mode()

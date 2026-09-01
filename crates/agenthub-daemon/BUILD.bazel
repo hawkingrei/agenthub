@@ -15,6 +15,7 @@ rust_library(
     deps = all_crate_deps(normal = True) + [
         "//:agenthub_lib",
         "//crates/agenthub-acp-adapter:agenthub_acp_adapter",
+        "//crates/agenthub-config:agenthub_config",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )

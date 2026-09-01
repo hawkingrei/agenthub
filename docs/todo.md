@@ -150,10 +150,15 @@ Stable contracts:
 
 - [ ] `P1` Complete two-binary rollout evidence: validate the exact change head with Cargo and Bazel,
   prove Linux cross-builds, and inspect generated Debian/npm packages for exactly `agenthub` and
-  `agenthubd` AgentHub-owned executables plus the version-matched `codex-code-mode-host` companion.
+  `agenthubd` AgentHub-owned executables with no bundled Codex helper artifacts. Verify the supported
+  separately installed Codex runtime from a systemd service account.
   Stable contract: [features/two-binary-runtime.md](features/two-binary-runtime.md);
   checkpoints: [journal/2026-08-27-two-binary-runtime-consolidation.md](journal/2026-08-27-two-binary-runtime-consolidation.md),
   [journal/2026-09-01-acp-install-proxy-recovery.md](journal/2026-09-01-acp-install-proxy-recovery.md).
+
+- [ ] `P2` Reduce the Codex ACP adapter's remaining compile-time dependence on Codex
+  core/config/history types after app-server endpoints cover the session metadata paths. Keep ACP as
+  the AgentHub boundary and the installed official Codex app-server as runtime execution authority.
 
 - Keep only open work here. Remove completed items after evidence lands in a journal, PR, or canonical feature spec.
 - Prefer canonical feature specs in [features/](features/) over stale micro-journal references whenever the contract is already stable.
