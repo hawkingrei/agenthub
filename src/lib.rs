@@ -323,8 +323,9 @@ mod release_feature_tests {
         assert!(
             ROOT_MAKEFILE.contains("build: build-code-mode-host")
                 && ROOT_MAKEFILE.contains("run-server: build-web build-code-mode-host")
+                && ROOT_MAKEFILE.contains("export CARGO_TARGET_DIR")
                 && ROOT_MAKEFILE.contains("bash build/codex/fetch-code-mode-host.sh"),
-            "supported source build and run paths must stage the pinned Code Mode Host"
+            "supported source build and run paths must stage the pinned Code Mode Host beside the daemon"
         );
         assert!(
             USER_INSTALLATION_DOC.contains("agenthubd-*-${TARGET}/codex-code-mode-host")

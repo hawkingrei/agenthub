@@ -7,6 +7,7 @@ CARGO_TARGET_DIR ?= $(CURDIR)/target
 RUST_HOST_TARGET ?= $(shell rustc -vV | sed -n 's/^host: //p')
 CODE_MODE_HOST_PATH := $(CARGO_TARGET_DIR)/debug/codex-code-mode-host
 export CARGO_HOME
+export CARGO_TARGET_DIR
 
 build-web:
 	cd web && npm run build
