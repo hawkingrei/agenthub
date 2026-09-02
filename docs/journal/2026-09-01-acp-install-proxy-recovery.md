@@ -125,6 +125,43 @@ the external app-server boundary.
   matches the pre-existing local non-terminal module-resolution evidence in the
   two-binary rollout journal; exact-head Bazel CI remains an open gate.
 
+### Post-Merge Rollout — 2026-09-02
+
+- [PR #1104](https://github.com/hawkingrei/agenthub/pull/1104) merged as
+  `4b0b5c7f2e42f2521f2ca04c191ca81fdedc9f67`. Exact-head Release Prebuild run
+  `33574882090` produced the Linux amd64 `agenthub` and `agenthubd` artifacts;
+  the Debian package contained only those two AgentHub-owned executables.
+- The first production ACP smoke exposed a compatibility defect in the
+  per-thread MCP override projection. `McpServerConfig.tool_timeout_sec: None`
+  serialized as JSON `null`; the official app-server override loader coerced
+  that value to an empty string and then rejected it as an invalid `f64`.
+- The rollout hotfix omits only a null `tool_timeout_sec` from projected MCP
+  server overrides and preserves explicit numeric timeout values. Two focused
+  regressions cover both boundaries. The runtime library completed all 153
+  tests, and focused Clippy completed with warnings denied.
+- The release candidate completed `initialize`, `new_session`, and `prompt`
+  against `/usr/bin/codex` 0.150.1. A forced `code_mode_only` prompt launched a
+  new `/usr/bin/codex-code-mode-host` process, evaluated JavaScript, returned
+  `CODE_MODE_HOST_OK_42`, and ended normally.
+- Production was atomically restarted at `2026-09-02 09:41:45 CST`. The service
+  reported `active/running`, `Result=success`, and zero automatic restarts.
+  Local and public `/health` probes returned HTTP 200. The installed binaries
+  have SHA-256 digests
+  `9b681afff4abd4210298ecf31720ab40fae2b3c1bc347dc02f63fd696469b1bf`
+  (`agenthub`) and
+  `da1b604dc3a99fe6ff620c614ad07c7605b4eb971e685dd01929d19d31214646`
+  (`agenthubd`).
+- Post-install ACP validation returned `INSTALLED_ACP_OK`. Forced Code Mode
+  launched a new official host process, returned `INSTALLED_CODE_MODE_OK_42`,
+  and ended normally. The pre-hotfix merged binaries remain as `.prev`; the
+  pre-#1104 generation remains recoverable as `agenthub.pre-1104` and
+  `agenthubd.pre-1104`.
+- Exact-head workspace tests completed 799 tests before the `Rust (Coverage)`
+  job failed in its separate distributed P2P pipeline step because the
+  coverage target directory did not contain `agenthubd`. The dedicated
+  Distributed P2P Pipeline job passed, so this workflow-shape failure did not
+  block the runtime rollout.
+
 # Follow-Ups
 
 - Keep exact-head release, Debian, npm, and Bazel evidence under the existing
