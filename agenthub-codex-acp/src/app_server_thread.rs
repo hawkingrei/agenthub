@@ -3394,10 +3394,24 @@ fn config_request_overrides_from_config(
         // ACP-provided servers exist only in this process's merged Config. The
         // external app-server reloads its own config, so project the complete
         // effective map into the per-thread override.
-        overrides.insert(
-            "mcp_servers".to_string(),
-            serde_json::to_value(mcp_servers)?,
-        );
+        let mut mcp_server_overrides = serde_json::to_value(mcp_servers)?;
+        if let serde_json::Value::Object(servers) = &mut mcp_server_overrides {
+            for server in servers.values_mut() {
+                let Some(server) = server.as_object_mut() else {
+                    continue;
+                };
+
+                // Optional durations serialize as null, but the app-server's
+                // override loader coerces null into an invalid empty string.
+                if server
+                    .get("tool_timeout_sec")
+                    .is_some_and(serde_json::Value::is_null)
+                {
+                    server.remove("tool_timeout_sec");
+                }
+            }
+        }
+        overrides.insert("mcp_servers".to_string(), mcp_server_overrides);
     }
 
     Ok((!overrides.is_empty()).then_some(overrides))
@@ -4376,6 +4390,35 @@ mod tests {
         assert_eq!(
             config["mcp_servers"]["agenthub"]["args"],
             serde_json::json!(["actor", "mailbox"])
+        );
+        assert!(
+            config["mcp_servers"]["agenthub"]
+                .get("tool_timeout_sec")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn thread_start_config_preserves_explicit_mcp_tool_timeout() {
+        let mut state = test_state_with_active_turn(None).await;
+        let server = serde_json::from_value(serde_json::json!({
+            "command": "agenthub",
+            "tool_timeout_sec": 2.5
+        }))
+        .expect("deserialize MCP server config");
+        state
+            .config
+            .mcp_servers
+            .set(HashMap::from([("agenthub".to_string(), server)]))
+            .expect("set MCP server config");
+
+        let params =
+            thread_start_params_from_config(&state.config).expect("serialize thread config");
+        let config = params.config.expect("thread config overrides");
+
+        assert_eq!(
+            config["mcp_servers"]["agenthub"]["tool_timeout_sec"],
+            serde_json::json!(2.5)
         );
     }
 
