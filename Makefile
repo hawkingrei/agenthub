@@ -3,7 +3,9 @@
 .PHONY: reset
 
 CARGO_HOME ?= $(CURDIR)/.cargo
+CARGO_TARGET_DIR ?= $(CURDIR)/target
 export CARGO_HOME
+export CARGO_TARGET_DIR
 
 build-web:
 	cd web && npm run build

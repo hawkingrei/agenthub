@@ -56,6 +56,10 @@ ACP runtime concerns should stay split across three orthogonal layers:
 - Proxy policy layer:
   - Applies egress policy (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`) to a chosen runtime placement.
   - Must stay provider-agnostic so local and remote runtimes reuse the same policy model.
+  - Service-managed local runtimes should take explicit provider proxy values from the daemon's
+    `[proxy]` configuration. Interactive-shell exports are not a reliable systemd boundary.
+  - Configured HTTP, HTTPS, and all-protocol values are applied to local provider children in both
+    upper- and lower-case environment variable forms.
 
 ### 3) End-to-End Event Path
 
@@ -67,10 +71,12 @@ ACP runtime concerns should stay split across three orthogonal layers:
 Codex and Claude are special cases inside the provider adapter layer:
 
 - `agenthubd acp codex` is AgentHub's canonical distributed Codex ACP adapter path. It uses the
-  upstream Codex app-server/thread protocol internally. AgentHub's main process and web surfaces
-  should continue to consume ACP requests, ACP notifications, and AgentHub-normalized ACP event JSON
-  as the stable boundary. Codex-native state may be exposed only through explicit diagnostics
-  metadata, not by making the primary runtime path Codex-specific.
+  upstream Codex app-server/thread protocol through an installed official
+  `codex app-server --stdio` child. The adapter worker is a mode of the same `agenthubd` binary, not
+  a separately shipped AgentHub executable. AgentHub's main process and web surfaces should continue
+  to consume ACP requests, ACP notifications, and AgentHub-normalized ACP event JSON as the stable
+  boundary. Codex-native state may be exposed only through explicit diagnostics metadata, not by
+  making the primary runtime path Codex-specific.
 - `agenthubd acp claude` is AgentHub's distributed Claude ACP adapter path. It wraps the Rust
   `claude-code-acp-rs` library and always starts ACP server mode for AgentHub-managed sessions,
   while still leaving Claude credentials and model settings in the adapter-supported Anthropic
@@ -183,6 +189,20 @@ ACP permission requests are first-class runtime records:
 - The Codex ACP baseline is the official `openai/codex` release source. AgentHub must pin Cargo and
   Bazel to one reviewed upstream commit and must not require a downstream Codex fork for protocol or
   dependency compatibility.
+- Codex-backed sessions require the official Codex CLI version `0.150.1`. The adapter resolves
+  `[codex_acp].runtime_binary` (default `codex`), runs a version preflight, and fails closed with an
+  actionable install/configuration error before accepting ACP traffic when the executable is missing
+  or incompatible.
+- The adapter starts the resolved executable as `codex app-server --stdio` in the session workspace,
+  completes the `initialize` / `initialized` JSONL handshake, and then maps ACP session and turn
+  operations to typed app-server requests. The official Codex installation owns Code Mode Host and
+  other helper discovery, authentication state, provider configuration, and runtime upgrades.
+- ACP client-provided MCP servers are merged with the adapter's effective Codex configuration and
+  forwarded in each app-server thread start or resume override. They must not disappear at the
+  external process boundary.
+- AgentHub release archives, Debian packages, npm packages, and source builds must not download or
+  bundle `codex-code-mode-host`. AgentHub owns one daemon binary for both server and built-in ACP
+  worker modes; Codex remains an explicit external provider dependency.
 - Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
 - Codex ACP behavior should use upstream Codex TUI/core behavior as the compatibility reference
   when ACP semantics are ambiguous. In particular, a permission denial is a model-visible failed
@@ -284,6 +304,8 @@ ACP permission requests are first-class runtime records:
 - `cargo test -p agenthub-acp-adapter`
 - `cargo check -p agenthub-codex-acp-runtime`
 - `cargo test -p agenthub-codex-acp-runtime`
+- Focused Codex stdio-runtime coverage for missing/incompatible executable diagnostics, app-server
+  command arguments, JSONL initialization, request correlation, disconnects, and shutdown.
 - `cargo test -p agenthub-acp prompt_`
 - `cargo test -p agenthub input_image_validation`
 - `cargo test -p agenthub-config normalize_optional_thinking_level`
@@ -327,6 +349,8 @@ ACP permission requests are first-class runtime records:
 - Keep the Codex Cargo and Bazel pins on the same official `openai/codex` commit. A dependency graph
   regression should be tracked and remediated upstream or through ordinary dependency constraints,
   not by silently switching AgentHub back to a downstream Codex fork.
+- Upgrade the supported installed Codex version, app-server protocol pin, and compatibility tests in
+  one change. The app-server boundary is not treated as forward-compatible without validation.
 - AgentHub owns Codex subagent enablement through `codex_acp.multi_agent_enabled` (default
   `true`). When launching Codex ACP through `agenthubd acp codex`, `agenthub-codex-acp`, or another
   recognized Codex ACP command, AgentHub should pass an explicit
@@ -353,6 +377,10 @@ ACP permission requests are first-class runtime records:
 - Keep debug capabilities available without exposing internal-only controls in primary user path.
 - Treat in-memory runtime ownership as authoritative for live SSE; use persisted status as a recoverable cache that may require reconciliation after abrupt exits.
 - Keep provider metadata, runtime placement, and proxy policy explicit in code so future P2P work extends stable seams instead of forking provider-specific paths.
+- When `Falling back from WebSockets to HTTPS transport` is followed by `request timed out`, verify
+  provider egress from the daemon's service context before treating pending Team mailbox rows as a
+  routing failure. Configure required egress in the service-loaded `[proxy]` section and restart the
+  affected runtime.
 - Team/operator recovery may explicitly clear a persisted ACP session and force a new session for a
   selected member when provider history is irrecoverably dirty; this should remain a targeted
   recovery path, not the normal resume flow.
@@ -416,3 +444,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-07-19-acp-ui-compaction-wave2.md`
 - `docs/journal/2026-08-24-official-codex-0-149-1-acp-multimodal-standalone-ui.md`
 - `docs/journal/2026-08-09-feature-docs-compaction-wave2-closeout.md`
+- `docs/journal/2026-09-01-acp-install-proxy-recovery.md`

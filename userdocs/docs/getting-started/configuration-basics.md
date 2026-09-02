@@ -131,6 +131,7 @@ ACP (Agent Control Protocol) provider settings.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `binary` | string | `"agenthubd"` | Built-in daemon binary name or a legacy custom Codex ACP override |
+| `runtime_binary` | string | `"codex"` | Installed official Codex CLI used for `app-server --stdio`; use an absolute path for managed services |
 | `default_mode` | string | `"full-access"` | Default Codex ACP mode (`read-only`, `auto`, or `full-access`; `yolo` normalizes to `full-access`) |
 | `multi_agent_enabled` | boolean | `true` | Force Codex ACP `Feature::Collab` on AgentHub-managed sessions |
 
@@ -142,6 +143,11 @@ path rather than adding daemon subcommand arguments to this setting.
 If you point `codex_acp.binary` at a custom binary, verify it against the ACP
 protocol surface used by the exact AgentHub release before mixing versions in a
 shared deployment.
+
+AgentHub currently requires official Codex `0.150.1` and validates it before
+starting the ACP worker. `runtime_binary` selects that provider runtime;
+`binary` selects the AgentHub ACP adapter command, so the two settings are not
+interchangeable.
 
 Other ACP adapters are configured per agent command rather than through this
 section. For Claude, prefer the AgentHub-distributed `agenthubd acp claude`
@@ -390,6 +396,13 @@ HTTP proxy configuration.
 http = "http://proxy.company.com:8080"
 https = "http://proxy.company.com:8080"
 ```
+
+AgentHub applies configured proxy values to locally spawned ACP provider
+processes using both upper- and lower-case environment variable forms. For a
+systemd-managed daemon, this TOML section is the preferred provider-egress
+configuration boundary; variables exported only in an interactive shell are
+not reliably part of the service environment. Restart the daemon after changing
+these values.
 
 ## Environment Boundary
 

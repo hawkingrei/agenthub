@@ -87,13 +87,6 @@ jobs:
         run: |
           cross build --locked --release --target ${{ matrix.target }} -p agenthub-daemon --bin agenthubd --features ${{ matrix.agenthub_features }}
 
-      - name: Fetch pinned Codex Code Mode Host
-        shell: bash
-        run: |
-          bash build/codex/fetch-code-mode-host.sh \
-            "${{ matrix.target }}" \
-            "target/${{ matrix.target }}/release/codex-code-mode-host"
-
       - name: Package
         shell: bash
         run: |
@@ -118,9 +111,6 @@ jobs:
             local package_dir="dist/${package_name}"
             mkdir -p "${package_dir}"
             cp "target/${TARGET}/release/${binary_name}" "${package_dir}/"
-            if [[ "${binary_name}" == "agenthubd" ]]; then
-              cp "target/${TARGET}/release/codex-code-mode-host" "${package_dir}/"
-            fi
             cp README.md "${package_dir}/"
             if [[ -f LICENSE ]]; then
               cp LICENSE "${package_dir}/"

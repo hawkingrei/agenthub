@@ -22,7 +22,6 @@ use agent_client_protocol::{Client, Error};
 use agenthub_managed_skills::managed_skills_root;
 use codex_apply_patch::parse_patch;
 use codex_core::{
-    CodexThread,
     config::{Config, set_project_trust_level},
     review_prompts::user_facing_hint,
 };
@@ -212,22 +211,11 @@ pub(crate) fn user_input_op(items: Vec<UserInput>) -> Op {
     }
 }
 
-/// Trait for abstracting over the `CodexThread` to make testing easier.
+/// Provider execution thread used by the ACP session actor.
 #[async_trait::async_trait]
 pub trait CodexThreadImpl {
     async fn submit(&self, submission_id: String, op: Op) -> Result<String, CodexErr>;
     async fn next_event(&self) -> Result<Event, CodexErr>;
-}
-
-#[async_trait::async_trait]
-impl CodexThreadImpl for CodexThread {
-    async fn submit(&self, _submission_id: String, op: Op) -> Result<String, CodexErr> {
-        self.submit(op).await
-    }
-
-    async fn next_event(&self) -> Result<Event, CodexErr> {
-        self.next_event().await
-    }
 }
 
 #[async_trait::async_trait]

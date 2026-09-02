@@ -61,18 +61,23 @@ Recommended installation paths:
   includes `agenthub`, `agenthubd`, and a systemd service.
 - macOS or portable Linux: install the matching `agenthub` and `agenthubd`
   archives from the same release and verify them with `SHA256SUMS.txt`.
-- npm: `npm install -g @linkerdog/agenthub` installs both native files through
-  the matching platform package.
+- npm: `npm install -g @linkerdog/agenthub` installs both AgentHub executables
+  through the matching platform package.
+
+Codex-backed agents additionally require the official Codex CLI version
+`0.150.1`. Install it separately and ensure the daemon can execute it as
+`codex`, or configure an absolute path with `[codex_acp].runtime_binary`.
 
 The Homebrew tap currently trails the primary release channel and installs a
 legacy ACP helper. Use release archives for a new complete installation until
 the formula is brought back into version and adapter parity.
 
-After installing both binaries:
+After installing the complete runtime:
 
 ```bash
 agenthub --version
 agenthubd --version
+codex --version
 agenthub init
 agenthubd
 ```

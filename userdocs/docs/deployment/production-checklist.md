@@ -11,7 +11,10 @@ upgrade.
 
 - Select one exact release tag and verify `SHA256SUMS.txt`.
 - Install `agenthub` and `agenthubd` from that same release.
-- Confirm both `--version` commands before rollout.
+- Confirm both AgentHub `--version` commands before rollout.
+- For Codex-backed agents, install the supported official Codex CLI separately,
+  confirm `codex --version`, and configure an absolute
+  `[codex_acp].runtime_binary` path for managed services.
 - Validate the official binary on the oldest Linux environment you intend to
   support; the project's glibc floor is not yet frozen.
 - If using S3, smoke test the release artifact against the exact provider and
@@ -29,6 +32,9 @@ upgrade.
 - Configure `web.rp_id` and `web.rp_origin` to match the public URL before
   enabling passkeys.
 - Preserve SSE streaming and disable proxy buffering for `/sse/*`.
+- Configure provider egress through `[proxy]` in the service-loaded AgentHub
+  config when the deployment requires an outbound proxy; do not rely on an
+  interactive shell export reaching systemd.
 - Keep the first-run root initialization page off public unauthenticated
   ingress.
 
@@ -76,7 +82,7 @@ is not release evidence.
 1. Stop new task submissions and let important active runs finish.
 2. Stop the service.
 3. Capture a consistent data/config snapshot and record both binary versions.
-4. Install the new matching binary pair.
+4. Install the new matching AgentHub binary pair and supported official Codex CLI.
 5. Start the service and verify `GET /health` returns `ok`.
 6. Sign in, create/start a disposable agent, receive output, and replay it after
    a browser refresh.

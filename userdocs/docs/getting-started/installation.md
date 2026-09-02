@@ -14,13 +14,15 @@ AgentHub publishes native binaries for these platforms:
 
 Windows and macOS Intel binaries are not currently published.
 
-For a complete agent runtime, install both executables from the same release:
+AgentHub installs two project-owned executables:
 
 - `agenthub`: the administration and actor CLI
 - `agenthubd`: the control plane, embedded web UI, and built-in provider workers
 
-The Debian package contains both executables. GitHub publishes them as separate
-archives. npm platform packages contain both files.
+The Debian and npm packages contain both files. GitHub publishes the CLI and
+daemon as separate archives. Codex-backed agents additionally require the
+official Codex CLI version `0.150.1`, installed separately; the official Codex
+distribution owns its Code Mode and sandbox helpers.
 
 :::caution Linux runtime baseline
 
@@ -103,6 +105,15 @@ sudoedit /var/lib/agenthub/.agenthub/config.toml
 sudo systemctl restart agenthub.service
 ```
 
+For Codex-backed agents, install official Codex `0.150.1` where the `agenthub`
+service user can execute it. If it is not on the systemd service PATH, configure
+its absolute path:
+
+```toml
+[codex_acp]
+runtime_binary = "/opt/codex/bin/codex"
+```
+
 ## GitHub Release Archives
 
 Use release archives for macOS or a user-managed Linux installation. This
@@ -136,7 +147,8 @@ On Linux:
 grep -- "-${TARGET}.tar.gz$" SHA256SUMS.txt | sha256sum -c -
 ```
 
-Extract and install both binaries into a user-owned directory:
+Extract the two archives and install the CLI and daemon into one user-owned
+directory:
 
 ```bash
 tar -xzf agenthub-[0-9]*-${TARGET}.tar.gz
@@ -147,15 +159,18 @@ install -m 0755 agenthubd-*-${TARGET}/agenthubd "$HOME/.local/bin/agenthubd"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Persist the `PATH` update in your shell profile, then verify both commands:
+Persist the `PATH` update in your shell profile, then verify the complete
+runtime layout:
 
 ```bash
 agenthub --version
 agenthubd --version
+codex --version
 ```
 
-Keep the two archives on the same release tag. Mixing the CLI with a different
-daemon generation can cause command, provider, or protocol errors.
+Keep the two AgentHub archives on the same release tag. The Codex version check
+must report `codex-cli 0.150.1`; AgentHub fails closed when the app-server
+protocol version is incompatible.
 
 ## npm
 
@@ -167,8 +182,15 @@ npm install -g @linkerdog/agenthub
 agenthub --version
 ```
 
-The selected npm platform package installs both native files. The wrapper invokes
-`agenthub`; the CLI locates the sibling `agenthubd` when starting the service.
+The selected npm platform package installs both AgentHub executables. The
+wrapper invokes `agenthub`; the CLI locates the sibling `agenthubd` when
+starting the service. Install official Codex separately when using Codex-backed
+agents:
+
+```bash
+npm install -g @openai/codex@0.150.1
+codex --version
+```
 
 If npm reports that the platform package is missing, confirm that optional
 dependencies are enabled and reinstall:
@@ -253,8 +275,9 @@ The package preserves `/var/lib/agenthub` during upgrades.
 ### GitHub archives
 
 Stop the foreground process or your service manager, download both archives
-from the same new release, verify their checksums, and replace both binaries.
-Keep `~/.agenthub` unchanged.
+from the same new release, verify their checksums, and replace `agenthub`
+and `agenthubd` together. Keep `~/.agenthub` unchanged. Check the release notes
+before changing the separately installed Codex version.
 
 ### npm
 
@@ -279,8 +302,9 @@ all instance state.
 
 ### Archive installation
 
-Remove the installed binaries from `$HOME/.local/bin`. Runtime state under
-`~/.agenthub` is not removed automatically.
+Remove `agenthub` and `agenthubd` from `$HOME/.local/bin`. Runtime state under
+`~/.agenthub` and the separately installed Codex CLI are not removed
+automatically.
 
 ### npm installation
 

@@ -1,4 +1,4 @@
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
@@ -26,7 +26,6 @@ enum DaemonCommand {
 enum Invocation {
     Daemon,
     Acp(AcpCli),
-    CodexHelper,
     ExitAfterClap,
 }
 
@@ -35,18 +34,11 @@ pub fn run() -> anyhow::Result<()> {
     match classify_invocation(args)? {
         Invocation::Daemon => block_on(agenthub::run_daemon()),
         Invocation::Acp(cli) => run_acp(cli),
-        Invocation::CodexHelper => codex_arg0::arg0_dispatch_or_else(|_| async {
-            anyhow::bail!("Codex helper dispatch returned without handling the invocation")
-        }),
         Invocation::ExitAfterClap => Ok(()),
     }
 }
 
 fn classify_invocation(args: Vec<OsString>) -> anyhow::Result<Invocation> {
-    if is_codex_helper_invocation(&args) {
-        return Ok(Invocation::CodexHelper);
-    }
-
     match DaemonCli::try_parse_from(args) {
         Ok(DaemonCli { command: None }) => Ok(Invocation::Daemon),
         Ok(DaemonCli {
@@ -65,22 +57,22 @@ fn classify_invocation(args: Vec<OsString>) -> anyhow::Result<Invocation> {
     }
 }
 
-fn run_acp(cli: AcpCli) -> anyhow::Result<()> {
+fn run_acp(mut cli: AcpCli) -> anyhow::Result<()> {
     let actor_cli_path = resolve_sibling_cli_path(std::env::current_exe().ok().as_deref());
-    match cli.provider {
-        ProviderCommand::Codex(_) => codex_arg0::arg0_dispatch_or_else(move |paths| async move {
-            agenthub_acp_adapter::run_with_shutdown(
-                cli,
-                paths.codex_linux_sandbox_exe,
-                actor_cli_path,
-            )
-            .await
-        }),
-        ProviderCommand::Claude(_) => block_on(agenthub_acp_adapter::run_with_shutdown(
-            cli,
-            None,
-            actor_cli_path,
-        )),
+    let needs_codex_runtime =
+        matches!(&cli.provider, ProviderCommand::Codex(codex) if codex.codex_binary.is_none());
+    if needs_codex_runtime {
+        let (config, _) = agenthub_config::AppConfig::load_with_info()?;
+        configure_codex_runtime(&mut cli, &config);
+    }
+    block_on(agenthub_acp_adapter::run_with_shutdown(cli, actor_cli_path))
+}
+
+fn configure_codex_runtime(cli: &mut AcpCli, config: &agenthub_config::AppConfig) {
+    if let ProviderCommand::Codex(codex) = &mut cli.provider
+        && codex.codex_binary.is_none()
+    {
+        codex.codex_binary = Some(PathBuf::from(config.codex_runtime_binary()));
     }
 }
 
@@ -104,29 +96,6 @@ fn resolve_sibling_cli_path(current_exe: Option<&Path>) -> Option<PathBuf> {
     };
     let sibling = binary_dir.join(format!("{CLI_BINARY_NAME}{}", std::env::consts::EXE_SUFFIX));
     std::fs::canonicalize(sibling).ok()
-}
-
-fn is_codex_helper_invocation(args: &[OsString]) -> bool {
-    let executable_name = args
-        .first()
-        .and_then(|arg| Path::new(arg).file_name())
-        .and_then(OsStr::to_str);
-    if matches!(
-        executable_name,
-        Some("codex-linux-sandbox" | "codex-execve-wrapper" | "apply_patch" | "applypatch")
-    ) {
-        return true;
-    }
-
-    matches!(
-        args.get(1).and_then(|arg| arg.to_str()),
-        Some(
-            "--codex-run-as-arg0-exec-helper"
-                | "--codex-run-as-fs-helper"
-                | "--run-as-windows-sandbox"
-                | "--codex-run-as-apply-patch"
-        )
-    )
 }
 
 #[cfg(test)]
@@ -155,6 +124,7 @@ mod tests {
         else {
             panic!("expected Codex ACP worker");
         };
+        assert_eq!(codex.codex_binary, None);
         assert_eq!(codex.config_overrides, vec!["model=gpt-5"]);
 
         let invocation = classify_invocation(
@@ -172,18 +142,38 @@ mod tests {
     }
 
     #[test]
-    fn recognizes_codex_multicall_modes() {
-        for args in [
-            vec!["codex-linux-sandbox"],
-            vec!["apply_patch"],
-            vec!["agenthubd", "--codex-run-as-arg0-exec-helper"],
-            vec!["agenthubd", "--codex-run-as-fs-helper"],
-            vec!["agenthubd", "--codex-run-as-apply-patch"],
-            vec!["agenthubd", "--run-as-windows-sandbox"],
-        ] {
-            let args = args.into_iter().map(OsString::from).collect::<Vec<_>>();
-            assert!(is_codex_helper_invocation(&args), "args: {args:?}");
-        }
+    fn configures_external_codex_runtime_without_overriding_cli_path() {
+        let mut cli = AcpCli {
+            provider: ProviderCommand::Codex(agenthub_acp_adapter::CodexCli {
+                codex_binary: None,
+                config_overrides: Vec::new(),
+            }),
+        };
+        let config = agenthub_config::AppConfig {
+            codex_acp: Some(agenthub_config::CodexAcpConfig {
+                binary: None,
+                runtime_binary: Some("/opt/codex/bin/codex".to_string()),
+                default_mode: None,
+                multi_agent_enabled: None,
+            }),
+            ..Default::default()
+        };
+
+        configure_codex_runtime(&mut cli, &config);
+        let ProviderCommand::Codex(codex) = &mut cli.provider else {
+            panic!("expected Codex provider");
+        };
+        assert_eq!(
+            codex.codex_binary,
+            Some(PathBuf::from("/opt/codex/bin/codex"))
+        );
+
+        codex.codex_binary = Some(PathBuf::from("/custom/codex"));
+        configure_codex_runtime(&mut cli, &agenthub_config::AppConfig::default());
+        let ProviderCommand::Codex(codex) = &cli.provider else {
+            panic!("expected Codex provider");
+        };
+        assert_eq!(codex.codex_binary, Some(PathBuf::from("/custom/codex")));
     }
 
     #[test]

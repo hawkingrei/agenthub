@@ -41,15 +41,13 @@ not runtime app packages.
 
 The main package exposes the `agenthub` executable through a small Node launcher that resolves the
 correct optional dependency for the current platform. Each platform package places `agenthubd` next
-to the CLI so the launcher can start the service through the normal sibling lookup contract. It also
-contains the version-matched official `codex-code-mode-host` companion executable so Codex can resolve
-the host through its expected sibling executable name.
+to the CLI so the launcher can start the service through the normal sibling lookup contract.
 
 ### Binary Packaging Contract
 
 - platform packages contain the native `agenthub` and `agenthubd` files from one release build
-- platform packages contain the checksum-pinned official `codex-code-mode-host` release artifact that
-  matches AgentHub's pinned Codex dependency
+- platform packages do not bundle Codex or Codex helper executables; operators using Codex-backed
+  agents install the supported official Codex CLI separately
 - the wrapper package contains the executable shim and declares platform packages as
   `optionalDependencies`
 - release-time publish reuses the same Rust build artifacts already produced for GitHub releases
@@ -86,7 +84,8 @@ Unsupported targets must fail with a clear runtime message from the wrapper pack
 
 - Node unit coverage for platform package resolution in the wrapper launcher
 - workflow dry validation by checking staged package version rewriting and artifact extraction logic
-- staged platform-package inspection for both AgentHub executables and the Code Mode Host companion
+- staged platform-package inspection for both AgentHub executables and absence of legacy Codex
+  helper artifacts
 - manual release verification:
   - semver tag publishes wrapper + platform packages
   - preview tag skips npm publish without failing the overall release flow
@@ -99,10 +98,11 @@ Unsupported targets must fail with a clear runtime message from the wrapper pack
 
 ## Open Risks
 
-- Published package inspection is still required for the first release that adopts the two-file
-  platform package.
+- Published package inspection is still required for the first release that adopts the external
+  Codex runtime prerequisite.
 
 ## Source Journals
 
 - [Two-binary runtime consolidation](../journal/2026-08-27-two-binary-runtime-consolidation.md)
-- [Code Mode Host companion packaging](../journal/2026-08-28-code-mode-host-companion.md)
+- [Code Mode Host companion packaging (superseded)](../journal/2026-08-28-code-mode-host-companion.md)
+- [ACP install and proxy recovery](../journal/2026-09-01-acp-install-proxy-recovery.md)

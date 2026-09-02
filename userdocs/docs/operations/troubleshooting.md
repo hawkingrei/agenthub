@@ -77,6 +77,80 @@ state.
 `agent is already running` means the single-runtime guard is active. Stop the
 existing runtime rather than retrying starts in a loop.
 
+## Codex Runtime Or Code Mode Is Unavailable
+
+AgentHub requires the supported official Codex CLI and starts
+`codex app-server --stdio` for Codex-backed sessions. A missing runtime now
+fails during provider startup with an actionable path/version error. The
+following older-looking message comes from an incomplete official Codex
+installation, not from a missing AgentHub package artifact:
+
+```text
+Code Mode is unavailable because failed to spawn code-mode host ...: host executable was not found
+```
+
+Inspect the runtime as the same OS user and `HOME` used by the daemon:
+
+```bash
+codex --version
+codex app-server --help
+```
+
+AgentHub currently requires `codex-cli 0.150.1`. For a managed service, do not
+assume an interactive-shell PATH is available. Configure the absolute official
+Codex path in the service-loaded AgentHub config:
+
+```toml
+[codex_acp]
+runtime_binary = "/opt/codex/bin/codex"
+```
+
+If `codex --version` succeeds but Codex itself still reports a missing
+`codex-code-mode-host`, reinstall that exact official Codex distribution. Do
+not copy a helper from an AgentHub archive or an unrelated Codex release;
+helper discovery and version coupling belong to Codex.
+
+## Team Message Arrives but the Agent Does Not Reply
+
+If a Team or `all` channel message is persisted but no agent reply appears,
+check the provider log before changing mailbox state. This pair indicates an
+egress failure rather than a channel fan-out failure:
+
+```text
+Falling back from WebSockets to HTTPS transport.
+request timed out
+```
+
+The WebSocket fallback line alone is not a failure; official Codex owns
+transport selection. Treat it as an outage only when the fallback request also
+times out or returns another provider error.
+
+For a service-managed daemon, configure provider egress in the AgentHub config
+loaded by that service. Do not assume proxy variables exported by an
+interactive shell are present in systemd:
+
+```toml
+[proxy]
+http = "http://proxy.company.com:8080"
+https = "http://proxy.company.com:8080"
+```
+
+Debian installations load
+`/var/lib/agenthub/.agenthub/config.toml`; user-managed archive and npm
+installations normally load `~/.agenthub/config.toml`. Restart the matching
+service after editing the file:
+
+```bash
+sudo systemctl restart agenthub.service
+systemctl --user restart agenthub.service
+```
+
+Run only the command for the service scope you actually use. A foreground
+daemon must be stopped and started directly instead. After a daemon restart,
+start the affected agent or Team again, then confirm the timeout does not recur
+before resending messages. Persisted mailbox rows are diagnostic evidence; do
+not delete or rewrite them to hide a provider connectivity failure.
+
 ## No or Stale Output
 
 - Read the connection badge first. `SSE idle` is normal without a running

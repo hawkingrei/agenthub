@@ -26,6 +26,14 @@ pub enum ProviderCommand {
 
 #[derive(Args, Debug, Clone, PartialEq, Eq)]
 pub struct CodexCli {
+    /// Path to the installed official Codex CLI used for app-server mode.
+    #[arg(
+        long = "codex-binary",
+        value_name = "PATH",
+        env = "AGENTHUB_CODEX_BINARY"
+    )]
+    pub codex_binary: Option<PathBuf>,
+
     /// Override a Codex configuration value, using the same key=value format as codex -c.
     #[arg(short = 'c', long = "config", value_name = "key=value", action = clap::ArgAction::Append)]
     pub config_overrides: Vec<String>,
@@ -92,18 +100,15 @@ impl From<ClaudeCli> for UpstreamCli {
 }
 
 pub async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
-    run_with_runtime_paths(cli, None, None).await
+    run_with_runtime_paths(cli, None).await
 }
 
 pub async fn run_with_runtime_paths(
     cli: Cli,
-    codex_linux_sandbox_exe: Option<PathBuf>,
     actor_cli_path: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     match cli.provider {
-        ProviderCommand::Codex(codex) => {
-            run_codex_runtime(codex, codex_linux_sandbox_exe, actor_cli_path).await
-        }
+        ProviderCommand::Codex(codex) => run_codex_runtime(codex, actor_cli_path).await,
         ProviderCommand::Claude(claude) => {
             let upstream_cli = UpstreamCli::from(claude);
             claude_code_acp::run_acp_with_cli(&upstream_cli).await
@@ -111,13 +116,9 @@ pub async fn run_with_runtime_paths(
     }
 }
 
-pub async fn run_with_shutdown(
-    cli: Cli,
-    codex_linux_sandbox_exe: Option<PathBuf>,
-    actor_cli_path: Option<PathBuf>,
-) -> anyhow::Result<()> {
+pub async fn run_with_shutdown(cli: Cli, actor_cli_path: Option<PathBuf>) -> anyhow::Result<()> {
     let result = tokio::select! {
-        result = run_with_runtime_paths(cli, codex_linux_sandbox_exe, actor_cli_path) => result,
+        result = run_with_runtime_paths(cli, actor_cli_path) => result,
         result = wait_for_shutdown_signal() => result,
     };
     shutdown();
@@ -146,13 +147,13 @@ async fn wait_for_shutdown_signal() -> anyhow::Result<()> {
 }
 
 #[cfg(not(test))]
-async fn run_codex_runtime(
-    codex: CodexCli,
-    codex_linux_sandbox_exe: Option<PathBuf>,
-    actor_cli_path: Option<PathBuf>,
-) -> anyhow::Result<()> {
+async fn run_codex_runtime(codex: CodexCli, actor_cli_path: Option<PathBuf>) -> anyhow::Result<()> {
+    let codex_binary = codex
+        .codex_binary
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("codex"));
     agenthub_codex_acp_runtime::run_main(
-        codex_linux_sandbox_exe,
+        codex_binary,
         actor_cli_path,
         CliConfigOverrides::from(codex),
     )
@@ -163,7 +164,6 @@ async fn run_codex_runtime(
 #[cfg(test)]
 async fn run_codex_runtime(
     codex: CodexCli,
-    _codex_linux_sandbox_exe: Option<PathBuf>,
     _actor_cli_path: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let overrides = CliConfigOverrides::from(codex);
@@ -215,6 +215,26 @@ mod tests {
                 "model=gpt-5".to_string(),
                 "sandbox_mode=workspace-write".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn maps_codex_runtime_binary() {
+        let Cli {
+            provider: ProviderCommand::Codex(codex),
+        } = Cli::parse_from([
+            "agenthub-acp",
+            "codex",
+            "--codex-binary",
+            "/opt/codex/bin/codex",
+        ])
+        else {
+            panic!("expected codex provider");
+        };
+
+        assert_eq!(
+            codex.codex_binary,
+            Some(PathBuf::from("/opt/codex/bin/codex"))
         );
     }
 

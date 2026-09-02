@@ -15,13 +15,8 @@ use agent_client_protocol::schema::ProtocolVersion;
 use codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID;
 use codex_config::types::{AuthKeyringBackendKind, McpServerConfig, McpServerTransportConfig};
 use codex_core::{
-    CodexAppsToolsCache, RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey,
-    build_models_manager, config::Config, find_thread_path_by_id_str, parse_cursor,
-    thread_store_from_config,
-};
-use codex_extension_api::{
-    LoadUserInstructionsFuture, LoadedUserInstructions, UserInstructionsProvider,
-    empty_extension_registry,
+    RolloutRecorder, SortDirection, ThreadSortKey, build_models_manager, config::Config,
+    find_thread_path_by_id_str, parse_cursor,
 };
 use codex_history::{
     InitialHistory, ResponseItemEnvelope, ResumedHistory, RolloutItem, RolloutLine,
@@ -30,8 +25,8 @@ use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_en
 use codex_login::{
     AuthManager, CLIENT_ID, CODEX_API_KEY_ENV_VAR, CodexAuth, OPENAI_API_KEY_ENV_VAR,
 };
+use codex_models_manager::manager::SharedModelsManager;
 use codex_protocol::{
-    ThreadId,
     models::{FunctionCallOutputPayload, ResponseItem},
     protocol::SessionSource,
 };
@@ -47,7 +42,7 @@ use tracing::{debug, info, warn};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app_server_thread;
-use crate::build_environment_manager;
+use crate::stdio_app_server::CodexRuntime;
 use crate::thread::{Thread, adapt_models_manager};
 
 /// The Codex implementation of the ACP Agent trait.
@@ -61,8 +56,10 @@ pub struct CodexAgent {
     client_capabilities: Arc<Mutex<ClientCapabilities>>,
     /// The underlying codex configuration
     config: Config,
-    /// Thread manager for handling sessions
-    thread_manager: ThreadManager,
+    /// Installed official Codex runtime used for app-server sessions.
+    runtime: CodexRuntime,
+    /// Shared model metadata used to expose ACP config options.
+    models_manager: SharedModelsManager,
     /// Active sessions mapped by `SessionId`
     sessions: Rc<RefCell<HashMap<SessionId, Rc<Thread>>>>,
     /// Session working directories for filesystem sandboxing
@@ -73,17 +70,9 @@ const SESSION_LIST_PAGE_SIZE: usize = 25;
 const SESSION_TITLE_MAX_GRAPHEMES: usize = 120;
 const REPAIRED_ROLLOUT_TIMESTAMP: &str = "1970-01-01T00:00:00.000Z";
 
-struct EmptyUserInstructionsProvider;
-
-impl UserInstructionsProvider for EmptyUserInstructionsProvider {
-    fn load_user_instructions(&self) -> LoadUserInstructionsFuture<'_> {
-        Box::pin(std::future::ready(LoadedUserInstructions::default()))
-    }
-}
-
 impl CodexAgent {
     /// Create a new `CodexAgent` with the given configuration
-    pub async fn new(config: Config) -> Result<Self, Error> {
+    pub async fn new(config: Config, runtime: CodexRuntime) -> Result<Self, Error> {
         let auth_manager = AuthManager::shared(
             config.codex_home.to_path_buf(),
             false,
@@ -98,27 +87,13 @@ impl CodexAgent {
         let client_capabilities: Arc<Mutex<ClientCapabilities>> = Arc::default();
 
         let session_roots: Arc<Mutex<HashMap<SessionId, PathBuf>>> = Arc::default();
-        let thread_manager = ThreadManager::new(
-            &config,
-            auth_manager.clone(),
-            build_models_manager(&config, auth_manager.clone()),
-            CodexAppsToolsCache::default(),
-            SessionSource::Unknown,
-            build_environment_manager(&config).await?,
-            empty_extension_registry(),
-            Arc::new(EmptyUserInstructionsProvider),
-            None,
-            thread_store_from_config(&config, None),
-            None,
-            "agenthub-codex-acp".to_string(),
-            None,
-            None,
-        );
+        let models_manager = build_models_manager(&config, auth_manager.clone());
         Ok(Self {
             auth_manager,
             client_capabilities,
             config,
-            thread_manager,
+            runtime,
+            models_manager,
             sessions: Rc::default(),
             session_roots,
         })
@@ -766,7 +741,8 @@ impl CodexAgent {
         let config = self.build_session_config(&cwd, mcp_servers)?;
         let num_mcp_servers = config.mcp_servers.len();
 
-        let (session_id, thread_impl) = app_server_thread::start_new_thread(config.clone()).await?;
+        let (session_id, thread_impl) =
+            app_server_thread::start_new_thread(config.clone(), &self.runtime).await?;
         // Record the session root for filesystem sandboxing.
         self.session_roots
             .lock()
@@ -776,7 +752,7 @@ impl CodexAgent {
             session_id.clone(),
             thread_impl,
             self.auth_manager.clone(),
-            adapt_models_manager(self.thread_manager.get_models_manager(), config.clone()),
+            adapt_models_manager(self.models_manager.clone(), config.clone()),
             self.client_capabilities.clone(),
             config.clone(),
         ));
@@ -837,13 +813,14 @@ impl CodexAgent {
 
         let config = self.build_session_config(&cwd, mcp_servers)?;
 
-        let thread_impl = app_server_thread::resume_thread(config.clone(), &session_id).await?;
+        let thread_impl =
+            app_server_thread::resume_thread(config.clone(), &session_id, &self.runtime).await?;
 
         let thread = Rc::new(Thread::new(
             session_id.clone(),
             thread_impl,
             self.auth_manager.clone(),
-            adapt_models_manager(self.thread_manager.get_models_manager(), config.clone()),
+            adapt_models_manager(self.models_manager.clone(), config.clone()),
             self.client_capabilities.clone(),
             config.clone(),
         ));
@@ -933,12 +910,6 @@ impl CodexAgent {
         request: CloseSessionRequest,
     ) -> Result<CloseSessionResponse, Error> {
         self.get_thread(&request.session_id)?.shutdown().await?;
-        self.thread_manager
-            .remove_thread(
-                &ThreadId::from_string(&request.session_id.0)
-                    .map_err(Error::into_internal_error)?,
-            )
-            .await;
         self.sessions.borrow_mut().remove(&request.session_id);
         self.session_roots
             .lock()
@@ -1025,7 +996,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn codex_agent_new_initializes_thread_manager() {
+    async fn codex_agent_new_initializes_model_metadata() {
         let codex_home =
             std::env::temp_dir().join(format!("agenthub-codex-home-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&codex_home).expect("create codex home");
@@ -1036,9 +1007,10 @@ mod tests {
             .await
             .expect("build config");
 
-        let agent = super::CodexAgent::new(config)
-            .await
-            .expect("create codex agent");
+        let agent =
+            super::CodexAgent::new(config, crate::stdio_app_server::CodexRuntime::for_test())
+                .await
+                .expect("create codex agent");
 
         assert!(agent.sessions.borrow().is_empty());
     }
