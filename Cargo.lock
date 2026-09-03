@@ -413,7 +413,7 @@ dependencies = [
  "jwt-simple 0.13.1",
  "mime_guess",
  "openssl",
- "process-wrap",
+ "process-wrap 10.0.0",
  "prost",
  "protoc-bin-vendored",
  "rand 0.10.2",
@@ -2776,7 +2776,7 @@ dependencies = [
  "notify-debouncer-mini",
  "once_cell",
  "pin-project",
- "process-wrap",
+ "process-wrap 9.1.0",
  "regex",
  "sacp",
  "serde",
@@ -12825,6 +12825,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-wrap"
+version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e3f4237d0e4741eb50bc5584db701f1299c85fa31ff0274dd6445e79dc42d12"
+dependencies = [
+ "futures",
+ "indexmap 2.14.0",
+ "nix 0.31.2",
+ "tokio",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "prodash"
 version = "31.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14098,7 +14111,7 @@ dependencies = [
  "oauth2",
  "pastey 0.2.2",
  "pin-project-lite",
- "process-wrap",
+ "process-wrap 9.1.0",
  "rand 0.10.2",
  "reqwest 0.13.4",
  "rmcp-macros 3.1.4",
