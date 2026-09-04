@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           profile: minimal
           components: rustfmt
@@ -33,7 +33,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           profile: minimal
       - name: Rust cache
@@ -58,7 +58,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y curl protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           profile: minimal
       - name: Rust cache
@@ -101,7 +101,7 @@ jobs:
         # provides zstd.h, both needed to build the native librocksdb-sys backend.
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev protobuf-compiler clang libzstd-dev
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           profile: minimal
           components: clippy, rustfmt
@@ -123,7 +123,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           profile: minimal
       - name: Rust cache
@@ -143,7 +143,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           profile: minimal
       - name: Rust cache
@@ -164,7 +164,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev protobuf-compiler
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           profile: minimal
       - name: Rust cache
