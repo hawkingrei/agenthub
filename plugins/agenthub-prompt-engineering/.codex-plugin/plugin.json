@@ -1,0 +1,25 @@
+{
+  "name": "agenthub-prompt-engineering",
+  "version": "0.1.0",
+  "description": "Role-scoped review and editing workflows for AgentHub Team prompts",
+  "author": {
+    "name": "AgentHub contributors"
+  },
+  "repository": "https://github.com/hawkingrei/agenthub",
+  "license": "Apache-2.0",
+  "keywords": ["agenthub", "prompts", "team", "codex"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AgentHub Prompt Engineering",
+    "shortDescription": "Review AgentHub prompts by Team role.",
+    "longDescription": "Review and edit AgentHub coordinator and worker prompts without flattening role authority or duplicating canonical workflow contracts.",
+    "developerName": "AgentHub contributors",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Use $agenthub-team-prompt-review to route a Team prompt review by role.",
+      "Use $agenthub-coordinator-prompt-review to review a coordinator prompt.",
+      "Use $agenthub-worker-prompt-review to review a worker prompt."
+    ]
+  }
+}

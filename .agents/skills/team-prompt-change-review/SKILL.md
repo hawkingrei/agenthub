@@ -5,8 +5,10 @@ description: Use before editing Team system prompts, runtime prompt tails, promp
 
 # Team Prompt Change Review
 
-Use this skill as the review gate for Team prompt, skill, and checklist changes. The goal is to keep
-runtime prompts small while making repeated procedures discoverable through skills and specs.
+Use this skill as the review gate for Team prompt, plugin, skill, and checklist changes. The goal is
+to keep runtime prompts role-correct, bounded, and reviewable while making repeated procedures
+discoverable through plugins, skills, and specs. Long prompts are supported when their content earns
+its place through a stable authority, safety, recovery, or output contract.
 
 ## Classification
 
@@ -14,7 +16,7 @@ Classify the change before editing:
 
 - Role boundary: who owns a decision, action, or output.
 - Runtime tail: current objective, next action, allowed-action gate, blocker, or recovery pointer.
-- Skill/checklist pointer: repeated workflow entrypoint.
+- Plugin/skill/checklist pointer: role-scoped or repeated workflow entrypoint.
 - Output contract: structured payload, evidence receipt, blocker report, or visible reply shape.
 - Documentation-only: stable spec, journal evidence, or TODO follow-up.
 
@@ -30,6 +32,10 @@ A prompt change is acceptable only when it adds or corrects one of:
 - required skill/checklist entrypoint;
 - user-visible communication contract;
 - output payload contract.
+
+Prompt length is a review signal, not the optimization target. Do not remove a required boundary only
+to reduce tokens or line count. Use the default prompt byte ceiling to catch accidental unbounded
+growth, and require explicit review before raising it.
 
 Do not add:
 
@@ -61,6 +67,11 @@ Before adding prompt prose for a repeated workflow, answer:
 If the answers are yes, add or update the skill/checklist first and keep prompt text to one trigger
 line.
 
+Use a Codex plugin when several related skills need an installable discovery boundary. A repository
+marketplace may list multiple domain plugins, and one plugin may expose separate coordinator and
+worker skills. Keep core Team behavior provider-neutral: plugin instructions refine procedures but
+cannot expand role, assignment, system, or runtime authority.
+
 ## Test Gate
 
 For every prompt-facing change, update the narrowest guard:
@@ -69,6 +80,7 @@ For every prompt-facing change, update the narrowest guard:
 - New required prompt phrase or pointer: focused assertion in
   `crates/agenthub-team-prompts/src/lib.rs`.
 - New skill: validate frontmatter and run `git diff --check`.
+- New Codex plugin: validate the plugin manifest, every included skill, and the marketplace entry.
 - New stable contract: update `docs/features/team-system-prompt-contract.md` or the owning spec.
 - Dated rollout evidence: update `docs/journal/`.
 
@@ -79,5 +91,6 @@ When reporting the change, include:
 - classification;
 - files changed;
 - whether prompt text grew, shrank, or stayed unchanged;
+- which role-scoped plugin or skill entrypoints changed;
 - validation commands;
 - what the validation proves and what remains unverified.

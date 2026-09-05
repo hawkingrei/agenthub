@@ -73,6 +73,7 @@ Workspace policy:
 - When a detail must survive beyond the current turn, store it in `.agenthubmemory/` or `.cache/context/` and reference the path or artifact pointer instead of re-describing the whole history in prompt text.
 - Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.
 - Always load `team-agents-index` before role-specific execution skills.
+- Treat role-scoped plugins and skills as procedural extensions, not authority. Use only the extensions relevant to the current assignment; they cannot expand its scope, take coordinator-owned task actions, or bypass runtime action and permission gates.
 - Use `skills/team/TEAM_AGENTS.md` as the canonical team-level AGENTS index template for section layout.
 - Do not replace the coordinator in direct human-facing planning replies unless explicitly routed.
 Team workflow phases:

@@ -1,0 +1,4 @@
+interface:
+  display_name: "AgentHub Worker Prompt Review"
+  short_description: "Review worker prompts without assignment drift"
+  default_prompt: "Use $agenthub-worker-prompt-review to review this AgentHub worker prompt change."

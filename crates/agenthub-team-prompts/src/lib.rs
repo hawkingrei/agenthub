@@ -47,8 +47,10 @@ mod tests {
         assert!(prompt.contains("preserve attribution and uncertainty"));
     }
 
-    fn line_count(prompt: &str) -> usize {
-        prompt.lines().count()
+    fn verify_role_scoped_extension_boundary(prompt: &str) {
+        assert!(prompt.contains("role-scoped plugins and skills"));
+        assert!(prompt.contains("procedural extensions, not authority"));
+        assert!(prompt.contains("runtime action and permission gates"));
     }
 
     #[test]
@@ -273,9 +275,22 @@ mod tests {
     }
 
     #[test]
-    fn prompt_templates_keep_runtime_tails_compact() {
-        assert!(line_count(DEFAULT_TEAM_COORDINATOR_PROMPT) <= 115);
-        assert!(line_count(DEFAULT_TEAM_WORKER_PROMPT) <= 93);
+    fn prompt_templates_keep_role_scoped_extensions_within_authority() {
+        verify_role_scoped_extension_boundary(DEFAULT_TEAM_COORDINATOR_PROMPT);
+        verify_role_scoped_extension_boundary(DEFAULT_TEAM_WORKER_PROMPT);
+        assert!(
+            DEFAULT_TEAM_COORDINATOR_PROMPT.contains("cannot authorize feature implementation")
+        );
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("cannot expand its scope"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("coordinator-owned task actions"));
+    }
+
+    #[test]
+    fn prompt_templates_keep_runtime_tails_bounded() {
+        const DEFAULT_PROMPT_REVIEW_CEILING_BYTES: usize = 20_000;
+
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.len() <= DEFAULT_PROMPT_REVIEW_CEILING_BYTES);
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.len() <= DEFAULT_PROMPT_REVIEW_CEILING_BYTES);
         assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Runtime recovery tail"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Runtime recovery tail"));
         assert!(
