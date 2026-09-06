@@ -86,3 +86,25 @@ this checkpoint makes no Bazel-pass claim.
   execution acknowledgments remain outside this change.
 - Runtime queue acceptance is not an execution receipt: crash windows can duplicate submission or
   lose an already-submitted queued turn. No exactly-once claim is made.
+
+## Review Follow-Up
+
+PR #1118's asynchronous-render review is addressed in both component tests. Requests now remain
+pending until explicitly resolved and awaited inside `act`, with loading assertions before settlement.
+The identity-change test checks the new agent's response before delivering the stale response and
+checks the polling deadline plus the absence of overlapping refreshes while a request is pending.
+
+Validation for this test-only follow-up:
+
+- `npm exec vitest -- run src/components/agent_time_triggers_panel.test.tsx`: both tests passed.
+- `npm exec tsc -- --noEmit` and focused ESLint: passed.
+- `git diff --check`: passed.
+
+At implementation commit `f6a2920d8cb7a5b15f5948ba8ea0d42111bce17e`, the remote Bazel coverage job
+executed all 19 test targets successfully, including the root, ACP, and database targets. Codecov
+still reported 2.56% patch coverage and failed its patch/project checks. The job's result list showed
+coverage files for only three dependent test targets, with none listed for the root, ACP, or database
+targets themselves. The coverage command omits `--instrument_test_targets`, while Cargo coverage is
+push-only. This indicates an instrumentation gap requiring separate validation; passing tests alone
+do not establish coverage completeness. This follow-up changes neither Bazel configuration nor
+coverage thresholds.
