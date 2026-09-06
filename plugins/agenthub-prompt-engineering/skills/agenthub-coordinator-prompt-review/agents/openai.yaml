@@ -1,0 +1,4 @@
+interface:
+  display_name: "AgentHub Coordinator Prompt Review"
+  short_description: "Review coordinator prompts without authority drift"
+  default_prompt: "Use $agenthub-coordinator-prompt-review to review this AgentHub coordinator prompt change."

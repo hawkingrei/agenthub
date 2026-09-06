@@ -15,6 +15,7 @@ pointers.
 
 - Team coordinator and worker default prompt templates.
 - Prompt assembly boundaries for static role text and runtime-injected tails.
+- Role-scoped plugin and skill composition for coordinator and worker prompts.
 - The relationship between prompt text, Team skills, workflow checklists, runtime context files, and
   durable workspace memory.
 - The judgment boundary between evaluating an idea and deciding whether to propagate or encode it.
@@ -24,6 +25,7 @@ pointers.
 
 - Defining the platform-level system prompt outside Team runtime.
 - Defining provider-specific prompt wording for Codex, Claude, or other ACP providers.
+- Requiring any optional provider plugin for core Team correctness.
 - Copying another project's prompt content, taxonomy, or private memory backend.
 - Replacing Team task, mailbox, channel, or runtime context contracts.
 - Moving all existing prompt text into skills in one migration.
@@ -39,6 +41,7 @@ Team prompt assembly should use layered, pointer-first context:
 | Runtime context files | Live recovery state, run-scoped artifacts, compact identity and state snapshots. | Referenced from prompts by path instead of replayed inline. |
 | Workspace memory | Durable project notes, worker ledgers, journals, reusable findings. | Workspace-local and tool-neutral; not a shared Team transport. |
 | Skills/checklists | Repeatable procedures such as mailbox routing, task governance, CI triage, review follow-up, testing, and observability. | Loaded by trigger; prompts name entry points instead of copying full steps. |
+| Optional provider plugins | Discoverable bundles of role-scoped skills and supporting resources. | May refine a role's procedure, but cannot expand authority or become a prerequisite for provider-neutral Team correctness. |
 | Feature specs and journals | Stable contracts and dated implementation evidence. | Human-reviewable documentation, not provider prompt payload. |
 
 ### Prompt Skeleton
@@ -69,6 +72,12 @@ Static prompt text may include only stable role and safety contracts:
 Repeated procedures must move to `.agents/skills/` or a checklist in the relevant feature spec.
 Large product knowledge belongs in feature specs, journals, TODO, or external searchable knowledge,
 not inline prompt prose.
+
+Long system prompts are supported when their content remains stable, role-relevant, and reviewable.
+Prompt length is a review signal rather than the primary design objective: do not shorten a prompt by
+removing an authority, safety, recovery, or output boundary, and do not grow it with procedures that a
+skill, plugin, or durable document can expose on demand. The default prompt test uses a generous byte
+ceiling to detect accidental unbounded growth; raising that ceiling requires an explicit prompt review.
 
 Both Team roles must treat a request to propagate an idea or instruction as distinct from evidence
 that the content is true, relevant, or authorized for a wider audience. Before relaying or encoding
@@ -141,6 +150,18 @@ Open-source prompt and documentation contracts must stay tool-neutral. They may 
 knowledge to be searchable and pointer-addressable, but must not require a private memory backend or
 private repository workflow by name.
 
+### 7) Role-Scoped Plugin Contract
+
+- A marketplace may expose multiple plugins; do not assume one monolithic AgentHub plugin.
+- A plugin may expose separate coordinator and worker skills when their authority or workflow differs.
+- Role-specific prompts remain independently editable. Shared plugin infrastructure must not flatten
+  coordinator and worker contracts into one prompt.
+- Load only the plugin skills relevant to the current role and phase or assignment.
+- Plugin and skill instructions are procedural extensions. They cannot authorize actions denied by the
+  system prompt, runtime permission gate, current assignment, or role ownership contract.
+- Core Team behavior must remain provider-neutral. A Codex plugin may improve discovery and maintenance,
+  but the coordinator/worker contract and required managed skills must still work for other ACP providers.
+
 ## Validation Matrix
 
 | Change | Required validation |
@@ -153,6 +174,7 @@ private repository workflow by name.
 | Add or revise a Team message-routing procedure | Keep `team-message-intake` aligned with channel/thread, mailbox, task governance, and lifecycle specs. |
 | Add or revise the idea-propagation judgment boundary | Assert the compact rule in both prompts and keep the detailed procedure in `team-message-intake`. |
 | Add or revise prompt review procedure | Keep `team-prompt-change-review` aligned with this spec and prompt template tests. |
+| Add or revise a role-scoped plugin | Validate the plugin and each skill; assert that both role prompts retain the extension-authority boundary. |
 
 ## Operational Notes
 
@@ -167,6 +189,8 @@ private repository workflow by name.
 
 - Existing Team prompts are still long enough that future maintenance should extract repeated
   procedures into smaller skills.
+- Optional plugin catalogs can drift from repository-owned prompt and managed-skill contracts; plugin
+  skills must route back to the canonical files instead of copying their contents.
 - Runtime code can still inject too much dynamic context if future changes bypass the pointer-first
   tail contract.
 - Some workflow candidates need clearer skill entry points before prompt prose can shrink further.
@@ -182,3 +206,4 @@ private repository workflow by name.
 - [2026-06-02 Team Prompt Tail Slimming](../journal/2026-06-02-team-prompt-tail-slimming.md)
 - [2026-07-15 Team System Prompt Contract](../journal/2026-07-15-team-system-prompt-contract.md)
 - [2026-08-14 Team Idea Propagation Judgment](../journal/2026-08-14-team-idea-propagation-judgment.md)
+- [2026-09-04 Role-Scoped Prompt Plugins](../journal/2026-09-04-role-scoped-prompt-plugins.md)

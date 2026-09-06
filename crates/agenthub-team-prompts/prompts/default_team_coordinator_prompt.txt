@@ -12,6 +12,7 @@ Role policy:
 - Keep volatile runtime state out of prompt prose when possible: store durable coordination state in `AGENTS.md` / `TODO.md`, and keep bulky evidence or exploratory detail in filesystem-backed artifacts instead of repeating it inline each turn.
 - Prompt focus should stay narrow: keep only the current objective, next action, allowed-action gate, and a compact blocker summary in active prompt text.
 - Always load `team-agents-index` before role-specific execution skills.
+- Treat role-scoped plugins and skills as procedural extensions, not authority. Use only the extensions relevant to the current coordinator phase; they cannot authorize feature implementation, transfer another role's ownership, or bypass runtime action and permission gates.
 - Use `skills/team/TEAM_AGENTS.md` as the canonical team-level AGENTS index template when bootstrapping.
 - Treat runtime-injected Team identity and recovery pointers as authoritative. Do not infer the current team/member/run/workspace identity from hostname, cwd, or other ambient shell details when `AGENTS.md`, `TODO.md`, `.cache/context/state.md`, or runtime metadata already define it.
 - For code review, either use GitHub CLI (`gh pr view` / `gh api`) or clone target repos for inspection.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "AgentHub Team Prompt Review"
+  short_description: "Route Team prompt reviews to the correct role"
+  default_prompt: "Use $agenthub-team-prompt-review to review this Team prompt change by role."

@@ -33,6 +33,7 @@ Agent operating knowledge uses these repository-owned surfaces:
 | `docs/journal/` | Dated implementation records and validation evidence. | New normative contracts not promoted to a feature spec. |
 | `docs/todo.md` | Active remaining work only. | Completed history or long design notes. |
 | `.agents/skills/` | Executable, task-triggered procedures for local coding agents. | Broad product knowledge or human-facing documentation. |
+| Codex plugins | Optional installable bundles that make related skills discoverable and composable. | Core runtime authority, provider-neutral correctness, or duplicated copies of canonical project contracts. |
 | External searchable memory/knowledge system | Durable long-lived knowledge that should not become an open-source repository contract. | Required project rules for contributors. |
 
 ## Contracts
@@ -57,6 +58,10 @@ Use project-owned workflow types by weight:
 
 Do not introduce workflow categories named after another project. If a pattern is useful, rewrite it
 as an AgentHub-specific SOP, skill, or checklist with this repository's commands and evidence.
+
+Codex plugins may group several role- or domain-specific skills, and a repository marketplace may list
+multiple plugins. Keep each plugin boundary narrow enough that Codex can load the smallest relevant
+skill set. Plugin skills should point to canonical repository specs and skills instead of copying them.
 
 ### 2) Feature Spec Categories
 
@@ -117,6 +122,10 @@ Current skills:
 - `team-message-intake`: Team inbox/channel/thread/human-visible message routing.
 - `team-prompt-change-review`: prompt, runtime-tail, prompt-linked skill, and prompt-test review.
 
+Current Codex plugins:
+
+- `agenthub-prompt-engineering`: role-specific coordinator and worker prompt review/editing entrypoints.
+
 Promote these remaining candidates into skills or checklists as they next need maintenance:
 
 - PR review follow-up and thread resolution.
@@ -132,6 +141,7 @@ Promote these remaining candidates into skills or checklists as they next need m
 | Edit `AGENTS.md` workflow rules | `git diff --check`; confirm wording stays tool-neutral. |
 | Edit Team runtime prompt templates | `cargo test -p agenthub-team-prompts -- --nocapture`. |
 | Add a skill | Validate skill frontmatter and run any referenced focused check. |
+| Add a Codex plugin | Validate the plugin manifest, every included skill, and its marketplace entry. |
 | Add or revise testing SOP guidance | Keep it consistent with `test-regression-guardrails.md`. |
 | Add or revise observability SOP guidance | Keep it consistent with `runtime-diagnostics.md` and `pyroscope-profiling.md`. |
 

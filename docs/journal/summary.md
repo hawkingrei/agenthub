@@ -328,10 +328,14 @@ Main shape:
   child while the built-in adapter remained a mode of the single `agenthubd`
   daemon binary. Service-context proxy recovery remains the provider-egress
   boundary.
+- Team prompt engineering now has a repository-owned Codex marketplace entry with separate
+  coordinator and worker review skills. Long prompts remain supported, while role-scoped plugins
+  are procedural extensions that cannot expand runtime authority.
 
 Start with:
 
 - `2026-09-01-acp-install-proxy-recovery.md`
+- `2026-09-04-role-scoped-prompt-plugins.md`
 
 ## Compaction Rules
 
