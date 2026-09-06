@@ -1,6 +1,5 @@
 use super::help::{actor_topic_usage, actor_usage};
 use super::output::{actor_output_preference_for_command, write_actor_output};
-use super::parse::compute_time_trigger_fire_at;
 use super::runtime::{
     init_actor_control_client, init_actor_mailbox_service, init_actor_permission_review_client,
     init_actor_task_link_service, load_actor_inbox, map_actor_service_error, receive_actor_inbox,
@@ -16,7 +15,6 @@ use agenthub_team_actor::{
     ActorTriageRequest, ActorTriageResponse,
 };
 use anyhow::Context;
-use chrono::Utc;
 
 use crate::actor_runtime_env::{ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var};
 use crate::internal::auth::InternalAction;
@@ -903,6 +901,7 @@ pub(super) async fn run_actor_command(
             actor_id,
             delay_seconds,
             message,
+            source_ref,
         } => {
             anyhow::ensure!(
                 (1..=MAX_TIME_TRIGGER_DELAY_SECONDS).contains(&delay_seconds),
@@ -917,10 +916,11 @@ pub(super) async fn run_actor_command(
             )
             .await?;
             let record = client
-                .create_time_trigger(
+                .create_time_trigger_after(
                     &actor_id,
                     &message,
-                    compute_time_trigger_fire_at(Utc::now().timestamp(), delay_seconds),
+                    delay_seconds,
+                    source_ref.as_deref(),
                 )
                 .await?;
             write_actor_output(&record, output_mode, output_preference)?;

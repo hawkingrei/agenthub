@@ -85,6 +85,21 @@ impl AgentExecutor for LocalExecutor {
         for (key, value) in &request.extra_env {
             command.env(key, value);
         }
+        // Identity is available in standalone sessions without inventing a Team actor context.
+        command.env("AGENTHUB_ACTOR_AGENT_ID", &request.agent_id);
+        for key in [
+            ACTOR_RUNTIME_ACTOR_ID_ENV,
+            ACTOR_RUNTIME_CHANNEL_ENV,
+            ACTOR_RUNTIME_TEAM_ID_ENV,
+            ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
+        ] {
+            command.env_remove(key);
+        }
+        if request.actor_context.is_none() {
+            // A daemon launched from an agent shell must not lend that agent's credential.
+            command.env_remove("AGENTHUB_INTERNAL_GRPC_TARGET");
+            command.env_remove("AGENTHUB_INTERNAL_GRPC_TOKEN");
+        }
         if let Some(context) = request.actor_context.as_ref() {
             command.env(ACTOR_RUNTIME_ACTOR_ID_ENV, &context.actor_id);
             command.env(ACTOR_RUNTIME_CHANNEL_ENV, &context.default_channel);
@@ -310,5 +325,46 @@ mod tests {
         let sibling_dir =
             resolve_runtime_sibling_bin_dir(Some(current_exe)).expect("resolve sibling dir");
         assert_eq!(sibling_dir, PathBuf::from("/tmp/agenthub/target/debug"));
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn standalone_reminder_identity_does_not_inherit_team_authority() {
+        let process_supervisor = AgentProcessSupervisor::default();
+        let executor = LocalExecutor::new(ProxyPolicy::default(), process_supervisor.clone());
+        let request = LocalExecutionRequest {
+            agent_id: "solo".into(),
+            session_id: "solo-session".into(),
+            command_path: "/bin/sh".into(),
+            workdir: std::env::temp_dir().to_string_lossy().into(),
+            args: vec![
+                "-c".into(),
+                concat!(
+                    "printf '%s|%s|%s|%s|%s|%s' ",
+                    "\"$AGENTHUB_ACTOR_AGENT_ID\" \"$AGENTHUB_ACTOR_ID\" ",
+                    "\"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" ",
+                    "\"$AGENTHUB_INTERNAL_GRPC_TARGET\" \"$AGENTHUB_INTERNAL_GRPC_TOKEN\"",
+                )
+                .into(),
+            ],
+            actor_context: None,
+            extra_env: [
+                "AGENTHUB_ACTOR_AGENT_ID",
+                "AGENTHUB_ACTOR_ID",
+                "AGENTHUB_ACTOR_TEAM_ID",
+                "AGENTHUB_ACTOR_CURRENT_RUN_ID",
+                "AGENTHUB_INTERNAL_GRPC_TARGET",
+                "AGENTHUB_INTERNAL_GRPC_TOKEN",
+            ]
+            .into_iter()
+            .map(|key| (key.into(), "stale".into()))
+            .collect(),
+        };
+        let spawned = executor.spawn_process(request).await.unwrap();
+        spawned.registration.commit();
+        let child = spawned.child.lock().await.take().unwrap();
+        let output = Box::into_pin(child.wait_with_output()).await.unwrap();
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), "solo|||||");
+        process_supervisor.forget("solo-session").await;
     }
 }

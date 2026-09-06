@@ -13,6 +13,7 @@ pub use agenthub_agent_domain::{
 pub use manager::{AgentInputImage, AgentManager, AgentSendInputError};
 pub(crate) use manager::{AgentStartSchedulerSettings, derive_team_runtime_workdir};
 pub use triggers::{
-    AgentTimeTriggerCreateInput, AgentTimeTriggerManager, AgentTimeTriggerRecord,
-    AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
+    AgentReminderSource, AgentTimeTriggerCreateInput, AgentTimeTriggerManager,
+    AgentTimeTriggerRecord, AgentTimeTriggerSchedule, AgentTimeTriggerWorker,
+    AgentTimeTriggerWorkerSettings,
 };

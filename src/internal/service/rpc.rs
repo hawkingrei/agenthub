@@ -919,9 +919,20 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        if payload.fire_at <= chrono::Utc::now().timestamp() {
-            return Err(Status::invalid_argument("fire_at must be in the future"));
-        }
+        let now = chrono::Utc::now().timestamp();
+        let schedule = if payload.delay_seconds != 0 {
+            if payload.fire_at != 0 || !(1..=2_592_000).contains(&payload.delay_seconds) {
+                return Err(Status::invalid_argument(
+                    "use delay_seconds between 1 and 2592000 without fire_at",
+                ));
+            }
+            crate::agent::AgentTimeTriggerSchedule::After(payload.delay_seconds)
+        } else {
+            if payload.fire_at <= now {
+                return Err(Status::invalid_argument("fire_at must be in the future"));
+            }
+            crate::agent::AgentTimeTriggerSchedule::At(payload.fire_at)
+        };
         self.deps
             .agents
             .get_agent(actor_id)
@@ -933,7 +944,13 @@ impl TeamInternalControl for TeamInternalControlService {
                 agent_id: actor_id.to_string(),
                 created_by_actor_id: actor_id.to_string(),
                 message_text: required_field(&payload.message_text, "message_text")?.to_string(),
-                fire_at: payload.fire_at,
+                schedule,
+                source: self
+                    .deps
+                    .agents
+                    .reminder_source(actor_id, optional_trimmed(&payload.source_ref))
+                    .await
+                    .map_err(map_manager_error)?,
             })
             .await
             .map_err(map_manager_error)?;
@@ -1392,6 +1409,10 @@ impl TeamInternalControl for TeamInternalControlService {
             .await
             .map_err(map_manager_error)?;
         Ok(Response::new(GetAgentRecordResponse {
+            reminder_source_json: serde_json::to_string(
+                &self.deps.agents.local_reminder_source(agent_id, None).await,
+            )
+            .map_err(map_serde_status)?,
             agent_json: serde_json::to_string(&agent)
                 .map_err(|err| Status::internal(err.to_string()))?,
         }))
@@ -1474,6 +1495,29 @@ impl TeamInternalControl for TeamInternalControlService {
                 input,
                 optional_trimmed(&payload.message_id),
                 optional_trimmed(&payload.session_id),
+            )
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(SendAgentInputResponse {}))
+    }
+
+    async fn send_agent_reminder(
+        &self,
+        request: Request<crate::internal::proto::agenthub::internal::v1::SendAgentReminderRequest>,
+    ) -> Result<Response<SendAgentInputResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::AgentManage)?;
+        let payload = request.into_inner();
+        let source = serde_json::from_str(&payload.source_json)
+            .map_err(|_| Status::invalid_argument("invalid reminder source_json"))?;
+        self.deps
+            .agents
+            .send_reminder_input(
+                required_field(&payload.agent_id, "agent_id")?,
+                required_field(&payload.input, "input")?,
+                required_field(&payload.message_id, "message_id")?,
+                &source,
             )
             .await
             .map_err(map_manager_error)?;

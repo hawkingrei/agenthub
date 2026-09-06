@@ -347,6 +347,11 @@ pub struct CreateTimeTriggerRequest {
     pub message_text: ::prost::alloc::string::String,
     #[prost(int64, tag = "3")]
     pub fire_at: i64,
+    /// Relative scheduling uses the server clock. Mutually exclusive with fire_at.
+    #[prost(int64, tag = "4")]
+    pub delay_seconds: i64,
+    #[prost(string, tag = "5")]
+    pub source_ref: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateTimeTriggerResponse {
@@ -557,6 +562,8 @@ pub struct GetAgentRecordRequest {
 pub struct GetAgentRecordResponse {
     #[prost(string, tag = "1")]
     pub agent_json: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub reminder_source_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StartManagedAgentRequest {
@@ -584,6 +591,18 @@ pub struct DeleteManagedAgentRequest {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DeleteManagedAgentResponse {}
+/// Separate method prevents old peers from silently treating reminders as live input.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SendAgentReminderRequest {
+    #[prost(string, tag = "1")]
+    pub agent_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub input: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub message_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub source_json: ::prost::alloc::string::String,
+}
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SendAgentInputRequest {
     #[prost(string, tag = "1")]
@@ -1533,6 +1552,35 @@ pub mod team_internal_control_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn send_agent_reminder(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SendAgentReminderRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::SendAgentInputResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/SendAgentReminder",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "SendAgentReminder",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn list_agent_events(
             &mut self,
             request: impl tonic::IntoRequest<super::ListAgentEventsRequest>,
@@ -1769,6 +1817,13 @@ pub mod team_internal_control_server {
         async fn send_agent_input(
             &self,
             request: tonic::Request<super::SendAgentInputRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::SendAgentInputResponse>,
+            tonic::Status,
+        >;
+        async fn send_agent_reminder(
+            &self,
+            request: tonic::Request<super::SendAgentReminderRequest>,
         ) -> std::result::Result<
             tonic::Response<super::SendAgentInputResponse>,
             tonic::Status,
@@ -3209,6 +3264,55 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = SendAgentInputSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/SendAgentReminder" => {
+                    #[allow(non_camel_case_types)]
+                    struct SendAgentReminderSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::SendAgentReminderRequest>
+                    for SendAgentReminderSvc<T> {
+                        type Response = super::SendAgentInputResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SendAgentReminderRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::send_agent_reminder(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SendAgentReminderSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
