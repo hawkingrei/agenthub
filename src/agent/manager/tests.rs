@@ -1210,3 +1210,79 @@ async fn ensure_team_runtime_workspace_layout_reports_non_file_context_entries()
         "err={err}"
     );
 }
+
+#[tokio::test]
+async fn reminder_source_survives_session_restart_but_cannot_cross_team_or_run() {
+    let state = crate::api::team_tests::build_test_state().await;
+    let context = AcpActorSkillContext {
+        actor_id: "reviewer".into(),
+        team_id: Some("team-a".into()),
+        current_run_id: Some("run-a".into()),
+        default_channel: "default".into(),
+        member_role: Some("worker".into()),
+        member_skills: vec![],
+        contract_version: None,
+        continuity: None,
+    };
+    state.agents.inner.write().await.insert(
+        "reviewer".into(),
+        super::AgentHandle {
+            child: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            output_tx: tokio::sync::broadcast::channel(16).0,
+            input: super::AgentInput::Stdin(std::sync::Arc::new(tokio::sync::Mutex::new(None))),
+            session_id: "session-a".into(),
+            actor_context: Some(context.clone()),
+            acp_prompt_delivery_policy: None,
+            loop_controller: None,
+        },
+    );
+    let source = state
+        .agents
+        .reminder_source("reviewer", Some("task:123"))
+        .await
+        .unwrap();
+    assert!(source.scope_bound);
+    assert_eq!(source.session_id.as_deref(), Some("session-a"));
+    assert_eq!(source.team_id, context.team_id);
+    assert_eq!(source.run_id, context.current_run_id);
+    {
+        let mut handles = state.agents.inner.write().await;
+        handles.get_mut("reviewer").unwrap().session_id = "session-b".into();
+    }
+    let error = state
+        .agents
+        .send_reminder_input("reviewer", "follow up", "trigger:1", &source)
+        .await
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("stdin closed"),
+        "session restart should pass the scope guard: {error}"
+    );
+    for changed in [
+        Some(AcpActorSkillContext {
+            team_id: Some("team-b".into()),
+            ..context.clone()
+        }),
+        Some(AcpActorSkillContext {
+            current_run_id: Some("run-b".into()),
+            ..context.clone()
+        }),
+        None,
+    ] {
+        state
+            .agents
+            .inner
+            .write()
+            .await
+            .get_mut("reviewer")
+            .unwrap()
+            .actor_context = changed;
+        let error = state
+            .agents
+            .send_reminder_input("reviewer", "follow up", "trigger:1", &source)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("no longer matches"));
+    }
+    state.agents.inner.write().await.remove("reviewer");
+}

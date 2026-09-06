@@ -16,6 +16,7 @@ export type AgentTimeTriggersPanelProps = {
 };
 
 const ACTIVE_TRIGGER_STATUSES = new Set(["scheduled", "dispatching"]);
+const TRIGGER_PANEL_CLASS = `${OUTPUT_HEADER_DETAILS_PANEL_CLASS} w-72 max-w-[calc(100vw-2rem)] whitespace-normal`;
 
 function formatFireAt(fireAtUnix: number): string {
   const d = new Date(fireAtUnix * 1000);
@@ -79,7 +80,9 @@ export const AgentTimeTriggersPanel = React.memo(
         return;
       }
       let cancelled = false;
-      (async () => {
+      let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+      setTriggers(null);
+      const refresh = async () => {
         try {
           setError(null);
           const records = await api.listAgentTimeTriggers(
@@ -95,10 +98,14 @@ export const AgentTimeTriggersPanel = React.memo(
             );
             setTriggers(null);
           }
+        } finally {
+          if (!cancelled) refreshTimer = setTimeout(refresh, 10_000);
         }
-      })();
+      };
+      void refresh();
       return () => {
         cancelled = true;
+        clearTimeout(refreshTimer);
       };
     }, [agentId, authToken]);
 
@@ -109,7 +116,7 @@ export const AgentTimeTriggersPanel = React.memo(
           <summary className="inline-flex cursor-pointer list-none items-center rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-notion-text-muted/62 transition hover:bg-notion-hover/65 hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10">
             Triggers
           </summary>
-          <div className={OUTPUT_HEADER_DETAILS_PANEL_CLASS}>
+          <div className={TRIGGER_PANEL_CLASS}>
             <div className="px-2 py-1.5 text-[11px] text-red-600">{error}</div>
           </div>
         </details>
@@ -131,7 +138,7 @@ export const AgentTimeTriggersPanel = React.memo(
             </span>
           )}
         </summary>
-        <div className={OUTPUT_HEADER_DETAILS_PANEL_CLASS}>
+        <div className={TRIGGER_PANEL_CLASS}>
           <div className={OUTPUT_HEADER_DETAILS_LIST_CLASS}>
             {loading && (
               <div className="px-2 py-1.5 text-[10px] text-notion-text-muted">
@@ -151,15 +158,38 @@ export const AgentTimeTriggersPanel = React.memo(
                   </span>
                   <span className={OUTPUT_HEADER_DETAILS_VALUE_CLASS}>
                     <span className={trigger.last_error ? "text-red-600" : resolveTriggerStatusTone(trigger.status)}>
-                      {trigger.status}
+                      {trigger.status === "fired" ? "submitted" : trigger.status}
                     </span>{" "}
                     · {formatFireAt(trigger.fire_at)}
                     {trigger.fired_at && trigger.status === "fired" && (
                       <>
                         <br />
                         <span className="text-green-700">
-                          fired {formatFiredAt(trigger.fired_at)}
+                          submitted {formatFiredAt(trigger.fired_at)}
                         </span>
+                      </>
+                    )}
+                    {trigger.status === "fired" && (
+                      <>
+                        <br />
+                        <span className="opacity-70">
+                          Input submitted; execution is not confirmed.
+                        </span>
+                      </>
+                    )}
+                    {trigger.status === "scheduled" &&
+                      (trigger.next_attempt_at ?? 0) > 0 && (
+                        <>
+                          <br />
+                          <span>
+                            Retry {formatFireAt(trigger.next_attempt_at!)} · attempt {trigger.attempt ?? 0}
+                          </span>
+                        </>
+                      )}
+                    {trigger.source?.reference && (
+                      <>
+                        <br />
+                        <span className="opacity-70">Source: {trigger.source.reference}</span>
                       </>
                     )}
                     {trigger.last_error && (

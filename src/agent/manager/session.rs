@@ -810,6 +810,7 @@ impl AgentManager {
                 .ok()
                 .and_then(|guard| guard.clone());
             let handle = match spawn_acp_session(SpawnAcpSessionRequest {
+                self_reminders_enabled: self.internal_peer_client.is_some(),
                 provider_id: provider.id.to_string(),
                 event_sink,
                 permissions: self.permissions.clone(),

@@ -2188,6 +2188,26 @@ impl AgentManager {
         message_id: Option<&str>,
         expected_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
+        self.send_input_inner(
+            agent_id,
+            input,
+            images,
+            message_id,
+            expected_session_id,
+            None,
+        )
+        .await
+    }
+
+    async fn send_input_inner(
+        &self,
+        agent_id: &str,
+        input: &str,
+        images: &[AgentInputImage],
+        message_id: Option<&str>,
+        expected_session_id: Option<&str>,
+        reminder_source: Option<&super::AgentReminderSource>,
+    ) -> anyhow::Result<()> {
         let agent = self.get_agent(agent_id).await?;
         if let Some(target_node_id) = agent.target_node_id.as_deref() {
             if !images.is_empty() {
@@ -2196,12 +2216,35 @@ impl AgentManager {
             let client = self
                 .remote_control_client_for_target_node(target_node_id)
                 .await?;
+            if let Some(source) = reminder_source {
+                return client
+                    .send_agent_reminder(agent_id, input, message_id.unwrap_or_default(), source)
+                    .await;
+            }
             return client
                 .send_agent_input(agent_id, input, message_id, expected_session_id)
                 .await;
         }
         let handle_snapshot = {
             let guard = self.inner.read().await;
+            if let (Some(source), Some(handle)) = (reminder_source, guard.get(agent_id)) {
+                let current_team = handle
+                    .actor_context
+                    .as_ref()
+                    .and_then(|ctx| ctx.team_id.as_deref());
+                let current_run = handle
+                    .actor_context
+                    .as_ref()
+                    .and_then(|ctx| ctx.current_run_id.as_deref());
+                // Legacy reminders have no source snapshot. New reminders must not cross scope.
+                if source.scope_bound {
+                    anyhow::ensure!(
+                        source.team_id.as_deref() == current_team
+                            && source.run_id.as_deref() == current_run,
+                        "reminder source no longer matches the agent's Team/run scope"
+                    );
+                }
+            }
             guard.get(agent_id).map(|handle| match &handle.input {
                 AgentInput::Stdin(stdin) => (
                     Some(stdin.clone()),
@@ -2273,7 +2316,7 @@ impl AgentManager {
         let message_id = message_id
             .map(|id| id.to_string())
             .unwrap_or_else(|| seq.to_string());
-        let message = serde_json::json!({
+        let mut message = serde_json::json!({
             "type": "user_message",
             "text": input,
             "chunk": false,
@@ -2284,8 +2327,11 @@ impl AgentManager {
                 "mime_type": image.mime_type,
                 "data": image.data,
             })).collect::<Vec<_>>()
-        })
-        .to_string();
+        });
+        if let Some(source) = reminder_source {
+            message["origin"] = serde_json::json!({"kind": "reminder", "source": source});
+        }
+        let message = message.to_string();
         let ts = Utc::now().timestamp();
         let event_id = persist_agent_event(
             &self.event_dbs,
@@ -2313,14 +2359,18 @@ impl AgentManager {
             .iter()
             .map(|image| AcpPromptImage::new(image.data.clone(), image.mime_type.clone()))
             .collect();
-        match acp
-            .prompt_with_images_with_submission(
+        let submission = if reminder_source.is_some() {
+            acp.prompt_deferred_with_submission(input.to_string(), message_id.clone())
+                .await
+        } else {
+            acp.prompt_with_images_with_submission(
                 input.to_string(),
                 prompt_images,
                 message_id.clone(),
             )
             .await
-        {
+        };
+        match submission {
             Ok(()) => Ok(()),
             Err(err) => {
                 if let Err(persist_err) = self
@@ -2341,6 +2391,61 @@ impl AgentManager {
                 Err(err)
             }
         }
+    }
+
+    pub async fn reminder_source(
+        &self,
+        agent_id: &str,
+        reference: Option<&str>,
+    ) -> anyhow::Result<super::AgentReminderSource> {
+        let agent = self.get_agent(agent_id).await?;
+        if let Some(node) = agent.target_node_id.as_deref() {
+            let mut source = self
+                .remote_control_client_for_target_node(node)
+                .await?
+                .get_agent_reminder_source(agent_id)
+                .await?;
+            source.reference = reference
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            return Ok(source);
+        }
+        Ok(self.local_reminder_source(agent_id, reference).await)
+    }
+
+    pub(crate) async fn local_reminder_source(
+        &self,
+        agent_id: &str,
+        reference: Option<&str>,
+    ) -> super::AgentReminderSource {
+        let guard = self.inner.read().await;
+        let handle = guard.get(agent_id);
+        super::AgentReminderSource {
+            scope_bound: true,
+            session_id: handle.map(|handle| handle.session_id.clone()),
+            team_id: handle
+                .and_then(|handle| handle.actor_context.as_ref())
+                .and_then(|ctx| ctx.team_id.clone()),
+            run_id: handle
+                .and_then(|handle| handle.actor_context.as_ref())
+                .and_then(|ctx| ctx.current_run_id.clone()),
+            reference: reference
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        }
+    }
+
+    pub async fn send_reminder_input(
+        &self,
+        agent_id: &str,
+        input: &str,
+        message_id: &str,
+        source: &super::AgentReminderSource,
+    ) -> anyhow::Result<()> {
+        self.send_input_inner(agent_id, input, &[], Some(message_id), None, Some(source))
+            .await
     }
 
     pub(crate) async fn send_mailbox_hint_input(
