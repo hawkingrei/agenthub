@@ -170,6 +170,11 @@ because Docker Hub denied the existing `minio/minio` image pull. The workflow us
 quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z` successfully resolved the OCI index, including
 `linux/amd64`. This validates image availability, not the unexecuted S3 test job.
 
+The first run of follow-up PR #1134 successfully started the Quay image, then failed while fetching
+`mc` because `dl.min.io` returned HTTP 410. Bucket creation now uses curl's AWS SigV4 support with
+the existing fixture credentials and region, removing the separate client download. The job starts
+a fresh MinIO container, so this step creates the fixture bucket once before the S3 tests.
+
 Local all-target Clippy with `-D warnings` and comparison of tracked/generated protobuf output also
 passed for the code follow-up. Remote coverage and S3 results remain required follow-up evidence.
 
