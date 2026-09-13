@@ -185,8 +185,18 @@ default features, the root feature bridge, explicit release feature lists, and t
 implicit S3 enablement through unrelated features.
 
 `cargo test --locked -p agenthub --lib release_feature_tests` passed all six release tests after
-consolidation. Formatting and whitespace checks passed. The complete workspace test/report path
-is the remaining PR validation gate.
+consolidation. The complete workspace suite passed locally: 1,289 tests across 33 test binaries,
+with command-scoped `NO_PROXY`/`no_proxy` exemptions for loopback HTTP fixtures. The same 1,289
+tests passed under remote coverage on `aaa16815`, as did the MinIO fixtures and Bazel checks.
+
+That coverage run failed during profile merging with `file header is corrupt`. Tests start real
+instrumented actor processes and can terminate their process groups during teardown. A focused
+Rust 1.96 fixture reproduced the same error by killing a process while it flushed its profile.
+The report step now uses the documented [LLVM partial-profile merge mode](https://llvm.org/docs/CommandGuide/llvm-profdata.html#cmdoption-llvm-profdata-merge-failure-mode):
+`--failure-mode all` retains valid profiles and warns about interrupted ones. The focused check
+confirmed that a valid profile plus an interrupted profile merges successfully, preserving all
+10,001 executed fixture functions, while all-invalid inputs still fail. Cargo test failures and
+the nonempty LCOV check remain fatal. Fresh remote report generation and upload are pending.
 
 Local all-target Clippy with `-D warnings` and comparison of tracked/generated protobuf output also
 passed for the code follow-up. Remote coverage and S3 results remain required follow-up evidence.

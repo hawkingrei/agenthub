@@ -184,7 +184,8 @@ jobs:
           # Cross-package blackbox tests launch agenthubd beside agenthub.
           cargo build --workspace --bins --locked
           cargo test --workspace --tests --locked
-          cargo llvm-cov report --lcov --output-path rust-cargo.lcov
+          # Subprocess teardown can interrupt profile writes; retain valid profiles and warnings.
+          cargo llvm-cov report --failure-mode all --lcov --output-path rust-cargo.lcov
           test -s rust-cargo.lcov
           wc -l rust-cargo.lcov
       - name: Upload coverage reports to Codecov
