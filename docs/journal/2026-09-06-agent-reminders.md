@@ -132,8 +132,9 @@ The latest reviewed `main` coverage run,
 distributed blackbox test could not find `target/llvm-cov-target/debug/agenthubd`. A separate prepared
 workflow patch enables fresh PR coverage and uses the documented `show-env`, clean, build, test, and
 report sequence, building all workspace binaries before the tests. GitHub rejected its initial push
-because the OAuth credential lacks `workflow` scope. The workflow repair remains pending; this code
-follow-up changes neither the workflows, Bazel configuration, nor coverage thresholds.
+because the OAuth credential lacks `workflow` scope, so the code fixes were published separately.
+After PR #1118 merged, the repository's existing SSH identity was authorized and authenticated for
+the workflow follow-up below. Bazel configuration and coverage thresholds remain unchanged.
 
 Validation for this follow-up:
 
@@ -154,6 +155,23 @@ Validation for this follow-up:
   publication and a successful report upload.
 
 Deployed provider smoke checks and execution acknowledgments remain the existing follow-ups.
+
+## CI Workflow Repair (2026-09-13)
+
+The workflow follow-up enables Cargo coverage on PRs and builds instrumented workspace
+binaries before running the complete workspace test set. The sequence follows the
+[cargo-llvm-cov external-tests contract](https://github.com/taiki-e/cargo-llvm-cov/tree/v0.9.1#get-coverage-of-external-tests).
+Successful CI execution and fresh coverage upload must be confirmed on the follow-up PR.
+
+The code head's initial Actions runs failed before creating jobs with a GitHub internal-error
+annotation. Reruns reached the normal build/test steps. The S3 fixture then failed before testing
+because Docker Hub denied the existing `minio/minio` image pull. The workflow uses MinIO's official
+`quay.io/minio/minio` repository with the same fixed release tag. `docker manifest inspect
+quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z` successfully resolved the OCI index, including
+`linux/amd64`. This validates image availability, not the unexecuted S3 test job.
+
+Local all-target Clippy with `-D warnings` and comparison of tracked/generated protobuf output also
+passed for the code follow-up. Remote coverage and S3 results remain required follow-up evidence.
 
 ## Bazel Fixture Follow-Up (2026-09-13)
 
@@ -180,6 +198,7 @@ Validation:
 - `cargo clippy --locked -p agenthub-codex-acp-runtime --tests -- -D warnings`: passed.
 - `cargo fmt --all --check` and `git diff --check`: passed.
 
-The current Codecov upload records identify both Rust reports as carried forward from earlier
-commits. Fresh coverage upload and the MinIO registry repair remain the workflow follow-up above;
-the current code-only credential cannot publish workflow changes.
+The Codecov upload records initially identified both Rust reports as carried forward from earlier
+commits. All required checks subsequently passed on `666fac7d`, including the repaired Bazel crate
+suite, and PR #1118 merged as `d399edee`. Fresh Cargo coverage and MinIO fixture execution remain
+the workflow follow-up above.

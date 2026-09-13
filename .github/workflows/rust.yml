@@ -69,7 +69,7 @@ jobs:
             -p 9000:9000 \
             -e MINIO_ROOT_USER="${MINIO_ROOT_USER}" \
             -e MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD}" \
-            minio/minio:RELEASE.2025-06-13T11-33-47Z \
+            quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z \
             server /data --address ":9000"
           for i in {1..30}; do
             if curl -fsS "${AGENTHUB_OBJECT_STORE_S3_TEST_ENDPOINT}/minio/health/ready"; then
@@ -157,7 +157,6 @@ jobs:
   rust-coverage:
     name: Rust (Coverage)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -180,7 +179,13 @@ jobs:
           cargo llvm-cov --version
       - name: Cargo test coverage (workspace)
         run: |
-          cargo llvm-cov --workspace --locked --lcov --output-path rust-cargo.lcov
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov clean --workspace
+          # Cross-package blackbox tests launch agenthubd beside agenthub.
+          cargo build --workspace --bins --locked
+          cargo test --workspace --tests --locked
+          cargo llvm-cov report --lcov --output-path rust-cargo.lcov
+          test -s rust-cargo.lcov
           wc -l rust-cargo.lcov
       - name: Upload coverage reports to Codecov
         if: github.event.pull_request.user.login != 'dependabot[bot]'
