@@ -197,6 +197,8 @@ The report step now uses the documented [LLVM partial-profile merge mode](https:
 confirmed that a valid profile plus an interrupted profile merges successfully, preserving all
 10,001 executed fixture functions, while all-invalid inputs still fail. Cargo test failures and
 the nonempty LCOV check remain fatal. Fresh remote report generation and upload are pending.
+The separate report command also explicitly selects `--workspace`: without it, cargo-llvm-cov
+excludes other workspace packages from the report even when the test command selected them.
 
 Local all-target Clippy with `-D warnings` and comparison of tracked/generated protobuf output also
 passed for the code follow-up. Remote coverage and S3 results remain required follow-up evidence.
