@@ -132,8 +132,9 @@ The latest reviewed `main` coverage run,
 distributed blackbox test could not find `target/llvm-cov-target/debug/agenthubd`. A separate prepared
 workflow patch enables fresh PR coverage and uses the documented `show-env`, clean, build, test, and
 report sequence, building all workspace binaries before the tests. GitHub rejected its initial push
-because the OAuth credential lacks `workflow` scope. The workflow repair remains pending; this code
-follow-up changes neither the workflows, Bazel configuration, nor coverage thresholds.
+because the OAuth credential lacks `workflow` scope, so the code fixes were published separately.
+After PR #1118 merged, the repository's existing SSH identity was authorized and authenticated for
+the workflow follow-up below. Bazel configuration and coverage thresholds remain unchanged.
 
 Validation for this follow-up:
 
@@ -154,6 +155,53 @@ Validation for this follow-up:
   publication and a successful report upload.
 
 Deployed provider smoke checks and execution acknowledgments remain the existing follow-ups.
+
+## CI Workflow Repair (2026-09-13)
+
+The workflow follow-up enables Cargo coverage on PRs and builds instrumented workspace
+binaries before running the complete workspace test set. The sequence follows the
+[cargo-llvm-cov external-tests contract](https://github.com/taiki-e/cargo-llvm-cov/tree/v0.9.1#get-coverage-of-external-tests).
+Successful CI execution and fresh coverage upload must be confirmed on the follow-up PR.
+
+The code head's initial Actions runs failed before creating jobs with a GitHub internal-error
+annotation. Reruns reached the normal build/test steps. The S3 fixture then failed before testing
+because Docker Hub denied the existing `minio/minio` image pull. The workflow uses MinIO's official
+`quay.io/minio/minio` repository with the same fixed release tag. `docker manifest inspect
+quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z` successfully resolved the OCI index, including
+`linux/amd64`. This validates image availability, not the unexecuted S3 test job.
+
+The first run of follow-up PR #1134 successfully started the Quay image, then failed while fetching
+`mc` because `dl.min.io` returned HTTP 410. Bucket creation now uses curl's AWS SigV4 support with
+the existing fixture credentials and region, removing the separate client download. The job starts
+a fresh MinIO container, so this step creates the fixture bucket once before the S3 tests.
+
+Both S3 fixtures passed on `64df9669`. The coverage run also passed all 811 root unit tests and the
+distributed blackbox test after the binary prerequisite was built. It then exposed a stale
+Cargo-only release test that still prohibited S3 in official artifacts, contrary to the reviewed
+decision in PR #1013 and the current canonical library test. The remaining manifest assertions
+are consolidated into `official_release_includes_opendal_s3_without_changing_defaults`, which runs
+under both Cargo and Bazel, and the duplicate integration test is removed. This retains empty
+default features, the root feature bridge, explicit release feature lists, and the prohibition on
+implicit S3 enablement through unrelated features.
+
+`cargo test --locked -p agenthub --lib release_feature_tests` passed all six release tests after
+consolidation. The complete workspace suite passed locally: 1,289 tests across 33 test binaries,
+with command-scoped `NO_PROXY`/`no_proxy` exemptions for loopback HTTP fixtures. The same 1,289
+tests passed under remote coverage on `aaa16815`, as did the MinIO fixtures and Bazel checks.
+
+That coverage run failed during profile merging with `file header is corrupt`. Tests start real
+instrumented actor processes and can terminate their process groups during teardown. A focused
+Rust 1.96 fixture reproduced the same error by killing a process while it flushed its profile.
+The report step now uses the documented [LLVM partial-profile merge mode](https://llvm.org/docs/CommandGuide/llvm-profdata.html#cmdoption-llvm-profdata-merge-failure-mode):
+`--failure-mode all` retains valid profiles and warns about interrupted ones. The focused check
+confirmed that a valid profile plus an interrupted profile merges successfully, preserving all
+10,001 executed fixture functions, while all-invalid inputs still fail. Cargo test failures and
+the nonempty LCOV check remain fatal. Fresh remote report generation and upload are pending.
+The separate report command also explicitly selects `--workspace`: without it, cargo-llvm-cov
+excludes other workspace packages from the report even when the test command selected them.
+
+Local all-target Clippy with `-D warnings` and comparison of tracked/generated protobuf output also
+passed for the code follow-up. Remote coverage and S3 results remain required follow-up evidence.
 
 ## Bazel Fixture Follow-Up (2026-09-13)
 
@@ -180,6 +228,7 @@ Validation:
 - `cargo clippy --locked -p agenthub-codex-acp-runtime --tests -- -D warnings`: passed.
 - `cargo fmt --all --check` and `git diff --check`: passed.
 
-The current Codecov upload records identify both Rust reports as carried forward from earlier
-commits. Fresh coverage upload and the MinIO registry repair remain the workflow follow-up above;
-the current code-only credential cannot publish workflow changes.
+The Codecov upload records initially identified both Rust reports as carried forward from earlier
+commits. All required checks subsequently passed on `666fac7d`, including the repaired Bazel crate
+suite, and PR #1118 merged as `d399edee`. Fresh Cargo coverage and MinIO fixture execution remain
+the workflow follow-up above.
