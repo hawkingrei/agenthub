@@ -884,6 +884,8 @@ mod tests {
         ServerRequest,
     };
     #[cfg(unix)]
+    use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     #[cfg(unix)]
     use std::path::{Path, PathBuf};
@@ -892,12 +894,40 @@ mod tests {
 
     #[cfg(unix)]
     fn write_executable(path: &Path, script: &str) {
-        std::fs::write(path, script).expect("write fake Codex runtime");
-        let mut permissions = std::fs::metadata(path)
-            .expect("read fake runtime metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(path, permissions).expect("make fake runtime executable");
+        let mut file = std::fs::File::create(path).expect("create fake Codex runtime");
+        file.write_all(script.as_bytes())
+            .expect("write fake Codex runtime");
+        file.set_permissions(std::fs::Permissions::from_mode(0o755))
+            .expect("make fake runtime executable");
+        // Concurrent forks can retain this writable descriptor until exec, causing ETXTBSY.
+        // The shared lock waits for every inherited writer to close before returning.
+        file.lock().expect("lock fake runtime writer");
+        drop(file);
+        std::fs::File::open(path)
+            .expect("reopen fake runtime read-only")
+            .lock_shared()
+            .expect("wait for inherited fake runtime writers");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fake_runtimes_can_be_written_and_executed_concurrently() {
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                scope.spawn(|| {
+                    let temp_dir = tempfile::tempdir().expect("create temp directory");
+                    for index in 0..64 {
+                        let runtime_path = temp_dir.path().join(format!("codex-{index}"));
+                        write_executable(&runtime_path, "#!/bin/sh\nexit 0\n");
+                        let status = std::process::Command::new(&runtime_path)
+                            .current_dir(temp_dir.path())
+                            .status()
+                            .expect("execute newly written runtime during concurrent spawns");
+                        assert!(status.success());
+                    }
+                });
+            }
+        });
     }
 
     #[cfg(unix)]
@@ -1137,16 +1167,10 @@ IFS= read -r initialized_notification
     async fn rejects_incompatible_installed_codex_version() {
         let temp_dir = tempfile::tempdir().expect("create temp directory");
         let runtime_path = temp_dir.path().join("codex");
-        std::fs::write(
+        write_executable(
             &runtime_path,
             "#!/bin/sh\nprintf '%s\\n' 'codex-cli 0.149.0'\n",
-        )
-        .expect("write fake Codex runtime");
-        let mut permissions = std::fs::metadata(&runtime_path)
-            .expect("read fake runtime metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&runtime_path, permissions).expect("make fake runtime executable");
+        );
 
         let error = CodexRuntime::resolve(&runtime_path, Vec::new(), false)
             .await
@@ -1503,9 +1527,9 @@ while IFS= read -r ignored; do :; done
         let temp_dir = tempfile::tempdir().expect("create temp directory");
         let runtime_path = temp_dir.path().join("codex");
         let server_response_path = temp_dir.path().join("server-response.json");
-        std::fs::write(
+        write_executable(
             &runtime_path,
-            format!(
+            &format!(
                 r#"#!/bin/sh
 set -eu
 if [ "${{1:-}}" = "--version" ]; then
@@ -1538,13 +1562,7 @@ while IFS= read -r ignored; do :; done
 "#,
                 server_response_path = server_response_path.display(),
             ),
-        )
-        .expect("write fake Codex runtime");
-        let mut permissions = std::fs::metadata(&runtime_path)
-            .expect("read fake runtime metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&runtime_path, permissions).expect("make fake runtime executable");
+        );
 
         let runtime =
             CodexRuntime::resolve(&runtime_path, vec!["model=test-model".to_string()], true)

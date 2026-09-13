@@ -154,3 +154,32 @@ Validation for this follow-up:
   publication and a successful report upload.
 
 Deployed provider smoke checks and execution acknowledgments remain the existing follow-ups.
+
+## Bazel Fixture Follow-Up (2026-09-13)
+
+At code head `2e9f1219`, [Bazel Test (Crates)](https://github.com/hawkingrei/agenthub/actions/runs/34749297807/job/103703411823)
+failed one of 153 Codex ACP tests while executing a freshly written fake runtime:
+`ExecutableFileBusy` (`ETXTBSY`, error 26). The failure occurred before protocol assertions. The
+other 17 crate targets passed.
+
+The fixture had the [concurrent fork descriptor race](https://github.com/rust-lang/rust/issues/114554):
+a sibling process can inherit an open writable script descriptor and retain it beyond the writer's
+local close. The fixture now locks the writer, closes it, and acquires a shared lock through a new
+read-only descriptor. This waits for inherited writable descriptors to close before execution.
+All executable script fixtures use the same helper. Production runtime behavior and Bazel
+configuration are unchanged.
+
+Validation:
+
+- A focused fixture regression creates and immediately executes scripts on four concurrent
+  threads, with 64 distinct scripts per thread.
+- An extracted harness reproduced the original `ETXTBSY` failure on its sixth repetition; the
+  repaired helper completed 100 repetitions (25,600 script executions).
+- `cargo test --locked -p agenthub-codex-acp-runtime --lib`: all 154 tests passed, including the
+  original failing initialization test and the new concurrent fixture regression.
+- `cargo clippy --locked -p agenthub-codex-acp-runtime --tests -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+
+The current Codecov upload records identify both Rust reports as carried forward from earlier
+commits. Fresh coverage upload and the MinIO registry repair remain the workflow follow-up above;
+the current code-only credential cannot publish workflow changes.
