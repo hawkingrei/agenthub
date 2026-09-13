@@ -175,6 +175,19 @@ The first run of follow-up PR #1134 successfully started the Quay image, then fa
 the existing fixture credentials and region, removing the separate client download. The job starts
 a fresh MinIO container, so this step creates the fixture bucket once before the S3 tests.
 
+Both S3 fixtures passed on `64df9669`. The coverage run also passed all 811 root unit tests and the
+distributed blackbox test after the binary prerequisite was built. It then exposed a stale
+Cargo-only release test that still prohibited S3 in official artifacts, contrary to the reviewed
+decision in PR #1013 and the current canonical library test. The remaining manifest assertions
+are consolidated into `official_release_includes_opendal_s3_without_changing_defaults`, which runs
+under both Cargo and Bazel, and the duplicate integration test is removed. This retains empty
+default features, the root feature bridge, explicit release feature lists, and the prohibition on
+implicit S3 enablement through unrelated features.
+
+`cargo test --locked -p agenthub --lib release_feature_tests` passed all six release tests after
+consolidation. Formatting and whitespace checks passed. The complete workspace test/report path
+is the remaining PR validation gate.
+
 Local all-target Clippy with `-D warnings` and comparison of tracked/generated protobuf output also
 passed for the code follow-up. Remote coverage and S3 results remain required follow-up evidence.
 

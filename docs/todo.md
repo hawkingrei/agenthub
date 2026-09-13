@@ -67,7 +67,7 @@ Stable contracts:
 
 - [ ] `P1` Verify remote Team direct-mailbox routing on real multi-node teams: after the local API regression and routing fix in [journal/2026-05-26-team-remote-direct-mailbox-routing.md](journal/2026-05-26-team-remote-direct-mailbox-routing.md), confirm direct single-member delivery still preserves mention metadata plus summary/`detail_ref` payloads when the recipient agent is remote and transport falls back to p2p relay in a real multi-node rollout. Existing notes: [journal/2026-03-26-team-direct-mailbox-summary-first.md](journal/2026-03-26-team-direct-mailbox-summary-first.md).
 - [ ] `P2` Run deployed reminder smoke checks for standalone and Team agents, including a busy ACP turn, stopped/restarted processes, remote node version skew, and agent output readback; see `docs/features/agent-reminders.md`.
-- [ ] `P2` Validate the Cargo coverage and MinIO workflow follow-up to PR #1118: confirm fresh PR coverage upload after instrumented binary builds and successful S3 fixture execution using the fixed Quay image. See [journal/2026-09-06-agent-reminders.md](journal/2026-09-06-agent-reminders.md).
+- [ ] `P2` Verify the first main Cargo coverage upload after the CI follow-up in PR #1134 and confirm Codecov uses fresh Rust reports. Both MinIO-backed S3 fixtures passed on the follow-up branch. See [journal/2026-09-06-agent-reminders.md](journal/2026-09-06-agent-reminders.md).
 - [ ] `P2` Verify Team agent self-maintenance and deferred follow-up flows: `profile_patch_proposal`, `agenthub actor time-trigger-*`, and operator-controlled `agent_loop` should behave consistently without blocking normal task progress.
 
 ## Frontend UI/UX

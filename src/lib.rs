@@ -78,19 +78,33 @@ mod release_feature_tests {
             Value::Array(Vec::new()),
             "object-store default features must stay empty"
         );
-        assert!(
-            root_manifest["features"]["object-store-s3"].is_array(),
-            "root manifest must keep S3 behind the explicit object-store-s3 feature"
-        );
-        assert!(
-            object_store_manifest["features"]["s3"].is_array(),
-            "object-store manifest must keep S3 behind the explicit s3 feature"
-        );
         assert_eq!(
             root_manifest["features"]["object-store-s3"],
             Value::Array(vec![Value::String("agenthub-object-store/s3".to_string())]),
             "root S3 feature must stay as the explicit bridge to agenthub-object-store/s3"
         );
+        assert_eq!(
+            object_store_manifest["features"]["s3"],
+            Value::Array(vec![
+                Value::String("opendal/http-transport-reqwest".to_string()),
+                Value::String("opendal/services-s3".to_string()),
+            ]),
+            "object-store S3 must enable only its HTTP transport and OpenDAL service"
+        );
+        for feature in ["release-vendored-openssl", "release-lance-fp16", "rocksdb"] {
+            let members = root_manifest["features"][feature]
+                .as_array()
+                .expect("release feature must list its members");
+            for member in members {
+                assert!(
+                    !matches!(
+                        member.as_str().expect("feature member must be a string"),
+                        "object-store-s3" | "agenthub-object-store/s3"
+                    ),
+                    "{feature} must not enable S3 implicitly: {members:?}"
+                );
+            }
+        }
 
         for (name, workflow) in [
             ("release.yml", RELEASE_WORKFLOW),
