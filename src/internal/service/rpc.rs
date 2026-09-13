@@ -919,16 +919,16 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        let now = chrono::Utc::now().timestamp();
         let schedule = if payload.delay_seconds != 0 {
-            if payload.fire_at != 0 || !(1..=2_592_000).contains(&payload.delay_seconds) {
+            if payload.fire_at != 0 {
                 return Err(Status::invalid_argument(
-                    "use delay_seconds between 1 and 2592000 without fire_at",
+                    "use delay_seconds without fire_at",
                 ));
             }
             crate::agent::AgentTimeTriggerSchedule::After(payload.delay_seconds)
         } else {
-            if payload.fire_at <= now {
+            // Preserve the legacy RPC's validation message and lookup precedence.
+            if payload.fire_at <= chrono::Utc::now().timestamp() {
                 return Err(Status::invalid_argument("fire_at must be in the future"));
             }
             crate::agent::AgentTimeTriggerSchedule::At(payload.fire_at)
@@ -953,7 +953,13 @@ impl TeamInternalControl for TeamInternalControlService {
                     .map_err(map_manager_error)?,
             })
             .await
-            .map_err(map_manager_error)?;
+            .map_err(|error| {
+                if error.is::<crate::agent::InvalidTimeTrigger>() {
+                    Status::invalid_argument(error.to_string())
+                } else {
+                    map_manager_error(error)
+                }
+            })?;
         Ok(Response::new(CreateTimeTriggerResponse {
             trigger_json: serde_json::to_string(&trigger).map_err(map_serde_status)?,
         }))
@@ -1410,7 +1416,7 @@ impl TeamInternalControl for TeamInternalControlService {
             .map_err(map_manager_error)?;
         Ok(Response::new(GetAgentRecordResponse {
             reminder_source_json: serde_json::to_string(
-                &self.deps.agents.local_reminder_source(agent_id, None).await,
+                &self.deps.agents.local_reminder_source(agent_id).await,
             )
             .map_err(map_serde_status)?,
             agent_json: serde_json::to_string(&agent)

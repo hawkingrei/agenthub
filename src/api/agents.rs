@@ -629,11 +629,6 @@ async fn create_agent_time_trigger(
 ) -> Result<Json<AgentTimeTriggerRecord>, ApiError> {
     let _user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
     ensure_agent_exists(&state, &agent_id).await?;
-    if !(1..=60 * 60 * 24 * 30).contains(&payload.delay_seconds) {
-        return Err(ApiError::bad_request(
-            "delay_seconds must be between 1 and 2592000",
-        ));
-    }
     let delay_seconds = payload.delay_seconds;
     let manager = AgentTimeTriggerManager::new(state.db.clone());
     let record = manager
@@ -647,7 +642,14 @@ async fn create_agent_time_trigger(
             message_text: payload.message,
             schedule: crate::agent::AgentTimeTriggerSchedule::After(delay_seconds),
         })
-        .await?;
+        .await
+        .map_err(|error| {
+            if error.is::<crate::agent::InvalidTimeTrigger>() {
+                ApiError::bad_request(&error.to_string())
+            } else {
+                error.into()
+            }
+        })?;
     Ok(Json(record))
 }
 
@@ -4853,6 +4855,26 @@ mod tests {
         .execute(&state.db)
         .await
         .expect("insert trigger agent");
+
+        for payload in [
+            json!({ "delay_seconds": 0, "message": "Recheck" }),
+            json!({ "delay_seconds": 2_592_001, "message": "Recheck" }),
+            json!({ "delay_seconds": 60, "message": "   " }),
+            json!({ "delay_seconds": 60, "message": "x".repeat(16_385) }),
+            json!({ "delay_seconds": 60, "message": "Recheck", "source_ref": "x".repeat(1_025) }),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(
+                    Method::POST,
+                    "/trigger-agent/triggers",
+                    Some(&token),
+                    Some(payload),
+                ))
+                .await
+                .expect("reject invalid reminder");
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
 
         let create_resp = app
             .clone()

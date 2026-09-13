@@ -24,6 +24,9 @@ claims at most 32 due rows atomically with `UPDATE ... RETURNING`. Each attempt 
 counter and holds a 90-second lease. Up to eight submissions run concurrently, each with a ten-second
 submission timeout. Failed attempts back off for 5, 10, 20, 40, 80, 160, then 300 seconds, capped at 300.
 The original `fire_at` is preserved; `next_attempt_at` controls retry eligibility.
+Eligible rows are ordered by the later of their original deadline and retry eligibility, so newly
+due reminders cannot continually jump ahead of overdue retries. Claiming an attempt clears the
+previous error; another failed submission records a new error and retry deadline.
 
 Scheduled rows and expired dispatch leases are eligible for claim. Startup only releases expired or
 legacy lease-less dispatches; it cannot steal an active lease from another daemon. Completion and
@@ -43,6 +46,8 @@ agenthub actor time-trigger-cancel --trigger-id <trigger-id> --json
 bytes and schedules to 1 through 2,592,000 seconds. The CLI sends a relative delay to the server,
 which computes the deadline using its own clock. The legacy absolute `fire_at` RPC remains accepted;
 callers must not send both an absolute deadline and a relative delay.
+Invalid messages, source references, and schedules return HTTP `400` or gRPC `INVALID_ARGUMENT`;
+storage and runtime lookup failures retain their existing error mappings.
 
 The executor supplies `AGENTHUB_ACTOR_AGENT_ID` in both standalone and Team sessions. Reminder commands
 prefer this identity and reject an explicit different target. Standalone processes do not inherit
@@ -117,7 +122,8 @@ without invented scope metadata. Existing status and timestamp fields remain wir
 | Claims | Concurrent claimers cannot claim the same live lease. |
 | Cancellation | Late success and failure cannot overwrite canceled state. |
 | Recovery | Live leases survive startup; expired attempts are fenced after reclaim. |
-| Retries | Backoff preserves deadlines and allows other due work through. |
+| Retries | Backoff preserves deadlines, clears stale errors on claim, and prevents overdue retries from being starved by newly due work. |
+| Validation | Size and schedule boundaries reject invalid requests as client errors and accept the supported maxima. |
 | Lifecycle | A stopped agent is not started; session restarts preserve compatible scope. |
 | Scope | Team/run changes reject delivery; reminder-only tokens cannot address other agents. |
 | ACP | Reminders defer under concurrent-prompt policies and permission waits. |

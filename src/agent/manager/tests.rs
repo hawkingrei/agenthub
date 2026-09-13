@@ -1238,10 +1238,11 @@ async fn reminder_source_survives_session_restart_but_cannot_cross_team_or_run()
     );
     let source = state
         .agents
-        .reminder_source("reviewer", Some("task:123"))
+        .reminder_source("reviewer", Some(" task:123 "))
         .await
         .unwrap();
     assert!(source.scope_bound);
+    assert_eq!(source.reference.as_deref(), Some("task:123"));
     assert_eq!(source.session_id.as_deref(), Some("session-a"));
     assert_eq!(source.team_id, context.team_id);
     assert_eq!(source.run_id, context.current_run_id);

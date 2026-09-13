@@ -216,6 +216,24 @@ async fn internal_grpc_reminder_only_token_is_self_scoped_and_uses_server_time()
             fire_at: before + 10,
             ..payload.clone()
         },
+        CreateTimeTriggerRequest {
+            delay_seconds: 0,
+            fire_at: before - 1,
+            ..payload.clone()
+        },
+        CreateTimeTriggerRequest {
+            delay_seconds: 0,
+            fire_at: before + 2_592_060,
+            ..payload.clone()
+        },
+        CreateTimeTriggerRequest {
+            message_text: "x".repeat(16_385),
+            ..payload.clone()
+        },
+        CreateTimeTriggerRequest {
+            source_ref: "x".repeat(1_025),
+            ..payload.clone()
+        },
     ] {
         let error = TeamInternalControl::create_time_trigger(
             &service,
@@ -225,6 +243,25 @@ async fn internal_grpc_reminder_only_token_is_self_scoped_and_uses_server_time()
         .unwrap_err();
         assert_eq!(error.code(), Code::InvalidArgument);
     }
+    let boundary = TeamInternalControl::create_time_trigger(
+        &service,
+        authenticated_request(
+            CreateTimeTriggerRequest {
+                delay_seconds: 2_592_000,
+                message_text: "x".repeat(16_384),
+                source_ref: "x".repeat(1_024),
+                ..payload.clone()
+            },
+            &token,
+        ),
+    )
+    .await
+    .unwrap()
+    .into_inner();
+    let boundary: AgentTimeTriggerRecord = serde_json::from_str(&boundary.trigger_json).unwrap();
+    assert_eq!(boundary.fire_at, boundary.created_at + 2_592_000);
+    assert_eq!(boundary.message_text.len(), 16_384);
+    assert_eq!(boundary.source.reference.unwrap().len(), 1_024);
     let error = TeamInternalControl::create_time_trigger(
         &service,
         authenticated_request(

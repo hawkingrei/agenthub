@@ -13,6 +13,10 @@ const LEASE_SECONDS: i64 = 90;
 const DELIVERY_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_BATCH: i64 = 32;
 
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub(crate) struct InvalidTimeTrigger(&'static str);
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentTimeTriggerStatus {
@@ -239,11 +243,11 @@ impl AgentTimeTriggerManager {
         let message_text = input.message_text.trim();
         anyhow::ensure!(
             !message_text.is_empty(),
-            "time trigger message must not be empty"
+            InvalidTimeTrigger("time trigger message must not be empty")
         );
         anyhow::ensure!(
             message_text.len() <= 16_384,
-            "time trigger message exceeds 16384 bytes"
+            InvalidTimeTrigger("time trigger message exceeds 16384 bytes")
         );
         let now = Utc::now().timestamp();
         let fire_at = match input.schedule {
@@ -251,15 +255,18 @@ impl AgentTimeTriggerManager {
             AgentTimeTriggerSchedule::After(delay_seconds) => {
                 anyhow::ensure!(
                     (1..=2_592_000).contains(&delay_seconds),
-                    "delay_seconds must be between 1 and 2592000"
+                    InvalidTimeTrigger("delay_seconds must be between 1 and 2592000")
                 );
                 now + delay_seconds
             }
         };
-        anyhow::ensure!(fire_at > now, "time trigger fire_at must be in the future");
+        anyhow::ensure!(
+            fire_at > now,
+            InvalidTimeTrigger("time trigger fire_at must be in the future")
+        );
         anyhow::ensure!(
             fire_at <= now + 2_592_000,
-            "time trigger must be within 30 days"
+            InvalidTimeTrigger("time trigger must be within 30 days")
         );
         anyhow::ensure!(
             input
@@ -267,7 +274,7 @@ impl AgentTimeTriggerManager {
                 .reference
                 .as_ref()
                 .is_none_or(|value| value.len() <= 1024),
-            "source reference exceeds 1024 bytes"
+            InvalidTimeTrigger("source reference exceeds 1024 bytes")
         );
         let trigger_id = uuid::Uuid::new_v4().to_string();
         sqlx::query(
@@ -329,15 +336,18 @@ impl AgentTimeTriggerManager {
         limit: i64,
     ) -> anyhow::Result<Vec<AgentTimeTriggerRecord>> {
         // Selection and ownership transfer are one statement, including expired leases.
+        // Compare actual eligibility times: new rows have next_attempt_at = 0 and
+        // would otherwise always jump ahead of overdue retries under sustained load.
         let rows = sqlx::query(
             r#"
             UPDATE agent_time_triggers
-             SET status = 'dispatching', attempt = attempt + 1, lease_expires_at = ?3, updated_at = ?1
+             SET status = 'dispatching', attempt = attempt + 1, lease_expires_at = ?3,
+                 updated_at = ?1, last_error = NULL
              WHERE id IN (
                  SELECT id FROM agent_time_triggers WHERE fire_at <= ?1 AND (
                      (status = 'scheduled' AND next_attempt_at <= ?1) OR
                      (status = 'dispatching' AND (lease_expires_at IS NULL OR lease_expires_at <= ?1))
-                 ) ORDER BY next_attempt_at, fire_at, created_at, id LIMIT ?2
+                 ) ORDER BY MAX(fire_at, next_attempt_at), fire_at, created_at, id LIMIT ?2
              ) RETURNING *
             "#,
         )
@@ -781,6 +791,7 @@ mod tests {
         let retry = manager.get_trigger(&first.id).await.unwrap();
         assert_eq!(retry.fire_at, first.fire_at);
         assert_eq!(retry.next_attempt_at, now + 5);
+        assert_eq!(retry.last_error.as_deref(), Some("agent stopped"));
         assert!(
             manager
                 .claim_due_triggers(now + 4, 1)
@@ -791,9 +802,48 @@ mod tests {
         let second = due_trigger(&manager, &state.db).await;
         let claimed = manager.claim_due_triggers(now + 4, 1).await.unwrap();
         assert_eq!(claimed[0].id, second.id);
+        let reclaimed = manager
+            .claim_due_triggers(now + 5, 1)
+            .await
+            .unwrap()
+            .remove(0);
+        assert_eq!(reclaimed.id, first.id);
+        assert_eq!(reclaimed.attempt, first.attempt + 1);
+        assert_eq!(reclaimed.status, AgentTimeTriggerStatus::Dispatching);
+        assert_eq!(reclaimed.last_error, None);
         assert_eq!(
-            manager.claim_due_triggers(now + 5, 1).await.unwrap()[0].id,
-            first.id
+            manager.get_trigger(&first.id).await.unwrap().last_error,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn reminder_overdue_retry_precedes_newer_due_work() {
+        let state = build_test_state().await;
+        init_trigger_test_fixtures(&state.db).await;
+        let manager = AgentTimeTriggerManager::new(state.db.clone());
+        due_trigger(&manager, &state.db).await;
+        let now = Utc::now().timestamp();
+        let first = manager.claim_due_triggers(now, 1).await.unwrap().remove(0);
+        manager
+            .requeue_trigger(&first, now, "temporary failure")
+            .await
+            .unwrap();
+
+        let newer = due_trigger(&manager, &state.db).await;
+        sqlx::query("UPDATE agent_time_triggers SET fire_at = ?1 WHERE id = ?2")
+            .bind(now + 6)
+            .bind(&newer.id)
+            .execute(&state.db)
+            .await
+            .unwrap();
+
+        // Both are due, but the retry became eligible one second earlier.
+        let claimed = manager.claim_due_triggers(now + 6, 1).await.unwrap();
+        assert_eq!(claimed[0].id, first.id);
+        assert_eq!(
+            manager.claim_due_triggers(now + 6, 1).await.unwrap()[0].id,
+            newer.id
         );
     }
 

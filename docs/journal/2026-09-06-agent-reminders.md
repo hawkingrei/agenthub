@@ -108,3 +108,49 @@ targets themselves. The coverage command omits `--instrument_test_targets`, whil
 push-only. This indicates an instrumentation gap requiring separate validation; passing tests alone
 do not establish coverage completeness. This follow-up changes neither Bazel configuration nor
 coverage thresholds.
+
+## Full Review Follow-Up (2026-09-13)
+
+The review covered all 30 original changed files and all PR review records. The asynchronous panel
+thread was already resolved. The follow-up synchronizes `main` and addresses these remaining edges:
+
+- Claim ordering uses `MAX(fire_at, next_attempt_at)` so overdue retries are not indefinitely
+  displaced by new rows whose retry timestamp defaults to zero. The regression pairs an overdue
+  retry with a newer due reminder and limits each claim to one row.
+- Claims clear the previous `last_error`, restoring the original lifecycle semantics and preventing
+  an active retry from retaining the inspector's red failure state. The backoff test covers both
+  the retained failure before claim and its removal from returned and persisted records afterward.
+- Manager validation carries a typed internal error. HTTP maps it to `400` and gRPC to
+  `INVALID_ARGUMENT`, while operational errors keep their existing mapping. Duplicate transport
+  delay-range validation is removed; RPC retains the legacy absolute-deadline error and rejects
+  mutually exclusive scheduling fields.
+- Local and remote source references share one normalization path. Runtime snapshot lookup no
+  longer takes an unused reference argument.
+
+The latest reviewed `main` coverage run,
+[34092453307](https://github.com/hawkingrei/agenthub/actions/runs/34092453307), failed because the
+distributed blackbox test could not find `target/llvm-cov-target/debug/agenthubd`. A separate prepared
+workflow patch enables fresh PR coverage and uses the documented `show-env`, clean, build, test, and
+report sequence, building all workspace binaries before the tests. GitHub rejected its initial push
+because the OAuth credential lacks `workflow` scope. The workflow repair remains pending; this code
+follow-up changes neither the workflows, Bazel configuration, nor coverage thresholds.
+
+Validation for this follow-up:
+
+- `cargo test --locked -p agenthub --lib reminder`: retry ordering, lease/error lifecycle, scope,
+  timeout, standalone identity, and gRPC validation boundaries.
+- `cargo test --locked -p agenthub --lib time_trigger`: HTTP invalid-input classification and
+  existing create/list/cancel compatibility.
+- `cargo test --locked -p agenthub-db -p agenthub-acp reminder`: storage migration and deferred ACP
+  policy boundaries.
+- `npm exec vitest -- run src/components/agent_time_triggers_panel.test.tsx`, TypeScript, ESLint,
+  production Vite build, formatting, and whitespace checks.
+- The local results are 13 reminder tests, 10 time-trigger tests, three ACP/DB tests, and two panel
+  tests passing. The HTTP/RPC regression retains the legacy past-deadline error text and lookup
+  precedence. A direct SQLite comparison also reproduced the old retry-ordering failure.
+- The mTLS remote reminder test passed after allowing its ephemeral loopback listener; the sandbox
+  initially rejected binding the port before any protocol assertions.
+- Fresh PR CI must validate this code head. The separate coverage workflow repair still needs
+  publication and a successful report upload.
+
+Deployed provider smoke checks and execution acknowledgments remain the existing follow-ups.

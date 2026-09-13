@@ -2399,26 +2399,22 @@ impl AgentManager {
         reference: Option<&str>,
     ) -> anyhow::Result<super::AgentReminderSource> {
         let agent = self.get_agent(agent_id).await?;
-        if let Some(node) = agent.target_node_id.as_deref() {
-            let mut source = self
-                .remote_control_client_for_target_node(node)
+        let mut source = if let Some(node) = agent.target_node_id.as_deref() {
+            self.remote_control_client_for_target_node(node)
                 .await?
                 .get_agent_reminder_source(agent_id)
-                .await?;
-            source.reference = reference
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_string);
-            return Ok(source);
-        }
-        Ok(self.local_reminder_source(agent_id, reference).await)
+                .await?
+        } else {
+            self.local_reminder_source(agent_id).await
+        };
+        source.reference = reference
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        Ok(source)
     }
 
-    pub(crate) async fn local_reminder_source(
-        &self,
-        agent_id: &str,
-        reference: Option<&str>,
-    ) -> super::AgentReminderSource {
+    pub(crate) async fn local_reminder_source(&self, agent_id: &str) -> super::AgentReminderSource {
         let guard = self.inner.read().await;
         let handle = guard.get(agent_id);
         super::AgentReminderSource {
@@ -2430,10 +2426,7 @@ impl AgentManager {
             run_id: handle
                 .and_then(|handle| handle.actor_context.as_ref())
                 .and_then(|ctx| ctx.current_run_id.clone()),
-            reference: reference
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_string),
+            reference: None,
         }
     }
 
