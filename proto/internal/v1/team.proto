@@ -35,6 +35,7 @@ service TeamInternalControl {
   rpc StopManagedAgent(StopManagedAgentRequest) returns (StopManagedAgentResponse);
   rpc DeleteManagedAgent(DeleteManagedAgentRequest) returns (DeleteManagedAgentResponse);
   rpc SendAgentInput(SendAgentInputRequest) returns (SendAgentInputResponse);
+  rpc SendAgentReminder(SendAgentReminderRequest) returns (SendAgentInputResponse);
   rpc ListAgentEvents(ListAgentEventsRequest) returns (ListAgentEventsResponse);
 }
 
@@ -260,6 +261,9 @@ message CreateTimeTriggerRequest {
   string actor_id = 1;
   string message_text = 2;
   int64 fire_at = 3;
+  // Relative scheduling uses the server clock. Mutually exclusive with fire_at.
+  int64 delay_seconds = 4;
+  string source_ref = 5;
 }
 
 message CreateTimeTriggerResponse {
@@ -389,6 +393,7 @@ message GetAgentRecordRequest {
 
 message GetAgentRecordResponse {
   string agent_json = 1;
+  string reminder_source_json = 2;
 }
 
 message StartManagedAgentRequest {
@@ -411,6 +416,14 @@ message DeleteManagedAgentRequest {
 }
 
 message DeleteManagedAgentResponse {}
+
+// Separate method prevents old peers from silently treating reminders as live input.
+message SendAgentReminderRequest {
+  string agent_id = 1;
+  string input = 2;
+  string message_id = 3;
+  string source_json = 4;
+}
 
 message SendAgentInputRequest {
   string agent_id = 1;

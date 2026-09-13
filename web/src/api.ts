@@ -76,6 +76,16 @@ export type AgentTimeTriggerRecord = {
   updated_at: number;
   fired_at: number | null;
   last_error: string | null;
+  attempt?: number;
+  next_attempt_at?: number;
+  lease_expires_at?: number | null;
+  source?: {
+    scope_bound?: boolean;
+    session_id?: string | null;
+    team_id?: string | null;
+    run_id?: string | null;
+    reference?: string | null;
+  };
 };
 
 export type AgentDiscoveryIdentityRecord = {

@@ -114,6 +114,32 @@ impl InternalGrpcMailboxClient {
         Ok(serde_json::from_str(&response.agent_json)?)
     }
 
+    pub async fn get_agent_reminder_source(
+        &self,
+        agent_id: &str,
+    ) -> anyhow::Result<crate::agent::AgentReminderSource> {
+        let response = timeout_internal_grpc_call(self.client().get_agent_record(
+            self.control_request(GrpcGetAgentRecordRequest {
+                agent_id: agent_id.to_string(),
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
+        // Old peers cannot safely bind a reminder to the target runtime's scope.
+        anyhow::ensure!(
+            !response.reminder_source_json.is_empty(),
+            "remote node does not support reminder source binding"
+        );
+        let source: crate::agent::AgentReminderSource =
+            parse_json_response(&response.reminder_source_json, "reminder_source_json")?;
+        anyhow::ensure!(
+            source.scope_bound,
+            "remote node did not bind the reminder source"
+        );
+        Ok(source)
+    }
+
     pub async fn start_managed_agent(
         &self,
         agent_id: &str,
@@ -541,24 +567,46 @@ impl InternalGrpcMailboxClient {
         parse_json_response(&response.message_json, "message_json")
     }
 
-    pub async fn create_time_trigger(
+    pub async fn create_time_trigger_after(
         &self,
         actor_id: &str,
         message_text: &str,
-        fire_at: i64,
+        delay_seconds: i64,
+        source_ref: Option<&str>,
     ) -> anyhow::Result<AgentTimeTriggerRecord> {
-        let mut client = self.client();
-        let response = timeout_internal_grpc_call(client.create_time_trigger(
+        let response = timeout_internal_grpc_call(self.client().create_time_trigger(
             self.control_request(GrpcCreateTimeTriggerRequest {
                 actor_id: actor_id.trim().to_string(),
                 message_text: message_text.to_string(),
-                fire_at,
+                fire_at: 0,
+                delay_seconds,
+                source_ref: source_ref.unwrap_or_default().to_string(),
             })?,
         ))
         .await
         .map_err(map_grpc_status_anyhow)?
         .into_inner();
         parse_json_response(&response.trigger_json, "trigger_json")
+    }
+
+    pub async fn send_agent_reminder(
+        &self,
+        agent_id: &str,
+        input: &str,
+        message_id: &str,
+        source: &crate::agent::AgentReminderSource,
+    ) -> anyhow::Result<()> {
+        timeout_internal_grpc_call(self.client().send_agent_reminder(self.control_request(
+            crate::internal::proto::agenthub::internal::v1::SendAgentReminderRequest {
+                agent_id: agent_id.to_string(),
+                input: input.to_string(),
+                message_id: message_id.to_string(),
+                source_json: serde_json::to_string(source)?,
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?;
+        Ok(())
     }
 
     pub async fn list_time_triggers(

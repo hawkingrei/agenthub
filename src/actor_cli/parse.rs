@@ -1,8 +1,7 @@
 use super::help::{actor_usage, is_help_flag, is_help_subcommand, resolve_actor_help_topic};
 use super::{
     ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
-    ActorSendTargetRef, TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS, TeamTaskNoteKind,
-    build_actor_send_default_idempotency_key,
+    ActorSendTargetRef, TeamTaskNoteKind, build_actor_send_default_idempotency_key,
 };
 use std::fs;
 
@@ -385,6 +384,19 @@ fn take_actor_id(value: Option<String>) -> anyhow::Result<String> {
     )
 }
 
+fn take_reminder_actor_id(value: Option<String>) -> anyhow::Result<String> {
+    if let Some(agent_id) = normalized_env_var(ACTOR_RUNTIME_AGENT_ID_ENV) {
+        if let Some(requested) = value.as_deref() {
+            anyhow::ensure!(
+                requested.trim() == agent_id,
+                "reminders may only target this runtime's agent"
+            );
+        }
+        return Ok(agent_id);
+    }
+    take_actor_id(value)
+}
+
 fn take_mailbox_actor_id(value: Option<String>) -> anyhow::Result<String> {
     take_required_with_env_keys(value, &[ACTOR_RUNTIME_ACTOR_ID_ENV], "actor_id")
 }
@@ -426,10 +438,6 @@ fn parse_team_task_note_kind(raw: &str) -> anyhow::Result<TeamTaskNoteKind> {
             other
         )),
     }
-}
-
-pub(super) fn compute_time_trigger_fire_at(now_ts: i64, delay_seconds: i64) -> i64 {
-    now_ts + delay_seconds + TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS
 }
 
 pub(super) fn parse_actor_args(args: &[String]) -> anyhow::Result<ParsedActorCommand> {
@@ -2301,6 +2309,7 @@ pub(super) fn parse_actor_command(
             let mut actor_id = None;
             let mut delay_seconds = None;
             let mut message = None;
+            let mut source_ref = None;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -2320,6 +2329,14 @@ pub(super) fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--delay-seconds requires a value"))?;
                         delay_seconds = Some(parse_i64(raw, "delay_seconds")?);
                     }
+                    "--source-ref" => {
+                        idx += 1;
+                        source_ref = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--source-ref requires a value"))?,
+                        );
+                    }
                     "--message" => {
                         idx += 1;
                         message = Some(
@@ -2338,7 +2355,8 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::TimeTriggerSet {
-                actor_id: take_actor_id(actor_id)?,
+                actor_id: take_reminder_actor_id(actor_id)?,
+                source_ref: take_optional(source_ref),
                 delay_seconds: delay_seconds
                     .ok_or_else(|| anyhow::anyhow!("delay_seconds is required"))?,
                 message: take_optional(message)
@@ -2377,7 +2395,7 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::TimeTriggerList {
-                actor_id: take_actor_id(actor_id)?,
+                actor_id: take_reminder_actor_id(actor_id)?,
                 limit: limit.clamp(1, 500),
             })
         }
@@ -2414,7 +2432,7 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::TimeTriggerCancel {
-                actor_id: take_actor_id(actor_id)?,
+                actor_id: take_reminder_actor_id(actor_id)?,
                 trigger_id: take_optional(trigger_id)
                     .ok_or_else(|| anyhow::anyhow!("trigger_id is required"))?,
             })

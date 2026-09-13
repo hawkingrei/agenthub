@@ -23,6 +23,10 @@ find docs/journal -maxdepth 1 -type f -name '*team-mailbox*.md' | sort
 rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 ```
 
+## Recent Checkpoints
+
+- [2026-09-06: Agent reminders](2026-09-06-agent-reminders.md): shared self-service entry, fenced dispatch, retry fairness, source binding, and submission receipts.
+
 ## Topic Map
 
 | Topic | Canonical Docs | Journal File Patterns |

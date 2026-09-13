@@ -24,6 +24,7 @@ async fn internal_grpc_time_trigger_rejects_past_fire_at() {
     .execute(&state.db)
     .await
     .expect("create agent_time_triggers");
+    agenthub_db::migrate_time_triggers(&state.db).await.unwrap();
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
     let service = TeamInternalControlService::new(
@@ -38,6 +39,8 @@ async fn internal_grpc_time_trigger_rejects_past_fire_at() {
         &service,
         authenticated_request(
             CreateTimeTriggerRequest {
+                delay_seconds: 0,
+                source_ref: String::new(),
                 actor_id: "reviewer".to_string(),
                 message_text: "late trigger".to_string(),
                 fire_at: chrono::Utc::now().timestamp() - 1,
@@ -75,6 +78,7 @@ async fn internal_grpc_time_trigger_rejects_unknown_agent() {
     .execute(&state.db)
     .await
     .expect("create agent_time_triggers");
+    agenthub_db::migrate_time_triggers(&state.db).await.unwrap();
     let missing_actor_id = format!("missing-reviewer-{}", Uuid::new_v4());
     state
         .agents
@@ -95,6 +99,8 @@ async fn internal_grpc_time_trigger_rejects_unknown_agent() {
         &service,
         authenticated_request(
             CreateTimeTriggerRequest {
+                delay_seconds: 0,
+                source_ref: String::new(),
                 actor_id: missing_actor_id,
                 message_text: "missing agent".to_string(),
                 fire_at: chrono::Utc::now().timestamp() + 120,

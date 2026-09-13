@@ -1434,7 +1434,7 @@ async fn remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls() {
                 command: "/bin/sh".to_string(),
                 args: vec![
                     "-lc".to_string(),
-                    "printf 'ready\\n'; IFS= read -r line; printf 'echo:%s\\n' \"$line\"; sleep 1"
+                    "printf 'ready\\n'; while IFS= read -r line; do printf 'echo:%s\\n' \"$line\"; done"
                         .to_string(),
                 ],
                 target_node_id: None,
@@ -1488,6 +1488,23 @@ async fn remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls() {
         .await
         .expect("send agent input");
 
+    let source = client
+        .get_agent_reminder_source(&agent_id)
+        .await
+        .expect("remote reminder source");
+    assert!(source.scope_bound);
+    assert_eq!(source.session_id.as_deref(), Some(session_id.as_str()));
+    assert!(source.team_id.is_none());
+    client
+        .send_agent_reminder(
+            &agent_id,
+            "reminder-ping",
+            "time-trigger:remote-test",
+            &source,
+        )
+        .await
+        .expect("submit remote reminder over mTLS");
+
     let echoed_events = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let events = client
@@ -1497,6 +1514,9 @@ async fn remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls() {
             if events
                 .iter()
                 .any(|event| event.message.contains("echo:ping"))
+                && events
+                    .iter()
+                    .any(|event| event.message.contains("echo:reminder-ping"))
             {
                 break events;
             }

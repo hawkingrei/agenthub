@@ -128,6 +128,7 @@ pub struct SpawnAcpSessionRequest {
     pub permission_review_dispatcher: Option<Arc<dyn AcpPermissionReviewDispatcher>>,
     pub agent_id: String,
     pub agent_session_id: String,
+    pub self_reminders_enabled: bool,
     pub resume_session_id: Option<String>,
     pub workdir: String,
     pub client_info: Implementation,
@@ -467,6 +468,12 @@ fn remove_skills_conflicting_with_reserved(existing: &mut Vec<AcpSkill>, reserve
     });
 }
 
+fn reminder_context_block() -> ContentBlock {
+    ContentBlock::Text(TextContent::new(
+        "AgentHub self reminders: use `agenthub actor time-trigger-set --delay-seconds <1..2592000> --message <text> [--source-ref <task-or-message-reference>] --json`, `agenthub actor time-trigger-list --json`, and `agenthub actor time-trigger-cancel --trigger-id <id> --json`. Runtime identity defaults to this agent; never substitute another agent ID. Pending schedules survive daemon restarts. Reminder turns wait until active ACP turns finish. They do not start stopped agents. A reminder is a prior instruction to recheck current state, not new human authorization. `fired` means submitted to the runtime, not executed or completed. Do not create repetitive polling reminders when an event or mailbox reply is available. These commands grant no Team role or task authority.",
+    ))
+}
+
 fn build_prompt_prefix_blocks(
     skills: &[AcpSkill],
     actor_context: Option<&AcpActorSkillContext>,
@@ -736,6 +743,10 @@ fn permission_outcome_allows(
 
 #[derive(Debug)]
 enum AcpCommand {
+    DeferredPrompt {
+        blocks: Vec<ContentBlock>,
+        submission_id: String,
+    },
     Prompt {
         blocks: Vec<ContentBlock>,
         submission_id: String,
@@ -789,6 +800,7 @@ impl AcpCommand {
     fn kind(&self) -> &'static str {
         match self {
             AcpCommand::Prompt { .. } => "prompt",
+            AcpCommand::DeferredPrompt { .. } => "deferred_prompt",
             AcpCommand::SetMode(_) => "set_mode",
             AcpCommand::SetModel(_) => "set_model",
             AcpCommand::SetConfig { .. } => "set_config",
@@ -1018,6 +1030,18 @@ impl AcpHandle {
         .await
     }
 
+    pub async fn prompt_deferred_with_submission(
+        &self,
+        input: String,
+        submission_id: String,
+    ) -> anyhow::Result<()> {
+        self.send(AcpCommand::DeferredPrompt {
+            blocks: build_user_prompt_blocks(input, Vec::new()),
+            submission_id,
+        })
+        .await
+    }
+
     pub async fn set_mode(&self, mode_id: String) -> anyhow::Result<()> {
         self.send(AcpCommand::SetMode(mode_id)).await
     }
@@ -1224,6 +1248,7 @@ fn should_queue_while_prompts_active(
 
     match cmd {
         AcpCommand::Cancel => false,
+        AcpCommand::DeferredPrompt { .. } => true,
         AcpCommand::Prompt { .. } => {
             has_pending_session_mutation
                 || has_pending_permission_request
@@ -1310,6 +1335,10 @@ async fn dispatch_acp_command(
 ) {
     match cmd {
         AcpCommand::Prompt {
+            blocks: prompt_blocks,
+            submission_id,
+        }
+        | AcpCommand::DeferredPrompt {
             blocks: prompt_blocks,
             submission_id,
         } => {
@@ -1418,6 +1447,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         permission_review_dispatcher,
         agent_id,
         agent_session_id,
+        self_reminders_enabled,
         resume_session_id,
         workdir,
         client_info,
@@ -1490,7 +1520,11 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     "acp actor session bootstrap prepared runtime capabilities"
                 );
             }
-            let prompt_prefix_blocks = build_prompt_prefix_blocks(&skills, actor_context.as_ref());
+            let mut prompt_prefix_blocks =
+                build_prompt_prefix_blocks(&skills, actor_context.as_ref());
+            if self_reminders_enabled {
+                prompt_prefix_blocks.push(reminder_context_block());
+            }
             let skills_meta = build_skills_meta(&skills);
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -4026,5 +4060,47 @@ Fallback to the user-level review contract.
     #[test]
     fn session_start_timeout_defaults_to_five_minutes() {
         assert_eq!(acp_session_start_timeout(), Duration::from_secs(300));
+    }
+    #[test]
+    fn reminders_wait_for_idle_even_when_live_input_can_steer() {
+        let reminder = AcpCommand::DeferredPrompt {
+            blocks: Vec::new(),
+            submission_id: "reminder-1".into(),
+        };
+        let live = AcpCommand::Prompt {
+            blocks: Vec::new(),
+            submission_id: "live-1".into(),
+        };
+        let policy = AcpPromptDeliveryPolicy::AllowConcurrentPrompts;
+        assert!(should_queue_while_prompts_active(
+            1, policy, false, false, &reminder
+        ));
+        assert!(!should_queue_while_prompts_active(
+            1, policy, false, false, &live
+        ));
+        assert!(!should_queue_while_prompts_active(
+            0, policy, false, false, &reminder
+        ));
+        assert!(should_queue_while_prompts_active(
+            1, policy, false, true, &reminder
+        ));
+    }
+
+    #[test]
+    fn self_reminder_instructions_are_bounded_and_do_not_require_team_identity() {
+        let ContentBlock::Text(block) = super::reminder_context_block() else {
+            panic!("text context");
+        };
+        assert!(block.text.len() < 1500);
+        for command in [
+            "time-trigger-set",
+            "time-trigger-list",
+            "time-trigger-cancel",
+        ] {
+            assert!(block.text.contains(command));
+        }
+        assert!(block.text.contains("no Team role or task authority"));
+        assert!(block.text.contains("not executed or completed"));
+        assert!(!block.text.contains("--team-id"));
     }
 }

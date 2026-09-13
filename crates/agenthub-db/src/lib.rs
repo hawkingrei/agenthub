@@ -19,6 +19,9 @@ pub mod control_store;
 mod daemon_generation;
 pub mod message_body_outbox;
 pub mod object_uploads;
+mod time_triggers;
+
+pub use time_triggers::migrate_time_triggers;
 
 pub use control_store::{
     AuditEvent, ControlStoreError, IdempotentReplay, SQLITE_CONSTRAINT_UNIQUE_CODE,
@@ -1062,6 +1065,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .execute(&pool)
     .await?;
 
+    migrate_time_triggers(&pool).await?;
     ensure_app_linker_schema(&pool).await?;
 
     migrate_legacy_team_task_schema(&pool).await?;

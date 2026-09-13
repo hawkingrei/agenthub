@@ -176,9 +176,10 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   - profile patch scope is limited to prompt/description identity fields; it does not add or remove
     Team skills
   - agents must only patch their own member profile, not another member's
-- Agents may schedule one-shot deferred follow-ups via `agent_time_trigger_set`, inspect them via
-  `agent_time_trigger_list`, and cancel them via `agent_time_trigger_cancel`; fired triggers arrive
-  later as ACP prompts back to the same agent.
+- Agents may schedule, inspect, and cancel one-shot follow-ups with `agenthub actor time-trigger-set`,
+  `time-trigger-list`, and `time-trigger-cancel`. Standalone and Team agents share the
+  [reminder contract](agent-reminders.md); submission is distinct from execution and never starts a
+  stopped process.
 - Agents may also run an operator-controlled `agent_loop` idle watchdog:
   - it is disabled by default
   - a human/operator enables it externally per agent

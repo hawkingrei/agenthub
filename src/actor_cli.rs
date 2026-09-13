@@ -20,7 +20,6 @@ use agenthub_team_actor::{
 };
 
 const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
-const TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS: i64 = 1;
 const ACTOR_HELP_TOPIC_INBOX: &str = "inbox";
 const ACTOR_HELP_TOPIC_RECEIVE: &str = "receive";
 const ACTOR_HELP_TOPIC_ACK: &str = "ack";
@@ -284,6 +283,7 @@ enum ActorCommand {
         actor_id: String,
         delay_seconds: i64,
         message: String,
+        source_ref: Option<String>,
     },
     TimeTriggerList {
         actor_id: String,
@@ -340,7 +340,7 @@ use self::execute::resolve_shared_thread_task_id;
 #[cfg(test)]
 use self::output::{actor_output_preference_for_command, encode_actor_output};
 #[cfg(test)]
-use self::parse::{compute_time_trigger_fire_at, parse_actor_command};
+use self::parse::parse_actor_command;
 #[cfg(test)]
 use self::runtime::{load_actor_inbox, receive_actor_inbox};
 
@@ -3434,7 +3434,9 @@ mod tests {
                 actor_id,
                 delay_seconds,
                 message,
+                source_ref,
             } => {
+                assert!(source_ref.is_none());
                 assert_eq!(actor_id, "worker");
                 assert_eq!(delay_seconds, 120);
                 assert_eq!(message, "follow up");
@@ -3443,20 +3445,6 @@ mod tests {
         }
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
-    }
-
-    #[test]
-    fn compute_time_trigger_fire_at_adds_future_safety_margin() {
-        assert_eq!(
-            compute_time_trigger_fire_at(1_700_000_000, 1),
-            1_700_000_002
-        );
-        assert_eq!(
-            compute_time_trigger_fire_at(1_700_000_000, MAX_TIME_TRIGGER_DELAY_SECONDS),
-            1_700_000_000
-                + MAX_TIME_TRIGGER_DELAY_SECONDS
-                + TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS
-        );
     }
 
     #[test]
@@ -3812,6 +3800,7 @@ mod tests {
                     actor_id: "coordinator".to_string(),
                     delay_seconds: 60,
                     message: "follow up".to_string(),
+                    source_ref: None,
                 },
                 ActorOutputPreference::ToonPreferred,
             ),
@@ -3883,5 +3872,52 @@ mod tests {
         )
         .expect("encode forced json team-members output");
         assert_eq!(output, r#"{"name":"alpha","count":2}"#);
+    }
+    #[test]
+    fn parse_reminder_commands_use_standalone_identity_and_reject_other_agents() {
+        let _guard = env_lock().blocking_lock();
+        let previous_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let previous_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "solo");
+        }
+        let args = [
+            "time-trigger-set",
+            "--delay-seconds",
+            "60",
+            "--message",
+            "Check CI",
+            "--source-ref",
+            "task:123",
+        ]
+        .map(String::from);
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).unwrap();
+        match parsed {
+            ActorCommand::TimeTriggerSet {
+                actor_id,
+                source_ref,
+                ..
+            } => {
+                assert_eq!(actor_id, "solo");
+                assert_eq!(source_ref.as_deref(), Some("task:123"));
+            }
+            _ => panic!("expected reminder command"),
+        }
+        for command in [
+            "time-trigger-set",
+            "time-trigger-list",
+            "time-trigger-cancel",
+        ] {
+            let args = [command, "--agent-id", "another"].map(String::from);
+            let error = parse_actor_command(&args, &mut ActorOutputMode::Default).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("only target this runtime's agent")
+            );
+        }
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, previous_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, previous_agent);
     }
 }
