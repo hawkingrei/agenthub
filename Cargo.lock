@@ -429,7 +429,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
@@ -592,7 +592,7 @@ version = "0.0.10"
 dependencies = [
  "anyhow",
  "serde",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
 ]
 
 [[package]]
@@ -718,7 +718,7 @@ version = "0.0.10"
 dependencies = [
  "anyhow",
  "arrow-array",
- "arrow-schema 59.2.0",
+ "arrow-schema 59.3.0",
  "async-trait",
  "futures",
  "lance-index",
@@ -1200,9 +1200,9 @@ dependencies = [
 
 [[package]]
 name = "arrow-schema"
-version = "59.2.0"
+version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6fed2ca0d1eade57e811cbe73b98ad50cc08a1183e13b2d2aa43a7df593f40e"
+checksum = "10fab8d4563491417ba801fab29d205104d20d4bdf37bda6cd1cf425cff598cd"
 
 [[package]]
 name = "arrow-select"
@@ -16620,9 +16620,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "1.1.4+spec-1.1.0"
+version = "1.1.5+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3aace63f4bbcdfc2c965b059de67119c89c4017a70d633be6c104910f67056f5"
+checksum = "12c0ba9680044b4ce98d391a62094047eada0d64860b80166c39f4a6b5640785"
 dependencies = [
  "indexmap 2.14.0",
  "serde_core",
