@@ -32,14 +32,19 @@ pointers.
 
 ## Architecture
 
+The [loop product model](agent-loop-product-model.md) selects one configured prompt per activation.
+Leader (`coordinator`) and worker prompts are different policies on the same lifecycle engine.
+A loop can make multiple model/tool calls; phase changes do not require additional bespoke prompts.
+Current prompt templates remain unchanged until the loop/tool migration lands.
+
 Team prompt assembly should use layered, pointer-first context:
 
 | Layer | Owns | Boundary |
 | --- | --- | --- |
 | Static role prompt | Role identity, authority boundary, communication contract, output contract, and stable skill/checklist entry points. | Must not become a full operating manual or execution diary. |
-| Runtime tail | Current assignment, next action, allowed-action gate, compact blocker state, and recovery pointers. | Must stay bounded and pointer-first. |
+| Runtime tail | Actor/activation identity, trigger and authority references, and recovery entry points. | Bounded metadata; current work is read through tools. |
 | Runtime context files | Live recovery state, run-scoped artifacts, compact identity and state snapshots. | Referenced from prompts by path instead of replayed inline. |
-| Workspace memory | Durable project notes, worker ledgers, journals, reusable findings. | Workspace-local and tool-neutral; not a shared Team transport. |
+| Knowledge and recovery | Tasks/IM for current work, Nowledge Mem for knowledge, local checkpoints/artifacts. | Explicit scope; no competing task ledger or transcript-only recovery. |
 | Skills/checklists | Repeatable procedures such as mailbox routing, task governance, CI triage, review follow-up, testing, and observability. | Loaded by trigger; prompts name entry points instead of copying full steps. |
 | Optional provider plugins | Discoverable bundles of role-scoped skills and supporting resources. | May refine a role's procedure, but cannot expand authority or become a prerequisite for provider-neutral Team correctness. |
 | Feature specs and journals | Stable contracts and dated implementation evidence. | Human-reviewable documentation, not provider prompt payload. |
@@ -94,12 +99,13 @@ they transmit work or evidence without requiring the recipient to repeat the ins
 
 The runtime-injected prompt tail should contain only:
 
-- current objective or active assignment;
-- next expected action;
+- current objective or assignment references;
+- entry points for reading the next action;
 - allowed actions and explicit denied bypass paths;
 - compact blocker or failure summary;
-- recovery pointers such as `AGENTS.md`, `TODO.md`, `.cache/context/state.md`, and
-  `.cache/context/run/<run_id>/...` artifacts.
+- activation/trigger identity and canonical task, IM, and bound-memory entry points;
+- compatibility pointers such as `AGENTS.md`, `TODO.md`, `.cache/context/state.md`, and
+  `.cache/context/run/<run_id>/...`, without treating local TODOs as task authority.
 
 It must not replay long logs, full conversation history, raw tool output, or bulky evidence when a
 stable file, artifact, task note, channel thread, or `detail_ref` can carry the same information.
@@ -117,7 +123,8 @@ Worker prompt text owns:
 
 - assigned execution lanes;
 - evidence gathering and concise progress/blocker reports;
-- local workspace memory under `.agenthubmemory/` when operating inside a concrete project;
+- progress through authorized task/IM tools and selected learning in the bound Mem scope;
+- local workspace artifacts and compatibility notes when operating inside a concrete project;
 - initiative inside the assigned lane without inventing parallel canonical task records.
 
 Both roles must treat `task` as the ownership object and `run`/`step` as execution diagnostics.
@@ -147,14 +154,18 @@ Team prompts must keep output contracts explicit:
 - coordinator output includes task assignment, clarification, profile patch, or visible
   human-facing synthesis when needed;
 - worker output includes status, evidence, blocker, and next action;
+- target loop output records outcome and continuation/wait through the completion tool boundary;
+  final text alone does not complete a task;
 - large evidence must be summarized first and linked through `detail_ref`, task notes, channel
   threads, or artifact paths.
 
 ### 6) Tool-Neutral Knowledge Contract
 
-Open-source prompt and documentation contracts must stay tool-neutral. They may require durable
-knowledge to be searchable and pointer-addressable, but must not require a private memory backend or
-private repository workflow by name.
+Role prompts remain provider-neutral and discover tool entry points from the runtime. Nowledge Mem
+is an explicit product integration under [its proxy contract](nowledge-mem-mcp-proxy.md); its name
+may appear in product/adapter contracts. This does not authorize private endpoints, credentials,
+personal workflows, or hard-coded upstream schemas in role prompts. Repository contributors do not
+need a personal Mem deployment to validate prompt contracts.
 
 ### 7) Role-Scoped Plugin Contract
 
@@ -176,7 +187,8 @@ private repository workflow by name.
 | Add or remove a required role boundary, skill pointer, recovery pointer, or output payload | Add or update a focused assertion in `crates/agenthub-team-prompts/src/lib.rs`. |
 | Add a new repeated Team workflow | Add or update a skill/checklist first, then link it from the prompt only if the trigger is stable. |
 | Add prompt-facing runtime state | Prove it is bounded and pointer-first; prefer `.cache/context/state.md` or `.cache/context/run/<run_id>/...` artifacts. |
-| Add durable worker knowledge guidance | Keep it consistent with `team-workspace-memory-contract.md` and avoid naming private memory tools. |
+| Add durable worker knowledge guidance | Follow `team-workspace-memory-contract.md` and the Mem adapter boundary; use discovered capabilities. |
+| Migrate role prompts to loops | Verify one entry prompt, shared engine, fresh-session recovery, and structured outcome recording. |
 | Add or revise a Team message-routing procedure | Keep `team-message-intake` aligned with channel/thread, mailbox, task governance, and lifecycle specs. |
 | Add or revise the idea-propagation judgment boundary | Assert the compact rule in both prompts and keep the detailed procedure in `team-message-intake`. |
 | Add or revise the self-propagation defense | Assert rejection and the normal-handoff distinction in both prompts; keep detection and escalation guidance in `team-message-intake`. |

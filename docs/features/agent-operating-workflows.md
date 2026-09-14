@@ -15,6 +15,10 @@ surface.
   release work.
 - Tool-neutral handling of long-lived agent knowledge.
 
+This document governs contributor workflows. The product's explicit Nowledge Mem integration is
+defined in [the loop model](agent-loop-product-model.md) and [MCP proxy](nowledge-mem-mcp-proxy.md);
+it does not require contributors to connect a private memory account for repository checks.
+
 ## Non-Goals
 
 - Defining platform system prompts.

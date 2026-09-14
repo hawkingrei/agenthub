@@ -5,13 +5,16 @@
 [![GitHub release](https://img.shields.io/github/v/release/hawkingrei/agenthub?label=release)](https://github.com/hawkingrei/agenthub/releases)
 [![Docs](https://img.shields.io/badge/docs-live-2ea44f.svg)](https://doc.agenthub.hawkingrei.com/)
 
-AgentHub is a self-hosted AI agent control plane for long-lived coding agents,
-structured ACP timelines, multi-agent Team workflows, and optional remote
-execution nodes.
+AgentHub is a self-hosted agent loop toolchain. Agents use IM, task lists,
+execution tools, and Nowledge Mem to advance work, with one configured role
+prompt per activation. Leader and worker roles share the same loop mechanism;
+Agent Cards configure participants, and processes may exit after a loop finishes.
 
-It is designed for teams that want one product surface for long-running coding
-agents, structured ACP review, shared Team coordination, and remote execution
-without introducing a separate control plane.
+This is the target product direction. Durable activation of offline agents and
+the complete Mem integration are pending implementation. See the
+[product model](docs/features/agent-loop-product-model.md) and
+[runtime design](docs/features/agent-loop-runtime.md) for contracts and migration boundaries.
+The installation and operational capabilities below describe the existing runtime.
 
 Quick links: [Docs Site](https://doc.agenthub.hawkingrei.com/) ·
 [Install AgentHub](#install-agenthub) ·
@@ -22,15 +25,14 @@ Quick links: [Docs Site](https://doc.agenthub.hawkingrei.com/) ·
 
 ## Why AgentHub
 
-Most agent tools are optimized for a single terminal session. AgentHub is built
-for the operational side of agent workflows.
+Work can outlive a provider session or process. AgentHub's loop model keeps task
+ownership, messages, outcomes, and knowledge available for the next activation.
+Agents decide how to advance the task; the runtime supplies tools, scheduling,
+isolation, and inspectable execution history.
 
-It keeps long-running agents, structured ACP review, Team coordination, remote
-agent nodes, and persistent runtime state in one product surface instead of
-splitting them across disposable chats, terminal tabs, and ad hoc scripts.
-
-In practice, AgentHub sits closer to an AI agent control plane or shared
-workbench than to a thin prompt UI.
+The intended flow is: express a goal in IM, let agents maintain the task list,
+review progress and evidence, and provide decisions when needed. Waiting agents
+can record what will wake them next and exit.
 
 ## What You Can Do
 
@@ -92,10 +94,17 @@ commands, see [docs/developer-setup.md](docs/developer-setup.md).
 
 ## Product Overview
 
-AgentHub is a Rust-based control plane for operating AI agents beyond one
-ephemeral terminal tab.
+The target design separates durable work from temporary execution:
 
-It combines:
+| Surface | Responsibility |
+| --- | --- |
+| IM and task list | Intent, collaboration, ownership, progress, and acceptance evidence |
+| Leader and worker | Different role prompts on the same loop runtime |
+| Agent Card | Identity, capabilities, and references to effective launch configuration |
+| Loop activation | Read state, act through tools, record an outcome, and exit or wait |
+| Nowledge Mem | Scoped knowledge, prior decisions, and selected learning across loops |
+
+The existing implementation supplies these foundations:
 
 - a single Rust backend
 - an embedded React web UI
@@ -113,8 +122,8 @@ workspace instead of a disposable chat box.
 
 ## Highlights
 
-- `⏳` **Long-lived agent control**
-  - Keep coding agents alive across browser refreshes and disconnects
+- `⏳` **Browser-independent execution**
+  - Keep work observable across browser refreshes and disconnects
 - `🧾` **Structured ACP timelines**
   - Inspect plans, tool calls, command output, and replayable history
 - `👥` **Team workflows**
@@ -223,7 +232,7 @@ for onboarding and the current transport boundary.
 
 AgentHub is a strong fit for:
 
-- engineers running long-lived coding agents
+- engineers advancing coding tasks across agent sessions
 - teams experimenting with coordinator/worker multi-agent workflows
 - operators who need structured runtime visibility
 - organizations that want self-hosted agent control instead of opaque hosted sessions

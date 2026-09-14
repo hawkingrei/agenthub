@@ -16,6 +16,7 @@ one overloaded "run" concept.
 ## Scope
 
 - Canonical definitions for `task`, `attempt`, `run`, `step`, and `round`.
+- Target `loop activation` terminology and its relation to existing execution objects.
 - Ownership boundaries between Team planning surfaces and execution/debug surfaces.
 - State-transition guidance for retry, resume, `waiting`, and review loops.
 - Naming guidance for runtime, API, docs, and UI follow-up alignment.
@@ -51,6 +52,13 @@ AgentHub Team execution should be read as five distinct layers:
     operators.
 
 ## Contracts
+
+The [loop product model](agent-loop-product-model.md) adds `loop activation`: one admitted execution
+episode entered with one configured role prompt. It may perform multiple model/tool rounds and end
+before the task does. It does not replace task, attempt, run, or provider session identity. An
+activation can handle intake without a task or advance related tasks within its authority. A new
+activation does not itself start a task attempt or rotate a mailbox run. See
+[Agent Loop Runtime](agent-loop-runtime.md) for the recovery mapping.
 
 ### 1) Task
 
@@ -242,6 +250,8 @@ Use these defaults in future changes:
 - use `run` for concrete runtime/event/replay partitions
 - use `step` only for legacy/debug granularity
 - use `round` for planning/deliberation/synthesis cadence
+- use `loop activation` for the temporary execution episode, distinct from task acceptance,
+  message consumption, and process exit
 
 Avoid:
 

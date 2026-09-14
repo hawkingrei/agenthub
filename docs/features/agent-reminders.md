@@ -1,5 +1,9 @@
 # Agent Reminders
 
+Compatibility contract: these are current one-shot submissions to an existing runtime.
+The [loop runtime target](agent-loop-runtime.md) adds durable activation of eligible offline agents;
+it does not reinterpret this reminder API or its `fired` receipt as proof of execution.
+
 ## Problem
 
 Long-lived agents need to schedule a follow-up without holding a turn open or relying on a browser.

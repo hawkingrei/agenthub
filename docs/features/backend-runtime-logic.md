@@ -1,5 +1,8 @@
 # Backend Runtime Logic Specification
 
+The target lifecycle is defined in [Agent Loop Runtime](agent-loop-runtime.md). Existing run/step
+and API rules below remain compatibility contracts until their implementation changes.
+
 ## Problem
 
 Backend Team behavior (authorization, run lifecycle, memory flush, transactional cleanup, and startup semantics)
@@ -48,9 +51,13 @@ Run APIs must enforce owner/team boundaries before mutation:
 
 ### 4) Startup Policy
 
-- Runtime startup must not silently auto-resume previously active Team runs.
-- Active runs from prior process (`submitted|working|input_required`) are canceled on startup,
-  requiring explicit manual start/restart.
+- Target: reconcile durable activations and process/lease state at startup, restore eligible pending
+  work, and preserve operator suspension. Identity, tasks, and inboxes survive agent exit.
+- Target: both roles share admission, completion, and recovery; their prompts determine task planning.
+- Legacy compatibility: the current Team-run path cancels prior active runs
+  (`submitted|working|input_required`) and requires manual start/restart. Migrate this explicitly;
+  do not reinterpret canceled runs as new work.
+- See [activation recovery](agent-loop-runtime.md#4-wait-approval-and-recovery).
 
 ### 5) Team Delete Transaction Boundary
 
@@ -100,7 +107,7 @@ to avoid half-cleanup states and FK-related `500` errors.
 ## Operational Notes
 
 - Preserve explicit run ownership checks as default, not optional hardening.
-- Keep startup behavior deterministic and operator-driven after process restart.
+- Preserve operator suspension while recovering authorized pending activations after restart.
 - Keep event trails for flush/recovery paths for postmortem/debug use.
 
 ## Open Risks

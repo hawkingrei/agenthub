@@ -1,5 +1,9 @@
 # Team Workspace Memory Contract
 
+The target knowledge boundary follows [Agent Loop Product Model](agent-loop-product-model.md#4-nowledge-mem-boundary).
+The filesystem layout below is the current compatibility contract, not a second canonical task
+store or an alternative shared knowledge authority for the new loop model.
+
 ## Problem
 
 AgentHub Team runtime already uses workspace-local `.cache/context/` state, project-local
@@ -25,6 +29,25 @@ Team docs can each describe memory ownership slightly differently.
 - Introducing cross-workspace shared storage.
 
 ## Architecture
+
+### Target Cross-Loop Recovery
+
+- Recover current work from canonical tasks and IM; query the bound Nowledge Mem scope for relevant
+  decisions and knowledge. Recovery must work without the previous provider transcript.
+- Local files retain bounded checkpoints, artifacts, and unsynchronized operation outcomes. Workspace
+  TODOs are working aids/projections, not independent Team task state.
+- Mem owns selectively retained knowledge, not activation leases, delivery ACKs, approvals, or task
+  status. Follow [the MCP proxy contract](nowledge-mem-mcp-proxy.md).
+- Record progress before exit. Mem failure must not discard progress or cause ambiguous-write replay.
+- Existing `.agenthubmemory/` notes remain readable during migration. Import only selected, attributed
+  knowledge; no automatic copy or deletion of historical files is implied.
+- Shared knowledge uses explicit Team/project space authorization. Local workspaces remain isolated.
+
+### Filesystem Compatibility Model
+
+The remaining layout and file responsibilities describe current readers and writers. New loop
+behavior follows the target recovery/authority rules above; changing those readers and writers
+requires a compatible migration.
 
 ### 1) Memory Surfaces
 

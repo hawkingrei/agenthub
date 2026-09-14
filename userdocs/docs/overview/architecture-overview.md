@@ -11,6 +11,11 @@ AgentHub is designed as a self-hosted AI agent control plane with a clear split
 between the operator-facing control plane and the machine-local or remote
 execution plane.
 
+The [loop product direction](./product-overview.md) makes individual executions temporary:
+the control plane retains agent identity, tasks, IM, pending activations, and outcomes, while
+Nowledge Mem supplies scoped knowledge. Leader/worker prompts share one lifecycle mechanism.
+The activation and Mem parts are target design; the components below describe current foundations.
+
 ## High-Level Shape
 
 AgentHub is designed as one main control-plane service:
@@ -101,7 +106,7 @@ these behaviors remain stable:
 - browser refresh or disconnect does not stop the task
 - session history can be reopened later
 - Team and agent operational state can be audited
-- safe-path policy can be enforced consistently
+- workspace identity remains available for later inspection and recovery
 
 ## What Changes Between Modes
 

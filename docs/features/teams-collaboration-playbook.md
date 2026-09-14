@@ -1,5 +1,8 @@
 # Teams Collaboration Playbook Specification
 
+Target operating model: [Agent Loop Product Model](agent-loop-product-model.md). Existing wire fields
+and bootstrap details below remain compatibility contracts until the lifecycle migration lands.
+
 ## Problem
 
 AgentHub already has Team role contracts, Actor mailbox contracts, and backend run lifecycle rules.
@@ -37,22 +40,18 @@ A Team exists to combine heterogeneous model strengths for one complex goal.
 Minimum composition:
 
 - exactly one coordinator (`coordinator` role id for runtime compatibility)
-- one or more `worker` members
+- zero or more `worker` members; workers are added when delegation needs them
 
-Operational collaboration follows six phases:
-
-1. `team formation`
-2. `task analysis`
-3. `role assignment`
-4. `communication and collaboration`
-5. `consensus formation`
-6. `result integration`
+Leader and worker share one loop mechanism with different prompts. Agents choose task analysis,
+delegation, collaboration, review, and integration as work requires. These are not mandatory phases
+or a backend prompt sequence. A role may finish a loop and exit while the Team and tasks remain.
 
 ### 2) Canonical Entities And Identity Mapping
 
 - `team`: collaboration boundary and ownership scope.
 - `member`: stable role identity in Team spec (`coordinator` or `worker`).
-- `agent`: runtime process bound to one member.
+- `agent`: durable execution identity bound to one member; processes are temporary.
+- `loop activation`: one admitted episode using that agent's configured role prompt and tools.
 - `actor`: message identity used by mailbox protocol.
 - `task`: coordinator-defined internal work item and the primary ownership unit.
 - `run`: optional execution partition / timeline boundary linked to a task attempt.
@@ -80,21 +79,25 @@ Identity conventions:
 
 ### 3) Team Lifecycle And Start Semantics
 
-Recommended team lifecycle:
+Target lifecycle separates Team configuration, execution enablement, task state, and temporary agent
+activity. An enabled Team may have no live processes and still be healthy. Suspension prevents new
+automatic activations; normal loop exit does not suspend the Team.
 
-- `creating`: team bootstrap in progress; runtime resources are being prepared.
-- `running`: team members are active and coordination loop can execute.
-- `stopped`: team exists but no active execution loop.
-- `degraded`: team started but one or more required members are unhealthy.
-- `failed`: team bootstrap/start failed and requires operator action.
+Accepted IM/task/follow-up triggers persist before dispatch. The shared scheduler starts eligible
+agents, and each agent records progress or a wait before exit. Daemon restart reconciles pending work
+and leases while preserving suspension. Concrete state/API migration follows
+[Agent Loop Runtime](agent-loop-runtime.md).
 
-Start semantics:
-
-- service restart must not implicitly start teams;
-- execution starts only after explicit `Start Team`;
-- coordinator enters planning/coordination round before delegation.
+Legacy compatibility: current `Start Team`, member bootstrap, and manual restart semantics remain
+until that migration. Existing process-oriented status values must not be silently relabeled as
+the new product states.
 
 ### 4) Cold-Start Workflow
+
+Target: load the selected role prompt once, recover current work through task/IM tools, read bound
+Mem context, and act. Record a structured loop outcome and durable continuation/wait before exit.
+The following filesystem/skill bootstrap and idle reminder rules describe the existing compatibility
+path; local TODOs are not the canonical task source in the target model.
 
 Coordinator cold-start:
 
@@ -277,8 +280,9 @@ Team collaboration should run with the canonical actor CLI mailbox path as the p
   - use a single-target mailbox message when exactly one teammate owns the next action
   - reserve shared-channel for human-visible or genuinely multi-recipient updates
   - when a human shared-channel message is relevant to active work, emit a short in-channel acknowledgement before falling back to deeper mailbox-only execution
-- Turn loop should stay deterministic:
-  - pull inbox -> process -> ack -> send/report -> next pull.
+- A loop reads inbox/task state, acts, records consumption and evidence, then persists its outcome.
+  Continuing an active assignment does not require repeated mailbox polling. No actionable work
+  permits exit with durable wait state instead of a resident polling loop.
 - Team prompt dynamic tail should include an explicit `Allowed actions` block to deny bypass paths.
 - Enforcement failures should be visible as structured Team run events and debug-capability snapshots.
 - Role default skills remain minimal; deliberation is opt-in by profile.
@@ -308,6 +312,10 @@ Detailed event-bus design:
 
 ### 6) Context And Memory Layering
 
+Target recovery reads current tasks/IM and retrieves knowledge from the bound Nowledge Mem scope.
+Local context is a bounded checkpoint/artifact surface; it does not duplicate canonical task state.
+The legacy file layers below remain readable during migration:
+
 Context is workspace-local under `.cache/context` and should be layered:
 
 - `team`: mission/rules/member roster
@@ -319,7 +327,8 @@ Context is workspace-local under `.cache/context` and should be layered:
 
 Promotion rule:
 
-- recurring/high-value facts move from `journal` to `memory` during coordination rounds.
+- target: selected durable findings are retained in Mem with provenance;
+- compatibility: existing local `journal` to `memory` promotion remains until migration.
 
 Canonical filesystem ownership, stable index files, and `.agenthubmemory/` boundaries:
 
@@ -330,6 +339,7 @@ Canonical filesystem ownership, stable index files, and `.agenthubmemory/` bound
 When adding a worker:
 
 - register member role/identity;
+- resolve its Agent Card/launch configuration without requiring an always-running process;
 - publish card/capabilities to peers;
 - refresh assignments and context contracts.
 
@@ -375,7 +385,8 @@ Kind projections:
 
 - Human-facing Team page is conversation-first.
 - Internal task/run/step machinery is debug/operator detail and should not dominate primary flow.
-- `Start Team` is exposed as operator action; low-level controls remain in debug surfaces.
+- Target execution enable/suspend controls are separate from process start/stop. Existing `Start Team`
+  remains a compatibility action; per-loop manual start is not required in the target flow.
 - Human operations should target goals/constraints; internal task creation remains coordinator-owned.
 - The public Team HTTP surface does not expose direct canonical task creation; task materialization
   stays on coordinator/runtime control paths.
@@ -403,17 +414,17 @@ Kind projections:
 ## Validation Matrix
 
 - process validation:
-  - create team (`creating` -> `running`/`failed`) with explicit error visibility
-  - manual team start and coordinator-first planning confirmation
+  - configure a Team/Card without requiring resident agents
+  - enable, activate, record outcome, exit, and later reactivate either role
   - full delegation cycle (`assign -> execute -> evidence -> integrate`)
 - status/recovery validation:
-  - verify member health propagation to Team status (`running|degraded|failed`)
+  - distinguish healthy process absence, operator suspension, and activation failure
   - verify bounded retry behavior on member bootstrap failures
 - messaging validation:
   - verify run-partitioned ordering and replay consistency
   - verify `actor_id` canonical + `agent_id` alias compatibility
 - context validation:
-  - verify cold-start TODO resume path and `journal -> memory` promotion checkpoints
+  - verify fresh-session task/IM recovery, scoped Mem retrieval, and compatibility note access
 
 ## Operational Notes
 
@@ -431,7 +442,11 @@ Kind projections:
 - Membership-card broadcast volume may need throttling in larger teams.
 - Team status semantics need consistent backend/frontend mapping to avoid `unknown` confusion.
 
-## Source Notes
+## Source Journals
+
+- [Loop product definition](../journal/2026-09-15-agent-loop-product-definition.md)
+
+Additional source references:
 
 - `.info/agent_teams.md`
 - `docs/features/agents-teams.md`

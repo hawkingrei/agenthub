@@ -1,5 +1,9 @@
 # Nowledge Mem MCP Proxy
 
+Status: integration design with policy primitives only. Full proxy startup, context bootstrap, and
+operation journaling still require implementation. This is the initial Mem seam for the
+[loop product model](agent-loop-product-model.md).
+
 ## Problem
 
 Team agents need to use an existing Nowledge Mem deployment without making
@@ -55,11 +59,15 @@ select a space implicitly for an AgentHub Team run.
 
 ### Context Lens
 
-At run start the proxy calls `read_context_bundle` for the bound scope. The
+At loop activation the proxy calls `read_context_bundle` for the bound scope. The
 returned content, including its contract line that identifies it as attributed
 data rather than instructions, is passed through unchanged into the AgentHub
 runtime context. This is a read-only scope lens; it is not provider-session
 resume state.
+
+Stable actor and Team/project bindings survive process exit. Activation/session IDs provide
+correlation, not new Mem spaces or user identities. Canonical tasks and IM supply current work;
+agents retrieve relevant prior knowledge through the discovered Mem tools.
 
 ### Operation Journal
 
@@ -82,7 +90,9 @@ write whose outcome becomes unknown after `sent` must remain
 actual schema advertises stable caller identity and the original call used the
 same stable value.
 
-## Local-Only Security Contract
+## Contracts
+
+### Local-Only Security
 
 - The provider ACP payload, Team spec, normal environment dumps, and logs must
   not contain the upstream URL, bearer token, refresh material, or ambient Mem
@@ -113,3 +123,20 @@ same stable value.
   replayed.
 - A remote member with a Mem binding fails before provider startup when no
   secret broker is configured.
+
+## Operational Notes
+
+Local loop outcomes and Mem writes are separate. Missing knowledge needed for an action creates a
+visible wait; independent work may continue without claiming successful retrieval. Local Team
+delivery is the first slice; standalone/remote coverage needs explicit scope and credential designs.
+
+## Open Risks
+
+- Policy helpers do not establish transport or authorization for tools without `space_id`;
+  upstream authorization must enforce the bound scope for those calls.
+- Ambiguous non-idempotent writes require reconciliation across future activations.
+- Filesystem knowledge needs selective migration with provenance, not an automatic workspace upload.
+
+## Source Journals
+
+- [Loop product definition](../journal/2026-09-15-agent-loop-product-definition.md)

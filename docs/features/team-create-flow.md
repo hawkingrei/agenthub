@@ -33,6 +33,18 @@ explicitly.
 
 ## Architecture
 
+### Loop Startup Boundary
+
+The [loop product model](agent-loop-product-model.md) preserves Team creation and Agent Cards while
+separating participant configuration from execution. Creating a Team/Card does not require a live
+process. The first agent is the leader (existing `coordinator` identifier); later agents are workers.
+Their different prompts use the same loop runtime.
+
+After mission and participants are configured, execution enablement permits eligible triggers to
+activate agents. Show missing provider/workspace/tool/Mem configuration at that boundary. A finished
+loop may leave no process running; tasks, inboxes, and Card configuration remain visible. The current
+eager member-start path remains compatibility behavior until activation implementation lands.
+
 ### 1) Core Principle
 
 `Create Team` should stay lightweight and create the Team shell first.
@@ -188,8 +200,19 @@ Explicit anti-goals:
 - user/device management is not part of the Team create path
 - the flow should stay aligned with the current single-coordinator Team model
 
+### 4) Agent Card And Activation Contract
+
+- Resolve role prompt, provider/model, workspace, tool capabilities, and Mem binding from the Card
+  and effective launch configuration; discovery exposes safe descriptions/references only.
+- Configuration, execution enablement/suspension, and process activity are distinct states.
+- A new assignment or addressed message may trigger execution under the configured policy.
+- Show next wake/wait and task progress independently of process status.
+- Copying an existing Card does not copy task claims, inboxes, sessions, or credentials.
+
 ## Validation Matrix
 
+- Target lifecycle: configure a Card while offline, enable execution, activate on eligible work,
+  exit with a persisted outcome, and recover the same member later.
 - focused Team create component tests for:
   - `Create Team` stays mission-only
   - first added agent is clearly presented as coordinator

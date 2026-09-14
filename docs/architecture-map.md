@@ -10,6 +10,8 @@ or rollout shape.
 ## Start Here
 
 - Product and system framing:
+  - [features/agent-loop-product-model.md](features/agent-loop-product-model.md) (target product contract)
+  - [features/agent-loop-runtime.md](features/agent-loop-runtime.md) (target lifecycle/tool design)
   - [features/agents-teams.md](features/agents-teams.md)
   - [features/backend-runtime-logic.md](features/backend-runtime-logic.md)
 - Access control and authorization:
@@ -71,6 +73,7 @@ or rollout shape.
 
 ### How is long-running memory and context handled?
 
+- [features/nowledge-mem-mcp-proxy.md](features/nowledge-mem-mcp-proxy.md)
 - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
 
 ### How are uploaded files and object bytes stored?

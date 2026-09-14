@@ -30,6 +30,12 @@ runtime boundary.
 
 ## Architecture
 
+Under the [loop product model](agent-loop-product-model.md), the profile is one part of the Agent
+Card's effective launch configuration, alongside role prompt, workspace, tools, and Mem binding.
+Keep those responsibilities distinct; provider settings are not a task ledger or knowledge store.
+Resolve configuration at activation and record its version/reference with execution history.
+Changing a profile must not alter an active activation or silently discard inbox/task identity.
+
 Agent runtime profile configuration should be stored as agent metadata owned by
 AgentHub and translated at launch time by the selected adapter.
 

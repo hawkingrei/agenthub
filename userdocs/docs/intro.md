@@ -5,13 +5,17 @@ slug: /
 
 # AgentHub Docs
 
-AgentHub is a self-hosted AI agent control plane for long-lived coding agents,
-structured ACP timelines, Team workflows, and optional remote execution nodes.
+AgentHub is a self-hosted agent loop toolchain. Its target model uses one role
+prompt per activation, IM and task tools to advance work, and Nowledge Mem for
+knowledge across loops. Leader/worker roles and Agent Cards remain; individual
+processes may exit after recording their loop outcome.
+
+This direction is under design. Automatic offline activation and full Mem
+integration are pending; the operational guides below describe existing capabilities.
 
 ## What AgentHub Gives You
 
-Most agent tools are optimized for one terminal and one short-lived session.
-AgentHub is built for the operational side of agent work:
+The existing runtime provides these foundations:
 
 - keep agent sessions alive after the browser tab closes
 - inspect structured ACP history instead of relying on raw scrollback

@@ -4,33 +4,42 @@ sidebar_position: 1
 
 # Product Overview
 
-AgentHub is a self-hosted control plane for AI-agent work. It keeps long-lived
-agent sessions alive, gives operators one place to inspect and steer them, and
-adds structured history instead of relying on raw terminal scrollback alone.
+AgentHub is a self-hosted agent loop toolchain. Its product direction is to let
+agents advance tasks through IM, task-list, execution, and Nowledge Mem tools,
+using one configured role prompt for each activation.
+
+The loop model is a target design. Automatic activation of offline agents and
+the complete Nowledge Mem integration are not yet delivered. Current runtime
+controls and installation instructions remain applicable during the transition.
 
 ## Core Idea
 
-AgentHub is not just a prompt box for one terminal session. It combines:
+The target workflow is:
 
-- long-lived agent runtimes
-- a web control surface for start, stop, reconnect, and review
-- structured ACP output rendering
-- optional Team workflows with coordinator and worker roles
-- optional remote execution nodes for multi-machine rollout
+1. Express a goal or provide new information in IM.
+2. An eligible trigger activates an agent using its Agent Card and role prompt.
+3. The agent reads messages, tasks, and relevant knowledge, then uses tools to advance work.
+4. It records progress, evidence, and the next action or wait condition.
+5. Its process may exit. Later work activates the same logical agent again.
 
-The important shift is that AgentHub treats the browser as a control surface,
-not as the place where the agent actually lives. Runtime, history, and
-coordination state stay on the backend.
+One activation can include many reasoning and tool steps. Finishing a loop does
+not necessarily finish the task. A waiting dependency or handoff can be a valid
+loop outcome while the task remains open.
 
-This makes AgentHub closer to an AI agent control plane than to a thin chat
-wrapper.
+Leader and worker roles remain. The existing `coordinator` role is the leader;
+the roles use different prompts on the same execution mechanism. Agent Cards
+remain part of startup and discovery, independent of whether a process is running.
+
+IM and tasks retain current execution state. Nowledge Mem supplies scoped prior
+knowledge, decisions, and selected learning across loops. It does not replace
+task ownership or message-delivery records.
 
 ## Why Teams Use It
 
 AgentHub fits especially well when engineering work needs more than a single
 interactive shell:
 
-- one operator may need to reconnect to the same long-lived session many times
+- one task may need several execution episodes and external waits
 - multiple people may need to inspect the same run or Team state
 - implementation and review may need to be split across multiple agents
 - remote execution may need to preserve the same actor mailbox model as local
@@ -65,14 +74,16 @@ It is especially useful for engineering teams that want:
 
 ## What Makes AgentHub Distinct
 
-Three properties tend to matter together:
+The product direction combines:
 
-- **long-lived runtime control**: browser refreshes and disconnects do not end
-  the work
+- **durable work**: agent identity, tasks, messages, and evidence survive process exit
+- **temporary execution**: processes run when work is actionable and may exit after recording an outcome
+- **shared knowledge**: Nowledge Mem provides relevant context across loops
 - **structured ACP history**: plans, tools, output, and debug data stay
   reviewable after the run
-- **shared remote-control model**: remote execution uses the dedicated internal
-  gRPC control plane instead of introducing another human-facing orchestrator
+
+Existing remote execution remains available. Remote loop recovery and remote
+Mem credential delivery require separate implementation before parity is claimed.
 
 ## What AgentHub Persists
 

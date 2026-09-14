@@ -25,6 +25,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-09-15: Agent loop product definition](2026-09-15-agent-loop-product-definition.md): design reset for temporary executions, durable tasks/IM, role prompts, Agent Card startup, and Nowledge Mem; implementation pending.
 - [2026-09-06: Agent reminders](2026-09-06-agent-reminders.md): shared self-service entry, fenced dispatch, retry fairness, source binding, and submission receipts.
 
 ## Topic Map
