@@ -14,7 +14,7 @@
     "@docusaurus/preset-classic": "^3.10.2",
     "image-size": "file:./packages/image-size-compat",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.3.0"
   },
   "overrides": {
     "serialize-javascript": "^7.0.5",
