@@ -7,11 +7,10 @@ Active backlog only. Keep this file small and current.
 Product: [features/agent-loop-product-model.md](features/agent-loop-product-model.md).
 Lifecycle: [features/agent-loop-runtime.md](features/agent-loop-runtime.md).
 Implementation: [features/agent-loop-activation-contract.md](features/agent-loop-activation-contract.md).
-The activation contract checkpoint completes slice 1; production implementation remains pending.
+The activation contract and control-store checkpoints complete slices 1-2; admission and execution
+remain pending.
 Numbers below identify separate reviewable PR slices, not shipped capabilities.
 
-- [ ] 2. Persist trigger sources, activations, policy, and safe lifecycle events. Prove additive
-  migration, reopen, scope isolation, and idempotent acceptance.
 - [ ] 3. Add fenced admission with durable reservations, renewal, finite budgets, and no-progress
   accounting. Prove simultaneous claims, stale fences, manual-start races, and suspension.
 - [ ] 4. Record finish/outcome/continuation atomically; reconcile verified cleanup and restart.
