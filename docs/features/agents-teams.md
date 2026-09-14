@@ -108,6 +108,10 @@ Agents choose planning, delegation, execution, review, and integration steps thr
 tools. These are available activities, not a required six-phase backend workflow or six prompt types.
 A leader can dispatch work, record a dependency wait, and exit. Workers report through durable IM;
 the result can activate the leader again for review without requiring it to stay online.
+Target: delegation is scheduling. Mentioning a member or assigning a task creates a durable
+activation trigger for that member even when its process is offline, under the
+[agent-initiated scheduling contract](agent-loop-runtime.md#7-agent-initiated-scheduling); the
+scheduler keeps admission, suspension, and fan-out budgets out of agent hands.
 
 ### 4) Team Surface Lanes
 

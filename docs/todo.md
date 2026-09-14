@@ -29,6 +29,12 @@ These are staged implementation proposals; the product-definition change does no
   surfaces. Exit criteria: activation-correlated metrics and spans, doctor explanation of trigger,
   outcome, and next wake for a finished loop, loop-layer stall classification, and redaction tests
   for trace output. Excludes production trace ingestion.
+- [ ] Deliver leader-driven scheduling tools on the activation service. Input: durable trigger
+  intake, admission budgets, and the existing adoption flows. Exit criteria: mention/assignment
+  triggers activate offline members, explicit member activation plus due-time/dependency wakes and
+  standing triggers work through tools, agent-created triggers respect suspension and budgets with
+  trace attribution, and fan-out/cycle tests converge under no-progress budgets. Excludes roster
+  changes beyond existing adoption flows.
 - [ ] Align the Rara adapter with the loop boundary after the lifecycle mapping is stable. Input:
   the Rara loop execution boundary and handshake capability reporting. Exit criteria: adapter
   fixtures showing activation/continuity identity separation, semantic guard results recorded as

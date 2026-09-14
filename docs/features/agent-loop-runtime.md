@@ -130,6 +130,7 @@ Retry limits and no-progress budgets must be explicit before rollout.
 | Execution/artifacts | Inspect/change assigned workspace; retain evidence references | Existing workspace/provider policy |
 | Memory | Read bound context, retrieve decisions, retain selected learning | Nowledge Mem authorization |
 | Follow-up | Register continuation or a dependency/due-time wait | Activation service |
+| Scheduling | Request member activation; register member follow-ups and standing triggers | Activation service within role authority |
 | Loop completion | Persist outcome and release execution | Current activation claim |
 
 Tools return explicit errors and stable references. Check required capabilities before execution.
@@ -146,7 +147,35 @@ Mem success is separate from the local outcome transaction. Retain operation ide
 source pointers for reconciliation; do not blindly replay unknown non-idempotent writes. Learning is
 selective, attributed knowledge with evidence references, not an automatic transcript copy.
 
-### 7. Observability And Activation Trace
+### 7. Agent-Initiated Scheduling
+
+Agents are trigger sources, not process schedulers. A leader advances delegation by creating
+durable triggers through tools; the scheduler alone admits, starts, and supervises processes.
+
+- Addressed IM is an activation trigger: a message that mentions a member durably activates that
+  member with the thread reference once it is eligible. A thread the member is already engaged in
+  may re-activate it on reply without a new mention, under intake policy. Broadcast conversation
+  does not force activation; intake rules decide whether unaddressed discussion becomes work.
+- A leader may explicitly request activation of a member it coordinates, schedule a due-time
+  follow-up for itself or a member, and register dependency wakes such as "activate me when this
+  task closes". These requests enter the same durable intake as user triggers.
+- Standing triggers are supported but bounded: an agent may register a recurring schedule or a
+  watched condition (task/dependency/thread events) within operator policy. Each firing enters
+  normal intake as one trigger; registrations are inspectable, attributed, and revocable, and
+  suspension pauses their admission without deleting them.
+- Requests carry the scheduling actor, its current activation identity, and a reason reference
+  (task, thread, or dependency). The activation trace records who scheduled whom and why.
+- Admission policy is not delegated: serialization, suspension, leases, budgets, and coalescing
+  apply to agent-created triggers exactly as to user triggers. Operator suspension outranks any
+  agent request, and scheduling never bypasses task ownership or fence checks.
+- Fan-out is bounded. Per-actor and per-team budgets cap agent-created pending activations, and
+  cyclic wake patterns — leader wakes worker, the worker's report wakes the leader — must converge
+  through coalescing and no-progress budgets instead of ping-pong activations.
+- Changing the roster is a separate authority. A leader may propose adding or adopting a worker
+  from an Agent Card through the existing [adoption flows](team-agent-adoption.md); instantiation
+  respects operator policy and grants the new member no claims or inbox history.
+
+### 8. Observability And Activation Trace
 
 The activation is the correlation spine for loop telemetry. Every lifecycle record — accepted
 trigger, admission decision, resolved launch configuration, provider start, recorded outcome,
@@ -195,6 +224,9 @@ adapter's safe-metadata allowlist.
 | Ownership | No replacement alongside an uncertain old workspace writer |
 | Waiting | Dependency change resumes; unchanged recheck and expired approval do not |
 | Session policy | Fresh/resumed sessions read current tasks and eligible inbox partitions |
+| Agent scheduling | Leader-created trigger activates an offline member under normal admission; suspension and budgets still apply |
+| Wake cycles | Leader/worker reply loops coalesce and stop at no-progress budgets instead of ping-pong activations |
+| Standing triggers | Registration attributed and revocable; each firing is one normal trigger; suspension pauses admission |
 | Mem | Missing binding, unavailable server, cross-scope access, ambiguous write |
 | Visibility | Separate task, activation, process, and next-wake state |
 | Trace | Finished and interrupted loops reconstructable from durable records without the process |

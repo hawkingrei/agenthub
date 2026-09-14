@@ -114,6 +114,13 @@ assignment/dependency events, and scheduled follow-ups. Periodic scans may recon
 This recommendation does not make every channel message, status read, or timer tick actionable work.
 Subscriptions, cadence, retry ceilings, and execution budgets remain implementation choices.
 
+Agents are themselves trigger sources. A leader delegates by assigning tasks, addressing members in
+IM, and scheduling follow-ups or dependency wakes through tools; the addressed worker need not have
+a live process, and the leader can exit after dispatching. Agent-created triggers pass the same
+admission, suspension, and budget rules as user triggers, and never start processes directly — the
+[runtime scheduling contract](agent-loop-runtime.md#7-agent-initiated-scheduling) defines the
+authority and fan-out bounds.
+
 ### 3. Durable Coordination
 
 - IM is the communication surface; task records are the authority for ownership and progress.
@@ -168,7 +175,7 @@ The primary flow is: express a goal in IM, let agents maintain the task list and
 inspect progress/evidence, and provide decisions when needed. Agent Cards configure and explain
 execution participants. Operators can inspect why an agent was activated, what it changed, why it
 exited, and what will wake it next. That inspection is served by a durable per-activation trace
-defined in the [runtime design](agent-loop-runtime.md#7-observability-and-activation-trace); it
+defined in the [runtime design](agent-loop-runtime.md#8-observability-and-activation-trace); it
 must not require the process, the provider transcript, or a live browser session.
 
 An agent with no running process is an ordinary state. Show task progress and the next wake/wait
@@ -194,6 +201,7 @@ These are acceptance requirements for subsequent implementation, not current tes
 | Mem write outcome unknown | Local progress survives and the write is not automatically replayed |
 | Browser closes and later reconnects | Execution/pending work survives; output and outcomes remain inspectable |
 | Operator inspects a finished loop | Durable activation trace explains trigger, prompt reference, outcome, and next wake without a live process |
+| Leader schedules a worker and exits | Agent-created trigger survives, activates the offline worker under normal admission, and the trace attributes the scheduling actor |
 
 Lifecycle slices require focused Rust recovery/concurrency tests and the normal Cargo/Bazel gates.
 Tool integration requires protocol and scope tests. UI slices require focused web checks and Chrome
@@ -212,7 +220,7 @@ mailbox persistence, and receipt fencing are reusable foundations.
 
 Observe task progress, pending activation age, startup failures, exit reasons, retry counts, duplicate
 suppression, and Mem availability. Process uptime alone does not show whether work is advancing.
-The [runtime observability contract](agent-loop-runtime.md#7-observability-and-activation-trace)
+The [runtime observability contract](agent-loop-runtime.md#8-observability-and-activation-trace)
 defines the activation trace and metrics behind these observations, reusing the existing
 tracing/fastrace and `agenthub doctor agent-trace` foundations from
 [runtime diagnostics](runtime-diagnostics.md).

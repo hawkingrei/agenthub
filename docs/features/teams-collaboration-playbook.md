@@ -45,6 +45,11 @@ Minimum composition:
 Leader and worker share one loop mechanism with different prompts. Agents choose task analysis,
 delegation, collaboration, review, and integration as work requires. These are not mandatory phases
 or a backend prompt sequence. A role may finish a loop and exit while the Team and tasks remain.
+Target: the leader schedules its workers through tools — assignment, mentions, due-time follow-ups,
+and dependency wakes create durable activation triggers for offline members, and the leader may
+propose adding workers through the existing adoption flows. Admission, suspension, and budgets stay
+with the scheduler per the
+[agent-initiated scheduling contract](agent-loop-runtime.md#7-agent-initiated-scheduling).
 
 ### 2) Canonical Entities And Identity Mapping
 

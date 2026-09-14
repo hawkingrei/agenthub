@@ -40,6 +40,10 @@ six-phase workflow. Mem has scope/error/journal policy helpers but no complete p
 - Rara participates as one provider adapter behind the same scheduler: activation identity stays
   separate from Rara thread continuity, handshake capabilities gate durable-wait claims, and
   semantic guard results map to loop outcomes rather than failures.
+- Agents are trigger sources, not process schedulers: a leader delegates by creating durable
+  triggers — assignment, mentions, due-time/dependency wakes, bounded standing triggers — under
+  the same admission, suspension, and budget rules as user triggers, with trace attribution.
+  Roster changes stay within the existing adoption flows and operator policy.
 
 ## Validation
 

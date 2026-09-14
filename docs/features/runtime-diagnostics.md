@@ -21,7 +21,7 @@ stalls from CPU hotspots and avoid relying on UI status alone.
   to collect a compact trace bundle for one stuck agent or Team member without manually joining
   database, log, and ACP state by hand.
 - Target extension: activation-centric correlation for the
-  [agent loop runtime](agent-loop-runtime.md#7-observability-and-activation-trace). Once durable
+  [agent loop runtime](agent-loop-runtime.md#8-observability-and-activation-trace). Once durable
   activation records exist, `agenthub doctor agent-trace` accepts an activation reference and the
   stall classification gains loop-lifecycle layers. This does not change the current
   session-centric contract below.
