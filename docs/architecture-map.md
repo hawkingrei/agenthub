@@ -12,6 +12,7 @@ or rollout shape.
 - Product and system framing:
   - [features/agent-loop-product-model.md](features/agent-loop-product-model.md) (target product contract)
   - [features/agent-loop-runtime.md](features/agent-loop-runtime.md) (target lifecycle/tool design)
+  - [features/app-tool-registration.md](features/app-tool-registration.md) (target app/tool extension seam)
   - [features/agents-teams.md](features/agents-teams.md)
   - [features/backend-runtime-logic.md](features/backend-runtime-logic.md)
 - Access control and authorization:

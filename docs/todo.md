@@ -35,6 +35,13 @@ These are staged implementation proposals; the product-definition change does no
   standing triggers work through tools, agent-created triggers respect suspension and budgets with
   trace attribution, and fan-out/cycle tests converge under no-progress budgets. Excludes roster
   changes beyond existing adoption flows.
+- [ ] Implement app tool registration on the shared proxy seam after the Mem slice stabilizes.
+  Input: the registration design, the Mem proxy policy machinery, and durable trigger intake.
+  Exit criteria: manifest-declared tools reach a bound local Team member through the enforcement
+  proxy with call-time scope rejection, per-activation manifest-version recording, fail-closed
+  unavailable-app behavior, signed app events entering normal trigger intake with replay
+  protection, and redaction/trace attribution tests. Excludes marketplace and remote credential
+  delivery.
 - [ ] Align the Rara adapter with the loop boundary after the lifecycle mapping is stable. Input:
   the Rara loop execution boundary and handshake capability reporting. Exit criteria: adapter
   fixtures showing activation/continuity identity separation, semantic guard results recorded as

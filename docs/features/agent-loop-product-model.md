@@ -79,6 +79,11 @@ The scheduler manages lifecycle and delivery; the agents choose the task plan. P
 the ACP runtimes and the [direct Rara integration](rara-direct-integration.md) — execute
 activations behind this same mechanism; adapter differences never change task or IM authority.
 
+Tool surfaces are extensible by registration. External apps can declare tools and event triggers
+through [app tool registration](app-tool-registration.md) and reach agents only through operator
+bindings and the enforcement proxy; registered apps never become task, IM, or scheduling
+authorities.
+
 ## Contracts
 
 ### 1. Stable Entry And Recoverable Context

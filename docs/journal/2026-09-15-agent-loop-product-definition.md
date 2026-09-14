@@ -21,6 +21,9 @@ six-phase workflow. Mem has scope/error/journal policy helpers but no complete p
 - Specify activation-centric observability and a durable per-activation trace, extending the
   existing runtime-diagnostics foundations, and align the direct Rara integration with the loop
   execution boundary.
+- Add the [app tool registration](../features/app-tool-registration.md) target design: external
+  apps declare tools through versioned manifests and deliver signed events, reaching agents only
+  through operator bindings and the shared enforcement proxy.
 - Update charter, navigation, README, and user-facing overview pages without advertising target
   behavior as delivered.
 - Track staged implementation in [TODO](../todo.md#agent-loop-product-transition).
@@ -44,6 +47,10 @@ six-phase workflow. Mem has scope/error/journal policy helpers but no complete p
   triggers — assignment, mentions, due-time/dependency wakes, bounded standing triggers — under
   the same admission, suspension, and budget rules as user triggers, with trace attribution.
   Roster changes stay within the existing adoption flows and operator policy.
+- Tool surfaces are extensible by registration, not by runtime changes: manifest-declared app
+  tools and signed app events pass one shared enforcement proxy with call-time scope rejection,
+  fail-closed unavailability, and no task/IM/scheduling authority. MCP is the canonical
+  invocation protocol; app events are notifications that enter normal trigger intake.
 
 ## Validation
 

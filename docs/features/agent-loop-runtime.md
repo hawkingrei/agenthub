@@ -131,11 +131,15 @@ Retry limits and no-progress budgets must be explicit before rollout.
 | Memory | Read bound context, retrieve decisions, retain selected learning | Nowledge Mem authorization |
 | Follow-up | Register continuation or a dependency/due-time wait | Activation service |
 | Scheduling | Request member activation; register member follow-ups and standing triggers | Activation service within role authority |
+| Registered app tools | Call tools that external apps declared and an operator bound | [App tool registration](app-tool-registration.md) scopes |
 | Loop completion | Persist outcome and release execution | Current activation claim |
 
 Tools return explicit errors and stable references. Check required capabilities before execution.
 Missing tools do not justify ad-hoc cross-workspace writes. Role prompts describe responsibilities
-without depending on provider-specific tool spelling.
+without depending on provider-specific tool spelling. The tool set is extensible by registration:
+externally declared tools join an activation only through an operator binding and the enforcement
+proxy defined in [app tool registration](app-tool-registration.md); they never gain task, IM, or
+scheduling authority beyond their approved scopes.
 
 ### 6. Mem And Session Recovery
 

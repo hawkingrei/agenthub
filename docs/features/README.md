@@ -73,6 +73,7 @@ when adding or compacting specs so this directory stays navigable.
 - `docs/features/agent-loop-product-model.md` (target product contract; runtime migration pending)
 - `docs/features/agent-loop-runtime.md` (target lifecycle and tool responsibilities)
 - `docs/features/nowledge-mem-mcp-proxy.md` (initial local integration design)
+- `docs/features/app-tool-registration.md` (target app/tool extension seam)
 - `docs/features/agent-nodes.md`
 - `docs/features/acp-runtime.md`
 - `docs/features/access-control-and-roles.md`
