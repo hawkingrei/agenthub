@@ -4,6 +4,9 @@ Status: target design, pending implementation. This refines the
 [product model](agent-loop-product-model.md); state names below are design vocabulary, not shipped
 API enum values or a database migration.
 
+The [activation implementation contract](agent-loop-activation-contract.md) selects identity,
+policy defaults, storage boundaries, and compatibility gates for the initial local implementation.
+
 ## Problem
 
 Task progress must continue after process exit. Duplicate wakeups, restarts, and delayed tool results
