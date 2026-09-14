@@ -6,11 +6,14 @@ Detailed behavior, product flow, and execution procedures belong in `docs/featur
 
 ## 1. Product Goal
 
-AgentHub is a single-binary control plane for long-lived AI agents.
+AgentHub is an agent loop toolchain: agents advance durable tasks through IM, task-list, memory,
+and execution tools, using one configured role prompt per loop activation.
 
-- Users can create, start, stop, reconnect, and inspect agents from the web UI.
-- Agents run in user-selected workspaces and must stay alive even if the browser page closes.
-- Agent output and history must remain visible and replayable.
+- Leader and worker agents share a loop runtime and use different role prompts.
+- Agent Cards remain part of agent startup and capability discovery.
+- Agent processes may exit after a loop finishes; tasks, messages, identity, and history survive.
+- Browser lifetime does not control execution. Nowledge Mem provides integrated durable knowledge.
+- Product direction and transition boundaries live in `docs/features/agent-loop-product-model.md`.
 
 ## 2. Core Architecture
 
@@ -43,6 +46,7 @@ AgentHub is a single-binary control plane for long-lived AI agents.
 - Mailbox/actor paths are the canonical execution transport for Team coordination.
 - Worker execution should stay isolated per workspace/worktree.
 - Context and memory are workspace-scoped and should not leak across agents.
+- Shared knowledge uses explicit Nowledge Mem Team/project scope; execution state remains local authority.
 
 ## 6. Documentation And Validation
 

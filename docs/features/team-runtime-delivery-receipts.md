@@ -1,5 +1,9 @@
 # Team Runtime Delivery Receipts
 
+These receipts retain their current submission meaning. The [loop runtime target](agent-loop-runtime.md)
+must connect durable pending work to offline actor activation without treating runtime submission
+as message consumption, loop outcome, or task completion. Existing run partitions remain compatible.
+
 ## Problem
 
 Team mailbox rows are durable, but the prompt that wakes a running actor was previously best-effort.

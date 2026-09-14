@@ -26,14 +26,14 @@ Team behavior can drift across runtime, API, and tool boundaries.
 Actor is the message-transport and delivery contract under Team runtime.
 Team planning/execution sits above Actor:
 
-- Team layer decides **what** to do (`conversation -> run -> step`).
+- Team agents decide **what** to do through conversation, canonical tasks, and execution tools.
 - Actor layer guarantees **how** messages move and are acknowledged (`send -> inbox -> ack`).
 - Event bus can carry conversation/timeline fan-out, but must not replace actor mailbox ack semantics.
 
 ### 2) Actor And Team Object Mapping
 
 - `member`: stable logical identity in Team spec.
-- `agent`: runtime process bound to a member.
+- `agent`: durable execution identity bound to a member; its process may be temporary.
 - `actor_id`: mailbox sender/receiver identity used by actor protocol.
 - `run_id`: mailbox partition boundary for one execution context.
 
@@ -41,6 +41,11 @@ Practical mapping:
 
 - one member/agent can use one actor identity in a run;
 - actor identities are isolated by `run_id` to keep replay deterministic.
+
+Under [Agent Loop Runtime](agent-loop-runtime.md), inboxes remain addressable while processes are
+absent. A new activation must preserve eligible mailbox partitions and stable actor identity.
+Actor delivery/ACK is separate from activation outcome and task acceptance; existing envelope
+fields remain compatible until an explicit migration is implemented.
 
 ### 3) Core Actor Operations
 

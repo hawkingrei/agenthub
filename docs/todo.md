@@ -2,6 +2,52 @@
 
 Active backlog only. Keep this file small and current.
 
+## Agent Loop Product Transition
+
+Target contract: [features/agent-loop-product-model.md](features/agent-loop-product-model.md).
+Lifecycle design: [features/agent-loop-runtime.md](features/agent-loop-runtime.md).
+These are staged implementation proposals; the product-definition change does not implement them.
+
+- [ ] Define and implement durable loop activation and exit. Input: the product contract plus existing
+  process supervision, start admission, task ownership, and mailbox receipts. First settle activation
+  policy, session reuse defaults, and activation/task-attempt/mailbox-run mapping. Reuse these boundaries
+  rather than introducing a separate leader workflow engine. Exit criteria: recovery after process
+  exit, no lost wake during shutdown, no duplicate unfenced execution, and operator suspension coverage
+  under focused Rust tests and normal Cargo/Bazel checks. Excludes UI redesign and Mem transport work.
+- [ ] Connect loop tools and Nowledge Mem after the lifecycle mapping is stable. Input: durable actor
+  and activation identity, canonical IM/task tools, and the existing local MCP proxy contract. Keep
+  task state local and knowledge scoped in Mem. Exit criteria: leader/worker prompt-driven execution,
+  fresh-session context recovery, scope enforcement, visible Mem failure, and no blind replay of
+  ambiguous writes. Start with local Team members; separately design remote credential delivery.
+- [ ] Align Agent Card startup and task/IM views after lifecycle/tool contracts are available. Input:
+  inspectable activation, outcome, and wait state. Keep process diagnostics available while making
+  progress and next wake reasons visible. Exit criteria: focused web checks and Chrome DevTools
+  evidence for configuration, activation, exit, suspension, and later recovery. Excludes unrelated
+  workspace navigation changes.
+- [ ] Instrument loop observability once activation records exist. Input: the runtime
+  observability/trace contract plus the existing tracing/fastrace and `agenthub doctor agent-trace`
+  surfaces. Exit criteria: activation-correlated metrics and spans, doctor explanation of trigger,
+  outcome, and next wake for a finished loop, loop-layer stall classification, and redaction tests
+  for trace output. Excludes production trace ingestion.
+- [ ] Deliver leader-driven scheduling tools on the activation service. Input: durable trigger
+  intake, admission budgets, and the existing adoption flows. Exit criteria: mention/assignment
+  triggers activate offline members, explicit member activation plus due-time/dependency wakes and
+  standing triggers work through tools, agent-created triggers respect suspension and budgets with
+  trace attribution, and fan-out/cycle tests converge under no-progress budgets. Excludes roster
+  changes beyond existing adoption flows.
+- [ ] Implement app tool registration on the shared proxy seam after the Mem slice stabilizes.
+  Input: the registration design, the Mem proxy policy machinery, and durable trigger intake.
+  Exit criteria: manifest-declared tools reach a bound local Team member through the enforcement
+  proxy with call-time scope rejection, per-activation manifest-version recording, fail-closed
+  unavailable-app behavior, signed app events entering normal trigger intake with replay
+  protection, and redaction/trace attribution tests. Excludes marketplace and remote credential
+  delivery.
+- [ ] Align the Rara adapter with the loop boundary after the lifecycle mapping is stable. Input:
+  the Rara loop execution boundary and handshake capability reporting. Exit criteria: adapter
+  fixtures showing activation/continuity identity separation, semantic guard results recorded as
+  loop outcomes, approval waits gated on advertised persistence, and Rara event cursors visible in
+  the activation trace. Excludes remote-node placement changes.
+
 ## Release And Packaging
 
 - [ ] `P0` Restore Homebrew channel parity before advertising it as a current complete install. The

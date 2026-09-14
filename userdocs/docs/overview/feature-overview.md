@@ -6,6 +6,10 @@ sidebar_position: 2
 
 This page maps AgentHub's main capabilities to the problems they solve.
 
+These are current capabilities. The [target loop model](./product-overview.md) keeps leader/worker
+roles and Agent Cards, adds durable activation and exit, and integrates Nowledge Mem. Those loop
+and memory features still require implementation.
+
 ## Single-Agent Control Surface
 
 From the `Agents` page you can:
@@ -99,7 +103,7 @@ document is intentionally incremental.
 
 AgentHub also includes operational guardrails:
 
-- safe-path restrictions for workdirs
+- explicit workspace and worktree selection
 - persistent session and history storage
 - in-app notifications and browser push delivery
 - troubleshooting and recovery guidance

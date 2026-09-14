@@ -29,6 +29,15 @@ spec is required to keep contracts consistent across providers and UI/runtime la
 
 ## Architecture
 
+### Loop Execution Boundary
+
+ACP remains the provider execution/event boundary within [Agent Loop Runtime](agent-loop-runtime.md).
+The scheduler selects one role prompt per activation; adapters may perform multiple internal rounds.
+Provider completion, recorded loop outcome, task acceptance, and verified process exit are separate.
+Fresh/resumed sessions must recover current tasks and inboxes through stable actor identity.
+Native permission callbacks retain their current live-session semantics until durable suspension
+is supported. This is a target design; current interactive ACP behavior remains compatible.
+
 ### 1) Runtime Module Boundary
 
 ACP runtime is managed as a package-style module with clear boundaries:

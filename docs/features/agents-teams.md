@@ -1,5 +1,9 @@
 # Agents And Teams Specification
 
+Target direction: [Agent Loop Product Model](agent-loop-product-model.md) and
+[Agent Loop Runtime](agent-loop-runtime.md). This spec retains existing Team ownership, transport,
+and API contracts while identifying the lifecycle behavior that needs migration.
+
 ## Problem
 
 AgentHub Team capabilities (coordinator/worker roles, actor mailbox, conversation/run/step model,
@@ -79,29 +83,35 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
 - A Step has one responsible `member_id`; it must not introduce a second multi-owner execution
   model beneath a Task.
 - Backend no longer runs a Team step-orchestrator worker in the default runtime path.
-- Creating a `task` no longer implies backend dispatch; runs are created only by explicit execution
-  flows.
+- Target: accepted assignments can enqueue durable loop activation under the configured policy.
+  Creating a task still does not authorize a backend planner to invent execution steps.
+- Legacy compatibility: current runs are created through explicit execution flows; automatic loop
+  admission is pending implementation.
 - Task progress should be advanced through canonical task state plus mailbox evidence rather than
   implicit backend step scheduling.
 
 ### 2) Role Model
 
-- Coordinator (`coordinator` role id for runtime compatibility): architecture/planning/review/synthesis owner.
+- Leader (`coordinator` role id for runtime compatibility): architecture/planning/review/synthesis owner.
 - Worker: implementation executor, evidence producer, and proactive execution owner inside assigned lanes.
+- Both use the same activation engine with different configured role prompts. Either process may exit
+  after recording its loop outcome; role identity and responsibility survive exit.
 - Messages without `@mention` target the whole team conversation.
 - Shared conversation is coordinator-oriented, not worker-silent:
   - coordinator remains responsible for planning, delegation, and final synthesis
   - worker should speak directly when they are the natural factual owner, have a concrete progress update, or can answer the question faster from first-hand execution context
 - Worker initiative is encouraged once work is clearly assigned and actionable, but execution should still stay in active dialogue with the coordinator instead of becoming disconnected parallel work.
 
-### 3) Six-Phase Collaboration Workflow
+### 3) Agent-Directed Collaboration
 
-- `team formation`
-- `task analysis`
-- `role assignment`
-- `communication and collaboration`
-- `consensus formation`
-- `result integration`
+Agents choose planning, delegation, execution, review, and integration steps through IM and task
+tools. These are available activities, not a required six-phase backend workflow or six prompt types.
+A leader can dispatch work, record a dependency wait, and exit. Workers report through durable IM;
+the result can activate the leader again for review without requiring it to stay online.
+Target: delegation is scheduling. Mentioning a member or assigning a task creates a durable
+activation trigger for that member even when its process is offline, under the
+[agent-initiated scheduling contract](agent-loop-runtime.md#7-agent-initiated-scheduling); the
+scheduler keeps admission, suspension, and fan-out budgets out of agent hands.
 
 ### 4) Team Surface Lanes
 
@@ -118,8 +128,9 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   - Human operators do not create canonical Team tasks from `Kanban`; they use `Conversation`
     (`all`) to request work or clarify constraints, then coordinator planning / Team runtime materialize
     tasks onto the board.
-  - `Runs` is the execution-history/debug lane for explicit run browsing, `Start Team`, and
-    active-run selection.
+  - Target: task progress, loop outcomes, and next wake/wait reasons are visible without an active
+    process. `Runs` remains a history/debug lane; normal work does not require selecting a run.
+  - Legacy compatibility: `Start Team` and active-run selection remain available in `Runs`.
   - `Agent ACP`, `Overview`, `Events`, `Steps`, `Mailbox`, `Member Console`, and `Debug` are run-scoped lanes.
 - Run-scoped lanes should not block conversation; when no run is active they show explicit guidance to return to `Runs`.
 - Narrow-screen Team detail routes should behave as two panes instead of a long stacked page:
@@ -129,7 +140,14 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
 - The workspace pane must expose direct primary workflow switches for `Conversation` and `Kanban`
   even when the Team rail is hidden.
 
-### 5) Cold-Start Workflow
+### 5) Loop Entry And Compatibility Bootstrap
+
+Target entry resolves the Agent Card and effective role prompt, binds the workspace/tools/Mem scope,
+and starts one activation. The agent reads canonical tasks and IM, retrieves relevant Mem knowledge,
+then executes or records a wait. Fresh-session recovery must work; provider reuse is an independent
+policy. Finishing persists outcome and continuation before process cleanup.
+
+The following startup details describe the existing compatibility path until loop/tool migration:
 
 - Inject shared Team AGENTS index (`team-agents-index`) to both coordinator and worker at startup.
 - Inject role-specific AGENTS index:
@@ -236,7 +254,8 @@ For the full execution vocabulary and boundary rules, see
 [team-execution-vocabulary.md](./team-execution-vocabulary.md).
 
 - `member`: stable identity from `spec.members[].member_id`.
-- `agent`: runtime process bound to a member.
+- `agent`: durable configured execution identity, bound to a member in Team mode.
+- `loop activation`: temporary execution episode for that agent; its process/session may exit.
 - `worker`: member role, not separate entity type.
 - `actor_id`: canonical mailbox identity.
 - `agent_id`: tool-level alias for `actor_id`.
@@ -269,8 +288,8 @@ For the full execution vocabulary and boundary rules, see
 ### 4) Context Ownership
 
 - Context is workspace-scoped per member under `.cache/context`.
-- Worker durable project memory should be kept in project-local `.agenthubmemory/` when operating
-  inside a concrete repository.
+- Target: current task state belongs to canonical tasks/IM and shared knowledge to the explicitly
+  bound Mem scope. `.agenthubmemory/` remains a compatibility note surface during migration.
 - `.cache/context/` remains runtime continuity/state storage; it is not the main long-lived project
   notebook.
 - Cross-member sharing goes through Team channels (events/mailbox/pointers), not direct filesystem writes.
@@ -354,8 +373,10 @@ For the full execution vocabulary and boundary rules, see
   `coordinator -> subordinate worker`), prefer an idle reviewer first when more than one agent candidate
   is available, and fall back to human review in `Conversation` (`all`) when agent review cannot
   complete.
-- `Runs` tab is the only primary entry for run selection/start.
-- Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
+- Explicit legacy run selection/start remains in `Runs`. Target automatic activations expose history
+  without requiring operators to start a Team run for every loop.
+- Legacy run-scoped tabs share an active-run gate. Target task, inbox, and loop history remain
+  inspectable while the agent is offline.
 - Team runtime reads should reconcile stale member `running` rows against live runtime handles
   before reporting member/session status so crashed or already-exited members do not keep the Team
   workbench stuck in a stale `running` state.
@@ -403,8 +424,8 @@ For the full execution vocabulary and boundary rules, see
 - Keep a shared active-run context header for run-scoped tabs to avoid duplicated controls.
 - Keep wakeup behavior target-first: the runtime should decide the visible reply/ownership surface
   before it spends context budget on deeper execution detail.
-- Team startup may require explicit operator action to bring runtimes online, but once the team is
-  ready, new tasks should execute automatically.
+- Target: enabling execution permits eligible triggers to start temporary agents. Suspending execution
+  prevents automatic admission. Manual legacy runtime start remains a compatibility control.
 - Maintain deterministic run isolation and replay boundaries via `run_id`.
 
 ## Open Risks

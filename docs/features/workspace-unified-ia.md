@@ -44,6 +44,14 @@ We want one unified workspace shell that:
 
 ## Architecture
 
+### Loop Product Alignment
+
+The [loop product model](agent-loop-product-model.md) makes task progress and durable IM the primary
+work surfaces. Agent Cards configure execution participants; history explains each activation,
+outcome, and next wake/wait reason. Process absence is ordinary, and must not hide tasks or IM.
+Keep execution enablement/suspension distinct from process controls and retain ACP for diagnosis.
+The route grammar below remains compatible; lifecycle UI changes need their own implementation.
+
 ### 1) Core Product Principle
 
 AgentHub should not merge `Team` and `Agent` into one domain object.
@@ -73,7 +81,7 @@ The unified shell should treat the following as first-class workspace entities:
 - `team`
   - the collaboration boundary with conversation, tasks, runs, and members
 - `agent`
-  - the execution/runtime boundary with profile, workspace, ACP, and activity
+  - durable execution identity with Card/profile, workspace, tasks, loop history, and ACP diagnostics
 
 Important constraint:
 

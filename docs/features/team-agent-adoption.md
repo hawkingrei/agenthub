@@ -33,6 +33,17 @@ must stay explicit:
 
 ## Architecture
 
+### Loop Lifecycle Boundary
+
+Under the [loop product model](agent-loop-product-model.md), an offline agent can still own pending
+work. Copying its Card creates a new execution identity without copying claims, activations, inboxes,
+sessions, or credentials. Resolve the destination Team's Mem binding explicitly.
+
+Moving an agent requires suspended activation intake and reconciliation of pending activations,
+task claims, replies, and permissions in the original scope. Process absence alone is insufficient.
+Future move implementation must check these records atomically with ownership transfer and preserve
+history. Existing stopped-only move behavior remains compatibility until the loop migration.
+
 ### 1) Two Explicit Adoption Modes
 
 Team adoption should distinguish two separate flows:

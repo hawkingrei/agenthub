@@ -8,6 +8,9 @@ implementation-facing.
 
 ## Start Here
 
+- Product redefinition and target lifecycle:
+  - [features/agent-loop-product-model.md](features/agent-loop-product-model.md)
+  - [features/agent-loop-runtime.md](features/agent-loop-runtime.md)
 - Contributor setup and local workflow:
   - [developer-setup.md](developer-setup.md)
 - Architecture index:
