@@ -18,6 +18,9 @@ six-phase workflow. Mem has scope/error/journal policy helpers but no complete p
   [runtime](../features/agent-loop-runtime.md) designs.
 - Align Team, prompt, memory, startup, profile, ACP, and workspace contracts with explicit migration
   boundaries. Preserve current wire identifiers and behavior as compatibility where necessary.
+- Specify activation-centric observability and a durable per-activation trace, extending the
+  existing runtime-diagnostics foundations, and align the direct Rara integration with the loop
+  execution boundary.
 - Update charter, navigation, README, and user-facing overview pages without advertising target
   behavior as delivered.
 - Track staged implementation in [TODO](../todo.md#agent-loop-product-transition).
@@ -32,6 +35,11 @@ six-phase workflow. Mem has scope/error/journal policy helpers but no complete p
 - Do not silently reinterpret idle-watchdog settings as permission to start offline agents.
 - Session reuse default and trigger cadence remain implementation choices; fresh-session recovery
   must be possible. No user preference for those defaults was assumed.
+- The activation id is the correlation spine for metrics, spans, and `agenthub doctor agent-trace`;
+  traces are durable, redacted, and reconstructable without the exited process.
+- Rara participates as one provider adapter behind the same scheduler: activation identity stays
+  separate from Rara thread continuity, handshake capabilities gate durable-wait claims, and
+  semantic guard results map to loop outcomes rather than failures.
 
 ## Validation
 

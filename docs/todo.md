@@ -24,6 +24,16 @@ These are staged implementation proposals; the product-definition change does no
   progress and next wake reasons visible. Exit criteria: focused web checks and Chrome DevTools
   evidence for configuration, activation, exit, suspension, and later recovery. Excludes unrelated
   workspace navigation changes.
+- [ ] Instrument loop observability once activation records exist. Input: the runtime
+  observability/trace contract plus the existing tracing/fastrace and `agenthub doctor agent-trace`
+  surfaces. Exit criteria: activation-correlated metrics and spans, doctor explanation of trigger,
+  outcome, and next wake for a finished loop, loop-layer stall classification, and redaction tests
+  for trace output. Excludes production trace ingestion.
+- [ ] Align the Rara adapter with the loop boundary after the lifecycle mapping is stable. Input:
+  the Rara loop execution boundary and handshake capability reporting. Exit criteria: adapter
+  fixtures showing activation/continuity identity separation, semantic guard results recorded as
+  loop outcomes, approval waits gated on advertised persistence, and Rara event cursors visible in
+  the activation trace. Excludes remote-node placement changes.
 
 ## Release And Packaging
 

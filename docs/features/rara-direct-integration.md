@@ -33,6 +33,30 @@ boundaries.
 
 ## Architecture
 
+### Loop Execution Boundary
+
+Rara direct integration participates in the [agent loop runtime](agent-loop-runtime.md) as one
+provider adapter behind the shared scheduler. This is a target alignment; the current integration
+contract below remains authoritative until the loop lifecycle is implemented.
+
+- One admitted activation delivers one configured role prompt through `SubmitUserPrompt`, or
+  `SubmitFollowUp` when the adapter reports a reusable live turn. Rara-internal reasoning and tool
+  rounds stay inside that activation.
+- Activation identity is AgentHub-owned and distinct from both `agent_sessions.id` and Rara
+  thread/session continuity. Rara continuity is provider continuity that a later activation may
+  resume; losing it must not lose canonical task, IM, or outcome state.
+- Handshake capabilities gate lifecycle claims. The scheduler must not record a durable wait for a
+  Rara approval unless the handshake advertises approval persistence across process exit;
+  otherwise Rara approvals keep the live-callback semantics of the runtime approval contract.
+- Semantic guard results map to loop outcomes: `mismatch` records a no-actionable-work outcome
+  with the guard's safe reason, and `needs_clarification` records a wait on the clarification
+  reply. Neither is a crash, a cancellation, or a permission denial.
+- A nested Rara subteam executes inside the outer member's activation. Internal subagents do not
+  create AgentHub activations, Team members, or mailbox targets.
+- Rara `event_id`/`sequence` cursors and request ack states become adapter fields of the
+  activation trace, so `agenthub doctor agent-trace` can attribute a stalled loop to admission,
+  the Rara turn, approvals, event translation, or persistence.
+
 ### 1) Provider / Placement / Protocol Axes
 
 Rara should use AgentHub's existing separation between provider identity and runtime placement:

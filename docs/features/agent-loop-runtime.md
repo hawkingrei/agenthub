@@ -40,6 +40,11 @@ These are responsibilities, not a requirement to create seven crates or services
 managers, stores, scheduling, actor transport, and supervision where ownership matches. The daemon
 hosts the scheduler; individual agent processes can be temporary.
 
+Provider adapters include the existing ACP runtimes and the
+[direct Rara integration](rara-direct-integration.md). Adapter capability differences — durable
+permission waits, resumable provider continuity, replayable event cursors — change what the
+scheduler may claim about a loop, never task or IM authority.
+
 Identity mapping:
 
 - Agent/member/actor mapping survives process exit.
@@ -141,6 +146,43 @@ Mem success is separate from the local outcome transaction. Retain operation ide
 source pointers for reconciliation; do not blindly replay unknown non-idempotent writes. Learning is
 selective, attributed knowledge with evidence references, not an automatic transcript copy.
 
+### 7. Observability And Activation Trace
+
+The activation is the correlation spine for loop telemetry. Every lifecycle record — accepted
+trigger, admission decision, resolved launch configuration, provider start, recorded outcome,
+continuation, and cleanup — carries the activation identity plus stable actor/workspace identity,
+touched task ids, the mailbox `run_id` partition that was read, and any provider continuity id.
+Correlation uses durable records, not process memory: the trace of a finished or interrupted loop
+must remain reconstructable after its process exits.
+
+Each activation records, with monotonic timestamps and stable references:
+
+- trigger acceptance with source identity and every coalesced source reference;
+- admission or deferral with lease/fence generation and the queue/suspension reason when deferred;
+- the resolved prompt/configuration reference (version identity, not the prompt body) and the
+  provider/placement selection;
+- tool-boundary summaries: tool surface, target reference, status, and duration — never prompt
+  bodies, tool arguments, or tool outputs;
+- the recorded outcome, continuation or wait condition, and the finish acknowledgment;
+- verified cleanup, or the interruption/ownership-uncertainty finding.
+
+Metrics implement the product observation contract: pending-activation age, admission latency,
+running duration, outcome and exit-reason distributions, startup failures, retry counts, duplicate
+suppression, no-progress loop rate per actor, wait-condition age, and Mem availability. Alerting
+keys on stuck durable state — old pending work, expired leases without fencing resolution, growing
+no-progress rates — not on process uptime.
+
+Runtime spans reuse the existing `tracing` subscriber and optional fastrace bridge from
+[runtime diagnostics](runtime-diagnostics.md); the activation id becomes a span attribute so
+wall-clock timelines join durable lifecycle records. `agenthub doctor agent-trace` extends from
+session-centric stall analysis to activation-centric explanation: given an actor or activation
+reference, it must answer why the agent was activated, what state it read, what it changed, why it
+exited, and what will wake it next. Its stall classification gains loop layers such as
+`pending_not_admitted`, `lease_expired_unfenced`, `waiting_dependency`, and `continuation_missing`
+alongside the existing provider/persistence/SSE layers. The diagnostics redaction rules apply
+unchanged to trace storage and doctor output; provider-native identifiers appear only through the
+adapter's safe-metadata allowlist.
+
 ## Validation Matrix
 
 | Boundary | Required future check |
@@ -155,6 +197,8 @@ selective, attributed knowledge with evidence references, not an automatic trans
 | Session policy | Fresh/resumed sessions read current tasks and eligible inbox partitions |
 | Mem | Missing binding, unavailable server, cross-scope access, ambiguous write |
 | Visibility | Separate task, activation, process, and next-wake state |
+| Trace | Finished and interrupted loops reconstructable from durable records without the process |
+| Redaction | Trace and doctor output carry ids/statuses/durations, never payload bodies |
 
 Implementations require focused Rust and adapter protocol tests plus current Cargo/Bazel gates.
 Provider fixtures must cover completion/permission boundaries before live provider smoke validation.

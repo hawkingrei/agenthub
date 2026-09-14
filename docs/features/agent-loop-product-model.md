@@ -75,7 +75,9 @@ Provider protocol messages, tool results, and runtime identity metadata remain n
 The same mechanism runs both roles. The leader prompt guides intake, decomposition, ownership,
 coordination, and acceptance. The worker prompt guides assigned execution, validation, reporting,
 and blocker handling. Existing tool authorization remains enforced independently of prompt text.
-The scheduler manages lifecycle and delivery; the agents choose the task plan.
+The scheduler manages lifecycle and delivery; the agents choose the task plan. Provider adapters —
+the ACP runtimes and the [direct Rara integration](rara-direct-integration.md) — execute
+activations behind this same mechanism; adapter differences never change task or IM authority.
 
 ## Contracts
 
@@ -165,7 +167,9 @@ remains a compatibility surface during migration; no automatic import or deletio
 The primary flow is: express a goal in IM, let agents maintain the task list and advance the work,
 inspect progress/evidence, and provide decisions when needed. Agent Cards configure and explain
 execution participants. Operators can inspect why an agent was activated, what it changed, why it
-exited, and what will wake it next.
+exited, and what will wake it next. That inspection is served by a durable per-activation trace
+defined in the [runtime design](agent-loop-runtime.md#7-observability-and-activation-trace); it
+must not require the process, the provider transcript, or a live browser session.
 
 An agent with no running process is an ordinary state. Show task progress and the next wake/wait
 reason independently from process health. Leader and worker history remains visible across exits.
@@ -189,6 +193,7 @@ These are acceptance requirements for subsequent implementation, not current tes
 | Mem unavailable or scope denied | Visible bounded failure; no cross-space fallback or fabricated recalled context |
 | Mem write outcome unknown | Local progress survives and the write is not automatically replayed |
 | Browser closes and later reconnects | Execution/pending work survives; output and outcomes remain inspectable |
+| Operator inspects a finished loop | Durable activation trace explains trigger, prompt reference, outcome, and next wake without a live process |
 
 Lifecycle slices require focused Rust recovery/concurrency tests and the normal Cargo/Bazel gates.
 Tool integration requires protocol and scope tests. UI slices require focused web checks and Chrome
@@ -207,6 +212,10 @@ mailbox persistence, and receipt fencing are reusable foundations.
 
 Observe task progress, pending activation age, startup failures, exit reasons, retry counts, duplicate
 suppression, and Mem availability. Process uptime alone does not show whether work is advancing.
+The [runtime observability contract](agent-loop-runtime.md#7-observability-and-activation-trace)
+defines the activation trace and metrics behind these observations, reusing the existing
+tracing/fastrace and `agenthub doctor agent-trace` foundations from
+[runtime diagnostics](runtime-diagnostics.md).
 
 ## Open Risks
 
