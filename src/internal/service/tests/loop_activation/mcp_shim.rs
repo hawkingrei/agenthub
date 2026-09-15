@@ -35,6 +35,7 @@ use crate::loop_credentials::{
 };
 
 mod bootstrap;
+mod discovery;
 
 struct Upstream {
     db: sqlx::SqlitePool,
@@ -61,6 +62,19 @@ async fn handler(
         return StatusCode::ACCEPTED.into_response();
     }
     match message["method"].as_str().unwrap() {
+        "server/discover" => {
+            assert_eq!(headers["mcp-protocol-version"], "2026-07-28");
+            assert_eq!(headers["mcp-method"], "server/discover");
+            assert!(headers.get("mcp-session-id").is_none());
+            if message.pointer("/params/_meta/io.modelcontextprotocol~1clientInfo/name")
+                == Some(&json!("legacy-probe"))
+            {
+                return (StatusCode::NOT_FOUND, Json(json!({"jsonrpc":"2.0","id":message["id"],
+                    "error":{"code":-32601,"message":"Method not found","data":{"fallback":"initialize"}}}))).into_response();
+            }
+            Json(json!({"jsonrpc":"2.0","id":message["id"],"result":discovery::result()}))
+                .into_response()
+        }
         "initialize" => {
             let callback = json!({"jsonrpc":"2.0","id":"roots-1","method":"roots/list"});
             let response = json!({"jsonrpc":"2.0","id":message["id"],"result":{
@@ -344,6 +358,14 @@ async fn real_mcp_shim_preserves_callbacks_pages_calls_and_reads_rotated_credent
     let mut input = child.stdin.take().unwrap();
     let mut output = BufReader::new(child.stdout.take().unwrap());
     let mut errors = child.stderr.take().unwrap();
+    let probe = discovery::request("probe", "legacy-probe");
+    write_message(&mut input, &probe).await.unwrap();
+    let rejected_probe = next(&mut output).await;
+    assert_eq!(
+        rejected_probe,
+        json!({"jsonrpc":"2.0","id":"probe",
+        "error":{"code":-32601,"message":"Method not found","data":{"fallback":"initialize"}}})
+    );
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"roots":{}},"clientInfo":{"name":"fake-provider","version":"1"}}})).await.unwrap();
     let callback = next(&mut output).await;
     assert_eq!(callback["method"], "roots/list");

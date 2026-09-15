@@ -77,6 +77,13 @@ cannot start before initialization and the initialized notification. An upstream
 error remains an error; the session does not manufacture a successful handshake. Unknown versions
 fail explicitly. Modern requests do not receive a synthetic legacy initialization response.
 
+Modern `server/discover` is forwarded with its per-request metadata and HTTP method/version
+headers, without an HTTP session. Supported versions, capabilities, server metadata, instructions,
+cache hints, and extensions remain upstream data. The proxy does not cache this response or treat
+it as execution authority. An upstream probe error remains unchanged and leaves the legacy
+initialize path available for a client-selected fallback. This follows the pinned
+[discovery contract](https://modelcontextprotocol.io/specification/2026-07-28/server/discover).
+
 The protocol boundary follows the primary [2025-03 transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports),
 [2025-11 transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), and
 [2026-07 transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
@@ -164,8 +171,8 @@ not copied into transport diagnostics or the operation journal.
   budget across concurrent sessions remains a production integration requirement.
 
 The raw transport version table does not imply complete controller support. March 2025 batches,
-legacy GET listening/resumption and upstream DELETE, linked MRTR/task rounds, modern server
-discovery, and integration-specific authorization for non-tool methods remain controller work.
+legacy GET listening/resumption and upstream DELETE, linked MRTR/task rounds, and
+integration-specific authorization for non-tool methods remain controller work.
 
 ## Validation Matrix
 
@@ -183,6 +190,7 @@ discovery, and integration-specific authorization for non-tool methods remain co
 | RPC ownership | Dropped response stream after durable send retains the execution guard and records the actual upstream result |
 | Session admission | Cross-actor/activation rejection, revoked binding, cleanup, and invalid notifications without fabricated JSON-RPC replies |
 | Startup | Launch/session/mailbox prerequisites; initialization callback and discovery before running; no tool send or ordinary actor control until running |
+| Modern discovery | Startup RPC preserves metadata/cache hints; a real stdio probe preserves an upstream error and permits subsequent legacy initialization |
 
 ## Operational Notes
 

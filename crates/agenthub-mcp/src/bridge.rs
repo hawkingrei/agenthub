@@ -162,6 +162,7 @@ impl McpProxySession {
             && !matches!(
                 method.as_str(),
                 "initialize"
+                    | "server/discover"
                     | "ping"
                     | "tools/list"
                     | "tools/call"

@@ -67,6 +67,10 @@ giving an expired executor authority to send more work.
   of the local upstream Mem checkout at `fff6c631d3900e9991a7390865bd512a03f060a6`
   (`nmem-core/src/headers.rs`, `nmem-server/src/remote_gateway.rs`, and `mcp_gates.rs`) confirms
   Bearer support and that tool-set/space routing does not establish namespace authorization.
+- Forward modern server discovery as a control request, retaining upstream capabilities, metadata,
+  cache hints, and errors. It creates no journaled tool send and does not replace the client's
+  version/fallback decision. The pinned July 2026 discovery schema places server identity under
+  `result._meta`; the earlier draft's top-level `serverInfo` example is not the final contract.
 
 Stable contract: [MCP operation journal](../features/mcp-operation-journal.md).
 Transport contract: [MCP proxy transport](../features/mcp-proxy-transport.md).
@@ -183,6 +187,14 @@ cargo clippy -p agenthub -p agenthub-acp -p agenthub-acp-core -p agenthub-mcp --
 ```
 
 ## Follow-Ups
+
+The modern discovery follow-up passes 13 root MCP tests (plus the parent-invoked child fixture),
+35 MCP crate tests, and root/MCP all-target Clippy with warnings denied. The real binary build,
+formatting, and whitespace checks pass. The startup fixture preserves the exact discovery result
+and records no tool operation; tools remain denied before running. The real shim fixture forwards
+an upstream HTTP 404 JSON-RPC `-32601` probe error, including its data, and subsequently completes
+the existing legacy initialize/callback/discovery/write flow. The result shape follows the final
+[July 2026 discovery specification](https://modelcontextprotocol.io/specification/2026-07-28/server/discover).
 
 - Complete slice 9's linked continuations, remaining protocol controller paths, aggregate queue
   byte budget, and integration authorization. Do not infer namespace isolation from a Mem tool set
