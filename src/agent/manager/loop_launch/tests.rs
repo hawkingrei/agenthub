@@ -8,9 +8,16 @@ use agenthub_db::loop_runtime::LoopPolicyUpdate;
 
 use super::*;
 
+mod mcp;
+
 const PROVIDER: &str = r#"#!/usr/bin/env python3
 import json, os, subprocess, sys, uuid
 log_path, mode, control_binary = sys.argv[1:]
+shim = None
+def mcp_call(message):
+    shim.stdin.write(json.dumps(message) + '\n')
+    shim.stdin.flush()
+    return json.loads(shim.stdout.readline())
 for line in sys.stdin:
     request = json.loads(line)
     with open(log_path, 'a') as log:
@@ -21,9 +28,37 @@ for line in sys.stdin:
     if method == 'initialize':
         result = {'protocolVersion': 1, 'agentCapabilities': {'loadSession': True}}
     elif method == 'session/new':
+        if mode == 'mcp':
+            private_keys = ['TEST_MEM_UPSTREAM_KEY', 'TEST_OTHER_MEM_KEY', 'NMEM_API_KEY', 'NMEM_API_URL', 'NOWLEDGE_MEM_HEADERS', 'MCP_HTTP_HEADERS']
+            assert all(key not in os.environ for key in private_keys)
+            servers = request['params']['mcpServers']
+            assert len(servers) == 1
+            server = servers[0]
+            assert server['args'] == ['mcp-proxy', '--server-id', 'nowledge-mem']
+            assert 'url' not in server and 'headers' not in server
+            env = dict(os.environ)
+            env.update({item['name']:item['value'] for item in server['env']})
+            shim = subprocess.Popen([server['command']] + server['args'], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            with open('/proc/' + str(shim.pid) + '/environ', 'rb') as environ:
+                inherited = environ.read().split(b'\0')
+            assert all(not any(item.startswith(key.encode() + b'=') for item in inherited) for key in private_keys)
+            initialized = mcp_call({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'fake-acp','version':'1'}}})
+            assert initialized['result']['protocolVersion'] == '2025-11-25'
+            shim.stdin.write(json.dumps({'jsonrpc':'2.0','method':'notifications/initialized'}) + '\n')
+            tools = mcp_call({'jsonrpc':'2.0','id':2,'method':'tools/list'})
+            assert tools['result']['tools'][0]['name'] == 'fixture_write'
+            with open(log_path, 'a') as log:
+                log.write(json.dumps({'mcp_bootstrap':True, 'server':server}) + '\n')
         result = {'sessionId': str(uuid.uuid4())}
     elif method == 'session/prompt':
-        if mode == 'finish':
+        if mode == 'mcp':
+            result = mcp_call({'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'fixture_write','arguments':{'body':'private-business-body'}}})
+            assert result['result']['structuredContent']['written'] is True
+            shim.stdin.close()
+            assert shim.wait(timeout=5) == 0
+            with open(log_path, 'a') as log:
+                log.write(json.dumps({'mcp_write':True}) + '\n')
+        if mode in ['finish', 'mcp']:
             for command in ['team-members', 'team-tasks', 'inbox']:
                 recovery = subprocess.run([control_binary, 'actor', command, '--json'], capture_output=True, text=True)
                 if recovery.returncode:
@@ -51,7 +86,11 @@ struct Fixture {
 
 impl Fixture {
     async fn new(mode: &str) -> Self {
-        let state = crate::api::team_tests::build_test_state().await;
+        Self::new_with_mem(mode, None).await
+    }
+
+    async fn new_with_mem(mode: &str, endpoint: Option<&str>) -> Self {
+        let mut state = crate::api::team_tests::build_test_state().await;
         sqlx::query("ALTER TABLE agents ADD COLUMN runtime_model TEXT")
             .execute(&state.db)
             .await
@@ -72,7 +111,7 @@ impl Fixture {
             name: format!("loop-provider-{}", uuid::Uuid::new_v4()), description: None,
             spec: serde_json::json!({"execution_mode":"loop", "entrypoint":"planner", "members":[{"member_id":"planner","role":"coordinator"},{"member_id":"worker","role":"worker"}]}),
         }).await.unwrap();
-        let config = agenthub_config::AppConfig {
+        let mut config = agenthub_config::AppConfig {
             internal_grpc: Some(agenthub_config::InternalGrpcConfig {
                 enabled: Some(true),
                 listen: Some("127.0.0.1:0".into()),
@@ -85,6 +124,60 @@ impl Fixture {
             }),
             ..Default::default()
         };
+        if let Some(endpoint) = endpoint {
+            use agenthub_config::{
+                NowledgeMemConfig, NowledgeMemProfileConfig, NowledgeMemTeamBindingConfig,
+            };
+            use std::collections::HashMap;
+            config.nowledge_mem = Some(NowledgeMemConfig {
+                profiles: Some(HashMap::from([
+                    (
+                        "team-profile".into(),
+                        NowledgeMemProfileConfig {
+                            endpoint: endpoint.into(),
+                            credential_env: "TEST_MEM_UPSTREAM_KEY".into(),
+                            tool_set: Some("external-agent".into()),
+                        },
+                    ),
+                    (
+                        "unused-profile".into(),
+                        NowledgeMemProfileConfig {
+                            endpoint: endpoint.into(),
+                            credential_env: "TEST_OTHER_MEM_KEY".into(),
+                            tool_set: None,
+                        },
+                    ),
+                ])),
+                team_bindings: Some(HashMap::from([(
+                    team.id.clone(),
+                    NowledgeMemTeamBindingConfig {
+                        profile: "team-profile".into(),
+                        space_id: "space-a".into(),
+                        actor_profiles: None,
+                    },
+                )])),
+            });
+            state.agents = Arc::new((*state.agents).clone().with_loop_app_config(config.clone()));
+            agenthub_db::mcp_operations::migrate_mcp_operations(&state.db)
+                .await
+                .unwrap();
+            let daemon = agenthub_db::claim_daemon_generation(
+                &state.db,
+                "main",
+                "mcp-fixture",
+                1,
+                Utc::now().timestamp(),
+            )
+            .await
+            .unwrap();
+            state
+                .agents
+                .initialize_mcp_proxy(
+                    agenthub_db::mcp_operations::McpOperationStore::new(state.db.clone(), daemon),
+                    Vec::new(),
+                )
+                .unwrap();
+        }
         crate::internal::maybe_spawn_internal_grpc(state.clone(), &config)
             .await
             .unwrap();

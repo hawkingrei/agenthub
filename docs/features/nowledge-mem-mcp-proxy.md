@@ -12,6 +12,10 @@ credential delivery. The existing AgentHub ACP bootstrap reads a static local
 MCP configuration, which cannot bind a Team run to an existing Mem space or
 preserve the write-recovery boundary required by Mem's current MCP contracts.
 
+The current implementation resolves existing profiles into the shared daemon proxy and supplies
+local ACP stdio descriptors. Context Lens bootstrap and complete authorization for tools without
+declared scope remain integration work; the full contract below is not yet a completion claim.
+
 ## Scope
 
 - Local ACP Team members only.
@@ -56,6 +60,22 @@ refresh material remain in the configured secret source.
 
 Scope and credentials are deliberately independent. A credential must never
 select a space implicitly for an AgentHub Team run.
+
+The resolver uses the existing `nowledge_mem.profiles` and `team_bindings` configuration, including
+actor profile overrides. It resolves `credential_env` in the daemon and sends a Bearer header to
+the configured HTTPS endpoint (loopback HTTP is allowed for local servers). URLs containing user
+information, a query, or a fragment are rejected. Optional `tool_set` becomes `X-Nmem-Tool-Set`;
+it does not grant authorization or retry permission.
+
+The launch fingerprint includes configuration references and the bound space, but excludes the
+resolved key and activation credential-file path. ACP receives only a local shim command and
+that file reference. Provider launch strips credentials for every configured Mem profile as well
+as ambient Mem/header variables before spawning the process. Remote loop execution remains denied.
+
+For schemas declaring `space_id`, a missing value is injected and any supplied value other than
+the exact bound string is rejected, including null and non-string values. Schemas without that
+property remain unchanged. Upstream namespace authorization is still required for those calls;
+schema preservation and tool-set filtering alone do not establish that authorization.
 
 ### Context Lens
 

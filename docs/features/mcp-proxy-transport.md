@@ -13,8 +13,9 @@ handling while a tool is running.
 Streamable HTTP request preparation, and incremental JSON/SSE response handling. The implementation
 is tested with local fake upstreams. The same crate now provides trusted discovery/call policy and
 actual HTTP/journal orchestration. Signed streaming RPCs and a local stdio shim exercise the
-provider-facing bridge. Configured bindings, launch descriptors, the remaining protocol controller,
-and provider environment isolation remain in progress.
+provider-facing bridge. Existing Mem profiles now resolve to activation mounts and local ACP
+descriptors with provider environment isolation. The remaining protocol controller and complete
+integration authorization still gate completion of slice 9.
 
 ## Non-Goals
 
@@ -39,9 +40,29 @@ the shared domain/store with the transport: scope-bound request preparation fixe
 intent, and a journaled client consumes the prepared request only after obtaining a send permit.
 The daemon session bridge connects signed activation RPCs to this path. A local `agenthub mcp-proxy`
 process translates provider JSONL into those RPCs; upstream configuration stays in daemon memory.
-Configured mount resolution and ACP launch registration remain required before production use.
+Explicit Team Mem bindings are mounted after the immutable launch snapshot is recorded, while the
+activation operation guard prevents cleanup from racing publication. Unbound activations mount no
+Mem server. Fresh and resumed local ACP sessions receive the same typed stdio descriptor path.
 
 ## Contracts
+
+### Configured launch
+
+- Reuse the existing Team/actor profile resolver. The actor may select a credential profile but
+  cannot change the Team's `space_id`. Endpoint and credential references come from daemon config.
+- Resolve the referenced secret inside the daemon. Accept HTTPS, or HTTP on a loopback host, with
+  no URL user information, query, or fragment. Use the configured `/mcp` endpoint and tool-set header;
+  a tool set is discovery configuration, not authorization or permission to replay a write.
+- Fingerprint endpoint/profile/credential references, space, and tool set. Secret values and the
+  per-activation credential-file path are excluded, so rotation does not change configuration identity.
+- ACP receives only the local `agenthub mcp-proxy --server-id nowledge-mem` command and its
+  activation credential-file reference. No descriptor field carries the upstream URL or headers.
+- Before spawning a loop provider, remove all configured Mem credential variables and ambient
+  `NMEM_*`, `NOWLEDGE_MEM_*`, and MCP header variables, including provider-specific overrides.
+  Descendant shims inherit that sanitized environment. The legacy static MCP loader is unchanged.
+- All discovered Mem tools currently use the conservative non-idempotent journal policy. Read and
+  stable-identity retry declarations, Context Lens bootstrap, and complete scope authorization
+  belong to the subsequent Mem integration; transport availability alone does not prove them.
 
 ### Version and lifecycle
 
@@ -171,15 +192,17 @@ socket permission. They do not require a personal Mem account or a paid provider
 The journaled client keeps draining after losing its event receiver and stores a factual terminal
 result before returning it. An authenticated daemon task fixture verifies ownership and the
 execution guard across caller disconnect; startup journal recovery is wired. Real shim fixtures
-cover signed streaming RPCs, callback/result queues, and per-message credential refresh. Production
-startup currently installs an empty binding set, so these fixtures do not establish ACP/Mem launch.
+cover signed streaming RPCs, callback/result queues, and per-message credential refresh. The hub
+starts empty and configured local activations add their mounts during launch. The configured ACP
+fixture additionally checks inherited provider/shim environments and an actual journaled HTTP call.
 
 ## Open Risks
 
-- Configured bindings and provider launch remain unwired.
 - Linked MRTR continuation/task-result admission remains controller work. Observed deferred receipts already block a replay
   of the original request without claiming a final tool outcome.
-- Existing static MCP configuration and provider environment isolation need real shim/ACP fixtures.
+- Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
+  aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
+  not evidence that retrying an unresolved write is safe.
 - Legacy GET cursors must be scoped to the exact session and stream when recovery is wired.
 - Production bindings must intersect all advertised capabilities and non-tool methods with their
   approved scope. Generic protocol forwarding alone does not establish resource/prompt authority.

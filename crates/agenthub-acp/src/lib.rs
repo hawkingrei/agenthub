@@ -1475,12 +1475,10 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 let _ = ready_tx.send(Err(format!("acp managed skill install failed: {err}")));
                 return;
             }
-            // Loop tools use scoped actor control until the shared proxy supplies journaled MCP.
-            let mcp_servers = if loop_launch.is_some() {
-                Vec::new()
-            } else {
-                load_mcp_servers()
-            };
+            let mcp_servers = loop_launch
+                .as_ref()
+                .map(AcpLoopLaunchConfig::mcp_servers)
+                .unwrap_or_else(load_mcp_servers);
             let mut skills = loop_launch
                 .as_ref()
                 .map(|launch| launch.skills.clone())

@@ -56,8 +56,8 @@ pub fn bind_declared_space_id(
     let mut arguments = arguments.as_object().cloned().ok_or_else(|| {
         anyhow::anyhow!("MCP tool arguments must be an object when schema declares space_id")
     })?;
-    if let Some(provided) = arguments.get("space_id").and_then(Value::as_str)
-        && provided != binding.space_id
+    if let Some(provided) = arguments.get("space_id")
+        && provided.as_str() != Some(binding.space_id.as_str())
     {
         anyhow::bail!("MCP tool call space_id does not match the bound Mem space");
     }
@@ -109,13 +109,22 @@ mod tests {
 
     #[test]
     fn conflicting_space_is_rejected() {
-        let err = bind_declared_space_id(
-            &json!({"properties":{"space_id":{"type":"string"}}}),
-            json!({"space_id":"other-space"}),
-            &binding(),
-        )
-        .expect_err("reject cross-space call");
-        assert!(err.to_string().contains("does not match"));
+        for scope in [
+            json!("other-space"),
+            json!(null),
+            json!(1),
+            json!(false),
+            json!([]),
+            json!({}),
+        ] {
+            let err = bind_declared_space_id(
+                &json!({"properties":{"space_id":{"type":"string"}}}),
+                json!({"space_id":scope}),
+                &binding(),
+            )
+            .expect_err("reject cross-space or invalid scope");
+            assert!(err.to_string().contains("does not match"));
+        }
     }
 
     #[test]

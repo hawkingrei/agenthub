@@ -1,0 +1,177 @@
+//! Resolve existing Mem profiles inside the daemon. No secret-bearing type implements Debug.
+
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+
+use agenthub_config::AppConfig;
+use agenthub_mcp::{
+    bridge::McpProxyBinding,
+    http::McpHttpTransport,
+    policy::{McpBinding, McpPolicyError},
+};
+use reqwest::{
+    Url,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
+};
+use serde_json::json;
+use sha2::{Digest, Sha256};
+
+pub(crate) struct ConfiguredMcpBinding {
+    pub binding: Arc<McpProxyBinding>,
+    pub fingerprint: String,
+}
+
+pub(crate) fn shim_executable() -> anyhow::Result<std::path::PathBuf> {
+    #[cfg(test)]
+    {
+        crate::agenthub_binary::resolve_agenthub_binary_path()
+            .ok_or_else(|| anyhow::anyhow!("MCP shim executable is unavailable"))
+    }
+    #[cfg(not(test))]
+    {
+        std::env::current_exe().map_err(|_| anyhow::anyhow!("MCP shim executable is unavailable"))
+    }
+}
+
+pub(crate) fn has_mem_binding(config: &AppConfig, team_id: &str) -> bool {
+    config
+        .nowledge_mem
+        .as_ref()
+        .and_then(|mem| mem.team_bindings.as_ref())
+        .is_some_and(|bindings| bindings.contains_key(team_id))
+}
+
+pub(crate) fn resolve_mem(
+    config: &AppConfig,
+    team_id: &str,
+    actor_id: &str,
+    secret: impl FnOnce(&str) -> Option<String>,
+) -> anyhow::Result<ConfiguredMcpBinding> {
+    let resolved = config
+        .resolve_nowledge_mem_binding(team_id, actor_id)
+        .map_err(|_| anyhow::anyhow!("Mem binding configuration is invalid"))?;
+    let reference = &resolved.profile.credential_env;
+    anyhow::ensure!(
+        valid_credential_reference(reference),
+        "Mem credential reference is invalid"
+    );
+    let key = secret(reference).ok_or_else(|| anyhow::anyhow!("Mem credential is unavailable"))?;
+    anyhow::ensure!(
+        !key.is_empty() && key.len() <= 8192 && key.bytes().all(|b| b.is_ascii_graphic()),
+        "Mem credential is invalid"
+    );
+    let mut endpoint = Url::parse(&resolved.profile.endpoint)
+        .map_err(|_| anyhow::anyhow!("Mem endpoint is invalid"))?;
+    let local = endpoint.host_str().is_some_and(|host| {
+        host == "localhost"
+            || host
+                .trim_matches(['[', ']'])
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| ip.is_loopback())
+    });
+    anyhow::ensure!(
+        endpoint.host_str().is_some()
+            && endpoint.username().is_empty()
+            && endpoint.password().is_none()
+            && endpoint.query().is_none()
+            && endpoint.fragment().is_none()
+            && (endpoint.scheme() == "https" || endpoint.scheme() == "http" && local),
+        "Mem endpoint is invalid"
+    );
+    // Mem's canonical endpoint has no trailing slash. Credentials belong in headers, never URLs.
+    let path = endpoint.path().trim_end_matches('/').to_owned();
+    anyhow::ensure!(path.ends_with("/mcp"), "Mem endpoint must end with /mcp");
+    endpoint.set_path(&path);
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {key}"))
+            .map_err(|_| anyhow::anyhow!("Mem credential is invalid"))?,
+    );
+    if let Some(tool_set) = &resolved.profile.tool_set {
+        anyhow::ensure!(
+            !tool_set.is_empty()
+                && tool_set.len() <= 128
+                && tool_set
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b)),
+            "Mem tool set is invalid"
+        );
+        headers.insert(
+            "x-nmem-tool-set",
+            HeaderValue::from_str(tool_set)
+                .map_err(|_| anyhow::anyhow!("Mem tool set is invalid"))?,
+        );
+    }
+    let revision = json!({"version":1, "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
+        "credential_ref":reference, "space_id":resolved.space_id, "tool_set":resolved.profile.tool_set});
+    let fingerprint = Sha256::digest(serde_json::to_vec(&revision)?)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let transport = McpHttpTransport::new(endpoint.as_str(), headers, Duration::from_secs(120))?;
+    let policy = McpBinding::new(
+        "nowledge-mem".into(),
+        &json!({"service":"nowledge-mem", "authority":endpoint.as_str(), "space_id":resolved.space_id}),
+        &revision,
+        transport,
+        BTreeMap::new(),
+    )?;
+    let scope = agenthub_acp_core::nowledge_mem::MemScopeBinding::new(
+        resolved.profile_name,
+        resolved.space_id,
+    )?;
+    let binding = Arc::new(McpProxyBinding::new(
+        policy,
+        Arc::new(move |_, schema, arguments| {
+            agenthub_acp_core::nowledge_mem::bind_declared_space_id(schema, arguments, &scope)
+                .map_err(|_| McpPolicyError::Scope)
+        }),
+    ));
+    Ok(ConfiguredMcpBinding {
+        binding,
+        fingerprint,
+    })
+}
+
+fn valid_credential_reference(reference: &str) -> bool {
+    !reference.is_empty()
+        && reference.len() <= 128
+        && reference
+            .bytes()
+            .enumerate()
+            .all(|(i, b)| b == b'_' || b.is_ascii_alphabetic() || i > 0 && b.is_ascii_digit())
+        && !reference.starts_with("AGENTHUB_")
+        && !matches!(
+            reference,
+            "HOME" | "PATH" | "USER" | "SHELL" | "TMPDIR" | "TMP" | "TEMP"
+        )
+}
+
+pub(crate) fn private_environment(config: &AppConfig) -> Vec<String> {
+    let mut names: Vec<_> = config
+        .nowledge_mem
+        .as_ref()
+        .and_then(|mem| mem.profiles.as_ref())
+        .into_iter()
+        .flat_map(|profiles| profiles.values())
+        .map(|profile| profile.credential_env.clone())
+        .filter(|name| valid_credential_reference(name))
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+pub(crate) fn is_private_environment(name: &str, configured: &[String]) -> bool {
+    let upper = name.to_ascii_uppercase();
+    configured.iter().any(|key| key == name)
+        || upper.starts_with("NMEM_")
+        || upper.starts_with("NOWLEDGE_MEM_")
+        || matches!(
+            upper.as_str(),
+            "MCP_HEADERS" | "MCP_HTTP_HEADERS" | "MCP_SERVER_HEADERS"
+        )
+}
+
+#[cfg(test)]
+mod tests;

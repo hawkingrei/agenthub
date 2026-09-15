@@ -36,6 +36,7 @@ impl AgentManager {
         let agent = self.get_agent(actor_id).await?;
         let mut blockers = Vec::new();
         let mut warnings = Vec::new();
+        let mut capabilities = LOCAL_CAPABILITIES.to_vec();
         if !TeamManager::uses_loop_execution(spec) {
             blockers.push("team_loop_mode_required");
         }
@@ -116,20 +117,36 @@ impl AgentManager {
         if session_policy == LoopSessionPolicy::Resume {
             warnings.push("resume_capability_is_negotiated_before_entry");
         }
+        if crate::mcp_proxy::configured::has_mem_binding(&self.loop_app_config, team_id) {
+            if crate::mcp_proxy::configured::resolve_mem(
+                &self.loop_app_config,
+                team_id,
+                actor_id,
+                |key| std::env::var(key).ok(),
+            )
+            .is_err()
+            {
+                blockers.push("mem_binding_unavailable");
+            } else if self.mcp_proxy().is_err()
+                || crate::mcp_proxy::configured::shim_executable().is_err()
+            {
+                blockers.push("mem_proxy_unavailable");
+            } else {
+                capabilities.push("nowledge_mem");
+            }
+        }
         if let Some(required) = spec.get("required_capabilities") {
             if let Some(required) = required.as_array() {
                 for capability in required {
                     match capability.as_str() {
-                        Some(capability) if LOCAL_CAPABILITIES.contains(&capability) => {}
+                        Some(capability) if capabilities.contains(&capability) => {}
                         Some("nowledge_mem") => {
-                            if self
-                                .loop_app_config
-                                .resolve_nowledge_mem_binding(team_id, actor_id)
-                                .is_err()
+                            blockers.push("mem_binding_unavailable");
+                            if self.mcp_proxy().is_err()
+                                || crate::mcp_proxy::configured::shim_executable().is_err()
                             {
-                                blockers.push("mem_binding_unavailable");
+                                blockers.push("mem_proxy_unavailable");
                             }
-                            blockers.push("mem_proxy_unavailable");
                         }
                         _ => blockers.push("required_capability_unavailable"),
                     }
@@ -160,7 +177,7 @@ impl AgentManager {
         Ok(LoopPreflight {
             ready: blockers.is_empty(),
             provider_id: provider.map(|provider| provider.id.into()),
-            capabilities: LOCAL_CAPABILITIES.to_vec(),
+            capabilities,
             blockers,
             warnings,
         })

@@ -9,6 +9,8 @@ use agenthub_mcp::{
 use tokio::sync::Mutex;
 use tonic::Status;
 
+pub(crate) mod configured;
+
 pub(crate) const MCP_RPC_MESSAGE_LIMIT: usize = agenthub_mcp::MAX_MESSAGE_BYTES + 65_536;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -103,6 +105,25 @@ impl McpProxyHub {
         }
         sessions.insert(id.clone(), (scope, session));
         Ok(id)
+    }
+
+    /// Called while the launch operation guard is held, after the immutable snapshot is stored.
+    pub(crate) async fn mount(
+        &self,
+        executor: &LoopReservation,
+        binding: Arc<McpProxyBinding>,
+    ) -> anyhow::Result<()> {
+        let key = (
+            Scope::from_executor(executor)?,
+            binding.server_id().to_owned(),
+        );
+        let mut mounts = self.mounts.lock().await;
+        anyhow::ensure!(
+            mounts.len() < 1024 && !mounts.contains_key(&key),
+            "MCP binding cannot be mounted"
+        );
+        mounts.insert(key, binding);
+        Ok(())
     }
 
     pub(crate) async fn session(

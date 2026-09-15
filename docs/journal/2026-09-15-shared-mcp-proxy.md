@@ -4,9 +4,9 @@
 
 Slice 9 now has the persistent operation journal, shared JSONL/HTTP/SSE transport, trusted call
 preparation, actual HTTP/journal orchestration, daemon startup recovery, authenticated streaming
-RPCs, and a local stdio shim. The binding resolver, provider environment isolation, complete
-protocol controller, and runtime launch remain incomplete.
-Writable tools remain disabled until those paths and their integration tests are present.
+RPCs, and a local stdio shim. Existing Mem profile resolution, activation mounts, local ACP launch,
+and inherited-environment isolation are connected. Complete protocol-controller behavior and
+integration authorization remain pending; this checkpoint does not complete slice 9.
 
 ## Background
 
@@ -28,6 +28,8 @@ giving an expired executor authority to send more work.
   that holds the execution guard after the requesting caller disconnects.
 - Activation-scoped MCP session storage and signed streaming RPCs, per-message shim credential
   refresh, live binding revocation, bounded discovery/callback state, and activation cleanup.
+- Existing Mem configuration resolution, configuration fingerprinting, fresh/resumed ACP stdio
+  descriptors, and removal of upstream secrets from provider and descendant environments.
 
 ## Key Decisions
 
@@ -58,6 +60,13 @@ giving an expired executor authority to send more work.
 - Permit MCP protocol bootstrap during `starting` only after a launch snapshot and local session
   are bound. Keep journal sends and ordinary actor controls running-only, sharing the same live
   owner, generation, lease, membership, and mailbox validation for both phases.
+- Resolve profiles in the daemon and mount them under the activation operation guard after the
+  launch snapshot is durable. Keep keys and random credential-file paths out of configuration
+  fingerprints. Reuse declared-space binding and reject supplied non-string scope values.
+- Preserve the configured Mem tool-set header without treating it as authorization. Inspection
+  of the local upstream Mem checkout at `fff6c631d3900e9991a7390865bd512a03f060a6`
+  (`nmem-core/src/headers.rs`, `nmem-server/src/remote_gateway.rs`, and `mcp_gates.rs`) confirms
+  Bearer support and that tool-set/space routing does not establish namespace authorization.
 
 Stable contract: [MCP operation journal](../features/mcp-operation-journal.md).
 Transport contract: [MCP proxy transport](../features/mcp-proxy-transport.md).
@@ -145,11 +154,39 @@ database tests, 15 journal tests, 35 MCP tests, and 80 internal tests including 
 fixture. The real binary build, formatting, whitespace, and local documentation links pass.
 Root/database/MCP all-target Clippy also passes with warnings denied.
 
+Configured launch adds a fake ACP process that starts the real stdio shim during session creation,
+initializes and discovers a fake HTTP Mem server, and performs one scoped write after startup.
+The upstream observes a durable `sent` row before receiving the call, then the fixture observes
+`succeeded`. Both provider and shim process environments exclude the configured credential, an
+unused profile credential, and ambient Mem/header variables. The ACP request log excludes upstream
+URLs, secrets, headers, and the tool body. A separate ACP fixture checks fresh and resumed session
+descriptors and fingerprint stability across credential-file rotation.
+
+This follow-up passes 12 root MCP tests (one child fixture is invoked by its parent rather than the
+ordinary harness), 3 launch tests, 6 executor tests, 14 offline configuration tests, 7 ACP loop tests,
+2 static MCP loader tests, 8 ACP-core tests, and 2 existing Mem configuration tests. These selections
+overlap. Root/ACP/ACP-core/MCP all-target Clippy passes with warnings denied. The binary build,
+formatting, whitespace, and changed-document local links pass. An initial test-only Option/Result
+mismatch was fixed; a configuration-test filter that selected zero tests was replaced with the
+compiled harness's `loop_configuration` selection before recording the 14-test result.
+
+```bash
+cargo test -p agenthub --lib mcp --locked --offline
+cargo test -p agenthub --lib agent::manager::loop_launch::tests --locked --offline
+cargo test -p agenthub --lib agent::manager::executor::tests --locked --offline
+cargo test -p agenthub --lib loop_configuration --locked --offline
+cargo test -p agenthub-acp --locked --offline loop_
+cargo test -p agenthub-acp --locked --offline load_mcp_servers
+cargo test -p agenthub-acp-core --locked --offline
+cargo test -p agenthub-config --locked --offline nowledge_mem
+cargo clippy -p agenthub -p agenthub-acp -p agenthub-acp-core -p agenthub-mcp --all-targets --locked --offline -- -D warnings
+```
+
 ## Follow-Ups
 
-- Complete slice 9's configured binding resolver, linked continuations, remaining protocol
-  controller paths, aggregate queue byte budget, provider environment isolation, and ACP launch
-  wiring. The production hub deliberately has no configured mounts yet.
+- Complete slice 9's linked continuations, remaining protocol controller paths, aggregate queue
+  byte budget, and integration authorization. Do not infer namespace isolation from a Mem tool set
+  or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

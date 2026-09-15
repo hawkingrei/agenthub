@@ -374,6 +374,7 @@ version = "0.0.10"
 dependencies = [
  "agent-client-protocol",
  "agenthub-acp",
+ "agenthub-acp-core",
  "agenthub-agent-domain",
  "agenthub-agent-event-codec",
  "agenthub-auth-domain",
