@@ -85,6 +85,13 @@ impl McpAccessPolicy {
             return Ok(());
         }
         let params = &message["params"];
+        if params
+            .pointer("/_meta/io.modelcontextprotocol~1logLevel")
+            .is_some()
+            && !self.logging
+        {
+            return Err(McpPolicyError::Scope);
+        }
         let allowed = match message["method"].as_str() {
             Some(
                 "initialize"
@@ -169,6 +176,7 @@ impl McpAccessPolicy {
                     .is_some_and(|method| self.callbacks.allows(method))
         } else {
             match message["method"].as_str() {
+                Some("notifications/message") => self.logging,
                 Some("notifications/resources/updated") => {
                     allows_field(&self.resources, &message["params"], "uri")
                 }
@@ -246,6 +254,13 @@ impl McpAccessPolicy {
                         if !permitted {
                             capabilities.remove(name);
                         }
+                    }
+                    if !self.tools.any()
+                        && let Some(extensions) = capabilities
+                            .get_mut("extensions")
+                            .and_then(Value::as_object_mut)
+                    {
+                        extensions.remove("io.modelcontextprotocol/tasks");
                     }
                 }
             }

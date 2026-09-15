@@ -18,6 +18,46 @@ fn modern(id: i64, method: &str, mut params: Value) -> Value {
 }
 
 #[tokio::test]
+async fn client_capabilities_reject_undeclared_callbacks_atomically_and_reset_on_failed_handshake()
+{
+    let session = session();
+    let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-11-25","capabilities":{"roots":{}},"clientInfo":{"name":"fixture","version":"1"}}});
+    session.protocol.lock().await.begin(&initialize).unwrap();
+    assert!(
+        session
+            .observe(&json!([
+                {"jsonrpc":"2.0","id":"roots","method":"roots/list"},
+                {"jsonrpc":"2.0","id":"sample","method":"sampling/createMessage","params":{}}
+            ]))
+            .await
+            .is_err()
+    );
+    assert!(session.callbacks.lock().await.is_empty());
+    session
+        .observe(&json!({"jsonrpc":"2.0","id":"permitted","method":"roots/list"}))
+        .await
+        .unwrap();
+    session.protocol.lock().await.initialization_failed();
+    assert!(
+        session
+            .observe(&json!({"jsonrpc":"2.0","id":"after-failure","method":"roots/list"}))
+            .await
+            .is_err()
+    );
+    let mut second = initialize;
+    second["params"]["capabilities"] = json!({});
+    session.protocol.lock().await.begin(&second).unwrap();
+    assert!(
+        session
+            .observe(&json!({"jsonrpc":"2.0","id":"second-initialize","method":"roots/list"}))
+            .await
+            .is_err()
+    );
+    assert_eq!(session.callbacks.lock().await.len(), 1);
+}
+
+#[tokio::test]
 async fn access_rejection_precedes_request_ids_and_discovery_never_expands_tool_grants() {
     let session = restricted();
     assert!(matches!(

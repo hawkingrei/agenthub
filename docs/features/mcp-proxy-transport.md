@@ -95,7 +95,9 @@ previously admitted sends still finish their factual journal drain.
 
 Discovery hides unapproved tools, resources, templates, and prompts while preserving the schema,
 arguments, extensions, ordering, and pagination of retained entries. Initialization and modern server
-discovery omit capabilities for disabled surfaces. A returned resource read containing an unapproved
+discovery omit capabilities for disabled surfaces, including the modern tasks extension when tools
+are disabled. Modern logging opt-in and server log notifications also require the logging grant.
+A returned resource read containing an unapproved
 URI is rejected before provider delivery, including when a deferred result carries resource content.
 Errors retain upstream JSON-RPC data. Valid deferred read envelopes remain unchanged and acquire
 the session-local continuation receipt described below. Discovery cannot return a deferred result.
@@ -103,6 +105,27 @@ the session-local continuation receipt described below. Discovery cannot return 
 Named grants constrain protocol access; they do not prove upstream credential or namespace isolation.
 Integration configuration must bind arguments and establish that the server enforces the intended
 namespace, especially for opaque object IDs and prompts whose arguments select data.
+
+### Client capability negotiation
+
+Client support is independent of integration permission. Legacy sessions retain a fixed-size
+projection of the initialization declaration and clear it after a failed handshake. Modern exchanges
+snapshot their own `io.modelcontextprotocol/clientCapabilities` metadata; concurrent requests,
+task queries, and subscriptions never borrow another request's declaration. Raw capability metadata
+continues upstream unchanged, without retaining arbitrary capability objects in proxy state.
+
+Direct callbacks and deferred input requests require the same declared roots, sampling, or elicitation
+capability. This includes tool/read results, task creation/query results, and task notifications.
+Sampling `tools` and `toolChoice` require `sampling.tools`. Elicitation mode defaults to form;
+an empty elicitation declaration supports form only, and explicit form/URL modes require their
+corresponding declaration. Unknown extension methods remain subject to integration grants without
+inventing capability semantics. Opaque content and error data are not parsed as deferred inputs.
+
+Modern `notifications/message` requires the originating request's `io.modelcontextprotocol/logLevel`
+and cannot fall below that severity. Missing opt-in or an invalid emitted level rejects delivery;
+invalid requested levels fail admission. Legacy logging retains its server-controlled level behavior.
+Capability rejection occurs before registering any callback IDs in a frame. Already admitted writes
+and task observations still complete their factual journal work before rejected delivery closes.
 
 ### Version and lifecycle
 
@@ -116,6 +139,11 @@ The legacy lifecycle adopts the upstream's supported version and unchanged capab
 cannot start before initialization and the initialized notification. An upstream initialization
 error remains an error; the session does not manufacture a successful handshake. Unknown versions
 fail explicitly. Modern requests do not receive a synthetic legacy initialization response.
+
+Modern requests cannot invoke retired standard methods: legacy initialization notifications, ping,
+client progress/root-change notifications, logging level controls, resource subscribe/unsubscribe,
+or `tasks/result`. Legacy requests cannot invoke modern discovery, subscriptions, or task updates.
+Equivalent legacy methods remain available under their negotiated version and integration grants.
 
 Failed handshakes retain lifecycle admission while admitted callback replies settle. Pending
 callback IDs, discovery state, and provisional HTTP sessions are then retired before another
@@ -428,6 +456,7 @@ Read MRTR uses the bounded session controller; all paths retain integration acce
 | SSE | Every split boundary, line endings/BOM, callbacks/progress/final results, partial event EOF |
 | JSON | Dynamic tool schema/extension/cursor preservation; all three upstream error envelope forms |
 | Versions | Legacy negotiated version/capabilities, initialized gate, modern metadata, versioned batching |
+| Client support | Per-request isolation across concurrent HTTP requests; failed-handshake reset; roots, sampling tools, elicitation modes, logging opt-in/severity, and retired method gates; signed RPC denies unsupported inputs while retaining durable write/task facts |
 | Headers | Nested mapping, absent/null handling, integer limits, unsafe/conflicting schema rejection |
 | Recovery boundary | Accepted write followed by truncated response produces one POST and a transport error |
 | Credentials | Trusted header reaches only the configured request; redirects are not followed; errors omit secrets |
@@ -476,9 +505,9 @@ tests separately cover committed prepared/sent/completed states.
 
 ## Open Risks
 
-- Broader negotiated capability validation remains pending outside the read MRTR controller.
-  Observed deferred tool receipts block replay of the original write until a linked continuation
-  or lookup establishes the outcome.
+- Unknown extension capabilities remain opaque and require integration-specific rules before
+  enabling new surfaces. Observed deferred tool receipts block replay of the original write until
+  a linked continuation or lookup establishes the outcome.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
   aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
   not evidence that retrying an unresolved write is safe.

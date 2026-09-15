@@ -215,3 +215,44 @@ fn deferred_inputs_require_the_same_callback_grants_as_direct_requests() {
         assert!(policy.authorize_server_message(&message).is_ok());
     }
 }
+
+#[test]
+fn task_capability_projection_follows_tool_grants_and_preserves_other_extensions() {
+    let original = json!({"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","capabilities":{
+        "tools":{},"tasks":{},"extensions":{"io.modelcontextprotocol/tasks":{},"vendor/retained":{"value":7}}
+    }}});
+    let mut denied = original.clone();
+    McpAccessPolicy::default()
+        .project_response("server/discover", &mut denied)
+        .unwrap();
+    assert_eq!(
+        denied["result"]["capabilities"],
+        json!({"extensions":{"vendor/retained":{"value":7}}})
+    );
+    let mut permitted = original.clone();
+    McpAccessPolicy::tools_only()
+        .project_response("server/discover", &mut permitted)
+        .unwrap();
+    assert_eq!(permitted, original);
+}
+
+#[test]
+fn logging_grants_cover_modern_metadata_and_server_messages() {
+    let request = json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/logLevel":"debug"}}});
+    let response = json!({"jsonrpc":"2.0","method":"notifications/message","params":{"level":"debug","data":"private-log"}});
+    let policy = McpAccessPolicy::tools_only();
+    assert!(matches!(
+        policy.authorize_request(&request),
+        Err(McpPolicyError::Scope)
+    ));
+    assert_eq!(
+        policy.authorize_server_message(&response),
+        Err(McpTransportError::InvalidResponse)
+    );
+    let policy = McpAccessPolicy {
+        logging: true,
+        ..policy
+    };
+    assert!(policy.authorize_request(&request).is_ok());
+    assert!(policy.authorize_server_message(&response).is_ok());
+}

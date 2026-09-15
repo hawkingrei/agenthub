@@ -84,7 +84,7 @@ async fn shared_workspaces_bound_sessions_without_starving_initialize_callbacks(
     let first = session_with_budget(budget.clone());
     let second = session_with_budget(budget);
     let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-        "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"fixture","version":"1"}}});
+        "protocolVersion":"2025-11-25","capabilities":{"roots":{}},"clientInfo":{"name":"fixture","version":"1"}}});
     let pending = first
         .prepare(&executor(), initialize.clone())
         .await

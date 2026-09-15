@@ -17,6 +17,7 @@ pub struct PreparedProxySubscription {
     journal: JournaledMcpClient,
     request: PreparedHttpRequest,
     state: SubscriptionState,
+    client_capabilities: ClientCapabilities,
     tasks: HashMap<[u8; 32], McpTaskNotificationPermit>,
     cancelled: watch::Receiver<bool>,
     _registration: Registration,
@@ -61,6 +62,7 @@ impl McpProxySession {
         if context.version != ProtocolVersion::July2026 {
             return Err(McpPolicyError::Call);
         }
+        crate::capabilities::validate_client_method(&message, context.version)?;
         let slot = self
             .subscription_slots
             .clone()
@@ -115,6 +117,7 @@ impl McpProxySession {
             tasks,
             cancelled,
             state: SubscriptionState::new(message["id"].clone(), filter),
+            client_capabilities: ClientCapabilities::from_request(&message),
             _registration: Registration {
                 session: self.clone(),
                 request_id,
@@ -192,7 +195,9 @@ impl PreparedProxySubscription {
                 if !session.is_active() {
                     return Ok(());
                 }
-                session.observe(&message).await?;
+                session
+                    .observe_with_capabilities(&message, self.client_capabilities)
+                    .await?;
                 let complete = matches!(event, Event::Complete);
                 sink.emit(Some(message), false, None);
                 if sink.lost {

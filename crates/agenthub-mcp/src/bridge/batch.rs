@@ -84,6 +84,7 @@ impl McpProxySession {
         let mut context = candidate.begin(&message)?;
         for member in members {
             read::validate_request(member, context.version)?;
+            crate::capabilities::validate_client_method(member, context.version)?;
         }
         if callbacks_only && let Some(current) = self.upstream_context.lock().await.as_ref() {
             context = current.clone();
@@ -168,6 +169,7 @@ impl McpProxySession {
         discovery.generation = generation;
         request_ids.extend(requests);
         callbacks.retain(|key| !callback_keys.contains(key));
+        let client_capabilities = candidate.client_capabilities();
         *protocol = candidate;
         drop((protocol, callbacks, request_ids, discovery));
         Ok(PreparedProxyExchange {
@@ -181,6 +183,7 @@ impl McpProxySession {
                 initialized,
             })),
             handshake: initialized,
+            client_capabilities,
             _slots: slots,
             _lifecycle: if initialized { lifecycle } else { None },
             _workspace: workspace,
@@ -196,6 +199,7 @@ impl PreparedProxyBatch {
         journal: JournaledMcpClient,
         sink: &mut Sink,
         context: &HttpContext,
+        client_capabilities: ClientCapabilities,
     ) -> Result<Option<Value>, String> {
         let Self {
             call,
@@ -213,7 +217,7 @@ impl PreparedProxyBatch {
                 result = &mut operation => break result,
                 event = receiver.recv(), if events_open => {
                     if let Some(event) = event {
-                        forward(event, &session, (&discoveries, &methods), context, initialized, sink).await;
+                        forward(event, &session, (&discoveries, &methods, client_capabilities), context, initialized, sink).await;
                     } else { events_open = false; }
                 }
             }
@@ -224,7 +228,7 @@ impl PreparedProxyBatch {
             forward(
                 event,
                 &session,
-                (&discoveries, &methods),
+                (&discoveries, &methods, client_capabilities),
                 context,
                 initialized,
                 sink,
@@ -257,12 +261,12 @@ impl PreparedProxyBatch {
 async fn forward(
     event: Budgeted<HttpEvent>,
     session: &McpProxySession,
-    projection: (&Discoveries, &Methods),
+    projection: (&Discoveries, &Methods, ClientCapabilities),
     context: &HttpContext,
     initialized: bool,
     sink: &mut Sink,
 ) {
-    let (discoveries, methods) = projection;
+    let (discoveries, methods, client_capabilities) = projection;
     let (event, bytes) = event.into_parts();
     let Some(mut message) = event.message else {
         return;
@@ -306,7 +310,11 @@ async fn forward(
             sink.fail();
         }
     }
-    if session.observe(&message).await.is_err() {
+    if session
+        .observe_with_capabilities(&message, client_capabilities)
+        .await
+        .is_err()
+    {
         sink.fail();
     }
     sink.emit(Some(message), false, Some(bytes));

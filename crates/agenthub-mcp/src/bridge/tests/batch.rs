@@ -3,7 +3,7 @@ use super::*;
 pub(super) async fn awaiting_initialized(session: &McpProxySession) {
     let mut protocol = session.protocol.lock().await;
     protocol.begin(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-        "protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"fixture","version":"1"}}})).unwrap();
+        "protocolVersion":"2025-03-26","capabilities":{"roots":{}},"clientInfo":{"name":"fixture","version":"1"}}})).unwrap();
     protocol.accept_initialize_response(&json!({"jsonrpc":"2.0","id":1,"result":{
         "protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"fixture","version":"1"}}}), None).unwrap();
 }

@@ -38,6 +38,7 @@ mod access;
 mod batch;
 mod bootstrap;
 mod budget;
+mod capabilities;
 mod continuation;
 mod crash;
 mod discovery;
@@ -68,6 +69,7 @@ struct Upstream {
     legacy_tasks: AtomicBool,
     task_events: tokio::sync::broadcast::Sender<Value>,
     access_fixture: AtomicBool,
+    undeclared_callback: AtomicBool,
 }
 
 async fn handler(
@@ -222,7 +224,12 @@ async fn handler(
             if upstream.hold_writes.load(Ordering::Acquire) {
                 upstream.write_release.notified().await;
             }
-            let progress = json!({"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"progress-1","progress":1}});
+            let progress = if upstream.undeclared_callback.load(Ordering::Acquire) {
+                json!({"jsonrpc":"2.0","id":"unsupported-sampling","method":"sampling/createMessage",
+                    "params":{"messages":[{"role":"user","content":{"type":"text","text":"private-sampling-input"}}],"maxTokens":4}})
+            } else {
+                json!({"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"progress-1","progress":1}})
+            };
             let response = json!({"jsonrpc":"2.0","id":message["id"],"result":{"content":[{"type":"text","text":"private-tool-result"}],"extension":{"preserved":true}}});
             (
                 [("content-type", "text/event-stream")],
@@ -331,6 +338,7 @@ async fn setup_with_access(
         legacy_tasks: AtomicBool::new(false),
         task_events: tokio::sync::broadcast::channel(8).0,
         access_fixture: AtomicBool::new(false),
+        undeclared_callback: AtomicBool::new(false),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(

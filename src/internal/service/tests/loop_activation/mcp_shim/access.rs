@@ -65,7 +65,7 @@ fn request(id: i64, method: &str, mut params: Value) -> Value {
     json!({"jsonrpc":"2.0","id":id,"method":method,"params":params})
 }
 
-async fn exchange(
+pub(super) async fn exchange(
     h: &Harness,
     token: &str,
     session: &str,
@@ -84,7 +84,7 @@ async fn exchange(
         .into_inner()
 }
 
-async fn call(h: &Harness, token: &str, session: &str, message: Value) -> Value {
+pub(super) async fn call(h: &Harness, token: &str, session: &str, message: Value) -> Value {
     let mut stream = exchange(h, token, session, message).await;
     let frame = stream.next().await.unwrap().unwrap();
     assert!(frame.finished);

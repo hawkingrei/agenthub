@@ -673,9 +673,43 @@ denied, the actual binary rebuild, formatting, whitespace, and 82 local document
 A full temporary filesystem interrupted one root run; after archiving inactive test artifacts
 with their original paths retained as symlinks, the unchanged test selection passes.
 
+### Client capability follow-up (2026-09-16)
+
+The shared observer now checks the client's declared support independently of the integration's
+access policy. Legacy initialization keeps a fixed-size projection and clears it after handshake
+failure. Modern exchanges retain only their own request's declaration, including later task queries
+and subscriptions. Roots, sampling tools, and elicitation form/URL support use the same checks for
+direct callbacks, MRTR inputs, task responses, and task notifications. Opaque content remains data.
+
+Modern logging requires the request's opt-in and minimum severity, as well as the integration's
+logging grant. Retired standard methods fail before request-state mutation; corresponding legacy
+operations keep their existing admission. Discovery hides the modern tasks extension when tools
+are disabled. None of these changes rewrite upstream capability metadata.
+
+Unsupported callbacks cannot register response authority or prevent a previously admitted write
+from reaching its durable result. RPC fixtures also prove that task input observations persist even
+when the querying or subscribing request lacks elicitation support. Concurrent HTTP requests test
+that an unrelated declaration cannot remove or grant another request's support.
+
+Validation commands:
+
+```bash
+cargo test -p agenthub-mcp --locked --offline
+cargo clippy -p agenthub-mcp -p agenthub --all-targets --locked --offline -- -D warnings
+cargo build -p agenthub --bin agenthub --locked --offline
+cargo test -p agenthub --lib mcp_ --locked --offline
+cargo fmt --all --check
+```
+
+All 110 MCP crate tests and 31 root MCP tests pass; the two ignored process helpers are executed
+by their parent tests. Root/MCP all-target Clippy with warnings denied and the actual binary rebuild
+pass. The first final Clippy run identified a nonminimal logging predicate; the equivalent simplified
+predicate passes the full repeated validation. No database, dependency, protobuf, or Bazel changes
+were required.
+
 ## Follow-Ups
 
-- Complete slice 9's remaining capability paths, upstream namespace
+- Complete slice 9's upstream namespace
   authorization, and authority-alias reconciliation. Restore scoped Mem non-tool access after its
   authority is established; tool-only access does not complete the original integration goal.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through

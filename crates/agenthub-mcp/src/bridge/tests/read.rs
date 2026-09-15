@@ -83,6 +83,10 @@ impl Fixture {
 
     async fn run(&self, message: Value, reply: Value) -> Value {
         let prepared = self.session.prepare(&executor(), message).await.unwrap();
+        self.run_prepared(prepared, reply).await
+    }
+
+    async fn run_prepared(&self, prepared: PreparedProxyExchange, reply: Value) -> Value {
         self.upstream.replies.lock().unwrap().push_back(reply);
         let journal = JournaledMcpClient::new(
             agenthub_db::mcp_operations::McpOperationStore::new(
@@ -161,6 +165,86 @@ fn retry(original: &Value, id: i64, state: Option<&str>, ids: &[&str]) -> Value 
 
 fn complete() -> Value {
     json!({"result":{"resultType":"complete","contents":[{"uri":"mem://allowed","text":"native result","vendor":true}],"messages":[],"vendor":{"preserved":true}}})
+}
+
+#[tokio::test]
+async fn client_capabilities_stay_with_their_own_concurrent_modern_http_requests() {
+    let fixture = Fixture::new().await;
+    let permitted = request(1, "prompts/get");
+    let mut denied = request(2, "prompts/get");
+    denied["params"]["_meta"]["io.modelcontextprotocol/clientCapabilities"] = json!({});
+    let first = fixture
+        .session
+        .prepare(&executor(), permitted.clone())
+        .await
+        .unwrap();
+    let second = fixture.session.prepare(&executor(), denied).await.unwrap();
+    let response = required(Some("first-state"), &["a"]);
+    assert_eq!(
+        fixture.run_prepared(first, response.clone()).await["result"],
+        response["result"]
+    );
+    assert!(
+        fixture
+            .run_prepared(second, required(Some("second-state"), &["b"]))
+            .await
+            .get("error")
+            .is_some()
+    );
+    fixture
+        .run(
+            retry(&permitted, 3, Some("first-state"), &["a"]),
+            complete(),
+        )
+        .await;
+    assert_eq!(fixture.session.budget.retained.used(), 0);
+}
+
+#[tokio::test]
+async fn client_method_negotiation_rejects_retired_rpcs_without_changing_legacy_support() {
+    let legacy = session();
+    batch::awaiting_initialized(&legacy).await;
+    drop(
+        legacy
+            .prepare(
+                &executor(),
+                json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+            )
+            .await
+            .unwrap(),
+    );
+    let modern = Fixture::new().await;
+    for (id, method) in [
+        "ping",
+        "resources/subscribe",
+        "resources/unsubscribe",
+        "logging/setLevel",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let message = request(id as i64 + 10, method);
+        assert!(
+            modern
+                .session
+                .prepare(&executor(), message.clone())
+                .await
+                .is_err()
+        );
+        let mut old = message;
+        old["params"].as_object_mut().unwrap().remove("_meta");
+        assert!(legacy.prepare(&executor(), old).await.is_ok());
+    }
+    let mut bad = request(20, "prompts/get");
+    bad["params"]["_meta"]["io.modelcontextprotocol/logLevel"] = json!("unknown");
+    assert!(matches!(
+        modern.session.prepare(&executor(), bad).await,
+        Err(McpPolicyError::Transport(
+            McpTransportError::InvalidMetadata
+        ))
+    ));
+    assert!(modern.upstream.requests.lock().unwrap().is_empty());
+    modern.run(request(21, "prompts/get"), complete()).await;
 }
 
 #[tokio::test]

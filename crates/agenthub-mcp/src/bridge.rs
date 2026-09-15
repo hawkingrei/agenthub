@@ -27,6 +27,7 @@ use crate::{
     MAX_MESSAGE_BYTES, McpTransportError,
     access::McpAccessPolicy,
     budget::{ByteBudget, ByteLease, McpProxyBudget, json_bytes},
+    capabilities::ClientCapabilities,
     http::{HttpContext, PreparedHttpRequest},
     journal::JournaledMcpClient,
     policy::{
@@ -143,6 +144,7 @@ pub struct PreparedProxyExchange {
     context: HttpContext,
     kind: Exchange,
     handshake: bool,
+    client_capabilities: ClientCapabilities,
     _slots: Vec<OwnedSemaphorePermit>,
     _lifecycle: Option<OwnedMutexGuard<()>>,
     _workspace: ByteLease,
@@ -292,6 +294,12 @@ impl McpProxySession {
         let mut candidate = protocol.clone();
         let mut context = candidate.begin(&message)?;
         read::validate_request(&message, context.version)?;
+        crate::capabilities::validate_client_method(&message, context.version)?;
+        let client_capabilities = if context.version.uses_initialization() {
+            candidate.client_capabilities()
+        } else {
+            ClientCapabilities::from_request(&message)
+        };
         *protocol = candidate;
         drop(protocol);
         if method == "initialize" {
@@ -453,6 +461,7 @@ impl McpProxySession {
             context,
             kind,
             handshake,
+            client_capabilities,
             _slots: vec![slot],
             _lifecycle: lifecycle,
             _workspace: workspace,
@@ -461,12 +470,22 @@ impl McpProxySession {
     }
 
     async fn observe(&self, message: &Value) -> Result<(), McpTransportError> {
+        let capabilities = self.protocol.lock().await.client_capabilities();
+        self.observe_with_capabilities(message, capabilities).await
+    }
+
+    async fn observe_with_capabilities(
+        &self,
+        message: &Value,
+        capabilities: ClientCapabilities,
+    ) -> Result<(), McpTransportError> {
         let members = message
             .as_array()
             .map(Vec::as_slice)
             .unwrap_or(std::slice::from_ref(message));
         for member in members {
             self.binding.access.authorize_server_message(member)?;
+            capabilities.authorize_message(member)?;
         }
         let keys: Vec<_> = members
             .iter()
@@ -580,6 +599,7 @@ impl PreparedProxyExchange {
         let method = self.message["method"].as_str().unwrap_or("").to_owned();
         let handshake = self.handshake;
         let initialized = handshake && method != "initialize";
+        let client_capabilities = self.client_capabilities;
         let mut sink = Sink {
             output,
             session: session.clone(),
@@ -594,7 +614,13 @@ impl PreparedProxyExchange {
             }
             Exchange::Batch(batch) => {
                 batch
-                    .run(session.clone(), journal, &mut sink, &self.context)
+                    .run(
+                        session.clone(),
+                        journal,
+                        &mut sink,
+                        &self.context,
+                        client_capabilities,
+                    )
                     .await
             }
             kind @ (Exchange::Tool(_)
@@ -625,12 +651,12 @@ impl PreparedProxyExchange {
                                 while let Ok(event) = receiver.try_recv() {
                                     let (event, bytes) = event.into_parts();
                                     if let Some(message) = event.message {
-                                        if session.observe(&message).await.is_err() { sink.fail(); }
+                                        if session.observe_with_capabilities(&message, client_capabilities).await.is_err() { sink.fail(); }
                                         sink.emit(Some(message), false, Some(bytes));
                                     }
                                 }
                                 if result.event_delivery_lost { sink.fail(); }
-                                if session.observe(&result.response).await.is_err() { sink.fail(); }
+                                if session.observe_with_capabilities(&result.response, client_capabilities).await.is_err() { sink.fail(); }
                                 if self.context.session_id.is_some() && result.http_status == 404 {
                                     session.close();
                                     sink.emit(Some(result.response), false, None);
@@ -649,7 +675,7 @@ impl PreparedProxyExchange {
                             if let Some(event) = event {
                                 let (event, bytes) = event.into_parts();
                                 if let Some(message) = event.message {
-                                    if session.observe(&message).await.is_err() { sink.fail(); }
+                                    if session.observe_with_capabilities(&message, client_capabilities).await.is_err() { sink.fail(); }
                                     sink.emit(Some(message), false, Some(bytes));
                                 }
                             } else {events_open = false;}
@@ -663,7 +689,10 @@ impl PreparedProxyExchange {
                 &self.context,
                 &self.message,
                 handshake,
-                ControlResponse::default(),
+                ControlResponse {
+                    client_capabilities,
+                    ..ControlResponse::default()
+                },
                 &mut sink,
             )
             .await
@@ -675,6 +704,7 @@ impl PreparedProxyExchange {
                 &self.message,
                 handshake,
                 ControlResponse {
+                    client_capabilities,
                     read: Some(round),
                     ..ControlResponse::default()
                 },
@@ -693,6 +723,7 @@ impl PreparedProxyExchange {
                 &self.message,
                 handshake,
                 ControlResponse {
+                    client_capabilities,
                     discovery: Some((generation, cursor)),
                     ..ControlResponse::default()
                 },
@@ -798,6 +829,7 @@ impl Sink {
 
 #[derive(Default)]
 struct ControlResponse {
+    client_capabilities: ClientCapabilities,
     discovery: Option<(u64, Option<String>)>,
     read: Option<read::ReadRound>,
 }
@@ -894,7 +926,9 @@ async fn run_control(
                 return Err(McpTransportError::InvalidResponse);
             }
         }
-        session.observe(&message).await?;
+        session
+            .observe_with_capabilities(&message, projection.client_capabilities)
+            .await?;
         if context.session_id.is_some() && exchange.status_code() == 404 {
             session.close();
             sink.emit(Some(message), false, None);
@@ -904,7 +938,9 @@ async fn run_control(
         if terminal {
             for pending in task_events.settle().await {
                 let (pending, _) = pending.into_parts();
-                session.observe(&pending).await?;
+                session
+                    .observe_with_capabilities(&pending, projection.client_capabilities)
+                    .await?;
                 sink.emit(Some(pending), false, None);
             }
             if task_events.lost {
@@ -926,7 +962,9 @@ async fn run_control(
     } else {
         for pending in task_events.settle().await {
             let (pending, _) = pending.into_parts();
-            session.observe(&pending).await?;
+            session
+                .observe_with_capabilities(&pending, projection.client_capabilities)
+                .await?;
             sink.emit(Some(pending), false, None);
         }
         if task_events.lost {

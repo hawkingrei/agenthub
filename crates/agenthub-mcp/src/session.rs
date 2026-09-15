@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::{
     McpTransportError,
     budget::{Budgeted, ByteBudget, json_bytes},
+    capabilities::ClientCapabilities,
     http::{HttpContext, HttpSessionId},
     protocol::{
         MessageKind, ProtocolVersion, correlation_id, message_kind, validate_versioned_message,
@@ -16,6 +17,7 @@ use crate::{
 pub struct McpProtocolSession {
     state: State,
     retained: ByteBudget,
+    client_capabilities: ClientCapabilities,
 }
 
 impl Default for McpProtocolSession {
@@ -47,6 +49,7 @@ impl McpProtocolSession {
         Self {
             state: State::New,
             retained,
+            client_capabilities: ClientCapabilities::default(),
         }
     }
     /// Resolve transport metadata without inventing capabilities or modifying the message.
@@ -89,6 +92,8 @@ impl McpProtocolSession {
             {
                 return Err(McpTransportError::InvalidMessage);
             }
+            self.client_capabilities =
+                ClientCapabilities::from_value(&message["params"]["capabilities"]);
             self.state = State::Initializing {
                 request_id: correlation_id(&message["id"]),
                 version,
@@ -169,7 +174,7 @@ impl McpProtocolSession {
             return Err(McpTransportError::InvalidResponse);
         }
         if response.get("error").is_some() {
-            self.state = State::New;
+            self.initialization_failed();
             return Ok(false);
         }
         let result = response
@@ -208,6 +213,11 @@ impl McpProtocolSession {
     /// Reset a failed handshake while the controller retains lifecycle admission.
     pub fn initialization_failed(&mut self) {
         self.state = State::New;
+        self.client_capabilities = ClientCapabilities::default();
+    }
+
+    pub(crate) fn client_capabilities(&self) -> ClientCapabilities {
+        self.client_capabilities
     }
 
     pub(crate) fn awaiting_initialized(&self) -> bool {

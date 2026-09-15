@@ -3,6 +3,7 @@
 pub mod access;
 pub mod bridge;
 pub mod budget;
+mod capabilities;
 mod continuation;
 mod digest;
 pub mod http;

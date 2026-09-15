@@ -350,8 +350,9 @@ proxy; complete integration authorization remains a separate acceptance gate.
 
 ## Open Risks
 
-- The proxy enforces trusted surface grants; integration adapters still need complete upstream
-  namespace authorization, capability handling, and endpoint-alias reconciliation. Non-tool continuations remain incomplete.
+- The proxy enforces trusted surface grants and client capability declarations; integration adapters
+  still need complete upstream namespace authorization and endpoint-alias reconciliation. Resource
+  and prompt continuations use bounded session receipts in the [shared transport](mcp-proxy-transport.md).
   Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.
 - Retained ambiguous non-idempotent writes need explicit upstream reconciliation; changing

@@ -192,20 +192,5 @@ pub(super) fn validate_control_response(
         return Err(McpTransportError::InvalidResponse);
     }
     continuation::receipt(response)?;
-    if let Some(inputs) = result["inputRequests"].as_object() {
-        let capabilities =
-            &request["params"]["_meta"]["io.modelcontextprotocol/clientCapabilities"];
-        for input in inputs.values() {
-            let family = match input["method"].as_str() {
-                Some("roots/list") => "roots",
-                Some("sampling/createMessage") => "sampling",
-                Some("elicitation/create") => "elicitation",
-                _ => return Err(McpTransportError::InvalidResponse),
-            };
-            if !capabilities[family].is_object() {
-                return Err(McpTransportError::InvalidResponse);
-            }
-        }
-    }
     Ok(())
 }
