@@ -814,11 +814,19 @@ The proxy branch incorporates `codex/loop-05-provider` at
 `d40119d822ced68639ee00cc8efd07c49a6e9108`. Conflict resolution retains both work-event and MCP RPCs,
 their authorization actions, and the actual provider fixture's handoff and MCP modes. The tracked
 protocol is regenerated from the merged `.proto` with the existing build script, with byte equality
-checked after formatting. Root all-target Clippy passes with warnings denied. Full root, database,
-and domain validation continues against this integrated tree before draft promotion.
+checked after formatting. Root all-target Clippy passes with warnings denied. The rebuilt actual
+binary supports both RPC families; all 896 root tests, 142 database tests, and seven domain tests
+pass on the integrated tree. Both otherwise ignored process helpers run through parent tests.
+
+The first full root run had five unrelated loopback object-download failures because the host's
+HTTP proxy had no loopback exclusion. The unchanged suite passes with command-local `NO_PROXY` and
+`no_proxy` set to `127.0.0.1,localhost,::1`; production download configuration is unchanged. The
+commands are `cargo test -p agenthub --lib`, `cargo test -p agenthub-db --lib`, and
+`cargo test -p agenthub-agent-domain --lib`, all with `--locked --offline`. Draft PR
+[#1154](https://github.com/hawkingrei/agenthub/pull/1154) retains CI as the remaining promotion gate.
 
 ## Follow-Ups
 
-- Complete integrated local and PR CI validation before promoting slice 9 from draft.
+- Complete PR CI validation before promoting slice 9 from draft.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).
