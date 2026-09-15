@@ -94,10 +94,10 @@ pub(super) async fn reserve_in_transaction(
         .execute(&mut **tx)
         .await?;
     sqlx::query(
-        "INSERT INTO loop_execution_reservations(actor_id, activation_id, generation, owner_id, lease_expires_at, lease_seconds, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO loop_execution_reservations(actor_id, activation_id, generation, owner_id, lease_expires_at, lease_seconds, renewal_seconds, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     ).bind(&policy.actor_id).bind(activation_id).bind(generation).bind(owner_id).bind(expires)
-        .bind(policy.limits.lease_seconds).bind(now).execute(&mut **tx).await?;
+        .bind(policy.limits.lease_seconds).bind(policy.limits.renewal_seconds).bind(now).execute(&mut **tx).await?;
     Ok(LoopReservation {
         actor_id: policy.actor_id.clone(),
         team_id: policy.team_id.clone(),
@@ -106,6 +106,7 @@ pub(super) async fn reserve_in_transaction(
         owner_id: owner_id.into(),
         lease_expires_at: expires,
         lease_seconds: policy.limits.lease_seconds,
+        renewal_seconds: policy.limits.renewal_seconds,
         session_id: None,
         created_at: now,
     })
@@ -116,11 +117,28 @@ pub(super) async fn require_live_reservation(
     expected: &LoopReservation,
     now: i64,
 ) -> anyhow::Result<LoopReservation> {
+    let reservation = require_matching_reservation(tx, expected).await?;
+    anyhow::ensure!(
+        reservation.lease_expires_at > now,
+        LoopStoreError::StaleLease
+    );
+    if let Some(id) = &reservation.activation_id {
+        let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_activations WHERE id = ? AND state IN ('starting', 'running', 'finalizing'))")
+            .bind(id).fetch_one(&mut **tx).await?;
+        anyhow::ensure!(active, LoopStoreError::InvalidState);
+    }
+    Ok(reservation)
+}
+
+pub(super) async fn require_matching_reservation(
+    tx: &mut Transaction<'_, Sqlite>,
+    expected: &LoopReservation,
+) -> anyhow::Result<LoopReservation> {
     let row = sqlx::query(
         "SELECT r.*, p.team_id FROM loop_execution_reservations r JOIN loop_policies p ON p.actor_id = r.actor_id \
-         WHERE r.actor_id = ? AND p.team_id = ? AND r.activation_id IS ? AND r.generation = ? AND r.owner_id = ? AND r.lease_expires_at > ?",
+         WHERE r.actor_id = ? AND p.team_id = ? AND r.activation_id IS ? AND r.generation = ? AND r.owner_id = ?",
     ).bind(&expected.actor_id).bind(&expected.team_id).bind(&expected.activation_id)
-        .bind(expected.generation).bind(&expected.owner_id).bind(now)
+        .bind(expected.generation).bind(&expected.owner_id)
         .fetch_optional(&mut **tx).await?;
     row.as_ref()
         .map(parse_reservation)
@@ -137,6 +155,7 @@ fn parse_reservation(row: &SqliteRow) -> anyhow::Result<LoopReservation> {
         owner_id: row.try_get("owner_id")?,
         lease_expires_at: row.try_get("lease_expires_at")?,
         lease_seconds: row.try_get("lease_seconds")?,
+        renewal_seconds: row.try_get("renewal_seconds")?,
         session_id: row.try_get("session_id")?,
         created_at: row.try_get("created_at")?,
     })

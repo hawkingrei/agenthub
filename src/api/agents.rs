@@ -1984,6 +1984,9 @@ mod tests {
         .execute(db)
         .await
         .expect("create acp_permission_requests");
+        agenthub_db::loop_runtime::migrate_loop_runtime(db)
+            .await
+            .expect("migrate loop runtime");
     }
 
     async fn build_test_state_with_db_and_internal_peer(

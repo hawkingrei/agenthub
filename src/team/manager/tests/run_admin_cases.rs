@@ -190,6 +190,46 @@ async fn cancel_active_runs_on_startup_requires_manual_restart() {
 }
 
 #[tokio::test]
+async fn loop_mailbox_partition_survives_legacy_startup_cancellation() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "loop-partition".into(),
+            description: None,
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .unwrap();
+    let partition = manager
+        .create_run(&team.id, Some("loop-context"), json!({}))
+        .await
+        .unwrap();
+    let legacy = manager
+        .create_run(&team.id, Some("legacy-context"), json!({}))
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO loop_mailbox_partitions(run_id, team_id, created_at) VALUES (?, ?, 1)",
+    )
+    .bind(&partition.id)
+    .bind(&team.id)
+    .execute(&db)
+    .await
+    .unwrap();
+    assert_eq!(manager.cancel_active_runs_on_startup().await.unwrap(), 1);
+    assert_eq!(
+        manager.get_run(&partition.id).await.unwrap().status,
+        TeamRunStatus::Submitted
+    );
+    assert_eq!(
+        manager.get_run(&legacy.id).await.unwrap().status,
+        TeamRunStatus::Canceled
+    );
+    assert_eq!(manager.cancel_active_runs_on_startup().await.unwrap(), 0);
+}
+
+#[tokio::test]
 async fn cancel_active_runs_on_startup_reopens_linked_tasks() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

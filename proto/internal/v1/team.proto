@@ -7,6 +7,7 @@ syntax = "proto3";
 package agenthub.internal.v1;
 
 service TeamInternalControl {
+  rpc FinishLoopActivation(FinishLoopActivationRequest) returns (FinishLoopActivationResponse);
   rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
   rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
   rpc AckActorMessage(AckActorMessageRequest) returns (AckActorMessageResponse);
@@ -37,6 +38,15 @@ service TeamInternalControl {
   rpc SendAgentInput(SendAgentInputRequest) returns (SendAgentInputResponse);
   rpc SendAgentReminder(SendAgentReminderRequest) returns (SendAgentInputResponse);
   rpc ListAgentEvents(ListAgentEventsRequest) returns (ListAgentEventsResponse);
+}
+
+// Executor identity and scope come exclusively from signed activation credentials.
+message FinishLoopActivationRequest {
+  string outcome_json = 1;
+}
+
+message FinishLoopActivationResponse {
+  string receipt_json = 1;
 }
 
 message SendActorMessageRequest {

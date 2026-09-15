@@ -1,4 +1,5 @@
 mod helpers;
+mod loop_activation;
 mod rpc;
 
 #[cfg(test)]
@@ -43,12 +44,12 @@ pub(super) use super::proto::agenthub::internal::v1::{
     CreateTimeTriggerResponse, DeleteManagedAgentRequest, DeleteManagedAgentResponse,
     DeleteTeamChannelRequest, DeleteTeamChannelResponse, DescribeTeamContextRequest,
     DescribeTeamContextResponse, EnsureAgentRecordRequest, EnsureAgentRecordResponse,
-    GetAgentRecordRequest, GetAgentRecordResponse, GetTeamTaskRequest, GetTeamTaskResponse,
-    IssueNodeCredentialRequest, IssueNodeCredentialResponse, LinkActorMessageTaskRequest,
-    LinkActorMessageTaskResponse, ListActorInboxRequest, ListActorInboxResponse,
-    ListAgentEventsRequest, ListAgentEventsResponse, ListTeamTasksRequest, ListTeamTasksResponse,
-    ListTimeTriggersRequest, ListTimeTriggersResponse, OpenTeamThreadRequest,
-    OpenTeamThreadResponse, ReplyTeamThreadRequest, ReplyTeamThreadResponse,
+    FinishLoopActivationRequest, FinishLoopActivationResponse, GetAgentRecordRequest,
+    GetAgentRecordResponse, GetTeamTaskRequest, GetTeamTaskResponse, IssueNodeCredentialRequest,
+    IssueNodeCredentialResponse, LinkActorMessageTaskRequest, LinkActorMessageTaskResponse,
+    ListActorInboxRequest, ListActorInboxResponse, ListAgentEventsRequest, ListAgentEventsResponse,
+    ListTeamTasksRequest, ListTeamTasksResponse, ListTimeTriggersRequest, ListTimeTriggersResponse,
+    OpenTeamThreadRequest, OpenTeamThreadResponse, ReplyTeamThreadRequest, ReplyTeamThreadResponse,
     ResolveActorRunScopeRequest, ResolveActorRunScopeResponse, RespondPermissionReviewRequest,
     RespondPermissionReviewResponse, SendActorMessageRequest, SendActorMessageResponse,
     SendAgentInputRequest, SendAgentInputResponse, StartManagedAgentRequest,

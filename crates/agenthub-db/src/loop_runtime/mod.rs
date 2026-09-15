@@ -3,6 +3,8 @@
 mod admission;
 mod admission_limits;
 mod intake;
+mod lifecycle;
+mod outcome;
 mod policy;
 mod reservation;
 mod schema;
@@ -33,6 +35,8 @@ pub enum LoopStoreError {
     ReservationHeld,
     #[error("loop execution lease is stale or expired")]
     StaleLease,
+    #[error("loop activation is not in the required lifecycle state")]
+    InvalidState,
 }
 
 #[derive(Clone)]
@@ -66,7 +70,8 @@ impl LoopStore {
         activation_id: &str,
     ) -> anyhow::Result<Vec<LoopTriggerRecord>> {
         let rows = sqlx::query(
-            "SELECT * FROM loop_trigger_sources WHERE team_id = ? AND activation_id = ? ORDER BY created_at, id",
+            "SELECT s.*, EXISTS(SELECT 1 FROM loop_revoked_sources r WHERE r.trigger_id = s.id) AS revoked \
+             FROM loop_trigger_sources s WHERE s.team_id = ? AND s.activation_id = ? ORDER BY s.created_at, s.id",
         )
         .bind(team_id)
         .bind(activation_id)
@@ -79,6 +84,7 @@ impl LoopStore {
                     activation_id: row.try_get("activation_id")?,
                     input: serde_json::from_str(row.try_get("input_json")?)?,
                     created_at: row.try_get("created_at")?,
+                    revoked: row.try_get("revoked")?,
                 })
             })
             .collect()
@@ -136,5 +142,9 @@ fn parse_activation(row: &SqliteRow) -> anyhow::Result<LoopActivation> {
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
         finished_at: row.try_get("finished_at")?,
+        outcome: row
+            .try_get::<Option<&str>, _>("outcome_json")?
+            .map(serde_json::from_str)
+            .transpose()?,
     })
 }

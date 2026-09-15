@@ -167,7 +167,7 @@ impl AgentManager {
         let idle_gc = self.idle_gc.clone();
         let inner = self.inner.clone();
         let push = self.push.clone();
-        let process_supervisor = self.process_supervisor.clone();
+        let manager = self.clone();
         let agent_id_clone = agent_id.clone();
         let cancellation = self.daemon_tasks.runtime_cancellation();
         self.daemon_tasks.spawn_runtime_task(
@@ -207,6 +207,9 @@ impl AgentManager {
                             }
                         }
                     };
+                    manager
+                        .cleanup_observed_session(&agent_id, &session_id, &child_mutex)
+                        .await?;
                     Self::finalize_process_exit(
                         &db,
                         &event_dbs,
@@ -218,7 +221,6 @@ impl AgentManager {
                         success,
                     )
                     .await;
-                    process_supervisor.forget(&session_id).await;
                 }
                 Ok(())
             },

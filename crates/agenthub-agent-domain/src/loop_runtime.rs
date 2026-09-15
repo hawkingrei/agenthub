@@ -60,6 +60,61 @@ string_enum!(LoopDeferralReason {
     TaskOwnedElsewhere => "task_owned_elsewhere", MembershipChanged => "membership_changed"
 });
 
+string_enum!(LoopWaitReason {
+    Input => "input", Dependency => "dependency", Permission => "permission",
+    Knowledge => "knowledge", ExternalEvent => "external_event", DueTime => "due_time"
+});
+
+/// A selected canonical note is evidence of recorded work, not task acceptance.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoopOutcome {
+    pub kind: LoopOutcomeKind,
+    pub wait_reason: Option<LoopWaitReason>,
+    pub task_note_id: Option<i64>,
+    pub continuation: Option<LoopContinuation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoopContinuation {
+    pub due_at: i64,
+    pub task_id: Option<String>,
+}
+
+impl LoopOutcome {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (self.kind == LoopOutcomeKind::Waiting) == self.wait_reason.is_some(),
+            "waiting requires an explicit wait reason"
+        );
+        if let Some(id) = self.task_note_id {
+            anyhow::ensure!(id > 0, "invalid task note reference");
+        }
+        if let Some(continuation) = &self.continuation {
+            anyhow::ensure!(continuation.due_at >= 0, "invalid continuation deadline");
+            if let Some(task_id) = &continuation.task_id {
+                validate_loop_id(task_id)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopFinishReceipt {
+    pub activation_id: String,
+    pub generation: i64,
+    pub continuation: Option<LoopTriggerReceipt>,
+}
+
+/// Only a trusted runtime may report this after stopping its supervised process tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoopCleanupDisposition {
+    Exited,
+    StartupFailed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoopReservation {
     pub actor_id: String,
@@ -69,6 +124,7 @@ pub struct LoopReservation {
     pub owner_id: String,
     pub lease_expires_at: i64,
     pub lease_seconds: u32,
+    pub renewal_seconds: u32,
     pub session_id: Option<String>,
     pub created_at: i64,
 }
@@ -266,6 +322,7 @@ pub struct LoopTriggerRecord {
     pub activation_id: String,
     pub input: LoopTriggerInput,
     pub created_at: i64,
+    pub revoked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -284,6 +341,7 @@ pub struct LoopActivation {
     pub created_at: i64,
     pub updated_at: i64,
     pub finished_at: Option<i64>,
+    pub outcome: Option<LoopOutcome>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

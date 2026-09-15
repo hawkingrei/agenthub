@@ -808,6 +808,9 @@ async fn create_full_test_schema(pool: &SqlitePool) {
     .execute(pool)
     .await
     .expect("create team_actor_messages idempotency index");
+    agenthub_db::loop_runtime::migrate_loop_runtime(pool)
+        .await
+        .expect("migrate loop runtime");
 }
 
 /// A file-backed, WAL-mode, multi-connection SQLite pool for concurrency/race tests over the mailbox
