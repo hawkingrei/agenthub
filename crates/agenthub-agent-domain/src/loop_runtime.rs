@@ -52,6 +52,33 @@ string_enum!(LoopEventKind {
     CleanupVerified => "cleanup_verified", Interrupted => "interrupted", Canceled => "canceled",
     ToolCompleted => "tool_completed"
 });
+string_enum!(LoopDeferralReason {
+    Disabled => "disabled", Suspended => "suspended", NotDue => "not_due",
+    Reserved => "reserved", StartupLimit => "startup_limit", NoProgressLimit => "no_progress_limit",
+    LeaseExpiredUnfenced => "lease_expired_unfenced",
+    ActorRateLimit => "actor_rate_limit", TeamRateLimit => "team_rate_limit",
+    TaskOwnedElsewhere => "task_owned_elsewhere", MembershipChanged => "membership_changed"
+});
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopReservation {
+    pub actor_id: String,
+    pub team_id: String,
+    pub activation_id: Option<String>,
+    pub generation: i64,
+    pub owner_id: String,
+    pub lease_expires_at: i64,
+    pub lease_seconds: u32,
+    pub session_id: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoopAdmission {
+    Admitted(LoopReservation),
+    Deferred(LoopDeferralReason),
+    NotPending,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -94,6 +121,12 @@ impl Default for LoopLimits {
 }
 
 impl LoopLimits {
+    pub fn startup_retry_seconds(&self, completed_attempts: u32) -> u32 {
+        self.retry_initial_seconds
+            .saturating_mul(1_u32 << completed_attempts.saturating_sub(1).min(31))
+            .min(self.retry_max_seconds)
+    }
+
     pub fn validate(&self) -> anyhow::Result<()> {
         for value in [
             self.pending_per_actor,
@@ -242,6 +275,7 @@ pub struct LoopActivation {
     pub team_id: String,
     pub state: LoopActivationState,
     pub due_at: i64,
+    pub next_admission_at: i64,
     pub policy_revision: i64,
     pub generation: i64,
     pub attempt_count: i64,
@@ -259,6 +293,7 @@ pub struct LoopEvent {
     pub kind: LoopEventKind,
     pub generation: i64,
     pub trigger_id: Option<String>,
+    pub reason: Option<LoopDeferralReason>,
     pub created_at: i64,
 }
 
@@ -299,5 +334,15 @@ mod tests {
         for value in ["", "secret payload", "task\nnext", "{\"prompt\":\"text\"}"] {
             assert!(validate_loop_id(value).is_err());
         }
+    }
+
+    #[test]
+    fn loop_startup_retry_caps_delay_without_overflow() {
+        let limits = LoopLimits::default();
+        assert_eq!(limits.startup_retry_seconds(1), 1);
+        assert_eq!(limits.startup_retry_seconds(2), 2);
+        assert_eq!(limits.startup_retry_seconds(6), 32);
+        assert_eq!(limits.startup_retry_seconds(7), 60);
+        assert_eq!(limits.startup_retry_seconds(u32::MAX), 60);
     }
 }

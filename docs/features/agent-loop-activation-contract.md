@@ -3,9 +3,9 @@
 Status: implementation contract. The lifecycle service is delivered incrementally; the presence
 of this specification does not enable automatic execution.
 
-The control-store slice implements policy configuration, idempotent trigger acceptance, pending
-activation coalescing, and safe event persistence. Admission, provider execution, and recovery
-remain subsequent slices.
+The control store implements policy configuration, idempotent trigger acceptance, pending
+activation coalescing, safe event persistence, and generation-fenced admission/reservation methods.
+Daemon/provider wiring, structured outcome recording, and process recovery remain subsequent slices.
 
 ## Problem
 
@@ -80,11 +80,15 @@ Initial policy version 1 uses finite defaults:
 | Rolling activation window | 15 minutes |
 | Activations per actor / Team per window | 12 / 120 |
 | Standing registrations per actor / Team | 16 / 128 |
+| Deferred admission reconsideration / candidates per scan | 5 seconds / 32 |
 
 Limits are validated positive bounded configuration, snapshotted by revision. A caller cannot reset
 budgets by submitting a new source ID. Startup failures and no-progress history survive restart.
 When members configure different Team limits, the tightest non-disabled member limit applies to
-all producers in that Team. A more permissive member cannot bypass the Team's existing bound.
+all producers in that Team; rolling counts use the longest configured Team window. A more permissive
+member cannot bypass the Team's existing bound. Deferral advances the next admission check without
+changing the source deadline. Bounded scans move deferred work behind other eligible work, and
+repeated unchanged deferrals do not append duplicate lifecycle events.
 Reaching a limit retains accepted work and records the reason; excess *new* work is explicitly
 rejected before acceptance. Operator resume/reset is explicit. A canonical progress transition or
 new actionable dependency revision may reset consecutive no-progress accounting; elapsed polling
@@ -211,3 +215,4 @@ fail explicitly rather than claim parity. Track implementation and remaining val
 - [Product definition](../journal/2026-09-15-agent-loop-product-definition.md)
 - [Activation contract checkpoint](../journal/2026-09-15-agent-loop-activation-contract.md)
 - [Durable loop control store](../journal/2026-09-15-agent-loop-control-store.md)
+- [Fenced loop admission](../journal/2026-09-15-agent-loop-admission.md)
