@@ -80,14 +80,21 @@ activation retains its original unavailable event. The focused parent test passe
 Additional fixtures exercise eager native initialization failure, selected learning through native
 provenance or content, read recovery, and an applied write with no receipt across two activations.
 The final launch selection passes eight parent/unit tests. Three additional child helpers run
-through their parents (listed as ignored by the outer harness). Root all-target Clippy also passes. The owned
-Codex adapter's existing optional MCP configuration is guarded explicitly; its focused build/test
-is pending at this checkpoint. The pinned runtime validates only required servers
+through their parents (listed as ignored by the outer harness). Root all-target Clippy also passes.
+Four owned Codex adapter tests and 38 shared proxy regression tests pass; the proxy selection also
+runs two child helpers through their parents. Adapter validation uses:
+
+```bash
+cargo +1.96.0 test -p agenthub-codex-acp-runtime codex_mcp_ --locked --offline
+```
+
+The owned Codex adapter's existing optional MCP configuration is guarded explicitly.
+The pinned runtime validates only required servers
 (`codex-mcp/src/connection_manager/required.rs` at `9085439`). Fake ACP behavior does not prove how
 arbitrary external providers or language models handle tool outages or select learning.
 
 ## Follow-Ups
 
-- Complete focused adapter validation and shared proxy regression checks.
-- Publish the complete slice 10 PR and verify its CI before treating the slice as delivered.
+- Verify [PR #1155](https://github.com/hawkingrei/agenthub/pull/1155) CI before treating the slice as
+  delivered. Its implementation and focused local validation are complete.
 - See [the canonical Mem contract](../features/nowledge-mem-mcp-proxy.md) and [active work](../todo.md).

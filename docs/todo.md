@@ -51,8 +51,9 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
   Context bootstrap, availability handling, and selected-learning contracts are implemented in the
   [slice 10 checkpoint](journal/2026-09-16-mem-context-bootstrap.md), with focused runtime checks
-  passing. Deadline/late-settlement, learning provenance, and eager-provider failure are covered;
-  final adapter/proxy regression validation and publication remain open.
+  passing. Deadline/late-settlement, learning provenance, eager-provider failure, and adapter/proxy
+  regressions are covered. [PR #1155](https://github.com/hawkingrei/agenthub/pull/1155) is published;
+  current-head CI remains the delivery gate.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.
   Prove one configured entry prompt, role authority, structured finish, and transcript-free recovery.
   The [dependency integration checkpoint](journal/2026-09-16-loop-dependency-integration.md) combines
