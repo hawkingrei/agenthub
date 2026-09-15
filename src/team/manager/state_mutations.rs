@@ -82,8 +82,25 @@ impl TeamManager {
         expected_updated_at: i64,
         spec: Value,
     ) -> anyhow::Result<Option<TeamDefinitionRecord>> {
-        let now = Utc::now().timestamp();
+        let now = Utc::now().timestamp().max(
+            expected_updated_at
+                .checked_add(1)
+                .ok_or_else(|| anyhow::anyhow!("team configuration revision exhausted"))?,
+        );
         let spec_json = serde_json::to_string(&spec)?;
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        let previous: String =
+            sqlx::query_scalar("SELECT spec_json FROM team_definitions WHERE id = ?")
+                .bind(team_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        Self::guard_loop_membership_change_tx(
+            &mut tx,
+            team_id,
+            &serde_json::from_str(&previous)?,
+            &spec,
+        )
+        .await?;
         let update = sqlx::query(
             r#"
             UPDATE team_definitions
@@ -95,7 +112,7 @@ impl TeamManager {
         .bind(now)
         .bind(team_id)
         .bind(expected_updated_at)
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
         if update.rows_affected() == 0 {
             let exists: Option<i64> = sqlx::query_scalar(
@@ -106,13 +123,22 @@ impl TeamManager {
                 "#,
             )
             .bind(team_id)
-            .fetch_optional(&self.db)
+            .fetch_optional(&mut *tx)
             .await?;
             if exists.is_none() {
                 return Err(sqlx::Error::RowNotFound.into());
             }
             return Ok(None);
         }
+        Self::ensure_loop_member_policies_tx(&mut tx, team_id, &spec, now).await?;
+        Self::detach_empty_loop_policies_tx(
+            &mut tx,
+            team_id,
+            &serde_json::from_str(&previous)?,
+            &spec,
+        )
+        .await?;
+        tx.commit().await?;
         self.get_team(team_id).await.map(Some)
     }
 }

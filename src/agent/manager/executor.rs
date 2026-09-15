@@ -178,7 +178,7 @@ fn provider_command(request: &LocalExecutionRequest) -> Command {
     command
 }
 
-fn synthesized_child_path(
+pub(super) fn synthesized_child_path(
     command_path: &str,
     inherited_path: Option<OsString>,
     current_exe: Option<&Path>,

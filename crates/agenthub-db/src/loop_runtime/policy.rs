@@ -36,15 +36,25 @@ impl LoopStore {
         update: LoopPolicyUpdate<'_>,
         now: i64,
     ) -> anyhow::Result<LoopPolicy> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let policy = Self::configure_tx(&mut tx, update, now).await?;
+        tx.commit().await?;
+        Ok(policy)
+    }
+
+    pub async fn configure_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        update: LoopPolicyUpdate<'_>,
+        now: i64,
+    ) -> anyhow::Result<LoopPolicy> {
         validate_loop_id(update.actor_id)?;
         validate_loop_id(update.team_id)?;
         update.limits.validate()?;
         anyhow::ensure!(now >= 0, "invalid policy timestamp");
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
-        require_member(&mut tx, update.team_id, update.actor_id).await?;
+        require_member(tx, update.team_id, update.actor_id).await?;
         let existing = sqlx::query("SELECT * FROM loop_policies WHERE actor_id = ?")
             .bind(update.actor_id)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut **tx)
             .await?;
         if let Some(row) = existing.as_ref() {
             let current = parse_policy(row)?;
@@ -53,6 +63,18 @@ impl LoopStore {
             }
             if current.revision != update.expected_revision {
                 return Err(LoopStoreError::RevisionConflict.into());
+            }
+            if current.session_policy != update.session_policy {
+                let reserved: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM loop_execution_reservations WHERE actor_id = ?)",
+                )
+                .bind(update.actor_id)
+                .fetch_one(&mut **tx)
+                .await?;
+                anyhow::ensure!(
+                    !reserved,
+                    LoopStoreError::ScopeBusy("change session continuity after execution cleanup")
+                );
             }
         } else if update.expected_revision != 0 {
             return Err(LoopStoreError::RevisionConflict.into());
@@ -75,10 +97,9 @@ impl LoopStore {
         .bind(serde_json::to_string(update.limits)?)
         .bind(now)
         .bind(now)
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
         let policy = parse_policy(&row)?;
-        tx.commit().await?;
         Ok(policy)
     }
 }

@@ -9,6 +9,7 @@ mod outcome;
 mod policy;
 mod reservation;
 mod schema;
+mod scope;
 
 #[cfg(test)]
 mod tests;
@@ -38,6 +39,8 @@ pub enum LoopStoreError {
     StaleLease,
     #[error("loop activation is not in the required lifecycle state")]
     InvalidState,
+    #[error("loop scope change requires quiescence: {0}")]
+    ScopeBusy(&'static str),
 }
 
 #[derive(Clone)]

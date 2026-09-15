@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path as StdPath, PathBuf};
 
 mod errors;
+mod loop_configuration;
+use loop_configuration::{get_loop_configuration, set_loop_configuration, update_team_spec_owned};
 
 use self::errors::{
     map_actor_service_api_error, map_channel_create_error, map_channel_delete_error,
@@ -603,6 +605,10 @@ pub fn router(state: AppState) -> Router {
         .route("/invites/accept", post(accept_teamspace_invite))
         .route("/{id}/members/adopt", post(adopt_existing_agent_to_team))
         .route("/{id}/members/move", post(move_existing_agent_to_team))
+        .route(
+            "/{id}/members/{member_id}/loop",
+            get(get_loop_configuration).put(set_loop_configuration),
+        )
         .route("/{id}/runtime", get(get_team_runtime))
         .route(
             "/{id}/shared_thread",
@@ -743,19 +749,25 @@ async fn create_team(
     let mut spec = payload.spec;
     normalize_team_spec(&mut spec)?;
     validate_team_spec(&spec)?;
+    let actors = parse_member_ids(spec.get("members"))?.into_iter().collect();
+    let teams = state.teams.clone();
     let team = state
-        .teams
-        .create_team_with_owner(
-            TeamDefinitionConfig {
-                name,
-                description: payload.description,
-                spec,
-            },
-            Some(user.id.as_str()),
-        )
+        .agents
+        .configure_actors_owned(actors, async move {
+            teams
+                .create_team_with_owner(
+                    TeamDefinitionConfig {
+                        name,
+                        description: payload.description,
+                        spec,
+                    },
+                    Some(user.id.as_str()),
+                )
+                .await
+        })
         .await
         .map_err(map_create_team_error)?;
-    if has_configured_team_members(&team.spec)?
+    if should_start_team_members(&team.spec)?
         && let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &team).await
     {
         let member_ids = parse_member_ids(team.spec.get("members"))?;
@@ -778,9 +790,7 @@ async fn update_team_spec(
     let mut spec = payload.spec;
     normalize_team_spec(&mut spec)?;
     validate_team_spec(&spec)?;
-    let updated = state
-        .teams
-        .update_team_spec_if_unchanged(&current.id, payload.expected_updated_at, spec)
+    let updated = update_team_spec_owned(&state, &current, payload.expected_updated_at, spec)
         .await
         .map_err(map_team_internal_error)?
         .ok_or_else(|| {
@@ -790,7 +800,7 @@ async fn update_team_spec(
     for removed_member_id in previous_member_ids.difference(&next_member_ids) {
         let _ = state.agents.stop_agent(removed_member_id).await;
     }
-    if has_configured_team_members(&updated.spec)? {
+    if should_start_team_members(&updated.spec)? {
         ensure_team_runtime_started(state.agents.as_ref(), &updated)
             .await
             .map_err(map_runtime_start_error)?;
@@ -851,15 +861,13 @@ async fn move_existing_agent_to_team(
         ));
     }
 
-    let updated = state
-        .teams
-        .update_team_spec_if_unchanged(&current.id, payload.expected_updated_at, spec)
+    let updated = update_team_spec_owned(&state, &current, payload.expected_updated_at, spec)
         .await
         .map_err(map_team_internal_error)?
         .ok_or_else(|| {
             ApiError::conflict("team definition changed concurrently; reload and retry")
         })?;
-    if has_configured_team_members(&updated.spec)? {
+    if should_start_team_members(&updated.spec)? {
         ensure_team_runtime_started(state.agents.as_ref(), &updated)
             .await
             .map_err(map_runtime_start_error)?;
@@ -887,14 +895,17 @@ async fn adopt_existing_agent_to_team(
         .get_agent(source_id)
         .await
         .map_err(|err| map_not_found_error(err, "agent not found"))?;
-    if !state
+    let source_teams = state
         .teams
         .list_teams_referencing_member(source_id)
         .await
-        .map_err(map_team_internal_error)?
-        .is_empty()
-    {
+        .map_err(map_team_internal_error)?;
+    if !source_teams.is_empty() && !crate::team::TeamManager::uses_loop_execution(&current.spec) {
         return Err(ApiError::conflict("agent already belongs to a team"));
+    }
+    for source_team in source_teams {
+        let source_team = load_team_for_user(&state, &source_team.id, &_user).await?;
+        require_teamspace_role(&state, &source_team, &_user, &["owner"]).await?;
     }
     if source.target_node_id.is_some() && payload.workspace_copy_destination.is_some() {
         return Err(ApiError::bad_request(
@@ -935,7 +946,23 @@ async fn adopt_existing_agent_to_team(
         ));
     }
     if let Some(destination) = destination {
-        copy_adoption_workspace(&source.workdir, destination, &source.id, &current.id, seed)?;
+        let actor_id = source.id.clone();
+        let team_id = current.id.clone();
+        let destination = destination.to_owned();
+        let seed = seed.map(str::to_owned);
+        let copy_state = state.clone();
+        state.agents.configure_actors_owned(vec![actor_id.clone()], async move {
+            let mut tx = copy_state.db.begin_with("BEGIN IMMEDIATE").await?;
+            crate::team::TeamManager::require_loop_actor_quiescent_tx(&mut tx, &actor_id).await?;
+            let running: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM agent_sessions WHERE agent_id = ? AND ended_at IS NULL)")
+                .bind(&actor_id).fetch_one(&mut *tx).await?;
+            anyhow::ensure!(!running, agenthub_db::loop_runtime::LoopStoreError::ScopeBusy("stop the source before copying workspace contents"));
+            let source: String = sqlx::query_scalar("SELECT workdir FROM agents WHERE id = ?")
+                .bind(&actor_id).fetch_one(&mut *tx).await?;
+            let result = copy_adoption_workspace(&source, &destination, &actor_id, &team_id, seed.as_deref());
+            tx.commit().await?;
+            Ok(result)
+        }).await.map_err(map_team_internal_error)??;
     }
     let agent_result = state
         .agents
@@ -969,24 +996,25 @@ async fn adopt_existing_agent_to_team(
             return Err(map_team_internal_error(err));
         }
     };
-    let updated = match state
-        .teams
-        .update_team_spec_if_unchanged(&current.id, payload.expected_updated_at, spec)
+    replace_member_identity(&mut spec, &member_id, &agent.id);
+    let updated = match update_team_spec_owned(&state, &current, payload.expected_updated_at, spec)
         .await
-        .map_err(map_team_internal_error)?
     {
-        Some(team) => team,
-        None => {
+        Ok(Some(team)) => team,
+        result => {
             let _ = state.agents.delete_agent(&agent.id).await;
             if let Some(destination) = destination {
                 let _ = fs::remove_dir_all(destination);
             }
-            return Err(ApiError::conflict(
-                "team definition changed concurrently; reload and retry",
-            ));
+            return Err(match result {
+                Err(error) => map_team_internal_error(error),
+                _ => ApiError::conflict("team definition changed concurrently; reload and retry"),
+            });
         }
     };
-    if let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &updated).await {
+    if should_start_team_members(&updated.spec)?
+        && let Err(err) = ensure_team_runtime_started(state.agents.as_ref(), &updated).await
+    {
         let _ = state.agents.stop_agent(&agent.id).await;
         return Err(map_runtime_start_error(err));
     }
@@ -997,16 +1025,18 @@ async fn adopt_existing_agent_to_team(
 }
 
 fn replace_adopted_member_placeholder(value: &mut Value, member_id: &str) {
+    replace_member_identity(value, ADOPTED_MEMBER_ID_PLACEHOLDER, member_id);
+}
+
+fn replace_member_identity(value: &mut Value, previous: &str, member_id: &str) {
     match value {
-        Value::String(current) if current == ADOPTED_MEMBER_ID_PLACEHOLDER => {
-            *current = member_id.to_string()
-        }
+        Value::String(current) if current == previous => *current = member_id.to_string(),
         Value::Array(values) => values
             .iter_mut()
-            .for_each(|value| replace_adopted_member_placeholder(value, member_id)),
+            .for_each(|value| replace_member_identity(value, previous, member_id)),
         Value::Object(values) => values
             .values_mut()
-            .for_each(|value| replace_adopted_member_placeholder(value, member_id)),
+            .for_each(|value| replace_member_identity(value, previous, member_id)),
         _ => {}
     }
 }
@@ -1112,31 +1142,26 @@ pub(crate) async fn prune_deleted_agent_from_team_specs(
         let Some(next_spec) = prune_deleted_member_from_team_spec(&team.spec, agent_id)? else {
             continue;
         };
-        let updated = match state
-            .teams
-            .update_team_spec_if_unchanged(&team.id, team.updated_at, next_spec.clone())
-            .await?
-        {
-            Some(updated) => updated,
-            None => {
-                let latest = state.teams.get_team(&team.id).await?;
-                let Some(latest_spec) =
-                    prune_deleted_member_from_team_spec(&latest.spec, agent_id)?
-                else {
-                    continue;
-                };
-                state
-                    .teams
-                    .update_team_spec_if_unchanged(&latest.id, latest.updated_at, latest_spec)
-                    .await?
-                    .ok_or_else(|| {
-                        ApiError::conflict(
-                            "team definition changed concurrently while pruning deleted agent",
-                        )
-                    })?
-            }
-        };
-        if has_configured_team_members(&updated.spec)? {
+        let updated =
+            match update_team_spec_owned(state, &team, team.updated_at, next_spec.clone()).await? {
+                Some(updated) => updated,
+                None => {
+                    let latest = state.teams.get_team(&team.id).await?;
+                    let Some(latest_spec) =
+                        prune_deleted_member_from_team_spec(&latest.spec, agent_id)?
+                    else {
+                        continue;
+                    };
+                    update_team_spec_owned(state, &latest, latest.updated_at, latest_spec)
+                        .await?
+                        .ok_or_else(|| {
+                            ApiError::conflict(
+                                "team definition changed concurrently while pruning deleted agent",
+                            )
+                        })?
+                }
+            };
+        if should_start_team_members(&updated.spec)? {
             ensure_team_runtime_started(state.agents.as_ref(), &updated)
                 .await
                 .map_err(map_runtime_start_error)?;
@@ -1299,15 +1324,19 @@ async fn delete_team(
         }
     };
 
-    for member_id in &member_ids {
-        let _ = state.agents.stop_agent(member_id).await;
-    }
-
-    let team = state
-        .teams
-        .delete_team(&team_id, &member_ids)
+    let manager = state.agents.clone();
+    let team = manager
+        .configure_actors_owned(member_ids.iter().cloned().collect(), async move {
+            let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
+            crate::team::TeamManager::guard_loop_team_deletion_tx(&mut tx, &team_id).await?;
+            tx.commit().await?;
+            for member_id in &member_ids {
+                let _ = state.agents.stop_agent(member_id).await;
+            }
+            state.teams.delete_team(&team_id, &member_ids).await
+        })
         .await
-        .map_err(|err| map_not_found_error(err, "team not found"))?;
+        .map_err(|error| map_not_found_error(error, "team not found"))?;
     Ok(Json(sanitize_team_definition_for_response(team)))
 }
 
@@ -3062,9 +3091,7 @@ async fn apply_profile_patch_proposal(
             apply_profile_patch_to_team_spec(&mut team.spec, proposal)?;
             validate_team_spec(&team.spec)?;
             let after = extract_member_profile_override_from_spec(&team.spec, &proposal.member_id)?;
-            let update = state
-                .teams
-                .update_team_spec_if_unchanged(&team.id, team.updated_at, team.spec)
+            let update = update_team_spec_owned(state, &team, team.updated_at, team.spec.clone())
                 .await
                 .map_err(map_team_internal_error)?;
             if update.is_none() {
@@ -4498,6 +4525,10 @@ fn compile_task_run_preview_response(
     })
 }
 
+fn should_start_team_members(spec: &Value) -> Result<bool, ApiError> {
+    Ok(!crate::team::TeamManager::uses_loop_execution(spec) && has_configured_team_members(spec)?)
+}
+
 fn has_configured_team_members(spec: &Value) -> Result<bool, ApiError> {
     let spec_obj = spec
         .as_object()
@@ -5315,6 +5346,10 @@ fn inject_team_spec_defaults(
         );
     }
 
+    if spec_obj.get("execution_mode").and_then(Value::as_str) == Some("loop") {
+        return Ok(());
+    }
+
     if let Some(members) = spec_obj.get_mut("members").and_then(Value::as_array_mut) {
         for member in members {
             let Some(member_obj) = member.as_object_mut() else {
@@ -5444,6 +5479,30 @@ fn sanitize_step_key_token(raw: &str) -> String {
 }
 
 fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
+    if let Some(required) = spec.get("required_capabilities") {
+        let capabilities = required
+            .as_array()
+            .ok_or_else(|| ApiError::bad_request("spec.required_capabilities must be an array"))?;
+        if capabilities.len() > 32
+            || capabilities.iter().any(|capability| {
+                !capability.as_str().is_some_and(|value| {
+                    !value.is_empty() && value.len() <= 128 && !value.chars().any(char::is_control)
+                })
+            })
+        {
+            return Err(ApiError::bad_request(
+                "spec.required_capabilities exceeds its bounded contract",
+            ));
+        }
+    }
+    if let Some(mode) = spec.get("execution_mode")
+        && !matches!(mode.as_str(), Some("resident" | "loop"))
+    {
+        return Err(ApiError::bad_request(
+            "spec.execution_mode must be resident or loop",
+        ));
+    }
+
     let spec_obj = spec
         .as_object()
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;

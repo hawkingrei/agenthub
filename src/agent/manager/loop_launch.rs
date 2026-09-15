@@ -118,6 +118,25 @@ impl AgentManager {
             .policy(&reservation.team_id, &agent.id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("loop policy is missing"))?;
+        let spec: String =
+            sqlx::query_scalar("SELECT spec_json FROM team_definitions WHERE id = ?")
+                .bind(&reservation.team_id)
+                .fetch_one(&self.db)
+                .await?;
+        let spec: serde_json::Value = serde_json::from_str(&spec)?;
+        let preflight = self
+            .loop_preflight(
+                &reservation.team_id,
+                &spec,
+                &agent.id,
+                policy.session_policy,
+            )
+            .await?;
+        anyhow::ensure!(
+            preflight.ready,
+            "loop preflight failed: {}",
+            preflight.blockers.join(", ")
+        );
         let mut launch = AcpLoopLaunchConfig::resolve(
             Path::new(workdir),
             policy.session_policy == LoopSessionPolicy::Resume,
@@ -148,6 +167,7 @@ impl AgentManager {
             context,
             &agent.runtime_model,
             &agent.thinking_level,
+            spec.get("required_capabilities"),
         ))?);
         digest.update(launch.fingerprint_material()?);
         let snapshot = LoopLaunchSnapshot {

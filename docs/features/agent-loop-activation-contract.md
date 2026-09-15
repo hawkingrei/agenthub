@@ -7,8 +7,9 @@ The control store implements policy configuration, idempotent trigger acceptance
 activation coalescing, safe event persistence, generation-fenced admission, structured finish,
 continuation recording, and verified cleanup. Configured manual starts share durable reservations.
 Local ACP execution now resolves a launch snapshot and uses generation-scoped actor control.
-Product configuration, durable work-event intake, shared MCP tools, and role migration remain
-separate rollout gates; no existing actor is implicitly opted in.
+Offline Team configuration and explicit policy controls are available. Durable work-event intake,
+shared MCP tools, and role migration remain separate rollout gates; no existing actor is implicitly
+opted in.
 
 ## Problem
 
@@ -137,6 +138,41 @@ An uncertain local or remote writer blocks replacement and is visible as interru
 Copy/move/remove/rebind operations cannot bypass reservations or pending work by checking only
 `agents.status`; reconcile scope changes atomically under suspended intake.
 
+### Offline configuration and scope changes
+
+`spec.execution_mode = "loop"` separates Team configuration from process startup. Creating a Team,
+adding or copying members, and editing its roster create disabled member policies without starting
+providers. A coordinator with zero workers is valid. Loop defaults do not inject resident prompts or
+synthetic phase steps. Omitted mode and `resident` retain the existing creation/start behavior.
+
+`GET /api/teams/{team_id}/members/{member_id}/loop` returns policy and a safe preflight projection to
+authorized inspectors. Owner-authorized `PUT` requires `expected_revision`, `state`, `session_policy`,
+and bounded `limits`. Enabling or resuming admission requires successful preflight; suspension and
+disablement remain available when preflight fails. Policy changes do not create work triggers, cancel
+accepted work, or stop active execution. Session continuity changes wait for retained execution
+cleanup. Budget updates preserve the lease duration already captured by an active reservation.
+
+Preflight checks local provider executability, workspace policy, unique membership, actor control,
+profile support, supervision, and declared required capabilities. It also runs before each provider
+launch. Resume capability is negotiated before entry; static preflight does not promise a successful
+provider handshake. Required Mem/MCP capabilities fail explicitly until the corresponding proxy
+integration is available. Results expose bounded reason codes, not provider arguments or credentials.
+
+Configuration operations serialize against starts using sorted per-actor gates and remain owned by
+the daemon through caller disconnects. Membership and workspace guards share the actual SQLite write
+transaction. A scope change requires suspended/disabled admission, no retained executor or pending
+activation, no open provider session, and resolved task ownership, pending mail, reply obligations,
+and permissions. Expired claims require canonical release/handoff; expiry alone is insufficient.
+Direct ACP mode/model/config changes are rejected while an automatic activation owns its immutable
+launch snapshot; persisted Card profile changes apply to later launches.
+
+Copying a Card assigns a new Agent ID and disabled policy, without copying mailbox, activation,
+claim, session, or credential state. Copying workspace contents also requires source quiescence.
+Removing an empty identity detaches its policy. Retained activation history keeps its original Team
+scope and blocks destructive deletion or identity reuse in another Team; copy the Card for a new
+scope. This does not introduce a cross-Team transfer workflow. Team optimistic-update timestamps
+advance monotonically so edits in the same second cannot reuse a stale compare-and-swap value.
+
 ### Finish and recovery
 
 States are `pending`, `starting`, `running`, `finalizing`, `finished`, `interrupted`, and `canceled`.
@@ -237,6 +273,7 @@ Native permission callbacks are interrupted when their local session is cleaned 
 | Context | Fresh/resumed task and inbox recovery without new task attempts or mailbox rotation |
 | Local adapter | Guardian receipt, detached descendants, strict resume/profile negotiation, one entry turn |
 | Actor control | Credential rotation, stale owner/generation rejection, disconnect ownership, finish replay |
+| Configuration | Offline creation/copy, preflight and authority, disconnect/start exclusion, concurrent removal/intake, claim/reply/permission guards |
 | Limits | Durable startup/no-progress limits, per-Team fan-out, due-time isolation and suspension |
 | Visibility | Safe trace after exit, stable ordering, authorization, bounded pagination, debug/release separation |
 
@@ -268,3 +305,4 @@ fail explicitly rather than claim parity. Track implementation and remaining val
 - [Durable loop control store](../journal/2026-09-15-agent-loop-control-store.md)
 - [Fenced loop admission](../journal/2026-09-15-agent-loop-admission.md)
 - [Loop outcomes and cleanup](../journal/2026-09-15-agent-loop-lifecycle.md)
+- [Offline loop configuration](../journal/2026-09-15-agent-loop-offline-configuration.md)

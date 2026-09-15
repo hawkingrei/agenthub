@@ -70,7 +70,7 @@ impl Fixture {
         }
         let team = state.teams.create_team(crate::team::TeamDefinitionConfig {
             name: format!("loop-provider-{}", uuid::Uuid::new_v4()), description: None,
-            spec: serde_json::json!({"entrypoint":"planner", "members":[{"member_id":"planner","role":"coordinator"},{"member_id":"worker","role":"worker"}]}),
+            spec: serde_json::json!({"execution_mode":"loop", "entrypoint":"planner", "members":[{"member_id":"planner","role":"coordinator"},{"member_id":"worker","role":"worker"}]}),
         }).await.unwrap();
         let config = agenthub_config::AppConfig {
             internal_grpc: Some(agenthub_config::InternalGrpcConfig {
@@ -93,7 +93,7 @@ impl Fixture {
                 LoopPolicyUpdate {
                     actor_id: "worker",
                     team_id: &team.id,
-                    expected_revision: 0,
+                    expected_revision: 1,
                     state: LoopPolicyState::Enabled,
                     session_policy: LoopSessionPolicy::Fresh,
                     limits: &LoopLimits::default(),
