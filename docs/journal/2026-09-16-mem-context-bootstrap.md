@@ -67,6 +67,9 @@ Other validation used the existing command-local Rust temporary directory and lo
 ## Follow-Ups
 
 - Add explicit consumer-deadline/late-settlement evidence before completing the slice.
+- Verify an upstream initialization outage after successful membership probing with an eagerly
+  initializing provider. The Mem bootstrap fixture and the successful eager MCP fixture do not
+  by themselves prove independent local progress through that startup failure boundary.
 - Implement selected learning with task/activation/artifact provenance through the existing native
   tools, without transcript or task mirroring.
 - Publish the complete slice 10 PR and verify its CI before treating the slice as delivered.

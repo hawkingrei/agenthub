@@ -51,8 +51,8 @@ Durable work evidence: [slice 7 checkpoint](journal/2026-09-15-agent-loop-work-e
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
   Context bootstrap and availability handling are implemented in the
   [slice 10 checkpoint](journal/2026-09-16-mem-context-bootstrap.md), with focused runtime checks
-  passing. Deadline/late-settlement coverage, selected learning with provenance, and publication
-  remain open.
+  passing. Deadline/late-settlement and eager-provider startup failure coverage, selected learning
+  with provenance, and publication remain open.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.
   Prove one configured entry prompt, role authority, structured finish, and transcript-free recovery.
 - [ ] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
