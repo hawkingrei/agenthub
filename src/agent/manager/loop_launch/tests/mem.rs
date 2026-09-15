@@ -10,6 +10,10 @@ use std::sync::Mutex;
 
 use super::*;
 
+mod deadline;
+mod learning;
+pub(super) mod provider;
+
 #[tokio::test]
 async fn mem_bootstrap_recovers_knowledge_and_preserves_independent_local_progress() {
     super::mcp::run_configured_child(
@@ -21,6 +25,7 @@ async fn mem_bootstrap_recovers_knowledge_and_preserves_independent_local_progre
 #[tokio::test]
 #[ignore = "Executed by the parent with an isolated inherited environment"]
 async fn mem_bootstrap_child() {
+    deadline::consumer_timeout_keeps_sent_read_owned_until_factual_completion().await;
     context_recovers_across_fresh_and_resume_activations().await;
     context_failure_keeps_local_progress().await;
     let (fixture, _, server) = fixture("undeclared").await;
@@ -34,6 +39,9 @@ struct Upstream {
     failure: &'static str,
     requests: Mutex<Vec<Value>>,
     reads: std::sync::atomic::AtomicUsize,
+    received: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+    writes: Mutex<Vec<Value>>,
 }
 
 fn content(epoch: usize) -> String {
@@ -45,6 +53,9 @@ fn content(epoch: usize) -> String {
 async fn serve(State(state): State<Arc<Upstream>>, Json(message): Json<Value>) -> Response {
     state.requests.lock().unwrap().push(message.clone());
     let result = match message["method"].as_str().unwrap() {
+        "initialize" if state.failure == "initialize" => {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
         "initialize" => {
             json!({"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"fixture-mem","version":"1"}})
         }
@@ -58,7 +69,16 @@ async fn serve(State(state): State<Arc<Upstream>>, Json(message): Json<Value>) -
             json!({"tools":[{"name":"read_context_bundle","inputSchema":{"type":"object","additionalProperties":false,"properties":{}}}]})
         }
         "tools/list" => {
-            json!({"tools":[{"name":"read_context_bundle","inputSchema":{"type":"object","additionalProperties":false,"properties":{"space_id":{"type":"string"}}}}]})
+            let mut tools = vec![
+                json!({"name":"read_context_bundle","inputSchema":{"type":"object","additionalProperties":false,"properties":{"space_id":{"type":"string"}}}}),
+            ];
+            if state.failure.starts_with("learning-") {
+                tools.extend(learning::tools(state.failure));
+            }
+            json!({"tools":tools})
+        }
+        "tools/call" if message["params"]["name"] != "read_context_bundle" => {
+            return learning::call(&state, &message);
         }
         "tools/call" => {
             let arguments = if state.failure == "undeclared" {
@@ -74,6 +94,10 @@ async fn serve(State(state): State<Arc<Upstream>>, Json(message): Json<Value>) -
                 .reads
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                 + 1;
+            if state.failure == "deadline" {
+                state.received.notify_one();
+                state.release.notified().await;
+            }
             if state.failure == "transport" {
                 return StatusCode::SERVICE_UNAVAILABLE.into_response();
             }
@@ -98,6 +122,9 @@ async fn fixture(failure: &'static str) -> (Fixture, Arc<Upstream>, tokio::task:
         failure,
         requests: Mutex::new(Vec::new()),
         reads: Default::default(),
+        received: Default::default(),
+        release: Default::default(),
+        writes: Default::default(),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("http://{}/mcp", listener.local_addr().unwrap());
@@ -228,6 +255,7 @@ async fn context_recovers_across_fresh_and_resume_activations() {
 async fn context_failure_keeps_local_progress() {
     for (failure, event) in [
         ("authorization", "mem_context_unavailable"),
+        ("initialize", "mem_context_unavailable"),
         ("transport", "mem_context_unavailable"),
         ("native", "mem_context_unavailable"),
         ("missing", "mem_context_missing"),
@@ -244,6 +272,20 @@ async fn context_failure_keeps_local_progress() {
         assert!(!log.contains("Exact spacing"));
         if failure == "authorization" {
             assert!(upstream.requests.lock().unwrap().is_empty());
+        }
+        if failure == "initialize" {
+            assert!(log.contains("mcp_startup_failed"));
+            assert_eq!(
+                upstream
+                    .requests
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|request| request["method"] == "initialize")
+                    .count(),
+                2,
+                "provider startup and daemon context retrieval both observe the native outage"
+            );
         }
         fixture.close().await;
         server.abort();

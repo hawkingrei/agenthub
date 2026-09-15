@@ -49,10 +49,10 @@ Durable work evidence: [slice 7 checkpoint](journal/2026-09-15-agent-loop-work-e
   and durable-success recovery, including no output before commit and no ambiguous-write replay.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
-  Context bootstrap and availability handling are implemented in the
+  Context bootstrap, availability handling, and selected-learning contracts are implemented in the
   [slice 10 checkpoint](journal/2026-09-16-mem-context-bootstrap.md), with focused runtime checks
-  passing. Deadline/late-settlement and eager-provider startup failure coverage, selected learning
-  with provenance, and publication remain open.
+  passing. Deadline/late-settlement, learning provenance, and eager-provider failure are covered;
+  final adapter/proxy regression validation and publication remain open.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.
   Prove one configured entry prompt, role authority, structured finish, and transcript-free recovery.
 - [ ] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.

@@ -4,8 +4,8 @@
 
 Add one scoped context-lens read to each local loop activation, including provider resume. Preserve
 the attributed markdown as data, classify unavailable knowledge separately from invalid authority,
-and retain independent local task progress. This is an implementation checkpoint within slice 10;
-selected learning and its provenance are still required before publication.
+and retain independent local task progress. Selected learning uses native discovery and preserves
+task, originating activation, and artifact provenance. Slice 10 publication and CI remain open.
 
 ## Background
 
@@ -19,19 +19,25 @@ the context lens. The upstream contract was inspected in the local Mem source at
 
 - Daemon-side authorization failure classification and configuration fingerprints.
 - A bounded consumer of the existing proxy with normal lifecycle fences and journal admission.
-- One attributed-data block or visible knowledge failure in entry prompt version `loop-entry-v3`.
+- One attributed-data block or visible knowledge failure in entry prompt version `loop-entry-v4`.
 - Fenced, immutable, body-free context outcome events in the existing activation event table.
+- Native selected-learning output and recovery contracts, including readable legacy note inputs.
 
 ## Key Decisions
 
 - Do not mount an unverified upstream binding when allowing independent local work.
 - Preserve dynamic schemas and native responses; the bootstrap is a consumer of those contracts.
-- Assign trusted read-only replay only to the integration-owned context lens, not arbitrary hints.
+- Assign trusted read-only replay to the context lens and native memory/working-memory/thread/source
+  retrieval contracts. Unknown tools and memory writes do not gain replay authority from annotations.
 - Reject oversized or wrong-scope context in full. Keep successful markdown byte-for-byte.
 - Bound waiting without canceling an already admitted journaled exchange; retain its daemon guard
   until factual settlement and session retirement.
-- Prompt review classification: runtime recovery pointer and data boundary. Entry text grows only
-  for configured Mem activations. Role skill entrypoints are unchanged in this checkpoint.
+- Prompt review classification: runtime recovery pointer, data boundary, and selected-learning
+  output contract. Entry text grows only for configured Mem activations. No private native tool
+  recipes or role skill entrypoints are added; role integration remains slice 11.
+- Keep original selected provenance during recovery. Cloud's declared `source_grounding` is a
+  nullable string, and its tool profile does not promise caller-ID upsert. When the field is absent,
+  selected content carries the evidence references without extending the discovered schema.
 
 ## Validation
 
@@ -64,13 +70,24 @@ temporary directory, before proxy initialization. With a private command-local `
 in 3.29 seconds. No production settings, timeouts, crash assertions, or Bazel configuration changed.
 Other validation used the existing command-local Rust temporary directory and loopback proxy bypass.
 
+## Deadline And Learning Validation
+
+The consumer-deadline fixture holds an admitted upstream read beyond its consumer's deadline. The
+consumer returns unavailable while independent task evidence remains writable and cleanup remains
+fenced. Releasing the upstream records factual success before cleanup acquires its guard. The
+activation retains its original unavailable event. The focused parent test passes for this boundary.
+
+Additional fixtures exercise eager native initialization failure, selected learning through native
+provenance or content, read recovery, and an applied write with no receipt across two activations.
+The final launch selection passes eight parent/unit tests. Three additional child helpers run
+through their parents (listed as ignored by the outer harness). Root all-target Clippy also passes. The owned
+Codex adapter's existing optional MCP configuration is guarded explicitly; its focused build/test
+is pending at this checkpoint. The pinned runtime validates only required servers
+(`codex-mcp/src/connection_manager/required.rs` at `9085439`). Fake ACP behavior does not prove how
+arbitrary external providers or language models handle tool outages or select learning.
+
 ## Follow-Ups
 
-- Add explicit consumer-deadline/late-settlement evidence before completing the slice.
-- Verify an upstream initialization outage after successful membership probing with an eagerly
-  initializing provider. The Mem bootstrap fixture and the successful eager MCP fixture do not
-  by themselves prove independent local progress through that startup failure boundary.
-- Implement selected learning with task/activation/artifact provenance through the existing native
-  tools, without transcript or task mirroring.
+- Complete focused adapter validation and shared proxy regression checks.
 - Publish the complete slice 10 PR and verify its CI before treating the slice as delivered.
 - See [the canonical Mem contract](../features/nowledge-mem-mcp-proxy.md) and [active work](../todo.md).

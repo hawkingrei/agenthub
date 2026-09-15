@@ -14,6 +14,8 @@ mod mem;
 const PROVIDER: &str = r#"#!/usr/bin/env python3
 import json, os, subprocess, sys, uuid
 log_path, mode, control_binary = sys.argv[1:]
+if mode == 'mem':
+    import mem_provider
 shim = None
 def mcp_call(message):
     shim.stdin.write(json.dumps(message) + '\n')
@@ -35,7 +37,9 @@ for line in sys.stdin:
     method = request['method']
     if method == 'initialize':
         result = {'protocolVersion': 1, 'agentCapabilities': {'loadSession': True}}
-    elif method == 'session/new':
+    elif method in ['session/new', 'session/load']:
+        if mode == 'mem':
+            mem_provider.start(request['params'], log_path)
         if mode == 'mcp':
             private_keys = ['TEST_MEM_UPSTREAM_KEY', 'TEST_OTHER_MEM_KEY', 'NMEM_API_KEY', 'NMEM_API_URL', 'NOWLEDGE_MEM_HEADERS', 'MCP_HTTP_HEADERS']
             assert all(key not in os.environ for key in private_keys)
@@ -58,16 +62,10 @@ for line in sys.stdin:
             assert tools['result']['tools'][0]['name'] == 'fixture_write'
             with open(log_path, 'a') as log:
                 log.write(json.dumps({'mcp_bootstrap':True, 'server':server}) + '\n')
-        result = {'sessionId': str(uuid.uuid4())}
+        result = {'sessionId': str(uuid.uuid4())} if method == 'session/new' else {}
     elif method == 'session/prompt':
         if mode == 'mem':
-            prompt = ''.join(block.get('text', '') for block in request['params']['prompt'])
-            with open(log_path, 'a') as log:
-                log.write(json.dumps({'context_prompt':prompt}) + '\n')
-            with open(os.path.join(os.getcwd(), 'local-task-id')) as task_id:
-                task = actor('team-task-note', '--task-id', task_id.read(), '--kind', 'result', '--text', 'Independent local progress is durable')
-            with open(log_path, 'a') as log:
-                log.write(json.dumps({'local_task':task}) + '\n')
+            mem_provider.work(request['params'], actor, log_path)
         if mode == 'mcp':
             result = mcp_call({'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'fixture_write','arguments':{'body':'private-business-body'}}})
             assert result['result']['structuredContent']['written'] is True
@@ -156,6 +154,9 @@ impl Fixture {
         std::fs::create_dir(&directory).unwrap();
         let program = directory.join("claude-agent-acp");
         std::fs::write(&program, PROVIDER).unwrap();
+        if mode == "mem" {
+            std::fs::write(directory.join("mem_provider.py"), mem::provider::SCRIPT).unwrap();
+        }
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
         let control = crate::agenthub_binary::resolve_agenthub_binary_path().unwrap();
         for actor in ["planner", "worker"] {
@@ -539,7 +540,7 @@ async fn loop_work_provider_dispatch_survives_leader_exit_and_report_wakes_offli
 
 #[test]
 fn loop_work_entry_prompt_is_a_bounded_versioned_recovery_pointer() {
-    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v3");
+    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v4");
     assert!(LOOP_ENTRY_PROMPT.len() < 1500);
     for command in ["loop-context", "loop-source", "loop-finish"] {
         assert!(LOOP_ENTRY_PROMPT.contains(command));

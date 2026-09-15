@@ -1,6 +1,6 @@
 //! Resolve existing Mem profiles inside the daemon. No secret-bearing type implements Debug.
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use agenthub_config::{AppConfig, ResolvedNowledgeMemBinding};
 use agenthub_mcp::{
@@ -242,7 +242,7 @@ async fn resolve_verified_mem(
         json!({"profile":team.resolved.profile_name,
         "endpoint":team.endpoint.as_str(),"credential_ref":team.resolved.profile.credential_env})
     });
-    let revision = json!({"version":6, "access_policy":"scoped-key-v1", "replay_policy":"context-read-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
+    let revision = json!({"version":7, "access_policy":"scoped-key-v1", "replay_policy":"knowledge-reads-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
         "credential_ref":resolved.profile.credential_env, "space_id":resolved.space_id,
         "workspace_id":workspace, "team_reference":team_reference, "tool_set":resolved.profile.tool_set});
     let fingerprint = Sha256::digest(serde_json::to_vec(&revision)?)
@@ -255,9 +255,18 @@ async fn resolve_verified_mem(
         &json!({"service":"nowledge-mem", "workspace_id":workspace, "space_id":resolved.space_id}),
         &revision,
         transport,
-        // This integration owns the context-lens read contract. Other dynamically discovered
-        // tools retain conservative write semantics regardless of their upstream annotations.
-        BTreeMap::from([("read_context_bundle".into(), TrustedReplayPolicy::ReadOnly)]),
+        // These native retrieval contracts are integration-owned. Discovery annotations cannot
+        // grant replay authority to additional tools, including memory writes with caller IDs.
+        [
+            "read_context_bundle",
+            "memory_search",
+            "read_working_memory",
+            "thread_search",
+            "search_source_chunks",
+        ]
+        .into_iter()
+        .map(|name| (name.into(), TrustedReplayPolicy::ReadOnly))
+        .collect(),
     )?
     .with_verified_authority();
     let scope = agenthub_acp_core::nowledge_mem::MemScopeBinding::new(

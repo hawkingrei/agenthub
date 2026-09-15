@@ -1029,6 +1029,10 @@ mod tests {
 
         assert_eq!(name, "AgentHub_Tools");
         assert!(!config.supports_parallel_tool_calls);
+        assert!(
+            !config.required,
+            "MCP startup failure must allow local work"
+        );
         assert_eq!(config.oauth, None);
         let McpServerTransportConfig::StreamableHttp {
             url, http_headers, ..
@@ -1058,6 +1062,10 @@ mod tests {
 
         assert_eq!(name, "Mailbox_Bridge");
         assert!(!config.supports_parallel_tool_calls);
+        assert!(
+            !config.required,
+            "MCP startup failure must allow local work"
+        );
         assert_eq!(config.oauth, None);
         let McpServerTransportConfig::Stdio {
             command,

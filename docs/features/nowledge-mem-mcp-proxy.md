@@ -1,7 +1,7 @@
 # Nowledge Mem MCP Proxy
 
-Status: integration in progress. Scoped proxy startup, the shared operation journal, and activation
-context bootstrap exist; selected learning remains open. This is the initial Mem seam for the
+Status: integration validation in progress. Scoped proxy startup, the shared operation journal,
+activation context bootstrap, and selected-learning contracts are implemented. This is the initial Mem seam for the
 [loop product model](agent-loop-product-model.md).
 
 ## Problem
@@ -123,9 +123,10 @@ resume state.
 
 Both fresh and resumed ACP sessions reread the lens after the activation becomes Running and before
 its one entry prompt. A dedicated daemon-owned proxy session initializes, completes at most 32
-discovery pages, and calls the discovered lens. Only this integration-owned read contract receives
-trusted read-only replay classification; unknown tools retain non-idempotent semantics regardless
-of their annotations. The provider's separate session retains native discovery and error behavior.
+discovery pages, and calls the discovered lens. The native context lens, memory search, working
+memory read, thread search, and source-chunk search receive integration-owned read-only replay
+classification. Unknown tools and writes retain non-idempotent semantics regardless of their
+annotations. The provider's separate session retains native discovery and error behavior.
 
 The context budget is 30 seconds and 64 KiB of markdown. An oversized, conflicting, malformed, or
 wrong-space bundle is rejected in full instead of truncating attribution. The original markdown is
@@ -146,9 +147,33 @@ Only knowledge-dependent work should wait; local task notes and outcomes remain 
 An expired consumer deadline does not abandon a sent operation: the daemon retains its operation
 guard until the shared transport drains and journals its outcome, then retires the bootstrap session.
 
+MCP startup may fail after membership authorization succeeds. The owned Codex ACP adapter marks
+ACP-supplied MCP servers optional, so eager startup failure does not reject an otherwise valid
+provider session. Native startup errors remain errors; the proxy does not fabricate a successful
+handshake. Other ACP providers must also support optional tool availability to continue independent
+work through such a failure.
+
 Stable actor and Team/project bindings survive process exit. Activation/session IDs provide
 correlation, not new Mem spaces or user identities. Canonical tasks and IM supply current work;
 agents retrieve relevant prior knowledge through the discovered Mem tools.
+
+### Selected Learning
+
+The entry prompt requires the agent to retain reusable decisions and learning with source task,
+originating activation, and evidence artifact references. The agent selects what is worth retaining
+and uses the currently discovered native tools and schemas. Declared provenance fields carry those
+references when available; otherwise the selected content includes them. The proxy adds only a
+declared scope argument, without inventing provenance fields or a caller-ID upsert guarantee.
+
+Native receipts or unresolved outcomes remain with local task evidence. An unresolved write keeps
+its original selected payload, provenance, and identity across recovery. A later activation must
+reconcile the result before retrying; the journal also rejects a matching uncertain non-idempotent
+write even when the caller uses a new JSON-RPC ID or activation. Provenance describes the origin of
+the learning and is not rewritten to the retrying activation. It cannot grant runtime authority.
+
+Existing `.agenthubmemory/` notes remain readable legacy inputs. Reading them does not migrate the
+directory. Selection does not upload whole workspaces, transcripts, task state, or task conversations.
+Canonical task progress and memory-operation outcomes remain independent.
 
 ### Operation Journal
 
@@ -223,6 +248,14 @@ permit; changing configuration alone cannot establish that a historical write wa
   and journaled without bodies.
 - A disconnected non-idempotent write becomes `outcome_unknown` and is not
   replayed.
+- After a context consumer timeout, cleanup remains fenced until the late native outcome is
+  journaled; the activation's original unavailable event and local task evidence remain intact.
+- An eagerly initializing provider records native startup failure and still appends local task
+  evidence. The owned Codex adapter keeps supplied MCP servers optional on both launch paths.
+- Selected learning carries task, originating activation, and artifact references through declared
+  native provenance fields or selected content. Legacy notes and unselected local data stay local.
+- After an applied write loses its receipt, a second activation can repeat trusted retrievals but
+  cannot send the same write again. A native annotation cannot authorize write replay.
 - A remote member with a Mem binding fails before provider startup when no
   secret broker is configured.
 
