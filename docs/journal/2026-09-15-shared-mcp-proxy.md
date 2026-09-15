@@ -630,9 +630,52 @@ process helpers are explicitly executed by their parent tests. Root/ACP all-targ
 with warnings denied. No public API,
 configuration schema, dependency, protobuf, or Bazel configuration changed.
 
+### Read continuation follow-up (2026-09-16)
+
+Resource reads and prompt retrieval now use a bounded session-local MRTR controller. Previously,
+the generic control path could forward caller-supplied state and inputs without associating them
+with an upstream receipt. The controller binds the method and original parameters, compares opaque
+state by digest, and requires an unambiguous issued input anchor when no state exists. Reservations
+prevent concurrent consumption while an unsent dropped request leaves its receipt usable.
+
+Sending consumes the old receipt. A transport failure or upstream error cannot authorize another
+continuation send. A successful intermediate response replaces it; a final response releases it.
+Fresh reads remain available independently. Ten requests per chain, 64 active chains per session,
+and shared retained-byte credits bound the state. Read receipts are transient correlation data;
+the existing durable tool journal remains responsible for external write uncertainty.
+
+The pinned final MRTR specification permits only tool calls, resource reads, and prompt retrieval.
+The pinned tasks extension permits task creation only for tool calls. Generic controls now reject
+other deferred shapes; read input methods also require their client capability family and existing
+integration callback grant. Legacy requests and batches cannot carry modern continuation fields.
+
+Validation commands:
+
+```bash
+cargo test -p agenthub-mcp --locked --offline
+cargo clippy -p agenthub-mcp -p agenthub --all-targets --locked --offline -- -D warnings
+cargo build -p agenthub --bin agenthub --locked --offline
+cargo test -p agenthub --lib mcp_ --locked --offline
+cargo fmt --all --check
+```
+
+The HTTP fixtures exercise both read methods, exact wire preservation, changed parameters/state,
+partial and extra inputs, ambiguous parallel requests, reserved-receipt ambiguity, unsent drop,
+cross-session rejection, upstream errors and connection loss, bounded rounds, and capacity shared
+between sessions. They use a store without a tool-journal schema to prove that reads do not create
+synthetic tool operations. No database, dependency, protobuf, or Bazel configuration changes occur.
+
+All 102 MCP crate tests and 29 root MCP tests pass. The root access fixture now declares the client
+input capabilities it exercises and verifies a complete prompt continuation through signed RPC,
+including changed-parameter and consumed-receipt rejection without another HTTP request. The two
+ignored process helpers run through their parent tests. Root/MCP all-target Clippy with warnings
+denied, the actual binary rebuild, formatting, whitespace, and 82 local document links pass.
+A full temporary filesystem interrupted one root run; after archiving inactive test artifacts
+with their original paths retained as symlinks, the unchanged test selection passes.
+
 ## Follow-Ups
 
-- Complete slice 9's remaining capability and non-tool continuation paths, upstream namespace
+- Complete slice 9's remaining capability paths, upstream namespace
   authorization, and authority-alias reconciliation. Restore scoped Mem non-tool access after its
   authority is established; tool-only access does not complete the original integration goal.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through

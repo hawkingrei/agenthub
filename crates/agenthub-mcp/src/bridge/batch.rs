@@ -82,6 +82,9 @@ impl McpProxySession {
                 .any(|member| member["method"] == "notifications/initialized");
         let mut candidate = protocol.clone();
         let mut context = candidate.begin(&message)?;
+        for member in members {
+            read::validate_request(member, context.version)?;
+        }
         if callbacks_only && let Some(current) = self.upstream_context.lock().await.as_ref() {
             context = current.clone();
         }
@@ -271,6 +274,13 @@ async fn forward(
     for member in members {
         if message_kind(member).ok() != Some(MessageKind::Response) {
             continue;
+        }
+        if let Some(method) = methods.get(&correlation_id(&member["id"]))
+            && method != "tools/call"
+            && read::validate_control_response(&json!({"method":method}), member, context.version)
+                .is_err()
+        {
+            sink.fail();
         }
         if let Some(method) = methods.get(&correlation_id(&member["id"]))
             && session

@@ -97,8 +97,8 @@ Discovery hides unapproved tools, resources, templates, and prompts while preser
 arguments, extensions, ordering, and pagination of retained entries. Initialization and modern server
 discovery omit capabilities for disabled surfaces. A returned resource read containing an unapproved
 URI is rejected before provider delivery, including when a deferred result carries resource content.
-Errors retain upstream JSON-RPC data. Deferred envelopes without a final list or resource body remain
-unchanged; non-tool continuation receipt linkage is a separate controller requirement.
+Errors retain upstream JSON-RPC data. Valid deferred read envelopes remain unchanged and acquire
+the session-local continuation receipt described below. Discovery cannot return a deferred result.
 
 Named grants constrain protocol access; they do not prove upstream credential or namespace isolation.
 Integration configuration must bind arguments and establish that the server enforces the intended
@@ -241,6 +241,29 @@ The [MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/bas
 requires separate request IDs and exact state echoing; it does not grant a proxy permission to
 blindly repeat an ambiguous write.
 
+Modern `resources/read` and `prompts/get` use session-local read receipts. The receipt binds the
+method and all original parameters, including client metadata and extension fields; only the progress
+token can change between rounds. Opaque state is compared by digest without parsing or modification.
+When no state was issued, input response IDs must identify exactly one outstanding receipt. Partial
+responses and extra fields remain intact for upstream validation. Ambiguous parallel receipts, altered
+parameters, invented state, and reuse of consumed receipts fail before HTTP. Reserved receipts still
+participate in ambiguity checks, so concurrent admission cannot redirect another request's inputs.
+
+Each chain permits ten requests and each session retains at most 64 active read chains, with an
+8 KiB credit per chain in the shared retained-state budget. Only digests are retained. Dropping an
+unsent continuation releases its reservation; beginning its send consumes the receipt even if HTTP
+or delivery subsequently fails. Completion and failures release the chain. A fresh read remains
+possible after a failed continuation. There is no automatic POST retry or cross-session restoration
+of read state: a new activation starts a fresh read. Durable write recovery remains owned by the
+operation journal. Neither kind of receipt replaces upstream namespace, principal, or state-integrity
+authorization.
+
+Only `tools/call`, `resources/read`, and `prompts/get` support modern MRTR. Control responses reject
+deferred results on other methods and reject task creation; the pinned tasks extension supports
+`tools/call` only. Read input requests must name a client capability family declared on that request
+and also pass the integration's callback grants. Legacy requests and batches reject modern
+continuation fields before sending them upstream.
+
 Legacy nested task receipts and modern flat `resultType: "task"` receipts remain raw protocol
 results. Neither receipt shape counts as a completed tool action. Task lookup uses the originating
 journal receipt, current binding/catalog, and running executor. July 2026 admits `tasks/get` with
@@ -371,7 +394,7 @@ do not allocate that amount of memory up front.
 | Callback working allowance | 64 MiB | One independent response reservation; ordinary requests cannot consume it |
 | Listener working allowance | 512 MiB | Eight independent 64 MiB reservations; one idle GET listener per admitted session |
 | Delivery | 64 MiB | Journal events and RPC frames, transferring the same lease between queues |
-| Retained state | 64 MiB | Both discovery declaration copies and shared initialization capabilities |
+| Retained state | 64 MiB | Discovery declaration copies, shared initialization capabilities, and read continuation digests |
 | Each stdio shim | 32 MiB | Its combined incoming messages and pending stdout messages |
 
 Acquire the working reservation before policy preparation or an upstream send. Keep it with the
@@ -395,7 +418,7 @@ and kernel buffers are outside byte accounting. Existing frame, catalog, header,
 and session limits continue to bound their corresponding structures.
 
 Modern tool MRTR rounds, declared retries, and task lookups use receipt-linked journal paths.
-Integration-specific continuation authorization for non-tool methods remains controller work.
+Read MRTR uses the bounded session controller; all paths retain integration access checks.
 
 ## Validation Matrix
 
@@ -421,6 +444,7 @@ Integration-specific continuation authorization for non-tool methods remains con
 | Failed handshake | Identified/anonymous errors, malformed results, disconnects, single/batched initialized failures, callback settlement before DELETE, reused callback IDs after retry, cleanup failure, and repeated notifications in an operating session |
 | Tool MRTR | One logical operation across multiple HTTP requests, exact state echo and bound arguments, separate per-round inputs, no send for altered intent, and persisted parent-receipt links |
 | MRTR retry | Explicit read/stable-identity retry after loss or error, unchanged state/inputs/identity, independent attempt records across activations, and real shim rejection of altered inputs before HTTP |
+| Read MRTR | HTTP resource/prompt rounds preserve parameters and results; reject altered intent, foreign/ambiguous/consumed receipts, unsupported methods, unadvertised input families and task creation; cover unsent drop, lost response, ten-round limit, shared capacity and session isolation |
 | Task lookup | Real shim preserves modern task/result envelopes and rejects foreign handles before HTTP; legacy HTTP status/result distinction, terminal failures, malformed responses, and March batch rejection |
 | Task cancellation | Real shim preserves the acknowledgment, rejects a duplicate before HTTP, then records actual tool success; legacy cancel capability/status, lost acknowledgment, RPC error, malformed response, and fresh-activation resend rejection |
 | Task inputs | Real shim receives unchanged elicitation input, commits response consumption before HTTP, rejects a duplicate, and later observes the tool result; HTTP partial/foreign inputs, stale polls, lost ACK, RPC errors, and changed input requests |
@@ -452,8 +476,9 @@ tests separately cover committed prepared/sent/completed states.
 
 ## Open Risks
 
-- Non-tool continuation authorization remains controller work. Observed deferred receipts block replay of the original request until a linked lookup
-  establishes the tool outcome.
+- Broader negotiated capability validation remains pending outside the read MRTR controller.
+  Observed deferred tool receipts block replay of the original write until a linked continuation
+  or lookup establishes the outcome.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
   aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
   not evidence that retrying an unresolved write is safe.

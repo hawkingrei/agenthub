@@ -61,7 +61,7 @@ fn names(names: &[&str]) -> McpSelection {
 }
 
 fn request(id: i64, method: &str, mut params: Value) -> Value {
-    params["_meta"] = json!({"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}});
+    params["_meta"] = json!({"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{"roots":{},"sampling":{}}});
     json!({"jsonrpc":"2.0","id":id,"method":method,"params":params})
 }
 
@@ -280,6 +280,32 @@ async fn mcp_access_policy_scopes_rpc_discovery_calls_and_resource_subscriptions
         permitted_input["result"]["inputRequests"]["input"]["method"],
         "roots/list"
     );
+    let calls = h.upstream.calls.lock().unwrap().len();
+    let mut continuation = request(
+        93,
+        "prompts/get",
+        json!({"name":"brief",
+        "requestState":"opaque-prompt-state","inputResponses":{"input":{"roots":[]}},"vendor":"changed"}),
+    );
+    let changed = call(&h, &token, &session, continuation.clone()).await;
+    assert!(changed.get("error").is_some());
+    assert_eq!(h.upstream.calls.lock().unwrap().len(), calls);
+    continuation["id"] = json!(94);
+    continuation["params"]
+        .as_object_mut()
+        .unwrap()
+        .remove("vendor");
+    let completed = call(&h, &token, &session, continuation.clone()).await;
+    assert_eq!(
+        completed["result"]["messages"][0]["content"]["text"],
+        "allowed-prompt"
+    );
+    assert_eq!(h.upstream.calls.lock().unwrap().len(), calls + 1);
+    assert_eq!(h.upstream.calls.lock().unwrap().last(), Some(&continuation));
+    continuation["id"] = json!(95);
+    let repeated = call(&h, &token, &session, continuation).await;
+    assert!(repeated.get("error").is_some());
+    assert_eq!(h.upstream.calls.lock().unwrap().len(), calls + 1);
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_operations")
         .fetch_one(&h.state.db)
         .await

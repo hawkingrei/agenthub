@@ -3,6 +3,7 @@
 mod batch;
 mod lifecycle;
 mod listen;
+mod read;
 mod subscription;
 pub use listen::PreparedProxyListener;
 pub use subscription::PreparedProxySubscription;
@@ -111,6 +112,7 @@ pub struct McpProxySession {
     discovery: Mutex<Discovery>,
     request_ids: Mutex<HashSet<[u8; 32]>>,
     callbacks: Mutex<HashSet<[u8; 32]>>,
+    read_continuations: Arc<read::ReadContinuations>,
     budget: Arc<McpProxyBudget>,
     tool_slots: Arc<Semaphore>,
     control_slots: Arc<Semaphore>,
@@ -154,6 +156,10 @@ enum Exchange {
     TaskCancellation(Box<PreparedTaskCancellation>),
     TaskUpdate(Box<PreparedTaskUpdate>),
     Control(PreparedHttpRequest),
+    Read {
+        request: PreparedHttpRequest,
+        round: read::ReadRound,
+    },
     CancelSubscription(Option<watch::Sender<bool>>),
     Discovery {
         request: PreparedHttpRequest,
@@ -187,6 +193,7 @@ impl McpProxySession {
             discovery: Mutex::new(Discovery::default()),
             request_ids: Mutex::new(HashSet::new()),
             callbacks: Mutex::new(HashSet::new()),
+            read_continuations: Arc::new(read::ReadContinuations::default()),
             budget,
             tool_slots: Arc::new(Semaphore::new(4)),
             control_slots: Arc::new(Semaphore::new(8)),
@@ -282,7 +289,10 @@ impl McpProxySession {
         let mut protocol = self.protocol.lock().await;
         let handshake = method == "initialize"
             || method == "notifications/initialized" && protocol.awaiting_initialized();
-        let mut context = protocol.begin(&message)?;
+        let mut candidate = protocol.clone();
+        let mut context = candidate.begin(&message)?;
+        read::validate_request(&message, context.version)?;
+        *protocol = candidate;
         drop(protocol);
         if method == "initialize" {
             self.listen_ready.store(false, Ordering::Release);
@@ -418,6 +428,15 @@ impl McpProxySession {
                     request,
                     generation: discovery.generation,
                     cursor,
+                }
+            } else if context.version == crate::protocol::ProtocolVersion::July2026
+                && matches!(method.as_str(), "prompts/get" | "resources/read")
+            {
+                Exchange::Read {
+                    request,
+                    round: self
+                        .read_continuations
+                        .prepare(&message, &self.budget.retained)?,
                 }
             } else {
                 Exchange::Control(request)
@@ -644,7 +663,21 @@ impl PreparedProxyExchange {
                 &self.context,
                 &self.message,
                 handshake,
-                None,
+                ControlResponse::default(),
+                &mut sink,
+            )
+            .await
+            .map_err(|error| error.to_string()),
+            Exchange::Read { request, round } => run_control(
+                &session,
+                request,
+                &self.context,
+                &self.message,
+                handshake,
+                ControlResponse {
+                    read: Some(round),
+                    ..ControlResponse::default()
+                },
                 &mut sink,
             )
             .await
@@ -659,7 +692,10 @@ impl PreparedProxyExchange {
                 &self.context,
                 &self.message,
                 handshake,
-                Some((generation, cursor)),
+                ControlResponse {
+                    discovery: Some((generation, cursor)),
+                    ..ControlResponse::default()
+                },
                 &mut sink,
             )
             .await
@@ -760,21 +796,31 @@ impl Sink {
     }
 }
 
+#[derive(Default)]
+struct ControlResponse {
+    discovery: Option<(u64, Option<String>)>,
+    read: Option<read::ReadRound>,
+}
+
 async fn run_control(
     session: &McpProxySession,
     request: PreparedHttpRequest,
     context: &HttpContext,
-    message: &Value,
+    request_message: &Value,
     handshake: bool,
-    discovery: Option<(u64, Option<String>)>,
+    mut projection: ControlResponse,
     sink: &mut Sink,
 ) -> Result<Option<Value>, McpTransportError> {
-    let method = message["method"].as_str().unwrap_or("");
-    let request_id = (message_kind(message)? == MessageKind::Request).then(|| &message["id"]);
+    let method = request_message["method"].as_str().unwrap_or("");
+    let request_id =
+        (message_kind(request_message)? == MessageKind::Request).then(|| &request_message["id"]);
     let mut task_events = crate::journal::TaskEventDrain::new(
         session.bound_task_observer(context)?,
         session.binding.policy.transport.timeout(),
     );
+    if let Some(round) = projection.read.as_mut() {
+        round.begin();
+    }
     let mut exchange = match session
         .binding
         .policy
@@ -809,7 +855,8 @@ async fn run_control(
             member => std::slice::from_mut(member),
         };
         let mut terminal = false;
-        for member in members {
+        let mut terminal_index = 0;
+        for (index, member) in members.iter_mut().enumerate() {
             let is_error = exchange.status_code() >= 400
                 && member.get("error").is_some()
                 && member.get("id").is_none_or(Value::is_null);
@@ -820,6 +867,8 @@ async fn run_control(
                     return Err(McpTransportError::InvalidResponse);
                 }
                 terminal = true;
+                terminal_index = index;
+                read::validate_control_response(request_message, member, context.version)?;
                 session.binding.access.project_response(method, member)?;
                 if method == "initialize" {
                     if is_error {
@@ -831,7 +880,7 @@ async fn run_control(
                         }
                     }
                 }
-                if let Some((generation, cursor)) = discovery.as_ref() {
+                if let Some((generation, cursor)) = projection.discovery.as_ref() {
                     session
                         .apply_discovery(member, context, *generation, cursor)
                         .await?;
@@ -860,6 +909,13 @@ async fn run_control(
             }
             if task_events.lost {
                 return Err(McpTransportError::InvalidResponse);
+            }
+            if let Some(round) = projection.read.as_mut() {
+                let response = message
+                    .as_array()
+                    .map(|members| &members[terminal_index])
+                    .unwrap_or(&message);
+                round.finish(response)?;
             }
             return Ok(Some(message));
         }

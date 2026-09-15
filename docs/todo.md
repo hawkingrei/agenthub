@@ -37,8 +37,10 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
   for creation receipts while callbacks continue. A trusted access policy now checks single requests,
   batch members, subscription filters, callback registration, and discovery visibility. Configured
   Mem currently permits tools only; completing its namespace authorization and enabling its scoped
-  non-tool surfaces remains required. Full capability handling, non-tool continuation linkage,
-  and authority-alias reconciliation remain pending. Native static MCP fresh/resume launch and
+  non-tool surfaces remains required. Full capability handling and authority-alias reconciliation
+  remain pending. Resource/prompt MRTR now links bounded session receipts to unchanged requests,
+  including parallel/foreign receipt rejection and no continuation replay after HTTP loss.
+  Native static MCP fresh/resume launch and
   capability filtering are covered through a provider that starts and calls the configured server. Real shim/RPC
   process-crash tests cover before-call, sent-without-response, parsed-success-before-commit,
   and durable-success recovery, including no output before commit and no ambiguous-write replay.
