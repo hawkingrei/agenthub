@@ -37,8 +37,9 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
   for creation receipts while callbacks continue. A trusted access policy now checks single requests,
   batch members, subscription filters, callback registration, and discovery visibility. Configured
   Mem now requires authenticated single-space key narrowing before provider startup and enables
-  its scoped non-tool surfaces under upstream authorization. Authority-alias reconciliation remains
-  required. Client capability
+  its scoped non-tool surfaces under upstream authorization. Verified workspace/space identity now
+  keeps endpoint aliases within the same journal boundary; legacy unclassified effects retain
+  conservative replay checks without rewriting their intents. Client capability
   snapshots now gate callbacks and deferred/task inputs throughout the proxy, including concurrent
   modern requests, logging opt-in/severity, and retired method admission. Resource/prompt MRTR now links bounded session receipts to unchanged requests,
   including parallel/foreign receipt rejection and no continuation replay after HTTP loss.

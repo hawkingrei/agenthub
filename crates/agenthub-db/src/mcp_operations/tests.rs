@@ -7,7 +7,7 @@ use agenthub_agent_domain::{
     },
     mcp_operations::{
         McpAmbiguityReason, McpCompletion, McpDigest, McpFailureKind, McpOperationIntent,
-        McpOperationStatus, McpReplaySafety,
+        McpOperationStatus, McpReplaySafety, McpScopeIdentity,
     },
 };
 use uuid::Uuid;
@@ -19,6 +19,7 @@ use super::*;
 mod batch;
 mod continuation;
 mod continuation_retry;
+mod scope;
 mod task;
 
 struct Fixture {
@@ -177,6 +178,7 @@ fn intent(safety: McpReplaySafety) -> McpOperationIntent {
         request_key: digest('1'),
         server_id: "profile".into(),
         scope_digest: digest('2'),
+        scope_identity: McpScopeIdentity::Legacy,
         binding_digest: digest('3'),
         tool_name: "memory_add".into(),
         schema_digest: digest('4'),

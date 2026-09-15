@@ -196,7 +196,7 @@ pub(crate) async fn resolve_mem(
         json!({"profile":team.resolved.profile_name,
         "endpoint":team.endpoint.as_str(),"credential_ref":team.resolved.profile.credential_env})
     });
-    let revision = json!({"version":4, "access_policy":"scoped-key-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
+    let revision = json!({"version":5, "access_policy":"scoped-key-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
         "credential_ref":resolved.profile.credential_env, "space_id":resolved.space_id,
         "workspace_id":workspace, "team_reference":team_reference, "tool_set":resolved.profile.tool_set});
     let fingerprint = Sha256::digest(serde_json::to_vec(&revision)?)
@@ -206,11 +206,12 @@ pub(crate) async fn resolve_mem(
     let transport = McpHttpTransport::new(endpoint.as_str(), headers, Duration::from_secs(120))?;
     let policy = McpBinding::new(
         "nowledge-mem".into(),
-        &json!({"service":"nowledge-mem", "authority":endpoint.as_str(), "space_id":resolved.space_id}),
+        &json!({"service":"nowledge-mem", "workspace_id":workspace, "space_id":resolved.space_id}),
         &revision,
         transport,
         BTreeMap::new(),
-    )?;
+    )?
+    .with_verified_authority();
     let scope = agenthub_acp_core::nowledge_mem::MemScopeBinding::new(
         resolved.profile_name,
         resolved.space_id,

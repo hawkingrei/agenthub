@@ -33,6 +33,11 @@ pub async fn migrate_mcp_operations(pool: &SqlitePool) -> anyhow::Result<()> {
             WHERE identity_digest IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_mcp_operation_actor_history
             ON mcp_operations(team_id, actor_id, created_at, id);
+        CREATE INDEX IF NOT EXISTS idx_mcp_operation_legacy_semantics
+            ON mcp_operations(team_id, server_id, tool_name, arguments_digest);
+        CREATE INDEX IF NOT EXISTS idx_mcp_operation_legacy_identity
+            ON mcp_operations(team_id, server_id, tool_name, identity_digest)
+            WHERE identity_digest IS NOT NULL;
         CREATE TABLE IF NOT EXISTS mcp_operation_attempts (
             operation_id TEXT NOT NULL REFERENCES mcp_operations(id),
             number INTEGER NOT NULL CHECK(number > 0),

@@ -107,6 +107,22 @@ impl McpReplaySafety {
     }
 }
 
+/// The integration establishes stable upstream authority independently of endpoint aliases.
+/// Older intents have no such evidence; their digests must not be reinterpreted after a move.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpScopeIdentity {
+    #[default]
+    Legacy,
+    VerifiedAuthority,
+}
+
+impl McpScopeIdentity {
+    pub fn is_legacy(&self) -> bool {
+        *self == Self::Legacy
+    }
+}
+
 /// Constructed by trusted proxy policy after scope binding and schema validation.
 /// All digests cover canonical values; no raw arguments, identities, or URLs belong here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +131,8 @@ pub struct McpOperationIntent {
     pub request_key: McpDigest,
     pub server_id: String,
     pub scope_digest: McpDigest,
+    #[serde(default, skip_serializing_if = "McpScopeIdentity::is_legacy")]
+    pub scope_identity: McpScopeIdentity,
     pub binding_digest: McpDigest,
     pub tool_name: String,
     pub schema_digest: McpDigest,

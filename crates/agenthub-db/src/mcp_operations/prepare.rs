@@ -81,6 +81,9 @@ impl McpOperationStore {
 /// A fresh correlation ID is not evidence that an unresolved side effect is safe to repeat.
 /// The predicate intentionally excludes profile names and binding/schema revisions so changing
 /// configuration cannot hide an earlier attempt against the same upstream scope and arguments.
+/// Across the authority upgrade, an older digest cannot establish a different namespace. Match
+/// it conservatively within the same stable integration ID, in both prepare/send directions.
+/// This expands replay rejection only; task and continuation authority still require exact intent.
 pub(super) async fn reject_prior_effects(
     tx: &mut Transaction<'_, Sqlite>,
     team_id: &str,
@@ -90,10 +93,14 @@ pub(super) async fn reject_prior_effects(
     if let Some(identity) = intent.replay_safety.identity_digest() {
         let reused: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM mcp_operations WHERE team_id = ? \
-            AND scope_digest = ? AND tool_name = ? AND identity_digest = ? AND id IS NOT ?)",
+            AND (scope_digest = ? OR (server_id = ? AND \
+                COALESCE(json_extract(intent_json, '$.scope_identity') = 'verified_authority', 0) != ?)) \
+            AND tool_name = ? AND identity_digest = ? AND id IS NOT ?)",
         )
         .bind(team_id)
         .bind(intent.scope_digest.as_str())
+        .bind(&intent.server_id)
+        .bind(!intent.scope_identity.is_legacy())
         .bind(&intent.tool_name)
         .bind(identity.as_str())
         .bind(except_id)
@@ -104,12 +111,16 @@ pub(super) async fn reject_prior_effects(
     }
     let previous: Option<String> = sqlx::query_scalar(
         "SELECT status FROM mcp_operations WHERE team_id = ? \
-        AND scope_digest = ? AND tool_name = ? AND arguments_digest = ? AND id IS NOT ? \
+        AND (scope_digest = ? OR (server_id = ? AND \
+            COALESCE(json_extract(intent_json, '$.scope_identity') = 'verified_authority', 0) != ?)) \
+        AND tool_name = ? AND arguments_digest = ? AND id IS NOT ? \
         AND status IN ('sent', 'outcome_unknown', 'failed') \
         AND json_extract(intent_json, '$.replay_safety.kind') != 'read_only' LIMIT 1",
     )
     .bind(team_id)
     .bind(intent.scope_digest.as_str())
+    .bind(&intent.server_id)
+    .bind(!intent.scope_identity.is_legacy())
     .bind(&intent.tool_name)
     .bind(intent.arguments_digest.as_str())
     .bind(except_id)

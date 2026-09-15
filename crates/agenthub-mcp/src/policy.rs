@@ -11,7 +11,9 @@ use std::collections::BTreeMap;
 
 use agenthub_agent_domain::{
     loop_runtime::LoopReservation,
-    mcp_operations::{McpContinuationInput, McpDigest, McpOperationIntent, McpReplaySafety},
+    mcp_operations::{
+        McpContinuationInput, McpDigest, McpOperationIntent, McpReplaySafety, McpScopeIdentity,
+    },
 };
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -134,6 +136,7 @@ impl McpToolCatalog {
 pub struct McpBinding {
     server_id: String,
     scope_digest: McpDigest,
+    scope_identity: McpScopeIdentity,
     binding_digest: McpDigest,
     pub(crate) transport: McpHttpTransport,
     replay: BTreeMap<String, TrustedReplayPolicy>,
@@ -158,6 +161,14 @@ pub struct PreparedToolCall {
 }
 
 impl McpBinding {
+    /// Trusted integrations may call this only after resolving a stable authority and namespace.
+    /// The server ID must remain stable across profile and endpoint changes. This classification
+    /// lets the journal reject possible replays of older, unclassified endpoint-derived intents.
+    pub fn with_verified_authority(mut self) -> Self {
+        self.scope_identity = McpScopeIdentity::VerifiedAuthority;
+        self
+    }
+
     pub(crate) fn observation_binding(
         &self,
     ) -> agenthub_agent_domain::mcp_operations::McpTaskObservationBinding {
@@ -207,6 +218,7 @@ impl McpBinding {
         Ok(Self {
             server_id,
             scope_digest: digest("mcp-effective-scope-v1", effective_scope)?,
+            scope_identity: McpScopeIdentity::Legacy,
             binding_digest: digest(
                 "mcp-binding-revision-v1",
                 &json!([revision, policy_fingerprint]),
@@ -330,6 +342,7 @@ impl McpBinding {
             request_key,
             server_id: self.server_id.clone(),
             scope_digest: self.scope_digest.clone(),
+            scope_identity: self.scope_identity,
             binding_digest: self.binding_digest.clone(),
             tool_name: name,
             schema_digest: tool.schema_digest.clone(),

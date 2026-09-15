@@ -1,7 +1,7 @@
 # Nowledge Mem MCP Proxy
 
 Status: integration in progress. Scoped proxy startup and the shared operation journal exist;
-context bootstrap and authority-alias reconciliation remain open. This is the initial Mem seam for the
+context bootstrap remains open. This is the initial Mem seam for the
 [loop product model](agent-loop-product-model.md).
 
 ## Problem
@@ -148,6 +148,18 @@ write whose outcome becomes unknown after `sent` must remain
 actual schema advertises stable caller identity and the original call used the
 same stable value.
 
+The configured Mem scope digest covers the authenticated workspace UUID and bound space, independent
+of endpoint, profile, or credential rotation. Those configuration references still version the launch
+and task binding. Different verified workspaces remain separate even when their spaces share a name.
+
+Older endpoint-derived operation intents remain immutable and readable. Their workspace cannot be
+inferred from today's credentials. At both preparation and send admission, a verified Mem call checks
+unclassified historical Mem operations for matching arguments or reused stable identity within the
+Team; the reverse check also prevents a previously prepared legacy call from overtaking a new call.
+This conservative compatibility rule only rejects possible replays. It never widens resource, task,
+or continuation access. A late factual result may settle the original attempt through its original
+permit; changing configuration alone cannot establish that a historical write was harmless.
+
 ## Contracts
 
 ### Local-Only Security
@@ -199,7 +211,8 @@ delivery is the first slice; standalone/remote coverage needs explicit scope and
 - The configured deployment must implement the narrowed-key contract; schema/route availability
   alone does not prove its authorization behavior. Deterministic fixtures do not validate a live
   Mem deployment's configuration.
-- Endpoint aliases still need explicit reconciliation of existing journal scope identities.
+- Unclassified historical writes can conservatively block matching calls after a workspace move;
+  current credentials cannot prove which historical namespace received the effect.
 - Ambiguous non-idempotent writes require reconciliation across future activations.
 - Filesystem knowledge needs selective migration with provenance, not an automatic workspace upload.
 

@@ -14,8 +14,8 @@ Streamable HTTP request preparation, and incremental JSON/SSE response handling.
 is tested with local fake upstreams. The same crate now provides trusted discovery/call policy and
 actual HTTP/journal orchestration. Signed streaming RPCs and a local stdio shim exercise the
 provider-facing bridge. Existing Mem profiles now resolve to activation mounts and local ACP
-descriptors with provider environment isolation. The remaining protocol controller and complete
-integration authorization still gate completion of slice 9.
+descriptors with provider environment isolation and verified namespace authority. Mem context
+bootstrap and registered app configuration are separate consumers of this shared transport.
 
 ## Non-Goals
 
@@ -510,9 +510,9 @@ tests separately cover committed prepared/sent/completed states.
 - Unknown extension capabilities remain opaque and require integration-specific rules before
   enabling new surfaces. Observed deferred tool receipts block replay of the original write until
   a linked continuation or lookup establishes the outcome.
-- Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
-  aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
-  not evidence that retrying an unresolved write is safe.
+- Mem's effective scope uses the verified workspace UUID and Team space. Older endpoint-derived
+  intents cannot prove a different namespace; conservative cross-version replay checks preserve
+  their uncertainty without rewriting them. See the [journal contract](mcp-operation-journal.md#identity-and-authority).
 - Cursors are not persisted across daemon restart; recovery cannot claim replayed stream history
   after losing that transient state.
 - Mem requires an upstream deployment with the authenticated narrowed-key contract. A desktop/local

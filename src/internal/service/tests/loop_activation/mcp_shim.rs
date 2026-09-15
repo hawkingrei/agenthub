@@ -44,6 +44,7 @@ mod crash;
 mod discovery;
 mod legacy_task;
 mod listener;
+mod scope;
 mod subscription;
 mod task;
 

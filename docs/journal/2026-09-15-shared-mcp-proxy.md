@@ -732,8 +732,8 @@ declaration, not an authorization credential.
 Authorization permits the standard scoped resource/prompt surfaces alongside dynamic tools. The
 proxy still binds `space_id` only where the discovered schema declares it. It relies on the verified
 upstream key to reject foreign opaque IDs and resources, preserving those native MCP/JSON-RPC
-errors. The membership response remains private and transient; only its workspace identity enters
-the launch fingerprint. Endpoint-based operation scope identity is unchanged pending alias work.
+errors. The membership response remains private and transient; its workspace identity enters
+the launch fingerprint and the stable operation scope described below.
 
 The probe has a ten-second deadline and a 64 KiB body limit, keeps the configured endpoint prefix,
 marks credentials sensitive, and disables redirects, retries, and ambient HTTP proxies. Offline
@@ -768,9 +768,48 @@ schema, protobuf, or Bazel configuration changed.
 After the workspace-identity follow-up, the actual binary rebuild, root all-target Clippy, all
 34 root MCP tests, and all 14 configuration tests pass again.
 
+### Endpoint continuity and historical intents
+
+Configured Mem scopes now hash the verified workspace UUID and space instead of the endpoint URL.
+Endpoint/profile/credential references still affect launch and task binding revisions. The trusted
+integration classifies new journal intents as `verified_authority`; older JSON remains readable and
+unchanged, with no attempt to derive historical authority from a current membership response.
+
+Across that classification boundary, the shared journal conservatively compares matching arguments
+and stable caller identities under the same Team and stable integration identifier. Both preparation
+and send admission apply the check, so already prepared calls and atomic batches cannot bypass it.
+Two verified namespaces remain independent. Compatibility matching only denies possible replays;
+task and continuation receipt checks still require their original authority. Two additive indexes
+support the historical comparisons without adding raw URLs or membership records to persistence.
+
+The regression first reproduced three failures: a legacy unknown effect escaped a new authority,
+an atomic batch could send both versions, and a stable identity could be reassigned. Five focused
+database cases cover reopen/restart, late factual settlement, both send directions, concurrent
+admission, batch rollback, distinct verified namespaces, and harmless legacy reads. All 46 operation
+journal tests pass. A configured HTTP/signed-RPC fixture additionally changes endpoint, profile,
+credential reference, activation and RPC ID, while retaining one unknown write in the original
+workspace and permitting an independent write in another verified workspace.
+
+Final validation passes all 110 MCP crate tests and 35 root MCP tests, with both otherwise ignored
+process helpers executed by their parent tests. Root/MCP/DB all-target Clippy passes with warnings
+denied; the actual binary is rebuilt, formatting and whitespace checks pass, and all 82 local links
+in the changed docs resolve. The first RPC fixture assertion incorrectly expected a connection
+error; the corrected fixture checks the streamed JSON-RPC replay denial. Rust tests use a task-local
+temporary directory after unrelated concurrent work repeatedly exhausted the shared `/tmp` mount.
+
+Validation commands:
+
+```bash
+cargo test -p agenthub-db --locked --offline mcp_operations
+cargo test -p agenthub-mcp --locked --offline
+cargo clippy -p agenthub -p agenthub-mcp -p agenthub-db --all-targets --locked --offline -- -D warnings
+cargo build -p agenthub --bin agenthub --locked --offline
+cargo test -p agenthub --lib --locked --offline mcp
+cargo fmt --all --check
+```
+
 ## Follow-Ups
 
-- Complete slice 9's authority-alias reconciliation without changing immutable operation intents
-  or authorizing replay of unresolved writes after an endpoint move.
+- Reconcile the current integration base and publish slice 9 after its final validation.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

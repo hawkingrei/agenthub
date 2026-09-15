@@ -13,7 +13,8 @@ intent, individual send attempts, and ordered receipt events. The store, trusted
 and journaled [HTTP transport](mcp-proxy-transport.md) are implemented. Daemon startup reconciles
 earlier sends before starting runtime services. Signed MCP streaming RPCs and a local stdio shim
 exercise this path. Configured Mem bindings and provider environment isolation are connected to
-local ACP launch; complete protocol orchestration and integration authorization remain incomplete.
+local ACP launch with verified namespace authority. Mem context bootstrap and registered app
+configuration build on this shared journal in their own integration slices.
 
 ## Non-Goals
 
@@ -56,6 +57,13 @@ exercise this ownership boundary through provider disconnects.
   readable but cannot silently match a newly prepared intent with different fields.
 - Effective scope identifies the upstream authorization/data boundary, independent of a profile
   alias. Configuration revision and scope identity have different purposes.
+- An integration that verifies stable upstream authority records `scope_identity: verified_authority`
+  and keeps its server identifier stable across endpoint/profile changes. Older intents omit this
+  classification and remain unchanged. Across these two classifications, matching arguments or
+  stable caller identities in the same Team and integration conservatively share replay checks,
+  regardless of scope digest. Two verified namespaces retain normal digest-based isolation. The
+  compatibility check runs inside both prepare and send transactions, including atomic batches;
+  it grants neither continuation nor task authority. Current credentials cannot relabel old intents.
 - The trusted policy derives stable-identity request keys from the original declared caller
   identity. An arbitrary MCP JSON-RPC request number is only a transport correlation value.
 - Prepare and send independently verify the current daemon generation and existing live loop
@@ -334,6 +342,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | MRTR | Additive migration and reopen, atomic linked sends, current intent/state/executor checks, fresh RPC IDs, bounded rounds, unchanged HTTP inputs, final settlement, and lost-round replay rejection |
 | MRTR retry | Additive retry migration, exact round digest and stable identity, fresh activation and daemon checks, concurrent admission, preserved attempt/parent links, three retries per round, and subsequent rounds after a retry |
 | Batch sends | Atomic rollback on a stale/conflicting member; one POST; out-of-order completion; partial-result uncertainty and replay rejection across activations |
+| Endpoint continuity | Verified workspace/space identity survives alias/profile/key changes; legacy intents stay immutable and retain conservative replay checks across reopen, concurrent sends, batches, and late facts |
 | Task lookup | Additive migration, authority/session/schema checks, legacy receipts without metadata rejected, concurrent admission, query-only restart recovery, terminal result settlement, and first-fact preservation without another tool send |
 | Task cancellation | Additive migration, exactly one concurrent send, acknowledgment versus terminal status, restart without resend, late/conflicting facts, scoped inspection, and tool queries after cancellation |
 | Task inputs | Input/update migration, atomic partial consumption, concurrent updates, unchanged wire payloads, key equivocation retained across reopen, stale polls, lost acknowledgment, fresh activations, and real shim input/update/result flow |
@@ -346,12 +355,12 @@ The HTTP client has a bounded request deadline and never automatically repeats a
 startup path completes journal recovery before starting runtime services. The journaled client
 reports lost event delivery separately from the factual tool result, so a controller can close a
 broken provider stream without abandoning a send. Configured local activations use the authenticated
-proxy; complete integration authorization remains a separate acceptance gate.
+proxy under the configured integration's namespace authorization.
 
 ## Open Risks
 
 - The proxy enforces trusted surface grants and client capability declarations. Mem verifies its
-  existing upstream narrowed-key contract; endpoint-alias reconciliation remains open. Resource
+  existing upstream narrowed-key contract and retains historical scope checks across endpoint moves. Resource
   and prompt continuations use bounded session receipts in the [shared transport](mcp-proxy-transport.md).
   Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.
