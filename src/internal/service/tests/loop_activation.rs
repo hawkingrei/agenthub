@@ -11,6 +11,7 @@ use agenthub_db::loop_runtime::{LoopPolicyUpdate, LoopStore};
 use super::*;
 
 mod mcp_operations;
+mod mcp_shim;
 
 async fn fixture() -> (
     crate::state::AppState,

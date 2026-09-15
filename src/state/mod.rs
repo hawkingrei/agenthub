@@ -96,6 +96,7 @@ impl AppState {
             message_stores.clone(),
         )
         .await?;
+        agents.initialize_mcp_proxy(mcp_operations, Vec::new())?;
         let agent_node_join_bootstrap = Self::build_agent_node_join_bootstrap(&config)?;
 
         Self::run_startup_cleanup(&agents, &teams).await?;

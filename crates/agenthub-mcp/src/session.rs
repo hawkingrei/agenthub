@@ -180,6 +180,15 @@ impl McpProtocolSession {
             _ => None,
         }
     }
+
+    pub fn http_context(&self) -> Option<HttpContext> {
+        match &self.state {
+            State::AwaitingInitialized { context, .. } | State::Ready { context, .. } => {
+                Some(context.clone())
+            }
+            _ => None,
+        }
+    }
 }
 
 fn valid_implementation_info(value: Option<&Value>) -> bool {

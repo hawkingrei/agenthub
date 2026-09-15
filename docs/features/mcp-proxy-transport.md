@@ -12,8 +12,9 @@ handling while a tool is running.
 `agenthub-mcp` supplies JSONL framing, JSON-RPC envelope inspection, protocol lifecycle state,
 Streamable HTTP request preparation, and incremental JSON/SSE response handling. The implementation
 is tested with local fake upstreams. The same crate now provides trusted discovery/call policy and
-actual HTTP/journal orchestration. The provider-facing MCP session bridge, binding resolver,
-launch descriptors, and provider environment isolation remain in progress.
+actual HTTP/journal orchestration. Signed streaming RPCs and a local stdio shim exercise the
+provider-facing bridge. Configured bindings, launch descriptors, the remaining protocol controller,
+and provider environment isolation remain in progress.
 
 ## Non-Goals
 
@@ -36,7 +37,9 @@ not have a diagnostic or serialization implementation.
 Raw transport modules do not access the database. The crate's policy and journal modules combine
 the shared domain/store with the transport: scope-bound request preparation fixes immutable wire
 intent, and a journaled client consumes the prepared request only after obtaining a send permit.
-The daemon session bridge still needs to connect configured bindings and provider RPCs to this path.
+The daemon session bridge connects signed activation RPCs to this path. A local `agenthub mcp-proxy`
+process translates provider JSONL into those RPCs; upstream configuration stays in daemon memory.
+Configured mount resolution and ACP launch registration remain required before production use.
 
 ## Contracts
 
@@ -107,6 +110,36 @@ error source, upstream URL, headers, response body, or arguments. Configured cre
 are marked sensitive. Valid upstream MCP payloads are passed through as protocol data; they are
 not copied into transport diagnostics or the operation journal.
 
+### Activation RPC and stdio bridge
+
+- Open accepts only an opaque server reference. Sessions are scoped to the authenticated Team,
+  actor, activation, and generation; legacy mailbox tokens cannot create them. Every incoming
+  message rechecks signed execution authority and `mcp:proxy` permission under the operation guard.
+- Each admitted message has a response stream. The daemon owns the HTTP operation and execution
+  guard independently of that stream's receiver. Caller disconnect cannot cancel persistence of a
+  factual result or release the guard while an upstream write is still running.
+- An internal completion marker distinguishes normal stream completion from transport loss. The
+  shim never reconstructs a lost POST. Only MCP messages are written to stdout.
+- Initialization and the initialized notification are ordered through HTTP delivery. Upstream
+  requests are forwarded immediately; their authenticated callback responses bypass the lifecycle
+  gate to avoid initialization deadlock. Unsolicited or duplicate callback responses are rejected.
+- Discovery pages preserve declarations, extensions, and cursors, while the controller maintains a
+  bounded catalog for call admission. A stale response reaches its caller without replacing a
+  newer catalog. A tool-list change invalidates the previous catalog until refreshed.
+- Binding revocation denies future admissions. Activation cleanup removes its mounts and sessions;
+  already admitted operations retain their factual journal outcomes.
+- The shim rereads its credential file for each outbound RPC, pinning the activation identity and
+  daemon destination while allowing token rotation. A changed identity requires a new process.
+  Detached stdio threads let a failed RPC terminate the shim even when provider stdin stays open.
+- Queue and concurrency limits are explicit: four tool and eight control requests per session,
+  64 pending callbacks, 4,096 request IDs, eight response frames per RPC, and at most eight sessions
+  per activation / 128 per daemon. Individual messages are bounded to 8 MiB. An aggregate byte
+  budget across concurrent sessions remains a production integration requirement.
+
+The raw transport version table does not imply complete controller support. March 2025 batches,
+legacy GET listening/resumption and upstream DELETE, linked MRTR/task rounds, modern server
+discovery, and integration-specific authorization for non-tool methods remain controller work.
+
 ## Validation Matrix
 
 | Boundary | Focused evidence |
@@ -119,6 +152,9 @@ not copied into transport diagnostics or the operation journal.
 | Recovery boundary | Accepted write followed by truncated response produces one POST and a transport error |
 | Credentials | Trusted header reaches only the configured request; redirects are not followed; errors omit secrets |
 | MRTR | Opaque state and explicit input responses survive; no automatic follow-up request |
+| Real shim | Binary subprocess with gRPC and fake HTTP: initialization callback, ordered initialized delivery, paged discovery, progress/result forwarding, and credential rotation |
+| RPC ownership | Dropped response stream after durable send retains the execution guard and records the actual upstream result |
+| Session admission | Cross-actor/activation rejection, revoked binding, cleanup, and invalid notifications without fabricated JSON-RPC replies |
 
 ## Operational Notes
 
@@ -127,17 +163,19 @@ socket permission. They do not require a personal Mem account or a paid provider
 
 The journaled client keeps draining after losing its event receiver and stores a factual terminal
 result before returning it. An authenticated daemon task fixture verifies ownership and the
-execution guard across caller disconnect; startup journal recovery is wired. The session controller
-still needs bounded callback/result queues and credential refresh for long-lived shim sessions.
+execution guard across caller disconnect; startup journal recovery is wired. Real shim fixtures
+cover signed streaming RPCs, callback/result queues, and per-message credential refresh. Production
+startup currently installs an empty binding set, so these fixtures do not establish ACP/Mem launch.
 
 ## Open Risks
 
-- Authenticated MCP session RPCs and provider launch do not yet expose the journaled client.
-- Discovery pagination/refresh, linked MRTR continuation/task-result admission, and call-time
-  binding revocation remain controller work. Observed deferred receipts already block a replay
+- Configured bindings, starting-phase initialization authority, and provider launch remain unwired.
+- Linked MRTR continuation/task-result admission remains controller work. Observed deferred receipts already block a replay
   of the original request without claiming a final tool outcome.
 - Existing static MCP configuration and provider environment isolation need real shim/ACP fixtures.
 - Legacy GET cursors must be scoped to the exact session and stream when recovery is wired.
+- Production bindings must intersect all advertised capabilities and non-tool methods with their
+  approved scope. Generic protocol forwarding alone does not establish resource/prompt authority.
 
 ## Source Journals
 

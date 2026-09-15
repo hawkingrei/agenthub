@@ -24,7 +24,7 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
   preservation, secret isolation, and no blind replay of unknown non-idempotent writes.
   The [operation journal](features/mcp-operation-journal.md) and
   [transport and bound HTTP calls](features/mcp-proxy-transport.md) are implemented, with daemon
-  startup recovery. MCP session RPCs, live binding resolution, linked continuations, credential
+  startup recovery, signed MCP session RPCs, and a local stdio shim. Live binding resolution, linked continuations, credential
   isolation, and launch integration remain pending.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.

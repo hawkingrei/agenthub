@@ -3,8 +3,9 @@
 ## Summary
 
 Slice 9 now has the persistent operation journal, shared JSONL/HTTP/SSE transport, trusted call
-preparation, actual HTTP/journal orchestration, and daemon startup recovery. The authenticated MCP
-RPC/local stdio proxy, binding resolver, credential isolation, and runtime launch remain incomplete.
+preparation, actual HTTP/journal orchestration, daemon startup recovery, authenticated streaming
+RPCs, and a local stdio shim. The binding resolver, provider environment isolation, complete
+protocol controller, and runtime launch remain incomplete.
 Writable tools remain disabled until those paths and their integration tests are present.
 
 ## Background
@@ -25,6 +26,8 @@ giving an expired executor authority to send more work.
   journaled client that persists raw-response disposition before returning it to the provider.
 - Startup recovery through the actual daemon generation, plus an authenticated daemon task fixture
   that holds the execution guard after the requesting caller disconnects.
+- Activation-scoped MCP session storage and signed streaming RPCs, per-message shim credential
+  refresh, live binding revocation, bounded discovery/callback state, and activation cleanup.
 
 ## Key Decisions
 
@@ -46,6 +49,12 @@ giving an expired executor authority to send more work.
 - Preserve a deferred input/task receipt without claiming terminal tool success. Its typed receipt
   cannot be downgraded by transport loss or used to replay the original request. Linked follow-up
   admission is still required before the provider-facing proxy can expose that path.
+- Stream each admitted MCP message independently. Callback replies carry freshly read signed
+  credentials, and the daemon retains operation ownership after RPC receiver loss.
+- Serialize legacy lifecycle delivery while allowing registered callback responses through. Keep
+  the upstream session header private even when initialization requests client roots first.
+- Use detached bounded JSONL reader/writer threads so a credential or RPC failure can exit the
+  shim without waiting for the provider to close stdin.
 
 Stable contract: [MCP operation journal](../features/mcp-operation-journal.md).
 Transport contract: [MCP proxy transport](../features/mcp-proxy-transport.md).
@@ -92,11 +101,39 @@ and local document links pass. The final MCP suite also retains an HTTP JSON-RPC
 its request ID, preserving the original error rather than reporting a transport disconnect.
 No local Bazel run or complete provider-facing proxy validation is claimed at this checkpoint.
 
+The streaming bridge checkpoint adds a real `agenthub mcp-proxy` subprocess connected to an actual
+local gRPC service and fake HTTP upstream. It preserves an initialization roots callback and its
+private session header, serializes initialized delivery before discovery, merges discovery pages,
+and forwards progress and the original tool result after durable completion. Replacing the signed
+credential envelope with a same-identity token lacking MCP permission rejects the next call even
+though the original token remains valid; the process exits while stdin is still open.
+
+A separate RPC fixture drops the response stream after the upstream observes `sent`, verifies that
+the daemon still holds the execution guard, then observes durable success after releasing the
+upstream. Scope isolation, binding revocation, activation cleanup, and notification/callback
+rejection are covered. Core regressions preserve stale discovery responses without replacing the
+current catalog, reject duplicate initialization IDs without poisoning lifecycle state, and bound
+the blocking JSONL reader.
+
+Bridge validation passes 3 focused root fixtures (also included in the 79 passing internal tests),
+35 MCP tests, and root/MCP all-target Clippy with warnings denied. The real binary build,
+formatting, generated-proto equality, whitespace, and local documentation links pass. A test-only
+Mutex API mismatch was corrected before these passing selections. No production mount, ACP launch,
+provider environment isolation, or complete protocol-controller claim follows from these results.
+
+```bash
+cargo build -p agenthub --bin agenthub --locked --offline
+cargo test -p agenthub --lib internal::service::tests::loop_activation::mcp_shim --locked --offline
+cargo test -p agenthub --lib internal:: --locked --offline
+cargo test -p agenthub-mcp --locked --offline
+cargo clippy -p agenthub -p agenthub-mcp --all-targets --locked --offline -- -D warnings
+```
+
 ## Follow-Ups
 
-- Complete slice 9's local stdio shim, authenticated MCP session RPCs, binding resolver and live
-  revocation checks, discovery pagination/refresh, linked continuations, credential/environment
-  isolation, and provider launch wiring.
+- Complete slice 9's configured binding resolver, linked continuations, remaining protocol
+  controller paths, aggregate queue byte budget, provider environment isolation, starting-phase
+  admission, and ACP launch wiring. The production hub deliberately has no configured mounts yet.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

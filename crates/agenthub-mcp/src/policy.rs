@@ -128,7 +128,7 @@ pub struct McpBinding {
     server_id: String,
     scope_digest: McpDigest,
     binding_digest: McpDigest,
-    transport: McpHttpTransport,
+    pub(crate) transport: McpHttpTransport,
     replay: BTreeMap<String, TrustedReplayPolicy>,
 }
 
@@ -149,6 +149,10 @@ pub struct PreparedToolCall {
 }
 
 impl McpBinding {
+    pub fn server_id(&self) -> &str {
+        &self.server_id
+    }
+
     pub fn new(
         server_id: String,
         effective_scope: &Value,

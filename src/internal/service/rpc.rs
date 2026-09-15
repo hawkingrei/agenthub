@@ -2,6 +2,50 @@ use super::*;
 
 #[tonic::async_trait]
 impl TeamInternalControl for TeamInternalControlService {
+    type ExchangeMcpProxyStream = super::mcp_proxy::McpResponseStream;
+
+    async fn open_mcp_proxy(
+        &self,
+        request: Request<crate::internal::proto::agenthub::internal::v1::OpenMcpProxyRequest>,
+    ) -> Result<
+        Response<crate::internal::proto::agenthub::internal::v1::OpenMcpProxyResponse>,
+        Status,
+    > {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.open_mcp_proxy_request(request).await
+        })
+        .await
+    }
+
+    async fn exchange_mcp_proxy(
+        &self,
+        request: Request<crate::internal::proto::agenthub::internal::v1::ExchangeMcpProxyRequest>,
+    ) -> Result<Response<Self::ExchangeMcpProxyStream>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.exchange_mcp_proxy_request(request).await
+        })
+        .await
+    }
+
+    async fn close_mcp_proxy(
+        &self,
+        request: Request<crate::internal::proto::agenthub::internal::v1::CloseMcpProxyRequest>,
+    ) -> Result<
+        Response<crate::internal::proto::agenthub::internal::v1::CloseMcpProxyResponse>,
+        Status,
+    > {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.close_mcp_proxy_request(request).await
+        })
+        .await
+    }
+
     async fn finish_loop_activation(
         &self,
         request: Request<FinishLoopActivationRequest>,

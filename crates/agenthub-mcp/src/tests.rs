@@ -84,6 +84,28 @@ fn rpc_envelope_validation_preserves_real_error_data_and_rejects_mixed_shapes() 
 }
 
 #[test]
+fn blocking_jsonl_preserves_framing_and_bounds_reads() {
+    use crate::stdio::{read_message_blocking, write_message_blocking};
+    let message = json!({"jsonrpc":"2.0","id":1,"result":{"text":"line1\nline2"}});
+    let mut bytes = Vec::new();
+    write_message_blocking(&mut bytes, &message).unwrap();
+    let mut reader = std::io::Cursor::new(&bytes);
+    assert_eq!(read_message_blocking(&mut reader).unwrap(), Some(message));
+    assert!(read_message_blocking(&mut reader).unwrap().is_none());
+    bytes.pop();
+    assert_eq!(
+        read_message_blocking(&mut std::io::Cursor::new(bytes)).unwrap_err(),
+        McpTransportError::InvalidMessage
+    );
+    let mut reader = std::io::Cursor::new(vec![b'x'; MAX_MESSAGE_BYTES + 100]);
+    assert_eq!(
+        read_message_blocking(&mut reader).unwrap_err(),
+        McpTransportError::MessageTooLarge
+    );
+    assert_eq!(reader.position(), (MAX_MESSAGE_BYTES + 2) as u64);
+}
+
+#[test]
 fn sse_handles_every_chunk_boundary_bom_comments_and_line_endings() {
     let source = b"\xef\xbb\xbf: keepalive\r\nid: first\rdata: {\"jsonrpc\":\"2.0\",\r\ndata: \"id\":1,\"result\":{}}\n\nretry: 10\nid: second\ndata:\n\n";
     for split in 0..=source.len() {

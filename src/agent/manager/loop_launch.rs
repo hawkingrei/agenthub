@@ -68,6 +68,7 @@ impl AgentManager {
                     InternalAction::TeamTaskWrite,
                     InternalAction::PermissionReview,
                     InternalAction::LoopFinish,
+                    InternalAction::McpProxy,
                 ]
                 .into_iter()
                 .map(|action| action.as_str().to_string())

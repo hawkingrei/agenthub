@@ -1,5 +1,6 @@
 mod helpers;
 mod loop_activation;
+mod mcp_proxy;
 mod requests;
 mod rpc;
 

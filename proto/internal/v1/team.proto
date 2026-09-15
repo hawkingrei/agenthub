@@ -7,6 +7,9 @@ syntax = "proto3";
 package agenthub.internal.v1;
 
 service TeamInternalControl {
+  rpc OpenMcpProxy(OpenMcpProxyRequest) returns (OpenMcpProxyResponse);
+  rpc ExchangeMcpProxy(ExchangeMcpProxyRequest) returns (stream McpProxyFrame);
+  rpc CloseMcpProxy(CloseMcpProxyRequest) returns (CloseMcpProxyResponse);
   rpc FinishLoopActivation(FinishLoopActivationRequest) returns (FinishLoopActivationResponse);
   rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
   rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
@@ -39,6 +42,20 @@ service TeamInternalControl {
   rpc SendAgentReminder(SendAgentReminderRequest) returns (SendAgentInputResponse);
   rpc ListAgentEvents(ListAgentEventsRequest) returns (ListAgentEventsResponse);
 }
+
+// Upstream endpoint and credential material never cross this provider-facing bridge.
+message OpenMcpProxyRequest { string server_id = 1; }
+message OpenMcpProxyResponse { string session_id = 1; }
+message ExchangeMcpProxyRequest {
+  string session_id = 1;
+  string message_json = 2;
+}
+message McpProxyFrame {
+  string message_json = 1;
+  bool finished = 2;
+}
+message CloseMcpProxyRequest { string session_id = 1; }
+message CloseMcpProxyResponse {}
 
 // Executor identity and scope come exclusively from signed activation credentials.
 message FinishLoopActivationRequest {
