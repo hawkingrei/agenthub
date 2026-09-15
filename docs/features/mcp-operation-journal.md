@@ -9,8 +9,9 @@ control store must retain the send boundary independently of provider and transp
 ## Scope
 
 One journal serves the trusted local MCP proxy for Mem and registered apps. It records operation
-intent, individual send attempts, and ordered receipt events. The store is implemented; proxy
-transport, credential delivery, and launch integration remain the next implementation stage.
+intent, individual send attempts, and ordered receipt events. The store and
+[raw transport](mcp-proxy-transport.md) are implemented; their authenticated runtime integration,
+credential delivery, and launch wiring remain the next implementation stage.
 
 ## Non-Goals
 

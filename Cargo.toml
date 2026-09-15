@@ -6,6 +6,7 @@ members = [
     "crates/agenthub-acp-adapter",
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
+    "crates/agenthub-mcp",
     "crates/agenthub-managed-skills",
     "crates/agenthub-internal-p2p",
     "crates/agenthub-text",
