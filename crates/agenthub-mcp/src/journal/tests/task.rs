@@ -1,6 +1,7 @@
 use super::*;
 mod cancellation;
 mod input;
+mod legacy_notification;
 mod notification;
 
 fn task_state(version: ProtocolVersion, status: &str) -> Value {

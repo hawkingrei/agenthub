@@ -10,6 +10,21 @@ pub(super) async fn get(State(upstream): State<Arc<Upstream>>, headers: HeaderMa
         .get("last-event-id")
         .map(|cursor| cursor.to_str().unwrap().to_owned());
     upstream.gets.lock().unwrap().push(cursor.clone());
+    if upstream.legacy_tasks.load(Ordering::Acquire) {
+        let events = upstream.task_events.subscribe();
+        upstream.listened.notify_one();
+        let stream = futures::stream::unfold(events, |mut events| async move {
+            let message = events.recv().await.ok()?;
+            Some((
+                Ok::<_, std::io::Error>(format!("data: {message}\n\n")),
+                events,
+            ))
+        });
+        return axum::http::Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(axum::body::Body::from_stream(stream))
+            .unwrap();
+    }
     if cursor.as_deref() == Some("private-write-cursor") {
         assert!(upstream.resume_writes.load(Ordering::Acquire));
         if upstream.expire_stream.load(Ordering::Acquire) {

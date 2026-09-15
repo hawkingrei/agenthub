@@ -1,10 +1,12 @@
 use std::{future::Future, time::Duration};
 
 use super::*;
+use crate::journal::{TaskEventDisposition, TaskEventDrain};
 
 pub struct PreparedProxyListener {
     session: Arc<McpProxySession>,
     request: PreparedHttpRequest,
+    drain: TaskEventDrain,
     _slot: OwnedSemaphorePermit,
     _workspace: ByteLease,
 }
@@ -40,6 +42,10 @@ impl McpProxySession {
         Ok(PreparedProxyListener {
             session: self.clone(),
             request,
+            drain: TaskEventDrain::new(
+                self.bound_task_observer(&context)?,
+                self.binding.policy.transport.timeout(),
+            ),
             _slot: slot,
             _workspace: workspace,
         })
@@ -55,6 +61,8 @@ impl PreparedProxyListener {
         Fut: Future<Output = Result<Guard, McpTransportError>>,
     {
         let session = self.session;
+        let mut drain = self.drain;
+        let mut changes = drain.changes();
         let mut sink = Sink {
             output,
             session: session.clone(),
@@ -90,8 +98,11 @@ impl PreparedProxyListener {
                         event = &mut next => break event?,
                         _ = closed.changed() => return Ok(()),
                         _ = sink.output.closed() => return Err(McpTransportError::Disconnected),
+                        _ = changes.changed(), if drain.has_pending() => {
+                            flush_task_events(&session, &mut drain, &mut sink, &validate).await?;
+                        }
                         _ = tick.tick() => {
-                            drop(validate().await?);
+                            flush_task_events(&session, &mut drain, &mut sink, &validate).await?;
                             if !session.is_active() { return Ok(()); }
                         }
                     }
@@ -102,10 +113,6 @@ impl PreparedProxyListener {
                 let Some(message) = event.message else {
                     continue;
                 };
-                let _guard = validate().await?;
-                if !session.is_active() {
-                    return Ok(());
-                }
                 let members = message
                     .as_array()
                     .map(Vec::as_slice)
@@ -115,6 +122,17 @@ impl PreparedProxyListener {
                     .any(|member| message_kind(member).ok() == Some(MessageKind::Response))
                 {
                     return Err(McpTransportError::InvalidResponse);
+                }
+                match drain.accept(&message).await {
+                    TaskEventDisposition::Forward => {}
+                    TaskEventDisposition::Held => continue,
+                    TaskEventDisposition::Rejected => {
+                        return Err(McpTransportError::InvalidResponse);
+                    }
+                }
+                let _guard = validate().await?;
+                if !session.is_active() {
+                    return Ok(());
                 }
                 session.observe(&message).await?;
                 sink.emit(Some(message), false, None);
@@ -129,4 +147,30 @@ impl PreparedProxyListener {
             sink.fail();
         }
     }
+}
+
+async fn flush_task_events<F, Fut, Guard>(
+    session: &McpProxySession,
+    drain: &mut TaskEventDrain,
+    sink: &mut Sink,
+    validate: &F,
+) -> Result<(), McpTransportError>
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = Result<Guard, McpTransportError>>,
+{
+    let ready = drain.flush().await;
+    let _guard = validate().await?;
+    if !session.is_active() {
+        return Err(McpTransportError::Disconnected);
+    }
+    for message in ready {
+        let (message, _) = message.into_parts();
+        session.observe(&message).await?;
+        sink.emit(Some(message), false, None);
+    }
+    if drain.lost || sink.lost {
+        return Err(McpTransportError::InvalidResponse);
+    }
+    Ok(())
 }

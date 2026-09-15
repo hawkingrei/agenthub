@@ -229,6 +229,26 @@ updates. Input/update acknowledgments remain separate from task completion. Lega
 this modern update method. Subscribed observations use the same
 [journal contract](mcp-operation-journal.md).
 
+### Legacy task notifications
+
+November 2025 `notifications/tasks/status` messages on tool, task, control POST responses and the
+independent GET are matched against accepted task receipts using authenticated Team/actor,
+server/scope/binding, protocol, and private HTTP session. Known facts commit before acquiring
+provider delivery credits or checking whether the executor is still allowed to receive more work.
+They cannot grant outgoing authority or overwrite the first terminal outcome.
+
+A notification can precede its creation receipt, including across GET and POST. The stream holds
+up to 64 uncorrelated messages and 8 MiB while a task-capable call is in flight, bounded by the
+configured exchange timeout. Unrelated callbacks continue; held notices can therefore follow a
+callback that appeared later on the wire. Receipt completion wakes the GET drain without restarting
+its pinned read. Only matched facts are persisted and forwarded. Unknown/foreign handles, expired
+waits, and capacity failures close provider delivery without abandoning an admitted tool result.
+
+The [pinned legacy Tasks contract](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/cd0623765886c8cc282e3e5e1a03ab7469055fab/docs/specification/2025-11-25/basic/utilities/tasks.mdx)
+keeps `completed` status distinct from the result returned by `tasks/result`. March batches reject
+task notices while preserving already received tool results. Modern task notices use the separate
+subscription authorization below.
+
 ### Modern subscriptions
 
 `subscriptions/listen` opens one HTTP POST stream with the unchanged provider request. It follows
@@ -253,7 +273,7 @@ transport without manufacturing completion.
 Stdio cancellation closes only the matching subscription's HTTP stream locally. It does not send
 `tasks/cancel` or an HTTP notification POST. Numeric and string IDs remain distinct. Stdin EOF
 closes idle subscriptions while ordinary calls finish their durable drain; both kinds share the
-shim's 32-exchange admission bound. Legacy unsolicited task notification routing remains a follow-up.
+shim's 32-exchange admission bound.
 
 ### Redaction
 
@@ -334,8 +354,7 @@ and kernel buffers are outside byte accounting. Existing frame, catalog, header,
 and session limits continue to bound their corresponding structures.
 
 Modern tool MRTR rounds, declared retries, and task lookups use receipt-linked journal paths.
-Task notification paths and integration-specific continuation authorization for non-tool
-methods remain controller work.
+Integration-specific continuation authorization for non-tool methods remains controller work.
 
 ## Validation Matrix
 
@@ -363,6 +382,7 @@ methods remain controller work.
 | Task lookup | Real shim preserves modern task/result envelopes and rejects foreign handles before HTTP; legacy HTTP status/result distinction, terminal failures, malformed responses, and March batch rejection |
 | Task cancellation | Real shim preserves the acknowledgment, rejects a duplicate before HTTP, then records actual tool success; legacy cancel capability/status, lost acknowledgment, RPC error, malformed response, and fresh-activation resend rejection |
 | Task inputs | Real shim receives unchanged elicitation input, commits response consumption before HTTP, rejects a duplicate, and later observes the tool result; HTTP partial/foreign inputs, stale polls, lost ACK, RPC errors, and changed input requests |
+| Legacy task notices | Real shim receives pre-receipt notices on GET and POST, answers the intervening callback, verifies persistence before delivery, fetches the actual result, and preserves that result after a later cancellation |
 | Modern subscriptions | HTTP acknowledgment/filter/order checks, typed IDs, local cancellation, idle authority revocation, capacity, and signed-RPC/shim task input/result delivery plus EOF with an idle subscription |
 
 ## Operational Notes
@@ -379,8 +399,7 @@ fixture additionally checks inherited provider/shim environments and an actual j
 
 ## Open Risks
 
-- Legacy unsolicited task notification routing and non-tool continuation authorization remain controller
-  work. Observed deferred receipts block replay of the original request until a linked lookup
+- Non-tool continuation authorization remains controller work. Observed deferred receipts block replay of the original request until a linked lookup
   establishes the tool outcome.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
   aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is

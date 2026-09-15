@@ -330,6 +330,17 @@ async fn upstream(
                 .into_response();
         }
         responses.reverse();
+        if mode == 13 {
+            responses.push(
+                json!({"jsonrpc":"2.0","method":"notifications/tasks/status",
+                "params":{"taskId":"unaccepted-task","status":"completed"}}),
+            );
+            return (
+                [("content-type", "text/event-stream")],
+                format!("data: {}\n\n", Value::Array(responses)),
+            )
+                .into_response();
+        }
         return Json(Value::Array(responses)).into_response();
     }
     if mode == 1 {
@@ -350,6 +361,35 @@ async fn upstream(
     } else {
         json!({"jsonrpc":"2.0","id":message["id"],"result":result})
     };
+    if mode == 12 {
+        use futures::StreamExt;
+        let notice = json!({"jsonrpc":"2.0","method":"notifications/tasks/status","params":{
+            "taskId":"private-task-id","status":"completed","ttl":null,
+            "createdAt":"2026-09-16T00:00:00Z","lastUpdatedAt":"2026-09-16T00:00:00Z"}});
+        let callback =
+            json!({"jsonrpc":"2.0","id":"roots-before-task-receipt","method":"roots/list"});
+        let initial = futures::stream::once(async move {
+            Ok::<_, std::io::Error>(format!("data: {notice}\n\ndata: {callback}\n\n"))
+        });
+        let receipt = futures::stream::once(async move {
+            state.release.notified().await;
+            Ok::<_, std::io::Error>(format!("data: {response}\n\n"))
+        });
+        return axum::http::Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(axum::body::Body::from_stream(initial.chain(receipt)))
+            .unwrap();
+    }
+    if mode == 15 {
+        let notice = json!({"jsonrpc":"2.0","method":"notifications/tasks/status","params":{
+            "taskId":"foreign-task","status":"completed","ttl":null,
+            "createdAt":"2026-09-16T00:00:00Z","lastUpdatedAt":"2026-09-16T00:00:00Z"}});
+        return (
+            [("content-type", "text/event-stream")],
+            format!("data: {notice}\n\ndata: {response}\n\n"),
+        )
+            .into_response();
+    }
     if matches!(mode, 9..=11) {
         let cursor = format!("private-stream-{}", message["id"]);
         state

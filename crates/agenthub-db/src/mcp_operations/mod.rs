@@ -8,6 +8,7 @@ mod task;
 mod task_cancel;
 mod task_inputs;
 mod task_notification;
+mod task_observer;
 mod task_update;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ pub use schema::migrate_mcp_operations;
 pub use task::McpTaskLookupPermit;
 pub use task_cancel::McpTaskCancellationPermit;
 pub use task_notification::McpTaskNotificationPermit;
+pub use task_observer::McpTaskObservationOwner;
 pub use task_update::McpTaskUpdatePermit;
 
 #[derive(Debug, Error)]
@@ -42,6 +44,8 @@ pub enum McpJournalError {
     ContinuationRequired,
     #[error("MCP task input receipts are inconsistent or exceed journal capacity")]
     TaskInputConflict,
+    #[error("MCP task receipt is not recorded for this observation scope")]
+    TaskReceiptMissing,
     #[error("MCP send attempt is stale")]
     StaleAttempt,
     #[error("MCP journal daemon generation is stale")]

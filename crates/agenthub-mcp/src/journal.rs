@@ -6,8 +6,11 @@ mod tests;
 
 mod batch;
 mod task;
+mod task_events;
 mod task_notification;
 pub use batch::McpBatchResult;
+pub use task_events::JournaledTaskObserver;
+pub(crate) use task_events::{BoundTaskObserver, TaskEventDisposition, TaskEventDrain};
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -64,11 +67,23 @@ pub struct McpCallResult {
 pub struct JournaledMcpClient {
     journal: McpOperationStore,
     delivery: ByteBudget,
+    observer: Option<BoundTaskObserver>,
 }
 
 impl JournaledMcpClient {
     pub fn new(journal: McpOperationStore, delivery: ByteBudget) -> Self {
-        Self { journal, delivery }
+        Self {
+            journal,
+            delivery,
+            observer: None,
+        }
+    }
+
+    pub(crate) fn observing(&self, observer: Option<BoundTaskObserver>) -> Self {
+        Self {
+            observer,
+            ..self.clone()
+        }
     }
 
     pub async fn run(
@@ -76,6 +91,11 @@ impl JournaledMcpClient {
         call: PreparedToolCall,
         events: mpsc::Sender<Budgeted<HttpEvent>>,
     ) -> Result<McpCallResult, McpCallError> {
+        let pending_task_receipt = call
+            .task_context
+            .as_ref()
+            .and(self.observer.as_ref())
+            .map(BoundTaskObserver::begin_task_receipt);
         let permit = if let Some(input) = &call.continuation {
             self.journal
                 .begin_continuation(&call.executor, &call.intent, input, now())
@@ -98,29 +118,31 @@ impl JournaledMcpClient {
                 .map_err(journal_error)?
         };
         let observed = async {
-            let (response, http_status, delivery_lost) = self
+            let (response, http_status, delivery_lost, drain) = self
                 .receive(call.transport, call.request, &call.response_id, &events)
                 .await?;
             let member = matching_response(&response, &call.response_id, http_status >= 400)?
                 .ok_or(McpTransportError::InvalidResponse)?;
             let completion = classify_completion(member, call.task_context.as_ref())?;
-            Ok::<_, McpTransportError>((response, completion, http_status, delivery_lost))
+            Ok::<_, McpTransportError>((response, completion, http_status, delivery_lost, drain))
         }
         .await;
         match observed {
-            Ok((response, completion, http_status, delivery_lost)) => {
+            Ok((response, completion, http_status, delivery_lost, mut drain)) => {
                 // Do not expose a terminal result until its receipt is durable. Losing the
                 // provider or replacing executor authority cannot discard an observed result.
                 self.journal
                     .complete(&permit, &completion, now())
                     .await
                     .map_err(journal_error)?;
+                drop(pending_task_receipt);
+                drain.finish(self, &events).await;
                 Ok(McpCallResult {
                     operation_id: permit.operation_id().to_owned(),
                     attempt_number: permit.attempt_number(),
                     completion,
                     response,
-                    event_delivery_lost: delivery_lost,
+                    event_delivery_lost: delivery_lost || drain.lost,
                     http_status,
                 })
             }
@@ -145,17 +167,30 @@ impl JournaledMcpClient {
         request: PreparedHttpRequest,
         id: &Value,
         events: &mpsc::Sender<Budgeted<HttpEvent>>,
-    ) -> Result<(Value, u16, bool), McpTransportError> {
+    ) -> Result<(Value, u16, bool, TaskEventDrain), McpTransportError> {
         let mut delivery_lost = false;
+        let mut drain = TaskEventDrain::new(self.observer.clone(), transport.timeout());
         let mut exchange = transport.send_resumable(request).await?;
         while let Some(event) = exchange.next_event().await? {
+            let disposition = if let Some(message) = event.message.as_ref() {
+                drain.accept(message).await
+            } else {
+                TaskEventDisposition::Forward
+            };
             if let Some(message) = event.message.as_ref()
                 && matching_response(message, id, exchange.status_code() >= 400)?.is_some()
             {
-                return Ok((message.clone(), exchange.status_code(), delivery_lost));
+                return Ok((
+                    message.clone(),
+                    exchange.status_code(),
+                    delivery_lost,
+                    drain,
+                ));
             }
-            // Delivery loss cannot cancel the daemon's factual result drain.
-            if !self.deliver(event, events) {
+            // Facts are already durable or retained awaiting their create-task receipt. Provider
+            // delivery loss still cannot cancel the original HTTP result drain.
+            if matches!(disposition, TaskEventDisposition::Forward) && !self.deliver(event, events)
+            {
                 delivery_lost = true;
             }
         }
@@ -271,9 +306,11 @@ fn journal_error(error: anyhow::Error) -> McpCallError {
         Some(McpJournalError::InFlight) => McpCallError::InFlight,
         Some(McpJournalError::AlreadyCompleted) => McpCallError::AlreadyCompleted,
         Some(McpJournalError::UnsafeReplay) => McpCallError::UnsafeReplay,
-        Some(McpJournalError::ContinuationRequired | McpJournalError::TaskInputConflict) => {
-            McpCallError::ContinuationRequired
-        }
+        Some(
+            McpJournalError::ContinuationRequired
+            | McpJournalError::TaskInputConflict
+            | McpJournalError::TaskReceiptMissing,
+        ) => McpCallError::ContinuationRequired,
         Some(
             McpJournalError::StaleAttempt
             | McpJournalError::StaleDaemon

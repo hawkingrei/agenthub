@@ -56,7 +56,7 @@ giving an expired executor authority to send more work.
 - Preserve a deferred input/task receipt without claiming terminal tool success. Its typed receipt
   cannot be downgraded by transport loss or used to replay the original request. Modern tool
   follow-ups, task lookups, cancellation, input updates, and modern task subscriptions require
-  matching receipts. Legacy unsolicited task notification routing remains pending.
+  matching receipts. Legacy notifications use the authenticated ownership and receipt matching described below.
 - Stream each admitted MCP message independently. Callback replies carry freshly read signed
   credentials, and the daemon retains operation ownership after RPC receiver loss.
 - Serialize legacy lifecycle delivery while allowing registered callback responses through. Keep
@@ -406,8 +406,7 @@ before upstream I/O, unchanged terminal result delivery, and exactly one origina
 The lookup checkpoint passes 30 database journal tests, 68 MCP crate tests, and 23 root MCP tests, including the configured-launch
 child invoked by its parent. Root/MCP/database all-target Clippy with warnings denied and the real
 binary build pass with the validation commands above. Formatting, whitespace, and local document
-links pass. Subsequent checkpoints add cancellation and input updates; notification/subscription
-settlement remains pending.
+links pass. Subsequent checkpoints add cancellation, input updates, and notification settlement.
 
 Task cancellation now commits its own durable intent before HTTP while sharing the lookup path's
 authority resolution, request preparation, bounded transport drain, and first-terminal-fact rule.
@@ -489,10 +488,39 @@ warnings denied, the actual binary build, formatting, whitespace, and changed-do
 pass. New Rust files are covered by existing Bazel source globs; dependencies, protobuf definitions,
 and Bazel configuration are unchanged. Slice 9 is still incomplete and unpublished.
 
+### Legacy notification follow-up (2026-09-16)
+
+Legacy task status messages now pass through the durable journal on ordinary POST exchanges and
+independent GET streams. Session opening captures a private observation owner under the existing
+executor fence. Incoming facts must match the original accepted task's Team/actor, server, scope,
+binding, protocol, and private HTTP session. Catalog invalidation cannot erase an admitted fact,
+and executor exit does not give the observation owner permission to send another request.
+
+When a status precedes its creation receipt, a bounded transient queue lets callbacks continue.
+Receipt completion wakes waiting streams, which commit correlated facts before provider delivery.
+Count, byte, and time limits reject unmatched delivery; the original tool response still drains
+and commits. Legacy completed status stays pending until an actual result fetch. March batches
+reject task notifications while retaining factual results from the same response frame.
+
+Focused validation covers scoped ownership and late facts, early notices with a required callback,
+pending count/byte/deadline limits, delivery loss, and unsupported protocol shapes. The actual
+binary fixture places notices on GET and POST before the creation receipt, answers the callback
+through signed RPC, checks receipt persistence before stdio delivery, fetches the actual result,
+and preserves it after a later cancellation. It also exercises a control POST notice and normal
+session deletion. Validation uses the database, MCP, real binary, root MCP, Clippy, and formatting
+commands above.
+
+This checkpoint passes 41 database journal tests, 85 MCP crate tests, and 26 root MCP tests, with
+the configured-launch child invoked by its parent. The final root fixture explicitly waits for a
+GET marker after the early status before releasing the POST creation receipt. All-target Clippy
+passes with warnings denied, as do formatting, whitespace, and 75 local links in the changed docs.
+The actual binary was built before the CLI fixtures; the only subsequent production edit replaces
+an unnecessary lazy `Option` closure with its equivalent `and` expression. No dependencies,
+protobuf definitions, tables, or Bazel configuration changed. Slice 9 remains incomplete and unpublished.
+
 ## Follow-Ups
 
-- Complete slice 9's legacy unsolicited task notification routing, remaining protocol controller paths, and integration
-  authorization. Do not infer namespace isolation from a Mem tool set
+- Complete slice 9's remaining protocol controller paths and integration authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through

@@ -32,9 +32,10 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
   queries. Cancellation has a separate durable send/receipt and never treats a modern acknowledgment
   as tool completion. Task updates now consume recorded input IDs atomically and retain conflicting
   request identities across reopen. Modern subscriptions validate acknowledgment filters,
-  journal task notifications before delivery, and release idle execution guards. Legacy unsolicited
-  task notification routing, full capability/integration authorization, and complete proxy
-  crash/static-launch validation remain pending.
+  journal task notifications before delivery, and release idle execution guards. Legacy GET/POST
+  task notifications now match authenticated ownership and accepted receipts, with bounded waiting
+  for creation receipts while callbacks continue. Full capability/integration authorization and
+  complete proxy crash/static-launch validation remain pending.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.

@@ -151,7 +151,7 @@ of the original task receipt. Queries are never automatically repeated.
 Callers retain actual task handles and observe upstream polling and retention guidance; the journal
 neither polls on their behalf nor extends server retention.
 
-### Task subscription observations
+### Task notification observations
 
 Modern task subscriptions require the original task receipt, Team/actor, binding, scope, protocol,
 and discovered schema checks used by lookups. Each admitted handle gets a private observation
@@ -167,8 +167,21 @@ retain the existing persistent conflict behavior.
 An admitted notification can commit a received fact after executor shutdown. First terminal facts
 win across polls, notifications, and cancellation responses; later observations retain their own
 receipts without replacing that result or a newer attempt. A subscription acknowledgment or
-graceful stream closure never completes the tool. Legacy unsolicited notification routing remains
-a controller integration follow-up.
+graceful stream closure never completes the tool.
+
+Legacy November 2025 status notifications use the authenticated proxy owner's Team/actor and the
+captured server binding, protocol version, and private HTTP session to find an immutable accepted
+task receipt. A current discovery catalog is not needed to record a fact about an already admitted
+task; outgoing queries still require current authority and schema checks. Unknown or ambiguous
+handles cannot settle or disclose another operation. The observation capability grants no send.
+
+A status may arrive on a POST response or the independent GET before its creation receipt. While
+an eligible tool call is in flight, each stream can retain at most 64 such messages within 8 MiB
+for the configured exchange timeout. Callbacks continue while these uncorrelated messages wait.
+After the creation receipt commits, pending facts commit before delivery. Without a matching
+receipt, expiry or capacity loss rejects provider delivery. Pending raw messages are transient;
+daemon restart does not claim they were accepted. Legacy `completed` remains status-only until
+`tasks/result` supplies the actual tool result; failed/cancelled statuses can settle the task.
 
 ### Task cancellation
 
@@ -322,6 +335,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | Task lookup | Additive migration, authority/session/schema checks, legacy receipts without metadata rejected, concurrent admission, query-only restart recovery, terminal result settlement, and first-fact preservation without another tool send |
 | Task cancellation | Additive migration, exactly one concurrent send, acknowledgment versus terminal status, restart without resend, late/conflicting facts, scoped inspection, and tool queries after cancellation |
 | Task inputs | Input/update migration, atomic partial consumption, concurrent updates, unchanged wire payloads, key equivocation retained across reopen, stale polls, lost acknowledgment, fresh activations, and real shim input/update/result flow |
+| Legacy task notices | Authenticated owner, binding/protocol/session matching, receipt races across POST/GET, callbacks during the race, bounded pending data, late facts, delivery loss, and status-only completion |
 | Task subscriptions | Receipt authorization, notification migration/deduplication, bounded scoped history, input consumption/conflicts, late settlement and first-terminal-fact preservation; actual shim delivery follows committed facts |
 
 ## Operational Notes
@@ -329,12 +343,13 @@ reconstructed tool result. Transport code must preserve the real response while 
 The HTTP client has a bounded request deadline and never automatically repeats a POST. The daemon
 startup path completes journal recovery before starting runtime services. The journaled client
 reports lost event delivery separately from the factual tool result, so a controller can close a
-broken provider stream without abandoning a send. A full provider-facing proxy is not yet enabled.
+broken provider stream without abandoning a send. Configured local activations use the authenticated
+proxy; complete integration authorization remains a separate acceptance gate.
 
 ## Open Risks
 
 - Integration adapters still need complete scope/capability authorization and endpoint-alias
-  reconciliation. Legacy unsolicited task notification routing and non-tool continuations remain incomplete.
+  reconciliation. Non-tool continuations remain incomplete.
   Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.
 - Retained ambiguous non-idempotent writes need explicit upstream reconciliation; changing

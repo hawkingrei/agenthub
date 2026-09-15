@@ -38,7 +38,7 @@ impl LoopStore {
         Ok(())
     }
 
-    async fn verify_executor_phase_tx(
+    pub(crate) async fn verify_executor_phase_tx(
         tx: &mut Transaction<'_, Sqlite>,
         expected: &LoopReservation,
         now: i64,

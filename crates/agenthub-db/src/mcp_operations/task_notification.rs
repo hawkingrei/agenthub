@@ -5,17 +5,17 @@ use agenthub_agent_domain::{
         McpTaskReceipt, McpTaskVersion,
     },
 };
-use sqlx::{Connection, Row};
+use sqlx::{Connection, Row, Sqlite, Transaction};
 
 use super::{McpJournalError, McpOperationStore, task::settle_task_tx};
 
 /// An admitted observation of one immutable task receipt. This grants no outgoing tool action.
 /// Keep it private to the daemon stream that passed live executor and binding checks.
 pub struct McpTaskNotificationPermit {
-    operation_id: String,
-    attempt_number: u32,
-    activation_id: String,
-    receipt: McpTaskReceipt,
+    pub(super) operation_id: String,
+    pub(super) attempt_number: u32,
+    pub(super) activation_id: String,
+    pub(super) receipt: McpTaskReceipt,
 }
 
 impl McpTaskNotificationPermit {
@@ -61,6 +61,30 @@ impl McpOperationStore {
         now: i64,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(now >= 0, "invalid MCP journal timestamp");
+        let mut connection = self.durable_connection().await?;
+        let mut tx = connection.begin_with("BEGIN IMMEDIATE").await?;
+        let valid = Self::record_task_notification_tx(
+            &mut tx,
+            permit,
+            response_digest,
+            outcome,
+            inputs,
+            now,
+        )
+        .await?;
+        tx.commit().await?;
+        anyhow::ensure!(valid, McpJournalError::TaskInputConflict);
+        Ok(())
+    }
+
+    pub(super) async fn record_task_notification_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        permit: &McpTaskNotificationPermit,
+        response_digest: &McpDigest,
+        outcome: Option<&McpCompletion>,
+        inputs: Option<&[McpTaskInputRequest]>,
+        now: i64,
+    ) -> anyhow::Result<bool> {
         anyhow::ensure!(
             outcome.is_none_or(|value| matches!(
                 value,
@@ -73,8 +97,6 @@ impl McpOperationStore {
                 || outcome.is_none() && permit.receipt.version == McpTaskVersion::July2026,
             McpJournalError::ContinuationRequired
         );
-        let mut connection = self.durable_connection().await?;
-        let mut tx = connection.begin_with("BEGIN IMMEDIATE").await?;
         let previous: Option<bool> = sqlx::query_scalar(
             "SELECT inputs_valid FROM mcp_operation_task_notifications \
             WHERE operation_id = ? AND attempt_number = ? AND response_digest = ?",
@@ -82,12 +104,10 @@ impl McpOperationStore {
         .bind(&permit.operation_id)
         .bind(permit.attempt_number)
         .bind(response_digest.as_str())
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?;
         if let Some(valid) = previous {
-            tx.commit().await?;
-            anyhow::ensure!(valid, McpJournalError::TaskInputConflict);
-            return Ok(());
+            return Ok(valid);
         }
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM mcp_operation_task_notifications \
@@ -95,17 +115,12 @@ impl McpOperationStore {
         )
         .bind(&permit.operation_id)
         .bind(permit.attempt_number)
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
         anyhow::ensure!(count < 4096, McpJournalError::ContinuationRequired);
         let inputs_valid = if let Some(inputs) = inputs {
-            Self::record_task_inputs_tx(
-                &mut tx,
-                &permit.operation_id,
-                permit.attempt_number,
-                inputs,
-            )
-            .await?
+            Self::record_task_inputs_tx(tx, &permit.operation_id, permit.attempt_number, inputs)
+                .await?
         } else {
             true
         };
@@ -113,10 +128,10 @@ impl McpOperationStore {
             response_digest, outcome_json, inputs_valid, observed_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(&permit.operation_id).bind(permit.attempt_number).bind(&permit.activation_id)
             .bind(response_digest.as_str()).bind(outcome.map(serde_json::to_string).transpose()?)
-            .bind(inputs_valid).bind(now).execute(&mut *tx).await?;
+            .bind(inputs_valid).bind(now).execute(&mut **tx).await?;
         if let Some(outcome) = outcome {
             settle_task_tx(
-                &mut tx,
+                tx,
                 &permit.operation_id,
                 permit.attempt_number,
                 &permit.activation_id,
@@ -125,9 +140,7 @@ impl McpOperationStore {
             )
             .await?;
         }
-        tx.commit().await?;
-        anyhow::ensure!(inputs_valid, McpJournalError::TaskInputConflict);
-        Ok(())
+        Ok(inputs_valid)
     }
 
     pub async fn task_notifications(

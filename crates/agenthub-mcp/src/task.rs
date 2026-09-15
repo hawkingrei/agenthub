@@ -29,6 +29,7 @@ impl TaskObservation {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct TaskContext {
     pub version: McpTaskVersion,
     pub session_digest: Option<McpDigest>,

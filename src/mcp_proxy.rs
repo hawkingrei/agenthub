@@ -105,6 +105,10 @@ impl McpProxyHub {
         for session in retired {
             let _ = session.shutdown().await;
         }
+        let observer =
+            self.journal.task_observer(executor).await.map_err(|_| {
+                Status::permission_denied("MCP observation owner is no longer active")
+            })?;
         let mut sessions = self.sessions.lock().await;
         if sessions.len() >= 128
             || sessions
@@ -116,7 +120,12 @@ impl McpProxyHub {
             return Err(Status::resource_exhausted("MCP session limit reached"));
         }
         let id = uuid::Uuid::new_v4().to_string();
-        let session = McpProxySession::new(id.clone(), binding, self.budget.clone());
+        let session = McpProxySession::with_task_observer(
+            id.clone(),
+            binding,
+            self.budget.clone(),
+            Some(observer),
+        );
         if !session.is_active() {
             return Err(Status::permission_denied("MCP binding has been revoked"));
         }

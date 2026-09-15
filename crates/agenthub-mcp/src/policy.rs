@@ -158,6 +158,15 @@ pub struct PreparedToolCall {
 }
 
 impl McpBinding {
+    pub(crate) fn observation_binding(
+        &self,
+    ) -> agenthub_agent_domain::mcp_operations::McpTaskObservationBinding {
+        agenthub_agent_domain::mcp_operations::McpTaskObservationBinding {
+            server_id: self.server_id.clone(),
+            scope_digest: self.scope_digest.clone(),
+            binding_digest: self.binding_digest.clone(),
+        }
+    }
     pub fn server_id(&self) -> &str {
         &self.server_id
     }

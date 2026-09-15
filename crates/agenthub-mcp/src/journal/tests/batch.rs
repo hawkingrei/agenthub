@@ -139,3 +139,33 @@ async fn batch_delivery_pressure_does_not_discard_either_factual_write_result() 
     drop(upstream);
     fixture.close().await;
 }
+
+#[tokio::test]
+async fn march_batch_rejects_task_notices_without_discarding_received_tool_results() {
+    let f = Fixture::new().await;
+    let executor = f.running().await;
+    let upstream = Upstream::new(f.pool.clone()).await;
+    upstream.state.mode.store(13, Ordering::SeqCst);
+    let client =
+        JournaledMcpClient::new(f.journal.clone(), ByteBudget::new(crate::MAX_MESSAGE_BYTES));
+    let (events, mut receiver) = mpsc::channel(8);
+    let result = client
+        .run_batch(prepare_batch(&upstream, &executor, 0), events)
+        .await
+        .unwrap();
+    assert!(result.event_delivery_lost);
+    assert!(receiver.recv().await.is_none());
+    let operations = f.operations().await;
+    assert_eq!(operations.len(), 2);
+    assert!(
+        operations
+            .iter()
+            .all(|operation| operation.status == McpOperationStatus::Succeeded)
+    );
+    let notices: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_operation_task_notifications")
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(notices, 0);
+    f.close().await;
+}

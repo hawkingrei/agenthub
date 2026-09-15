@@ -39,6 +39,7 @@ mod bootstrap;
 mod budget;
 mod continuation;
 mod discovery;
+mod legacy_task;
 mod listener;
 mod subscription;
 mod task;
@@ -62,6 +63,8 @@ struct Upstream {
     mrtr_drop_response: AtomicBool,
     tasks: AtomicBool,
     task_inputs_answered: AtomicBool,
+    legacy_tasks: AtomicBool,
+    task_events: tokio::sync::broadcast::Sender<Value>,
 }
 
 async fn handler(
@@ -86,6 +89,9 @@ async fn handler(
         return StatusCode::ACCEPTED.into_response();
     }
     match message["method"].as_str().unwrap() {
+        "tools/call" | "tasks/result" | "ping" if upstream.legacy_tasks.load(Ordering::Acquire) => {
+            legacy_task::respond(upstream, message).await
+        }
         "tasks/get" | "tasks/cancel" | "tasks/update" => task::respond(&upstream, &message).await,
         "subscriptions/listen" => task::subscribe(upstream, message).await,
         "server/discover" => {
@@ -106,10 +112,14 @@ async fn handler(
             if message["params"]["protocolVersion"] == "2025-03-26" {
                 callback = json!([callback]);
             }
-            let response = json!({"jsonrpc":"2.0","id":message["id"],"result":{
+            let mut response = json!({"jsonrpc":"2.0","id":message["id"],"result":{
                 "protocolVersion":message["params"]["protocolVersion"],"capabilities":{"tools":{"listChanged":true}},
                 "serverInfo":{"name":"upstream","version":"1"},"extension":{"preserved":true}
             }});
+            if upstream.legacy_tasks.load(Ordering::Acquire) {
+                response["result"]["capabilities"]["tasks"] =
+                    json!({"requests":{"tools":{"call":{}}}});
+            }
             let first = futures::stream::once(async move {
                 Ok::<_, std::io::Error>(format!("data: {callback}\n\n"))
             });
@@ -145,6 +155,9 @@ async fn handler(
             if upstream.mrtr.load(Ordering::Acquire) {
                 result["tools"][0]["inputSchema"]["properties"]["request_id"] =
                     json!({"type":"string"});
+            }
+            if upstream.legacy_tasks.load(Ordering::Acquire) {
+                result["tools"][0]["execution"] = json!({"taskSupport":"optional"});
             }
             let response = json!({"jsonrpc":"2.0","id":message["id"],"result":result});
             if message["id"] == "json-batched-list" {
@@ -280,6 +293,8 @@ async fn setup_with_replay(mark_running: bool, replay: TrustedReplayPolicy) -> H
         mrtr_drop_response: AtomicBool::new(false),
         tasks: AtomicBool::new(false),
         task_inputs_answered: AtomicBool::new(false),
+        legacy_tasks: AtomicBool::new(false),
+        task_events: tokio::sync::broadcast::channel(8).0,
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(

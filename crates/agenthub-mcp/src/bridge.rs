@@ -97,6 +97,7 @@ impl McpProxyFrame {
 pub struct McpProxySession {
     id: String,
     binding: Arc<McpProxyBinding>,
+    task_observer: Option<crate::journal::JournaledTaskObserver>,
     protocol: Mutex<McpProtocolSession>,
     lifecycle_gate: Arc<Mutex<()>>,
     upstream_context: Mutex<Option<HttpContext>>,
@@ -160,9 +161,19 @@ impl McpProxySession {
         binding: Arc<McpProxyBinding>,
         budget: Arc<McpProxyBudget>,
     ) -> Arc<Self> {
+        Self::with_task_observer(id, binding, budget, None)
+    }
+
+    pub fn with_task_observer(
+        id: String,
+        binding: Arc<McpProxyBinding>,
+        budget: Arc<McpProxyBudget>,
+        task_observer: Option<crate::journal::JournaledTaskObserver>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             id,
             binding,
+            task_observer,
             protocol: Mutex::new(McpProtocolSession::new(budget.retained.clone())),
             lifecycle_gate: Arc::new(Mutex::new(())),
             upstream_context: Mutex::new(None),
@@ -188,6 +199,17 @@ impl McpProxySession {
     pub fn close(&self) {
         self.closed.store(true, Ordering::Release);
         self.closed_signal.send_replace(true);
+    }
+
+    fn bound_task_observer(
+        &self,
+        context: &HttpContext,
+    ) -> Result<Option<crate::journal::BoundTaskObserver>, McpTransportError> {
+        self.task_observer
+            .as_ref()
+            .map(|observer| observer.bind(self.binding.policy.observation_binding(), context))
+            .transpose()
+            .map(Option::flatten)
     }
 
     pub fn is_active(&self) -> bool {
@@ -511,6 +533,13 @@ impl PreparedProxyExchange {
     /// loss closes the provider session but does not cancel the HTTP send or durable completion.
     pub async fn run(self, journal: JournaledMcpClient, output: mpsc::Sender<McpProxyFrame>) {
         let session = self.session.clone();
+        let journal = match session.bound_task_observer(&self.context) {
+            Ok(observer) => journal.observing(observer),
+            Err(_) => {
+                session.close();
+                return;
+            }
+        };
         let request_id = (message_kind(&self.message).ok() == Some(MessageKind::Request))
             .then(|| self.message["id"].clone());
         let method = self.message["method"].as_str().unwrap_or("").to_owned();
@@ -726,6 +755,10 @@ async fn run_control(
 ) -> Result<Option<Value>, McpTransportError> {
     let method = message["method"].as_str().unwrap_or("");
     let request_id = (message_kind(message)? == MessageKind::Request).then(|| &message["id"]);
+    let mut task_events = crate::journal::TaskEventDrain::new(
+        session.bound_task_observer(context)?,
+        session.binding.policy.transport.timeout(),
+    );
     let mut exchange = match session
         .binding
         .policy
@@ -788,6 +821,13 @@ async fn run_control(
                 }
             }
         }
+        match task_events.accept(&message).await {
+            crate::journal::TaskEventDisposition::Forward => {}
+            crate::journal::TaskEventDisposition::Held => continue,
+            crate::journal::TaskEventDisposition::Rejected => {
+                return Err(McpTransportError::InvalidResponse);
+            }
+        }
         session.observe(&message).await?;
         if context.session_id.is_some() && exchange.status_code() == 404 {
             session.close();
@@ -796,6 +836,14 @@ async fn run_control(
             return Ok(None);
         }
         if terminal {
+            for pending in task_events.settle().await {
+                let (pending, _) = pending.into_parts();
+                session.observe(&pending).await?;
+                sink.emit(Some(pending), false, None);
+            }
+            if task_events.lost {
+                return Err(McpTransportError::InvalidResponse);
+            }
             return Ok(Some(message));
         }
         sink.emit(Some(message), false, None);
@@ -803,6 +851,14 @@ async fn run_control(
     if request_id.is_some() {
         Err(McpTransportError::Disconnected)
     } else {
+        for pending in task_events.settle().await {
+            let (pending, _) = pending.into_parts();
+            session.observe(&pending).await?;
+            sink.emit(Some(pending), false, None);
+        }
+        if task_events.lost {
+            return Err(McpTransportError::InvalidResponse);
+        }
         Ok(None)
     }
 }

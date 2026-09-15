@@ -104,6 +104,9 @@ pub struct HttpEvent {
 }
 
 impl McpHttpTransport {
+    pub(crate) fn timeout(&self) -> Duration {
+        self.timeout
+    }
     pub fn new(
         endpoint: &str,
         mut headers: HeaderMap,

@@ -48,6 +48,7 @@ impl JournaledMcpClient {
             .collect();
         let mut expected = batch.expected;
         let mut delivery_lost = false;
+        let mut task_events = TaskEventDrain::new(None, batch.transport.timeout());
         let mut http_status = 200;
         let observed: Result<(), McpCallError> = async {
             let mut exchange = batch.transport.send_resumable(batch.request).await?;
@@ -93,7 +94,17 @@ impl JournaledMcpClient {
                         expected.remove(&key);
                     }
                 }
-                if !self.deliver(event, &events) {
+                let forward = if let Some(message) = &event.message {
+                    matches!(
+                        task_events.accept(message).await,
+                        TaskEventDisposition::Forward
+                    )
+                } else {
+                    true
+                };
+                // March batching cannot carry task notifications. Still commit each actual
+                // response above before rejecting delivery of an invalid mixed frame.
+                if !forward || !self.deliver(event, &events) {
                     delivery_lost = true;
                 }
                 if expected.is_empty() {

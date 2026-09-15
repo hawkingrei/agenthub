@@ -237,6 +237,21 @@ pub struct McpTaskReceipt {
     pub session_digest: Option<McpDigest>,
 }
 
+/// A trusted integration snapshot for incoming task facts, never caller-supplied metadata.
+#[derive(Clone)]
+pub struct McpTaskObservationBinding {
+    pub server_id: String,
+    pub scope_digest: McpDigest,
+    pub binding_digest: McpDigest,
+}
+
+pub struct McpTaskObservation {
+    pub receipt: McpTaskReceipt,
+    pub response_digest: McpDigest,
+    pub outcome: Option<McpCompletion>,
+    pub inputs: Option<Vec<McpTaskInputRequest>>,
+}
+
 /// Trusted binding and discovered schemas, never supplied by the provider as authority.
 pub struct McpTaskAuthority {
     pub server_id: String,

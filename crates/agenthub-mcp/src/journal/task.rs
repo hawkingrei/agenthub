@@ -139,7 +139,7 @@ impl JournaledMcpClient {
         observe: fn(&I, &Value) -> Result<TaskObservation, McpTransportError>,
     ) -> Result<McpCallResult, McpCallError> {
         let observed = async {
-            let (response, http_status, delivery_lost) = self
+            let (response, http_status, delivery_lost, drain) = self
                 .receive(call.transport, call.request, &call.response_id, &events)
                 .await?;
             let member = matching_response(&response, &call.response_id, http_status >= 400)?
@@ -162,19 +162,28 @@ impl JournaledMcpClient {
                 observation,
                 http_status,
                 delivery_lost,
+                drain,
             ))
         }
         .await;
         match observed {
-            Ok((response, completion, observation, http_status, event_delivery_lost)) => {
+            Ok((
+                response,
+                completion,
+                observation,
+                http_status,
+                event_delivery_lost,
+                mut drain,
+            )) => {
                 self.complete_task_request(&permit, &completion, &observation)
                     .await?;
+                drain.finish(self, &events).await;
                 Ok(McpCallResult {
                     operation_id: permit.operation_id().to_owned(),
                     attempt_number: permit.attempt_number(),
                     completion,
                     response,
-                    event_delivery_lost,
+                    event_delivery_lost: event_delivery_lost || drain.lost,
                     http_status,
                 })
             }
