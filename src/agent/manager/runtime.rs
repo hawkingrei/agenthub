@@ -445,9 +445,38 @@ impl AgentManager {
         worktree_repo: Option<&str>,
         worktree_ref: Option<&str>,
     ) -> anyhow::Result<()> {
+        let manager = self.clone();
+        let actor_id = agent_id.to_owned();
+        let workdir = workdir.to_owned();
+        let worktree_repo = worktree_repo.map(str::to_owned);
+        let worktree_ref = worktree_ref.map(str::to_owned);
+        self.configure_actors_owned(vec![actor_id.clone()], async move {
+            manager
+                .update_team_member_runtime_config_inner(
+                    &actor_id,
+                    &workdir,
+                    worktree_mode,
+                    worktree_repo.as_deref(),
+                    worktree_ref.as_deref(),
+                )
+                .await
+        })
+        .await
+    }
+
+    async fn update_team_member_runtime_config_inner(
+        &self,
+        agent_id: &str,
+        workdir: &str,
+        worktree_mode: WorktreeMode,
+        worktree_repo: Option<&str>,
+        worktree_ref: Option<&str>,
+    ) -> anyhow::Result<()> {
         let normalized_workdir = expand_tilde(workdir);
         let normalized_worktree_repo = worktree_repo.map(expand_tilde);
         let now = Utc::now().timestamp();
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        crate::team::TeamManager::require_loop_actor_quiescent_tx(&mut tx, agent_id).await?;
         sqlx::query(
             r#"
             UPDATE agents
@@ -466,8 +495,9 @@ impl AgentManager {
         .bind(worktree_ref)
         .bind(now)
         .bind(agent_id)
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -591,6 +621,32 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn delete_agent(&self, agent_id: &str) -> anyhow::Result<()> {
+        let manager = self.clone();
+        let actor_id = agent_id.to_owned();
+        self.configure_actors_owned(vec![actor_id.clone()], async move {
+            let mut tx = manager.db.begin_with("BEGIN IMMEDIATE").await?;
+            if crate::team::TeamManager::require_loop_actor_quiescent_tx(&mut tx, &actor_id).await?
+            {
+                agenthub_db::loop_runtime::LoopStore::require_no_retained_history_tx(
+                    &mut tx, &actor_id,
+                )
+                .await?;
+                anyhow::ensure!(
+                    !manager
+                        .process_supervisor
+                        .has_actor_process(&actor_id)
+                        .await,
+                    agenthub_db::loop_runtime::LoopStoreError::ReservationHeld
+                );
+            }
+            tx.commit().await?;
+            let _ = manager.stop_agent(&actor_id).await;
+            manager.delete_agent_inner(&actor_id).await
+        })
+        .await
+    }
+
+    async fn delete_agent_inner(&self, agent_id: &str) -> anyhow::Result<()> {
         if let Ok(agent) = self.get_agent(agent_id).await
             && let Some(target_node_id) = agent.target_node_id.as_deref()
         {
@@ -625,7 +681,14 @@ impl AgentManager {
         let has_persistent_sessions_table = self.has_agent_persistent_sessions_table().await?;
         let has_persistent_session_failures_table =
             self.has_agent_persistent_session_failures_table().await?;
-        let mut tx = self.db.begin().await?;
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        crate::team::TeamManager::require_loop_actor_quiescent_tx(&mut tx, agent_id).await?;
+        agenthub_db::loop_runtime::LoopStore::require_no_retained_history_tx(&mut tx, agent_id)
+            .await?;
+        sqlx::query("DELETE FROM loop_policies WHERE actor_id = ?")
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")
             .bind(agent_id)
             .execute(&mut *tx)

@@ -15,6 +15,8 @@ mod admission_tests;
 mod launch_tests;
 #[path = "lifecycle_tests.rs"]
 mod lifecycle_tests;
+#[path = "scope_tests.rs"]
+mod scope_tests;
 
 struct Fixture {
     path: PathBuf,

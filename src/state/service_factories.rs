@@ -59,6 +59,7 @@ pub(super) fn build_agent_manager(args: AgentManagerBuildArgs<'_>) -> Arc<AgentM
             args.auth,
             args.internal_peer_client,
         )
+        .with_loop_app_config(args.config.clone())
         .with_start_scheduler_settings(AgentStartSchedulerSettings {
             max_concurrent_starts: args.config.agent_start_max_concurrent(),
             queue_timeout: args.config.agent_start_queue_timeout(),

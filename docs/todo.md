@@ -7,15 +7,15 @@ Active backlog only. Keep this file small and current.
 Product: [features/agent-loop-product-model.md](features/agent-loop-product-model.md).
 Lifecycle: [features/agent-loop-runtime.md](features/agent-loop-runtime.md).
 Implementation: [features/agent-loop-activation-contract.md](features/agent-loop-activation-contract.md).
-The activation contract, control store, admission, lifecycle, and local provider checkpoints
-complete slices 1-5. Product configuration, durable work-event intake, and later integration
+The activation contract, control store, admission, lifecycle, local provider, and offline
+configuration checkpoints complete slices 1-6. Durable work-event intake and later integration
 slices remain pending.
 Numbers below identify separate reviewable PR slices, not shipped capabilities.
 
 Local provider evidence: [slice 5 checkpoint](journal/2026-09-15-agent-loop-local-provider.md).
 
-- [ ] 6. Separate offline Card/Team configuration from enable/suspend/process controls. Prove
-  copy isolation and pending-work/reservation guards for move/remove/rebind operations.
+Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-loop-offline-configuration.md).
+
 - [ ] 7. Route addressed IM, engaged-thread replies, assignments, and member activation requests
   through durable intake. Prove source attribution, outbox recovery, and offline delegation.
 - [ ] 8. Add due/dependency/standing triggers with inspection and revocation. Prove no lost

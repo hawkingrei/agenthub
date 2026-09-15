@@ -416,6 +416,11 @@ impl AgentManager {
         let (sender, receiver) = tokio::sync::oneshot::channel();
         self.daemon_tasks
             .spawn_runtime_task(format!("agent-start:{agent_id}"), async move {
+                let _configuration = manager
+                    .configuration_gate(&agent_id)
+                    .await
+                    .lock_owned()
+                    .await;
                 let result = manager
                     .start_agent_with_actor_context_inner(
                         &agent_id,

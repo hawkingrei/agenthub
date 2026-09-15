@@ -1,9 +1,12 @@
 mod acp_provider;
 mod codec;
+mod configuration;
 mod executor;
 mod loop_launch;
 mod loop_lifecycle;
+mod loop_preflight;
 pub(crate) use loop_launch::LoopControlEndpoint;
+pub(crate) use loop_preflight::LoopPreflight;
 mod nodes;
 mod process;
 mod runtime;
@@ -93,6 +96,8 @@ pub struct AgentManager {
     loop_control_endpoint: Arc<RwLock<Option<LoopControlEndpoint>>>,
     loop_credentials: Arc<Mutex<HashMap<String, loop_launch::LoopCredentialState>>>,
     loop_operation_gates: Arc<Mutex<HashMap<String, Arc<RwLock<()>>>>>,
+    configuration_gates: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    loop_app_config: Arc<agenthub_config::AppConfig>,
     loop_reservations:
         Arc<Mutex<HashMap<String, agenthub_agent_domain::loop_runtime::LoopReservation>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
@@ -835,6 +840,8 @@ impl AgentManager {
             loop_control_endpoint: Arc::new(RwLock::new(None)),
             loop_credentials: Arc::new(Mutex::new(HashMap::new())),
             loop_operation_gates: Arc::new(Mutex::new(HashMap::new())),
+            configuration_gates: Arc::new(Mutex::new(HashMap::new())),
+            loop_app_config: Arc::new(agenthub_config::AppConfig::default()),
             loop_reservations: Arc::new(Mutex::new(HashMap::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -2558,12 +2565,16 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id, mode_id = %mode_id), err)]
     pub async fn set_acp_mode(&self, agent_id: &str, mode_id: &str) -> anyhow::Result<()> {
+        let _configuration = self.configuration_gate(agent_id).await.lock_owned().await;
+        self.require_mutable_acp_configuration(agent_id).await?;
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_mode(normalize_codex_acp_mode_id(mode_id)).await
     }
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id, model_id = %model_id), err)]
     pub async fn set_acp_model(&self, agent_id: &str, model_id: &str) -> anyhow::Result<()> {
+        let _configuration = self.configuration_gate(agent_id).await.lock_owned().await;
+        self.require_mutable_acp_configuration(agent_id).await?;
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_model(model_id.to_string()).await
     }
@@ -2579,6 +2590,8 @@ impl AgentManager {
         config_id: &str,
         value: &str,
     ) -> anyhow::Result<()> {
+        let _configuration = self.configuration_gate(agent_id).await.lock_owned().await;
+        self.require_mutable_acp_configuration(agent_id).await?;
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_config(config_id.to_string(), value.to_string())
             .await

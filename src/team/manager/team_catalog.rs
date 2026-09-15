@@ -28,7 +28,9 @@ impl TeamManager {
         let group_id = owner_user_id
             .map(str::trim)
             .filter(|value| !value.is_empty());
-        let mut tx = self.db.begin().await?;
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        Self::guard_loop_membership_change_tx(&mut tx, &id, &serde_json::json!({}), &config.spec)
+            .await?;
         sqlx::query(
             r#"
             INSERT INTO team_definitions (
@@ -69,6 +71,7 @@ impl TeamManager {
             .execute(&mut *tx)
             .await?;
         }
+        Self::ensure_loop_member_policies_tx(&mut tx, &id, &config.spec, now).await?;
         tx.commit().await?;
 
         Ok(TeamDefinitionRecord {
@@ -143,7 +146,8 @@ impl TeamManager {
         team_id: &str,
         member_ids: &HashSet<String>,
     ) -> anyhow::Result<TeamDefinitionRecord> {
-        let mut tx = self.db.begin().await?;
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        Self::guard_loop_team_deletion_tx(&mut tx, team_id).await?;
         let team_row = sqlx::query(
             r#"
             SELECT id, name, description, spec_json, owner_user_id, created_at, updated_at
@@ -155,6 +159,15 @@ impl TeamManager {
         .fetch_one(&mut *tx)
         .await?;
         let team = parse_team_definition_row(&team_row)?;
+
+        sqlx::query("DELETE FROM loop_policies WHERE team_id = ?")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM loop_mailbox_partitions WHERE team_id = ?")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
 
         for member_id in member_ids {
             sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")

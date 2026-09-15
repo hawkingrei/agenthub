@@ -12,7 +12,7 @@ pub use agenthub_agent_domain::{
 };
 pub use manager::{AgentInputImage, AgentManager, AgentSendInputError};
 pub(crate) use manager::{
-    AgentStartSchedulerSettings, LoopControlEndpoint, derive_team_runtime_workdir,
+    AgentStartSchedulerSettings, LoopControlEndpoint, LoopPreflight, derive_team_runtime_workdir,
 };
 pub(crate) use triggers::InvalidTimeTrigger;
 pub use triggers::{
