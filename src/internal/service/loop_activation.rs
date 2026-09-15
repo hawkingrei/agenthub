@@ -36,7 +36,17 @@ impl TeamInternalControlService {
                     executor.actor_id.as_deref().unwrap_or("unknown")
                 ),
                 async move {
-                    let _ = sender.send(operation.await);
+                    let context = crate::team::loop_context::LoopSchedulingContext {
+                        actor_id: executor.actor_id,
+                        activation_id: executor
+                            .loop_execution
+                            .map(|execution| execution.activation_id),
+                        user_id: None,
+                    };
+                    let result =
+                        crate::team::loop_context::with_scheduling_context(context, operation)
+                            .await;
+                    let _ = sender.send(result);
                     Ok(())
                 },
             )

@@ -7,8 +7,8 @@ The control store implements policy configuration, idempotent trigger acceptance
 activation coalescing, safe event persistence, generation-fenced admission, structured finish,
 continuation recording, and verified cleanup. Configured manual starts share durable reservations.
 Local ACP execution now resolves a launch snapshot and uses generation-scoped actor control.
-Offline Team configuration and explicit policy controls are available. Durable work-event intake,
-shared MCP tools, and role migration remain separate rollout gates; no existing actor is implicitly
+Offline Team configuration, explicit policy controls, and durable work-event intake are available.
+Shared MCP tools and role migration remain separate rollout gates; no existing actor is implicitly
 opted in.
 
 ## Problem
@@ -173,6 +173,44 @@ scope and blocks destructive deletion or identity reuse in another Team; copy th
 scope. This does not introduce a cross-Team transfer workflow. Team optimistic-update timestamps
 advance monotonically so edits in the same second cannot reuse a stale compare-and-swap value.
 
+### Durable work intake and source recovery
+
+For Teams with `spec.execution_mode = "loop"`, canonical addressed messages, member mentions,
+engaged-thread replies, and nonterminal task assignment changes stage work in the same SQLite
+transaction as the canonical write. A failed intake budget rolls back the write and returns
+HTTP 429 or gRPC `resource_exhausted`. A committed source survives process loss before mailbox
+fan-out; delivery replicas reference that canonical message and do not create another wake.
+Unaddressed discussion and self-authored messages do not automatically wake every member. Admission
+retires obsolete assignment sources after reassignment or terminal status, while retaining addressed
+discussion that still needs a response.
+
+Mentions share the normal Team message parser: explicit mention arrays, `<at>` markup, and bounded
+`@member_id` tokens. Thread engagement includes prior authors and prior mentions on the root and
+its replies, within the same conversation. Members may opt out of implicit reply wakes with
+`members[].loop_intake.engaged_thread_replies = false`; explicit addressing and current mentions
+still apply. Disabled members retain canonical messages without automatic intake. Suspended members
+retain accepted pending work, with admission paused.
+
+`agenthub actor loop-activate --member-id <id> --source-key <key> [--task-id <id>]` requires current
+activation-scoped credentials and the `loop:activate` permission. The server derives the requesting
+actor, activation, and Team; request payloads cannot supply identity. The key identifies a business
+request, scoped to the scheduling identity and target. Retrying from a later activation preserves
+the original receipt and attribution; changing its task reference is an idempotency conflict.
+Scheduling grants no membership, assignment, task claim, or acceptance authority.
+
+An owner with `runtime:operate` may request work through
+`POST /api/teams/{team_id}/members/{member_id}/loop/activate` with `source_key` and optional `task_id`.
+Its source records the authenticated user, without fabricating an actor activation. Explicit
+requests to disabled policies fail; suspended policies accept pending work.
+
+`agenthub actor loop-context` reads the live activation and pages its sources, with a default of
+64 and a maximum of 256 per page. Follow `next_cursor` through `--after-source-id` until exhausted.
+`agenthub actor loop-source --source-id <id>` resolves an exact source message, including a message
+older than the recent task detail window or one whose delivery replica is not available. The source
+must belong to the current actor, Team, and activation under a live fence. Message bodies stay in
+canonical stores and are hydrated through the existing body-store boundary. These reads do not
+consume messages or accept tasks; current task state still comes from the task tools.
+
 ### Finish and recovery
 
 States are `pending`, `starting`, `running`, `finalizing`, `finished`, `interrupted`, and `canceled`.
@@ -245,8 +283,8 @@ is bound and the activation is running. Provider reasoning/tool rounds stay insi
 A completed turn without a recorded outcome is interrupted and cleaned up. Legacy idle controllers,
 reminders, and mailbox prompt hints cannot inject another turn into this path.
 
-The initial entry points to `agenthub actor team-members`, `team-tasks`, and `inbox` for canonical
-recovery, and `agenthub actor loop-finish --outcome-file <path> --json` for the bounded outcome.
+The entry points to `agenthub actor loop-context` and `loop-source` for durable sources,
+`team-members`, `team-tasks`, and `inbox` for current canonical state, and `agenthub actor loop-finish --outcome-file <path> --json` for the bounded outcome.
 These commands recover the signed stable mailbox; they do not scan historical run partitions.
 Legacy resident role skills are not attached to the loop contract. Loop ACP sessions leave direct
 static MCP servers disconnected until the shared proxy and operation journal supply those tools.
@@ -282,6 +320,7 @@ identity, active mailbox, membership, owner, generation, lease, and operation-gu
 | Actor control | Credential rotation, stale owner/generation rejection, disconnect ownership, finish replay |
 | MCP bootstrap | Bound launch/session required; startup initialization/discovery cannot perform a journaled tool send |
 | Configuration | Offline creation/copy, preflight and authority, disconnect/start exclusion, concurrent removal/intake, claim/reply/permission guards |
+| Work intake | Message/task atomic rollback, duplicate delivery, thread opt-out, assignment retirement, file reopen, offline leader/worker/report cycle, scoped source reads and scheduling |
 | Limits | Durable startup/no-progress limits, per-Team fan-out, due-time isolation and suspension |
 | Visibility | Safe trace after exit, stable ordering, authorization, bounded pagination, debug/release separation |
 
@@ -307,6 +346,8 @@ fail explicitly rather than claim parity. Track implementation and remaining val
 - Remote credential delivery and remote-writer fencing require a separate implementation.
 
 ## Source Journals
+
+- [Durable work events and offline delegation](../journal/2026-09-15-agent-loop-work-events.md).
 
 - [Product definition](../journal/2026-09-15-agent-loop-product-definition.md)
 - [Activation contract checkpoint](../journal/2026-09-15-agent-loop-activation-contract.md)

@@ -13,7 +13,7 @@ use super::*;
 mod mcp_operations;
 mod mcp_shim;
 
-async fn fixture() -> (
+pub(super) async fn fixture() -> (
     crate::state::AppState,
     TeamInternalControlService,
     InternalAuthz,

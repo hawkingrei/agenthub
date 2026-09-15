@@ -18,7 +18,8 @@ pub(super) async fn retire_inactive_task_sources(
         SELECT s.id, ? FROM loop_trigger_sources s WHERE s.activation_id = ? \
         AND s.source_kind IN ('assignment', 'continuation') AND json_extract(s.input_json, '$.references.task_id') IS NOT NULL \
         AND NOT EXISTS(SELECT 1 FROM team_tasks t WHERE t.id = json_extract(s.input_json, '$.references.task_id') \
-        AND t.team_id = s.team_id AND t.status NOT IN ('completed', 'canceled'))")
+        AND t.team_id = s.team_id AND t.status NOT IN ('completed', 'canceled') \
+        AND (s.source_kind != 'assignment' OR t.assigned_member_id = s.actor_id))")
         .bind(now).bind(&activation.id).execute(&mut **tx).await?;
     let actionable: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM loop_trigger_sources s WHERE s.activation_id = ? \

@@ -18,6 +18,13 @@ def mcp_call(message):
     shim.stdin.write(json.dumps(message) + '\n')
     shim.stdin.flush()
     return json.loads(shim.stdout.readline())
+def actor(*args):
+    result = subprocess.run([control_binary, 'actor', *args, '--json'], capture_output=True, text=True)
+    if result.returncode:
+        with open(log_path, 'a') as log:
+            log.write(json.dumps({'cli_error': result.stderr, 'command': args[0]}) + '\n')
+        raise RuntimeError(result.stderr)
+    return json.loads(result.stdout)
 for line in sys.stdin:
     request = json.loads(line)
     with open(log_path, 'a') as log:
@@ -71,6 +78,33 @@ for line in sys.stdin:
             assert shim.wait(timeout=5) == 0
             with open(log_path, 'a') as log:
                 log.write(json.dumps({'mcp_write':True}) + '\n')
+        if mode == 'handoff':
+            page = actor('loop-context', '--limit', '1')
+            activation = page['activation']
+            sources = page['sources']
+            while page['next_cursor'] is not None:
+                page = actor('loop-context', '--limit', '1', '--after-source-id', page['next_cursor'])
+                sources.extend(page['sources'])
+            details = [actor('loop-source', '--source-id', source['id']) for source in sources]
+            with open(log_path, 'a') as log:
+                log.write(json.dumps({'actor': activation['actor_id'], 'sources': details}) + '\n')
+            if activation['actor_id'] == 'planner' and not any(d['mailbox_message'] for d in details):
+                actor('team-task-create', '--title', 'Offline review', '--priority', 'medium', '--assigned-member-id', 'worker')
+                actor('send', '--to', 'worker', '--text', 'dispatch evidence', '--idempotency-key', 'dispatch:one')
+            elif activation['actor_id'] == 'worker':
+                assert any(d['mailbox_message'] and d['mailbox_message']['payload']['text'] == 'dispatch evidence' for d in details)
+                task_ids = {d['source']['input']['references']['task_id'] for d in details if d['source']['input']['references']['task_id']}
+                assert len(task_ids) == 1
+                task_id = next(iter(task_ids))
+                actor('team-task-show', '--task-id', task_id)
+                actor('team-task-note', '--task-id', task_id, '--kind', 'result', '--text', 'Review evidence is ready')
+                actor('send', '--to', 'planner', '--text', 'worker report', '--idempotency-key', 'report:one')
+            else:
+                assert any(d['mailbox_message'] and d['mailbox_message']['payload']['text'] == 'worker report' for d in details)
+            path = os.path.join(os.getcwd(), 'loop-outcome.json')
+            with open(path, 'w') as outcome:
+                json.dump({'kind':'handoff'}, outcome)
+            actor('loop-finish', '--outcome-file', path)
         if mode in ['finish', 'mcp']:
             for command in ['team-members', 'team-tasks', 'inbox']:
                 recovery = subprocess.run([control_binary, 'actor', command, '--json'], capture_output=True, text=True)
@@ -279,6 +313,52 @@ impl Fixture {
             .unwrap()
     }
 
+    async fn execute_pending(
+        &self,
+        actor: &str,
+    ) -> agenthub_agent_domain::loop_runtime::LoopActivation {
+        let store = LoopStore::new(self.state.db.clone());
+        let id: String = sqlx::query_scalar("SELECT id FROM loop_activations WHERE actor_id = ? AND state = 'pending' ORDER BY id LIMIT 1")
+            .bind(actor).fetch_one(&self.state.db).await.unwrap();
+        let LoopAdmission::Admitted(reservation) = store
+            .admit(
+                &self.team_id,
+                &id,
+                self.state.agents.loop_owner_id(),
+                Utc::now().timestamp(),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("not admitted");
+        };
+        self.state
+            .agents
+            .track_loop_reservation(reservation.clone())
+            .await
+            .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(20),
+            self.state
+                .agents
+                .execute_loop_activation(self.state.teams.clone(), reservation),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let activation = store.activation(&self.team_id, &id).await.unwrap().unwrap();
+        let log = std::fs::read_to_string(self.directory.join("requests.jsonl")).unwrap();
+        assert_eq!(activation.state, LoopActivationState::Finished, "{log}");
+        assert!(
+            store
+                .reservation(&self.team_id, actor)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        activation
+    }
+
     async fn close(self) {
         self.state.agents.stop_all_on_shutdown().await.unwrap();
         self.state
@@ -363,4 +443,96 @@ async fn loop_provider_recovers_canonical_context_and_finishes_through_signed_cl
             .is_empty()
     );
     fixture.close().await;
+}
+
+#[tokio::test]
+async fn loop_work_provider_dispatch_survives_leader_exit_and_report_wakes_offline_leader() {
+    let fixture = Fixture::new("handoff").await;
+    let store = LoopStore::new(fixture.state.db.clone());
+    let now = Utc::now().timestamp();
+    store
+        .configure(
+            LoopPolicyUpdate {
+                actor_id: "planner",
+                team_id: &fixture.team_id,
+                expected_revision: 1,
+                state: LoopPolicyState::Enabled,
+                session_policy: LoopSessionPolicy::Fresh,
+                limits: &LoopLimits::default(),
+            },
+            now,
+        )
+        .await
+        .unwrap();
+    store
+        .accept_trigger(
+            &LoopTriggerInput {
+                actor_id: "planner".into(),
+                team_id: fixture.team_id.clone(),
+                kind: LoopTriggerKind::Operator,
+                source_key: "dispatch".into(),
+                due_at: None,
+                references: LoopSourceReferences::default(),
+            },
+            now,
+        )
+        .await
+        .unwrap();
+    let first = fixture.execute_pending("planner").await;
+    assert!(
+        store
+            .reservation(&fixture.team_id, "worker")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let worker = fixture.execute_pending("worker").await;
+    let sources = store.triggers(&fixture.team_id, &worker.id).await.unwrap();
+    assert_eq!(sources.len(), 2);
+    assert!(sources.iter().all(
+        |source| source.input.references.scheduling_activation_id.as_deref()
+            == Some(first.id.as_str())
+    ));
+    assert!(
+        store
+            .reservation(&fixture.team_id, "planner")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let report = fixture.execute_pending("planner").await;
+    assert_ne!(first.session_id, report.session_id);
+    assert_eq!(first.mailbox_run_id, report.mailbox_run_id);
+    let sources = store.triggers(&fixture.team_id, &report.id).await.unwrap();
+    assert_eq!(sources.len(), 1);
+    assert_eq!(
+        sources[0]
+            .input
+            .references
+            .scheduling_activation_id
+            .as_deref(),
+        Some(worker.id.as_str())
+    );
+    let pending: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM loop_activations WHERE state = 'pending'")
+            .fetch_one(&fixture.state.db)
+            .await
+            .unwrap();
+    assert_eq!(pending, 0);
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM team_tasks WHERE title = 'Offline review'")
+            .fetch_one(&fixture.state.db)
+            .await
+            .unwrap();
+    assert_eq!(status, "open");
+    fixture.close().await;
+}
+
+#[test]
+fn loop_work_entry_prompt_is_a_bounded_versioned_recovery_pointer() {
+    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v2");
+    assert!(LOOP_ENTRY_PROMPT.len() < 1500);
+    for command in ["loop-context", "loop-source", "loop-finish"] {
+        assert!(LOOP_ENTRY_PROMPT.contains(command));
+    }
 }

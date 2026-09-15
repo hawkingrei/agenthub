@@ -491,6 +491,99 @@ pub(super) fn parse_actor_command(
         });
     }
     match sub.as_str() {
+        "loop-source" => {
+            let mut source_id = None;
+            let mut index = 1;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--source-id" => {
+                        anyhow::ensure!(source_id.is_none(), "duplicate --source-id");
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow::anyhow!("--source-id requires a value"))?;
+                        agenthub_agent_domain::loop_runtime::validate_loop_id(value)?;
+                        source_id = Some(value.clone());
+                    }
+                    flag => anyhow::bail!("unsupported loop-source argument: {flag}"),
+                }
+                index += 1;
+            }
+            Ok(ActorCommand::LoopSource {
+                source_id: source_id.ok_or_else(|| anyhow::anyhow!("--source-id is required"))?,
+            })
+        }
+        "loop-context" => {
+            let mut after_source_id = None;
+            let mut limit = 64;
+            let mut seen = std::collections::HashSet::new();
+            let mut index = 1;
+            while index < args.len() {
+                let flag = args[index].as_str();
+                if flag == "--json" {
+                    *output_mode = ActorOutputMode::Json;
+                    index += 1;
+                    continue;
+                }
+                anyhow::ensure!(seen.insert(flag), "duplicate argument: {flag}");
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?;
+                match flag {
+                    "--after-source-id" => {
+                        agenthub_agent_domain::loop_runtime::validate_loop_id(value)?;
+                        after_source_id = Some(value.clone());
+                    }
+                    "--limit" => {
+                        limit = value.parse::<u32>()?;
+                        anyhow::ensure!(
+                            (1..=256).contains(&limit),
+                            "limit must be between 1 and 256"
+                        );
+                    }
+                    _ => anyhow::bail!("unsupported loop-context argument: {flag}"),
+                }
+                index += 1;
+            }
+            Ok(ActorCommand::LoopContext {
+                after_source_id,
+                limit,
+            })
+        }
+        "loop-activate" => {
+            let (mut member_id, mut source_key, mut task_id) = (None, None, None);
+            let mut seen = std::collections::HashSet::new();
+            let mut index = 1;
+            while index < args.len() {
+                let flag = args[index].as_str();
+                if flag == "--json" {
+                    *output_mode = ActorOutputMode::Json;
+                    index += 1;
+                    continue;
+                }
+                anyhow::ensure!(seen.insert(flag), "duplicate argument: {flag}");
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?;
+                agenthub_agent_domain::loop_runtime::validate_loop_id(value)?;
+                match flag {
+                    "--member-id" => member_id = Some(value.clone()),
+                    "--source-key" => source_key = Some(value.clone()),
+                    "--task-id" => task_id = Some(value.clone()),
+                    _ => anyhow::bail!("unsupported loop-activate argument: {flag}"),
+                }
+                index += 1;
+            }
+            Ok(ActorCommand::LoopActivate {
+                member_id: member_id.ok_or_else(|| anyhow::anyhow!("--member-id is required"))?,
+                source_key: source_key
+                    .ok_or_else(|| anyhow::anyhow!("--source-key is required"))?,
+                task_id,
+            })
+        }
         "loop-finish" => {
             use std::io::Read;
             let mut path = None;

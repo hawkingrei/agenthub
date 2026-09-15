@@ -10,6 +10,7 @@ mod policy;
 mod reservation;
 mod schema;
 mod scope;
+mod work_context;
 
 #[cfg(test)]
 mod tests;
@@ -81,17 +82,7 @@ impl LoopStore {
         .bind(activation_id)
         .fetch_all(&self.pool)
         .await?;
-        rows.iter()
-            .map(|row| {
-                Ok(LoopTriggerRecord {
-                    id: row.try_get("id")?,
-                    activation_id: row.try_get("activation_id")?,
-                    input: serde_json::from_str(row.try_get("input_json")?)?,
-                    created_at: row.try_get("created_at")?,
-                    revoked: row.try_get("revoked")?,
-                })
-            })
-            .collect()
+        rows.iter().map(parse_trigger).collect()
     }
 
     pub async fn events(
@@ -154,5 +145,15 @@ fn parse_activation(row: &SqliteRow) -> anyhow::Result<LoopActivation> {
             .try_get::<Option<&str>, _>("launch_json")?
             .map(serde_json::from_str)
             .transpose()?,
+    })
+}
+
+fn parse_trigger(row: &SqliteRow) -> anyhow::Result<LoopTriggerRecord> {
+    Ok(LoopTriggerRecord {
+        id: row.try_get("id")?,
+        activation_id: row.try_get("activation_id")?,
+        input: serde_json::from_str(row.try_get("input_json")?)?,
+        created_at: row.try_get("created_at")?,
+        revoked: row.try_get("revoked")?,
     })
 }

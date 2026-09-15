@@ -38,6 +38,60 @@ use super::{
 };
 
 impl InternalGrpcMailboxClient {
+    pub(crate) async fn loop_work_source(
+        &self,
+        source_id: &str,
+    ) -> anyhow::Result<crate::team::loop_context::LoopWorkSourceDetail> {
+        let response =
+            timeout_internal_grpc_call(self.client().get_loop_work_source(self.control_request(
+                super::super::proto::agenthub::internal::v1::GetLoopWorkSourceRequest {
+                    source_id: source_id.into(),
+                },
+            )?))
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.source_json, "source_json")
+    }
+
+    pub(crate) async fn loop_work_context(
+        &self,
+        after: Option<&str>,
+        limit: u32,
+    ) -> anyhow::Result<agenthub_agent_domain::loop_runtime::LoopWorkPage> {
+        let response =
+            timeout_internal_grpc_call(self.client().get_loop_work(self.control_request(
+                super::super::proto::agenthub::internal::v1::GetLoopWorkRequest {
+                    after_source_id: after.unwrap_or_default().to_owned(),
+                    limit,
+                },
+            )?))
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.page_json, "page_json")
+    }
+
+    pub(crate) async fn activate_loop_member(
+        &self,
+        member_id: &str,
+        source_key: &str,
+        task_id: Option<&str>,
+    ) -> anyhow::Result<agenthub_agent_domain::loop_runtime::LoopTriggerReceipt> {
+        let response =
+            timeout_internal_grpc_call(self.client().activate_loop_member(self.control_request(
+                super::super::proto::agenthub::internal::v1::ActivateLoopMemberRequest {
+                    member_id: member_id.to_owned(),
+                    source_key: source_key.to_owned(),
+                    task_id: task_id.unwrap_or_default().to_owned(),
+                },
+            )?))
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.receipt_json, "receipt_json")
+    }
+
     pub(crate) async fn finish_loop_activation(
         &self,
         outcome: &agenthub_agent_domain::loop_runtime::LoopOutcome,

@@ -430,4 +430,40 @@ impl TeamInternalControl for TeamInternalControlService {
         })
         .await
     }
+
+    async fn get_loop_work_source(
+        &self,
+        request: Request<GetLoopWorkSourceRequest>,
+    ) -> Result<Response<GetLoopWorkSourceResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.get_loop_work_source_request(request).await
+        })
+        .await
+    }
+
+    async fn get_loop_work(
+        &self,
+        request: Request<GetLoopWorkRequest>,
+    ) -> Result<Response<GetLoopWorkResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.get_loop_work_request(request).await
+        })
+        .await
+    }
+
+    async fn activate_loop_member(
+        &self,
+        request: Request<ActivateLoopMemberRequest>,
+    ) -> Result<Response<ActivateLoopMemberResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.activate_loop_member_request(request).await
+        })
+        .await
+    }
 }

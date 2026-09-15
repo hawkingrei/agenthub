@@ -1,10 +1,13 @@
+use crate::team::mentions::{extract_task_message_mention_actor_ids, push_member_mention};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path as StdPath, PathBuf};
 
 mod errors;
 mod loop_configuration;
-use loop_configuration::{get_loop_configuration, set_loop_configuration, update_team_spec_owned};
+use loop_configuration::{
+    get_loop_configuration, request_loop_activation, set_loop_configuration, update_team_spec_owned,
+};
 
 use self::errors::{
     map_actor_service_api_error, map_channel_create_error, map_channel_delete_error,
@@ -608,6 +611,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/{id}/members/{member_id}/loop",
             get(get_loop_configuration).put(set_loop_configuration),
+        )
+        .route(
+            "/{id}/members/{member_id}/loop/activate",
+            post(request_loop_activation),
         )
         .route("/{id}/runtime", get(get_team_runtime))
         .route(
@@ -4293,98 +4300,6 @@ fn resolve_task_mailbox_recipient_ids(
     }
 }
 
-fn extract_task_message_mention_actor_ids(
-    payload: &Value,
-    member_ids: &HashSet<String>,
-) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut seen = HashSet::new();
-    for key in ["mention_actor_ids", "mentioned_actor_ids"] {
-        if let Some(explicit_mentions) = payload.get(key).and_then(Value::as_array) {
-            for value in explicit_mentions {
-                if let Some(candidate) = value.as_str() {
-                    push_member_mention(candidate, member_ids, &mut seen, &mut out);
-                }
-            }
-        }
-    }
-    if let Some(text) = payload.get("text").and_then(Value::as_str) {
-        for candidate in extract_mentions_from_text(text) {
-            push_member_mention(candidate.as_str(), member_ids, &mut seen, &mut out);
-        }
-    }
-    out
-}
-
-fn push_member_mention(
-    raw_candidate: &str,
-    member_ids: &HashSet<String>,
-    seen: &mut HashSet<String>,
-    out: &mut Vec<String>,
-) {
-    let candidate = raw_candidate.trim();
-    if candidate.is_empty()
-        || !member_ids.contains(candidate)
-        || !seen.insert(candidate.to_string())
-    {
-        return;
-    }
-    out.push(candidate.to_string());
-}
-
-fn extract_mentions_from_text(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let bytes = text.as_bytes();
-    let mut cursor = 0usize;
-    while let Some(open_index) = text[cursor..].find("<at>") {
-        let mention_start = cursor + open_index + 4;
-        let Some(close_index) = text[mention_start..].find("</at>") else {
-            break;
-        };
-        let mention_end = mention_start + close_index;
-        let candidate = text[mention_start..mention_end].trim();
-        if !candidate.is_empty()
-            && candidate
-                .as_bytes()
-                .iter()
-                .all(|raw| is_valid_mention_char(*raw))
-        {
-            out.push(candidate.to_string());
-        }
-        cursor = mention_end + 5;
-    }
-    let mut raw_cursor = 0usize;
-    while raw_cursor < bytes.len() {
-        if bytes[raw_cursor] != b'@'
-            || (raw_cursor > 0 && is_email_local_char(bytes[raw_cursor - 1]))
-        {
-            raw_cursor += 1;
-            continue;
-        }
-        let start = raw_cursor + 1;
-        let mut end = start;
-        while end < bytes.len() && is_valid_mention_char(bytes[end]) {
-            end += 1;
-        }
-        if end > start {
-            out.push(text[start..end].to_string());
-        }
-        raw_cursor = end;
-    }
-    out
-}
-
-fn is_valid_mention_char(raw: u8) -> bool {
-    matches!(raw, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'_' | b':' | b'-')
-}
-
-fn is_email_local_char(raw: u8) -> bool {
-    matches!(
-        raw,
-        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'.' | b'_' | b'%' | b'+' | b'-'
-    )
-}
-
 fn build_task_mailbox_forward_payload(
     source_payload: &Value,
     message: &TeamConversationMessageRecord,
@@ -5605,6 +5520,19 @@ fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpe
         let member = member
             .as_object()
             .ok_or_else(|| ApiError::bad_request("spec.members entries must be objects"))?;
+        if let Some(policy) = member.get("loop_intake") {
+            let policy = policy
+                .as_object()
+                .ok_or_else(|| ApiError::bad_request("loop_intake must be an object"))?;
+            if policy
+                .iter()
+                .any(|(key, value)| key != "engaged_thread_replies" || !value.is_boolean())
+            {
+                return Err(ApiError::bad_request(
+                    "loop_intake only accepts the engaged_thread_replies boolean",
+                ));
+            }
+        }
         let member_id = member
             .get("member_id")
             .and_then(Value::as_str)

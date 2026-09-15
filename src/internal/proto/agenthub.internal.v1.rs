@@ -38,6 +38,42 @@ pub struct ListenMcpProxyRequest {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CloseMcpProxyResponse {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetLoopWorkRequest {
+    #[prost(string, tag = "1")]
+    pub after_source_id: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub limit: u32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetLoopWorkResponse {
+    #[prost(string, tag = "1")]
+    pub page_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetLoopWorkSourceRequest {
+    #[prost(string, tag = "1")]
+    pub source_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetLoopWorkSourceResponse {
+    #[prost(string, tag = "1")]
+    pub source_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ActivateLoopMemberRequest {
+    #[prost(string, tag = "1")]
+    pub member_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source_key: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub task_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ActivateLoopMemberResponse {
+    #[prost(string, tag = "1")]
+    pub receipt_json: ::prost::alloc::string::String,
+}
 /// Executor identity and scope come exclusively from signed activation credentials.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FinishLoopActivationRequest {
@@ -902,6 +938,93 @@ pub mod team_internal_control_client {
                     GrpcMethod::new(
                         "agenthub.internal.v1.TeamInternalControl",
                         "CloseMcpProxy",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_loop_work(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetLoopWorkRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetLoopWorkResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/GetLoopWork",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "GetLoopWork",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn get_loop_work_source(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetLoopWorkSourceRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetLoopWorkSourceResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/GetLoopWorkSource",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "GetLoopWorkSource",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn activate_loop_member(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ActivateLoopMemberRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ActivateLoopMemberResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/ActivateLoopMember",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "ActivateLoopMember",
                     ),
                 );
             self.inner.unary(req, path, codec).await
@@ -1860,6 +1983,27 @@ pub mod team_internal_control_server {
             tonic::Response<super::CloseMcpProxyResponse>,
             tonic::Status,
         >;
+        async fn get_loop_work(
+            &self,
+            request: tonic::Request<super::GetLoopWorkRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetLoopWorkResponse>,
+            tonic::Status,
+        >;
+        async fn get_loop_work_source(
+            &self,
+            request: tonic::Request<super::GetLoopWorkSourceRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetLoopWorkSourceResponse>,
+            tonic::Status,
+        >;
+        async fn activate_loop_member(
+            &self,
+            request: tonic::Request<super::ActivateLoopMemberRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ActivateLoopMemberResponse>,
+            tonic::Status,
+        >;
         async fn finish_loop_activation(
             &self,
             request: tonic::Request<super::FinishLoopActivationRequest>,
@@ -2332,6 +2476,150 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = CloseMcpProxySvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/GetLoopWork" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetLoopWorkSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::GetLoopWorkRequest>
+                    for GetLoopWorkSvc<T> {
+                        type Response = super::GetLoopWorkResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetLoopWorkRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::get_loop_work(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetLoopWorkSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/GetLoopWorkSource" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetLoopWorkSourceSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::GetLoopWorkSourceRequest>
+                    for GetLoopWorkSourceSvc<T> {
+                        type Response = super::GetLoopWorkSourceResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetLoopWorkSourceRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::get_loop_work_source(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetLoopWorkSourceSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/ActivateLoopMember" => {
+                    #[allow(non_camel_case_types)]
+                    struct ActivateLoopMemberSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::ActivateLoopMemberRequest>
+                    for ActivateLoopMemberSvc<T> {
+                        type Response = super::ActivateLoopMemberResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ActivateLoopMemberRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::activate_loop_member(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ActivateLoopMemberSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

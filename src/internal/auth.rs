@@ -112,6 +112,7 @@ pub enum InternalAction {
     AgentManage,
     LoopFinish,
     McpProxy,
+    LoopActivate,
 }
 
 impl InternalAction {
@@ -129,6 +130,7 @@ impl InternalAction {
             Self::AgentManage => "agent:manage",
             Self::LoopFinish => "loop:finish",
             Self::McpProxy => "mcp:proxy",
+            Self::LoopActivate => "loop:activate",
         }
     }
 }

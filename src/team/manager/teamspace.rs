@@ -375,6 +375,7 @@ impl TeamManager {
             now,
         )
         .await?;
+        super::loop_work_events::stage_assignment_event(&mut tx, task_id, None).await?;
         append_audit_event(
             &mut tx,
             &task.team_id,

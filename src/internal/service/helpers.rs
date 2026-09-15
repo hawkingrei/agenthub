@@ -425,6 +425,12 @@ pub(super) fn map_serde_status(err: serde_json::Error) -> Status {
 
 pub(super) fn map_manager_error(err: anyhow::Error) -> Status {
     if err
+        .downcast_ref::<agenthub_db::loop_runtime::LoopStoreError>()
+        .is_some()
+    {
+        return super::loop_work::map_loop_work_error(err);
+    }
+    if err
         .downcast_ref::<sqlx::Error>()
         .is_some_and(|cause| matches!(cause, sqlx::Error::RowNotFound))
     {

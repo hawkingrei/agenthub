@@ -808,8 +808,17 @@ cargo test -p agenthub --lib --locked --offline mcp
 cargo fmt --all --check
 ```
 
+### Work-event base integration
+
+The proxy branch incorporates `codex/loop-05-provider` at
+`d40119d822ced68639ee00cc8efd07c49a6e9108`. Conflict resolution retains both work-event and MCP RPCs,
+their authorization actions, and the actual provider fixture's handoff and MCP modes. The tracked
+protocol is regenerated from the merged `.proto` with the existing build script, with byte equality
+checked after formatting. Root all-target Clippy passes with warnings denied. Full root, database,
+and domain validation continues against this integrated tree before draft promotion.
+
 ## Follow-Ups
 
-- Reconcile the current integration base and publish slice 9 after its final validation.
+- Complete integrated local and PR CI validation before promoting slice 9 from draft.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

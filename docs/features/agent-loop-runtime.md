@@ -182,6 +182,11 @@ durable triggers through tools; the scheduler alone admits, starts, and supervis
   from an Agent Card through the existing [adoption flows](team-agent-adoption.md); instantiation
   respects operator policy and grants the new member no claims or inbox history.
 
+Addressed work, assignment, explicit scheduling, source recovery, and thread intake policy follow
+[the durable intake contract](agent-loop-activation-contract.md#durable-work-intake-and-source-recovery).
+Canonical writes and trigger acceptance share one transaction; delivery copies are recoverable
+projections of that source, not additional scheduling requests.
+
 ### 8. Observability And Activation Trace
 
 The activation is the correlation spine for loop telemetry. Every lifecycle record — accepted
