@@ -1,6 +1,6 @@
 use agenthub_agent_domain::mcp_operations::{
-    McpCompletion, McpDigest, McpFailureKind, McpTaskLookupInput, McpTaskLookupMethod,
-    McpTaskReceipt, McpTaskVersion,
+    McpCompletion, McpDigest, McpFailureKind, McpTaskCancellationInput, McpTaskLookupInput,
+    McpTaskLookupMethod, McpTaskReceipt, McpTaskVersion,
 };
 use serde_json::{Map, Value, json};
 
@@ -120,6 +120,36 @@ fn validate_task(task: &Value, version: McpTaskVersion) -> Result<(), McpTranspo
         return Err(McpTransportError::InvalidResponse);
     }
     Ok(())
+}
+
+pub(crate) fn cancellation_outcome(
+    input: &McpTaskCancellationInput,
+    response: &Value,
+) -> Result<Option<McpCompletion>, McpTransportError> {
+    if response.get("error").is_some() {
+        return Ok(None);
+    }
+    let result = response
+        .get("result")
+        .filter(|value| value.is_object())
+        .ok_or(McpTransportError::InvalidResponse)?;
+    if input.receipt.version == McpTaskVersion::July2026 {
+        if result["resultType"] != "complete" {
+            return Err(McpTransportError::InvalidResponse);
+        }
+        // Cooperative cancellation acknowledges intent, never completion of the underlying task.
+        return Ok(None);
+    }
+    validate_task(result, input.receipt.version)?;
+    if task_digest(&result["taskId"])? != input.receipt.task_digest
+        || result["status"] != "cancelled"
+    {
+        return Err(McpTransportError::InvalidResponse);
+    }
+    Ok(Some(McpCompletion::Failed {
+        reason: McpFailureKind::TaskCancelled,
+        response_digest: digest("mcp-task-cancelled-v1", result)?,
+    }))
 }
 
 /// A query RPC error does not prove a tool failure. Only task-specific terminal facts settle it.

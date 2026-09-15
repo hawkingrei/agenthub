@@ -12,7 +12,7 @@ async fn awaiting_initialized(session: &McpProxySession) {
 async fn task_methods_cannot_bypass_receipt_admission_inside_legacy_batches() {
     let session = session();
     awaiting_initialized(&session).await;
-    for method in ["tasks/get", "tasks/result"] {
+    for method in ["tasks/get", "tasks/result", "tasks/cancel"] {
         assert!(
             session
                 .prepare(

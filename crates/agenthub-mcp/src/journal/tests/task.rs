@@ -1,4 +1,5 @@
 use super::*;
+mod cancellation;
 
 fn task_state(version: ProtocolVersion, status: &str) -> Value {
     let mut task = json!({"taskId":"private-task-id","status":status,

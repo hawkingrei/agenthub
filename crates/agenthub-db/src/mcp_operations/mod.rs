@@ -5,6 +5,7 @@ mod continuation;
 mod prepare;
 mod schema;
 mod task;
+mod task_cancel;
 
 #[cfg(test)]
 mod tests;
@@ -20,6 +21,7 @@ use crate::DaemonGeneration;
 
 pub use schema::migrate_mcp_operations;
 pub use task::McpTaskLookupPermit;
+pub use task_cancel::McpTaskCancellationPermit;
 
 #[derive(Debug, Error)]
 pub enum McpJournalError {

@@ -84,7 +84,7 @@ async fn handler(
         return StatusCode::ACCEPTED.into_response();
     }
     match message["method"].as_str().unwrap() {
-        "tasks/get" => task::respond(&upstream, &message).await,
+        "tasks/get" | "tasks/cancel" => task::respond(&upstream, &message).await,
         "server/discover" => {
             assert_eq!(headers["mcp-protocol-version"], "2026-07-28");
             assert_eq!(headers["mcp-method"], "server/discover");

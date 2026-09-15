@@ -1,8 +1,8 @@
 use agenthub_agent_domain::{
     loop_runtime::LoopReservation,
     mcp_operations::{
-        McpCompletion, McpDeferralKind, McpTaskAuthority, McpTaskLookupInput, McpTaskLookupMethod,
-        McpTaskLookupRecord, McpTaskReceipt, McpTaskVersion,
+        McpCompletion, McpDeferralKind, McpOperationRecord, McpTaskAuthority, McpTaskLookupInput,
+        McpTaskLookupMethod, McpTaskLookupRecord, McpTaskReceipt, McpTaskVersion,
     },
 };
 use sqlx::{Connection, Row, Sqlite, Transaction};
@@ -43,32 +43,10 @@ impl McpOperationStore {
         );
         let mut connection = self.durable_connection().await?;
         let mut tx = connection.begin_with("BEGIN IMMEDIATE").await?;
-        self.require_current_daemon(&mut tx).await?;
-        LoopStore::verify_executor_live_tx(&mut tx, executor, now).await?;
-        let rows = sqlx::query("SELECT o.*, t.attempt_number AS task_attempt_number, t.receipt_json \
-            FROM mcp_operation_tasks t JOIN mcp_operations o ON o.id = t.operation_id AND o.attempt_count = t.attempt_number \
-            WHERE o.team_id = ? AND o.actor_id = ? AND o.server_id = ? AND o.scope_digest = ? \
-            AND json_extract(o.intent_json, '$.binding_digest') = ? AND t.task_digest = ? LIMIT 65")
-            .bind(&executor.team_id).bind(&executor.actor_id).bind(&authority.server_id)
-            .bind(authority.scope_digest.as_str()).bind(authority.binding_digest.as_str())
-            .bind(input.receipt.task_digest.as_str()).fetch_all(&mut *tx).await?;
-        anyhow::ensure!(rows.len() <= 64, McpJournalError::ContinuationRequired);
-        let mut candidates = Vec::new();
-        for row in rows {
-            let receipt: McpTaskReceipt = serde_json::from_str(row.try_get("receipt_json")?)?;
-            if receipt == input.receipt {
-                let operation = parse_operation(&row)?;
-                // Task authority cannot outlive the originating tool's discovered binding.
-                anyhow::ensure!(
-                    authority.tools.get(&operation.intent.tool_name)
-                        == Some(&operation.intent.schema_digest),
-                    McpJournalError::ScopeMismatch
-                );
-                candidates.push((operation, row.try_get::<u32, _>("task_attempt_number")?));
-            }
-        }
-        anyhow::ensure!(candidates.len() == 1, McpJournalError::ContinuationRequired);
-        let (operation, attempt_number) = candidates.pop().unwrap();
+        let operation = self
+            .resolve_task_tx(&mut tx, executor, authority, &input.receipt, now)
+            .await?;
+        let attempt_number = operation.attempt_count;
         let reused: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM mcp_operation_task_lookups \
             WHERE operation_id = ? AND request_key = ?)",
@@ -99,6 +77,42 @@ impl McpOperationStore {
             operation_id: operation.id,
             attempt_number,
         })
+    }
+
+    pub(super) async fn resolve_task_tx(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        executor: &LoopReservation,
+        authority: &McpTaskAuthority,
+        receipt: &McpTaskReceipt,
+        now: i64,
+    ) -> anyhow::Result<McpOperationRecord> {
+        self.require_current_daemon(tx).await?;
+        LoopStore::verify_executor_live_tx(tx, executor, now).await?;
+        let rows = sqlx::query("SELECT o.*, t.attempt_number AS task_attempt_number, t.receipt_json \
+            FROM mcp_operation_tasks t JOIN mcp_operations o ON o.id = t.operation_id AND o.attempt_count = t.attempt_number \
+            WHERE o.team_id = ? AND o.actor_id = ? AND o.server_id = ? AND o.scope_digest = ? \
+            AND json_extract(o.intent_json, '$.binding_digest') = ? AND t.task_digest = ? LIMIT 65")
+            .bind(&executor.team_id).bind(&executor.actor_id).bind(&authority.server_id)
+            .bind(authority.scope_digest.as_str()).bind(authority.binding_digest.as_str())
+            .bind(receipt.task_digest.as_str()).fetch_all(&mut **tx).await?;
+        anyhow::ensure!(rows.len() <= 64, McpJournalError::ContinuationRequired);
+        let mut candidates = Vec::new();
+        for row in rows {
+            let recorded: McpTaskReceipt = serde_json::from_str(row.try_get("receipt_json")?)?;
+            if recorded == *receipt {
+                let operation = parse_operation(&row)?;
+                // Task authority cannot outlive the originating tool's discovered binding.
+                anyhow::ensure!(
+                    authority.tools.get(&operation.intent.tool_name)
+                        == Some(&operation.intent.schema_digest),
+                    McpJournalError::ScopeMismatch
+                );
+                candidates.push(operation);
+            }
+        }
+        anyhow::ensure!(candidates.len() == 1, McpJournalError::ContinuationRequired);
+        Ok(candidates.pop().unwrap())
     }
 
     /// Lookup failures never change the tool outcome. A factual terminal task result can settle
@@ -148,32 +162,15 @@ impl McpOperationStore {
             .bind(serde_json::to_string(completion)?).bind(outcome.map(serde_json::to_string).transpose()?)
             .bind(completed_at).bind(&permit.id).execute(&mut *tx).await?;
         if let Some(outcome) = outcome {
-            let operation = sqlx::query("SELECT * FROM mcp_operations WHERE id = ?")
-                .bind(&permit.operation_id)
-                .fetch_one(&mut *tx)
-                .await?;
-            let operation = parse_operation(&operation)?;
-            // First terminal fact wins. Later stale/conflicting polls remain inspectable in their
-            // own lookup records without overwriting the operation or replaying its write.
-            if operation.attempt_count == permit.attempt_number
-                && matches!(
-                    operation.completion,
-                    Some(McpCompletion::Deferred {
-                        reason: McpDeferralKind::TaskAccepted,
-                        ..
-                    })
-                )
-            {
-                complete_attempt(
-                    &mut tx,
-                    &permit.operation_id,
-                    permit.attempt_number,
-                    row.try_get("activation_id")?,
-                    outcome,
-                    completed_at.max(operation.updated_at),
-                )
-                .await?;
-            }
+            settle_task_tx(
+                &mut tx,
+                &permit.operation_id,
+                permit.attempt_number,
+                row.try_get("activation_id")?,
+                outcome,
+                completed_at,
+            )
+            .await?;
         }
         tx.commit().await?;
         Ok(())
@@ -227,4 +224,41 @@ impl McpOperationStore {
             .bind(serde_json::to_string(&completion)?).bind(now).bind(&self.daemon.node_id)
             .bind(self.daemon.generation).bind(&self.daemon.owner_id).bind(limit).execute(&mut **tx).await?.rows_affected())
     }
+}
+
+/// An admitted task exchange may settle its original attempt after executor shutdown.
+pub(super) async fn settle_task_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    operation_id: &str,
+    attempt_number: u32,
+    activation_id: &str,
+    outcome: &McpCompletion,
+    now: i64,
+) -> anyhow::Result<()> {
+    let operation = sqlx::query("SELECT * FROM mcp_operations WHERE id = ?")
+        .bind(operation_id)
+        .fetch_one(&mut **tx)
+        .await?;
+    let operation = parse_operation(&operation)?;
+    // First terminal fact wins; later conflicting exchanges retain their own receipts.
+    if operation.attempt_count == attempt_number
+        && matches!(
+            operation.completion,
+            Some(McpCompletion::Deferred {
+                reason: McpDeferralKind::TaskAccepted,
+                ..
+            })
+        )
+    {
+        complete_attempt(
+            tx,
+            operation_id,
+            attempt_number,
+            activation_id,
+            outcome,
+            now.max(operation.updated_at),
+        )
+        .await?;
+    }
+    Ok(())
 }

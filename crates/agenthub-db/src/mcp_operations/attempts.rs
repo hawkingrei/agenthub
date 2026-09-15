@@ -265,8 +265,15 @@ impl McpOperationStore {
         let lookups = self
             .recover_task_lookups_tx(&mut tx, limit.clamp(1, 100) - rows.len() as u32, now)
             .await?;
+        let cancellations = self
+            .recover_task_cancellations_tx(
+                &mut tx,
+                limit.clamp(1, 100) - rows.len() as u32 - lookups as u32,
+                now,
+            )
+            .await?;
         tx.commit().await?;
-        Ok(rows.len() as u64 + lookups)
+        Ok(rows.len() as u64 + lookups + cancellations)
     }
 }
 

@@ -265,9 +265,11 @@ async fn upstream(
         .as_str()
         .is_some_and(|method| method.starts_with("tasks/"))
     {
-        let lookups: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM mcp_operation_task_lookups WHERE completed_at IS NULL",
-        )
+        let lookups: i64 = sqlx::query_scalar(if message["method"] == "tasks/cancel" {
+            "SELECT COUNT(*) FROM mcp_operation_task_cancellations WHERE completed_at IS NULL"
+        } else {
+            "SELECT COUNT(*) FROM mcp_operation_task_lookups WHERE completed_at IS NULL"
+        })
         .fetch_one(&state.pool)
         .await
         .unwrap();

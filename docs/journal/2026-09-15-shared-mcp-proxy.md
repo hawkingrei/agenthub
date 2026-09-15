@@ -55,7 +55,7 @@ giving an expired executor authority to send more work.
   payloads unchanged; tool rounds use atomic journal links to their prior upstream receipt.
 - Preserve a deferred input/task receipt without claiming terminal tool success. Its typed receipt
   cannot be downgraded by transport loss or used to replay the original request. Modern tool
-  follow-ups and task lookups require a current matching receipt; task mutation and notification
+  follow-ups, task lookups, and cancellation require a current matching receipt; task input and notification
   settlement remain pending.
 - Stream each admitted MCP message independently. Callback replies carry freshly read signed
   credentials, and the daemon retains operation ownership after RPC receiver loss.
@@ -381,7 +381,7 @@ receipt was incorrectly classified as a successful tool result. The HTTP regress
 that error before the fix. The classifier now recognizes both modern and legacy receipt shapes
 as deferred. The regression covers every initial task status, unchanged payload delivery,
 durable unknown outcome, original-request replay denial, and task-ID redaction. The subsequent
-lookup checkpoint resolves recorded handles; update/cancel remain pending.
+lookup and cancellation checkpoints resolve recorded handles and journal cancel intent; updates remain pending.
 
 After the receipt fix, all 63 MCP crate tests and 22 root MCP tests pass, including the
 parent-invoked configured-launch child. Root/MCP all-target Clippy with warnings denied and the
@@ -406,12 +406,29 @@ before upstream I/O, unchanged terminal result delivery, and exactly one origina
 The lookup checkpoint passes 30 database journal tests, 68 MCP crate tests, and 23 root MCP tests, including the configured-launch
 child invoked by its parent. Root/MCP/database all-target Clippy with warnings denied and the real
 binary build pass with the validation commands above. Formatting, whitespace, and local document
-links pass. Task updates, input-receipt metadata, cancellation admission, and notification/subscription
-settlement remain outside this checkpoint.
+links pass. The next checkpoint adds cancellation admission; task updates, input-receipt metadata,
+and notification/subscription settlement remain pending.
+
+Task cancellation now commits its own durable intent before HTTP while sharing the lookup path's
+authority resolution, request preparation, bounded transport drain, and first-terminal-fact rule.
+One cancellation per task attempt survives errors, lost acknowledgments, and restart. Modern
+acknowledgments leave the tool pending; a valid legacy cancelled status can settle the originating
+attempt. The real shim fixture follows a modern acknowledgment with a successful tool lookup and
+rejects another cancellation before upstream I/O.
+
+Three database fixtures cover additive migration, concurrent admission, scoped inspection, restart,
+and late or conflicting facts. HTTP fixtures cover both wire eras, foreign handles, lost responses,
+RPC errors, malformed responses, and fresh-activation resend rejection. Bridge tests cover the
+legacy cancel capability and prevent March task batches from bypassing receipt admission.
+
+Cancellation validation passes 33 database journal tests, 71 MCP crate tests, and 23 root MCP tests,
+including the parent-invoked configured-launch child. Root/MCP/database all-target Clippy with
+warnings denied, the real binary build, formatting, whitespace, and local document links pass.
+No dependencies, protobuf definitions, or Bazel configuration changed.
 
 ## Follow-Ups
 
-- Complete slice 9's task mutation/input/notification paths, remaining protocol controller paths, and integration
+- Complete slice 9's task input/notification paths, remaining protocol controller paths, and integration
   authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.

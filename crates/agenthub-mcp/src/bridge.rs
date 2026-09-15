@@ -26,8 +26,8 @@ use crate::{
     http::{HttpContext, PreparedHttpRequest},
     journal::JournaledMcpClient,
     policy::{
-        McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, PreparedTaskLookup,
-        PreparedToolCall,
+        McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, PreparedTaskCancellation,
+        PreparedTaskLookup, PreparedToolCall,
     },
     protocol::{MessageKind, correlation_id, message_kind},
     session::McpProtocolSession,
@@ -139,6 +139,7 @@ enum Exchange {
     Batch(Box<batch::PreparedProxyBatch>),
     Tool(Box<PreparedToolCall>),
     Task(Box<PreparedTaskLookup>),
+    TaskCancellation(Box<PreparedTaskCancellation>),
     Control(PreparedHttpRequest),
     Discovery {
         request: PreparedHttpRequest,
@@ -269,21 +270,47 @@ impl McpProxySession {
         {
             return Err(McpPolicyError::Call);
         }
-        let kind = if matches!(method.as_str(), "tasks/get" | "tasks/result") {
+        if method == "tasks/cancel"
+            && context.version.uses_initialization()
+            && !self
+                .protocol
+                .lock()
+                .await
+                .server_capabilities()
+                .and_then(|caps| caps.pointer("/tasks/cancel"))
+                .is_some_and(Value::is_object)
+        {
+            return Err(McpPolicyError::Call);
+        }
+        let kind = if matches!(
+            method.as_str(),
+            "tasks/get" | "tasks/result" | "tasks/cancel"
+        ) {
             let discovery = self.discovery.lock().await;
             let catalog = discovery
                 .catalog
                 .as_ref()
                 .ok_or(McpPolicyError::ToolNotAvailable)?;
-            Exchange::Task(Box::new(self.binding.policy.prepare_task_lookup(
-                catalog,
-                &McpCallContext {
-                    executor,
-                    proxy_session_id: &self.id,
-                    http: &context,
-                },
-                message.clone(),
-            )?))
+            let call_context = McpCallContext {
+                executor,
+                proxy_session_id: &self.id,
+                http: &context,
+            };
+            if method == "tasks/cancel" {
+                Exchange::TaskCancellation(Box::new(
+                    self.binding.policy.prepare_task_cancellation(
+                        catalog,
+                        &call_context,
+                        message.clone(),
+                    )?,
+                ))
+            } else {
+                Exchange::Task(Box::new(self.binding.policy.prepare_task_lookup(
+                    catalog,
+                    &call_context,
+                    message.clone(),
+                )?))
+            }
         } else if is_tool {
             let discovery = self.discovery.lock().await;
             let catalog = discovery
@@ -472,12 +499,15 @@ impl PreparedProxyExchange {
                     .run(session.clone(), journal, &mut sink, &self.context)
                     .await
             }
-            kind @ (Exchange::Tool(_) | Exchange::Task(_)) => {
+            kind @ (Exchange::Tool(_) | Exchange::Task(_) | Exchange::TaskCancellation(_)) => {
                 let (events, mut receiver) = mpsc::channel(8);
                 let operation = async {
                     match kind {
                         Exchange::Tool(call) => journal.run(*call, events).await,
                         Exchange::Task(call) => journal.run_task_lookup(*call, events).await,
+                        Exchange::TaskCancellation(call) => {
+                            journal.run_task_cancellation(*call, events).await
+                        }
                         _ => unreachable!(),
                     }
                 };
@@ -596,6 +626,7 @@ fn supported_method(method: &str) -> bool {
             | "tools/call"
             | "tasks/get"
             | "tasks/result"
+            | "tasks/cancel"
             | "notifications/initialized"
             | "notifications/cancelled"
             | "notifications/progress"

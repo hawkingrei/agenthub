@@ -205,8 +205,16 @@ Each lookup uses an ordinary control slot and the shared daemon-owned HTTP drain
 query send before HTTP and its factual receipt before delivery. Query errors preserve the original
 pending tool outcome. A modern embedded terminal result or a legacy result fetch can settle the
 original attempt without another tool send. Failed/cancelled task statuses are distinct from an RPC
-error or cancellation acknowledgment. Task update/cancel, input-receipt correlation, and
-notification/subscription settlement remain pending; see the [journal contract](mcp-operation-journal.md).
+error or cancellation acknowledgment.
+
+Task cancellation shares request preparation, the ordinary control allowance, and factual response
+draining with lookups, but obtains a separate cancellation permit before HTTP. A cancellation
+acknowledgment never settles the modern task. A legacy cancellation requires the negotiated cancel
+capability and the matching cancelled task response. The journal retains one cancellation intent
+per tool attempt through errors and restart; neither automatic nor fresh-request-ID resends can
+bypass it. Task queries remain available to observe the eventual outcome. Task update,
+input-receipt correlation, and notification/subscription settlement remain pending; see the
+[journal contract](mcp-operation-journal.md).
 
 ### Redaction
 
@@ -287,7 +295,7 @@ and kernel buffers are outside byte accounting. Existing frame, catalog, header,
 and session limits continue to bound their corresponding structures.
 
 Modern tool MRTR rounds, declared retries, and task lookups use receipt-linked journal paths.
-Task mutation/notification paths and integration-specific continuation authorization for non-tool
+Task input/notification paths and integration-specific continuation authorization for non-tool
 methods remain controller work.
 
 ## Validation Matrix
@@ -314,6 +322,7 @@ methods remain controller work.
 | Tool MRTR | One logical operation across multiple HTTP requests, exact state echo and bound arguments, separate per-round inputs, no send for altered intent, and persisted parent-receipt links |
 | MRTR retry | Explicit read/stable-identity retry after loss or error, unchanged state/inputs/identity, independent attempt records across activations, and real shim rejection of altered inputs before HTTP |
 | Task lookup | Real shim preserves modern task/result envelopes and rejects foreign handles before HTTP; legacy HTTP status/result distinction, terminal failures, malformed responses, and March batch rejection |
+| Task cancellation | Real shim preserves the acknowledgment, rejects a duplicate before HTTP, then records actual tool success; legacy cancel capability/status, lost acknowledgment, RPC error, malformed response, and fresh-activation resend rejection |
 
 ## Operational Notes
 
@@ -329,7 +338,7 @@ fixture additionally checks inherited provider/shim environments and an actual j
 
 ## Open Risks
 
-- Task mutation/input/notification paths and non-tool continuation authorization remain controller
+- Task input/notification paths and non-tool continuation authorization remain controller
   work. Observed deferred receipts block replay of the original request until a linked lookup
   establishes the tool outcome.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint

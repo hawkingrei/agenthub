@@ -134,6 +134,26 @@ pub async fn migrate_mcp_operations(pool: &SqlitePool) -> anyhow::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_mcp_task_lookup_recovery
             ON mcp_operation_task_lookups(daemon_node_id, completed_at, daemon_generation);
+        CREATE TABLE IF NOT EXISTS mcp_operation_task_cancellations (
+            operation_id TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL,
+            permit_id TEXT NOT NULL UNIQUE,
+            request_key TEXT NOT NULL,
+            request_digest TEXT NOT NULL,
+            activation_id TEXT NOT NULL REFERENCES loop_activations(id),
+            daemon_node_id TEXT NOT NULL,
+            daemon_generation INTEGER NOT NULL,
+            daemon_owner_id TEXT NOT NULL,
+            completion_json TEXT,
+            outcome_json TEXT,
+            sent_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            PRIMARY KEY(operation_id, attempt_number),
+            FOREIGN KEY(operation_id, attempt_number)
+                REFERENCES mcp_operation_tasks(operation_id, attempt_number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mcp_task_cancellation_recovery
+            ON mcp_operation_task_cancellations(daemon_node_id, completed_at, daemon_generation);
         "#,
     )
     .execute(&mut *tx)

@@ -148,9 +148,30 @@ wins; later conflicting responses remain inspectable on their own query records 
 the operation or a newer attempt. Daemon recovery marks interrupted queries unknown independently
 of the original task receipt. Queries are never automatically repeated.
 
-Task update/cancel admission, outstanding input-receipt metadata, and task notification/subscription
+Task update admission, outstanding input-receipt metadata, and task notification/subscription
 settlement remain controller work. Callers retain actual task handles and observe upstream polling
 and retention guidance; the journal neither polls on their behalf nor extends server retention.
+
+### Task cancellation
+
+`tasks/cancel` requires a recorded task on the current deferred tool attempt and the same live
+authority checks as a lookup. Cancellation has its own additive durable intent/receipt table.
+The send commits with `synchronous=FULL` before HTTP. At most one cancellation is sent per task
+attempt, including after a lost acknowledgment, RPC error, fresh activation, or daemon restart.
+The journal cannot infer that an unsuccessful cancellation had no effect; further action requires
+upstream reconciliation. This limit does not prevent subsequent task queries.
+
+July 2026 cancellation returns an acknowledgment, which records only the cancellation RPC outcome.
+The tool remains pending and may ultimately succeed even after that acknowledgment. November 2025
+requires the negotiated `tasks.cancel` capability and a response identifying the same task in the
+`cancelled` state. That observed status can settle the original attempt as a typed cancellation.
+Neither version repeats the original tool send. `notifications/cancelled` is not a task cancellation.
+
+Restart recovery marks an interrupted cancellation unknown without erasing its sent intent or
+changing the parent task. A process-local permit can record a late factual response after executor
+shutdown. A conflicting task result already recorded by another lookup takes precedence, with the
+late cancellation receipt retained for inspection. Cancellation inspection requires Team and actor
+scope and returns typed facts only.
 
 ### Multi round-trip tool calls
 
@@ -251,6 +272,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | MRTR retry | Additive retry migration, exact round digest and stable identity, fresh activation and daemon checks, concurrent admission, preserved attempt/parent links, three retries per round, and subsequent rounds after a retry |
 | Batch sends | Atomic rollback on a stale/conflicting member; one POST; out-of-order completion; partial-result uncertainty and replay rejection across activations |
 | Task lookup | Additive migration, authority/session/schema checks, legacy receipts without metadata rejected, concurrent admission, query-only restart recovery, terminal result settlement, and first-fact preservation without another tool send |
+| Task cancellation | Additive migration, exactly one concurrent send, acknowledgment versus terminal status, restart without resend, late/conflicting facts, scoped inspection, and tool queries after cancellation |
 
 ## Operational Notes
 
@@ -262,7 +284,7 @@ broken provider stream without abandoning a send. A full provider-facing proxy i
 ## Open Risks
 
 - Integration adapters still need complete scope/capability authorization and endpoint-alias
-  reconciliation. Task mutation/notification paths and non-tool continuations remain incomplete.
+  reconciliation. Task input/notification paths and non-tool continuations remain incomplete.
   Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.
 - Retained ambiguous non-idempotent writes need explicit upstream reconciliation; changing

@@ -3,7 +3,7 @@
 mod batch;
 mod task;
 pub use batch::PreparedBatchCall;
-pub use task::PreparedTaskLookup;
+pub use task::{PreparedTaskCancellation, PreparedTaskLookup, PreparedTaskRequest};
 
 use std::collections::BTreeMap;
 

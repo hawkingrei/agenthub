@@ -38,6 +38,36 @@ fn session_with_budget(budget: Arc<McpProxyBudget>) -> Arc<McpProxySession> {
 }
 
 #[tokio::test]
+async fn legacy_task_cancellation_requires_its_negotiated_capability() {
+    for supports_cancel in [false, true] {
+        let session = session();
+        let mut capabilities = json!({"tasks":{"requests":{"tools":{"call":{}}}}});
+        if supports_cancel {
+            capabilities["tasks"]["cancel"] = json!({});
+        }
+        {
+            let mut protocol = session.protocol.lock().await;
+            protocol.begin(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+                "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"fixture","version":"1"}}})).unwrap();
+            protocol.accept_initialize_response(&json!({"jsonrpc":"2.0","id":1,"result":{
+                "protocolVersion":"2025-11-25","capabilities":capabilities,"serverInfo":{"name":"fixture","version":"1"}}}), None).unwrap();
+            protocol
+                .begin(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
+                .unwrap();
+        }
+        session.apply_discovery(&mut json!({"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"tool","inputSchema":{"type":"object"}}]}}),
+            &HttpContext { version: ProtocolVersion::November2025, session_id: None }, 0, &None).await.unwrap();
+        let result = session
+            .prepare(
+                &executor(),
+                json!({"jsonrpc":"2.0","id":3,"method":"tasks/cancel","params":{"taskId":"task"}}),
+            )
+            .await;
+        assert_eq!(result.is_ok(), supports_cancel);
+    }
+}
+
+#[tokio::test]
 async fn shared_workspaces_bound_sessions_without_starving_initialize_callbacks() {
     let budget = Arc::new(McpProxyBudget::new(1, 1, 4096, 4096));
     let first = session_with_budget(budget.clone());

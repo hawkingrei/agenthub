@@ -271,6 +271,21 @@ pub struct McpTaskLookupRecord {
     pub outcome: Option<McpCompletion>,
 }
 
+pub struct McpTaskCancellationInput {
+    pub receipt: McpTaskReceipt,
+    pub request_key: McpDigest,
+    pub request_digest: McpDigest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpTaskCancellationRecord {
+    pub operation_id: String,
+    pub attempt_number: u32,
+    pub activation_id: String,
+    pub completion: Option<McpCompletion>,
+    pub outcome: Option<McpCompletion>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum McpCompletion {

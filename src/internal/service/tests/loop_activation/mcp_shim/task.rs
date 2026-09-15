@@ -5,6 +5,16 @@ pub(super) async fn respond(upstream: &Upstream, message: &Value) -> Response {
         "createdAt":"2026-09-15T00:00:00Z","lastUpdatedAt":"2026-09-15T00:00:00Z","ttlMs":null});
     if message["method"] == "tools/call" {
         result["resultType"] = "task".into();
+    } else if message["method"] == "tasks/cancel" {
+        assert_eq!(message["params"]["taskId"], "private-task-handle");
+        let sends: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM mcp_operation_task_cancellations WHERE completed_at IS NULL",
+        )
+        .fetch_one(&upstream.db)
+        .await
+        .unwrap();
+        assert_eq!(sends, 1, "cancellation must be durable before HTTP");
+        result = json!({"resultType":"complete","extension":"cancel-ack"});
     } else {
         assert_eq!(message["params"]["taskId"], "private-task-handle");
         let queries: i64 = sqlx::query_scalar(
@@ -22,7 +32,7 @@ pub(super) async fn respond(upstream: &Upstream, message: &Value) -> Response {
 }
 
 #[tokio::test]
-async fn real_mcp_shim_resolves_only_its_recorded_task_handle_without_resending_the_tool() {
+async fn real_mcp_shim_records_cancel_ack_without_overwriting_the_eventual_task_result() {
     let Harness {
         state,
         service,
@@ -113,6 +123,19 @@ async fn real_mcp_shim_resolves_only_its_recorded_task_handle_without_resending_
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":3,"method":"tasks/get","params":{"taskId":"foreign-task","_meta":metadata}})).await.unwrap();
     assert!(next(&mut output).await.get("error").is_some());
     assert_eq!(upstream.calls.lock().unwrap().len(), 2);
+    write_message(&mut input, &json!({"jsonrpc":"2.0","id":30,"method":"tasks/cancel","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
+    assert_eq!(next(&mut output).await["result"]["extension"], "cancel-ack");
+    assert_eq!(
+        journal
+            .operation(&reservation.team_id, &reservation.actor_id, &operation)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        agenthub_agent_domain::mcp_operations::McpOperationStatus::OutcomeUnknown
+    );
+    write_message(&mut input, &json!({"jsonrpc":"2.0","id":31,"method":"tasks/cancel","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
+    assert!(next(&mut output).await.get("error").is_some());
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":4,"method":"tasks/get","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
     let response = next(&mut output).await;
     assert_eq!(
@@ -147,7 +170,7 @@ async fn real_mcp_shim_resolves_only_its_recorded_task_handle_without_resending_
         .unwrap();
     assert_eq!(lookups.len(), 1);
     assert!(lookups[0].outcome.is_some());
-    assert_eq!(upstream.calls.lock().unwrap().len(), 3);
+    assert_eq!(upstream.calls.lock().unwrap().len(), 4);
     drop(input);
     assert!(
         tokio::time::timeout(Duration::from_secs(3), child.wait())
