@@ -12,6 +12,7 @@ use crate::{
     },
 };
 
+#[derive(Clone)]
 pub struct McpProtocolSession {
     state: State,
     retained: ByteBudget,
@@ -23,7 +24,7 @@ impl Default for McpProtocolSession {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 enum State {
     #[default]
     New,
@@ -51,6 +52,23 @@ impl McpProtocolSession {
     /// Resolve transport metadata without inventing capabilities or modifying the message.
     pub fn begin(&mut self, message: &Value) -> Result<HttpContext, McpTransportError> {
         let kind = message_kind(message)?;
+        if kind == MessageKind::Batch {
+            let version = match &self.state {
+                State::Initializing { version, .. } => *version,
+                State::AwaitingInitialized { context, .. } | State::Ready { context, .. } => {
+                    context.version
+                }
+                State::New => return Err(McpTransportError::InvalidMessage),
+            };
+            validate_versioned_message(message, version)?;
+            let mut next = self.clone();
+            let mut context = None;
+            for member in message.as_array().unwrap() {
+                context = Some(next.begin(member)?);
+            }
+            self.state = next.state;
+            return context.ok_or(McpTransportError::InvalidMessage);
+        }
         let method = message.get("method").and_then(Value::as_str);
         if method == Some("initialize") {
             if kind != MessageKind::Request || !matches!(self.state, State::New) {

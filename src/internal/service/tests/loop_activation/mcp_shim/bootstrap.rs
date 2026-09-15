@@ -5,6 +5,17 @@ use crate::internal::proto::agenthub::internal::v1::ExchangeMcpProxyRequest;
 
 #[tokio::test]
 async fn mcp_bootstrap_completes_legacy_callbacks_before_running_but_cannot_write() {
+    exercise_bootstrap("2025-11-25").await;
+}
+
+#[tokio::test]
+async fn mcp_bootstrap_completes_march_batches_before_running_but_cannot_write() {
+    exercise_bootstrap("2025-03-26").await;
+}
+
+async fn exercise_bootstrap(version: &str) {
+    let batch = version == "2025-03-26";
+    let wrap = |message: Value| if batch { json!([message]) } else { message };
     let Harness {
         state,
         service,
@@ -62,39 +73,46 @@ async fn mcp_bootstrap_completes_legacy_callbacks_before_running_but_cannot_writ
             &token,
         ))
     };
-    let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"roots":{}},"clientInfo":{"name":"startup-provider","version":"1"}}});
+    let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":version,"capabilities":{"roots":{}},"clientInfo":{"name":"startup-provider","version":"1"}}});
     let mut response = exchange(initialize).await.unwrap().into_inner();
     let callback = response.next().await.unwrap().unwrap();
     assert!(!callback.finished);
     let callback: Value = serde_json::from_str(&callback.message_json).unwrap();
+    let callback = if batch { &callback[0] } else { &callback };
     assert_eq!(callback["method"], "roots/list");
-    let mut reply = exchange(json!({"jsonrpc":"2.0","id":callback["id"],"result":{"roots":[]}}))
-        .await
-        .unwrap()
-        .into_inner();
+    let mut reply = exchange(wrap(
+        json!({"jsonrpc":"2.0","id":callback["id"],"result":{"roots":[]}}),
+    ))
+    .await
+    .unwrap()
+    .into_inner();
     let ack = reply.next().await.unwrap().unwrap();
     assert!(ack.finished && ack.message_json.is_empty());
     let initialized = response.next().await.unwrap().unwrap();
     assert!(initialized.finished);
     assert_eq!(
         serde_json::from_str::<Value>(&initialized.message_json).unwrap()["result"]["protocolVersion"],
-        "2025-11-25"
+        version
     );
-    let mut ready = exchange(json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
-        .await
-        .unwrap()
-        .into_inner();
+    let mut ready = exchange(wrap(
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+    ))
+    .await
+    .unwrap()
+    .into_inner();
     assert!(ready.next().await.unwrap().unwrap().finished);
-    let mut discovery = exchange(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}))
+    let mut discovery = exchange(wrap(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})))
         .await
         .unwrap()
         .into_inner();
     let page = discovery.next().await.unwrap().unwrap();
-    assert!(page.finished);
-    assert_eq!(
-        serde_json::from_str::<Value>(&page.message_json).unwrap()["result"]["tools"][0]["name"],
-        "write"
-    );
+    assert_eq!(page.finished, !batch);
+    let page: Value = serde_json::from_str(&page.message_json).unwrap();
+    let page = if batch { &page[0] } else { &page };
+    assert_eq!(page["result"]["tools"][0]["name"], "write");
+    if batch {
+        assert!(discovery.next().await.unwrap().unwrap().finished);
+    }
     let write = json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"write","arguments":{"body":"startup-write"}}});
     let calls_before = upstream.calls.lock().unwrap().len();
     for message in [
@@ -103,6 +121,7 @@ async fn mcp_bootstrap_completes_legacy_callbacks_before_running_but_cannot_writ
         json!({"jsonrpc":"2.0","id":5,"method":"prompts/get","params":{"name":"private"}}),
         json!({"jsonrpc":"2.0","id":6,"method":"tasks/get","params":{"taskId":"task"}}),
         json!([write.clone()]),
+        json!([{"jsonrpc":"2.0","id":7,"method":"ping"}, write.clone()]),
     ] {
         assert_eq!(
             exchange(message).await.err().unwrap().code(),

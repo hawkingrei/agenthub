@@ -49,6 +49,19 @@ pub struct PreparedHttpRequest {
     version: ProtocolVersion,
 }
 
+impl PreparedHttpRequest {
+    /// Batch composition reads the already bound wire body, never reconstructing caller intent
+    /// from an operation digest. This request has not performed any I/O.
+    pub(crate) fn message(&self) -> Result<Value, McpTransportError> {
+        parse_message(
+            self.request
+                .body()
+                .and_then(reqwest::Body::as_bytes)
+                .ok_or(McpTransportError::InvalidMessage)?,
+        )
+    }
+}
+
 #[derive(Clone, Copy)]
 enum ExchangeKind {
     Request,

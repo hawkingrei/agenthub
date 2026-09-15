@@ -5,8 +5,8 @@
 Slice 9 now has the persistent operation journal, shared JSONL/HTTP/SSE transport, trusted call
 preparation, actual HTTP/journal orchestration, daemon startup recovery, authenticated streaming
 RPCs, and a local stdio shim. Existing Mem profile resolution, activation mounts, local ACP launch,
-and inherited-environment isolation are connected. Complete protocol-controller behavior and
-integration authorization remain pending; this checkpoint does not complete slice 9.
+inherited-environment isolation, and journaled March batches are connected. Complete protocol
+controller behavior and integration authorization remain pending; this checkpoint does not complete slice 9.
 
 ## Background
 
@@ -30,6 +30,8 @@ giving an expired executor authority to send more work.
   refresh, live binding revocation, bounded discovery/callback state, and activation cleanup.
 - Existing Mem configuration resolution, configuration fingerprinting, fresh/resumed ACP stdio
   descriptors, and removal of upstream secrets from provider and descendant environments.
+- March batch admission through the real shim, with one HTTP POST, atomic tool send transitions,
+  independently durable response receipts, and partial-result forwarding on disconnect.
 
 ## Key Decisions
 
@@ -154,8 +156,8 @@ cargo clippy -p agenthub -p agenthub-mcp --all-targets --locked --offline -- -D 
 The bootstrap follow-up separates protocol preparation from tool execution. A signed startup
 session must have an immutable launch snapshot and bound local session before opening MCP. Its
 initialize/roots callback/initialized/discovery sequence succeeds while the activation remains
-`starting`. Tools, resource reads, prompt reads, task operations, and batches are rejected without
-upstream I/O or journal entries; ordinary actor control remains rejected. After `mark_running`,
+`starting`. Tools, resource reads, prompt reads, task operations, and batches containing them are
+rejected without upstream I/O or journal entries; ordinary actor control remains rejected. After `mark_running`,
 the same MCP session can perform its first journaled tool call and return the real result.
 
 Database coverage also rejects missing launch/session, wrong owner/actor/Team/generation, expired
@@ -213,6 +215,39 @@ The final real binary rebuild and root shim/HTTP regressions pass after that ser
 Root/MCP all-target Clippy with warnings denied, formatting, whitespace, and changed-document local
 links pass. No dependency, generated-proto, database-schema, or Bazel configuration change was
 needed. The limits cover charged application payloads and bounded working allowances, not RSS.
+
+The March batch follow-up uses one owned HTTP request with per-tool intents. A single transaction
+admits every tool send or rolls all send transitions back. Response IDs identify independent
+receipts, so out-of-order results remain factual and partial EOF makes only unfinished members
+unknown. The bridge drains queued partial facts before closing without a completion marker.
+Whole-batch scope/lifecycle/callback validation precedes send admission; discovery inside a batch
+cannot grant authority to its other members. Every startup batch member must independently
+qualify for protocol bootstrap.
+
+Regression fixtures cover callback arrays during initialization, notification/discovery batches,
+a batch response to a single discovery request, a same-frame callback, and two writes plus a ping
+in one upstream POST. Invalid scope rejects all request members without journaling or HTTP. The
+upstream checks that both send rows are already durable. Normal responses retain reversed order;
+truncated responses reach real shim stdout before it exits. A separate pressure fixture commits
+both factual write results despite exhausted event delivery credit. Callback responses now have
+independent concurrency slots as well as workspace credit, preventing ordinary controls from
+starving initialization replies. Existing single-message callback and tool paths remain covered.
+
+```bash
+cargo test -p agenthub-mcp --locked --offline
+cargo test -p agenthub-db --locked --offline mcp_operations
+cargo clippy -p agenthub -p agenthub-mcp -p agenthub-db --all-targets --locked --offline -- -D warnings
+cargo build --bin agenthub --locked --offline
+cargo test -p agenthub --lib mcp --locked --offline
+```
+
+The final batch checkpoint passes 49 MCP crate tests, 17 journal store tests, and 17 root MCP
+tests, with the configured-launch child fixture invoked by its parent. Root/MCP/database all-target
+Clippy passes with warnings denied; the real binary build, formatting, whitespace, and local doc
+links pass. One new fake upstream incorrectly placed a callback in an application/json response;
+the fixture now uses SSE for that array and separately checks JSON response-only arrays. The
+production validator remains strict. No dependency, schema, generated protocol, or Bazel change
+was required; existing source globs include the new modules.
 
 ## Follow-Ups
 

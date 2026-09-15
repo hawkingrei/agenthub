@@ -25,8 +25,9 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
   The [operation journal](features/mcp-operation-journal.md) and
   [transport and bound HTTP calls](features/mcp-proxy-transport.md) are implemented, with daemon
   startup recovery, signed MCP session RPCs, a local stdio shim, and configured local ACP launch
-  with inherited-secret isolation and shared payload budgets. Linked continuations, remaining
-  controller paths, and complete integration authorization remain pending.
+  with inherited-secret isolation, shared payload budgets, and journaled March batches. Linked
+  continuations, legacy GET/resumption/DELETE controller paths, and complete integration
+  authorization remain pending.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.

@@ -5,6 +5,8 @@ use reqwest::header::HeaderMap;
 use super::*;
 use crate::{http::McpHttpTransport, protocol::ProtocolVersion};
 
+mod batch;
+
 fn session() -> Arc<McpProxySession> {
     session_with_budget(Arc::new(McpProxyBudget::default()))
 }

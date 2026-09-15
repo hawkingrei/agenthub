@@ -4,6 +4,9 @@
 #[cfg(test)]
 mod tests;
 
+mod batch;
+pub use batch::McpBatchResult;
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agenthub_agent_domain::mcp_operations::{
@@ -97,20 +100,9 @@ impl JournaledMcpClient {
                     let completion = classify_completion(response)?;
                     return Ok((message.clone(), completion));
                 }
-                let bytes = event
-                    .message
-                    .as_ref()
-                    .map(json_bytes)
-                    .transpose()
-                    .map(|bytes| {
-                        bytes.unwrap_or(0) + event.cursor.as_ref().map_or(0, String::len) + 16
-                    });
                 // Queue pressure loses delivery only. The reserved HTTP workspace keeps draining
                 // until a factual result can be committed, even after the caller has gone away.
-                let delivered = bytes
-                    .and_then(|bytes| self.delivery.retain(event, bytes))
-                    .is_ok_and(|event| events.try_send(event).is_ok());
-                if !delivered {
+                if !self.deliver(event, &events) {
                     delivery_lost = true;
                 }
             }
@@ -146,6 +138,18 @@ impl JournaledMcpClient {
                 Err(error.into())
             }
         }
+    }
+
+    fn deliver(&self, event: HttpEvent, events: &mpsc::Sender<Budgeted<HttpEvent>>) -> bool {
+        let bytes = event
+            .message
+            .as_ref()
+            .map(json_bytes)
+            .transpose()
+            .map(|bytes| bytes.unwrap_or(0) + event.cursor.as_ref().map_or(0, String::len) + 16);
+        bytes
+            .and_then(|bytes| self.delivery.retain(event, bytes))
+            .is_ok_and(|event| events.try_send(event).is_ok())
     }
 }
 

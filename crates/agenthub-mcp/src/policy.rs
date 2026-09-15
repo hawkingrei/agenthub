@@ -1,5 +1,8 @@
 //! Trusted binding and discovery policy. None of these capabilities deserialize from provider RPCs.
 
+mod batch;
+pub use batch::PreparedBatchCall;
+
 use std::collections::BTreeMap;
 
 use agenthub_agent_domain::{

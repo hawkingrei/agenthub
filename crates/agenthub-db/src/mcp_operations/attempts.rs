@@ -22,18 +22,68 @@ impl McpOperationStore {
         expected_attempt_count: u32,
         now: i64,
     ) -> anyhow::Result<McpSendPermit> {
+        let mut permits = self
+            .begin_send_batch(executor, &[(operation_id, expected_attempt_count)], now)
+            .await?;
+        Ok(permits
+            .pop()
+            .expect("one operation returns one send permit"))
+    }
+
+    /// All send transitions commit together before a single batch POST. A rejected member rolls
+    /// back every transition, so no earlier member is left falsely marked as sent.
+    pub async fn begin_send_batch(
+        &self,
+        executor: &LoopReservation,
+        operations: &[(&str, u32)],
+        now: i64,
+    ) -> anyhow::Result<Vec<McpSendPermit>> {
         anyhow::ensure!(now >= 0, "invalid MCP journal timestamp");
+        anyhow::ensure!(
+            (1..=256).contains(&operations.len()),
+            "invalid MCP send batch size"
+        );
+        let mut unique = std::collections::HashSet::new();
+        anyhow::ensure!(
+            operations.iter().all(|(id, _)| unique.insert(*id)),
+            McpJournalError::IdentityConflict
+        );
         let mut connection = self.durable_connection().await?;
         let mut tx = connection.begin_with("BEGIN IMMEDIATE").await?;
         self.require_current_daemon(&mut tx).await?;
         LoopStore::verify_executor_live_tx(&mut tx, executor, now).await?;
+        let mut permits = Vec::with_capacity(operations.len());
+        for (operation_id, expected_attempt_count) in operations {
+            permits.push(
+                self.begin_send_tx(
+                    &mut tx,
+                    executor,
+                    operation_id,
+                    *expected_attempt_count,
+                    now,
+                )
+                .await?,
+            );
+        }
+        tx.commit().await?;
+        Ok(permits)
+    }
+
+    async fn begin_send_tx(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        executor: &LoopReservation,
+        operation_id: &str,
+        expected_attempt_count: u32,
+        now: i64,
+    ) -> anyhow::Result<McpSendPermit> {
         let row = sqlx::query(
             "SELECT * FROM mcp_operations WHERE id = ? AND team_id = ? AND actor_id = ?",
         )
         .bind(operation_id)
         .bind(&executor.team_id)
         .bind(&executor.actor_id)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?
         .ok_or(McpJournalError::ScopeMismatch)?;
         let operation = parse_operation(&row)?;
@@ -56,13 +106,7 @@ impl McpOperationStore {
                 );
             }
         }
-        reject_prior_effects(
-            &mut tx,
-            &executor.team_id,
-            &operation.intent,
-            Some(operation_id),
-        )
-        .await?;
+        reject_prior_effects(tx, &executor.team_id, &operation.intent, Some(operation_id)).await?;
         let number = operation
             .attempt_count
             .checked_add(1)
@@ -77,11 +121,11 @@ impl McpOperationStore {
             daemon_node_id, daemon_generation, daemon_owner_id, status, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)")
             .bind(operation_id).bind(number).bind(&permit_id).bind(activation).bind(executor.generation)
             .bind(&self.daemon.node_id).bind(self.daemon.generation).bind(&self.daemon.owner_id)
-            .bind(sent_at).execute(&mut *tx).await?;
+            .bind(sent_at).execute(&mut **tx).await?;
         sqlx::query("UPDATE mcp_operations SET status = 'sent', attempt_count = ?, completion_json = NULL, updated_at = ? WHERE id = ?")
-            .bind(number).bind(sent_at).bind(operation_id).execute(&mut *tx).await?;
+            .bind(number).bind(sent_at).bind(operation_id).execute(&mut **tx).await?;
         record_event(
-            &mut tx,
+            tx,
             operation_id,
             number,
             activation,
@@ -90,7 +134,6 @@ impl McpOperationStore {
             sent_at,
         )
         .await?;
-        tx.commit().await?;
         Ok(McpSendPermit {
             operation_id: operation_id.to_owned(),
             attempt_number: number,

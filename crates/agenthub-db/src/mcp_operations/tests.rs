@@ -16,6 +16,8 @@ use crate::loop_runtime::{LoopPolicyUpdate, LoopStore};
 
 use super::*;
 
+mod batch;
+
 struct Fixture {
     path: PathBuf,
     store: McpOperationStore,

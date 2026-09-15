@@ -12,8 +12,8 @@ One journal serves the trusted local MCP proxy for Mem and registered apps. It r
 intent, individual send attempts, and ordered receipt events. The store, trusted call preparation,
 and journaled [HTTP transport](mcp-proxy-transport.md) are implemented. Daemon startup reconciles
 earlier sends before starting runtime services. Signed MCP streaming RPCs and a local stdio shim
-exercise this path; configured bindings, provider environment isolation, complete protocol
-orchestration, and launch wiring remain incomplete.
+exercise this path. Configured Mem bindings and provider environment isolation are connected to
+local ACP launch; complete protocol orchestration and integration authorization remain incomplete.
 
 ## Non-Goals
 
@@ -89,6 +89,13 @@ Each attempt has a distinct private permit and an increasing number. Concurrent 
 receive a permit for the same attempt. Failure or loss after issuing a permit is conservatively
 unknown unless a valid upstream result establishes success or failure.
 
+A March batch owns one bound HTTP request and a separate intent for every tool member. All send
+transitions commit in one transaction under the same live executor and daemon checks. Rejection
+of any member rolls back every send transition and attempt; earlier prepared rows carry no send
+authority. Duplicate operation IDs and conflicting unresolved effects are rejected before HTTP.
+Each matching response completes its own permit before delivery, including out-of-order arrays.
+An incomplete batch preserves known receipts and marks only unresolved members unknown.
+
 After claiming a new daemon generation, startup recovery marks old-generation `sent` attempts
 unknown in bounded batches. Opening or migrating a database alone never recovers live sends.
 Recovery is not proof that an old request did not take effect.
@@ -150,6 +157,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | Real stable retry | Original operation receives a second attempt with the same caller identity and parameters under a new RPC ID |
 | Provider disconnect | Authenticated daemon task retains the execution guard after caller cancellation and journals the late HTTP result |
 | Deferred response | Raw input/task receipt retained transiently; typed receipt survives loss and blocks initial-request replay |
+| Batch sends | Atomic rollback on a stale/conflicting member; one POST; out-of-order completion; partial-result uncertainty and replay rejection across activations |
 
 ## Operational Notes
 

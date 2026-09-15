@@ -32,6 +32,8 @@ use tokio::sync::Notify;
 use uuid::Uuid;
 
 use super::*;
+
+mod batch;
 use crate::{
     http::{HttpContext, McpHttpTransport},
     policy::{McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, TrustedReplayPolicy},
@@ -259,6 +261,33 @@ async fn upstream(
     state.requests.lock().unwrap().push(message.clone());
     state.received.notify_one();
     let mode = state.mode.load(Ordering::SeqCst);
+    if let Some(members) = message.as_array() {
+        let tools = members
+            .iter()
+            .filter(|member| member["method"] == "tools/call")
+            .count();
+        assert_eq!(
+            sent, tools as i64,
+            "every batch write must be durably sent before HTTP"
+        );
+        for member in members
+            .iter()
+            .filter(|member| member["method"] == "tools/call")
+        {
+            assert_eq!(member["params"]["arguments"]["space_id"], "space-a");
+        }
+        let mut responses: Vec<_> = members.iter().filter(|member| member.get("id").is_some())
+            .map(|member| json!({"jsonrpc":"2.0","id":member["id"],"result":{"content":[],"body":member.pointer("/params/arguments/body")}})).collect();
+        if mode == 8 {
+            return (
+                [("content-type", "text/event-stream")],
+                format!("data: {}\n\n", responses[0]),
+            )
+                .into_response();
+        }
+        responses.reverse();
+        return Json(Value::Array(responses)).into_response();
+    }
     if mode == 1 {
         // The server consumed the entire request, then returned an incomplete body.
         return axum::http::Response::builder()

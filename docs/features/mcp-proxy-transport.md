@@ -110,6 +110,24 @@ differs from legacy handshake negotiation; the adapter must preserve this distin
 - Legacy SSE can carry server requests and notifications. Modern SSE rejects independent server
   requests; their modern representation is an MRTR result.
 
+### March batches
+
+The March protocol carries each admitted array in one HTTP POST. Requests and notifications may
+share an array; callback responses use a response-only array. Initialization itself is never
+batched. Later negotiated versions reject arrays.
+
+Validate every member before changing lifecycle, consuming callback IDs, or creating tool sends.
+Each tool uses the existing catalog, scope binder, and replay policy. Discovery inside a batch
+does not authorize another member. Members consume their individual tool/control slots while
+sharing one bounded message workspace. Registered callback batches retain the independent
+callback allowance and bypass initialization delivery's gate.
+
+Commit all tool send transitions atomically, then correlate factual receipts by response ID.
+Preserve upstream response order and individual/array shapes. Before forwarding a frame, persist
+its matching tool receipts. If the stream ends after partial results, deliver queued known results
+and close without a completion marker; only unresolved members become unknown. No member is
+automatically resent. Discovery refreshes and prior-cursor pages retain distinct generations.
+
 ### Modern metadata
 
 `MCP-Protocol-Version` must match the request metadata. Standard method/name headers and discovered
@@ -146,7 +164,8 @@ not copied into transport diagnostics or the operation journal.
 - MCP bootstrap may run during `starting` only after an immutable launch snapshot and local session
   are bound to the active mailbox. This admits open/close, initialization, discovery, protocol
   notifications, and registered upstream callback responses. Tools, resource reads, prompt reads,
-  task operations, and batches still require `running`; ordinary actor-control admission and the
+  and task operations still require `running`. A batch qualifies for bootstrap only when every
+  member qualifies independently; ordinary actor-control admission and the
   journal's prepare/send checks retain their running-only requirement. Generation, owner, lease,
   membership, and mailbox revocation apply equally to bootstrap.
 - Each admitted message has a response stream. The daemon owns the HTTP operation and execution
@@ -165,8 +184,9 @@ not copied into transport diagnostics or the operation journal.
 - The shim rereads its credential file for each outbound RPC, pinning the activation identity and
   daemon destination while allowing token rotation. A changed identity requires a new process.
   Detached stdio threads let a failed RPC terminate the shim even when provider stdin stays open.
-- Queue and concurrency limits are explicit: four tool and eight control requests per session,
-  64 pending callbacks, 4,096 request IDs, eight response frames per RPC, and at most eight sessions
+- Queue and concurrency limits are explicit: four tool, eight ordinary control, and eight callback
+  response members per session. Callbacks use independent slots to avoid starving initialization.
+  Other limits are 64 pending callbacks, 4,096 request IDs, eight response frames per RPC, and at most eight sessions
   per activation / 128 per daemon. Individual messages are bounded to 8 MiB. IDs retained for
   duplicate/callback/initialize correlation use fixed 32-byte digests; their original wire values
   remain unchanged.
@@ -205,8 +225,8 @@ JSON object/allocator overhead, trusted transport configuration, HTTP/gRPC imple
 and kernel buffers are outside byte accounting. Existing frame, catalog, header, correlation-count,
 and session limits continue to bound their corresponding structures.
 
-The raw transport version table does not imply complete controller support. March 2025 batches,
-legacy GET listening/resumption and upstream DELETE, linked MRTR/task rounds, and
+The raw transport version table does not imply complete controller support. Legacy GET
+listening/resumption and upstream DELETE, linked MRTR/task rounds, and
 integration-specific authorization for non-tool methods remain controller work.
 
 ## Validation Matrix
@@ -226,6 +246,7 @@ integration-specific authorization for non-tool methods remain controller work.
 | Session admission | Cross-actor/activation rejection, revoked binding, cleanup, and invalid notifications without fabricated JSON-RPC replies |
 | Startup | Launch/session/mailbox prerequisites; initialization callback and discovery before running; no tool send or ordinary actor control until running |
 | Modern discovery | Startup RPC preserves metadata/cache hints; a real stdio probe preserves an upstream error and permits subsequent legacy initialization |
+| March batches | Real shim callback/discovery/tool arrays, one POST with all sends durable, out-of-order receipts, partial-result delivery, atomic scope/ID rejection, and bootstrap without write authority |
 
 ## Operational Notes
 

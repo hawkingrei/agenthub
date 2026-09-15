@@ -1,5 +1,7 @@
 //! A daemon-owned MCP session. RPC adapters provide current execution authority and task ownership.
 
+mod batch;
+
 use std::{
     collections::HashSet,
     sync::{
@@ -91,6 +93,7 @@ pub struct McpProxySession {
     budget: Arc<McpProxyBudget>,
     tool_slots: Arc<Semaphore>,
     control_slots: Arc<Semaphore>,
+    callback_slots: Arc<Semaphore>,
     closed: AtomicBool,
 }
 
@@ -108,12 +111,13 @@ pub struct PreparedProxyExchange {
     message: Value,
     context: HttpContext,
     kind: Exchange,
-    _slot: OwnedSemaphorePermit,
+    _slots: Vec<OwnedSemaphorePermit>,
     _lifecycle: Option<OwnedMutexGuard<()>>,
     _workspace: ByteLease,
 }
 
 enum Exchange {
+    Batch(Box<batch::PreparedProxyBatch>),
     Tool(Box<PreparedToolCall>),
     Control(PreparedHttpRequest),
     Discovery {
@@ -141,6 +145,7 @@ impl McpProxySession {
             budget,
             tool_slots: Arc::new(Semaphore::new(4)),
             control_slots: Arc::new(Semaphore::new(8)),
+            callback_slots: Arc::new(Semaphore::new(8)),
             closed: AtomicBool::new(false),
         })
     }
@@ -166,7 +171,7 @@ impl McpProxySession {
         json_bytes(&message)?;
         let message_kind = message_kind(&message)?;
         if message_kind == MessageKind::Batch {
-            return Err(McpPolicyError::Call);
+            return self.prepare_batch(executor, message).await;
         }
         let method = message
             .get("method")
@@ -176,7 +181,9 @@ impl McpProxySession {
         let is_response = message_kind == MessageKind::Response;
         let workspace = self.budget.workspace(is_response)?;
         let is_tool = method == "tools/call";
-        let slot = if is_tool {
+        let slot = if is_response {
+            &self.callback_slots
+        } else if is_tool {
             &self.tool_slots
         } else {
             &self.control_slots
@@ -192,29 +199,7 @@ impl McpProxySession {
         if !self.is_active() {
             return Err(McpPolicyError::Scope);
         }
-        if !is_response
-            && !matches!(
-                method.as_str(),
-                "initialize"
-                    | "server/discover"
-                    | "ping"
-                    | "tools/list"
-                    | "tools/call"
-                    | "notifications/initialized"
-                    | "notifications/cancelled"
-                    | "notifications/progress"
-                    | "notifications/roots/list_changed"
-                    | "resources/list"
-                    | "resources/templates/list"
-                    | "resources/read"
-                    | "resources/subscribe"
-                    | "resources/unsubscribe"
-                    | "prompts/list"
-                    | "prompts/get"
-                    | "completion/complete"
-                    | "logging/setLevel"
-            )
-        {
+        if !is_response && !supported_method(&method) {
             return Err(McpPolicyError::Call);
         }
         if message_kind == MessageKind::Request {
@@ -297,20 +282,36 @@ impl McpProxySession {
             message,
             context,
             kind,
-            _slot: slot,
+            _slots: vec![slot],
             _lifecycle: lifecycle,
             _workspace: workspace,
         })
     }
 
     async fn observe(&self, message: &Value) -> Result<(), McpTransportError> {
-        if message_kind(message)? == MessageKind::Request {
+        let members = message
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(std::slice::from_ref(message));
+        let keys: Vec<_> = members
+            .iter()
+            .filter(|member| message_kind(member).ok() == Some(MessageKind::Request))
+            .map(|member| correlation_id(&member["id"]))
+            .collect();
+        if !keys.is_empty() {
             let mut callbacks = self.callbacks.lock().await;
-            if callbacks.len() >= 64 || !callbacks.insert(correlation_id(&message["id"])) {
+            if callbacks.len() + keys.len() > 64
+                || keys.iter().collect::<HashSet<_>>().len() != keys.len()
+                || keys.iter().any(|key| callbacks.contains(key))
+            {
                 return Err(McpTransportError::InvalidResponse);
             }
+            callbacks.extend(keys);
         }
-        if message["method"] == "notifications/tools/list_changed" {
+        if members
+            .iter()
+            .any(|member| member["method"] == "notifications/tools/list_changed")
+        {
             let mut discovery = self.discovery.lock().await;
             discovery.generation = discovery.generation.saturating_add(1);
             discovery.catalog = None;
@@ -396,6 +397,11 @@ impl PreparedProxyExchange {
             lost: false,
         };
         let outcome: Result<Option<Value>, String> = match self.kind {
+            Exchange::Batch(batch) => {
+                batch
+                    .run(session.clone(), journal, &mut sink, &self.context)
+                    .await
+            }
             Exchange::Tool(call) => {
                 let (events, mut receiver) = mpsc::channel(8);
                 let operation = journal.run(*call, events);
@@ -416,6 +422,7 @@ impl PreparedProxyExchange {
                                     }
                                 }
                                 if result.event_delivery_lost { sink.fail(); }
+                                if session.observe(&result.response).await.is_err() { sink.fail(); }
                                 Ok(Some(result.response))
                             }
                             Err(error) => Err(error.to_string()),
@@ -475,6 +482,30 @@ impl PreparedProxyExchange {
     }
 }
 
+fn supported_method(method: &str) -> bool {
+    matches!(
+        method,
+        "initialize"
+            | "server/discover"
+            | "ping"
+            | "tools/list"
+            | "tools/call"
+            | "notifications/initialized"
+            | "notifications/cancelled"
+            | "notifications/progress"
+            | "notifications/roots/list_changed"
+            | "resources/list"
+            | "resources/templates/list"
+            | "resources/read"
+            | "resources/subscribe"
+            | "resources/unsubscribe"
+            | "prompts/list"
+            | "prompts/get"
+            | "completion/complete"
+            | "logging/setLevel"
+    )
+}
+
 struct Sink {
     output: mpsc::Sender<McpProxyFrame>,
     session: Arc<McpProxySession>,
@@ -529,29 +560,42 @@ async fn run_control(
         let Some(mut message) = event.message else {
             continue;
         };
-        let is_error = exchange.status_code() >= 400
-            && message.get("error").is_some()
-            && message.get("id").is_none_or(Value::is_null);
-        if message.get("method").is_none()
-            && (request_id.is_some() && message.get("id") == request_id || is_error)
-        {
-            if method == "initialize" {
-                if is_error {
-                    session.protocol.lock().await.initialization_failed();
-                } else {
-                    let mut protocol = session.protocol.lock().await;
-                    protocol.accept_initialize_response(&message, http_session)?;
-                    *session.upstream_context.lock().await = protocol.http_context();
+        let members = match &mut message {
+            Value::Array(members) => members.as_mut_slice(),
+            member => std::slice::from_mut(member),
+        };
+        let mut terminal = false;
+        for member in members {
+            let is_error = exchange.status_code() >= 400
+                && member.get("error").is_some()
+                && member.get("id").is_none_or(Value::is_null);
+            if member.get("method").is_none()
+                && (request_id.is_some() && member.get("id") == request_id || is_error)
+            {
+                if terminal {
+                    return Err(McpTransportError::InvalidResponse);
+                }
+                terminal = true;
+                if method == "initialize" {
+                    if is_error {
+                        session.protocol.lock().await.initialization_failed();
+                    } else {
+                        let mut protocol = session.protocol.lock().await;
+                        protocol.accept_initialize_response(member, http_session.clone())?;
+                        *session.upstream_context.lock().await = protocol.http_context();
+                    }
+                }
+                if let Some((generation, cursor)) = discovery.as_ref() {
+                    session
+                        .apply_discovery(member, context, *generation, cursor)
+                        .await?;
                 }
             }
-            if let Some((generation, cursor)) = discovery.as_ref() {
-                session
-                    .apply_discovery(&mut message, context, *generation, cursor)
-                    .await?;
-            }
-            return Ok(Some(message));
         }
         session.observe(&message).await?;
+        if terminal {
+            return Ok(Some(message));
+        }
         sink.emit(Some(message), false, None);
     }
     if request_id.is_some() {

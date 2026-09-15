@@ -117,15 +117,12 @@ impl TeamInternalControlService {
                 }
             }
             Err(error) => {
-                if agenthub_mcp::protocol::message_kind(&message).ok()
-                    != Some(agenthub_mcp::protocol::MessageKind::Request)
-                {
+                let Some(response) = admission_error(&message, &error.to_string()) else {
                     // Notifications and callback responses have no response of their own. End
                     // the invalid exchange without fabricating an unsolicited JSON-RPC error.
                     session.close();
                     return Err(Status::failed_precondition("MCP message admission failed"));
-                }
-                let response = serde_json::json!({"jsonrpc":"2.0","id":message.get("id"),"error":{"code":-32000,"message":error.to_string()}});
+                };
                 let frame = agenthub_mcp::bridge::McpProxyFrame::new(
                     response.to_string(),
                     true,
@@ -177,11 +174,34 @@ fn message_admission(message: &serde_json::Value) -> ExecutionAdmission {
         // Session preparation independently requires a pending upstream callback ID. This arm
         // cannot manufacture permission to send an unsolicited response or another tool call.
         Ok(MessageKind::Response) => true,
+        Ok(MessageKind::Batch) => message
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|member| matches!(message_admission(member), ExecutionAdmission::Bootstrap)),
         _ => false,
     };
     if bootstrap {
         ExecutionAdmission::Bootstrap
     } else {
         ExecutionAdmission::Running
+    }
+}
+
+fn admission_error(message: &serde_json::Value, error: &str) -> Option<serde_json::Value> {
+    use agenthub_mcp::protocol::{MessageKind, message_kind};
+
+    match message_kind(message).ok()? {
+        MessageKind::Request => Some(serde_json::json!({"jsonrpc":"2.0","id":message["id"],
+            "error":{"code":-32000,"message":error}})),
+        MessageKind::Batch => {
+            let responses: Vec<_> = message
+                .as_array()?
+                .iter()
+                .filter_map(|member| admission_error(member, error))
+                .collect();
+            (!responses.is_empty()).then_some(serde_json::Value::Array(responses))
+        }
+        _ => None,
     }
 }

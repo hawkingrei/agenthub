@@ -34,6 +34,7 @@ use crate::loop_credentials::{
     LOOP_CREDENTIAL_FILE_ENV, LoopCredentialEnvelope, LoopCredentialFile,
 };
 
+mod batch;
 mod bootstrap;
 mod budget;
 mod discovery;
@@ -55,6 +56,9 @@ async fn handler(
 ) -> Response {
     assert_eq!(headers["authorization"], "Bearer upstream-secret");
     upstream.calls.lock().unwrap().push(message.clone());
+    if message.is_array() {
+        return batch::handle(upstream, headers, message).await;
+    }
     if message.get("method").is_none() {
         assert_eq!(headers["mcp-session-id"], "private-upstream-session");
         assert_eq!(message["id"], "roots-1");
@@ -77,9 +81,12 @@ async fn handler(
                 .into_response()
         }
         "initialize" => {
-            let callback = json!({"jsonrpc":"2.0","id":"roots-1","method":"roots/list"});
+            let mut callback = json!({"jsonrpc":"2.0","id":"roots-1","method":"roots/list"});
+            if message["params"]["protocolVersion"] == "2025-03-26" {
+                callback = json!([callback]);
+            }
             let response = json!({"jsonrpc":"2.0","id":message["id"],"result":{
-                "protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":true}},
+                "protocolVersion":message["params"]["protocolVersion"],"capabilities":{"tools":{"listChanged":true}},
                 "serverInfo":{"name":"upstream","version":"1"},"extension":{"preserved":true}
             }});
             let first = futures::stream::once(async move {
@@ -114,7 +121,20 @@ async fn handler(
             } else {
                 json!({"tools":[{"name":"write","inputSchema":{"type":"object","properties":{"body":{"type":"string"},"space_id":{"type":"string"}}},"extension":"first-page"}],"nextCursor":"page-2"})
             };
-            Json(json!({"jsonrpc":"2.0","id":message["id"],"result":result})).into_response()
+            let response = json!({"jsonrpc":"2.0","id":message["id"],"result":result});
+            if message["id"] == "json-batched-list" {
+                return Json(json!([response])).into_response();
+            }
+            if message["id"] == "batched-list" {
+                let batch =
+                    json!([response, {"jsonrpc":"2.0","id":"roots-1","method":"roots/list"}]);
+                return (
+                    [("content-type", "text/event-stream")],
+                    format!("data: {batch}\n\n"),
+                )
+                    .into_response();
+            }
+            Json(response).into_response()
         }
         "tools/call" => {
             assert_eq!(message["params"]["arguments"]["space_id"], "space-a");
