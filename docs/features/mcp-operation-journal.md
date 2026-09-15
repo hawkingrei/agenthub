@@ -109,15 +109,48 @@ An `input_required` result or an asynchronous task receipt records a typed `Defe
 and response digest with `outcome_unknown` status: the RPC response is known, but the tool's final
 outcome is not. This is neither a failure nor successful completion. A later transport-loss report
 cannot overwrite that observed receipt. Even a read or stable-identity call cannot replay its
-initial request from this state. Modern tool continuations use a separate receipt-bound send path;
-asynchronous task-result resolution remains pending.
+initial request from this state. Modern tool continuations and task lookups use separate
+receipt-bound send paths.
 
 Task receipts include both the legacy nested `task` object and the modern Tasks extension's
 flat `resultType: "task"` shape. The latter is defined by the
 [released extension schema](https://github.com/modelcontextprotocol/ext-tasks/blob/9263312d11a682ac83f83fe84794d4627efd22f5/schema/2026-07-28/schema.ts).
 An initial handle remains deferred even when it reports a terminal task status; only a linked
-result lookup can establish the tool outcome. The full receipt is forwarded unchanged while its
-digest, rather than the task ID or status text, is recorded in the journal.
+result lookup can establish the tool outcome. The full receipt is forwarded unchanged. The journal
+records only digests and typed protocol/session correlation facts, without raw task IDs or status text.
+
+### Asynchronous task lookups
+
+A valid task acceptance records an immutable link to the originating tool attempt. Lookup admission
+requires that recorded handle digest, the same Team, actor, effective scope, binding, protocol version,
+and unchanged discovered tool schema. Legacy tasks also retain the originating HTTP session digest.
+A new activation can query a modern task under current authority. A different legacy HTTP session
+cannot silently adopt the old handle. Old receipts without correlation metadata remain readable
+but cannot authorize a lookup.
+
+Each caller-initiated query commits its own send record with SQLite `synchronous=FULL` before HTTP.
+It does not create a new tool attempt or repeat the original write. The current daemon and live
+executor are checked at admission, with a fresh RPC request key and at most 4,096 query records per
+operation. Authorized inspection uses bounded pages with a stable sequence cursor. The task link
+survives terminal settlement so the caller can fetch the actual upstream result again; a journal
+digest cannot reconstruct that result.
+
+For July 2026, `tasks/get` returns the detailed task and an embedded result when completed. The
+embedded tool result, including `isError`, determines the original operation's outcome. For November
+2025, `tasks/get` reports status and `tasks/result` retrieves the tool result. A legacy `completed`
+status alone does not establish tool success. A valid task failure or cancellation status records a
+typed failure; a cancellation acknowledgment is not such a status observation.
+
+Query RPC errors and transport failures are query receipts only and leave the tool pending. A
+matching terminal fact settles the original attempt and its operation atomically before provider
+delivery. An admitted query can record a late fact after executor shutdown. The first terminal fact
+wins; later conflicting responses remain inspectable on their own query records without overwriting
+the operation or a newer attempt. Daemon recovery marks interrupted queries unknown independently
+of the original task receipt. Queries are never automatically repeated.
+
+Task update/cancel admission, outstanding input-receipt metadata, and task notification/subscription
+settlement remain controller work. Callers retain actual task handles and observe upstream polling
+and retention guidance; the journal neither polls on their behalf nor extends server retention.
 
 ### Multi round-trip tool calls
 
@@ -162,7 +195,7 @@ The new send and retry link commit atomically after live daemon/executor checks.
 callers receive at most one permit; stale RPC IDs, changed parameters, non-idempotent operations,
 and ambiguous receipt matches cannot send. Reopen and new activations retain these constraints.
 A subsequent input-required result starts the next round from the retry that observed it.
-Resolving asynchronous task handles remains follow-up controller work.
+An asynchronous task handle returned by a round follows the task lookup contract above.
 
 The original permit can record a factual response after activation expiry, cancellation, or
 cleanup. It can resolve an unknown attempt if no replacement attempt exists. It cannot complete a
@@ -217,6 +250,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | MRTR | Additive migration and reopen, atomic linked sends, current intent/state/executor checks, fresh RPC IDs, bounded rounds, unchanged HTTP inputs, final settlement, and lost-round replay rejection |
 | MRTR retry | Additive retry migration, exact round digest and stable identity, fresh activation and daemon checks, concurrent admission, preserved attempt/parent links, three retries per round, and subsequent rounds after a retry |
 | Batch sends | Atomic rollback on a stale/conflicting member; one POST; out-of-order completion; partial-result uncertainty and replay rejection across activations |
+| Task lookup | Additive migration, authority/session/schema checks, legacy receipts without metadata rejected, concurrent admission, query-only restart recovery, terminal result settlement, and first-fact preservation without another tool send |
 
 ## Operational Notes
 
@@ -227,9 +261,9 @@ broken provider stream without abandoning a send. A full provider-facing proxy i
 
 ## Open Risks
 
-- Integration adapters still need to derive the effective scope from actual configured authority,
-  check binding revocation at every call, manage discovery refresh and protocol continuations, and
-  prove provider credential/environment isolation through the real stdio shim and ACP launch.
+- Integration adapters still need complete scope/capability authorization and endpoint-alias
+  reconciliation. Task mutation/notification paths and non-tool continuations remain incomplete.
+  Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.
 - Retained ambiguous non-idempotent writes need explicit upstream reconciliation; changing
   configuration or deleting history is not a recovery mechanism.

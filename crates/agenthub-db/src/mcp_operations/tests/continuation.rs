@@ -12,6 +12,7 @@ pub(super) fn deferred(id: u64) -> McpCompletion {
     McpCompletion::Deferred {
         reason: McpDeferralKind::InputRequired,
         response_digest: hash(1000 + id),
+        task_receipt: None,
         input_receipt: Some(McpInputReceipt {
             state_digest: Some(hash(8)),
             input_ids: vec![hash(9)],
@@ -310,6 +311,7 @@ async fn mcp_continuation_without_state_never_consumes_another_parallel_read_rec
         let receipt = McpCompletion::Deferred {
             reason: McpDeferralKind::InputRequired,
             response_digest: hash(200 + index),
+            task_receipt: None,
             input_receipt: Some(McpInputReceipt {
                 state_digest: None,
                 input_ids: vec![hash(300 + index)],

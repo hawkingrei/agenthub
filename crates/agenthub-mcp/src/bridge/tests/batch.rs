@@ -9,6 +9,28 @@ async fn awaiting_initialized(session: &McpProxySession) {
 }
 
 #[tokio::test]
+async fn task_methods_cannot_bypass_receipt_admission_inside_legacy_batches() {
+    let session = session();
+    awaiting_initialized(&session).await;
+    for method in ["tasks/get", "tasks/result"] {
+        assert!(
+            session
+                .prepare(
+                    &executor(),
+                    json!([
+                        {"jsonrpc":"2.0","method":"notifications/initialized"},
+                        {"jsonrpc":"2.0","id":2,"method":method,"params":{"taskId":"foreign"}}
+                    ])
+                )
+                .await
+                .is_err()
+        );
+        assert!(session.request_ids.lock().await.is_empty());
+        assert!(session.protocol.lock().await.awaiting_initialized());
+    }
+}
+
+#[tokio::test]
 async fn prepared_initialized_notification_does_not_enable_listener_before_delivery() {
     let session = session();
     awaiting_initialized(&session).await;

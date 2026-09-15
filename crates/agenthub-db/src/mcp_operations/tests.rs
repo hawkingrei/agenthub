@@ -19,6 +19,7 @@ use super::*;
 mod batch;
 mod continuation;
 mod continuation_retry;
+mod task;
 
 struct Fixture {
     path: PathBuf,
@@ -889,6 +890,7 @@ async fn mcp_deferred_receipt_survives_transport_loss_and_requires_linked_contin
         reason: McpDeferralKind::InputRequired,
         response_digest: "d".repeat(64).try_into().unwrap(),
         input_receipt: None,
+        task_receipt: None,
     };
     fixture
         .store
@@ -918,6 +920,7 @@ async fn mcp_deferred_receipt_survives_transport_loss_and_requires_linked_contin
         reason: McpDeferralKind::TaskAccepted,
         response_digest: "e".repeat(64).try_into().unwrap(),
         input_receipt: None,
+        task_receipt: None,
     };
     assert_journal_error(
         fixture.store.complete(&permit, &changed, 106).await,

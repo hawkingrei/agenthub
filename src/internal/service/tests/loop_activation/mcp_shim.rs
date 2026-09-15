@@ -40,6 +40,7 @@ mod budget;
 mod continuation;
 mod discovery;
 mod listener;
+mod task;
 
 struct Upstream {
     db: sqlx::SqlitePool,
@@ -58,6 +59,7 @@ struct Upstream {
     expire_stream: AtomicBool,
     mrtr: AtomicBool,
     mrtr_drop_response: AtomicBool,
+    tasks: AtomicBool,
 }
 
 async fn handler(
@@ -82,6 +84,7 @@ async fn handler(
         return StatusCode::ACCEPTED.into_response();
     }
     match message["method"].as_str().unwrap() {
+        "tasks/get" => task::respond(&upstream, &message).await,
         "server/discover" => {
             assert_eq!(headers["mcp-protocol-version"], "2026-07-28");
             assert_eq!(headers["mcp-method"], "server/discover");
@@ -164,6 +167,9 @@ async fn handler(
             .await
             .unwrap();
             assert_eq!(sent, 1);
+            if upstream.tasks.load(Ordering::Acquire) {
+                return task::respond(&upstream, &message).await;
+            }
             if upstream.mrtr.load(Ordering::Acquire) {
                 return continuation::respond(&upstream, &headers, &message).await;
             }
@@ -269,6 +275,7 @@ async fn setup_with_replay(mark_running: bool, replay: TrustedReplayPolicy) -> H
         expire_stream: AtomicBool::new(false),
         mrtr: AtomicBool::new(false),
         mrtr_drop_response: AtomicBool::new(false),
+        tasks: AtomicBool::new(false),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(

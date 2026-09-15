@@ -153,6 +153,7 @@ pub enum McpFailureKind {
     JsonRpc,
     McpResult,
     SuccessEnvelope,
+    TaskCancelled,
 }
 
 /// Shared classification for Mem and other MCP integrations. The caller retains the unmodified
@@ -221,6 +222,55 @@ pub struct McpContinuationRecord {
     pub retry_of_attempt_number: Option<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpTaskVersion {
+    November2025,
+    July2026,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpTaskReceipt {
+    pub task_digest: McpDigest,
+    pub version: McpTaskVersion,
+    pub session_digest: Option<McpDigest>,
+}
+
+/// Trusted binding and discovered schemas, never supplied by the provider as authority.
+pub struct McpTaskAuthority {
+    pub server_id: String,
+    pub scope_digest: McpDigest,
+    pub binding_digest: McpDigest,
+    pub tools: std::collections::BTreeMap<String, McpDigest>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpTaskLookupMethod {
+    Get,
+    Result,
+}
+
+pub struct McpTaskLookupInput {
+    pub receipt: McpTaskReceipt,
+    pub method: McpTaskLookupMethod,
+    pub request_key: McpDigest,
+    pub request_digest: McpDigest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpTaskLookupRecord {
+    pub sequence: i64,
+    pub id: String,
+    pub operation_id: String,
+    pub attempt_number: u32,
+    pub activation_id: String,
+    pub method: McpTaskLookupMethod,
+    pub completion: Option<McpCompletion>,
+    pub outcome: Option<McpCompletion>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum McpCompletion {
@@ -241,6 +291,8 @@ pub enum McpCompletion {
         response_digest: McpDigest,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         input_receipt: Option<McpInputReceipt>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        task_receipt: Option<McpTaskReceipt>,
     },
 }
 

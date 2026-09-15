@@ -100,6 +100,40 @@ pub async fn migrate_mcp_operations(pool: &SqlitePool) -> anyhow::Result<()> {
             ON mcp_operation_events(operation_id, id);
         CREATE INDEX IF NOT EXISTS idx_mcp_event_activation
             ON mcp_operation_events(activation_id, id);
+        CREATE TABLE IF NOT EXISTS mcp_operation_tasks (
+            operation_id TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL,
+            task_digest TEXT NOT NULL,
+            receipt_json TEXT NOT NULL,
+            response_digest TEXT NOT NULL,
+            PRIMARY KEY(operation_id, attempt_number),
+            FOREIGN KEY(operation_id, attempt_number)
+                REFERENCES mcp_operation_attempts(operation_id, number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mcp_task_handle ON mcp_operation_tasks(task_digest);
+        CREATE TABLE IF NOT EXISTS mcp_operation_task_lookups (
+            sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            operation_id TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL,
+            request_key TEXT NOT NULL,
+            request_digest TEXT NOT NULL,
+            method_json TEXT NOT NULL,
+            activation_id TEXT NOT NULL REFERENCES loop_activations(id),
+            generation INTEGER NOT NULL,
+            daemon_node_id TEXT NOT NULL,
+            daemon_generation INTEGER NOT NULL,
+            daemon_owner_id TEXT NOT NULL,
+            completion_json TEXT,
+            outcome_json TEXT,
+            sent_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            UNIQUE(operation_id, request_key),
+            FOREIGN KEY(operation_id, attempt_number)
+                REFERENCES mcp_operation_tasks(operation_id, attempt_number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mcp_task_lookup_recovery
+            ON mcp_operation_task_lookups(daemon_node_id, completed_at, daemon_generation);
         "#,
     )
     .execute(&mut *tx)

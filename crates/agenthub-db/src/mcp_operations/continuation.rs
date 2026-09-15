@@ -74,6 +74,7 @@ impl McpOperationStore {
                 reason: McpDeferralKind::InputRequired,
                 response_digest,
                 input_receipt: Some(receipt),
+                ..
             }) = completion
                 && receipt.state_digest == input.state_digest
             {

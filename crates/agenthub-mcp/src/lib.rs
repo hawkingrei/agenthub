@@ -11,6 +11,7 @@ pub mod protocol;
 pub mod session;
 mod sse;
 pub mod stdio;
+mod task;
 
 #[cfg(test)]
 mod tests;

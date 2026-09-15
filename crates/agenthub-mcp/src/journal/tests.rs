@@ -261,10 +261,24 @@ async fn upstream(
             .fetch_one(&state.pool)
             .await
             .unwrap();
-    assert!(
-        sent > 0,
-        "upstream observed bytes before durable send permit"
-    );
+    if message["method"]
+        .as_str()
+        .is_some_and(|method| method.starts_with("tasks/"))
+    {
+        let lookups: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM mcp_operation_task_lookups WHERE completed_at IS NULL",
+        )
+        .fetch_one(&state.pool)
+        .await
+        .unwrap();
+        assert!(lookups > 0, "task lookup must commit before HTTP");
+        assert_eq!(sent, 0, "polling cannot start another tool send");
+    } else {
+        assert!(
+            sent > 0,
+            "upstream observed bytes before durable send permit"
+        );
+    }
     state.requests.lock().unwrap().push(message.clone());
     state.received.notify_one();
     let mode = state.mode.load(Ordering::SeqCst);

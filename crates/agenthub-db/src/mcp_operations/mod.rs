@@ -4,6 +4,7 @@ mod attempts;
 mod continuation;
 mod prepare;
 mod schema;
+mod task;
 
 #[cfg(test)]
 mod tests;
@@ -18,6 +19,7 @@ use thiserror::Error;
 use crate::DaemonGeneration;
 
 pub use schema::migrate_mcp_operations;
+pub use task::McpTaskLookupPermit;
 
 #[derive(Debug, Error)]
 pub enum McpJournalError {

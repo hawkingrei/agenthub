@@ -55,7 +55,8 @@ giving an expired executor authority to send more work.
   payloads unchanged; tool rounds use atomic journal links to their prior upstream receipt.
 - Preserve a deferred input/task receipt without claiming terminal tool success. Its typed receipt
   cannot be downgraded by transport loss or used to replay the original request. Modern tool
-  follow-ups require a current matching receipt; asynchronous task resolution remains pending.
+  follow-ups and task lookups require a current matching receipt; task mutation and notification
+  settlement remain pending.
 - Stream each admitted MCP message independently. Callback replies carry freshly read signed
   credentials, and the daemon retains operation ownership after RPC receiver loss.
 - Serialize legacy lifecycle delivery while allowing registered callback responses through. Keep
@@ -325,7 +326,8 @@ than becoming JSON-RPC envelopes. State-only rounds omit earlier input responses
 old receipts without valid correlation metadata remain known deferred outcomes and cannot grant
 another send. A lost continuation result leaves an unknown attempt and blocks restarting the
 original request, including for a read-only or stable-identity operation. Declared retries retain
-that uncertain round through the linked retry path described below; task handles remain pending.
+that uncertain round through the linked retry path described below; task handles require the
+separate lookup path described below.
 
 Database fixtures cover additive migration, reopen, parent links, concurrent consumption, stale
 intent/authority/state/IDs, round limits, recovery, and late factual results. HTTP fixtures cover
@@ -378,17 +380,38 @@ Review against the released Tasks extension schema found that a modern flat `res
 receipt was incorrectly classified as a successful tool result. The HTTP regression reproduced
 that error before the fix. The classifier now recognizes both modern and legacy receipt shapes
 as deferred. The regression covers every initial task status, unchanged payload delivery,
-durable unknown outcome, original-request replay denial, and task-ID redaction. This does not
-claim implementation of the pending task lookup/update/cancel controller.
+durable unknown outcome, original-request replay denial, and task-ID redaction. The subsequent
+lookup checkpoint resolves recorded handles; update/cancel remain pending.
 
 After the receipt fix, all 63 MCP crate tests and 22 root MCP tests pass, including the
 parent-invoked configured-launch child. Root/MCP all-target Clippy with warnings denied and the
 real binary build pass. Formatting, whitespace, and local document links also pass. The database
 code is unchanged from the 26-test continuation retry checkpoint.
 
+The task lookup follow-up adds immutable digest-only task links and separately journaled queries.
+Queries recheck current daemon/executor authority, Team/actor/scope/binding, discovered tool schema,
+protocol version, and the legacy HTTP session before committing a FULL-synchronous send. A modern
+`tasks/get` can settle the original attempt from its embedded result. A legacy `tasks/get` reporting
+`completed` stays pending until `tasks/result` supplies the actual tool result. Neither path repeats
+the originating write or creates another tool attempt. Query errors leave the tool pending; a valid
+failure/cancellation fact is distinct from an outer RPC error or cancellation acknowledgment.
+
+Database fixtures cover additive migration, concurrent query admission, old receipts without handle
+metadata, scoped inspection, restart recovery, and late/conflicting terminal facts. HTTP fixtures
+cover both protocol eras, fresh activations, malformed/foreign handles, missing capability metadata,
+tool errors, and failed/cancelled task statuses. March batch admission rejects task members before
+changing lifecycle or consuming request IDs. The real binary/shim fixture checks the persisted query
+before upstream I/O, unchanged terminal result delivery, and exactly one originating tool attempt.
+
+The lookup checkpoint passes 30 database journal tests, 68 MCP crate tests, and 23 root MCP tests, including the configured-launch
+child invoked by its parent. Root/MCP/database all-target Clippy with warnings denied and the real
+binary build pass with the validation commands above. Formatting, whitespace, and local document
+links pass. Task updates, input-receipt metadata, cancellation admission, and notification/subscription
+settlement remain outside this checkpoint.
+
 ## Follow-Ups
 
-- Complete slice 9's asynchronous task resolution, remaining protocol controller paths, and integration
+- Complete slice 9's task mutation/input/notification paths, remaining protocol controller paths, and integration
   authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.

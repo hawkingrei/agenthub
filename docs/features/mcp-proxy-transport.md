@@ -194,9 +194,19 @@ The [MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/bas
 requires separate request IDs and exact state echoing; it does not grant a proxy permission to
 blindly repeat an ambiguous write.
 
-Legacy nested task receipts and modern flat `resultType: "task"` receipts also remain raw
-protocol results. Neither receipt shape counts as a completed tool action. Task-result retrieval
-still requires the pending version-specific controller and receipt authorization.
+Legacy nested task receipts and modern flat `resultType: "task"` receipts remain raw protocol
+results. Neither receipt shape counts as a completed tool action. Task lookup uses the originating
+journal receipt, current binding/catalog, and running executor. July 2026 admits `tasks/get` with
+the client Tasks extension declaration; November 2025 admits `tasks/get` and `tasks/result` under
+the negotiated server task capability and originating HTTP session. Earlier protocols and task
+members inside March batches cannot bypass that admission path.
+
+Each lookup uses an ordinary control slot and the shared daemon-owned HTTP drain, committing its
+query send before HTTP and its factual receipt before delivery. Query errors preserve the original
+pending tool outcome. A modern embedded terminal result or a legacy result fetch can settle the
+original attempt without another tool send. Failed/cancelled task statuses are distinct from an RPC
+error or cancellation acknowledgment. Task update/cancel, input-receipt correlation, and
+notification/subscription settlement remain pending; see the [journal contract](mcp-operation-journal.md).
 
 ### Redaction
 
@@ -276,9 +286,9 @@ JSON object/allocator overhead, trusted transport configuration, HTTP/gRPC imple
 and kernel buffers are outside byte accounting. Existing frame, catalog, header, correlation-count,
 and session limits continue to bound their corresponding structures.
 
-Modern tool MRTR rounds and declared retries use the receipt-linked journal path. Asynchronous
-task resolution and integration-specific continuation authorization for non-tool methods remain
-controller work.
+Modern tool MRTR rounds, declared retries, and task lookups use receipt-linked journal paths.
+Task mutation/notification paths and integration-specific continuation authorization for non-tool
+methods remain controller work.
 
 ## Validation Matrix
 
@@ -303,6 +313,7 @@ controller work.
 | Failed handshake | Identified/anonymous errors, malformed results, disconnects, single/batched initialized failures, callback settlement before DELETE, reused callback IDs after retry, cleanup failure, and repeated notifications in an operating session |
 | Tool MRTR | One logical operation across multiple HTTP requests, exact state echo and bound arguments, separate per-round inputs, no send for altered intent, and persisted parent-receipt links |
 | MRTR retry | Explicit read/stable-identity retry after loss or error, unchanged state/inputs/identity, independent attempt records across activations, and real shim rejection of altered inputs before HTTP |
+| Task lookup | Real shim preserves modern task/result envelopes and rejects foreign handles before HTTP; legacy HTTP status/result distinction, terminal failures, malformed responses, and March batch rejection |
 
 ## Operational Notes
 
@@ -318,9 +329,9 @@ fixture additionally checks inherited provider/shim environments and an actual j
 
 ## Open Risks
 
-- Asynchronous task-result admission and non-tool continuation authorization remain controller
-  work. Observed deferred receipts block replay of the original request without claiming a final
-  tool outcome.
+- Task mutation/input/notification paths and non-tool continuation authorization remain controller
+  work. Observed deferred receipts block replay of the original request until a linked lookup
+  establishes the tool outcome.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
   aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
   not evidence that retrying an unresolved write is safe.

@@ -1,7 +1,9 @@
 //! Trusted binding and discovery policy. None of these capabilities deserialize from provider RPCs.
 
 mod batch;
+mod task;
 pub use batch::PreparedBatchCall;
+pub use task::PreparedTaskLookup;
 
 use std::collections::BTreeMap;
 
@@ -150,6 +152,7 @@ pub struct PreparedToolCall {
     pub(crate) executor: LoopReservation,
     pub(crate) response_id: Value,
     pub(crate) continuation: Option<McpContinuationInput>,
+    pub(crate) task_context: Option<crate::task::TaskContext>,
 }
 
 impl McpBinding {
@@ -323,6 +326,8 @@ impl McpBinding {
             request_digest: Some(digest("mcp-call-parameters-v1", &semantic_request)?),
             replay_safety,
         };
+        let task_context =
+            crate::task::TaskContext::for_tool(context.http, params, &tool.declaration)?;
         let request = self
             .transport
             .prepare_post(context.http, &message, Some(&tool.headers))?;
@@ -333,6 +338,7 @@ impl McpBinding {
             executor: context.executor.clone(),
             response_id,
             continuation,
+            task_context,
         })
     }
 }

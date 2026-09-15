@@ -25,7 +25,10 @@ use crate::{
     budget::{ByteBudget, ByteLease, McpProxyBudget, json_bytes},
     http::{HttpContext, PreparedHttpRequest},
     journal::JournaledMcpClient,
-    policy::{McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, PreparedToolCall},
+    policy::{
+        McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, PreparedTaskLookup,
+        PreparedToolCall,
+    },
     protocol::{MessageKind, correlation_id, message_kind},
     session::McpProtocolSession,
 };
@@ -135,6 +138,7 @@ pub struct PreparedProxyExchange {
 enum Exchange {
     Batch(Box<batch::PreparedProxyBatch>),
     Tool(Box<PreparedToolCall>),
+    Task(Box<PreparedTaskLookup>),
     Control(PreparedHttpRequest),
     Discovery {
         request: PreparedHttpRequest,
@@ -253,7 +257,34 @@ impl McpProxySession {
                 context = current.clone();
             }
         }
-        let kind = if is_tool {
+        if (is_tool && message.pointer("/params/task").is_some() || method.starts_with("tasks/"))
+            && context.version.uses_initialization()
+            && !self
+                .protocol
+                .lock()
+                .await
+                .server_capabilities()
+                .and_then(|caps| caps.pointer("/tasks/requests/tools/call"))
+                .is_some_and(Value::is_object)
+        {
+            return Err(McpPolicyError::Call);
+        }
+        let kind = if matches!(method.as_str(), "tasks/get" | "tasks/result") {
+            let discovery = self.discovery.lock().await;
+            let catalog = discovery
+                .catalog
+                .as_ref()
+                .ok_or(McpPolicyError::ToolNotAvailable)?;
+            Exchange::Task(Box::new(self.binding.policy.prepare_task_lookup(
+                catalog,
+                &McpCallContext {
+                    executor,
+                    proxy_session_id: &self.id,
+                    http: &context,
+                },
+                message.clone(),
+            )?))
+        } else if is_tool {
             let discovery = self.discovery.lock().await;
             let catalog = discovery
                 .catalog
@@ -441,9 +472,15 @@ impl PreparedProxyExchange {
                     .run(session.clone(), journal, &mut sink, &self.context)
                     .await
             }
-            Exchange::Tool(call) => {
+            kind @ (Exchange::Tool(_) | Exchange::Task(_)) => {
                 let (events, mut receiver) = mpsc::channel(8);
-                let operation = journal.run(*call, events);
+                let operation = async {
+                    match kind {
+                        Exchange::Tool(call) => journal.run(*call, events).await,
+                        Exchange::Task(call) => journal.run_task_lookup(*call, events).await,
+                        _ => unreachable!(),
+                    }
+                };
                 tokio::pin!(operation);
                 let mut events_open = true;
                 loop {
@@ -557,6 +594,8 @@ fn supported_method(method: &str) -> bool {
             | "ping"
             | "tools/list"
             | "tools/call"
+            | "tasks/get"
+            | "tasks/result"
             | "notifications/initialized"
             | "notifications/cancelled"
             | "notifications/progress"

@@ -67,7 +67,7 @@ impl JournaledMcpClient {
                             && response.get("id").is_none_or(Value::is_null)
                             && response.get("error").is_some()
                         {
-                            let completion = classify_completion(response)?;
+                            let completion = classify_completion(response, None)?;
                             for permit in pending.values() {
                                 self.journal
                                     .complete(permit, &completion, now())
@@ -83,7 +83,7 @@ impl JournaledMcpClient {
                             return Err(McpTransportError::InvalidResponse.into());
                         }
                         if let Some(permit) = pending.get(&key) {
-                            let completion = classify_completion(response)?;
+                            let completion = classify_completion(response, None)?;
                             self.journal
                                 .complete(permit, &completion, now())
                                 .await

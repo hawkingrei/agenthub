@@ -5,6 +5,7 @@
 mod tests;
 
 mod batch;
+mod task;
 pub use batch::McpBatchResult;
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,7 +22,7 @@ use crate::{
     McpTransportError,
     budget::{Budgeted, ByteBudget, json_bytes},
     digest::digest,
-    http::HttpEvent,
+    http::{HttpEvent, McpHttpTransport, PreparedHttpRequest},
     policy::PreparedToolCall,
 };
 
@@ -95,29 +96,18 @@ impl JournaledMcpClient {
                 .await
                 .map_err(journal_error)?
         };
-        let mut delivery_lost = false;
         let observed = async {
-            let mut exchange = call.transport.send_resumable(call.request).await?;
-            while let Some(event) = exchange.next_event().await? {
-                let unidentified_http_error = exchange.status_code() >= 400;
-                if let Some(message) = event.message.as_ref()
-                    && let Some(response) =
-                        matching_response(message, &call.response_id, unidentified_http_error)?
-                {
-                    let completion = classify_completion(response)?;
-                    return Ok((message.clone(), completion, exchange.status_code()));
-                }
-                // Queue pressure loses delivery only. The reserved HTTP workspace keeps draining
-                // until a factual result can be committed, even after the caller has gone away.
-                if !self.deliver(event, &events) {
-                    delivery_lost = true;
-                }
-            }
-            Err(McpTransportError::Disconnected)
+            let (response, http_status, delivery_lost) = self
+                .receive(call.transport, call.request, &call.response_id, &events)
+                .await?;
+            let member = matching_response(&response, &call.response_id, http_status >= 400)?
+                .ok_or(McpTransportError::InvalidResponse)?;
+            let completion = classify_completion(member, call.task_context.as_ref())?;
+            Ok::<_, McpTransportError>((response, completion, http_status, delivery_lost))
         }
         .await;
         match observed {
-            Ok((response, completion, http_status)) => {
+            Ok((response, completion, http_status, delivery_lost)) => {
                 // Do not expose a terminal result until its receipt is durable. Losing the
                 // provider or replacing executor authority cannot discard an observed result.
                 self.journal
@@ -146,6 +136,29 @@ impl JournaledMcpClient {
                 Err(error.into())
             }
         }
+    }
+
+    async fn receive(
+        &self,
+        transport: McpHttpTransport,
+        request: PreparedHttpRequest,
+        id: &Value,
+        events: &mpsc::Sender<Budgeted<HttpEvent>>,
+    ) -> Result<(Value, u16, bool), McpTransportError> {
+        let mut delivery_lost = false;
+        let mut exchange = transport.send_resumable(request).await?;
+        while let Some(event) = exchange.next_event().await? {
+            if let Some(message) = event.message.as_ref()
+                && matching_response(message, id, exchange.status_code() >= 400)?.is_some()
+            {
+                return Ok((message.clone(), exchange.status_code(), delivery_lost));
+            }
+            // Delivery loss cannot cancel the daemon's factual result drain.
+            if !self.deliver(event, events) {
+                delivery_lost = true;
+            }
+        }
+        Err(McpTransportError::Disconnected)
     }
 
     fn deliver(&self, event: HttpEvent, events: &mpsc::Sender<Budgeted<HttpEvent>>) -> bool {
@@ -193,7 +206,10 @@ fn matching_response<'a>(
     }
 }
 
-fn classify_completion(response: &Value) -> Result<McpCompletion, McpTransportError> {
+pub(crate) fn classify_completion(
+    response: &Value,
+    task: Option<&crate::task::TaskContext>,
+) -> Result<McpCompletion, McpTransportError> {
     // IDs change on a legitimate retry, so receipt equivalence covers the actual result/error.
     let mut outcome = response.clone();
     outcome
@@ -224,6 +240,9 @@ fn classify_completion(response: &Value) -> Result<McpCompletion, McpTransportEr
             response_digest,
             input_receipt: (reason == McpDeferralKind::InputRequired)
                 .then(|| crate::continuation::receipt(response).ok())
+                .flatten(),
+            task_receipt: (reason == McpDeferralKind::TaskAccepted)
+                .then(|| task.and_then(|task| task.receipt(response).ok()))
                 .flatten(),
         }
     } else {

@@ -211,6 +211,17 @@ impl McpOperationStore {
         // the earlier uncertainty. This is not an unknown -> sent replay.
         let activation: &str = row.try_get("activation_id")?;
         let completed_at = now.max(row.try_get("updated_at")?);
+        if let McpCompletion::Deferred {
+            task_receipt: Some(receipt),
+            response_digest,
+            ..
+        } = completion
+        {
+            sqlx::query("INSERT INTO mcp_operation_tasks(operation_id, attempt_number, task_digest, receipt_json, response_digest) \
+                VALUES (?, ?, ?, ?, ?) ON CONFLICT(operation_id, attempt_number) DO NOTHING")
+                .bind(&permit.operation_id).bind(permit.attempt_number).bind(receipt.task_digest.as_str())
+                .bind(serde_json::to_string(receipt)?).bind(response_digest.as_str()).execute(&mut *tx).await?;
+        }
         complete_attempt(
             &mut tx,
             &permit.operation_id,
@@ -251,12 +262,15 @@ impl McpOperationStore {
             )
             .await?;
         }
+        let lookups = self
+            .recover_task_lookups_tx(&mut tx, limit.clamp(1, 100) - rows.len() as u32, now)
+            .await?;
         tx.commit().await?;
-        Ok(rows.len() as u64)
+        Ok(rows.len() as u64 + lookups)
     }
 }
 
-async fn complete_attempt(
+pub(super) async fn complete_attempt(
     tx: &mut Transaction<'_, Sqlite>,
     operation_id: &str,
     number: u32,

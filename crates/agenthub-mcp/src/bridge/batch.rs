@@ -28,9 +28,10 @@ impl McpProxySession {
             return Err(McpPolicyError::Call);
         }
         if !callbacks_only
-            && members
-                .iter()
-                .any(|member| !supported_method(member["method"].as_str().unwrap_or("")))
+            && members.iter().any(|member| {
+                let method = member["method"].as_str().unwrap_or("");
+                !supported_method(method) || method.starts_with("tasks/")
+            })
         {
             return Err(McpPolicyError::Call);
         }
