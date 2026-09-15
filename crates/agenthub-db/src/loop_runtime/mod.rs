@@ -3,6 +3,7 @@
 mod admission;
 mod admission_limits;
 mod intake;
+mod launch;
 mod lifecycle;
 mod outcome;
 mod policy;
@@ -144,6 +145,10 @@ fn parse_activation(row: &SqliteRow) -> anyhow::Result<LoopActivation> {
         finished_at: row.try_get("finished_at")?,
         outcome: row
             .try_get::<Option<&str>, _>("outcome_json")?
+            .map(serde_json::from_str)
+            .transpose()?,
+        launch: row
+            .try_get::<Option<&str>, _>("launch_json")?
             .map(serde_json::from_str)
             .transpose()?,
     })

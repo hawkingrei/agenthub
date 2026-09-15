@@ -80,6 +80,9 @@ pub trait TeamMailboxHintAgentNudger: Send + Sync {
 #[async_trait]
 impl TeamMailboxHintAgentNudger for AgentManager {
     async fn running_actor_runtime(&self, actor_id: &str) -> Option<RunningActorRuntime> {
+        if self.has_loop_activation(actor_id).await {
+            return None;
+        }
         let session_id = self.running_session_id_for_agent(actor_id).await?;
         let current_run_id = self
             .running_actor_context_for_agent(actor_id)

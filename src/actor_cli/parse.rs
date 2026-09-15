@@ -491,6 +491,38 @@ pub(super) fn parse_actor_command(
         });
     }
     match sub.as_str() {
+        "loop-finish" => {
+            use std::io::Read;
+            let mut path = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--outcome-file" => {
+                        anyhow::ensure!(path.is_none(), "--outcome-file may only be supplied once");
+                        idx += 1;
+                        path =
+                            Some(args.get(idx).ok_or_else(|| {
+                                anyhow::anyhow!("--outcome-file requires a path")
+                            })?);
+                    }
+                    flag => anyhow::bail!("unsupported loop-finish argument: {flag}"),
+                }
+                idx += 1;
+            }
+            let path =
+                path.ok_or_else(|| anyhow::anyhow!("loop-finish requires --outcome-file"))?;
+            let mut bytes = Vec::new();
+            fs::File::open(path)?.take(16_385).read_to_end(&mut bytes)?;
+            anyhow::ensure!(
+                bytes.len() <= 16_384,
+                "outcome exceeds the bounded finish request"
+            );
+            let outcome: agenthub_agent_domain::loop_runtime::LoopOutcome =
+                serde_json::from_slice(&bytes)?;
+            outcome.validate()?;
+            Ok(ActorCommand::LoopFinish { outcome })
+        }
         "team-members" => {
             let mut team_id = None;
             let mut run_id = None;
@@ -2718,5 +2750,41 @@ mod tests {
             err.to_string()
                 .contains("--mention and --mention-actor-id are supported only for channel send")
         );
+    }
+}
+
+#[cfg(test)]
+mod loop_finish_tests {
+    use super::*;
+
+    #[test]
+    fn loop_finish_parser_requires_bounded_structured_outcome_and_no_identity_override() {
+        let path = std::env::temp_dir().join(format!(
+            "agenthub-loop-outcome-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&path, r#"{"kind":"no_actionable_work"}"#).unwrap();
+        let mut args = vec![
+            "loop-finish".into(),
+            "--outcome-file".into(),
+            path.to_string_lossy().to_string(),
+        ];
+        assert!(matches!(
+            parse_actor_command(&args, &mut ActorOutputMode::Default).unwrap(),
+            ActorCommand::LoopFinish { .. }
+        ));
+        args.extend(["--actor-id".into(), "other".into()]);
+        assert!(parse_actor_command(&args, &mut ActorOutputMode::Default).is_err());
+        args.truncate(3);
+        for invalid in [
+            r#"{"kind":"waiting"}"#,
+            r#"{"kind":"progress","activation_id":"other"}"#,
+        ] {
+            std::fs::write(&path, invalid).unwrap();
+            assert!(parse_actor_command(&args, &mut ActorOutputMode::Default).is_err());
+        }
+        std::fs::write(&path, "x".repeat(16_385)).unwrap();
+        assert!(parse_actor_command(&args, &mut ActorOutputMode::Default).is_err());
+        std::fs::remove_file(path).unwrap();
     }
 }

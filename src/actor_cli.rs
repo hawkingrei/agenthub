@@ -35,6 +35,7 @@ const ACTOR_HELP_TOPIC_TEAM_THREAD_REPLY: &str = "team-thread-reply";
 const ACTOR_HELP_TOPIC_TEAM_STEP_DECISION: &str = "team-step-decision";
 const ACTOR_HELP_TOPIC_TEAM_STEP_TRANSITION: &str = "team-step-transition";
 const ACTOR_HELP_TOPICS: &[&str] = &[
+    "loop-finish",
     "team-members",
     "team-tasks",
     "team-task-create",
@@ -152,6 +153,9 @@ impl TeamTaskNoteKind {
 
 #[derive(Debug)]
 enum ActorCommand {
+    LoopFinish {
+        outcome: agenthub_agent_domain::loop_runtime::LoopOutcome,
+    },
     Help {
         topic: Option<&'static str>,
     },

@@ -24,6 +24,7 @@ pub(super) struct LocalExecutionRequest {
     pub workdir: String,
     pub actor_context: Option<AcpActorSkillContext>,
     pub extra_env: Vec<(String, String)>,
+    pub guard_descendants: bool,
 }
 
 pub(super) struct SpawnedLocalProcess {
@@ -64,10 +65,24 @@ impl AgentExecutor for LocalExecutor {
         &self,
         request: LocalExecutionRequest,
     ) -> anyhow::Result<SpawnedLocalProcess> {
-        let mut command = Command::new(&request.command_path);
+        #[cfg(target_os = "linux")]
+        let (mut command, guardian) = if request.guard_descendants {
+            let (command, channel) =
+                crate::executor_guardian::prepare(&request.command_path, &request.args)?;
+            (command, Some(channel))
+        } else {
+            (provider_command(&request), None)
+        };
+        #[cfg(not(target_os = "linux"))]
+        let mut command = {
+            anyhow::ensure!(
+                !request.guard_descendants,
+                "loop execution requires an executor guardian"
+            );
+            provider_command(&request)
+        };
         command
             .current_dir(&request.workdir)
-            .args(&request.args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -75,13 +90,26 @@ impl AgentExecutor for LocalExecutor {
         // AgentHub itself was launched from a build output directory with the
         // daemon next to it.
         if let Some(path) = synthesized_child_path(
-            &request.command_path,
+            if request.guard_descendants {
+                "agenthub"
+            } else {
+                &request.command_path
+            },
             std::env::var_os("PATH"),
             std::env::current_exe().ok().as_deref(),
         ) {
             command.env("PATH", path);
         }
         self.proxy_policy.apply_to_command(&mut command);
+        if request.guard_descendants {
+            for (key, _) in std::env::vars_os().filter(|(key, _)| {
+                key.to_string_lossy().starts_with("AGENTHUB_INTERNAL_GRPC_")
+                    || key == crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV
+                    || key == crate::loop_credentials::LOOP_ACTIVATION_ENV
+            }) {
+                command.env_remove(key);
+            }
+        }
         for (key, value) in &request.extra_env {
             command.env(key, value);
         }
@@ -121,6 +149,17 @@ impl AgentExecutor for LocalExecutor {
             }
         }
 
+        #[cfg(target_os = "linux")]
+        let (child, registration) = if let Some(guardian) = guardian {
+            self.process_supervisor
+                .spawn_guarded(request.agent_id, request.session_id, command, guardian)
+                .await?
+        } else {
+            self.process_supervisor
+                .spawn(request.agent_id, request.session_id, command)
+                .await?
+        };
+        #[cfg(not(target_os = "linux"))]
         let (child, registration) = self
             .process_supervisor
             .spawn(request.agent_id, request.session_id, command)
@@ -131,6 +170,12 @@ impl AgentExecutor for LocalExecutor {
             runtime_location: AcpRuntimeLocation::LocalProcess,
         })
     }
+}
+
+fn provider_command(request: &LocalExecutionRequest) -> Command {
+    let mut command = Command::new(&request.command_path);
+    command.args(&request.args);
+    command
 }
 
 fn synthesized_child_path(
@@ -211,6 +256,7 @@ mod tests {
             ],
             workdir: workdir.to_string_lossy().to_string(),
             actor_context: None,
+            guard_descendants: false,
             extra_env: vec![("RUST_BACKTRACE".to_string(), "1".to_string())],
         };
 
@@ -263,6 +309,7 @@ mod tests {
             ],
             workdir: workdir.to_string_lossy().to_string(),
             actor_context: None,
+            guard_descendants: false,
             extra_env: Vec::new(),
         };
 
@@ -347,6 +394,7 @@ mod tests {
                 .into(),
             ],
             actor_context: None,
+            guard_descendants: false,
             extra_env: [
                 "AGENTHUB_ACTOR_AGENT_ID",
                 "AGENTHUB_ACTOR_ID",

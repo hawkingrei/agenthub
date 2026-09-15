@@ -404,6 +404,9 @@ impl AgentManager {
         .execute(&self.db)
         .await?;
 
+        if self.has_loop_activation(agent_id).await {
+            return Ok(());
+        }
         let mut guard = self.inner.write().await;
         if let Some(handle) = guard.get_mut(agent_id) {
             match (&handle.input, next_config) {

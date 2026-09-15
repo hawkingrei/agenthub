@@ -11,7 +11,9 @@ pub use agenthub_agent_domain::{
     AgentNodeUpdate, AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
 };
 pub use manager::{AgentInputImage, AgentManager, AgentSendInputError};
-pub(crate) use manager::{AgentStartSchedulerSettings, derive_team_runtime_workdir};
+pub(crate) use manager::{
+    AgentStartSchedulerSettings, LoopControlEndpoint, derive_team_runtime_workdir,
+};
 pub(crate) use triggers::InvalidTimeTrigger;
 pub use triggers::{
     AgentReminderSource, AgentTimeTriggerCreateInput, AgentTimeTriggerManager,

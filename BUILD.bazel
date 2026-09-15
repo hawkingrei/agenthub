@@ -86,7 +86,9 @@ rust_library(
 rust_test(
     name = "agenthub_unit_tests",
     crate = ":agenthub_lib",
+    data = [":agenthub"],
     edition = "2024",
+    env = {"CARGO_BIN_EXE_agenthub": "$(rootpath :agenthub)"},
     aliases = aliases(
         proc_macro_dev = True,
         normal_dev = True,

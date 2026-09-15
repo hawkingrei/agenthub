@@ -131,6 +131,9 @@ tonic = { version = "=0.14.6", features = ["transport", "tls-native-roots"] }
 rcgen = "0.14"
 rustls = "0.23.40"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.30.1", features = ["fs", "process", "signal"] }
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 

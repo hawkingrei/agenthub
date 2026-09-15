@@ -82,6 +82,53 @@ pub struct LoopContinuation {
     pub task_id: Option<String>,
 }
 
+/// Effective launch references. Arguments, environment values, prompt bodies, and credentials
+/// are deliberately excluded from this inspectable record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoopLaunchSnapshot {
+    pub version: u32,
+    pub provider_id: String,
+    pub configuration_digest: String,
+    pub entry_prompt_version: String,
+    pub session_policy: LoopSessionPolicy,
+    pub workspace: String,
+    pub model: Option<String>,
+    pub thinking_level: Option<String>,
+}
+
+impl LoopLaunchSnapshot {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(self.version == 1, "unsupported loop launch version");
+        validate_loop_id(&self.provider_id)?;
+        validate_loop_id(&self.entry_prompt_version)?;
+        anyhow::ensure!(
+            self.configuration_digest.len() == 64
+                && self
+                    .configuration_digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit()),
+            "invalid configuration digest"
+        );
+        anyhow::ensure!(
+            !self.workspace.is_empty()
+                && self.workspace.len() <= 4096
+                && !self.workspace.chars().any(char::is_control),
+            "invalid launch workspace"
+        );
+        for value in [self.model.as_deref(), self.thinking_level.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            anyhow::ensure!(
+                !value.is_empty() && value.len() <= 256 && !value.chars().any(char::is_control),
+                "invalid launch profile reference"
+            );
+        }
+        Ok(())
+    }
+}
+
 impl LoopOutcome {
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
@@ -342,6 +389,7 @@ pub struct LoopActivation {
     pub updated_at: i64,
     pub finished_at: Option<i64>,
     pub outcome: Option<LoopOutcome>,
+    pub launch: Option<LoopLaunchSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

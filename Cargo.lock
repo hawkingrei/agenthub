@@ -412,6 +412,7 @@ dependencies = [
  "jsonwebtoken 11.0.0",
  "jwt-simple 0.13.1",
  "mime_guess",
+ "nix 0.30.1",
  "openssl",
  "process-wrap 10.0.0",
  "prost",

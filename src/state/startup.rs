@@ -39,6 +39,7 @@ impl AppState {
                 read_repair.clone(),
             )?;
         }
+        agents.spawn_loop_worker(teams.clone())?;
         TeamMailboxUnreadHintWorker::new(teams.clone(), agents.clone())
             .spawn(daemon_tasks, TeamMailboxUnreadHintWorkerSettings::default())?;
         TeamMailboxRuntimeDeliveryWorker::new(teams.clone(), agents.clone()).spawn(

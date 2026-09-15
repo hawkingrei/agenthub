@@ -58,7 +58,12 @@ fn build_actor_runtime_context_text(context: &AcpActorSkillContext) -> String {
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        lines.push(format!("- current_execution_run_id: {run_id}"));
+        let label = if context.is_loop_activation() {
+            "mailbox_run_id"
+        } else {
+            "current_execution_run_id"
+        };
+        lines.push(format!("- {label}: {run_id}"));
     }
     if let Some(member_role) = context
         .member_role
