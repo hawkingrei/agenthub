@@ -318,14 +318,14 @@ executor checks, verifies unchanged binding/schema/base parameters, and commits 
 attempt plus its parent response digest. Later rounds retain the logical operation and original
 stable caller identity. The provider supplies exact state and new input results; the proxy never
 reconstructs or automatically resends them. Current admission caps a chain at ten continuation
-sends and a receipt at 64 input IDs.
+rounds and a receipt at 64 input IDs.
 
 Input results retain the direct MCP result shape, including declined/cancelled inputs, rather
 than becoming JSON-RPC envelopes. State-only rounds omit earlier input responses. Malformed or
 old receipts without valid correlation metadata remain known deferred outcomes and cannot grant
 another send. A lost continuation result leaves an unknown attempt and blocks restarting the
-original request, including for a read-only or stable-identity operation. Declared retries of that
-uncertain round require a separate controller path and remain pending alongside task handles.
+original request, including for a read-only or stable-identity operation. Declared retries retain
+that uncertain round through the linked retry path described below; task handles remain pending.
 
 Database fixtures cover additive migration, reopen, parent links, concurrent consumption, stale
 intent/authority/state/IDs, round limits, recovery, and late factual results. HTTP fixtures cover
@@ -351,10 +351,32 @@ cargo test -p agenthub --lib mcp --locked --offline
 cargo fmt --all --check
 ```
 
+The continuation retry follow-up adds a separate retry link table without changing existing
+continuation or attempt rows. A retry refers to the round's first send and retains its parent
+receipt and full semantic request digest. The caller must supply the same bound parameters,
+state and input results with a fresh RPC ID. Trusted read-only or stable-identity policy is
+required; a tool annotation does not grant replay authority. Failed/unknown outcomes permit
+explicit retries, while a new input-required result starts another round. Each round has a
+separate three-retry budget, and the ten-round chain bound remains intact.
+
+Database fixtures exercise migration of populated continuation history, daemon restart, new
+activations, concurrent retry admission, unchanged intent/authority, late result fencing, and
+budget exhaustion across all ten rounds. Real HTTP fixtures preserve exact state (including
+absence), input responses, original stable identity, and upstream JSON-RPC errors. The real shim
+fixture adds a declared stable-identity binding, drops one continuation response after receiving
+the request, rejects changed inputs before HTTP, and links the explicit retry before sending it.
+
+Review also covers an ambiguous pair of parallel reads: an exact recorded retry with extra input
+IDs cannot be discarded in favor of another receipt whose issued IDs happen to match. Neither
+request sends when the association remains ambiguous. Final validation passes 26 journal store
+tests, 62 MCP crate tests, and 22 root MCP tests, with the configured-launch child invoked by its
+parent. Root/MCP/database all-target Clippy with warnings denied, the real binary build,
+formatting, whitespace, and local document links pass using the commands above. No dependencies,
+protobuf definitions, or Bazel configuration change.
+
 ## Follow-Ups
 
-- Complete slice 9's asynchronous task resolution, declared retries of uncertain continuation
-  rounds, remaining protocol controller paths, and integration
+- Complete slice 9's asynchronous task resolution, remaining protocol controller paths, and integration
   authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.

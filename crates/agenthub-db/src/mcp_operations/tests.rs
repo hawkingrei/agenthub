@@ -18,6 +18,7 @@ use super::*;
 
 mod batch;
 mod continuation;
+mod continuation_retry;
 
 struct Fixture {
     path: PathBuf,

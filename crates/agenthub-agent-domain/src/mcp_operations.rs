@@ -216,6 +216,9 @@ pub struct McpContinuationRecord {
     pub parent_response_digest: McpDigest,
     pub request_id_digest: McpDigest,
     pub request_digest: McpDigest,
+    /// The first send of this round, when this attempt retries its unchanged parameters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_of_attempt_number: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

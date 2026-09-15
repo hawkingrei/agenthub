@@ -57,6 +57,7 @@ struct Upstream {
     deleted: AtomicBool,
     expire_stream: AtomicBool,
     mrtr: AtomicBool,
+    mrtr_drop_response: AtomicBool,
 }
 
 async fn handler(
@@ -129,12 +130,16 @@ async fn handler(
                     || upstream.initialized.load(Ordering::Acquire),
                 "tool discovery overtook initialized delivery"
             );
-            let result = if message.pointer("/params/cursor").is_some() {
+            let mut result = if message.pointer("/params/cursor").is_some() {
                 assert_eq!(message["params"]["cursor"], "page-2");
                 json!({"tools":[{"name":"read","inputSchema":{"type":"object","properties":{}},"extension":"second-page"}]})
             } else {
                 json!({"tools":[{"name":"write","inputSchema":{"type":"object","properties":{"body":{"type":"string"},"space_id":{"type":"string"}}},"extension":"first-page"}],"nextCursor":"page-2"})
             };
+            if upstream.mrtr.load(Ordering::Acquire) {
+                result["tools"][0]["inputSchema"]["properties"]["request_id"] =
+                    json!({"type":"string"});
+            }
             let response = json!({"jsonrpc":"2.0","id":message["id"],"result":result});
             if message["id"] == "json-batched-list" {
                 return Json(json!([response])).into_response();
@@ -229,6 +234,10 @@ async fn setup() -> Harness {
 }
 
 async fn setup_with_running(mark_running: bool) -> Harness {
+    setup_with_replay(mark_running, TrustedReplayPolicy::NonIdempotent).await
+}
+
+async fn setup_with_replay(mark_running: bool, replay: TrustedReplayPolicy) -> Harness {
     let (state, service, authz, run, reservation) = super::fixture_with_running(mark_running).await;
     agenthub_db::mcp_operations::migrate_mcp_operations(&state.db)
         .await
@@ -259,6 +268,7 @@ async fn setup_with_running(mark_running: bool) -> Harness {
         deleted: AtomicBool::new(false),
         expire_stream: AtomicBool::new(false),
         mrtr: AtomicBool::new(false),
+        mrtr_drop_response: AtomicBool::new(false),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(
@@ -289,7 +299,7 @@ async fn setup_with_running(mark_running: bool) -> Harness {
         &json!({"revision":1}),
         transport,
         BTreeMap::from([
-            ("write".into(), TrustedReplayPolicy::NonIdempotent),
+            ("write".into(), replay),
             ("read".into(), TrustedReplayPolicy::ReadOnly),
         ]),
     )

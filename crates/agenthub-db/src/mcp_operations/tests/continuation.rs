@@ -4,11 +4,11 @@ use agenthub_agent_domain::mcp_operations::{
 
 use super::*;
 
-fn hash(value: u64) -> McpDigest {
+pub(super) fn hash(value: u64) -> McpDigest {
     format!("{value:064x}").try_into().unwrap()
 }
 
-fn deferred(id: u64) -> McpCompletion {
+pub(super) fn deferred(id: u64) -> McpCompletion {
     McpCompletion::Deferred {
         reason: McpDeferralKind::InputRequired,
         response_digest: hash(1000 + id),
@@ -20,7 +20,10 @@ fn deferred(id: u64) -> McpCompletion {
     }
 }
 
-fn continuation(base: &McpOperationIntent, id: u64) -> (McpOperationIntent, McpContinuationInput) {
+pub(super) fn continuation(
+    base: &McpOperationIntent,
+    id: u64,
+) -> (McpOperationIntent, McpContinuationInput) {
     let mut next = base.clone();
     next.request_key = hash(2000 + id);
     (
@@ -34,7 +37,7 @@ fn continuation(base: &McpOperationIntent, id: u64) -> (McpOperationIntent, McpC
     )
 }
 
-async fn parent(
+pub(super) async fn parent(
     f: &Fixture,
     e: &LoopReservation,
     safety: McpReplaySafety,
@@ -144,7 +147,11 @@ async fn mcp_continuation_is_single_use_and_unknown_round_cannot_restart_origina
                 .store
                 .begin_continuation(&executor, &intent, &input, 105)
                 .await,
-            McpJournalError::ContinuationRequired,
+            if operation.intent.replay_safety.permits_retry() {
+                McpJournalError::IdentityConflict
+            } else {
+                McpJournalError::UnsafeReplay
+            },
         );
         fixture
             .store

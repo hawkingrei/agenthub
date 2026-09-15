@@ -130,7 +130,7 @@ The linked send and its parent receipt digest commit atomically with a new attem
 logical operation. Every send rechecks the current daemon and live executor. A new RPC ID is
 required; concurrent consumers receive at most one permit. The original stable identity remains
 unchanged on the wire, while each round has its own request digest. A chain allows ten continuation
-sends and at most 64 input IDs per receipt. These are proxy resource limits, not MCP defaults.
+rounds and at most 64 input IDs per receipt. These are proxy resource limits, not MCP defaults.
 
 `mcp_operation_continuations` is an additive table linking each new attempt to its previous attempt
 and known response digest. Attempt inspection exposes those links without raw state or answers.
@@ -140,9 +140,22 @@ against the receipt after a fresh proxy opens; current binding and execution aut
 
 A final result completes the same logical operation. A lost continuation result leaves that
 attempt unknown; neither its continuation POST nor the initial POST is automatically resent.
-The current continuation path requires a new factual input-required receipt for another send,
-including read-only and stable-identity calls. Retrying an uncertain continuation under a declared
-replay policy and resolving asynchronous task handles remain follow-up controller work.
+The caller can explicitly retry the current failed or unknown round only when trusted binding
+policy declares the entire tool read-only or provides a stable identity. An upstream hint alone
+does not permit a retry. Admission requires the exact semantic parameters of that round, including
+opaque state and all input responses, along with the unchanged base intent and original identity.
+Only the RPC ID and delivery-only progress token can change. The caller retains and resubmits the
+actual payload; the journal cannot reconstruct it.
+
+An additive `mcp_operation_continuation_retries` table links each retry attempt to that round's
+first send. The original input-required receipt is consumed once and its response digest remains
+visible on retry inspection. Retries do not overwrite earlier failed/unknown attempts or become
+new rounds. Each round permits at most three retries, independently of the ten-round bound.
+The new send and retry link commit atomically after live daemon/executor checks. Concurrent
+callers receive at most one permit; stale RPC IDs, changed parameters, non-idempotent operations,
+and ambiguous receipt matches cannot send. Reopen and new activations retain these constraints.
+A subsequent input-required result starts the next round from the retry that observed it.
+Resolving asynchronous task handles remains follow-up controller work.
 
 The original permit can record a factual response after activation expiry, cancellation, or
 cleanup. It can resolve an unknown attempt if no replacement attempt exists. It cannot complete a
@@ -195,6 +208,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | Provider disconnect | Authenticated daemon task retains the execution guard after caller cancellation and journals the late HTTP result |
 | Deferred response | Raw input/task receipt retained transiently; typed receipt survives loss and blocks initial-request replay |
 | MRTR | Additive migration and reopen, atomic linked sends, current intent/state/executor checks, fresh RPC IDs, bounded rounds, unchanged HTTP inputs, final settlement, and lost-round replay rejection |
+| MRTR retry | Additive retry migration, exact round digest and stable identity, fresh activation and daemon checks, concurrent admission, preserved attempt/parent links, three retries per round, and subsequent rounds after a retry |
 | Batch sends | Atomic rollback on a stale/conflicting member; one POST; out-of-order completion; partial-result uncertainty and replay rejection across activations |
 
 ## Operational Notes

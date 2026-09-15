@@ -8,6 +8,10 @@ pub(super) fn requested_input() -> Value {
 pub(super) async fn respond(upstream: &Upstream, headers: &HeaderMap, message: &Value) -> Response {
     assert_eq!(headers["mcp-protocol-version"], "2026-07-28");
     assert!(headers.get("mcp-session-id").is_none());
+    assert_eq!(
+        message["params"]["arguments"]["request_id"],
+        "caller-stable-id"
+    );
     let result = if let Some(state) = message["params"].get("requestState") {
         assert_eq!(state, &requested_input()["requestState"]);
         assert_eq!(
@@ -15,13 +19,21 @@ pub(super) async fn respond(upstream: &Upstream, headers: &HeaderMap, message: &
             json!({"confirm":{"action":"accept","content":{"approved":true}}})
         );
         let linked: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM mcp_operation_continuations c JOIN mcp_operation_attempts a \
-            ON a.operation_id=c.operation_id AND a.number=c.attempt_number WHERE a.status='sent'",
+            "SELECT COUNT(*) FROM mcp_operation_attempts a \
+            LEFT JOIN mcp_operation_continuation_retries r ON r.operation_id=a.operation_id AND r.attempt_number=a.number \
+            JOIN mcp_operation_continuations c ON c.operation_id=a.operation_id \
+                AND c.attempt_number=COALESCE(r.continuation_attempt_number,a.number) WHERE a.status='sent'",
         )
         .fetch_one(&upstream.db)
         .await
         .unwrap();
         assert_eq!(linked, 1, "continuation link must commit before HTTP");
+        if upstream.mrtr_drop_response.swap(false, Ordering::AcqRel) {
+            return axum::http::Response::builder()
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from("{\"jsonrpc\":\"2.0\",\"result\":"))
+                .unwrap();
+        }
         json!({"resultType":"complete","content":[{"type":"text","text":"private-mrtr-result"}],"extension":{"preserved":true}})
     } else {
         requested_input()
@@ -31,6 +43,22 @@ pub(super) async fn respond(upstream: &Upstream, headers: &HeaderMap, message: &
 
 #[tokio::test]
 async fn real_mcp_shim_keeps_input_required_rounds_linked_without_replaying_the_write() {
+    exercise_continuation(false).await;
+}
+
+#[tokio::test]
+async fn real_mcp_shim_retries_only_the_declared_unchanged_continuation_round() {
+    exercise_continuation(true).await;
+}
+
+async fn exercise_continuation(retry: bool) {
+    let replay = if retry {
+        TrustedReplayPolicy::StableIdentity {
+            property_path: vec!["request_id".into()],
+        }
+    } else {
+        TrustedReplayPolicy::NonIdempotent
+    };
     let Harness {
         state,
         service,
@@ -41,8 +69,9 @@ async fn real_mcp_shim_keeps_input_required_rounds_linked_without_replaying_the_
         upstream,
         http,
         ..
-    } = setup().await;
+    } = setup_with_replay(true, replay).await;
     upstream.mrtr.store(true, Ordering::Release);
+    upstream.mrtr_drop_response.store(retry, Ordering::Release);
     let token = signed_token(
         &authz,
         &reservation,
@@ -100,7 +129,7 @@ async fn real_mcp_shim_keeps_input_required_rounds_linked_without_replaying_the_
         next(&mut output).await["result"]["tools"][0]["name"],
         "write"
     );
-    let first = json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write","arguments":{"body":"private-mrtr-write"},"_meta":metadata}});
+    let first = json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write","arguments":{"body":"private-mrtr-write","request_id":"caller-stable-id"},"_meta":metadata}});
     write_message(&mut input, &first).await.unwrap();
     assert_eq!(
         next(&mut output).await,
@@ -118,8 +147,20 @@ async fn real_mcp_shim_keeps_input_required_rounds_linked_without_replaying_the_
     assert_eq!(upstream.calls.lock().unwrap().len(), 2);
     follow["id"] = json!(4);
     write_message(&mut input, &follow).await.unwrap();
+    if retry {
+        assert!(next(&mut output).await.get("error").is_some());
+        assert_eq!(upstream.calls.lock().unwrap().len(), 3);
+        let mut changed = follow.clone();
+        changed["id"] = json!(5);
+        changed["params"]["inputResponses"]["confirm"]["action"] = "cancel".into();
+        write_message(&mut input, &changed).await.unwrap();
+        assert!(next(&mut output).await.get("error").is_some());
+        assert_eq!(upstream.calls.lock().unwrap().len(), 3);
+        follow["id"] = json!(6);
+        write_message(&mut input, &follow).await.unwrap();
+    }
     let response = next(&mut output).await;
-    assert_eq!(response["id"], 4);
+    assert_eq!(response["id"], follow["id"]);
     assert_eq!(
         response["result"]["content"][0]["text"],
         "private-mrtr-result"
@@ -140,7 +181,7 @@ async fn real_mcp_shim_keeps_input_required_rounds_linked_without_replaying_the_
         )
         .await
         .unwrap();
-    assert_eq!(attempts.len(), 2);
+    assert_eq!(attempts.len(), if retry { 3 } else { 2 });
     assert_eq!(
         attempts[1]
             .continuation
@@ -150,10 +191,24 @@ async fn real_mcp_shim_keeps_input_required_rounds_linked_without_replaying_the_
         1
     );
     assert_eq!(
-        attempts[1].status,
+        attempts.last().unwrap().status,
         agenthub_agent_domain::mcp_operations::McpOperationStatus::Succeeded
     );
-    assert_eq!(upstream.calls.lock().unwrap().len(), 3);
+    assert_eq!(
+        upstream.calls.lock().unwrap().len(),
+        if retry { 4 } else { 3 }
+    );
+    if retry {
+        assert_eq!(
+            attempts[1].status,
+            agenthub_agent_domain::mcp_operations::McpOperationStatus::OutcomeUnknown
+        );
+        let link = attempts[2].continuation.as_ref().unwrap();
+        assert_eq!(link.parent_attempt_number, 1);
+        assert_eq!(link.retry_of_attempt_number, Some(2));
+        let calls = upstream.calls.lock().unwrap();
+        assert_eq!(calls[2]["params"], calls[3]["params"]);
+    }
     drop(input);
     assert!(
         tokio::time::timeout(Duration::from_secs(3), child.wait())
@@ -170,7 +225,12 @@ async fn real_mcp_shim_keeps_input_required_rounds_linked_without_replaying_the_
         .read_to_string(&mut errors)
         .await
         .unwrap();
-    for value in ["private-state", "private-mrtr", "upstream-secret"] {
+    for value in [
+        "private-state",
+        "private-mrtr",
+        "upstream-secret",
+        "caller-stable-id",
+    ] {
         assert!(!errors.contains(value));
     }
     state

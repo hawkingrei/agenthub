@@ -186,6 +186,10 @@ transport does not invoke callbacks itself or automatically send another round. 
 journal orchestration distinguishes intermediate receipts from completed tool actions and admits
 modern tool continuations against the current receipt and unchanged binding. Each round retains
 the original stable caller identity and records its own send and parent receipt before HTTP.
+Explicit retries of a failed or unknown round require a trusted read-only or stable-identity
+policy and unchanged round parameters. They retain the original operation and parent receipt,
+append a separate retry attempt, and recheck live authority before HTTP. Transport loss never
+causes an automatic POST. See the [operation journal](mcp-operation-journal.md) for retry bounds.
 The [MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr)
 requires separate request IDs and exact state echoing; it does not grant a proxy permission to
 blindly repeat an ambiguous write.
@@ -268,9 +272,9 @@ JSON object/allocator overhead, trusted transport configuration, HTTP/gRPC imple
 and kernel buffers are outside byte accounting. Existing frame, catalog, header, correlation-count,
 and session limits continue to bound their corresponding structures.
 
-Modern tool MRTR rounds use the receipt-linked journal path. Asynchronous task resolution,
-uncertain-continuation replay policy, and integration-specific continuation authorization for
-non-tool methods remain controller work.
+Modern tool MRTR rounds and declared retries use the receipt-linked journal path. Asynchronous
+task resolution and integration-specific continuation authorization for non-tool methods remain
+controller work.
 
 ## Validation Matrix
 
@@ -294,6 +298,7 @@ non-tool methods remain controller work.
 | Listener and close | Real shim GET callbacks/resumption/DELETE; idle listener releases the executor guard; DELETE waits for durable write settlement; session 404 preserves error and requires fresh initialization |
 | Failed handshake | Identified/anonymous errors, malformed results, disconnects, single/batched initialized failures, callback settlement before DELETE, reused callback IDs after retry, cleanup failure, and repeated notifications in an operating session |
 | Tool MRTR | One logical operation across multiple HTTP requests, exact state echo and bound arguments, separate per-round inputs, no send for altered intent, and persisted parent-receipt links |
+| MRTR retry | Explicit read/stable-identity retry after loss or error, unchanged state/inputs/identity, independent attempt records across activations, and real shim rejection of altered inputs before HTTP |
 
 ## Operational Notes
 
@@ -309,9 +314,9 @@ fixture additionally checks inherited provider/shim environments and an actual j
 
 ## Open Risks
 
-- Asynchronous task-result admission, declared retries of uncertain continuation rounds, and
-  non-tool continuation authorization remain controller work. Observed deferred receipts block
-  replay of the original request without claiming a final tool outcome.
+- Asynchronous task-result admission and non-tool continuation authorization remain controller
+  work. Observed deferred receipts block replay of the original request without claiming a final
+  tool outcome.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
   aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
   not evidence that retrying an unresolved write is safe.

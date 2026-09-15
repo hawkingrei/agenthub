@@ -104,9 +104,13 @@ impl McpOperationStore {
         after: u32,
         limit: u32,
     ) -> anyhow::Result<Vec<McpAttemptRecord>> {
-        let rows = sqlx::query("SELECT a.*, c.parent_attempt_number, c.parent_response_digest, c.request_id_digest, c.request_digest \
+        let rows = sqlx::query("SELECT a.*, c.parent_attempt_number, c.parent_response_digest, \
+            COALESCE(r.request_id_digest, c.request_id_digest) AS request_id_digest, c.request_digest, \
+            r.continuation_attempt_number AS retry_of_attempt_number \
             FROM mcp_operation_attempts a JOIN mcp_operations o ON o.id = a.operation_id \
-            LEFT JOIN mcp_operation_continuations c ON c.operation_id = a.operation_id AND c.attempt_number = a.number \
+            LEFT JOIN mcp_operation_continuation_retries r ON r.operation_id = a.operation_id AND r.attempt_number = a.number \
+            LEFT JOIN mcp_operation_continuations c ON c.operation_id = a.operation_id \
+                AND c.attempt_number = COALESCE(r.continuation_attempt_number, a.number) \
             WHERE o.team_id = ? AND o.actor_id = ? AND o.id = ? AND a.number > ? ORDER BY a.number LIMIT ?")
             .bind(team_id).bind(actor_id).bind(id).bind(after).bind(limit.clamp(1, 100))
             .fetch_all(&self.pool).await?;
@@ -138,6 +142,7 @@ impl McpOperationStore {
                                 request_digest: row
                                     .try_get::<String, _>("request_digest")?
                                     .try_into()?,
+                                retry_of_attempt_number: row.try_get("retry_of_attempt_number")?,
                             })
                         })
                         .transpose()?,

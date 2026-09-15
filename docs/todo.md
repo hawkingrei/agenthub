@@ -27,8 +27,9 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
   startup recovery, signed MCP session RPCs, a local stdio shim, and configured local ACP launch
   with inherited-secret isolation, shared payload budgets, journaled March batches, and legacy
   GET/resumption/DELETE, failed-handshake retirement, and receipt-linked modern tool MRTR rounds.
-  Task-result resolution, declared retries of uncertain continuation rounds, complete integration
-  authorization, and full proxy crash/static-launch validation remain pending.
+  Declared retries now preserve the uncertain round's exact parameters and original identity.
+  Task-result resolution, complete integration authorization, and full proxy crash/static-launch
+  validation remain pending.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.

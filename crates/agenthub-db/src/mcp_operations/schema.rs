@@ -69,6 +69,22 @@ pub async fn migrate_mcp_operations(pool: &SqlitePool) -> anyhow::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_mcp_continuation_request
             ON mcp_operation_continuations(request_key);
+        CREATE TABLE IF NOT EXISTS mcp_operation_continuation_retries (
+            operation_id TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL,
+            continuation_attempt_number INTEGER NOT NULL,
+            request_key TEXT NOT NULL,
+            request_id_digest TEXT NOT NULL,
+            PRIMARY KEY(operation_id, attempt_number),
+            UNIQUE(operation_id, request_id_digest),
+            CHECK(attempt_number > continuation_attempt_number),
+            FOREIGN KEY(operation_id, attempt_number)
+                REFERENCES mcp_operation_attempts(operation_id, number),
+            FOREIGN KEY(operation_id, continuation_attempt_number)
+                REFERENCES mcp_operation_continuations(operation_id, attempt_number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mcp_continuation_retry_request
+            ON mcp_operation_continuation_retries(request_key);
         CREATE TABLE IF NOT EXISTS mcp_operation_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             operation_id TEXT NOT NULL REFERENCES mcp_operations(id),
