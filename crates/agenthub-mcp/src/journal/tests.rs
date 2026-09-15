@@ -402,7 +402,8 @@ async fn upstream(
         return recovery::stream(format!("id: {cursor}\nretry: {retry}\ndata:\n\n{extra}"));
     }
     if mode == 6 {
-        // Valid short numeric spellings can exceed the output limit after JSON serialization.
+        // Numeric expansion depends on serde_json/arbitrary_precision feature unification.
+        // This event exceeds the test's delivery budget with either representation.
         let values = "1e6,".repeat(crate::MAX_MESSAGE_BYTES / 10);
         let event = format!(
             r#"{{"jsonrpc":"2.0","method":"notifications/progress","params":{{"progressToken":"token","progress":1,"extra":[{values}1e6]}}}}"#
@@ -654,22 +655,26 @@ async fn lost_event_receiver_and_cancelled_executor_do_not_discard_late_factual_
 }
 
 #[tokio::test]
-async fn oversized_serialized_progress_does_not_discard_the_terminal_write_result() {
+async fn oversized_progress_delivery_does_not_discard_the_terminal_write_result() {
     let fixture = Fixture::new().await;
     let executor = fixture.running().await;
     let upstream = Upstream::new(fixture.pool.clone()).await;
     upstream.state.mode.store(6, Ordering::SeqCst);
-    let result = run(
-        &fixture,
-        prepare(
-            &upstream.binding(TrustedReplayPolicy::NonIdempotent),
-            &executor,
-            1,
-        ),
+    let call = prepare(
+        &upstream.binding(TrustedReplayPolicy::NonIdempotent),
+        &executor,
+        1,
+    );
+    let (events, mut receiver) = mpsc::channel(8);
+    let result = JournaledMcpClient::new(
+        fixture.journal.clone(),
+        crate::budget::ByteBudget::new(1024),
     )
+    .run(call, events)
     .await
     .unwrap();
     assert!(result.event_delivery_lost);
+    assert!(receiver.try_recv().is_err());
     assert_eq!(
         result.response["result"]["content"][0]["text"],
         "private-result"
@@ -680,6 +685,31 @@ async fn oversized_serialized_progress_does_not_discard_the_terminal_write_resul
     );
     assert_eq!(upstream.count(), 1);
     drop(upstream);
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn outgoing_progress_checks_serialized_frame_size_before_queueing() {
+    let fixture = Fixture::new().await;
+    let client = JournaledMcpClient::new(
+        fixture.journal.clone(),
+        crate::budget::ByteBudget::new(8 * crate::MAX_MESSAGE_BYTES),
+    );
+    let number = json!(1_000_000.0);
+    let count = crate::MAX_MESSAGE_BYTES / (number.to_string().len() + 1) + 1;
+    let message = json!({"jsonrpc":"2.0","method":"notifications/progress",
+        "params":{"progressToken":"token","progress":1,"extra":vec![number; count]}});
+    assert!(message.to_string().len() > crate::MAX_MESSAGE_BYTES);
+    let (events, mut receiver) = mpsc::channel(8);
+    assert!(!client.deliver(
+        HttpEvent {
+            message: Some(message),
+            cursor: None,
+            retry: None
+        },
+        &events
+    ));
+    assert!(receiver.try_recv().is_err());
     fixture.close().await;
 }
 
