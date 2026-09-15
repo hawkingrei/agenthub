@@ -161,8 +161,26 @@ async fn pump(
     budget: ByteBudget,
 ) -> anyhow::Result<()> {
     let mut exchanges = tokio::task::JoinSet::new();
+    let mut listener = tokio::task::JoinSet::new();
+    let mut listener_started = false;
+    let (ready, mut ready_messages) = mpsc::channel(1);
     loop {
         tokio::select! {
+            Some(()) = ready_messages.recv(), if !listener_started => {
+                listener_started = true;
+                let client = connection.refresh()?;
+                let session = session_id.to_owned();
+                let output = output.clone();
+                let budget = budget.clone();
+                listener.spawn(async move {
+                    let stream = client.listen_mcp_proxy(session).await?;
+                    forward(stream, output, budget).await
+                });
+            }
+            result = listener.join_next(), if !listener.is_empty() => {
+                result.ok_or_else(|| anyhow::anyhow!("MCP listener disappeared"))?
+                    .map_err(|_| anyhow::anyhow!("MCP listener task failed"))??;
+            }
             result = exchanges.join_next(), if !exchanges.is_empty() => {
                 result.ok_or_else(||anyhow::anyhow!("MCP exchange disappeared"))?
                     .map_err(|_|anyhow::anyhow!("MCP exchange task failed"))??;
@@ -174,12 +192,20 @@ async fn pump(
                 // Wait for admission headers, preserving stdin order through initialize/initialized
                 // delivery, then receive each response independently so callbacks can make progress.
                 let stream = connection.refresh()?.exchange_mcp_proxy(session_id.into(), message.value.to_string()).await?;
+                let ready = ready.clone();
                 let output = output.clone();
                 let budget = budget.clone();
-                exchanges.spawn(async move {forward(stream, output, budget).await});
+                exchanges.spawn(async move {
+                    let can_listen = forward(stream, output, budget).await?;
+                    // The daemon reports actual protocol readiness, including batches where an
+                    // unrelated member returned an error. MCP payloads remain untouched.
+                    if can_listen { let _ = ready.try_send(()); }
+                    Ok::<_, anyhow::Error>(())
+                });
             }
         }
     }
+    listener.abort_all();
     while let Some(result) = exchanges.join_next().await {
         result.map_err(|_| anyhow::anyhow!("MCP exchange task failed"))??;
     }
@@ -190,7 +216,7 @@ async fn forward(
     mut stream: tonic::Streaming<crate::internal::proto::agenthub::internal::v1::McpProxyFrame>,
     output: mpsc::Sender<Output>,
     budget: ByteBudget,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     while let Some(frame) = stream
         .message()
         .await
@@ -216,7 +242,7 @@ async fn forward(
             .map_err(|_| anyhow::anyhow!("MCP stdout write deadline expired"))??;
         }
         if frame.finished {
-            return Ok(());
+            return Ok(frame.can_listen);
         }
     }
     anyhow::bail!("MCP exchange ended without its completion marker")

@@ -92,7 +92,20 @@ impl McpProxyHub {
                 Status::permission_denied("MCP binding is not available to this activation")
             })?;
         let mut sessions = self.sessions.lock().await;
-        sessions.retain(|_, (_, session)| session.is_active());
+        let mut retired = Vec::new();
+        sessions.retain(|_, (_, session)| {
+            if session.is_active() {
+                true
+            } else {
+                retired.push(session.clone());
+                false
+            }
+        });
+        drop(sessions);
+        for session in retired {
+            let _ = session.shutdown().await;
+        }
+        let mut sessions = self.sessions.lock().await;
         if sessions.len() >= 128
             || sessions
                 .values()
@@ -152,9 +165,9 @@ impl McpProxyHub {
 
     pub(crate) async fn close(&self, executor: &LoopReservation, id: &str) -> Result<(), Status> {
         let session = self.session(executor, id).await?;
-        session.close();
+        let result = session.shutdown().await;
         self.sessions.lock().await.remove(id);
-        Ok(())
+        result.map_err(|_| Status::unavailable("MCP upstream session termination failed"))
     }
 
     pub(crate) async fn release_activation(&self, executor: &LoopReservation) {
@@ -165,13 +178,18 @@ impl McpProxyHub {
             .lock()
             .await
             .retain(|(owner, _), _| owner != &scope);
+        let mut removed = Vec::new();
         self.sessions.lock().await.retain(|_, (owner, session)| {
             if owner == &scope {
                 session.close();
+                removed.push(session.clone());
                 false
             } else {
                 true
             }
         });
+        for session in removed {
+            let _ = session.shutdown().await;
+        }
     }
 }

@@ -3,6 +3,19 @@ use super::*;
 #[tonic::async_trait]
 impl TeamInternalControl for TeamInternalControlService {
     type ExchangeMcpProxyStream = super::mcp_proxy::McpResponseStream;
+    type ListenMcpProxyStream = super::mcp_proxy::McpResponseStream;
+
+    async fn listen_mcp_proxy(
+        &self,
+        request: Request<crate::internal::proto::agenthub::internal::v1::ListenMcpProxyRequest>,
+    ) -> Result<Response<Self::ListenMcpProxyStream>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.listen_mcp_proxy_request(request).await
+        })
+        .await
+    }
 
     async fn open_mcp_proxy(
         &self,

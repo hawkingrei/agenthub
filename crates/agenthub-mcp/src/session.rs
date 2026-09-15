@@ -227,6 +227,13 @@ impl McpProtocolSession {
             _ => None,
         }
     }
+
+    pub(crate) fn ready_context(&self) -> Option<HttpContext> {
+        match &self.state {
+            State::Ready { context, .. } => Some(context.clone()),
+            _ => None,
+        }
+    }
 }
 
 fn valid_implementation_info(value: Option<&Value>) -> bool {

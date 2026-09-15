@@ -1,6 +1,8 @@
 //! A daemon-owned MCP session. RPC adapters provide current execution authority and task ownership.
 
 mod batch;
+mod listen;
+pub use listen::PreparedProxyListener;
 
 use std::{
     collections::HashSet,
@@ -12,7 +14,10 @@ use std::{
 
 use agenthub_agent_domain::loop_runtime::LoopReservation;
 use serde_json::{Value, json};
-use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, Semaphore, mpsc};
+use tokio::sync::{
+    Mutex, OwnedMutexGuard, OwnedRwLockReadGuard, OwnedSemaphorePermit, RwLock, Semaphore, mpsc,
+    watch,
+};
 
 use crate::{
     MAX_MESSAGE_BYTES, McpTransportError,
@@ -94,6 +99,12 @@ pub struct McpProxySession {
     tool_slots: Arc<Semaphore>,
     control_slots: Arc<Semaphore>,
     callback_slots: Arc<Semaphore>,
+    listener_slot: Arc<Semaphore>,
+    exchanges: Arc<RwLock<()>>,
+    close_gate: Mutex<()>,
+    close_sent: AtomicBool,
+    closed_signal: watch::Sender<bool>,
+    listen_ready: AtomicBool,
     closed: AtomicBool,
 }
 
@@ -114,6 +125,7 @@ pub struct PreparedProxyExchange {
     _slots: Vec<OwnedSemaphorePermit>,
     _lifecycle: Option<OwnedMutexGuard<()>>,
     _workspace: ByteLease,
+    _exchange: OwnedRwLockReadGuard<()>,
 }
 
 enum Exchange {
@@ -146,16 +158,27 @@ impl McpProxySession {
             tool_slots: Arc::new(Semaphore::new(4)),
             control_slots: Arc::new(Semaphore::new(8)),
             callback_slots: Arc::new(Semaphore::new(8)),
+            listener_slot: Arc::new(Semaphore::new(1)),
+            exchanges: Arc::new(RwLock::new(())),
+            close_gate: Mutex::new(()),
+            close_sent: AtomicBool::new(false),
+            closed_signal: watch::channel(false).0,
+            listen_ready: AtomicBool::new(false),
             closed: AtomicBool::new(false),
         })
     }
 
     pub fn close(&self) {
         self.closed.store(true, Ordering::Release);
+        self.closed_signal.send_replace(true);
     }
 
     pub fn is_active(&self) -> bool {
         !self.closed.load(Ordering::Acquire) && !self.binding.revoked.load(Ordering::Acquire)
+    }
+
+    pub async fn can_listen(&self) -> bool {
+        self.is_active() && self.listen_ready.load(Ordering::Acquire)
     }
 
     /// Preparation is serialized through lifecycle delivery. Callback responses bypass that gate
@@ -173,6 +196,7 @@ impl McpProxySession {
         if message_kind == MessageKind::Batch {
             return self.prepare_batch(executor, message).await;
         }
+        let exchange = self.exchanges.clone().read_owned().await;
         let method = message
             .get("method")
             .and_then(Value::as_str)
@@ -209,6 +233,9 @@ impl McpProxySession {
             }
         }
         let mut context = self.protocol.lock().await.begin(&message)?;
+        if method == "initialize" {
+            self.listen_ready.store(false, Ordering::Release);
+        }
         if is_response {
             let key = correlation_id(&message["id"]);
             if !self.callbacks.lock().await.remove(&key) {
@@ -285,6 +312,7 @@ impl McpProxySession {
             _slots: vec![slot],
             _lifecycle: lifecycle,
             _workspace: workspace,
+            _exchange: exchange,
         })
     }
 
@@ -423,9 +451,19 @@ impl PreparedProxyExchange {
                                 }
                                 if result.event_delivery_lost { sink.fail(); }
                                 if session.observe(&result.response).await.is_err() { sink.fail(); }
-                                Ok(Some(result.response))
+                                if self.context.session_id.is_some() && result.http_status == 404 {
+                                    session.close();
+                                    sink.emit(Some(result.response), false, None);
+                                    sink.fail();
+                                    Ok(None)
+                                } else {
+                                    Ok(Some(result.response))
+                                }
                             }
-                            Err(error) => Err(error.to_string()),
+                            Err(error) => {
+                                if self.context.session_id.is_some() && matches!(error, crate::journal::McpCallError::Transport(McpTransportError::HttpStatus(404))) { sink.fail(); }
+                                Err(error.to_string())
+                            },
                         },
                         event = receiver.recv(), if events_open => {
                             if let Some(event) = event {
@@ -467,10 +505,19 @@ impl PreparedProxyExchange {
             .map_err(|error| error.to_string()),
         };
         match outcome {
-            Ok(response) => sink.emit(response, true, None),
+            Ok(response) => {
+                if method == "notifications/initialized" {
+                    session.listen_ready.store(
+                        session.protocol.lock().await.ready_context().is_some(),
+                        Ordering::Release,
+                    );
+                }
+                sink.emit(response, true, None);
+            }
             Err(error) => {
                 if matches!(method.as_str(), "initialize" | "notifications/initialized") {
                     session.protocol.lock().await.initialization_failed();
+                    session.listen_ready.store(false, Ordering::Release);
                 }
                 if request_id.is_some() {
                     sink.emit(Some(json!({"jsonrpc":"2.0","id":request_id,"error":{"code":-32000,"message":error}})), true, None);
@@ -548,7 +595,21 @@ async fn run_control(
     discovery: Option<(u64, Option<String>)>,
     sink: &mut Sink,
 ) -> Result<Option<Value>, McpTransportError> {
-    let mut exchange = session.binding.policy.transport.send(request).await?;
+    let mut exchange = match session
+        .binding
+        .policy
+        .transport
+        .send_resumable(request)
+        .await
+    {
+        Ok(exchange) => exchange,
+        Err(error) => {
+            if context.session_id.is_some() && error == McpTransportError::HttpStatus(404) {
+                sink.fail();
+            }
+            return Err(error);
+        }
+    };
     let http_session = exchange.session_id();
     if http_session.is_some() {
         *session.upstream_context.lock().await = Some(HttpContext {
@@ -560,6 +621,9 @@ async fn run_control(
         let Some(mut message) = event.message else {
             continue;
         };
+        if method == "notifications/initialized" && exchange.status_code() >= 400 {
+            session.protocol.lock().await.initialization_failed();
+        }
         let members = match &mut message {
             Value::Array(members) => members.as_mut_slice(),
             member => std::slice::from_mut(member),
@@ -593,6 +657,12 @@ async fn run_control(
             }
         }
         session.observe(&message).await?;
+        if context.session_id.is_some() && exchange.status_code() == 404 {
+            session.close();
+            sink.emit(Some(message), false, None);
+            sink.fail();
+            return Ok(None);
+        }
         if terminal {
             return Ok(Some(message));
         }

@@ -96,6 +96,11 @@ authority. Duplicate operation IDs and conflicting unresolved effects are reject
 Each matching response completes its own permit before delivery, including out-of-order arrays.
 An incomplete batch preserves known receipts and marks only unresolved members unknown.
 
+Legacy SSE recovery retains the original permit while using GET with the exact originating stream
+cursor. It creates neither a second operation nor another send attempt. Each recovered factual
+result is persisted before provider delivery. Session DELETE waits for admitted exchanges to settle;
+an upstream 404 requires a new protocol session without authorizing a replay of the original write.
+
 After claiming a new daemon generation, startup recovery marks old-generation `sent` attempts
 unknown in bounded batches. Opening or migrating a database alone never recovers live sends.
 Recovery is not proof that an old request did not take effect.

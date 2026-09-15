@@ -101,10 +101,11 @@ differs from legacy handshake negotiation; the adapter must preserve this distin
 - Automatic HTTP retries and redirects are disabled. Ambient proxy variables are not consulted by
   this client; upstream routing and credentials come from the trusted configuration.
 - Header construction and size/type validation happen before a request can be journaled as sent.
-- Requests have an explicit deadline. EOF before a terminal response does not establish a tool
-  outcome; the journal/controller must classify that boundary as uncertain.
+- Tool/control requests have one deadline covering the initial POST and cursor-based recovery.
+  EOF without a recoverable cursor does not establish a tool outcome. Independent GET listeners
+  bound connection setup and remain cancellable while idle.
 - Legacy stream resumption constructs GET with the exact cursor. It never reconstructs a tool POST.
-  Retry timing and cursor lifetime belong to the session controller, not an automatic transport retry.
+  The controller retains cursor and retry state for that exchange, never across unrelated requests.
 - The SSE decoder accepts LF/CRLF/CR, a UTF-8 BOM, comments, multiline data, empty priming events,
   cursor updates, and retry hints. It does not dispatch an unterminated event on EOF.
 - Legacy SSE can carry server requests and notifications. Modern SSE rejects independent server
@@ -127,6 +128,34 @@ Preserve upstream response order and individual/array shapes. Before forwarding 
 its matching tool receipts. If the stream ends after partial results, deliver queued known results
 and close without a completion marker; only unresolved members become unknown. No member is
 automatically resent. Discovery refreshes and prior-cursor pages retain distinct generations.
+
+### Legacy stream recovery and closure
+
+A legacy SSE response with a nonempty event cursor can resume through at most three GET attempts
+within the originating request's deadline. Each GET uses that stream's exact cursor, original
+session, endpoint, and credentials. Server retry hints remain minimum delays; if the deadline
+cannot accommodate one, no early reconnect is sent. An empty cursor clears recovery permission.
+There is no repeated tool POST, new operation, or replacement send permit. Partial batch receipts
+remain durable while the original pending members await their resumed results.
+
+After initialized delivery, a daemon readiness field on internal RPC frames enables the shim's
+independent listener. Preparation alone cannot set readiness. This field never enters MCP stdout. One listener per session forwards server
+requests and notifications and resumes its own cursor. HTTP 405 completes this optional listener
+without failing the provider. Cursorless stream loss closes delivery rather than claiming recovered
+continuity. Modern request-scoped streams do not use legacy GET recovery.
+
+Listener admission uses signed bootstrap authority. Connection setup and each delivered message
+hold a short executor guard; idle reads do not. Current owner, lease, membership, mailbox, and
+activation phase are checked before delivery and once per second while idle. Session/binding
+closure interrupts listening. Its independent workspace prevents idle listeners from consuming
+tool or callback capacity.
+
+Closure denies new calls immediately, drains admitted exchanges, then sends one bounded DELETE
+with the private upstream session header. A successful response, 404, or 405 completes termination.
+Caller loss and activation cleanup also perform this cleanup; no database transaction spans it.
+An upstream session 404 preserves any real error and closes the old provider stream. Reopening
+requires initialization of a new session, while the original write's journal receipt still prevents
+unauthorized replay. Cursors remain transient; daemon restart uses journal ambiguity recovery.
 
 ### Modern metadata
 
@@ -172,7 +201,8 @@ not copied into transport diagnostics or the operation journal.
   guard independently of that stream's receiver. Caller disconnect cannot cancel persistence of a
   factual result or release the guard while an upstream write is still running.
 - An internal completion marker distinguishes normal stream completion from transport loss. The
-  shim never reconstructs a lost POST. Only MCP messages are written to stdout.
+  shim never reconstructs a lost POST. The readiness marker reports daemon protocol state without
+  inferring initialization success from other members of a batch. Only MCP messages reach stdout.
 - Initialization and the initialized notification are ordered through HTTP delivery. Upstream
   requests are forwarded immediately; their authenticated callback responses bypass the lifecycle
   gate to avoid initialization deadlock. Unsolicited or duplicate callback responses are rejected.
@@ -201,6 +231,7 @@ do not allocate that amount of memory up front.
 | Ingress | 64 MiB | Decoded RPC payload through parsing and admission |
 | Working allowance | 512 MiB | Eight 64 MiB exchange reservations, covering bounded policy/HTTP/SSE/result working copies |
 | Callback working allowance | 64 MiB | One independent response reservation; ordinary requests cannot consume it |
+| Listener working allowance | 512 MiB | Eight independent 64 MiB reservations; one idle GET listener per admitted session |
 | Delivery | 64 MiB | Journal events and RPC frames, transferring the same lease between queues |
 | Retained state | 64 MiB | Both discovery declaration copies and shared initialization capabilities |
 | Each stdio shim | 32 MiB | Its combined incoming messages and pending stdout messages |
@@ -225,9 +256,8 @@ JSON object/allocator overhead, trusted transport configuration, HTTP/gRPC imple
 and kernel buffers are outside byte accounting. Existing frame, catalog, header, correlation-count,
 and session limits continue to bound their corresponding structures.
 
-The raw transport version table does not imply complete controller support. Legacy GET
-listening/resumption and upstream DELETE, linked MRTR/task rounds, and
-integration-specific authorization for non-tool methods remain controller work.
+The raw transport version table does not imply complete controller support. Linked MRTR/task
+rounds and integration-specific authorization for non-tool methods remain controller work.
 
 ## Validation Matrix
 
@@ -247,6 +277,8 @@ integration-specific authorization for non-tool methods remain controller work.
 | Startup | Launch/session/mailbox prerequisites; initialization callback and discovery before running; no tool send or ordinary actor control until running |
 | Modern discovery | Startup RPC preserves metadata/cache hints; a real stdio probe preserves an upstream error and permits subsequent legacy initialization |
 | March batches | Real shim callback/discovery/tool arrays, one POST with all sends durable, out-of-order receipts, partial-result delivery, atomic scope/ID rejection, and bootstrap without write authority |
+| Legacy recovery | Two simultaneous writes use distinct GET cursors; partial batch settlement keeps original attempts; retry beyond deadline and cleared cursor cause no GET/POST |
+| Listener and close | Real shim GET callbacks/resumption/DELETE; idle listener releases the executor guard; DELETE waits for durable write settlement; session 404 preserves error and requires fresh initialization |
 
 ## Operational Notes
 
@@ -264,10 +296,13 @@ fixture additionally checks inherited provider/shim environments and an actual j
 
 - Linked MRTR continuation/task-result admission remains controller work. Observed deferred receipts already block a replay
   of the original request without claiming a final tool outcome.
+- Failed-handshake retry needs a focused retirement audit for any provisional HTTP session and
+  pending callback IDs before another initialize exchange reuses the proxy session.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
   aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
   not evidence that retrying an unresolved write is safe.
-- Legacy GET cursors must be scoped to the exact session and stream when recovery is wired.
+- Cursors are not persisted across daemon restart; recovery cannot claim replayed stream history
+  after losing that transient state.
 - Production bindings must intersect all advertised capabilities and non-tool methods with their
   approved scope. Generic protocol forwarding alone does not establish resource/prompt authority.
 

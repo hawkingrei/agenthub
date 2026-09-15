@@ -23,9 +23,16 @@ pub struct McpProxyFrame {
     pub message_json: ::prost::alloc::string::String,
     #[prost(bool, tag = "2")]
     pub finished: bool,
+    #[prost(bool, tag = "3")]
+    pub can_listen: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CloseMcpProxyRequest {
+    #[prost(string, tag = "1")]
+    pub session_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListenMcpProxyRequest {
     #[prost(string, tag = "1")]
     pub session_id: ::prost::alloc::string::String,
 }
@@ -837,6 +844,35 @@ pub mod team_internal_control_client {
                     GrpcMethod::new(
                         "agenthub.internal.v1.TeamInternalControl",
                         "ExchangeMcpProxy",
+                    ),
+                );
+            self.inner.server_streaming(req, path, codec).await
+        }
+        pub async fn listen_mcp_proxy(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListenMcpProxyRequest>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<super::McpProxyFrame>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/ListenMcpProxy",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "ListenMcpProxy",
                     ),
                 );
             self.inner.server_streaming(req, path, codec).await
@@ -1804,6 +1840,19 @@ pub mod team_internal_control_server {
             tonic::Response<Self::ExchangeMcpProxyStream>,
             tonic::Status,
         >;
+        /// Server streaming response type for the ListenMcpProxy method.
+        type ListenMcpProxyStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<super::McpProxyFrame, tonic::Status>,
+            >
+            + std::marker::Send
+            + 'static;
+        async fn listen_mcp_proxy(
+            &self,
+            request: tonic::Request<super::ListenMcpProxyRequest>,
+        ) -> std::result::Result<
+            tonic::Response<Self::ListenMcpProxyStream>,
+            tonic::Status,
+        >;
         async fn close_mcp_proxy(
             &self,
             request: tonic::Request<super::CloseMcpProxyRequest>,
@@ -2187,6 +2236,56 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = ExchangeMcpProxySvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.server_streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/ListenMcpProxy" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListenMcpProxySvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::ServerStreamingService<super::ListenMcpProxyRequest>
+                    for ListenMcpProxySvc<T> {
+                        type Response = super::McpProxyFrame;
+                        type ResponseStream = T::ListenMcpProxyStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListenMcpProxyRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::listen_mcp_proxy(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListenMcpProxySvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

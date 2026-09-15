@@ -1,6 +1,7 @@
 use super::*;
 use crate::internal::proto::agenthub::internal::v1::{
-    CloseMcpProxyRequest, ExchangeMcpProxyRequest, McpProxyFrame, OpenMcpProxyRequest,
+    CloseMcpProxyRequest, ExchangeMcpProxyRequest, ListenMcpProxyRequest, McpProxyFrame,
+    OpenMcpProxyRequest,
 };
 
 impl InternalGrpcMailboxClient {
@@ -51,6 +52,19 @@ impl InternalGrpcMailboxClient {
             .await
             .map_err(mcp_rpc_error)?;
         Ok(())
+    }
+
+    pub(crate) async fn listen_mcp_proxy(
+        &self,
+        session_id: String,
+    ) -> anyhow::Result<tonic::Streaming<McpProxyFrame>> {
+        let request = self.control_request(ListenMcpProxyRequest { session_id })?;
+        Ok(self
+            .mcp_client()
+            .listen_mcp_proxy(request)
+            .await
+            .map_err(mcp_rpc_error)?
+            .into_inner())
     }
 }
 

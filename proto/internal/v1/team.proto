@@ -9,6 +9,7 @@ package agenthub.internal.v1;
 service TeamInternalControl {
   rpc OpenMcpProxy(OpenMcpProxyRequest) returns (OpenMcpProxyResponse);
   rpc ExchangeMcpProxy(ExchangeMcpProxyRequest) returns (stream McpProxyFrame);
+  rpc ListenMcpProxy(ListenMcpProxyRequest) returns (stream McpProxyFrame);
   rpc CloseMcpProxy(CloseMcpProxyRequest) returns (CloseMcpProxyResponse);
   rpc FinishLoopActivation(FinishLoopActivationRequest) returns (FinishLoopActivationResponse);
   rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
@@ -53,8 +54,10 @@ message ExchangeMcpProxyRequest {
 message McpProxyFrame {
   string message_json = 1;
   bool finished = 2;
+  bool can_listen = 3;
 }
 message CloseMcpProxyRequest { string session_id = 1; }
+message ListenMcpProxyRequest { string session_id = 1; }
 message CloseMcpProxyResponse {}
 
 // Executor identity and scope come exclusively from signed activation credentials.

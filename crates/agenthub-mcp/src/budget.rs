@@ -106,6 +106,7 @@ pub struct McpProxyBudget {
     pub retained: ByteBudget,
     workspaces: ByteBudget,
     callbacks: ByteBudget,
+    listeners: ByteBudget,
 }
 
 impl Default for McpProxyBudget {
@@ -124,6 +125,7 @@ impl McpProxyBudget {
             retained: ByteBudget::new(retained),
             workspaces: ByteBudget::new(workspaces.saturating_mul(EXCHANGE_WORKSPACE_BYTES)),
             callbacks: ByteBudget::new(callbacks.saturating_mul(EXCHANGE_WORKSPACE_BYTES)),
+            listeners: ByteBudget::new(workspaces.saturating_mul(EXCHANGE_WORKSPACE_BYTES)),
         }
     }
 
@@ -134,6 +136,10 @@ impl McpProxyBudget {
             &self.workspaces
         }
         .acquire(EXCHANGE_WORKSPACE_BYTES)
+    }
+
+    pub(crate) fn listener(&self) -> Result<ByteLease, McpTransportError> {
+        self.listeners.acquire(EXCHANGE_WORKSPACE_BYTES)
     }
 }
 
@@ -186,7 +192,9 @@ mod tests {
         assert!(budget.workspace(false).is_err());
         let callback = budget.workspace(true).unwrap();
         assert!(budget.workspace(true).is_err());
-        drop((ordinary, callback));
+        let listener = budget.listener().unwrap();
+        assert!(budget.listener().is_err());
+        drop((ordinary, callback, listener));
         assert!(budget.workspace(false).is_ok());
     }
 

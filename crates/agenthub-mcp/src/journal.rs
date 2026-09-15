@@ -55,6 +55,7 @@ pub struct McpCallResult {
     /// A lost callback/notification requires closing the provider stream. It never cancels a
     /// send or suppresses persistence of a factual result received later by the daemon.
     pub event_delivery_lost: bool,
+    pub http_status: u16,
 }
 
 #[derive(Clone)]
@@ -90,15 +91,15 @@ impl JournaledMcpClient {
             .map_err(journal_error)?;
         let mut delivery_lost = false;
         let observed = async {
-            let mut exchange = call.transport.send(call.request).await?;
-            let unidentified_http_error = exchange.status_code() >= 400;
+            let mut exchange = call.transport.send_resumable(call.request).await?;
             while let Some(event) = exchange.next_event().await? {
+                let unidentified_http_error = exchange.status_code() >= 400;
                 if let Some(message) = event.message.as_ref()
                     && let Some(response) =
                         matching_response(message, &call.response_id, unidentified_http_error)?
                 {
                     let completion = classify_completion(response)?;
-                    return Ok((message.clone(), completion));
+                    return Ok((message.clone(), completion, exchange.status_code()));
                 }
                 // Queue pressure loses delivery only. The reserved HTTP workspace keeps draining
                 // until a factual result can be committed, even after the caller has gone away.
@@ -110,7 +111,7 @@ impl JournaledMcpClient {
         }
         .await;
         match observed {
-            Ok((response, completion)) => {
+            Ok((response, completion, http_status)) => {
                 // Do not expose a terminal result until its receipt is durable. Losing the
                 // provider or replacing executor authority cannot discard an observed result.
                 self.journal
@@ -123,6 +124,7 @@ impl JournaledMcpClient {
                     completion,
                     response,
                     event_delivery_lost: delivery_lost,
+                    http_status,
                 })
             }
             Err(error) => {
@@ -141,6 +143,11 @@ impl JournaledMcpClient {
     }
 
     fn deliver(&self, event: HttpEvent, events: &mpsc::Sender<Budgeted<HttpEvent>>) -> bool {
+        // Resumption owns cursor/retry-only frames. Dropping one from the provider queue is
+        // not lost MCP delivery and must not close an otherwise healthy provider session.
+        if event.message.is_none() {
+            return true;
+        }
         let bytes = event
             .message
             .as_ref()

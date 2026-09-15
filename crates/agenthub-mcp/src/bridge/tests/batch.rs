@@ -9,6 +9,22 @@ async fn awaiting_initialized(session: &McpProxySession) {
 }
 
 #[tokio::test]
+async fn prepared_initialized_notification_does_not_enable_listener_before_delivery() {
+    let session = session();
+    awaiting_initialized(&session).await;
+    let pending = session
+        .prepare(
+            &executor(),
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        )
+        .await
+        .unwrap();
+    assert!(!session.can_listen().await);
+    drop(pending);
+    assert!(session.prepare_listener().await.is_err());
+}
+
+#[tokio::test]
 async fn failed_batch_does_not_advance_initialization_or_consume_request_ids() {
     let session = session();
     awaiting_initialized(&session).await;

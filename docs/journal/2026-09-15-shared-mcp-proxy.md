@@ -5,7 +5,8 @@
 Slice 9 now has the persistent operation journal, shared JSONL/HTTP/SSE transport, trusted call
 preparation, actual HTTP/journal orchestration, daemon startup recovery, authenticated streaming
 RPCs, and a local stdio shim. Existing Mem profile resolution, activation mounts, local ACP launch,
-inherited-environment isolation, and journaled March batches are connected. Complete protocol
+inherited-environment isolation, journaled March batches, and legacy GET/recovery/DELETE are
+connected. Complete protocol
 controller behavior and integration authorization remain pending; this checkpoint does not complete slice 9.
 
 ## Background
@@ -32,6 +33,8 @@ giving an expired executor authority to send more work.
   descriptors, and removal of upstream secrets from provider and descendant environments.
 - March batch admission through the real shim, with one HTTP POST, atomic tool send transitions,
   independently durable response receipts, and partial-result forwarding on disconnect.
+- Legacy GET listeners and exact-stream recovery, readiness-driven shim subscription, and upstream
+  DELETE after admitted exchanges settle, including caller loss and activation cleanup.
 
 ## Key Decisions
 
@@ -249,8 +252,47 @@ the fixture now uses SSE for that array and separately checks JSON response-only
 production validator remains strict. No dependency, schema, generated protocol, or Bazel change
 was required; existing source globs include the new modules.
 
+The legacy stream follow-up retains a separate cursor and server retry delay inside each HTTP
+exchange. Recovery sends GET with the original session and deadline, retaining the same journal
+permits. There is no second POST or new attempt. Metadata-only priming frames remain in recovery
+state and do not consume provider delivery capacity. Concurrent writes and partial batches exercise
+this path against real loopback HTTP servers.
+
+The shim subscribes after the daemon reports actual protocol readiness on an internal frame field;
+MCP payloads and stdout remain unchanged. Listeners use independent workspace credits and one
+slot per session. They revalidate the live execution fence before each message and periodically
+while idle, without holding the operation guard over idle reads. Raw reads and reconnect delays
+stay pinned across validation ticks. GET 405 leaves ordinary MCP exchange available.
+
+Session closure fences new admission, stops listening, and waits for admitted exchanges before
+DELETE. Disconnected provider tasks and retired sessions also run cleanup. The actual HTTP fixture
+checks that DELETE sees no pending send, even when a write completes through GET after RPC loss.
+A real shim receives a GET callback, responds through POST, receives a resumed notification, and
+terminates the upstream session on stdin EOF. A session-404 fixture preserves upstream error data,
+closes the old stream, and proves a reopened proxy still requires initialization. Readiness is
+published only after initialized HTTP delivery; a preparation-only regression keeps listening
+closed. The real GET fixture uses a 1.1-second retry hint, spanning the one-second authority
+check, and verifies that reconnection does not shorten the server delay.
+
+Validation commands for this follow-up:
+
+```bash
+cargo test -p agenthub-mcp --locked --offline
+cargo clippy -p agenthub -p agenthub-mcp --all-targets --locked --offline -- -D warnings
+cargo build --bin agenthub --locked --offline
+cargo test -p agenthub --lib mcp --locked --offline
+cargo fmt --all --check
+```
+
+The final legacy stream checkpoint passes 54 MCP crate tests and 20 root MCP tests, with the
+configured-launch child fixture invoked by its parent. Root/MCP all-target Clippy passes with
+warnings denied, and the real binary build, formatting, whitespace, and changed-document local
+links pass. The tracked internal protobuf source matches build-script output for the new listen
+RPC and readiness field. There are no dependency, database schema, or Bazel configuration changes.
+
 ## Follow-Ups
 
+- Retire provisional HTTP sessions and pending callback IDs before retrying failed initialization.
 - Complete slice 9's linked continuations, remaining protocol controller paths, and integration
   authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.

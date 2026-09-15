@@ -8,6 +8,7 @@ use crate::{
 
 pub struct McpBatchResult {
     pub event_delivery_lost: bool,
+    pub http_status: u16,
 }
 
 impl JournaledMcpClient {
@@ -47,9 +48,12 @@ impl JournaledMcpClient {
             .collect();
         let mut expected = batch.expected;
         let mut delivery_lost = false;
+        let mut http_status = 200;
         let observed: Result<(), McpCallError> = async {
-            let mut exchange = batch.transport.send(batch.request).await?;
+            let mut exchange = batch.transport.send_resumable(batch.request).await?;
+            http_status = exchange.status_code();
             while let Some(event) = exchange.next_event().await? {
+                http_status = exchange.status_code();
                 if let Some(message) = &event.message {
                     let members = message
                         .as_array()
@@ -129,6 +133,7 @@ impl JournaledMcpClient {
         }
         Ok(McpBatchResult {
             event_delivery_lost: delivery_lost,
+            http_status,
         })
     }
 }

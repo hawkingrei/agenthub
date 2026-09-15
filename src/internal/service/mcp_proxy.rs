@@ -6,14 +6,72 @@ use tokio::sync::mpsc;
 use super::loop_activation::ExecutionAdmission;
 use super::*;
 use crate::internal::proto::agenthub::internal::v1::{
-    CloseMcpProxyRequest, CloseMcpProxyResponse, ExchangeMcpProxyRequest, McpProxyFrame,
-    OpenMcpProxyRequest, OpenMcpProxyResponse,
+    CloseMcpProxyRequest, CloseMcpProxyResponse, ExchangeMcpProxyRequest, ListenMcpProxyRequest,
+    McpProxyFrame, OpenMcpProxyRequest, OpenMcpProxyResponse,
 };
 
 pub(super) type McpResponseStream =
     Pin<Box<dyn futures::Stream<Item = Result<McpProxyFrame, Status>> + Send>>;
 
 impl TeamInternalControlService {
+    pub(super) async fn listen_mcp_proxy_request(
+        &self,
+        request: Request<ListenMcpProxyRequest>,
+    ) -> Result<Response<McpResponseStream>, Status> {
+        let (executor, guard) = self
+            .mcp_executor(request.metadata(), ExecutionAdmission::Bootstrap)
+            .await?;
+        let hub = self.deps.agents.mcp_proxy()?;
+        let session = hub
+            .session(&executor, &request.into_inner().session_id)
+            .await?;
+        let prepared = session
+            .prepare_listener()
+            .await
+            .map_err(|_| Status::failed_precondition("MCP listener admission failed"))?;
+        let (output, receiver) = mpsc::channel(8);
+        let agents = self.deps.agents.clone();
+        let store = LoopStore::new(self.deps.db.clone());
+        let cleanup = session.clone();
+        self.deps
+            .agents
+            .daemon_tasks()
+            .spawn_runtime_task("mcp-listener", async move {
+                prepared
+                    .run(output, || {
+                        let agents = agents.clone();
+                        let store = store.clone();
+                        let executor = executor.clone();
+                        async move {
+                            let guard = agents
+                                .loop_operation_gate(&executor.actor_id)
+                                .await
+                                .read_owned()
+                                .await;
+                            if executor.owner_id != agents.loop_owner_id() {
+                                return Err(agenthub_mcp::McpTransportError::Disconnected);
+                            }
+                            store
+                                .verify_executor_bootstrap_live(
+                                    &executor,
+                                    chrono::Utc::now().timestamp(),
+                                )
+                                .await
+                                .map_err(|_| agenthub_mcp::McpTransportError::Disconnected)?;
+                            Ok(guard)
+                        }
+                    })
+                    .await;
+                if !cleanup.is_active() {
+                    let _ = cleanup.shutdown().await;
+                }
+                Ok(())
+            })
+            .map_err(|_| Status::unavailable("MCP proxy is shutting down"))?;
+        drop(guard);
+        Ok(Response::new(response_stream(receiver, session)))
+    }
+
     async fn mcp_executor(
         &self,
         metadata: &MetadataMap,
@@ -101,6 +159,7 @@ impl TeamInternalControlService {
         match session.prepare(&executor, message.clone()).await {
             Ok(prepared) => {
                 let journal = hub.journal.clone();
+                let cleanup = session.clone();
                 if self
                     .deps
                     .agents
@@ -108,6 +167,9 @@ impl TeamInternalControlService {
                     .spawn_runtime_task("mcp-exchange", async move {
                         let _guard = guard;
                         prepared.run(journal, output).await;
+                        if !cleanup.is_active() {
+                            let _ = cleanup.shutdown().await;
+                        }
                         Ok(())
                     })
                     .is_err()
@@ -132,21 +194,31 @@ impl TeamInternalControlService {
                 let _ = output.try_send(frame);
             }
         }
-        let stream =
-            futures::stream::unfold((receiver, None), |(mut receiver, _previous)| async move {
-                receiver.recv().await.map(|frame| {
-                    let (message_json, finished, bytes) = frame.into_parts();
-                    (
-                        Ok(McpProxyFrame {
-                            message_json,
-                            finished,
-                        }),
-                        (receiver, Some(bytes)),
-                    )
-                })
-            });
-        Ok(Response::new(Box::pin(stream)))
+        Ok(Response::new(response_stream(receiver, session)))
     }
+}
+
+fn response_stream(
+    receiver: mpsc::Receiver<agenthub_mcp::bridge::McpProxyFrame>,
+    session: std::sync::Arc<agenthub_mcp::bridge::McpProxySession>,
+) -> McpResponseStream {
+    let stream = futures::stream::unfold(
+        (receiver, None, session),
+        |(mut receiver, _previous, session)| async move {
+            let frame = receiver.recv().await?;
+            let can_listen = session.can_listen().await;
+            let (message_json, finished, bytes) = frame.into_parts();
+            Some((
+                Ok(McpProxyFrame {
+                    message_json,
+                    finished,
+                    can_listen,
+                }),
+                (receiver, Some(bytes), session),
+            ))
+        },
+    );
+    Box::pin(stream)
 }
 
 fn message_admission(message: &serde_json::Value) -> ExecutionAdmission {

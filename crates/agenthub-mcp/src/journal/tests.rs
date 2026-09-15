@@ -34,6 +34,7 @@ use uuid::Uuid;
 use super::*;
 
 mod batch;
+mod recovery;
 use crate::{
     http::{HttpContext, McpHttpTransport},
     policy::{McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, TrustedReplayPolicy},
@@ -185,6 +186,8 @@ struct UpstreamState {
     mode: AtomicUsize,
     received: Notify,
     release: Notify,
+    resumptions: Mutex<BTreeMap<String, Value>>,
+    resumed: Mutex<Vec<String>>,
 }
 
 impl Upstream {
@@ -198,6 +201,8 @@ impl Upstream {
             mode: AtomicUsize::new(0),
             received: Notify::new(),
             release: Notify::new(),
+            resumptions: Mutex::new(BTreeMap::new()),
+            resumed: Mutex::new(Vec::new()),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!(
@@ -205,7 +210,7 @@ impl Upstream {
             listener.local_addr().unwrap()
         );
         let router = Router::new()
-            .route("/private-mcp", post(upstream))
+            .route("/private-mcp", post(upstream).get(recovery::resume))
             .with_state(state.clone());
         let task = tokio::spawn(async move {
             axum::serve(listener, router).await.unwrap();
@@ -278,6 +283,17 @@ async fn upstream(
         }
         let mut responses: Vec<_> = members.iter().filter(|member| member.get("id").is_some())
             .map(|member| json!({"jsonrpc":"2.0","id":member["id"],"result":{"content":[],"body":member.pointer("/params/arguments/body")}})).collect();
+        if mode == 9 {
+            let first = responses.remove(0);
+            state
+                .resumptions
+                .lock()
+                .unwrap()
+                .insert("private-batch-cursor".into(), Value::Array(responses));
+            return recovery::stream(format!(
+                "id: private-batch-cursor\nretry: 10\ndata: {first}\n\n"
+            ));
+        }
         if mode == 8 {
             return (
                 [("content-type", "text/event-stream")],
@@ -306,6 +322,17 @@ async fn upstream(
     } else {
         json!({"jsonrpc":"2.0","id":message["id"],"result":result})
     };
+    if matches!(mode, 9..=11) {
+        let cursor = format!("private-stream-{}", message["id"]);
+        state
+            .resumptions
+            .lock()
+            .unwrap()
+            .insert(cursor.clone(), response);
+        let extra = if mode == 11 { "id:\ndata:\n\n" } else { "" };
+        let retry = if mode == 10 { 10_000 } else { 10 };
+        return recovery::stream(format!("id: {cursor}\nretry: {retry}\ndata:\n\n{extra}"));
+    }
     if mode == 6 {
         // Valid short numeric spellings can exceed the output limit after JSON serialization.
         let values = "1e6,".repeat(crate::MAX_MESSAGE_BYTES / 10);

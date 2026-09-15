@@ -38,6 +38,7 @@ mod batch;
 mod bootstrap;
 mod budget;
 mod discovery;
+mod listener;
 
 struct Upstream {
     db: sqlx::SqlitePool,
@@ -47,6 +48,13 @@ struct Upstream {
     hold_writes: AtomicBool,
     write_received: Notify,
     write_release: Notify,
+    listen_enabled: AtomicBool,
+    resume_writes: AtomicBool,
+    listened: Notify,
+    listener_replied: Notify,
+    gets: Mutex<Vec<Option<String>>>,
+    deleted: AtomicBool,
+    expire_stream: AtomicBool,
 }
 
 async fn handler(
@@ -61,9 +69,13 @@ async fn handler(
     }
     if message.get("method").is_none() {
         assert_eq!(headers["mcp-session-id"], "private-upstream-session");
-        assert_eq!(message["id"], "roots-1");
+        assert!(message["id"] == "roots-1" || message["id"] == "roots-listener");
         assert_eq!(message["result"]["roots"], json!([]));
-        upstream.callback.notify_one();
+        if message["id"] == "roots-listener" {
+            upstream.listener_replied.notify_one();
+        } else {
+            upstream.callback.notify_one();
+        }
         return StatusCode::ACCEPTED.into_response();
     }
     match message["method"].as_str().unwrap() {
@@ -146,6 +158,13 @@ async fn handler(
             .unwrap();
             assert_eq!(sent, 1);
             upstream.write_received.notify_one();
+            if upstream.resume_writes.load(Ordering::Acquire) {
+                return (
+                    [("content-type", "text/event-stream")],
+                    "id: private-write-cursor\nretry: 10\ndata:\n\n",
+                )
+                    .into_response();
+            }
             if upstream.hold_writes.load(Ordering::Acquire) {
                 upstream.write_release.notified().await;
             }
@@ -227,6 +246,13 @@ async fn setup_with_running(mark_running: bool) -> Harness {
         hold_writes: AtomicBool::new(false),
         write_received: Notify::new(),
         write_release: Notify::new(),
+        listen_enabled: AtomicBool::new(false),
+        resume_writes: AtomicBool::new(false),
+        listened: Notify::new(),
+        listener_replied: Notify::new(),
+        gets: Mutex::new(Vec::new()),
+        deleted: AtomicBool::new(false),
+        expire_stream: AtomicBool::new(false),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(
@@ -234,7 +260,10 @@ async fn setup_with_running(mark_running: bool) -> Harness {
         listener.local_addr().unwrap()
     );
     let router = axum::Router::new()
-        .route("/mcp", post(handler))
+        .route(
+            "/mcp",
+            post(handler).get(listener::get).delete(listener::delete),
+        )
         .with_state(upstream.clone());
     let http = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();

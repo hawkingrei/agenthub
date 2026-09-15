@@ -1,6 +1,9 @@
 //! Streamable HTTP without automatic retries, redirects, or provider-supplied credentials.
 
 mod headers;
+mod recovery;
+
+pub use recovery::ResumableExchange;
 
 #[cfg(test)]
 mod tests;

@@ -17,6 +17,7 @@ impl McpProxySession {
         executor: &LoopReservation,
         message: Value,
     ) -> Result<PreparedProxyExchange, McpPolicyError> {
+        let exchange = self.exchanges.clone().read_owned().await;
         let members = message.as_array().ok_or(McpPolicyError::Call)?;
         let responses = members
             .iter()
@@ -161,6 +162,7 @@ impl McpProxySession {
             _slots: slots,
             _lifecycle: if initialized { lifecycle } else { None },
             _workspace: workspace,
+            _exchange: exchange,
         })
     }
 }
@@ -200,6 +202,18 @@ impl PreparedProxyBatch {
         }
         match result {
             Ok(result) => {
+                if context.session_id.is_some() && result.http_status == 404 {
+                    sink.fail();
+                }
+                if initialized && result.http_status >= 400 {
+                    session.protocol.lock().await.initialization_failed();
+                }
+                if initialized {
+                    session.listen_ready.store(
+                        session.protocol.lock().await.ready_context().is_some(),
+                        Ordering::Release,
+                    );
+                }
                 if result.event_delivery_lost {
                     sink.fail();
                 }
@@ -208,6 +222,7 @@ impl PreparedProxyBatch {
             Err(error) => {
                 if initialized {
                     session.protocol.lock().await.initialization_failed();
+                    session.listen_ready.store(false, Ordering::Release);
                 }
                 Err(error.to_string())
             }
