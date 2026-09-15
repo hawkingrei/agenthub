@@ -44,36 +44,6 @@ impl McpProxySession {
             _workspace: workspace,
         })
     }
-
-    /// Close admission immediately, but let already admitted writes land their factual results
-    /// before asking the upstream to destroy its session. DELETE itself has a bounded lifetime.
-    pub async fn shutdown(&self) -> Result<(), McpTransportError> {
-        self.close();
-        let _close = self.close_gate.lock().await;
-        let _settled = self.exchanges.write().await;
-        if self.close_sent.swap(true, Ordering::AcqRel) {
-            return Ok(());
-        }
-        let context = self.protocol.lock().await.http_context().or(self
-            .upstream_context
-            .lock()
-            .await
-            .clone());
-        let Some(context) = context.filter(|context| context.session_id.is_some()) else {
-            return Ok(());
-        };
-        let request = self.binding.policy.transport.prepare_close(&context)?;
-        tokio::time::timeout(Duration::from_secs(5), async {
-            let mut response = self.binding.policy.transport.send(request).await?;
-            if !matches!(response.status_code(), 200..=299 | 404 | 405) {
-                return Err(McpTransportError::HttpStatus(response.status_code()));
-            }
-            response.next_event().await?;
-            Ok(())
-        })
-        .await
-        .map_err(|_| McpTransportError::Deadline)?
-    }
 }
 
 impl PreparedProxyListener {

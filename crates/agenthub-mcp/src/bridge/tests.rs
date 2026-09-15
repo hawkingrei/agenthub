@@ -6,6 +6,7 @@ use super::*;
 use crate::{http::McpHttpTransport, protocol::ProtocolVersion};
 
 mod batch;
+mod lifecycle;
 
 fn session() -> Arc<McpProxySession> {
     session_with_budget(Arc::new(McpProxyBudget::default()))

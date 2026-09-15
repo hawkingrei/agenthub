@@ -1,6 +1,7 @@
 //! A daemon-owned MCP session. RPC adapters provide current execution authority and task ownership.
 
 mod batch;
+mod lifecycle;
 mod listen;
 pub use listen::PreparedProxyListener;
 
@@ -28,6 +29,8 @@ use crate::{
     protocol::{MessageKind, correlation_id, message_kind},
     session::McpProtocolSession,
 };
+
+const CALLBACK_SLOTS: u32 = 8;
 
 type BindArguments = dyn Fn(&str, &Value, Value) -> Result<Value, McpPolicyError> + Send + Sync;
 
@@ -122,6 +125,7 @@ pub struct PreparedProxyExchange {
     message: Value,
     context: HttpContext,
     kind: Exchange,
+    handshake: bool,
     _slots: Vec<OwnedSemaphorePermit>,
     _lifecycle: Option<OwnedMutexGuard<()>>,
     _workspace: ByteLease,
@@ -157,7 +161,7 @@ impl McpProxySession {
             budget,
             tool_slots: Arc::new(Semaphore::new(4)),
             control_slots: Arc::new(Semaphore::new(8)),
-            callback_slots: Arc::new(Semaphore::new(8)),
+            callback_slots: Arc::new(Semaphore::new(CALLBACK_SLOTS as usize)),
             listener_slot: Arc::new(Semaphore::new(1)),
             exchanges: Arc::new(RwLock::new(())),
             close_gate: Mutex::new(()),
@@ -232,7 +236,11 @@ impl McpProxySession {
                 return Err(McpPolicyError::Call);
             }
         }
-        let mut context = self.protocol.lock().await.begin(&message)?;
+        let mut protocol = self.protocol.lock().await;
+        let handshake = method == "initialize"
+            || method == "notifications/initialized" && protocol.awaiting_initialized();
+        let mut context = protocol.begin(&message)?;
+        drop(protocol);
         if method == "initialize" {
             self.listen_ready.store(false, Ordering::Release);
         }
@@ -309,6 +317,7 @@ impl McpProxySession {
             message,
             context,
             kind,
+            handshake,
             _slots: vec![slot],
             _lifecycle: lifecycle,
             _workspace: workspace,
@@ -419,6 +428,8 @@ impl PreparedProxyExchange {
         let request_id = (message_kind(&self.message).ok() == Some(MessageKind::Request))
             .then(|| self.message["id"].clone());
         let method = self.message["method"].as_str().unwrap_or("").to_owned();
+        let handshake = self.handshake;
+        let initialized = handshake && method != "initialize";
         let mut sink = Sink {
             output,
             session: session.clone(),
@@ -481,8 +492,8 @@ impl PreparedProxyExchange {
                 &session,
                 request,
                 &self.context,
-                &method,
-                request_id.as_ref(),
+                &self.message,
+                handshake,
                 None,
                 &mut sink,
             )
@@ -496,35 +507,44 @@ impl PreparedProxyExchange {
                 &session,
                 request,
                 &self.context,
-                &method,
-                request_id.as_ref(),
+                &self.message,
+                handshake,
                 Some((generation, cursor)),
                 &mut sink,
             )
             .await
             .map_err(|error| error.to_string()),
         };
+        let cleanup_failed = if handshake
+            && (outcome.is_err() || session.protocol.lock().await.http_context().is_none())
+        {
+            session.retire_failed_initialization().await.is_err()
+        } else {
+            false
+        };
+        if cleanup_failed {
+            session.close();
+        }
+        if initialized {
+            session.listen_ready.store(
+                session.protocol.lock().await.ready_context().is_some(),
+                Ordering::Release,
+            );
+        }
         match outcome {
             Ok(response) => {
-                if method == "notifications/initialized" {
-                    session.listen_ready.store(
-                        session.protocol.lock().await.ready_context().is_some(),
-                        Ordering::Release,
-                    );
-                }
-                sink.emit(response, true, None);
+                sink.emit(response, !cleanup_failed, None);
             }
             Err(error) => {
-                if matches!(method.as_str(), "initialize" | "notifications/initialized") {
-                    session.protocol.lock().await.initialization_failed();
-                    session.listen_ready.store(false, Ordering::Release);
-                }
                 if request_id.is_some() {
-                    sink.emit(Some(json!({"jsonrpc":"2.0","id":request_id,"error":{"code":-32000,"message":error}})), true, None);
+                    sink.emit(Some(json!({"jsonrpc":"2.0","id":request_id,"error":{"code":-32000,"message":error}})), !cleanup_failed, None);
                 } else {
                     sink.fail();
                 }
             }
+        }
+        if cleanup_failed {
+            sink.fail();
         }
     }
 }
@@ -590,11 +610,13 @@ async fn run_control(
     session: &McpProxySession,
     request: PreparedHttpRequest,
     context: &HttpContext,
-    method: &str,
-    request_id: Option<&Value>,
+    message: &Value,
+    handshake: bool,
     discovery: Option<(u64, Option<String>)>,
     sink: &mut Sink,
 ) -> Result<Option<Value>, McpTransportError> {
+    let method = message["method"].as_str().unwrap_or("");
+    let request_id = (message_kind(message)? == MessageKind::Request).then(|| &message["id"]);
     let mut exchange = match session
         .binding
         .policy
@@ -621,7 +643,7 @@ async fn run_control(
         let Some(mut message) = event.message else {
             continue;
         };
-        if method == "notifications/initialized" && exchange.status_code() >= 400 {
+        if handshake && method == "notifications/initialized" && exchange.status_code() >= 400 {
             session.protocol.lock().await.initialization_failed();
         }
         let members = match &mut message {
@@ -645,8 +667,9 @@ async fn run_control(
                         session.protocol.lock().await.initialization_failed();
                     } else {
                         let mut protocol = session.protocol.lock().await;
-                        protocol.accept_initialize_response(member, http_session.clone())?;
-                        *session.upstream_context.lock().await = protocol.http_context();
+                        if protocol.accept_initialize_response(member, http_session.clone())? {
+                            *session.upstream_context.lock().await = protocol.http_context();
+                        }
                     }
                 }
                 if let Some((generation, cursor)) = discovery.as_ref() {

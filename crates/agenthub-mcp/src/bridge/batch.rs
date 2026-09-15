@@ -70,6 +70,10 @@ impl McpProxySession {
         }
         // Commit lifecycle changes only after every member has passed local admission.
         let mut protocol = self.protocol.lock().await;
+        let initialized = protocol.awaiting_initialized()
+            && members
+                .iter()
+                .any(|member| member["method"] == "notifications/initialized");
         let mut candidate = protocol.clone();
         let mut context = candidate.begin(&message)?;
         if callbacks_only && let Some(current) = self.upstream_context.lock().await.as_ref() {
@@ -142,9 +146,6 @@ impl McpProxySession {
             };
             discoveries.insert(correlation_id(&member["id"]), (page_generation, cursor));
         }
-        let initialized = members
-            .iter()
-            .any(|member| member["method"] == "notifications/initialized");
         discovery.generation = generation;
         request_ids.extend(requests);
         callbacks.retain(|key| !callback_keys.contains(key));
@@ -159,6 +160,7 @@ impl McpProxySession {
                 discoveries,
                 initialized,
             })),
+            handshake: initialized,
             _slots: slots,
             _lifecycle: if initialized { lifecycle } else { None },
             _workspace: workspace,
@@ -208,12 +210,6 @@ impl PreparedProxyBatch {
                 if initialized && result.http_status >= 400 {
                     session.protocol.lock().await.initialization_failed();
                 }
-                if initialized {
-                    session.listen_ready.store(
-                        session.protocol.lock().await.ready_context().is_some(),
-                        Ordering::Release,
-                    );
-                }
                 if result.event_delivery_lost {
                     sink.fail();
                 }
@@ -222,7 +218,6 @@ impl PreparedProxyBatch {
             Err(error) => {
                 if initialized {
                     session.protocol.lock().await.initialization_failed();
-                    session.listen_ready.store(false, Ordering::Release);
                 }
                 Err(error.to_string())
             }

@@ -26,7 +26,7 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
   [transport and bound HTTP calls](features/mcp-proxy-transport.md) are implemented, with daemon
   startup recovery, signed MCP session RPCs, a local stdio shim, and configured local ACP launch
   with inherited-secret isolation, shared payload budgets, journaled March batches, and legacy
-  GET/resumption/DELETE. Failed-handshake session/callback retirement, linked continuations,
+  GET/resumption/DELETE and failed-handshake session/callback retirement. Linked continuations,
   complete integration authorization, and full proxy crash/static-launch validation remain pending.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.

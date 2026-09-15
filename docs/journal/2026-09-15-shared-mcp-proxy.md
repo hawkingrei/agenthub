@@ -290,9 +290,30 @@ warnings denied, and the real binary build, formatting, whitespace, and changed-
 links pass. The tracked internal protobuf source matches build-script output for the new listen
 RPC and readiness field. There are no dependency, database schema, or Bazel configuration changes.
 
+The failed-handshake follow-up retains provisional HTTP context when initialize returns an
+identified error, then retires that context after already admitted callback replies settle. It
+clears pending callback IDs and discovery state while still holding lifecycle admission. A fresh
+initialize can reuse upstream callback IDs without inheriting the old session. DELETE failure
+preserves the original error, closes the provider stream without a completion marker, and leaves
+the context available to final shutdown. The same cleanup covers malformed results, disconnects,
+anonymous HTTP errors, and failed initialized notifications, including March batches.
+
+Handshake identity is captured at admission. A repeated initialized notification after the
+session reaches normal operation stays an ordinary notification, so its error cannot retire an
+operating session with concurrent tool calls. This distinction also applies to notification
+batches. Session termination is shared by handshake retirement and normal shutdown; the latter
+still waits for all admitted exchanges.
+
+The focused HTTP lifecycle fixture covers six failure shapes, fresh initialization with a reused
+callback ID and a new HTTP session, an in-flight callback delaying DELETE, cleanup failure with
+final shutdown, and repeated initialized errors in an operating session. All 58 MCP crate tests
+and root/MCP all-target Clippy with warnings denied pass. The rebuilt real binary also passes
+20 root MCP tests, including the parent-invoked configured-launch child. Formatting, whitespace,
+and local links in all three changed documents pass. No public protocol, dependency, database
+schema, or Bazel configuration changes are needed for this follow-up.
+
 ## Follow-Ups
 
-- Retire provisional HTTP sessions and pending callback IDs before retrying failed initialization.
 - Complete slice 9's linked continuations, remaining protocol controller paths, and integration
   authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.

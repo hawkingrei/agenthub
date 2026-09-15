@@ -77,6 +77,17 @@ cannot start before initialization and the initialized notification. An upstream
 error remains an error; the session does not manufacture a successful handshake. Unknown versions
 fail explicitly. Modern requests do not receive a synthetic legacy initialization response.
 
+Failed handshakes retain lifecycle admission while admitted callback replies settle. Pending
+callback IDs, discovery state, and provisional HTTP sessions are then retired before another
+initialize can begin. Upstream errors remain unchanged; a new request ID may start a fresh
+handshake after successful cleanup, including reusing callback IDs in the new upstream session.
+Failed DELETE closes the proxy and retains the private context for final shutdown. A repeated
+initialized notification during normal operation is forwarded as an ordinary notification; its
+error does not reset the operating session or delete sessions with admitted tool calls. The
+controller distinguishes the initial transition described by the
+[legacy lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)
+from subsequent notifications.
+
 Modern `server/discover` is forwarded with its per-request metadata and HTTP method/version
 headers, without an HTTP session. Supported versions, capabilities, server metadata, instructions,
 cache hints, and extensions remain upstream data. The proxy does not cache this response or treat
@@ -279,6 +290,7 @@ rounds and integration-specific authorization for non-tool methods remain contro
 | March batches | Real shim callback/discovery/tool arrays, one POST with all sends durable, out-of-order receipts, partial-result delivery, atomic scope/ID rejection, and bootstrap without write authority |
 | Legacy recovery | Two simultaneous writes use distinct GET cursors; partial batch settlement keeps original attempts; retry beyond deadline and cleared cursor cause no GET/POST |
 | Listener and close | Real shim GET callbacks/resumption/DELETE; idle listener releases the executor guard; DELETE waits for durable write settlement; session 404 preserves error and requires fresh initialization |
+| Failed handshake | Identified/anonymous errors, malformed results, disconnects, single/batched initialized failures, callback settlement before DELETE, reused callback IDs after retry, cleanup failure, and repeated notifications in an operating session |
 
 ## Operational Notes
 
@@ -296,8 +308,6 @@ fixture additionally checks inherited provider/shim environments and an actual j
 
 - Linked MRTR continuation/task-result admission remains controller work. Observed deferred receipts already block a replay
   of the original request without claiming a final tool outcome.
-- Failed-handshake retry needs a focused retirement audit for any provisional HTTP session and
-  pending callback IDs before another initialize exchange reuses the proxy session.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
   aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
   not evidence that retrying an unresolved write is safe.

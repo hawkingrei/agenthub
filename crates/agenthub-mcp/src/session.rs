@@ -205,9 +205,13 @@ impl McpProtocolSession {
         Ok(true)
     }
 
-    /// Call after a failed initialize exchange or initialized notification. No tool call has begun.
+    /// Reset a failed handshake while the controller retains lifecycle admission.
     pub fn initialization_failed(&mut self) {
         self.state = State::New;
+    }
+
+    pub(crate) fn awaiting_initialized(&self) -> bool {
+        matches!(self.state, State::AwaitingInitialized { .. })
     }
 
     pub fn server_capabilities(&self) -> Option<&Value> {
