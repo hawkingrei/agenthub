@@ -25,6 +25,8 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-09-15: Bounded loop scheduling](2026-09-15-agent-loop-scheduling.md): durable future work, transactional dependency observations, source-aware revocation, and verified offline CLI cycles.
+
 - [2026-09-15: Durable loop work events](2026-09-15-agent-loop-work-events.md): atomic intake, scoped source recovery, and offline member dispatch.
 
 - [2026-09-15: Offline loop configuration](2026-09-15-agent-loop-offline-configuration.md): explicit policies, preflight, Card identity, and scope guards; full CI fixture correction included.

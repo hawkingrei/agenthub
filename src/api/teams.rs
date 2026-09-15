@@ -5,8 +5,12 @@ use std::path::{Path as StdPath, PathBuf};
 
 mod errors;
 mod loop_configuration;
+mod loop_scheduling;
 use loop_configuration::{
     get_loop_configuration, request_loop_activation, set_loop_configuration, update_team_spec_owned,
+};
+use loop_scheduling::{
+    create_loop_schedule, get_loop_schedule, list_loop_schedules, revoke_loop_schedule,
 };
 
 use self::errors::{
@@ -615,6 +619,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/{id}/members/{member_id}/loop/activate",
             post(request_loop_activation),
+        )
+        .route(
+            "/{id}/members/{member_id}/loop/schedules",
+            get(list_loop_schedules).post(create_loop_schedule),
+        )
+        .route(
+            "/{id}/members/{member_id}/loop/schedules/{registration_id}",
+            get(get_loop_schedule).delete(revoke_loop_schedule),
         )
         .route("/{id}/runtime", get(get_team_runtime))
         .route(

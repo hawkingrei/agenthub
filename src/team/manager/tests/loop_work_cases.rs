@@ -5,7 +5,7 @@ use agenthub_agent_domain::loop_runtime::{
 };
 use agenthub_db::loop_runtime::{LoopPolicyUpdate, LoopStore, LoopStoreError};
 
-async fn fixture() -> (TeamManager, crate::team::TeamDefinitionRecord) {
+pub(super) async fn fixture() -> (TeamManager, crate::team::TeamDefinitionRecord) {
     fixture_with_db(setup_test_db().await).await
 }
 

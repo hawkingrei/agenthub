@@ -25,6 +25,7 @@ impl LoopStore {
         let busy: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM loop_execution_reservations WHERE actor_id = ?1) \
              OR EXISTS(SELECT 1 FROM loop_activations WHERE actor_id = ?1 AND state IN ('pending', 'starting', 'running', 'finalizing')) \
+             OR EXISTS(SELECT 1 FROM loop_registrations WHERE actor_id = ?1 AND state = 'active') \
              OR EXISTS(SELECT 1 FROM agent_sessions WHERE agent_id = ?1 AND ended_at IS NULL)",
         ).bind(actor_id).fetch_one(&mut **tx).await?;
         anyhow::ensure!(
@@ -56,7 +57,7 @@ impl LoopStore {
         actor_id: &str,
     ) -> anyhow::Result<()> {
         let retained: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_activations WHERE actor_id = ?)")
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_activations WHERE actor_id = ?1) OR EXISTS(SELECT 1 FROM loop_registrations WHERE actor_id = ?1)")
                 .bind(actor_id)
                 .fetch_one(&mut **tx)
                 .await?;

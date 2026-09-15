@@ -8,7 +8,7 @@ Product: [features/agent-loop-product-model.md](features/agent-loop-product-mode
 Lifecycle: [features/agent-loop-runtime.md](features/agent-loop-runtime.md).
 Implementation: [features/agent-loop-activation-contract.md](features/agent-loop-activation-contract.md).
 The activation contract, control store, admission, lifecycle, local provider, and offline
-configuration and durable work-event checkpoints complete slices 1-7. Scheduling and later
+configuration, durable work-event, and scheduling checkpoints complete slices 1-8. Tool and later
 integration slices remain pending.
 Numbers below identify separate reviewable PR slices, not shipped capabilities.
 
@@ -18,8 +18,8 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
 
 Durable work evidence: [slice 7 checkpoint](journal/2026-09-15-agent-loop-work-events.md).
 
-- [ ] 8. Add due/dependency/standing triggers with inspection and revocation. Prove no lost
-  dependency wake, bounded catch-up, suspension, and convergent leader/worker wake cycles.
+Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduling.md).
+
 - [ ] 9. Add the shared local MCP proxy and persistent operation journal. Prove schema/result
   preservation, secret isolation, and no blind replay of unknown non-idempotent writes.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope

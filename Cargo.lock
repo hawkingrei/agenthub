@@ -496,6 +496,7 @@ dependencies = [
 name = "agenthub-agent-domain"
 version = "0.0.10"
 dependencies = [
+ "agenthub-team-domain",
  "anyhow",
  "serde",
  "url",
