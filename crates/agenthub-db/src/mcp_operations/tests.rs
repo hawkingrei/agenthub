@@ -17,6 +17,7 @@ use crate::loop_runtime::{LoopPolicyUpdate, LoopStore};
 use super::*;
 
 mod batch;
+mod continuation;
 
 struct Fixture {
     path: PathBuf,
@@ -886,6 +887,7 @@ async fn mcp_deferred_receipt_survives_transport_loss_and_requires_linked_contin
     let deferred = McpCompletion::Deferred {
         reason: McpDeferralKind::InputRequired,
         response_digest: "d".repeat(64).try_into().unwrap(),
+        input_receipt: None,
     };
     fixture
         .store
@@ -914,6 +916,7 @@ async fn mcp_deferred_receipt_survives_transport_loss_and_requires_linked_contin
     let changed = McpCompletion::Deferred {
         reason: McpDeferralKind::TaskAccepted,
         response_digest: "e".repeat(64).try_into().unwrap(),
+        input_receipt: None,
     };
     assert_journal_error(
         fixture.store.complete(&permit, &changed, 106).await,

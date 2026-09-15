@@ -37,6 +37,7 @@ use crate::loop_credentials::{
 mod batch;
 mod bootstrap;
 mod budget;
+mod continuation;
 mod discovery;
 mod listener;
 
@@ -55,6 +56,7 @@ struct Upstream {
     gets: Mutex<Vec<Option<String>>>,
     deleted: AtomicBool,
     expire_stream: AtomicBool,
+    mrtr: AtomicBool,
 }
 
 async fn handler(
@@ -157,6 +159,9 @@ async fn handler(
             .await
             .unwrap();
             assert_eq!(sent, 1);
+            if upstream.mrtr.load(Ordering::Acquire) {
+                return continuation::respond(&upstream, &headers, &message).await;
+            }
             upstream.write_received.notify_one();
             if upstream.resume_writes.load(Ordering::Acquire) {
                 return (
@@ -253,6 +258,7 @@ async fn setup_with_running(mark_running: bool) -> Harness {
         gets: Mutex::new(Vec::new()),
         deleted: AtomicBool::new(false),
         expire_stream: AtomicBool::new(false),
+        mrtr: AtomicBool::new(false),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(

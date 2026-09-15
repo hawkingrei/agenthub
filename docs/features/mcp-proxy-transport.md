@@ -183,8 +183,9 @@ not produce a header. Header plans are bounded to 64 fields, with 16 KiB of para
 
 MRTR `input_required`, `requestState`, and `inputResponses` remain opaque protocol data. The
 transport does not invoke callbacks itself or automatically send another round. The daemon's
-journal orchestration still needs to distinguish a known intermediate response from a completed
-tool action and preserve the original stable caller identity across permitted continuation rounds.
+journal orchestration distinguishes intermediate receipts from completed tool actions and admits
+modern tool continuations against the current receipt and unchanged binding. Each round retains
+the original stable caller identity and records its own send and parent receipt before HTTP.
 The [MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr)
 requires separate request IDs and exact state echoing; it does not grant a proxy permission to
 blindly repeat an ambiguous write.
@@ -267,8 +268,9 @@ JSON object/allocator overhead, trusted transport configuration, HTTP/gRPC imple
 and kernel buffers are outside byte accounting. Existing frame, catalog, header, correlation-count,
 and session limits continue to bound their corresponding structures.
 
-The raw transport version table does not imply complete controller support. Linked MRTR/task
-rounds and integration-specific authorization for non-tool methods remain controller work.
+Modern tool MRTR rounds use the receipt-linked journal path. Asynchronous task resolution,
+uncertain-continuation replay policy, and integration-specific continuation authorization for
+non-tool methods remain controller work.
 
 ## Validation Matrix
 
@@ -291,6 +293,7 @@ rounds and integration-specific authorization for non-tool methods remain contro
 | Legacy recovery | Two simultaneous writes use distinct GET cursors; partial batch settlement keeps original attempts; retry beyond deadline and cleared cursor cause no GET/POST |
 | Listener and close | Real shim GET callbacks/resumption/DELETE; idle listener releases the executor guard; DELETE waits for durable write settlement; session 404 preserves error and requires fresh initialization |
 | Failed handshake | Identified/anonymous errors, malformed results, disconnects, single/batched initialized failures, callback settlement before DELETE, reused callback IDs after retry, cleanup failure, and repeated notifications in an operating session |
+| Tool MRTR | One logical operation across multiple HTTP requests, exact state echo and bound arguments, separate per-round inputs, no send for altered intent, and persisted parent-receipt links |
 
 ## Operational Notes
 
@@ -306,8 +309,9 @@ fixture additionally checks inherited provider/shim environments and an actual j
 
 ## Open Risks
 
-- Linked MRTR continuation/task-result admission remains controller work. Observed deferred receipts already block a replay
-  of the original request without claiming a final tool outcome.
+- Asynchronous task-result admission, declared retries of uncertain continuation rounds, and
+  non-tool continuation authorization remain controller work. Observed deferred receipts block
+  replay of the original request without claiming a final tool outcome.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint
   aliases or moves need explicit reconciliation of outstanding writes; changing an endpoint is
   not evidence that retrying an unresolved write is safe.

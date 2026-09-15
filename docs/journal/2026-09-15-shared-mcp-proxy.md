@@ -52,10 +52,10 @@ giving an expired executor authority to send more work.
 - Build an owned HTTP request before issuing a send permit. Disable reqwest retries/redirects and
   ambient proxy configuration. Keep session/cursor controls outside provider JSONL messages.
 - Preserve both legacy lifecycle and modern per-request protocol mechanics. Retain modern MRTR
-  payloads unchanged; journal semantics for their continuation rounds remain integration work.
+  payloads unchanged; tool rounds use atomic journal links to their prior upstream receipt.
 - Preserve a deferred input/task receipt without claiming terminal tool success. Its typed receipt
-  cannot be downgraded by transport loss or used to replay the original request. Linked follow-up
-  admission is still required before the provider-facing proxy can expose that path.
+  cannot be downgraded by transport loss or used to replay the original request. Modern tool
+  follow-ups require a current matching receipt; asynchronous task resolution remains pending.
 - Stream each admitted MCP message independently. Callback replies carry freshly read signed
   credentials, and the daemon retains operation ownership after RPC receiver loss.
 - Serialize legacy lifecycle delivery while allowing registered callback responses through. Keep
@@ -312,9 +312,49 @@ and root/MCP all-target Clippy with warnings denied pass. The rebuilt real binar
 and local links in all three changed documents pass. No public protocol, dependency, database
 schema, or Bazel configuration changes are needed for this follow-up.
 
+The modern tool MRTR follow-up adds digest-only input-receipt facts and an additive continuation
+link table. One FULL-synchronous transaction resolves the current receipt under live daemon and
+executor checks, verifies unchanged binding/schema/base parameters, and commits the next send
+attempt plus its parent response digest. Later rounds retain the logical operation and original
+stable caller identity. The provider supplies exact state and new input results; the proxy never
+reconstructs or automatically resends them. Current admission caps a chain at ten continuation
+sends and a receipt at 64 input IDs.
+
+Input results retain the direct MCP result shape, including declined/cancelled inputs, rather
+than becoming JSON-RPC envelopes. State-only rounds omit earlier input responses. Malformed or
+old receipts without valid correlation metadata remain known deferred outcomes and cannot grant
+another send. A lost continuation result leaves an unknown attempt and blocks restarting the
+original request, including for a read-only or stable-identity operation. Declared retries of that
+uncertain round require a separate controller path and remain pending alongside task handles.
+
+Database fixtures cover additive migration, reopen, parent links, concurrent consumption, stale
+intent/authority/state/IDs, round limits, recovery, and late factual results. HTTP fixtures cover
+unchanged opaque state and bound arguments over three POSTs on one operation, independent input
+sets, altered-intent rejection before HTTP, partial inputs, and unknown-round replay denial. A
+real shim fixture exercises modern discovery and input-required/complete messages through signed
+RPCs; its fake upstream checks that the continuation link exists before receiving the POST.
+
+Review added a no-state parallel-read regression: consuming one receipt cannot make its input
+IDs authorize another outstanding read. Without opaque state, admission requires an issued input
+ID (or two empty maps); remaining missing/extra inputs still reach upstream unchanged. Final
+validation passes 22 journal store tests, 61 MCP crate tests, and 21 root MCP tests with the
+configured-launch child invoked by its parent. Root/MCP/database all-target Clippy, the real
+binary build, formatting, whitespace, and local document links pass. The migration is additive;
+there are no dependency, protobuf, or Bazel configuration changes.
+
+```bash
+cargo test -p agenthub-db --locked --offline mcp_operations
+cargo test -p agenthub-mcp --locked --offline
+cargo clippy -p agenthub -p agenthub-mcp -p agenthub-db --all-targets --locked --offline -- -D warnings
+cargo build --bin agenthub --locked --offline
+cargo test -p agenthub --lib mcp --locked --offline
+cargo fmt --all --check
+```
+
 ## Follow-Ups
 
-- Complete slice 9's linked continuations, remaining protocol controller paths, and integration
+- Complete slice 9's asynchronous task resolution, declared retries of uncertain continuation
+  rounds, remaining protocol controller paths, and integration
   authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.

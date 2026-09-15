@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use agenthub_agent_domain::{
     loop_runtime::LoopReservation,
-    mcp_operations::{McpDigest, McpOperationIntent, McpReplaySafety},
+    mcp_operations::{McpContinuationInput, McpDigest, McpOperationIntent, McpReplaySafety},
 };
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -149,6 +149,7 @@ pub struct PreparedToolCall {
     pub(crate) intent: McpOperationIntent,
     pub(crate) executor: LoopReservation,
     pub(crate) response_id: Value,
+    pub(crate) continuation: Option<McpContinuationInput>,
 }
 
 impl McpBinding {
@@ -228,9 +229,9 @@ impl McpBinding {
             .get_mut("params")
             .and_then(Value::as_object_mut)
             .ok_or(McpPolicyError::Call)?;
-        // The continuation controller must bind these to a recorded upstream receipt. They cannot
-        // enter the ordinary-call path and disguise a repeated write as a new JSON-RPC request.
-        if params.contains_key("requestState") || params.contains_key("inputResponses") {
+        let continuing =
+            params.contains_key("requestState") || params.contains_key("inputResponses");
+        if continuing && context.http.version != ProtocolVersion::July2026 {
             return Err(McpPolicyError::Continuation);
         }
         let name = params
@@ -280,17 +281,37 @@ impl McpBinding {
                 semantic_request.as_object_mut().unwrap().remove("_meta");
             }
         }
-        let request_key = if let Some(identity) = replay_safety.identity_digest() {
-            digest(
-                "mcp-stable-request-v1",
-                &json!([self.scope_digest, name, identity]),
-            )?
-        } else {
-            digest(
-                "mcp-rpc-request-v1",
-                &json!([activation, context.proxy_session_id, response_id]),
-            )?
-        };
+        let continuation = continuing
+            .then(|| {
+                crate::continuation::input(
+                    params,
+                    &response_id,
+                    digest("mcp-continuation-parameters-v1", &semantic_request)?,
+                )
+            })
+            .transpose()?;
+        // Every round keeps the original bound parameters while adding this round's inputs.
+        // Its actual wire parameters have their own digest on the linked send record.
+        semantic_request
+            .as_object_mut()
+            .unwrap()
+            .remove("requestState");
+        semantic_request
+            .as_object_mut()
+            .unwrap()
+            .remove("inputResponses");
+        let request_key =
+            if let Some(identity) = replay_safety.identity_digest().filter(|_| !continuing) {
+                digest(
+                    "mcp-stable-request-v1",
+                    &json!([self.scope_digest, name, identity]),
+                )?
+            } else {
+                digest(
+                    "mcp-rpc-request-v1",
+                    &json!([activation, context.proxy_session_id, response_id]),
+                )?
+            };
         let intent = McpOperationIntent {
             request_key,
             server_id: self.server_id.clone(),
@@ -311,6 +332,7 @@ impl McpBinding {
             intent,
             executor: context.executor.clone(),
             response_id,
+            continuation,
         })
     }
 }

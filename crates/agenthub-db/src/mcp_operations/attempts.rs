@@ -1,6 +1,6 @@
 use agenthub_agent_domain::{
     loop_runtime::LoopReservation,
-    mcp_operations::{McpAmbiguityReason, McpCompletion, McpOperationStatus},
+    mcp_operations::{McpAmbiguityReason, McpCompletion, McpOperationRecord, McpOperationStatus},
 };
 use sqlx::{Connection, Row, Sqlite, Transaction};
 use uuid::Uuid;
@@ -100,6 +100,13 @@ impl McpOperationStore {
                     !matches!(operation.completion, Some(McpCompletion::Deferred { .. })),
                     McpJournalError::ContinuationRequired
                 );
+                let continued: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM mcp_operation_continuations WHERE operation_id = ?)",
+                )
+                .bind(operation_id)
+                .fetch_one(&mut **tx)
+                .await?;
+                anyhow::ensure!(!continued, McpJournalError::ContinuationRequired);
                 anyhow::ensure!(
                     operation.intent.replay_safety.permits_retry(),
                     McpJournalError::UnsafeReplay
@@ -107,6 +114,17 @@ impl McpOperationStore {
             }
         }
         reject_prior_effects(tx, &executor.team_id, &operation.intent, Some(operation_id)).await?;
+        self.insert_send_tx(tx, executor, &operation, now).await
+    }
+
+    pub(super) async fn insert_send_tx(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        executor: &LoopReservation,
+        operation: &McpOperationRecord,
+        now: i64,
+    ) -> anyhow::Result<McpSendPermit> {
+        let operation_id = &operation.id;
         let number = operation
             .attempt_count
             .checked_add(1)

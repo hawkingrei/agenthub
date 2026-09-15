@@ -109,9 +109,40 @@ An `input_required` result or an asynchronous task receipt records a typed `Defe
 and response digest with `outcome_unknown` status: the RPC response is known, but the tool's final
 outcome is not. This is neither a failure nor successful completion. A later transport-loss report
 cannot overwrite that observed receipt. Even a read or stable-identity call cannot replay its
-initial request from this state. A linked continuation/task-result controller must resolve the
-receipt; that controller remains pending, and ordinary call preparation rejects caller-supplied
-`requestState` or `inputResponses` instead of bypassing this boundary.
+initial request from this state. Modern tool continuations use a separate receipt-bound send path;
+asynchronous task-result resolution remains pending.
+
+### Multi round-trip tool calls
+
+For the [2026-07-28 MRTR pattern](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr),
+the journal stores only digests of the opaque state, server input IDs, and response ID alongside
+the observed deferred receipt. The provider retains the actual state and input results. A supplied
+`requestState` or `inputResponses` selects continuation admission rather than ordinary replay.
+
+Admission requires the same Team, actor, effective scope, binding, tool schema, bound arguments,
+semantic base parameters, and replay policy. It resolves one current deferred receipt and checks
+the exact state value or its absence. Without state, a response must match at least one issued
+input ID (or both maps must be empty). Server input IDs distinguish parallel matching receipts;
+ambiguous matches fail before HTTP. Other missing or additional input values remain upstream validation
+concerns and are forwarded unchanged. No opaque state is decoded or reconstructed by the proxy.
+
+The linked send and its parent receipt digest commit atomically with a new attempt on the existing
+logical operation. Every send rechecks the current daemon and live executor. A new RPC ID is
+required; concurrent consumers receive at most one permit. The original stable identity remains
+unchanged on the wire, while each round has its own request digest. A chain allows ten continuation
+sends and at most 64 input IDs per receipt. These are proxy resource limits, not MCP defaults.
+
+`mcp_operation_continuations` is an additive table linking each new attempt to its previous attempt
+and known response digest. Attempt inspection exposes those links without raw state or answers.
+Old deferred receipts without correlation metadata remain readable and cannot grant continuation
+authority. Reopening the journal preserves the links and can resolve a caller-supplied state
+against the receipt after a fresh proxy opens; current binding and execution authority still apply.
+
+A final result completes the same logical operation. A lost continuation result leaves that
+attempt unknown; neither its continuation POST nor the initial POST is automatically resent.
+The current continuation path requires a new factual input-required receipt for another send,
+including read-only and stable-identity calls. Retrying an uncertain continuation under a declared
+replay policy and resolving asynchronous task handles remain follow-up controller work.
 
 The original permit can record a factual response after activation expiry, cancellation, or
 cleanup. It can resolve an unknown attempt if no replacement attempt exists. It cannot complete a
@@ -141,7 +172,8 @@ provide stable ordering across restarts; each attempt records its actual activat
 while the operation retains its original activation. Product endpoints must apply their normal
 inspection authorization before using these store methods.
 
-Completion records contain only typed result/error categories and optional response digests. Raw
+Completion records contain typed result/error categories, response digests, and bounded digest-only
+input-receipt correlation facts. Raw
 upstream responses are not replayable from this store. A known receipt must not be presented as a
 reconstructed tool result. Transport code must preserve the real response while it is available.
 
@@ -162,6 +194,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | Real stable retry | Original operation receives a second attempt with the same caller identity and parameters under a new RPC ID |
 | Provider disconnect | Authenticated daemon task retains the execution guard after caller cancellation and journals the late HTTP result |
 | Deferred response | Raw input/task receipt retained transiently; typed receipt survives loss and blocks initial-request replay |
+| MRTR | Additive migration and reopen, atomic linked sends, current intent/state/executor checks, fresh RPC IDs, bounded rounds, unchanged HTTP inputs, final settlement, and lost-round replay rejection |
 | Batch sends | Atomic rollback on a stale/conflicting member; one POST; out-of-order completion; partial-result uncertainty and replay rejection across activations |
 
 ## Operational Notes

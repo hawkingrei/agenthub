@@ -34,6 +34,7 @@ use uuid::Uuid;
 use super::*;
 
 mod batch;
+mod continuation;
 mod recovery;
 use crate::{
     http::{HttpContext, McpHttpTransport},

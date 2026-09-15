@@ -2,6 +2,7 @@
 
 pub mod bridge;
 pub mod budget;
+mod continuation;
 mod digest;
 pub mod http;
 pub mod journal;

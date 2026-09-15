@@ -1,6 +1,7 @@
 //! Durable MCP send boundaries. Only trusted daemon code may construct intents or send permits.
 
 mod attempts;
+mod continuation;
 mod prepare;
 mod schema;
 
@@ -8,7 +9,8 @@ mod schema;
 mod tests;
 
 use agenthub_agent_domain::mcp_operations::{
-    McpAttemptRecord, McpCompletion, McpOperationEvent, McpOperationRecord, McpOperationStatus,
+    McpAttemptRecord, McpCompletion, McpContinuationRecord, McpOperationEvent, McpOperationRecord,
+    McpOperationStatus,
 };
 use sqlx::{Row, Sqlite, SqlitePool, Transaction, pool::PoolConnection, sqlite::SqliteRow};
 use thiserror::Error;
@@ -102,7 +104,9 @@ impl McpOperationStore {
         after: u32,
         limit: u32,
     ) -> anyhow::Result<Vec<McpAttemptRecord>> {
-        let rows = sqlx::query("SELECT a.* FROM mcp_operation_attempts a JOIN mcp_operations o ON o.id = a.operation_id \
+        let rows = sqlx::query("SELECT a.*, c.parent_attempt_number, c.parent_response_digest, c.request_id_digest, c.request_digest \
+            FROM mcp_operation_attempts a JOIN mcp_operations o ON o.id = a.operation_id \
+            LEFT JOIN mcp_operation_continuations c ON c.operation_id = a.operation_id AND c.attempt_number = a.number \
             WHERE o.team_id = ? AND o.actor_id = ? AND o.id = ? AND a.number > ? ORDER BY a.number LIMIT ?")
             .bind(team_id).bind(actor_id).bind(id).bind(after).bind(limit.clamp(1, 100))
             .fetch_all(&self.pool).await?;
@@ -120,6 +124,23 @@ impl McpOperationStore {
                         .transpose()?,
                     sent_at: row.try_get("sent_at")?,
                     completed_at: row.try_get("completed_at")?,
+                    continuation: row
+                        .try_get::<Option<u32>, _>("parent_attempt_number")?
+                        .map(|parent_attempt_number| -> anyhow::Result<_> {
+                            Ok(McpContinuationRecord {
+                                parent_attempt_number,
+                                parent_response_digest: row
+                                    .try_get::<String, _>("parent_response_digest")?
+                                    .try_into()?,
+                                request_id_digest: row
+                                    .try_get::<String, _>("request_id_digest")?
+                                    .try_into()?,
+                                request_digest: row
+                                    .try_get::<String, _>("request_digest")?
+                                    .try_into()?,
+                            })
+                        })
+                        .transpose()?,
                 })
             })
             .collect()

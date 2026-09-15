@@ -74,21 +74,27 @@ impl JournaledMcpClient {
         call: PreparedToolCall,
         events: mpsc::Sender<Budgeted<HttpEvent>>,
     ) -> Result<McpCallResult, McpCallError> {
-        let operation = self
-            .journal
-            .prepare(&call.executor, &call.intent, now())
-            .await
-            .map_err(journal_error)?;
-        let permit = self
-            .journal
-            .begin_send(
-                &call.executor,
-                &operation.id,
-                operation.attempt_count,
-                now(),
-            )
-            .await
-            .map_err(journal_error)?;
+        let permit = if let Some(input) = &call.continuation {
+            self.journal
+                .begin_continuation(&call.executor, &call.intent, input, now())
+                .await
+                .map_err(journal_error)?
+        } else {
+            let operation = self
+                .journal
+                .prepare(&call.executor, &call.intent, now())
+                .await
+                .map_err(journal_error)?;
+            self.journal
+                .begin_send(
+                    &call.executor,
+                    &operation.id,
+                    operation.attempt_count,
+                    now(),
+                )
+                .await
+                .map_err(journal_error)?
+        };
         let mut delivery_lost = false;
         let observed = async {
             let mut exchange = call.transport.send_resumable(call.request).await?;
@@ -119,7 +125,7 @@ impl JournaledMcpClient {
                     .await
                     .map_err(journal_error)?;
                 Ok(McpCallResult {
-                    operation_id: operation.id,
+                    operation_id: permit.operation_id().to_owned(),
                     attempt_number: permit.attempt_number(),
                     completion,
                     response,
@@ -216,6 +222,9 @@ fn classify_completion(response: &Value) -> Result<McpCompletion, McpTransportEr
         McpCompletion::Deferred {
             reason,
             response_digest,
+            input_receipt: (reason == McpDeferralKind::InputRequired)
+                .then(|| crate::continuation::receipt(response).ok())
+                .flatten(),
         }
     } else {
         McpCompletion::Succeeded { response_digest }

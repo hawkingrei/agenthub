@@ -192,6 +192,32 @@ pub enum McpDeferralKind {
     TaskAccepted,
 }
 
+/// Correlation facts only; opaque upstream state and user input remain in the transport.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpInputReceipt {
+    pub state_digest: Option<McpDigest>,
+    pub input_ids: Vec<McpDigest>,
+    pub request_id_digest: McpDigest,
+}
+
+/// Derived from the bound continuation request by trusted proxy policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpContinuationInput {
+    pub state_digest: Option<McpDigest>,
+    pub input_ids: Vec<McpDigest>,
+    pub request_id_digest: McpDigest,
+    pub request_digest: McpDigest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpContinuationRecord {
+    pub parent_attempt_number: u32,
+    pub parent_response_digest: McpDigest,
+    pub request_id_digest: McpDigest,
+    pub request_digest: McpDigest,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum McpCompletion {
@@ -210,6 +236,8 @@ pub enum McpCompletion {
     Deferred {
         reason: McpDeferralKind,
         response_digest: McpDigest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_receipt: Option<McpInputReceipt>,
     },
 }
 
@@ -249,6 +277,8 @@ pub struct McpAttemptRecord {
     pub completion: Option<McpCompletion>,
     pub sent_at: i64,
     pub completed_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuation: Option<McpContinuationRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
