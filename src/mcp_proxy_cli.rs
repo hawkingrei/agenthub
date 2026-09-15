@@ -2,6 +2,7 @@ use std::{path::PathBuf, time::Duration};
 
 use agenthub_mcp::{
     McpTransportError,
+    budget::{Budgeted, ByteBudget, json_bytes},
     protocol::parse_message,
     stdio::{read_message_blocking, write_message_blocking},
 };
@@ -82,7 +83,7 @@ fn read_credentials(path: &std::path::Path) -> anyhow::Result<LoopCredentialEnve
 }
 
 struct Output {
-    message: Value,
+    message: Budgeted<Value>,
     written: oneshot::Sender<Result<(), McpTransportError>>,
 }
 
@@ -109,12 +110,21 @@ pub(crate) async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
         .open_mcp_proxy(options.server_id)
         .await?;
     let (input, mut messages) = mpsc::channel(4);
+    let budget = ByteBudget::new(4 * agenthub_mcp::MAX_MESSAGE_BYTES);
+    let input_budget = budget.clone();
     std::thread::Builder::new()
         .name("mcp-stdin".into())
         .spawn(move || {
             let mut stdin = std::io::BufReader::new(std::io::stdin());
             loop {
-                let message = read_message_blocking(&mut stdin);
+                let message = read_message_blocking(&mut stdin).and_then(|message| {
+                    message
+                        .map(|value| {
+                            let bytes = json_bytes(&value)?;
+                            input_budget.retain(value, bytes)
+                        })
+                        .transpose()
+                });
                 let finished = !matches!(message, Ok(Some(_)));
                 if input.blocking_send(message).is_err() || finished {
                     break;
@@ -127,7 +137,7 @@ pub(crate) async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
         .spawn(move || {
             let mut stdout = std::io::stdout().lock();
             while let Some(write) = writes.blocking_recv() {
-                let result = write_message_blocking(&mut stdout, &write.message);
+                let result = write_message_blocking(&mut stdout, &write.message.value);
                 let failed = result.is_err();
                 let _ = write.written.send(result);
                 if failed {
@@ -135,7 +145,7 @@ pub(crate) async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
                 }
             }
         })?;
-    let outcome = pump(&mut connection, &session_id, &mut messages, output).await;
+    let outcome = pump(&mut connection, &session_id, &mut messages, output, budget).await;
     if let Ok(client) = connection.refresh() {
         let _ =
             tokio::time::timeout(Duration::from_secs(5), client.close_mcp_proxy(session_id)).await;
@@ -146,8 +156,9 @@ pub(crate) async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
 async fn pump(
     connection: &mut Connection,
     session_id: &str,
-    messages: &mut mpsc::Receiver<Result<Option<Value>, McpTransportError>>,
+    messages: &mut mpsc::Receiver<Result<Option<Budgeted<Value>>, McpTransportError>>,
     output: mpsc::Sender<Output>,
+    budget: ByteBudget,
 ) -> anyhow::Result<()> {
     let mut exchanges = tokio::task::JoinSet::new();
     loop {
@@ -162,9 +173,10 @@ async fn pump(
                 anyhow::ensure!(exchanges.len() < 32, "MCP concurrent exchange limit reached");
                 // Wait for admission headers, preserving stdin order through initialize/initialized
                 // delivery, then receive each response independently so callbacks can make progress.
-                let stream = connection.refresh()?.exchange_mcp_proxy(session_id.into(), message.to_string()).await?;
+                let stream = connection.refresh()?.exchange_mcp_proxy(session_id.into(), message.value.to_string()).await?;
                 let output = output.clone();
-                exchanges.spawn(async move {forward(stream, output).await});
+                let budget = budget.clone();
+                exchanges.spawn(async move {forward(stream, output, budget).await});
             }
         }
     }
@@ -177,6 +189,7 @@ async fn pump(
 async fn forward(
     mut stream: tonic::Streaming<crate::internal::proto::agenthub::internal::v1::McpProxyFrame>,
     output: mpsc::Sender<Output>,
+    budget: ByteBudget,
 ) -> anyhow::Result<()> {
     while let Some(frame) = stream
         .message()
@@ -184,7 +197,10 @@ async fn forward(
         .map_err(|_| anyhow::anyhow!("MCP proxy response stream disconnected"))?
     {
         if !frame.message_json.is_empty() {
+            let bytes = budget.acquire(frame.message_json.len())?;
             let message = parse_message(frame.message_json.as_bytes())?;
+            drop(frame.message_json);
+            let message = bytes.retain(message);
             let (written, receiver) = oneshot::channel();
             tokio::time::timeout(Duration::from_secs(30), async {
                 output

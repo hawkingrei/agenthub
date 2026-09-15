@@ -277,6 +277,19 @@ async fn upstream(
     } else {
         json!({"jsonrpc":"2.0","id":message["id"],"result":result})
     };
+    if mode == 6 {
+        // Valid short numeric spellings can exceed the output limit after JSON serialization.
+        let values = "1e6,".repeat(crate::MAX_MESSAGE_BYTES / 10);
+        let event = format!(
+            r#"{{"jsonrpc":"2.0","method":"notifications/progress","params":{{"progressToken":"token","progress":1,"extra":[{values}1e6]}}}}"#
+        );
+        assert!(event.len() < crate::MAX_MESSAGE_BYTES);
+        return (
+            [("content-type", "text/event-stream")],
+            format!("data: {event}\n\ndata: {response}\n\n"),
+        )
+            .into_response();
+    }
     if mode == 2 || mode == 4 {
         let event = json!({"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"token","progress":1}});
         return (
@@ -332,9 +345,12 @@ fn prepare(binding: &McpBinding, executor: &LoopReservation, id: i64) -> Prepare
 
 async fn run(fixture: &Fixture, call: PreparedToolCall) -> Result<McpCallResult, McpCallError> {
     let (events, _receiver) = mpsc::channel(8);
-    JournaledMcpClient::new(fixture.journal.clone())
-        .run(call, events)
-        .await
+    JournaledMcpClient::new(
+        fixture.journal.clone(),
+        crate::budget::ByteBudget::new(8 * crate::MAX_MESSAGE_BYTES),
+    )
+    .run(call, events)
+    .await
 }
 
 #[tokio::test]
@@ -484,7 +500,10 @@ async fn lost_event_receiver_and_cancelled_executor_do_not_discard_late_factual_
     let executor = fixture.running().await;
     let upstream = Upstream::new(fixture.pool.clone()).await;
     upstream.state.mode.store(2, Ordering::SeqCst);
-    let client = JournaledMcpClient::new(fixture.journal.clone());
+    let client = JournaledMcpClient::new(
+        fixture.journal.clone(),
+        crate::budget::ByteBudget::new(8 * crate::MAX_MESSAGE_BYTES),
+    );
     let call = prepare(
         &upstream.binding(TrustedReplayPolicy::NonIdempotent),
         &executor,
@@ -506,6 +525,36 @@ async fn lost_event_receiver_and_cancelled_executor_do_not_discard_late_factual_
         fixture.operations().await[0].status,
         McpOperationStatus::Succeeded
     );
+    drop(upstream);
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn oversized_serialized_progress_does_not_discard_the_terminal_write_result() {
+    let fixture = Fixture::new().await;
+    let executor = fixture.running().await;
+    let upstream = Upstream::new(fixture.pool.clone()).await;
+    upstream.state.mode.store(6, Ordering::SeqCst);
+    let result = run(
+        &fixture,
+        prepare(
+            &upstream.binding(TrustedReplayPolicy::NonIdempotent),
+            &executor,
+            1,
+        ),
+    )
+    .await
+    .unwrap();
+    assert!(result.event_delivery_lost);
+    assert_eq!(
+        result.response["result"]["content"][0]["text"],
+        "private-result"
+    );
+    assert_eq!(
+        fixture.operations().await[0].status,
+        McpOperationStatus::Succeeded
+    );
+    assert_eq!(upstream.count(), 1);
     drop(upstream);
     fixture.close().await;
 }
@@ -702,7 +751,10 @@ async fn concurrent_sends_cannot_duplicate_a_write_and_read_retry_gets_a_new_att
     upstream.state.mode.store(2, Ordering::SeqCst);
     let binding = upstream.binding(TrustedReplayPolicy::NonIdempotent);
     let call = prepare(&binding, &executor, 1);
-    let client = JournaledMcpClient::new(fixture.journal.clone());
+    let client = JournaledMcpClient::new(
+        fixture.journal.clone(),
+        crate::budget::ByteBudget::new(8 * crate::MAX_MESSAGE_BYTES),
+    );
     let (events, _receiver) = mpsc::channel(8);
     let first = tokio::spawn(async move { client.run(call, events).await });
     upstream.state.received.notified().await;

@@ -1,6 +1,12 @@
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::McpTransportError;
+
+/// Keep replay/callback correlation bounded even when a valid string ID fills a whole frame.
+pub(crate) fn correlation_id(value: &Value) -> [u8; 32] {
+    Sha256::digest(value.to_string().as_bytes()).into()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtocolVersion {

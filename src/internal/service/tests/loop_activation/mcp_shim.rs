@@ -35,6 +35,7 @@ use crate::loop_credentials::{
 };
 
 mod bootstrap;
+mod budget;
 mod discovery;
 
 struct Upstream {

@@ -6,6 +6,10 @@ use super::*;
 use crate::{http::McpHttpTransport, protocol::ProtocolVersion};
 
 fn session() -> Arc<McpProxySession> {
+    session_with_budget(Arc::new(McpProxyBudget::default()))
+}
+
+fn session_with_budget(budget: Arc<McpProxyBudget>) -> Arc<McpProxySession> {
     let transport = McpHttpTransport::new(
         "http://127.0.0.1:1/mcp",
         HeaderMap::new(),
@@ -26,7 +30,102 @@ fn session() -> Arc<McpProxySession> {
             policy,
             Arc::new(|_, _, args| Ok(args)),
         )),
+        budget,
     )
+}
+
+#[tokio::test]
+async fn shared_workspaces_bound_sessions_without_starving_initialize_callbacks() {
+    let budget = Arc::new(McpProxyBudget::new(1, 1, 4096, 4096));
+    let first = session_with_budget(budget.clone());
+    let second = session_with_budget(budget);
+    let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"fixture","version":"1"}}});
+    let pending = first
+        .prepare(&executor(), initialize.clone())
+        .await
+        .unwrap();
+    assert!(matches!(
+        second.prepare(&executor(), initialize.clone()).await,
+        Err(McpPolicyError::Transport(McpTransportError::Capacity))
+    ));
+    first
+        .observe(&json!({"jsonrpc":"2.0","id":"roots","method":"roots/list"}))
+        .await
+        .unwrap();
+    let callback = tokio::time::timeout(
+        Duration::from_secs(1),
+        first.prepare(
+            &executor(),
+            json!({"jsonrpc":"2.0","id":"roots","result":{"roots":[]}}),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    drop((pending, callback));
+    assert!(second.prepare(&executor(), initialize).await.is_ok());
+}
+
+#[tokio::test]
+async fn retained_discovery_is_shared_and_refresh_reuses_its_charge() {
+    let response = json!({"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tool","inputSchema":{"type":"object"}}]}});
+    let bytes = 2 * json_bytes(&response["result"]["tools"]).unwrap();
+    let budget = Arc::new(McpProxyBudget::new(1, 1, 4096, bytes));
+    let first = session_with_budget(budget.clone());
+    let second = session_with_budget(budget.clone());
+    let context = HttpContext {
+        version: ProtocolVersion::November2025,
+        session_id: None,
+    };
+    first
+        .apply_discovery(&mut response.clone(), &context, 0, &None)
+        .await
+        .unwrap();
+    assert_eq!(budget.retained.used(), bytes);
+    first
+        .apply_discovery(&mut response.clone(), &context, 0, &None)
+        .await
+        .unwrap();
+    assert_eq!(
+        second
+            .apply_discovery(&mut response.clone(), &context, 0, &None)
+            .await,
+        Err(McpTransportError::Capacity)
+    );
+    assert!(second.discovery.lock().await.catalog.is_none());
+    first
+        .observe(&json!({"jsonrpc":"2.0","method":"notifications/tools/list_changed"}))
+        .await
+        .unwrap();
+    assert_eq!(budget.retained.used(), 0);
+    second
+        .apply_discovery(&mut response.clone(), &context, 0, &None)
+        .await
+        .unwrap();
+    drop(second);
+    assert_eq!(budget.retained.used(), 0);
+}
+
+#[tokio::test]
+async fn large_ids_remain_on_wire_without_large_retained_correlation_keys() {
+    let session = session();
+    let id = "large-id".repeat(16_384);
+    let request = json!({"jsonrpc":"2.0","id":id,"method":"server/discover","params":{"_meta":{
+        "io.modelcontextprotocol/protocolVersion":"2026-07-28",
+        "io.modelcontextprotocol/clientInfo":{"name":"fixture","version":"1"},
+        "io.modelcontextprotocol/clientCapabilities":{}}}});
+    let prepared = session.prepare(&executor(), request.clone()).await.unwrap();
+    assert_eq!(prepared.message["id"], id);
+    drop(prepared);
+    let keys = session.request_ids.lock().await;
+    assert_eq!(keys.len(), 1);
+    assert_eq!(std::mem::size_of_val(keys.iter().next().unwrap()), 32);
+    drop(keys);
+    assert!(matches!(
+        session.prepare(&executor(), request).await,
+        Err(McpPolicyError::Call)
+    ));
 }
 
 fn executor() -> LoopReservation {

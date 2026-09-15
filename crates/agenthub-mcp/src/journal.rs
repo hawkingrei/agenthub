@@ -14,7 +14,13 @@ use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
-use crate::{McpTransportError, digest::digest, http::HttpEvent, policy::PreparedToolCall};
+use crate::{
+    McpTransportError,
+    budget::{Budgeted, ByteBudget, json_bytes},
+    digest::digest,
+    http::HttpEvent,
+    policy::PreparedToolCall,
+};
 
 /// Fixed error categories are safe across the provider boundary; database error sources are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -51,17 +57,18 @@ pub struct McpCallResult {
 #[derive(Clone)]
 pub struct JournaledMcpClient {
     journal: McpOperationStore,
+    delivery: ByteBudget,
 }
 
 impl JournaledMcpClient {
-    pub fn new(journal: McpOperationStore) -> Self {
-        Self { journal }
+    pub fn new(journal: McpOperationStore, delivery: ByteBudget) -> Self {
+        Self { journal, delivery }
     }
 
     pub async fn run(
         &self,
         call: PreparedToolCall,
-        events: mpsc::Sender<HttpEvent>,
+        events: mpsc::Sender<Budgeted<HttpEvent>>,
     ) -> Result<McpCallResult, McpCallError> {
         let operation = self
             .journal
@@ -90,7 +97,20 @@ impl JournaledMcpClient {
                     let completion = classify_completion(response)?;
                     return Ok((message.clone(), completion));
                 }
-                if events.try_send(event).is_err() {
+                let bytes = event
+                    .message
+                    .as_ref()
+                    .map(json_bytes)
+                    .transpose()
+                    .map(|bytes| {
+                        bytes.unwrap_or(0) + event.cursor.as_ref().map_or(0, String::len) + 16
+                    });
+                // Queue pressure loses delivery only. The reserved HTTP workspace keeps draining
+                // until a factual result can be committed, even after the caller has gone away.
+                let delivered = bytes
+                    .and_then(|bytes| self.delivery.retain(event, bytes))
+                    .is_ok_and(|event| events.try_send(event).is_ok());
+                if !delivered {
                     delivery_lost = true;
                 }
             }

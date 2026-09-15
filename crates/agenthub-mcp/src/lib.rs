@@ -1,6 +1,7 @@
 //! Raw MCP transport and policy boundaries shared by local integrations.
 
 pub mod bridge;
+pub mod budget;
 mod digest;
 pub mod http;
 pub mod journal;
@@ -30,6 +31,8 @@ pub enum McpTransportError {
     InvalidMetadata,
     #[error("MCP message exceeds the transport limit")]
     MessageTooLarge,
+    #[error("MCP proxy payload capacity is exhausted")]
+    Capacity,
     #[error("MCP transport disconnected")]
     Disconnected,
     #[error("MCP request deadline expired")]

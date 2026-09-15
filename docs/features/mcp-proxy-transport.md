@@ -167,8 +167,43 @@ not copied into transport diagnostics or the operation journal.
   Detached stdio threads let a failed RPC terminate the shim even when provider stdin stays open.
 - Queue and concurrency limits are explicit: four tool and eight control requests per session,
   64 pending callbacks, 4,096 request IDs, eight response frames per RPC, and at most eight sessions
-  per activation / 128 per daemon. Individual messages are bounded to 8 MiB. An aggregate byte
-  budget across concurrent sessions remains a production integration requirement.
+  per activation / 128 per daemon. Individual messages are bounded to 8 MiB. IDs retained for
+  duplicate/callback/initialize correlation use fixed 32-byte digests; their original wire values
+  remain unchanged.
+
+### Aggregate payload budgets
+
+One hub shares the following limits across all its sessions. Reservations are byte credits and
+do not allocate that amount of memory up front.
+
+| Pool | Default | Ownership |
+| --- | --- | --- |
+| Ingress | 64 MiB | Decoded RPC payload through parsing and admission |
+| Working allowance | 512 MiB | Eight 64 MiB exchange reservations, covering bounded policy/HTTP/SSE/result working copies |
+| Callback working allowance | 64 MiB | One independent response reservation; ordinary requests cannot consume it |
+| Delivery | 64 MiB | Journal events and RPC frames, transferring the same lease between queues |
+| Retained state | 64 MiB | Both discovery declaration copies and shared initialization capabilities |
+| Each stdio shim | 32 MiB | Its combined incoming messages and pending stdout messages |
+
+Acquire the working reservation before policy preparation or an upstream send. Keep it with the
+daemon-owned exchange through factual completion, independently of RPC receiver lifetime. New
+requests fail admission when capacity is exhausted. Delivery exhaustion closes that provider
+session, while the journal keeps draining under its existing reservation and commits any observed
+terminal result. It never retries the POST to recover a lost response.
+
+A valid upstream progress message can exceed the output limit when reserialized, for example
+when short exponent-form numbers expand. Treat that as lost event delivery and continue draining
+the exchange; a progress encoding failure is not evidence that the tool outcome is unknown.
+
+Byte leases follow queued data until consumer handoff, including the frame currently yielded to
+the RPC encoder. Dropping a queue releases its leases. Discovery refresh resizes its existing
+charge without requiring a second retained-state allocation; invalidation releases the catalog.
+Initialization shares one capability value and lease across its state transition.
+
+These are application wire-payload bounds and fixed working allowances, not an exact RSS cap.
+JSON object/allocator overhead, trusted transport configuration, HTTP/gRPC implementation buffers,
+and kernel buffers are outside byte accounting. Existing frame, catalog, header, correlation-count,
+and session limits continue to bound their corresponding structures.
 
 The raw transport version table does not imply complete controller support. March 2025 batches,
 legacy GET listening/resumption and upstream DELETE, linked MRTR/task rounds, and

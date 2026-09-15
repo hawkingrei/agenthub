@@ -71,7 +71,10 @@ async fn mcp_send_remains_daemon_owned_after_authenticated_request_disconnects()
     let metadata = request.metadata().clone();
     let task_metadata = metadata.clone();
     let task_service = service.clone();
-    let client = JournaledMcpClient::new(journal.clone());
+    let client = JournaledMcpClient::new(
+        journal.clone(),
+        agenthub_mcp::budget::ByteBudget::new(8 * agenthub_mcp::MAX_MESSAGE_BYTES),
+    );
     let (events, receiver) = mpsc::channel(2);
     let caller = tokio::spawn(async move {
         service

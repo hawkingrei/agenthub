@@ -1,16 +1,26 @@
 //! Protocol lifecycle only. Execution and tool-binding authority remain daemon responsibilities.
 
 use serde_json::Value;
+use std::sync::Arc;
 
 use crate::{
     McpTransportError,
+    budget::{Budgeted, ByteBudget, json_bytes},
     http::{HttpContext, HttpSessionId},
-    protocol::{MessageKind, ProtocolVersion, message_kind, validate_versioned_message},
+    protocol::{
+        MessageKind, ProtocolVersion, correlation_id, message_kind, validate_versioned_message,
+    },
 };
 
-#[derive(Default)]
 pub struct McpProtocolSession {
     state: State,
+    retained: ByteBudget,
+}
+
+impl Default for McpProtocolSession {
+    fn default() -> Self {
+        Self::new(ByteBudget::new(crate::MAX_MESSAGE_BYTES))
+    }
 }
 
 #[derive(Default)]
@@ -18,20 +28,26 @@ enum State {
     #[default]
     New,
     Initializing {
-        request_id: Value,
+        request_id: [u8; 32],
         version: ProtocolVersion,
     },
     AwaitingInitialized {
         context: HttpContext,
-        capabilities: Value,
+        capabilities: Arc<Budgeted<Value>>,
     },
     Ready {
         context: HttpContext,
-        capabilities: Value,
+        capabilities: Arc<Budgeted<Value>>,
     },
 }
 
 impl McpProtocolSession {
+    pub(crate) fn new(retained: ByteBudget) -> Self {
+        Self {
+            state: State::New,
+            retained,
+        }
+    }
     /// Resolve transport metadata without inventing capabilities or modifying the message.
     pub fn begin(&mut self, message: &Value) -> Result<HttpContext, McpTransportError> {
         let kind = message_kind(message)?;
@@ -56,7 +72,7 @@ impl McpProtocolSession {
                 return Err(McpTransportError::InvalidMessage);
             }
             self.state = State::Initializing {
-                request_id: message["id"].clone(),
+                request_id: correlation_id(&message["id"]),
                 version,
             };
             return Ok(HttpContext {
@@ -130,7 +146,7 @@ impl McpProtocolSession {
             return Err(McpTransportError::InvalidResponse);
         };
         if message_kind(response)? != MessageKind::Response
-            || response.get("id") != Some(request_id)
+            || correlation_id(&response["id"]) != *request_id
         {
             return Err(McpTransportError::InvalidResponse);
         }
@@ -152,8 +168,12 @@ impl McpProtocolSession {
         let capabilities = result
             .get("capabilities")
             .filter(|value| value.is_object())
-            .ok_or(McpTransportError::InvalidResponse)?
-            .clone();
+            .ok_or(McpTransportError::InvalidResponse)?;
+        let capability_bytes = json_bytes(capabilities)?;
+        let capabilities = Arc::new(
+            self.retained
+                .retain(capabilities.clone(), capability_bytes)?,
+        );
         if !valid_implementation_info(result.get("serverInfo")) {
             return Err(McpTransportError::InvalidResponse);
         }
@@ -175,7 +195,7 @@ impl McpProtocolSession {
     pub fn server_capabilities(&self) -> Option<&Value> {
         match &self.state {
             State::AwaitingInitialized { capabilities, .. } | State::Ready { capabilities, .. } => {
-                Some(capabilities)
+                Some(&capabilities.value)
             }
             _ => None,
         }
@@ -275,5 +295,31 @@ mod tests {
         let mut invalid = initialize();
         invalid["params"]["protocolVersion"] = "2026-07-28".into();
         assert!(session.begin(&invalid).is_err());
+    }
+
+    #[test]
+    fn capability_charge_survives_initialization_and_is_shared_between_sessions() {
+        let capabilities = json!({"tools":{"listChanged":true}});
+        let bytes = json_bytes(&capabilities).unwrap();
+        let budget = ByteBudget::new(bytes);
+        let mut first = McpProtocolSession::new(budget.clone());
+        let mut second = McpProtocolSession::new(budget.clone());
+        let response = json!({"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25",
+            "capabilities":capabilities,"serverInfo":{"name":"fixture","version":"1"}}});
+        first.begin(&initialize()).unwrap();
+        second.begin(&initialize()).unwrap();
+        first.accept_initialize_response(&response, None).unwrap();
+        first
+            .begin(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
+            .unwrap();
+        assert_eq!(budget.used(), bytes);
+        assert_eq!(
+            second.accept_initialize_response(&response, None),
+            Err(McpTransportError::Capacity)
+        );
+        assert_eq!(first.server_capabilities(), Some(&capabilities));
+        drop(first);
+        assert_eq!(budget.used(), 0);
+        second.accept_initialize_response(&response, None).unwrap();
     }
 }

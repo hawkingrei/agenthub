@@ -85,12 +85,17 @@ impl TeamInternalControlService {
     ) -> Result<Response<McpResponseStream>, Status> {
         let metadata = request.metadata().clone();
         let payload = request.into_inner();
+        let hub = self.deps.agents.mcp_proxy()?;
+        let _ingress = hub
+            .budget
+            .ingress
+            .acquire(payload.message_json.len())
+            .map_err(|_| Status::resource_exhausted("MCP ingress capacity reached"))?;
         let message = agenthub_mcp::protocol::parse_message(payload.message_json.as_bytes())
             .map_err(|_| Status::invalid_argument("invalid or oversized MCP message"))?;
         let (executor, guard) = self
             .mcp_executor(&metadata, message_admission(&message))
             .await?;
-        let hub = self.deps.agents.mcp_proxy()?;
         let session = hub.session(&executor, &payload.session_id).await?;
         let (output, receiver) = mpsc::channel(8);
         match session.prepare(&executor, message.clone()).await {
@@ -121,23 +126,28 @@ impl TeamInternalControlService {
                     return Err(Status::failed_precondition("MCP message admission failed"));
                 }
                 let response = serde_json::json!({"jsonrpc":"2.0","id":message.get("id"),"error":{"code":-32000,"message":error.to_string()}});
-                let _ = output.try_send(agenthub_mcp::bridge::McpProxyFrame {
-                    message_json: response.to_string(),
-                    finished: true,
-                });
+                let frame = agenthub_mcp::bridge::McpProxyFrame::new(
+                    response.to_string(),
+                    true,
+                    &hub.budget.delivery,
+                )
+                .map_err(|_| Status::resource_exhausted("MCP response capacity reached"))?;
+                let _ = output.try_send(frame);
             }
         }
-        let stream = futures::stream::unfold(receiver, |mut receiver| async move {
-            receiver.recv().await.map(|frame| {
-                (
-                    Ok(McpProxyFrame {
-                        message_json: frame.message_json,
-                        finished: frame.finished,
-                    }),
-                    receiver,
-                )
-            })
-        });
+        let stream =
+            futures::stream::unfold((receiver, None), |(mut receiver, _previous)| async move {
+                receiver.recv().await.map(|frame| {
+                    let (message_json, finished, bytes) = frame.into_parts();
+                    (
+                        Ok(McpProxyFrame {
+                            message_json,
+                            finished,
+                        }),
+                        (receiver, Some(bytes)),
+                    )
+                })
+            });
         Ok(Response::new(Box::pin(stream)))
     }
 }

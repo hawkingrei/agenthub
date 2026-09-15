@@ -4,6 +4,7 @@ use agenthub_agent_domain::loop_runtime::LoopReservation;
 use agenthub_db::mcp_operations::McpOperationStore;
 use agenthub_mcp::{
     bridge::{McpProxyBinding, McpProxySession},
+    budget::McpProxyBudget,
     journal::JournaledMcpClient,
 };
 use tokio::sync::Mutex;
@@ -40,6 +41,7 @@ type Sessions = HashMap<String, (Scope, Arc<McpProxySession>)>;
 
 pub(crate) struct McpProxyHub {
     pub journal: JournaledMcpClient,
+    pub budget: Arc<McpProxyBudget>,
     mounts: Mutex<Mounts>,
     sessions: Mutex<Sessions>,
 }
@@ -62,8 +64,10 @@ impl McpProxyHub {
                 "duplicate MCP binding"
             );
         }
+        let budget = Arc::new(McpProxyBudget::default());
         Ok(Self {
-            journal: JournaledMcpClient::new(journal),
+            journal: JournaledMcpClient::new(journal, budget.delivery.clone()),
+            budget,
             mounts: Mutex::new(index),
             sessions: Mutex::new(HashMap::new()),
         })
@@ -99,7 +103,7 @@ impl McpProxyHub {
             return Err(Status::resource_exhausted("MCP session limit reached"));
         }
         let id = uuid::Uuid::new_v4().to_string();
-        let session = McpProxySession::new(id.clone(), binding);
+        let session = McpProxySession::new(id.clone(), binding, self.budget.clone());
         if !session.is_active() {
             return Err(Status::permission_denied("MCP binding has been revoked"));
         }

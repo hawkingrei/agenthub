@@ -71,6 +71,12 @@ giving an expired executor authority to send more work.
   cache hints, and errors. It creates no journaled tool send and does not replace the client's
   version/fallback decision. The pinned July 2026 discovery schema places server identity under
   `result._meta`; the earlier draft's top-level `serverInfo` example is not the final contract.
+- Share byte-credit pools across daemon sessions. Reserve working capacity before HTTP admission,
+  with an independent callback allowance. Lease ingress, queued events/frames, retained discovery,
+  and capabilities; transfer delivery leases across queues and bound the shim's combined queues.
+- Hash retained request/callback/initialize IDs to fixed-size correlation keys, preserving the
+  original IDs on the wire. Account serialized payloads and bounded working copies explicitly;
+  do not present these counters as allocator or process RSS measurements.
 
 Stable contract: [MCP operation journal](../features/mcp-operation-journal.md).
 Transport contract: [MCP proxy transport](../features/mcp-proxy-transport.md).
@@ -194,10 +200,24 @@ an upstream HTTP 404 JSON-RPC `-32601` probe error, including its data, and subs
 the existing legacy initialize/callback/discovery/write flow. The result shape follows the final
 [July 2026 discovery specification](https://modelcontextprotocol.io/specification/2026-07-28/server/discover).
 
+The payload-budget checkpoint passes 43 MCP crate tests and 14 root MCP tests, including the
+parent-invoked configured-launch child fixture. It covers exact capacity versus one extra byte,
+shared cross-session admission, initialization callbacks with ordinary workspace capacity full,
+catalog refresh/invalidation, capability handoff, and large wire IDs with fixed-size retained keys.
+The signed RPC fixture fills delivery capacity after discovery, observes `sent` before the upstream
+write, and verifies a single send and durable `succeeded` after provider delivery closes. The
+operation guard remains held until settlement. A raw SSE fixture verifies that short exponent
+numbers expanding beyond the output limit in a progress event do not discard the later tool result.
+
+The final real binary rebuild and root shim/HTTP regressions pass after that serialization fix.
+Root/MCP all-target Clippy with warnings denied, formatting, whitespace, and changed-document local
+links pass. No dependency, generated-proto, database-schema, or Bazel configuration change was
+needed. The limits cover charged application payloads and bounded working allowances, not RSS.
+
 ## Follow-Ups
 
-- Complete slice 9's linked continuations, remaining protocol controller paths, aggregate queue
-  byte budget, and integration authorization. Do not infer namespace isolation from a Mem tool set
+- Complete slice 9's linked continuations, remaining protocol controller paths, and integration
+  authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through

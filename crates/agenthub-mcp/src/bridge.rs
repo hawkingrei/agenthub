@@ -14,10 +14,11 @@ use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, Semaphore, mpsc}
 
 use crate::{
     MAX_MESSAGE_BYTES, McpTransportError,
+    budget::{ByteBudget, ByteLease, McpProxyBudget, json_bytes},
     http::{HttpContext, PreparedHttpRequest},
     journal::JournaledMcpClient,
     policy::{McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, PreparedToolCall},
-    protocol::{MessageKind, message_kind},
+    protocol::{MessageKind, correlation_id, message_kind},
     session::McpProtocolSession,
 };
 
@@ -53,6 +54,29 @@ impl McpProxyBinding {
 pub struct McpProxyFrame {
     pub message_json: String,
     pub finished: bool,
+    bytes: ByteLease,
+}
+
+impl McpProxyFrame {
+    pub fn new(
+        message_json: String,
+        finished: bool,
+        budget: &ByteBudget,
+    ) -> Result<Self, McpTransportError> {
+        if message_json.len() > MAX_MESSAGE_BYTES {
+            return Err(McpTransportError::MessageTooLarge);
+        }
+        let bytes = budget.acquire(message_json.len())?;
+        Ok(Self {
+            message_json,
+            finished,
+            bytes,
+        })
+    }
+
+    pub fn into_parts(self) -> (String, bool, ByteLease) {
+        (self.message_json, self.finished, self.bytes)
+    }
 }
 
 pub struct McpProxySession {
@@ -62,8 +86,9 @@ pub struct McpProxySession {
     lifecycle_gate: Arc<Mutex<()>>,
     upstream_context: Mutex<Option<HttpContext>>,
     discovery: Mutex<Discovery>,
-    request_ids: Mutex<HashSet<String>>,
-    callbacks: Mutex<HashSet<String>>,
+    request_ids: Mutex<HashSet<[u8; 32]>>,
+    callbacks: Mutex<HashSet<[u8; 32]>>,
+    budget: Arc<McpProxyBudget>,
     tool_slots: Arc<Semaphore>,
     control_slots: Arc<Semaphore>,
     closed: AtomicBool,
@@ -75,6 +100,7 @@ struct Discovery {
     tools: Vec<Value>,
     next_cursor: Option<String>,
     catalog: Option<McpToolCatalog>,
+    bytes: Option<ByteLease>,
 }
 
 pub struct PreparedProxyExchange {
@@ -84,6 +110,7 @@ pub struct PreparedProxyExchange {
     kind: Exchange,
     _slot: OwnedSemaphorePermit,
     _lifecycle: Option<OwnedMutexGuard<()>>,
+    _workspace: ByteLease,
 }
 
 enum Exchange {
@@ -97,16 +124,21 @@ enum Exchange {
 }
 
 impl McpProxySession {
-    pub fn new(id: String, binding: Arc<McpProxyBinding>) -> Arc<Self> {
+    pub fn new(
+        id: String,
+        binding: Arc<McpProxyBinding>,
+        budget: Arc<McpProxyBudget>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             id,
             binding,
-            protocol: Mutex::new(McpProtocolSession::default()),
+            protocol: Mutex::new(McpProtocolSession::new(budget.retained.clone())),
             lifecycle_gate: Arc::new(Mutex::new(())),
             upstream_context: Mutex::new(None),
             discovery: Mutex::new(Discovery::default()),
             request_ids: Mutex::new(HashSet::new()),
             callbacks: Mutex::new(HashSet::new()),
+            budget,
             tool_slots: Arc::new(Semaphore::new(4)),
             control_slots: Arc::new(Semaphore::new(8)),
             closed: AtomicBool::new(false),
@@ -131,6 +163,7 @@ impl McpProxySession {
         if !self.is_active() {
             return Err(McpPolicyError::Scope);
         }
+        json_bytes(&message)?;
         let message_kind = message_kind(&message)?;
         if message_kind == MessageKind::Batch {
             return Err(McpPolicyError::Call);
@@ -141,6 +174,7 @@ impl McpProxySession {
             .unwrap_or("")
             .to_owned();
         let is_response = message_kind == MessageKind::Response;
+        let workspace = self.budget.workspace(is_response)?;
         let is_tool = method == "tools/call";
         let slot = if is_tool {
             &self.tool_slots
@@ -185,13 +219,13 @@ impl McpProxySession {
         }
         if message_kind == MessageKind::Request {
             let mut ids = self.request_ids.lock().await;
-            if ids.len() >= 4096 || !ids.insert(message["id"].to_string()) {
+            if ids.len() >= 4096 || !ids.insert(correlation_id(&message["id"])) {
                 return Err(McpPolicyError::Call);
             }
         }
         let mut context = self.protocol.lock().await.begin(&message)?;
         if is_response {
-            let key = message["id"].to_string();
+            let key = correlation_id(&message["id"]);
             if !self.callbacks.lock().await.remove(&key) {
                 return Err(McpPolicyError::Call);
             }
@@ -265,13 +299,14 @@ impl McpProxySession {
             kind,
             _slot: slot,
             _lifecycle: lifecycle,
+            _workspace: workspace,
         })
     }
 
     async fn observe(&self, message: &Value) -> Result<(), McpTransportError> {
         if message_kind(message)? == MessageKind::Request {
             let mut callbacks = self.callbacks.lock().await;
-            if callbacks.len() >= 64 || !callbacks.insert(message["id"].to_string()) {
+            if callbacks.len() >= 64 || !callbacks.insert(correlation_id(&message["id"])) {
                 return Err(McpTransportError::InvalidResponse);
             }
         }
@@ -280,6 +315,8 @@ impl McpProxySession {
             discovery.generation = discovery.generation.saturating_add(1);
             discovery.catalog = None;
             discovery.next_cursor = None;
+            discovery.tools.clear();
+            discovery.bytes = None;
         }
         Ok(())
     }
@@ -330,6 +367,14 @@ impl McpProxySession {
         if next_cursor.is_some() && &next_cursor == cursor {
             return Err(McpTransportError::InvalidResponse);
         }
+        // Both the page accumulator and the admission catalog own the declarations. Working
+        // copies during refresh belong to this exchange's separately reserved workspace.
+        let retained_bytes = 2 * json_bytes(&Value::Array(all_tools.clone()))?;
+        if let Some(bytes) = &mut discovery.bytes {
+            bytes.resize(retained_bytes)?;
+        } else {
+            discovery.bytes = Some(self.budget.retained.acquire(retained_bytes)?);
+        }
         discovery.tools = all_tools;
         discovery.catalog = Some(catalog);
         discovery.next_cursor = next_cursor;
@@ -364,9 +409,10 @@ impl PreparedProxyExchange {
                                 // The terminal result is already durable. Drain earlier queued
                                 // events before forwarding it so the provider observes wire order.
                                 while let Ok(event) = receiver.try_recv() {
+                                    let (event, bytes) = event.into_parts();
                                     if let Some(message) = event.message {
                                         if session.observe(&message).await.is_err() { sink.fail(); }
-                                        sink.emit(Some(message), false);
+                                        sink.emit(Some(message), false, Some(bytes));
                                     }
                                 }
                                 if result.event_delivery_lost { sink.fail(); }
@@ -376,9 +422,10 @@ impl PreparedProxyExchange {
                         },
                         event = receiver.recv(), if events_open => {
                             if let Some(event) = event {
+                                let (event, bytes) = event.into_parts();
                                 if let Some(message) = event.message {
                                     if session.observe(&message).await.is_err() { sink.fail(); }
-                                    sink.emit(Some(message), false);
+                                    sink.emit(Some(message), false, Some(bytes));
                                 }
                             } else {events_open = false;}
                         }
@@ -413,13 +460,13 @@ impl PreparedProxyExchange {
             .map_err(|error| error.to_string()),
         };
         match outcome {
-            Ok(response) => sink.emit(response, true),
+            Ok(response) => sink.emit(response, true, None),
             Err(error) => {
                 if matches!(method.as_str(), "initialize" | "notifications/initialized") {
                     session.protocol.lock().await.initialization_failed();
                 }
                 if request_id.is_some() {
-                    sink.emit(Some(json!({"jsonrpc":"2.0","id":request_id,"error":{"code":-32000,"message":error}})), true);
+                    sink.emit(Some(json!({"jsonrpc":"2.0","id":request_id,"error":{"code":-32000,"message":error}})), true, None);
                 } else {
                     sink.fail();
                 }
@@ -439,22 +486,23 @@ impl Sink {
         self.lost = true;
         self.session.close();
     }
-    fn emit(&mut self, message: Option<Value>, finished: bool) {
+    fn emit(&mut self, message: Option<Value>, finished: bool, bytes: Option<ByteLease>) {
         if self.lost {
             return;
         }
         let message_json = message
             .map(|message| message.to_string())
             .unwrap_or_default();
-        if message_json.len() > MAX_MESSAGE_BYTES
-            || self
-                .output
-                .try_send(McpProxyFrame {
-                    message_json,
-                    finished,
-                })
-                .is_err()
-        {
+        let frame = if let Some(mut bytes) = bytes {
+            bytes.resize(message_json.len()).map(|()| McpProxyFrame {
+                message_json,
+                finished,
+                bytes,
+            })
+        } else {
+            McpProxyFrame::new(message_json, finished, &self.session.budget.delivery)
+        };
+        if !frame.is_ok_and(|frame| self.output.try_send(frame).is_ok()) {
             self.fail();
         }
     }
@@ -504,7 +552,7 @@ async fn run_control(
             return Ok(Some(message));
         }
         session.observe(&message).await?;
-        sink.emit(Some(message), false);
+        sink.emit(Some(message), false, None);
     }
     if request_id.is_some() {
         Err(McpTransportError::Disconnected)
