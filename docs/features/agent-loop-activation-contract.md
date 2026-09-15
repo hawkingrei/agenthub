@@ -3,6 +3,10 @@
 Status: implementation contract. The lifecycle service is delivered incrementally; the presence
 of this specification does not enable automatic execution.
 
+The control-store slice implements policy configuration, idempotent trigger acceptance, pending
+activation coalescing, and safe event persistence. Admission, provider execution, and recovery
+remain subsequent slices.
+
 ## Problem
 
 The [loop runtime](agent-loop-runtime.md) needs concrete identity, persistence, and migration
@@ -79,6 +83,8 @@ Initial policy version 1 uses finite defaults:
 
 Limits are validated positive bounded configuration, snapshotted by revision. A caller cannot reset
 budgets by submitting a new source ID. Startup failures and no-progress history survive restart.
+When members configure different Team limits, the tightest non-disabled member limit applies to
+all producers in that Team. A more permissive member cannot bypass the Team's existing bound.
 Reaching a limit retains accepted work and records the reason; excess *new* work is explicitly
 rejected before acceptance. Operator resume/reset is explicit. A canonical progress transition or
 new actionable dependency revision may reset consecutive no-progress accounting; elapsed polling
@@ -204,3 +210,4 @@ fail explicitly rather than claim parity. Track implementation and remaining val
 
 - [Product definition](../journal/2026-09-15-agent-loop-product-definition.md)
 - [Activation contract checkpoint](../journal/2026-09-15-agent-loop-activation-contract.md)
+- [Durable loop control store](../journal/2026-09-15-agent-loop-control-store.md)

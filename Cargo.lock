@@ -611,6 +611,7 @@ dependencies = [
 name = "agenthub-db"
 version = "0.0.10"
 dependencies = [
+ "agenthub-agent-domain",
  "agenthub-config",
  "agenthub-message-store",
  "anyhow",

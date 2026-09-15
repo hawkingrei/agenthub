@@ -25,6 +25,8 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-09-15: Durable loop control store](2026-09-15-agent-loop-control-store.md): explicit policy, idempotent trigger receipts, pending work, and safe lifecycle events.
+
 - [2026-09-15: Agent loop activation contract](2026-09-15-agent-loop-activation-contract.md): identity, finite policy defaults, compatibility gates, and a deterministic transaction/cleanup experiment.
 
 - [2026-09-15: Agent loop product definition](2026-09-15-agent-loop-product-definition.md): design reset for temporary executions, durable tasks/IM, role prompts, Agent Card startup, and Nowledge Mem; implementation pending.
