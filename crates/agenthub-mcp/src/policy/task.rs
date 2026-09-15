@@ -138,16 +138,19 @@ impl McpBinding {
             executor: context.executor.clone(),
             input: input(receipt, request_key, request_digest),
             response_id: message["id"].clone(),
-            authority: McpTaskAuthority {
-                server_id: self.server_id.clone(),
-                scope_digest: self.scope_digest.clone(),
-                binding_digest: self.binding_digest.clone(),
-                tools: catalog
-                    .tools
-                    .iter()
-                    .map(|(name, tool)| (name.clone(), tool.schema_digest.clone()))
-                    .collect(),
-            },
+            authority: self.task_authority(catalog),
         })
+    }
+    pub(crate) fn task_authority(&self, catalog: &McpToolCatalog) -> McpTaskAuthority {
+        McpTaskAuthority {
+            server_id: self.server_id.clone(),
+            scope_digest: self.scope_digest.clone(),
+            binding_digest: self.binding_digest.clone(),
+            tools: catalog
+                .tools
+                .iter()
+                .map(|(name, tool)| (name.clone(), tool.schema_digest.clone()))
+                .collect(),
+        }
     }
 }

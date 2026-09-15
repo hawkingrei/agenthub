@@ -39,27 +39,12 @@ impl TeamInternalControlService {
             .spawn_runtime_task("mcp-listener", async move {
                 prepared
                     .run(output, || {
-                        let agents = agents.clone();
-                        let store = store.clone();
-                        let executor = executor.clone();
-                        async move {
-                            let guard = agents
-                                .loop_operation_gate(&executor.actor_id)
-                                .await
-                                .read_owned()
-                                .await;
-                            if executor.owner_id != agents.loop_owner_id() {
-                                return Err(agenthub_mcp::McpTransportError::Disconnected);
-                            }
-                            store
-                                .verify_executor_bootstrap_live(
-                                    &executor,
-                                    chrono::Utc::now().timestamp(),
-                                )
-                                .await
-                                .map_err(|_| agenthub_mcp::McpTransportError::Disconnected)?;
-                            Ok(guard)
-                        }
+                        validate_stream(
+                            agents.clone(),
+                            store.clone(),
+                            executor.clone(),
+                            ExecutionAdmission::Bootstrap,
+                        )
                     })
                     .await;
                 if !cleanup.is_active() {
@@ -156,6 +141,54 @@ impl TeamInternalControlService {
             .await?;
         let session = hub.session(&executor, &payload.session_id).await?;
         let (output, receiver) = mpsc::channel(8);
+        if message["method"] == "subscriptions/listen" {
+            match session
+                .prepare_subscription(&executor, hub.journal.clone(), message.clone())
+                .await
+            {
+                Ok(prepared) => {
+                    let agents = self.deps.agents.clone();
+                    let store = LoopStore::new(self.deps.db.clone());
+                    let cleanup = session.clone();
+                    let admission = message_admission(&message);
+                    self.deps
+                        .agents
+                        .daemon_tasks()
+                        .spawn_runtime_task("mcp-subscription", async move {
+                            drop(guard);
+                            prepared
+                                .run(output, || {
+                                    validate_stream(
+                                        agents.clone(),
+                                        store.clone(),
+                                        executor.clone(),
+                                        admission,
+                                    )
+                                })
+                                .await;
+                            if !cleanup.is_active() {
+                                let _ = cleanup.shutdown().await;
+                            }
+                            Ok(())
+                        })
+                        .map_err(|_| Status::unavailable("MCP proxy is shutting down"))?;
+                }
+                Err(error) => {
+                    let response =
+                        admission_error(&message, &error.to_string()).ok_or_else(|| {
+                            Status::failed_precondition("MCP subscription admission failed")
+                        })?;
+                    let frame = agenthub_mcp::bridge::McpProxyFrame::new(
+                        response.to_string(),
+                        true,
+                        &hub.budget.delivery,
+                    )
+                    .map_err(|_| Status::resource_exhausted("MCP response capacity reached"))?;
+                    let _ = output.try_send(frame);
+                }
+            }
+            return Ok(Response::new(response_stream(receiver, session)));
+        }
         match session.prepare(&executor, message.clone()).await {
             Ok(prepared) => {
                 let journal = hub.journal.clone();
@@ -198,6 +231,36 @@ impl TeamInternalControlService {
     }
 }
 
+async fn validate_stream(
+    agents: std::sync::Arc<AgentManager>,
+    store: LoopStore,
+    executor: LoopReservation,
+    admission: ExecutionAdmission,
+) -> Result<tokio::sync::OwnedRwLockReadGuard<()>, agenthub_mcp::McpTransportError> {
+    let guard = agents
+        .loop_operation_gate(&executor.actor_id)
+        .await
+        .read_owned()
+        .await;
+    if executor.owner_id != agents.loop_owner_id() {
+        return Err(agenthub_mcp::McpTransportError::Disconnected);
+    }
+    let result = match admission {
+        ExecutionAdmission::Bootstrap => {
+            store
+                .verify_executor_bootstrap_live(&executor, chrono::Utc::now().timestamp())
+                .await
+        }
+        _ => {
+            store
+                .verify_executor_live(&executor, chrono::Utc::now().timestamp())
+                .await
+        }
+    };
+    result.map_err(|_| agenthub_mcp::McpTransportError::Disconnected)?;
+    Ok(guard)
+}
+
 fn response_stream(
     receiver: mpsc::Receiver<agenthub_mcp::bridge::McpProxyFrame>,
     session: std::sync::Arc<agenthub_mcp::bridge::McpProxySession>,
@@ -226,6 +289,17 @@ fn message_admission(message: &serde_json::Value) -> ExecutionAdmission {
 
     let method = message["method"].as_str().unwrap_or("");
     let bootstrap = match message_kind(message) {
+        Ok(MessageKind::Request) if method == "subscriptions/listen" => message
+            .pointer("/params/notifications")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|filters| {
+                filters.keys().all(|key| {
+                    matches!(
+                        key.as_str(),
+                        "toolsListChanged" | "promptsListChanged" | "resourcesListChanged"
+                    )
+                })
+            }),
         Ok(MessageKind::Request) => matches!(
             method,
             "initialize"

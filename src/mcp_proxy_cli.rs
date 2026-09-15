@@ -162,6 +162,7 @@ async fn pump(
 ) -> anyhow::Result<()> {
     let mut exchanges = tokio::task::JoinSet::new();
     let mut listener = tokio::task::JoinSet::new();
+    let mut subscriptions = tokio::task::JoinSet::new();
     let mut listener_started = false;
     let (ready, mut ready_messages) = mpsc::channel(1);
     loop {
@@ -181,6 +182,10 @@ async fn pump(
                 result.ok_or_else(|| anyhow::anyhow!("MCP listener disappeared"))?
                     .map_err(|_| anyhow::anyhow!("MCP listener task failed"))??;
             }
+            result = subscriptions.join_next(), if !subscriptions.is_empty() => {
+                result.ok_or_else(|| anyhow::anyhow!("MCP subscription disappeared"))?
+                    .map_err(|_| anyhow::anyhow!("MCP subscription task failed"))??;
+            }
             result = exchanges.join_next(), if !exchanges.is_empty() => {
                 result.ok_or_else(||anyhow::anyhow!("MCP exchange disappeared"))?
                     .map_err(|_|anyhow::anyhow!("MCP exchange task failed"))??;
@@ -188,13 +193,18 @@ async fn pump(
             message = messages.recv() => {
                 let message = message.ok_or_else(||anyhow::anyhow!("MCP stdin reader stopped"))??;
                 let Some(message) = message else {break;};
-                anyhow::ensure!(exchanges.len() < 32, "MCP concurrent exchange limit reached");
+                anyhow::ensure!(exchanges.len() + subscriptions.len() < 32, "MCP concurrent exchange limit reached");
+                let subscription = message.value["method"] == "subscriptions/listen";
                 // Wait for admission headers, preserving stdin order through initialize/initialized
                 // delivery, then receive each response independently so callbacks can make progress.
                 let stream = connection.refresh()?.exchange_mcp_proxy(session_id.into(), message.value.to_string()).await?;
                 let ready = ready.clone();
                 let output = output.clone();
                 let budget = budget.clone();
+                if subscription {
+                    subscriptions.spawn(async move { forward(stream, output, budget).await.map(|_| ()) });
+                    continue;
+                }
                 exchanges.spawn(async move {
                     let can_listen = forward(stream, output, budget).await?;
                     // The daemon reports actual protocol readiness, including batches where an
@@ -206,6 +216,7 @@ async fn pump(
         }
     }
     listener.abort_all();
+    subscriptions.abort_all();
     while let Some(result) = exchanges.join_next().await {
         result.map_err(|_| anyhow::anyhow!("MCP exchange task failed"))??;
     }

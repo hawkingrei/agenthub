@@ -298,6 +298,16 @@ pub struct McpTaskInputResponse {
     pub response_digest: McpDigest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpTaskNotificationRecord {
+    pub sequence: i64,
+    pub attempt_number: u32,
+    pub activation_id: String,
+    pub response_digest: McpDigest,
+    pub outcome: Option<McpCompletion>,
+    pub inputs_valid: bool,
+}
+
 pub struct McpTaskUpdateInput {
     pub receipt: McpTaskReceipt,
     pub request_key: McpDigest,

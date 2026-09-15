@@ -10,7 +10,9 @@ use crate::{
 };
 
 mod input;
-pub(crate) use input::{input_responses, lookup_observation, update_observation};
+pub(crate) use input::{
+    input_responses, lookup_observation, notification_observation, update_observation,
+};
 
 #[derive(Default)]
 pub(crate) struct TaskObservation {
@@ -198,14 +200,22 @@ pub(crate) fn lookup_outcome(
         )
         .then_some(completion));
     }
-    validate_task(result, input.receipt.version)?;
-    if task_digest(&result["taskId"])? != input.receipt.task_digest
-        || input.receipt.version == McpTaskVersion::July2026 && result["resultType"] != "complete"
-    {
+    if input.receipt.version == McpTaskVersion::July2026 && result["resultType"] != "complete" {
+        return Err(McpTransportError::InvalidResponse);
+    }
+    status_outcome(&input.receipt, result)
+}
+
+fn status_outcome(
+    receipt: &McpTaskReceipt,
+    result: &Value,
+) -> Result<Option<McpCompletion>, McpTransportError> {
+    validate_task(result, receipt.version)?;
+    if task_digest(&result["taskId"])? != receipt.task_digest {
         return Err(McpTransportError::InvalidResponse);
     }
     match result["status"].as_str().unwrap() {
-        "completed" if input.receipt.version == McpTaskVersion::July2026 => {
+        "completed" if receipt.version == McpTaskVersion::July2026 => {
             let completion = crate::journal::classify_completion(
                 &json!({"jsonrpc":"2.0","result":result["result"]}),
                 None,
@@ -219,7 +229,7 @@ pub(crate) fn lookup_outcome(
             Ok(Some(completion))
         }
         "failed" => {
-            if input.receipt.version == McpTaskVersion::July2026
+            if receipt.version == McpTaskVersion::July2026
                 && (result["error"]["code"].as_i64().is_none()
                     || result["error"]["message"].as_str().is_none())
             {

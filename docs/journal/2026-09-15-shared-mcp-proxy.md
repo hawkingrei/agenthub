@@ -55,8 +55,8 @@ giving an expired executor authority to send more work.
   payloads unchanged; tool rounds use atomic journal links to their prior upstream receipt.
 - Preserve a deferred input/task receipt without claiming terminal tool success. Its typed receipt
   cannot be downgraded by transport loss or used to replay the original request. Modern tool
-  follow-ups, task lookups, cancellation, and input updates require matching receipts; task notification
-  settlement remain pending.
+  follow-ups, task lookups, cancellation, input updates, and modern task subscriptions require
+  matching receipts. Legacy unsolicited task notification routing remains pending.
 - Stream each admitted MCP message independently. Callback replies carry freshly read signed
   credentials, and the daemon retains operation ownership after RPC receiver loss.
 - Serialize legacy lifecycle delivery while allowing registered callback responses through. Keep
@@ -438,7 +438,7 @@ equivocation, restart, late acknowledgments, stale authority, and cancellation i
 exercise partial answers across activations, raw payload preservation, stale polls, lost responses,
 RPC errors, and changed request payloads. The real shim fixture now receives elicitation input,
 sends its answer, rejects another answer for the consumed ID, then observes cancellation and final
-tool results independently. Task notifications remain follow-up work.
+tool results independently. Modern subscription delivery is covered by the follow-up below.
 
 Review against the current HTTP binding found that task methods omitted `Mcp-Name`. A real HTTP
 regression reproduced the missing header. The transport now mirrors `taskId` for get/update/cancel,
@@ -450,9 +450,48 @@ including the configured-launch child invoked by its parent. Root/MCP/database a
 with warnings denied, the rebuilt real binary, formatting, whitespace, and local document links
 pass. No dependencies, protobuf definitions, or Bazel configuration changed.
 
+### Subscription follow-up (2026-09-16)
+
+Modern subscriptions use separate daemon-owned streams with short authority guards and no ordinary
+request body deadline. Acknowledgments must precede notifications and honor only requested filters.
+Known task IDs receive private observation permits under the original scope/binding/schema.
+Notification and input facts commit before delivery, with bounded digest-only history and
+deduplication across subscription IDs. Polls, cancellation responses, and notices share first-fact
+settlement. Stdio cancellation closes the selected HTTP stream locally. The shim closes idle
+subscriptions on EOF while ordinary calls finish their durable drain.
+
+Pinned core schema review confirmed that `clientInfo` is optional while client capabilities remain
+required. The transport now accepts that shape and validates supplied implementation fields. Task
+notification parsing shares lookup classification for tool errors, task errors, cancellation, and
+input-required observations.
+
+Subscription validation commands:
+
+```bash
+cargo test -p agenthub-db --locked --offline mcp_operations
+cargo test -p agenthub-mcp --locked --offline
+cargo clippy -p agenthub -p agenthub-mcp -p agenthub-db --all-targets --locked --offline -- -D warnings
+cargo build -p agenthub --bin agenthub --locked --offline
+cargo test -p agenthub --locked --offline mcp_
+cargo fmt --all --check
+```
+
+Database fixtures cover migration/deduplication, scope admission, input conflict, late settlement,
+and history capacity. HTTP fixtures cover ordering, filters, typed IDs, cancellation, concurrent
+subscriptions, idle revocation, and abandoned preparation cleanup. The real binary fixture receives
+subscribed task inputs and results through signed RPC, checks receipts before provider delivery,
+and closes with an idle subscription. An authenticated startup fixture proves list-only subscription
+admission, task/resource denial before running, and cleanup without a retained executor guard.
+
+Validation passes 40 database journal tests, 80 MCP crate tests, and 25 root MCP tests. The configured
+launch child remains explicitly invoked by its parent. Root/MCP/database all-target Clippy with
+warnings denied, the actual binary build, formatting, whitespace, and changed-document local links
+pass. New Rust files are covered by existing Bazel source globs; dependencies, protobuf definitions,
+and Bazel configuration are unchanged. Slice 9 is still incomplete and unpublished.
+
 ## Follow-Ups
 
-- Complete slice 9's task notification paths, remaining protocol controller paths, and integration
+- Complete slice 9's legacy unsolicited task notification routing, remaining protocol controller paths, and integration
   authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.

@@ -49,8 +49,60 @@ pub(super) async fn respond(upstream: &Upstream, message: &Value) -> Response {
     Json(json!({"jsonrpc":"2.0","id":message["id"],"result":result})).into_response()
 }
 
+pub(super) async fn subscribe(upstream: Arc<Upstream>, message: Value) -> Response {
+    let meta = json!({"io.modelcontextprotocol/subscriptionId":message["id"]});
+    let acknowledged = json!({"jsonrpc":"2.0","method":"notifications/subscriptions/acknowledged",
+        "params":{"_meta":meta,"notifications":message["params"]["notifications"]}});
+    if message["id"] == 99 || message["params"]["notifications"].get("taskIds").is_none() {
+        let stream = futures::stream::once(async move {
+            Ok::<_, std::io::Error>(format!("data: {acknowledged}\n\n"))
+        })
+        .chain(futures::stream::pending());
+        return axum::http::Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(axum::body::Body::from_stream(stream))
+            .unwrap();
+    }
+    assert_eq!(
+        message["params"]["notifications"],
+        json!({"taskIds":["private-task-handle"]})
+    );
+    let mut task = json!({"taskId":"private-task-handle","status":"input_required",
+        "createdAt":"2026-09-15T00:00:00Z","lastUpdatedAt":"2026-09-15T00:00:00Z","ttlMs":null,
+        "_meta":meta,"inputRequests":{"private-input":{"method":"elicitation/create","params":{"message":"private-question"}}}});
+    let input = json!({"jsonrpc":"2.0","method":"notifications/tasks","params":task});
+    let initial = futures::stream::iter(
+        [acknowledged, input]
+            .into_iter()
+            .map(|message| Ok::<_, std::io::Error>(format!("data: {message}\n\n"))),
+    );
+    let final_result = futures::stream::once(async move {
+        upstream.write_release.notified().await;
+        assert!(upstream.task_inputs_answered.load(Ordering::Acquire));
+        task.as_object_mut().unwrap().remove("inputRequests");
+        task["status"] = "completed".into();
+        task["result"] = json!({"content":[{"type":"text","text":"private-task-result"}],"extension":{"preserved":true}});
+        let completed = json!({"jsonrpc":"2.0","method":"notifications/tasks","params":task});
+        let closed = json!({"jsonrpc":"2.0","id":message["id"],"result":{"resultType":"complete","_meta":meta}});
+        Ok::<_, std::io::Error>(format!("data: {completed}\n\ndata: {closed}\n\n"))
+    });
+    axum::http::Response::builder()
+        .header("content-type", "text/event-stream")
+        .body(axum::body::Body::from_stream(initial.chain(final_result)))
+        .unwrap()
+}
+
 #[tokio::test]
 async fn real_mcp_shim_links_task_inputs_and_control_acks_before_the_eventual_result() {
+    task_roundtrip(false).await;
+}
+
+#[tokio::test]
+async fn real_mcp_shim_commits_subscribed_task_inputs_and_results_before_stdio_delivery() {
+    task_roundtrip(true).await;
+}
+
+async fn task_roundtrip(subscription: bool) {
     let Harness {
         state,
         service,
@@ -141,11 +193,38 @@ async fn real_mcp_shim_links_task_inputs_and_control_acks_before_the_eventual_re
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":3,"method":"tasks/get","params":{"taskId":"foreign-task","_meta":metadata}})).await.unwrap();
     assert!(next(&mut output).await.get("error").is_some());
     assert_eq!(upstream.calls.lock().unwrap().len(), 2);
-    write_message(&mut input, &json!({"jsonrpc":"2.0","id":20,"method":"tasks/get","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
-    assert_eq!(
-        next(&mut output).await["result"]["inputRequests"]["private-input"]["params"]["message"],
-        "private-question"
-    );
+    if subscription {
+        write_message(&mut input, &json!({"jsonrpc":"2.0","id":20,"method":"subscriptions/listen","params":{"notifications":{"taskIds":["private-task-handle"]},"_meta":metadata}})).await.unwrap();
+        assert_eq!(
+            next(&mut output).await["method"],
+            "notifications/subscriptions/acknowledged"
+        );
+        assert_eq!(
+            next(&mut output).await["params"]["inputRequests"]["private-input"]["params"]["message"],
+            "private-question"
+        );
+        let notifications = journal
+            .task_notifications(
+                &reservation.team_id,
+                &reservation.actor_id,
+                &operation,
+                0,
+                100,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            notifications.len(),
+            1,
+            "input receipt must precede provider delivery"
+        );
+    } else {
+        write_message(&mut input, &json!({"jsonrpc":"2.0","id":20,"method":"tasks/get","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
+        assert_eq!(
+            next(&mut output).await["result"]["inputRequests"]["private-input"]["params"]["message"],
+            "private-question"
+        );
+    }
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":21,"method":"tasks/update","params":{"taskId":"private-task-handle","inputResponses":{"private-input":{"action":"accept","content":{"answer":"private-answer"}}},"_meta":metadata}})).await.unwrap();
     assert_eq!(next(&mut output).await["result"]["extension"], "input-ack");
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":22,"method":"tasks/update","params":{"taskId":"private-task-handle","inputResponses":{"private-input":{"action":"decline"}},"_meta":metadata}})).await.unwrap();
@@ -163,13 +242,33 @@ async fn real_mcp_shim_links_task_inputs_and_control_acks_before_the_eventual_re
     );
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":31,"method":"tasks/cancel","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
     assert!(next(&mut output).await.get("error").is_some());
-    write_message(&mut input, &json!({"jsonrpc":"2.0","id":4,"method":"tasks/get","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
-    let response = next(&mut output).await;
-    assert_eq!(
-        response["result"]["result"]["content"][0]["text"],
-        "private-task-result"
-    );
-    assert_eq!(response["result"]["result"]["extension"]["preserved"], true);
+    let response = if subscription {
+        upstream.write_release.notify_one();
+        let notice = next(&mut output).await;
+        assert_eq!(notice["method"], "notifications/tasks");
+        let notifications = journal
+            .task_notifications(
+                &reservation.team_id,
+                &reservation.actor_id,
+                &operation,
+                0,
+                100,
+            )
+            .await
+            .unwrap();
+        assert_eq!(notifications.len(), 2);
+        assert!(
+            notifications[1].outcome.is_some(),
+            "terminal receipt must precede provider delivery"
+        );
+        assert_eq!(next(&mut output).await["id"], 20);
+        notice["params"]["result"].clone()
+    } else {
+        write_message(&mut input, &json!({"jsonrpc":"2.0","id":4,"method":"tasks/get","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
+        next(&mut output).await["result"]["result"].clone()
+    };
+    assert_eq!(response["content"][0]["text"], "private-task-result");
+    assert_eq!(response["extension"]["preserved"], true);
     let attempts = journal
         .attempts(
             &reservation.team_id,
@@ -195,10 +294,27 @@ async fn real_mcp_shim_links_task_inputs_and_control_acks_before_the_eventual_re
         )
         .await
         .unwrap();
-    assert_eq!(lookups.len(), 2);
-    assert!(lookups[0].outcome.is_none());
-    assert!(lookups[1].outcome.is_some());
-    assert_eq!(upstream.calls.lock().unwrap().len(), 6);
+    if subscription {
+        assert!(
+            lookups.is_empty(),
+            "subscriptions must not invent task queries"
+        );
+    } else {
+        assert_eq!(lookups.len(), 2);
+        assert!(lookups[0].outcome.is_none());
+        assert!(lookups[1].outcome.is_some());
+    }
+    assert_eq!(
+        upstream.calls.lock().unwrap().len(),
+        if subscription { 5 } else { 6 }
+    );
+    if subscription {
+        write_message(&mut input, &json!({"jsonrpc":"2.0","id":99,"method":"subscriptions/listen","params":{"notifications":{"taskIds":["private-task-handle"]},"_meta":metadata}})).await.unwrap();
+        assert_eq!(
+            next(&mut output).await["method"],
+            "notifications/subscriptions/acknowledged"
+        );
+    }
     drop(input);
     assert!(
         tokio::time::timeout(Duration::from_secs(3), child.wait())

@@ -9,14 +9,14 @@ fn cancellation(id: u64) -> McpTaskCancellationInput {
     }
 }
 
-fn cancelled() -> McpCompletion {
+pub(super) fn cancelled() -> McpCompletion {
     McpCompletion::Failed {
         reason: McpFailureKind::TaskCancelled,
         response_digest: hash(92),
     }
 }
 
-async fn completion(f: &Fixture, operation: &McpOperationRecord) -> McpCompletion {
+pub(super) async fn completion(f: &Fixture, operation: &McpOperationRecord) -> McpCompletion {
     f.store
         .operation("team", "worker", &operation.id)
         .await

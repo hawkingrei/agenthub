@@ -70,7 +70,7 @@ Mem server. Fresh and resumed local ACP sessions receive the same typed stdio de
 | --- | --- |
 | 2025-03-26 | Initialize handshake, optional HTTP session, GET stream/resumption, JSON-RPC batches |
 | 2025-06-18 and 2025-11-25 | Initialize handshake, optional HTTP session, GET stream/resumption, single-message envelopes |
-| 2026-07-28 | Per-request version/client metadata, standard/custom request headers, request-scoped SSE and MRTR results |
+| 2026-07-28 | Per-request version/client metadata, standard/custom request headers, request-scoped SSE, subscriptions and MRTR results |
 
 The legacy lifecycle adopts the upstream's supported version and unchanged capabilities. Tools
 cannot start before initialization and the initialized notification. An upstream initialization
@@ -170,6 +170,10 @@ unauthorized replay. Cursors remain transient; daemon restart uses journal ambig
 
 ### Modern metadata
 
+Per-request protocol version and client capabilities are required. Client information is optional;
+when supplied, it must contain string `name` and `version` fields. Capabilities are never inferred
+from an earlier request.
+
 `MCP-Protocol-Version` must match the request metadata. Standard method/name headers and discovered
 `x-mcp-header` parameter mappings are generated without changing tool arguments. Nested mappings
 must be statically reachable through `properties`. Invalid paths, duplicate header names, forbidden
@@ -222,8 +226,34 @@ uses the same bounded request/drain path with a distinct update permit and atomi
 IDs. Partial responses pass unchanged. Stale polls, acknowledgment loss, and new activations cannot
 reuse a sent input; a changed request under the same input ID records a conflict and blocks further
 updates. Input/update acknowledgments remain separate from task completion. Legacy protocols reject
-this modern update method. Task notification/subscription settlement remains pending; see the
+this modern update method. Subscribed observations use the same
 [journal contract](mcp-operation-journal.md).
+
+### Modern subscriptions
+
+`subscriptions/listen` opens one HTTP POST stream with the unchanged provider request. It follows
+the [pinned core contract](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/cd0623765886c8cc282e3e5e1a03ab7469055fab/docs/specification/2026-07-28/basic/patterns/subscriptions.mdx)
+and the released Tasks extension. Supported filters are the three core list-change flags, bounded
+resource URI lists, and task ID lists. Unknown filters cannot implicitly grant access. Full
+integration-specific resource/scope enforcement remains part of the open integration gate.
+
+The first notification must acknowledge the same typed JSON-RPC ID and a subset of the requested
+filters. Subsequent notifications must carry that ID and match the acknowledged filter. Task IDs
+also require original journal receipts, current binding/catalog, and a running executor. List-only
+subscriptions may start during authorized provider bootstrap. Task input and result facts commit
+before delivery, with extensions preserved and no automatic answers to input requests.
+
+At most eight subscriptions per proxy use the separate shared listener workspace allowance. Idle
+reads hold no ordinary exchange or executor cleanup guard and recheck authority every second.
+Connection establishment retains its configured timeout; stream bodies have no ordinary request
+deadline. The transport never automatically repeats a subscription POST or resumes it through GET.
+A correlated completion response ends the stream gracefully. An unexpected drop closes provider
+transport without manufacturing completion.
+
+Stdio cancellation closes only the matching subscription's HTTP stream locally. It does not send
+`tasks/cancel` or an HTTP notification POST. Numeric and string IDs remain distinct. Stdin EOF
+closes idle subscriptions while ordinary calls finish their durable drain; both kinds share the
+shim's 32-exchange admission bound. Legacy unsolicited task notification routing remains a follow-up.
 
 ### Redaction
 
@@ -333,6 +363,7 @@ methods remain controller work.
 | Task lookup | Real shim preserves modern task/result envelopes and rejects foreign handles before HTTP; legacy HTTP status/result distinction, terminal failures, malformed responses, and March batch rejection |
 | Task cancellation | Real shim preserves the acknowledgment, rejects a duplicate before HTTP, then records actual tool success; legacy cancel capability/status, lost acknowledgment, RPC error, malformed response, and fresh-activation resend rejection |
 | Task inputs | Real shim receives unchanged elicitation input, commits response consumption before HTTP, rejects a duplicate, and later observes the tool result; HTTP partial/foreign inputs, stale polls, lost ACK, RPC errors, and changed input requests |
+| Modern subscriptions | HTTP acknowledgment/filter/order checks, typed IDs, local cancellation, idle authority revocation, capacity, and signed-RPC/shim task input/result delivery plus EOF with an idle subscription |
 
 ## Operational Notes
 
@@ -348,7 +379,7 @@ fixture additionally checks inherited provider/shim environments and an actual j
 
 ## Open Risks
 
-- Task notification paths and non-tool continuation authorization remain controller
+- Legacy unsolicited task notification routing and non-tool continuation authorization remain controller
   work. Observed deferred receipts block replay of the original request until a linked lookup
   establishes the tool outcome.
 - Effective scope currently uses the canonical configured endpoint and Team space. Endpoint

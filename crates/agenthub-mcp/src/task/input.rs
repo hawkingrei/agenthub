@@ -37,34 +37,64 @@ pub(crate) fn lookup_observation(
     response: &Value,
 ) -> Result<TaskObservation, McpTransportError> {
     let outcome = lookup_outcome(input, response)?;
-    let inputs = if input.receipt.version == McpTaskVersion::July2026
-        && input.method == McpTaskLookupMethod::Get
-        && response["result"]["status"] == "input_required"
-    {
-        let requests = response["result"]["inputRequests"]
-            .as_object()
-            .ok_or(McpTransportError::InvalidResponse)?;
-        if requests.len() > 64 {
-            return Err(McpTransportError::Capacity);
-        }
-        Some(
-            requests
-                .iter()
-                .map(|(key, request)| {
-                    if !crate::continuation::valid_input_request(request) {
-                        return Err(McpTransportError::InvalidResponse);
-                    }
-                    Ok(McpTaskInputRequest {
-                        input_id_digest: input_id(key)?,
-                        request_digest: digest("mcp-task-input-request-v1", request)?,
-                    })
-                })
-                .collect::<Result<Vec<_>, McpTransportError>>()?,
-        )
+    let inputs = if input.method == McpTaskLookupMethod::Get {
+        task_inputs(&input.receipt, &response["result"])?
     } else {
         None
     };
     Ok(TaskObservation { outcome, inputs })
+}
+
+pub(crate) fn notification_observation(
+    receipt: &McpTaskReceipt,
+    message: &Value,
+) -> Result<TaskObservation, McpTransportError> {
+    let method = match receipt.version {
+        McpTaskVersion::July2026 => "notifications/tasks",
+        McpTaskVersion::November2025 => "notifications/tasks/status",
+    };
+    if crate::protocol::message_kind(message)? != crate::protocol::MessageKind::Notification
+        || message["method"] != method
+    {
+        return Err(McpTransportError::InvalidResponse);
+    }
+    let task = &message["params"];
+    Ok(TaskObservation {
+        outcome: status_outcome(receipt, task)?,
+        inputs: task_inputs(receipt, task)?,
+    })
+}
+
+fn task_inputs(
+    receipt: &McpTaskReceipt,
+    task: &Value,
+) -> Result<Option<Vec<McpTaskInputRequest>>, McpTransportError> {
+    let inputs =
+        if receipt.version == McpTaskVersion::July2026 && task["status"] == "input_required" {
+            let requests = task["inputRequests"]
+                .as_object()
+                .ok_or(McpTransportError::InvalidResponse)?;
+            if requests.len() > 64 {
+                return Err(McpTransportError::Capacity);
+            }
+            Some(
+                requests
+                    .iter()
+                    .map(|(key, request)| {
+                        if !crate::continuation::valid_input_request(request) {
+                            return Err(McpTransportError::InvalidResponse);
+                        }
+                        Ok(McpTaskInputRequest {
+                            input_id_digest: input_id(key)?,
+                            request_digest: digest("mcp-task-input-request-v1", request)?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, McpTransportError>>()?,
+            )
+        } else {
+            None
+        };
+    Ok(inputs)
 }
 
 pub(crate) fn update_observation(

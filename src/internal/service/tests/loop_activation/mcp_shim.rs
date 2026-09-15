@@ -40,6 +40,7 @@ mod budget;
 mod continuation;
 mod discovery;
 mod listener;
+mod subscription;
 mod task;
 
 struct Upstream {
@@ -86,6 +87,7 @@ async fn handler(
     }
     match message["method"].as_str().unwrap() {
         "tasks/get" | "tasks/cancel" | "tasks/update" => task::respond(&upstream, &message).await,
+        "subscriptions/listen" => task::subscribe(upstream, message).await,
         "server/discover" => {
             assert_eq!(headers["mcp-protocol-version"], "2026-07-28");
             assert_eq!(headers["mcp-method"], "server/discover");

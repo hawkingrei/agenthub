@@ -20,7 +20,10 @@ impl McpHttpTransport {
         &self,
         mut request: PreparedHttpRequest,
     ) -> Result<ResumableExchange, McpTransportError> {
-        let listening = matches!(request.kind, ExchangeKind::Listen);
+        let listening = matches!(
+            request.kind,
+            ExchangeKind::Listen | ExchangeKind::Subscription
+        );
         let deadline = (!listening).then(|| Instant::now() + self.timeout);
         let eligible = matches!(request.kind, ExchangeKind::Request | ExchangeKind::Listen)
             && request.version.uses_initialization();

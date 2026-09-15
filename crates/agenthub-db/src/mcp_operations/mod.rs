@@ -7,6 +7,7 @@ mod schema;
 mod task;
 mod task_cancel;
 mod task_inputs;
+mod task_notification;
 mod task_update;
 
 #[cfg(test)]
@@ -24,6 +25,7 @@ use crate::DaemonGeneration;
 pub use schema::migrate_mcp_operations;
 pub use task::McpTaskLookupPermit;
 pub use task_cancel::McpTaskCancellationPermit;
+pub use task_notification::McpTaskNotificationPermit;
 pub use task_update::McpTaskUpdatePermit;
 
 #[derive(Debug, Error)]

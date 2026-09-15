@@ -76,6 +76,7 @@ enum ExchangeKind {
     Request,
     Acknowledgment,
     Listen,
+    Subscription,
     Close,
 }
 
@@ -212,6 +213,22 @@ impl McpHttpTransport {
                 ExchangeKind::Acknowledgment
             },
         })
+    }
+
+    pub(crate) fn prepare_subscription(
+        &self,
+        context: &HttpContext,
+        message: &Value,
+    ) -> Result<PreparedHttpRequest, McpTransportError> {
+        if context.version != ProtocolVersion::July2026
+            || message_kind(message)? != MessageKind::Request
+            || message["method"] != "subscriptions/listen"
+        {
+            return Err(McpTransportError::InvalidMessage);
+        }
+        let mut request = self.prepare_post(context, message, None)?;
+        request.kind = ExchangeKind::Subscription;
+        Ok(request)
     }
 
     /// Legacy SSE recovery uses GET, never a repeated POST of the original tool call.

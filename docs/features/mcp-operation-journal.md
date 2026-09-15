@@ -148,8 +148,27 @@ wins; later conflicting responses remain inspectable on their own query records 
 the operation or a newer attempt. Daemon recovery marks interrupted queries unknown independently
 of the original task receipt. Queries are never automatically repeated.
 
-Task notification/subscription settlement remains controller work. Callers retain actual task handles and observe upstream polling
-and retention guidance; the journal neither polls on their behalf nor extends server retention.
+Callers retain actual task handles and observe upstream polling and retention guidance; the journal
+neither polls on their behalf nor extends server retention.
+
+### Task subscription observations
+
+Modern task subscriptions require the original task receipt, Team/actor, binding, scope, protocol,
+and discovered schema checks used by lookups. Each admitted handle gets a private observation
+permit that cannot authorize a tool send. Only task IDs included in both the request and the
+server acknowledgment may deliver observations.
+
+Each distinct notification commits its digest, typed outcome, and input receipt updates in one
+FULL-synchronous transaction before delivery. Subscription IDs are excluded from notification
+identity, so reconnects cannot duplicate history or release consumed inputs. History is bounded to
+4,096 observations per task attempt and supports scoped sequence pages. Changed input meanings
+retain the existing persistent conflict behavior.
+
+An admitted notification can commit a received fact after executor shutdown. First terminal facts
+win across polls, notifications, and cancellation responses; later observations retain their own
+receipts without replacing that result or a newer attempt. A subscription acknowledgment or
+graceful stream closure never completes the tool. Legacy unsolicited notification routing remains
+a controller integration follow-up.
 
 ### Task cancellation
 
@@ -174,7 +193,7 @@ scope and returns typed facts only.
 
 ### Task input responses
 
-A modern `tasks/get` observation with `input_required` commits the input IDs and request payload
+A modern `tasks/get` or subscribed task observation with `input_required` commits the input IDs and request payload
 digests before the provider receives that observation. Input requests retain their ordinary
 elicitation, sampling, or roots semantics and are delivered unchanged; the proxy never answers
 them itself. At most 64 inputs are accepted in one observation and 4,096 distinct IDs per task
@@ -200,8 +219,7 @@ Update admission is denied after a cancellation intent or a terminal tool outcom
 allows at most 4,096 update sends. Input and update inspection uses Team/actor-scoped sequence
 pages. Daemon recovery marks interrupted updates unknown while retaining consumed input IDs.
 Admitted updates may record late acknowledgments after executor shutdown, without changing a
-tool result already established by a task lookup. Notifications must use this same input receipt
-contract when their controller path is connected.
+tool result already established by a task lookup or subscribed notification.
 
 ### Multi round-trip tool calls
 
@@ -304,6 +322,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | Task lookup | Additive migration, authority/session/schema checks, legacy receipts without metadata rejected, concurrent admission, query-only restart recovery, terminal result settlement, and first-fact preservation without another tool send |
 | Task cancellation | Additive migration, exactly one concurrent send, acknowledgment versus terminal status, restart without resend, late/conflicting facts, scoped inspection, and tool queries after cancellation |
 | Task inputs | Input/update migration, atomic partial consumption, concurrent updates, unchanged wire payloads, key equivocation retained across reopen, stale polls, lost acknowledgment, fresh activations, and real shim input/update/result flow |
+| Task subscriptions | Receipt authorization, notification migration/deduplication, bounded scoped history, input consumption/conflicts, late settlement and first-terminal-fact preservation; actual shim delivery follows committed facts |
 
 ## Operational Notes
 
@@ -315,7 +334,7 @@ broken provider stream without abandoning a send. A full provider-facing proxy i
 ## Open Risks
 
 - Integration adapters still need complete scope/capability authorization and endpoint-alias
-  reconciliation. Task notification paths and non-tool continuations remain incomplete.
+  reconciliation. Legacy unsolicited task notification routing and non-tool continuations remain incomplete.
   Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.
 - Retained ambiguous non-idempotent writes need explicit upstream reconciliation; changing

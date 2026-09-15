@@ -183,9 +183,14 @@ pub(super) fn add_request_metadata(
         .get("io.modelcontextprotocol/protocolVersion")
         .and_then(Value::as_str)
         != Some(version.as_str())
-        || !metadata
+        || metadata
             .get("io.modelcontextprotocol/clientInfo")
-            .is_some_and(Value::is_object)
+            .is_some_and(|info| {
+                !info.is_object()
+                    || ["name", "version"]
+                        .iter()
+                        .any(|key| info[*key].as_str().is_none())
+            })
         || !metadata
             .get("io.modelcontextprotocol/clientCapabilities")
             .is_some_and(Value::is_object)

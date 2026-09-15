@@ -6,6 +6,7 @@ mod tests;
 
 mod batch;
 mod task;
+mod task_notification;
 pub use batch::McpBatchResult;
 
 use std::time::{SystemTime, UNIX_EPOCH};

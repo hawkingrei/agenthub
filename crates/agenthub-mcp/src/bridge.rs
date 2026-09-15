@@ -3,10 +3,12 @@
 mod batch;
 mod lifecycle;
 mod listen;
+mod subscription;
 pub use listen::PreparedProxyListener;
+pub use subscription::PreparedProxySubscription;
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -106,6 +108,8 @@ pub struct McpProxySession {
     control_slots: Arc<Semaphore>,
     callback_slots: Arc<Semaphore>,
     listener_slot: Arc<Semaphore>,
+    subscription_slots: Arc<Semaphore>,
+    subscriptions: std::sync::Mutex<HashMap<[u8; 32], watch::Sender<bool>>>,
     exchanges: Arc<RwLock<()>>,
     close_gate: Mutex<()>,
     close_sent: AtomicBool,
@@ -142,6 +146,7 @@ enum Exchange {
     TaskCancellation(Box<PreparedTaskCancellation>),
     TaskUpdate(Box<PreparedTaskUpdate>),
     Control(PreparedHttpRequest),
+    CancelSubscription(Option<watch::Sender<bool>>),
     Discovery {
         request: PreparedHttpRequest,
         generation: u64,
@@ -169,6 +174,8 @@ impl McpProxySession {
             control_slots: Arc::new(Semaphore::new(8)),
             callback_slots: Arc::new(Semaphore::new(CALLBACK_SLOTS as usize)),
             listener_slot: Arc::new(Semaphore::new(1)),
+            subscription_slots: Arc::new(Semaphore::new(8)),
+            subscriptions: std::sync::Mutex::new(HashMap::new()),
             exchanges: Arc::new(RwLock::new(())),
             close_gate: Mutex::new(()),
             close_sent: AtomicBool::new(false),
@@ -283,7 +290,21 @@ impl McpProxySession {
         {
             return Err(McpPolicyError::Call);
         }
-        let kind = if matches!(
+        let kind = if method == "notifications/cancelled"
+            && context.version == crate::protocol::ProtocolVersion::July2026
+        {
+            let id = message
+                .pointer("/params/requestId")
+                .filter(|id| id.is_string() || id.is_i64() || id.is_u64())
+                .ok_or(McpPolicyError::Call)?;
+            Exchange::CancelSubscription(
+                self.subscriptions
+                    .lock()
+                    .unwrap()
+                    .get(&correlation_id(id))
+                    .cloned(),
+            )
+        } else if matches!(
             method.as_str(),
             "tasks/get" | "tasks/result" | "tasks/cancel" | "tasks/update"
         ) {
@@ -501,6 +522,12 @@ impl PreparedProxyExchange {
             lost: false,
         };
         let outcome: Result<Option<Value>, String> = match self.kind {
+            Exchange::CancelSubscription(cancel) => {
+                if let Some(cancel) = cancel {
+                    cancel.send_replace(true);
+                }
+                Ok(None)
+            }
             Exchange::Batch(batch) => {
                 batch
                     .run(session.clone(), journal, &mut sink, &self.context)
