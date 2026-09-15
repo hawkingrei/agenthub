@@ -39,6 +39,7 @@ mod batch;
 mod bootstrap;
 mod budget;
 mod continuation;
+mod crash;
 mod discovery;
 mod legacy_task;
 mod listener;

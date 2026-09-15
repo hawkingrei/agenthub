@@ -417,6 +417,7 @@ Integration-specific continuation authorization for non-tool methods remains con
 | Task cancellation | Real shim preserves the acknowledgment, rejects a duplicate before HTTP, then records actual tool success; legacy cancel capability/status, lost acknowledgment, RPC error, malformed response, and fresh-activation resend rejection |
 | Task inputs | Real shim receives unchanged elicitation input, commits response consumption before HTTP, rejects a duplicate, and later observes the tool result; HTTP partial/foreign inputs, stale polls, lost ACK, RPC errors, and changed input requests |
 | Legacy task notices | Real shim receives pre-receipt notices on GET and POST, answers the intervening callback, verifies persistence before delivery, fetches the actual result, and preserves that result after a later cancellation |
+| Process crash | Actual shim and a killed control-service process; file-backed reopen and daemon lock/generation reclaim; before-call, sent-without-response, parsed-success-before-commit, and durable-success checkpoints; no provider output before commit and no unknown-write replay from a new activation/RPC ID |
 | Modern subscriptions | HTTP acknowledgment/filter/order checks, typed IDs, local cancellation, idle authority revocation, capacity, and signed-RPC/shim task input/result delivery plus EOF with an idle subscription |
 
 ## Operational Notes
@@ -430,6 +431,15 @@ execution guard across caller disconnect; startup journal recovery is wired. Rea
 cover signed streaming RPCs, callback/result queues, and per-message credential refresh. The hub
 starts empty and configured local activations add their mounts during launch. The configured ACP
 fixture additionally checks inherited provider/shim environments and an actual journaled HTTP call.
+The process-crash fixture uses the actual shim and production RPC/journal implementations in an
+isolated test service process. It kills that process without cleanup, terminates its provider-side
+shim, and only then releases the old executor reservation. Its checkpoints are before a tool call,
+after upstream reception while the response is withheld, after parsing success but before committing
+it, and after committed success with unread provider output. The uncommitted checkpoint uses a TEMP
+SQLite trigger and an update hook on the sole test connection. It pauses only when an attempt changes
+to `succeeded`, proves the old committed state remains `sent` and provider output is empty, then kills
+the process. Reopen rolls back that update and recovers the write as unknown. Database child-exit
+tests separately cover committed prepared/sent/completed states.
 
 ## Open Risks
 

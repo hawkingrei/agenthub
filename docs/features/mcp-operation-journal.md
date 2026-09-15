@@ -329,6 +329,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | Lost result | A consumed write with an incomplete response remains unknown across database reopen and a fresh activation |
 | Real stable retry | Original operation receives a second attempt with the same caller identity and parameters under a new RPC ID |
 | Provider disconnect | Authenticated daemon task retains the execution guard after caller cancellation and journals the late HTTP result |
+| Control process crash | Real shim/RPC/HTTP path killed with a file-backed journal, including a paused success update before commit; no premature provider output, exactly-once recovery of sent attempts, preserved committed success, rejected old credentials, and no unknown-write replay from a new activation/RPC ID |
 | Deferred response | Raw input/task receipt retained transiently; typed receipt survives loss and blocks initial-request replay |
 | MRTR | Additive migration and reopen, atomic linked sends, current intent/state/executor checks, fresh RPC IDs, bounded rounds, unchanged HTTP inputs, final settlement, and lost-round replay rejection |
 | MRTR retry | Additive retry migration, exact round digest and stable identity, fresh activation and daemon checks, concurrent admission, preserved attempt/parent links, three retries per round, and subsequent rounds after a retry |

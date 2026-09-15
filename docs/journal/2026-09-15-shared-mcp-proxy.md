@@ -561,11 +561,49 @@ with warnings denied also pass. The focused access tests include direct and defe
 task input envelopes, resource output rejection, and post-revocation admission. No database,
 protobuf, dependency, or Bazel configuration changes are included.
 
+### Process crash follow-up (2026-09-16)
+
+A new root regression runs the production control service and operation journal in a separately
+killable test process, with the actual stdio shim and an independent HTTP upstream. The journal is
+file-backed. Each case terminates the control process without shutdown handlers and then stops
+the old shim before releasing its executor reservation.
+
+The four checkpoints cover no tool call yet, an upstream-received write with its response withheld,
+parsed success before commit, and committed success whose provider output has not been consumed. Recovery reacquires the OS
+daemon lock and claims a new generation. It records `daemon_restart` ambiguity exactly once,
+retains successful receipts, rejects old executor credentials, and starts a fresh activation/shim.
+A new RPC ID cannot resend the ambiguous write. A write that had never been called can run normally.
+Neither discovery nor startup performs an automatic tool send, and stored records omit payloads.
+
+The uncommitted-success case installs a TEMP SQLite trigger and update hook on the single test
+connection. The hook parks its SQLite worker only after the attempt changes to `succeeded` inside
+the uncommitted transaction. The parent waits for that marker, checks the still-committed `sent`
+state and absence of provider output, then kills the process. Reopen proves the partial success
+rolled back and the unresolved write remains unreplayable. The hook and TEMP objects disappear
+with the child; the production journal implementation is unchanged.
+
+The crash fixture passes all four cases. Validation also covers the shared activation
+fixture used to create the original and replacement reservations:
+
+```bash
+cargo test -p agenthub --lib real_mcp_proxy_survives_daemon_crashes --locked --offline
+cargo test -p agenthub --lib internal::service::tests::loop_activation --locked --offline
+cargo clippy -p agenthub --all-targets --locked --offline -- -D warnings
+cargo fmt --all --check
+```
+
+The process test complements the existing database child-exit checks for committed prepared,
+sent, and completed rows. All 28 activation-related root tests pass, including the parent that
+executes the ignored crash helper once per checkpoint. Root all-target Clippy with warnings denied,
+formatting, whitespace, and 75 local document links pass. The actual shim binary matches the
+unchanged production implementation from the access checkpoint. Static MCP launch compatibility
+remains a separate gate.
+
 ## Follow-Ups
 
 - Complete slice 9's remaining capability and non-tool continuation paths, upstream namespace
   authorization, and authority-alias reconciliation. Restore scoped Mem non-tool access after its
   authority is established; tool-only access does not complete the original integration goal.
-- Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.
+- Prove the legacy static MCP configuration launch path.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

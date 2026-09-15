@@ -38,7 +38,9 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
   batch members, subscription filters, callback registration, and discovery visibility. Configured
   Mem currently permits tools only; completing its namespace authorization and enabling its scoped
   non-tool surfaces remains required. Full capability handling, non-tool continuation linkage,
-  authority-alias reconciliation, and complete proxy crash/static-launch validation remain pending.
+  authority-alias reconciliation, and static-launch validation remain pending. Real shim/RPC
+  process-crash tests cover before-call, sent-without-response, parsed-success-before-commit,
+  and durable-success recovery, including no output before commit and no ambiguous-write replay.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.
