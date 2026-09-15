@@ -1,6 +1,9 @@
 //! Raw MCP transport and policy boundaries shared by local integrations.
 
+mod digest;
 pub mod http;
+pub mod journal;
+pub mod policy;
 pub mod protocol;
 pub mod session;
 mod sse;

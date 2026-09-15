@@ -9,7 +9,10 @@ rust_library(
     crate_name = "agenthub_mcp",
     edition = "2024",
     aliases = aliases(),
-    deps = all_crate_deps(normal = True),
+    deps = all_crate_deps(normal = True) + [
+        "//crates/agenthub-agent-domain:agenthub_agent_domain",
+        "//crates/agenthub-db:agenthub_db",
+    ],
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 

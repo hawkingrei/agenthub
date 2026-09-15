@@ -11,8 +11,9 @@ handling while a tool is running.
 
 `agenthub-mcp` supplies JSONL framing, JSON-RPC envelope inspection, protocol lifecycle state,
 Streamable HTTP request preparation, and incremental JSON/SSE response handling. The implementation
-is tested with local fake upstreams. The authenticated daemon bridge, tool policy/catalog, journal
-orchestration, launch descriptors, and provider environment isolation remain in progress.
+is tested with local fake upstreams. The same crate now provides trusted discovery/call policy and
+actual HTTP/journal orchestration. The provider-facing MCP session bridge, binding resolver,
+launch descriptors, and provider environment isolation remain in progress.
 
 ## Non-Goals
 
@@ -32,8 +33,10 @@ messages incrementally together with optional upstream cursor/retry control info
 messages belong in the provider's JSONL stream. Session material, credentials, and request URLs do
 not have a diagnostic or serialization implementation.
 
-No database or runtime dependency lives in the transport crate. The daemon bridge must bind this
-transport to the shared operation journal and current execution authorization.
+Raw transport modules do not access the database. The crate's policy and journal modules combine
+the shared domain/store with the transport: scope-bound request preparation fixes immutable wire
+intent, and a journaled client consumes the prepared request only after obtaining a send permit.
+The daemon session bridge still needs to connect configured bindings and provider RPCs to this path.
 
 ## Contracts
 
@@ -122,15 +125,17 @@ not copied into transport diagnostics or the operation journal.
 The current tests exercise real loopback HTTP servers and raw TCP truncation. They require local
 socket permission. They do not require a personal Mem account or a paid provider.
 
-The future daemon controller must own admitted requests after provider disconnect, maintain bounded
-callback/result queues, refresh actor credentials for long-lived shim sessions, and finish journal
-recovery before accepting calls. A raw transport fixture is not evidence of those runtime guarantees.
+The journaled client keeps draining after losing its event receiver and stores a factual terminal
+result before returning it. An authenticated daemon task fixture verifies ownership and the
+execution guard across caller disconnect; startup journal recovery is wired. The session controller
+still needs bounded callback/result queues and credential refresh for long-lived shim sessions.
 
 ## Open Risks
 
-- Transport and journal are not yet joined by an authenticated daemon service or provider launch.
-- Dynamic catalog pinning, stable identity extraction, MRTR journal semantics, and call-time
-  binding revocation require integrated tests.
+- Authenticated MCP session RPCs and provider launch do not yet expose the journaled client.
+- Discovery pagination/refresh, linked MRTR continuation/task-result admission, and call-time
+  binding revocation remain controller work. Observed deferred receipts already block a replay
+  of the original request without claiming a final tool outcome.
 - Existing static MCP configuration and provider environment isolation need real shim/ACP fixtures.
 - Legacy GET cursors must be scoped to the exact session and stream when recovery is wired.
 

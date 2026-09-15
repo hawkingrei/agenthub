@@ -388,6 +388,7 @@ dependencies = [
  "agenthub-linkers",
  "agenthub-logging",
  "agenthub-managed-skills",
+ "agenthub-mcp",
  "agenthub-message-archive",
  "agenthub-message-store",
  "agenthub-object-store",
@@ -499,6 +500,7 @@ version = "0.0.10"
 dependencies = [
  "anyhow",
  "serde",
+ "serde_json",
  "url",
 ]
 
@@ -719,13 +721,19 @@ dependencies = [
 name = "agenthub-mcp"
 version = "0.0.10"
 dependencies = [
+ "agenthub-agent-domain",
+ "agenthub-db",
+ "anyhow",
  "axum",
  "base64 0.23.1",
  "futures",
  "reqwest 0.12.28",
  "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
  "thiserror 2.0.20",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

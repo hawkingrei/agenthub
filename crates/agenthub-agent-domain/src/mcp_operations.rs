@@ -119,6 +119,9 @@ pub struct McpOperationIntent {
     pub tool_name: String,
     pub schema_digest: McpDigest,
     pub arguments_digest: McpDigest,
+    /// Present for calls constructed by proxy policy. Older journal checkpoints omitted it.
+    #[serde(default)]
+    pub request_digest: Option<McpDigest>,
     pub replay_safety: McpReplaySafety,
 }
 
@@ -152,6 +155,27 @@ pub enum McpFailureKind {
     SuccessEnvelope,
 }
 
+/// Shared classification for Mem and other MCP integrations. The caller retains the unmodified
+/// response; a failure receipt does not prove that an upstream write had no effect.
+pub fn classify_response_error(response: &serde_json::Value) -> Option<McpFailureKind> {
+    if response.get("error").is_some() {
+        return Some(McpFailureKind::JsonRpc);
+    }
+    if response
+        .get("result")
+        .and_then(|result| result.get("isError"))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+    {
+        return Some(McpFailureKind::McpResult);
+    }
+    response
+        .get("result")
+        .and_then(|result| result.get("error"))
+        .is_some()
+        .then_some(McpFailureKind::SuccessEnvelope)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum McpAmbiguityReason {
@@ -159,6 +183,13 @@ pub enum McpAmbiguityReason {
     Deadline,
     InvalidResponse,
     DaemonRestart,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpDeferralKind {
+    InputRequired,
+    TaskAccepted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,6 +205,12 @@ pub enum McpCompletion {
     OutcomeUnknown {
         reason: McpAmbiguityReason,
     },
+    /// The RPC returned a receipt, but no terminal tool outcome. Preserve the fact without
+    /// claiming success or authorizing a replay of the initial request.
+    Deferred {
+        reason: McpDeferralKind,
+        response_digest: McpDigest,
+    },
 }
 
 impl McpCompletion {
@@ -181,7 +218,9 @@ impl McpCompletion {
         match self {
             Self::Succeeded { .. } => McpOperationStatus::Succeeded,
             Self::Failed { .. } => McpOperationStatus::Failed,
-            Self::OutcomeUnknown { .. } => McpOperationStatus::OutcomeUnknown,
+            Self::OutcomeUnknown { .. } | Self::Deferred { .. } => {
+                McpOperationStatus::OutcomeUnknown
+            }
         }
     }
 }

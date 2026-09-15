@@ -47,6 +47,10 @@ impl McpOperationStore {
             McpOperationStatus::Succeeded => return Err(McpJournalError::AlreadyCompleted.into()),
             McpOperationStatus::Failed | McpOperationStatus::OutcomeUnknown => {
                 anyhow::ensure!(
+                    !matches!(operation.completion, Some(McpCompletion::Deferred { .. })),
+                    McpJournalError::ContinuationRequired
+                );
+                anyhow::ensure!(
                     operation.intent.replay_safety.permits_retry(),
                     McpJournalError::UnsafeReplay
                 );
@@ -122,8 +126,10 @@ impl McpOperationStore {
             .map(serde_json::from_str)
             .transpose()?;
         if previous.as_ref() == Some(completion)
-            || (status == McpOperationStatus::OutcomeUnknown
-                && completion.status() == McpOperationStatus::OutcomeUnknown)
+            || (matches!(previous, Some(McpCompletion::OutcomeUnknown { .. }))
+                && matches!(completion, McpCompletion::OutcomeUnknown { .. }))
+            || (matches!(previous, Some(McpCompletion::Deferred { .. }))
+                && matches!(completion, McpCompletion::OutcomeUnknown { .. }))
         {
             tx.commit().await?;
             return Ok(());
@@ -133,6 +139,11 @@ impl McpOperationStore {
                 status,
                 McpOperationStatus::Sent | McpOperationStatus::OutcomeUnknown
             ),
+            McpJournalError::StaleAttempt
+        );
+        anyhow::ensure!(
+            !matches!(previous, Some(McpCompletion::Deferred { .. }))
+                || !matches!(completion, McpCompletion::Deferred { .. }),
             McpJournalError::StaleAttempt
         );
         // A late factual result may resolve an unknown attempt, while the event journal retains

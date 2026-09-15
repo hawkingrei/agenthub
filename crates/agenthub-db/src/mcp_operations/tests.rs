@@ -168,6 +168,7 @@ fn digest(character: char) -> McpDigest {
 
 fn intent(safety: McpReplaySafety) -> McpOperationIntent {
     McpOperationIntent {
+        request_digest: None,
         request_key: digest('1'),
         server_id: "profile".into(),
         scope_digest: digest('2'),
@@ -854,4 +855,82 @@ async fn mcp_crash_child() {
     }
     // Skip Rust destructors, pool shutdown, and SQLite's last-connection checkpoint.
     std::process::exit(0);
+}
+
+#[tokio::test]
+async fn mcp_deferred_receipt_survives_transport_loss_and_requires_linked_continuation() {
+    use agenthub_agent_domain::mcp_operations::McpDeferralKind;
+
+    let fixture = Fixture::new().await;
+    let executor = fixture.running("worker", 100).await;
+    let operation = fixture
+        .store
+        .prepare(&executor, &intent(McpReplaySafety::ReadOnly), 101)
+        .await
+        .unwrap();
+    let permit = fixture
+        .store
+        .begin_send(&executor, &operation.id, 0, 102)
+        .await
+        .unwrap();
+    let unknown = McpCompletion::OutcomeUnknown {
+        reason: McpAmbiguityReason::TransportLost,
+    };
+    fixture
+        .store
+        .complete(&permit, &unknown, 103)
+        .await
+        .unwrap();
+    let deferred = McpCompletion::Deferred {
+        reason: McpDeferralKind::InputRequired,
+        response_digest: "d".repeat(64).try_into().unwrap(),
+    };
+    fixture
+        .store
+        .complete(&permit, &deferred, 104)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .complete(&permit, &unknown, 105)
+        .await
+        .unwrap();
+    let recorded = fixture
+        .store
+        .operation("team", "worker", &operation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(recorded.completion, Some(deferred));
+    assert_journal_error(
+        fixture
+            .store
+            .begin_send(&executor, &operation.id, 1, 106)
+            .await,
+        McpJournalError::ContinuationRequired,
+    );
+    let changed = McpCompletion::Deferred {
+        reason: McpDeferralKind::TaskAccepted,
+        response_digest: "e".repeat(64).try_into().unwrap(),
+    };
+    assert_journal_error(
+        fixture.store.complete(&permit, &changed, 106).await,
+        McpJournalError::StaleAttempt,
+    );
+    assert_eq!(
+        fixture
+            .store
+            .events(
+                "team",
+                "worker",
+                executor.activation_id.as_deref().unwrap(),
+                0,
+                100
+            )
+            .await
+            .unwrap()
+            .len(),
+        4
+    );
+    fixture.close().await;
 }

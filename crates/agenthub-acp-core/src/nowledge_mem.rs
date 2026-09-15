@@ -8,6 +8,7 @@ use serde_json::Value;
 
 pub use agenthub_agent_domain::mcp_operations::{
     McpFailureKind as MemResponseErrorKind, McpOperationStatus as MemJournalStatus,
+    classify_response_error,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,27 +66,6 @@ pub fn bind_declared_space_id(
         Value::String(binding.space_id.clone()),
     );
     Ok(Value::Object(arguments))
-}
-
-/// Recognizes the three error shapes observed across the existing Mem MCP
-/// surfaces while preserving the upstream value for the caller.
-pub fn classify_response_error(response: &Value) -> Option<MemResponseErrorKind> {
-    if response.get("error").is_some() {
-        return Some(MemResponseErrorKind::JsonRpc);
-    }
-    if response
-        .get("result")
-        .and_then(|result| result.get("isError"))
-        .and_then(Value::as_bool)
-        == Some(true)
-    {
-        return Some(MemResponseErrorKind::McpResult);
-    }
-    response
-        .get("result")
-        .and_then(|result| result.get("error"))
-        .is_some()
-        .then_some(MemResponseErrorKind::SuccessEnvelope)
 }
 
 #[cfg(test)]

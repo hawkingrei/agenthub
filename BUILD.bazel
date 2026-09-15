@@ -78,6 +78,7 @@ rust_library(
         "//crates/agenthub-pyroscope:agenthub_pyroscope",
         "//crates/agenthub-config:agenthub_config",
         "//crates/agenthub-db:agenthub_db",
+        "//crates/agenthub-mcp:agenthub_mcp",
         "//crates/agenthub-managed-skills:agenthub_managed_skills",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),

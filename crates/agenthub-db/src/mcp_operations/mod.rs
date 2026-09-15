@@ -27,6 +27,8 @@ pub enum McpJournalError {
     AlreadyCompleted,
     #[error("MCP operation may have taken effect; replay requires the original stable identity")]
     UnsafeReplay,
+    #[error("MCP operation requires a linked continuation or task result, not a replay")]
+    ContinuationRequired,
     #[error("MCP send attempt is stale")]
     StaleAttempt,
     #[error("MCP journal daemon generation is stale")]

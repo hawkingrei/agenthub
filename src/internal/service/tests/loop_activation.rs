@@ -10,6 +10,8 @@ use agenthub_db::loop_runtime::{LoopPolicyUpdate, LoopStore};
 
 use super::*;
 
+mod mcp_operations;
+
 async fn fixture() -> (
     crate::state::AppState,
     TeamInternalControlService,

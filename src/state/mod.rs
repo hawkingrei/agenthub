@@ -64,6 +64,14 @@ impl AppState {
     ) -> anyhow::Result<Self> {
         let db = Self::open_database().await?;
         daemon_instance.claim_generation(&db).await?;
+        // Recover only this node's earlier daemon sends before any new runtime work is admitted.
+        // AgentManager's executor owner is a different identity from the daemon generation.
+        let mcp_operations = daemon_instance.mcp_operation_store(&db)?;
+        while mcp_operations
+            .recover_interrupted(100, chrono::Utc::now().timestamp())
+            .await?
+            != 0
+        {}
         if config.server_role() == agenthub_config::ServerRole::Main {
             Self::ensure_root(&db).await?;
         }

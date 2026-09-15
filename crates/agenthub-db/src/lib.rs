@@ -290,7 +290,9 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     init_db_at_path(&db_path).await
 }
 
-async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
+/// Open and migrate an explicit control database. The caller still owns daemon locking and
+/// generation-specific runtime recovery; opening a database never grants execution authority.
+pub async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
     let pool = try_connect(db_path).await.map_err(|err| {
         tracing::error!(
             db_path = %db_path.display(),
