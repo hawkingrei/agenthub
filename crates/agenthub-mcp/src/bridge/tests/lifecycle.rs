@@ -189,6 +189,7 @@ async fn fixture(
         "proxy".into(),
         Arc::new(McpProxyBinding::new(
             policy,
+            crate::access::McpAccessPolicy::unrestricted(),
             Arc::new(|_, _, args| Ok(args)),
         )),
         Arc::new(McpProxyBudget::default()),

@@ -24,6 +24,7 @@ use tokio::sync::{
 
 use crate::{
     MAX_MESSAGE_BYTES, McpTransportError,
+    access::McpAccessPolicy,
     budget::{ByteBudget, ByteLease, McpProxyBudget, json_bytes},
     http::{HttpContext, PreparedHttpRequest},
     journal::JournaledMcpClient,
@@ -42,6 +43,7 @@ type BindArguments = dyn Fn(&str, &Value, Value) -> Result<Value, McpPolicyError
 /// Built from trusted integration configuration, never from provider-supplied endpoint data.
 pub struct McpProxyBinding {
     policy: McpBinding,
+    access: McpAccessPolicy,
     bind_arguments: Arc<BindArguments>,
     revoked: AtomicBool,
 }
@@ -51,9 +53,14 @@ impl McpProxyBinding {
         self.policy.server_id()
     }
 
-    pub fn new(policy: McpBinding, bind_arguments: Arc<BindArguments>) -> Self {
+    pub fn new(
+        policy: McpBinding,
+        access: McpAccessPolicy,
+        bind_arguments: Arc<BindArguments>,
+    ) -> Self {
         Self {
             policy,
+            access,
             bind_arguments,
             revoked: AtomicBool::new(false),
         }
@@ -265,6 +272,7 @@ impl McpProxySession {
         if !is_response && !supported_method(&method) {
             return Err(McpPolicyError::Call);
         }
+        self.binding.access.authorize_request(&message)?;
         if message_kind == MessageKind::Request {
             let mut ids = self.request_ids.lock().await;
             if ids.len() >= 4096 || !ids.insert(correlation_id(&message["id"])) {
@@ -438,6 +446,9 @@ impl McpProxySession {
             .as_array()
             .map(Vec::as_slice)
             .unwrap_or(std::slice::from_ref(message));
+        for member in members {
+            self.binding.access.authorize_server_message(member)?;
+        }
         let keys: Vec<_> = members
             .iter()
             .filter(|member| message_kind(member).ok() == Some(MessageKind::Request))
@@ -482,7 +493,8 @@ impl McpProxySession {
             .ok_or(McpTransportError::InvalidResponse)?;
         let page = McpToolCatalog::from_tools(tools, context.version)
             .map_err(|_| McpTransportError::InvalidResponse)?;
-        let advertised = page.advertised_tools();
+        let mut advertised = page.advertised_tools();
+        self.binding.access.filter_tools(&mut advertised)?;
         response["result"]["tools"] = advertised.clone();
         let mut discovery = self.discovery.lock().await;
         if generation != discovery.generation
@@ -533,6 +545,10 @@ impl PreparedProxyExchange {
     /// loss closes the provider session but does not cancel the HTTP send or durable completion.
     pub async fn run(self, journal: JournaledMcpClient, output: mpsc::Sender<McpProxyFrame>) {
         let session = self.session.clone();
+        if !session.is_active() {
+            session.close();
+            return;
+        }
         let journal = match session.bound_task_observer(&self.context) {
             Ok(observer) => journal.observing(observer),
             Err(_) => {
@@ -804,6 +820,7 @@ async fn run_control(
                     return Err(McpTransportError::InvalidResponse);
                 }
                 terminal = true;
+                session.binding.access.project_response(method, member)?;
                 if method == "initialize" {
                     if is_error {
                         session.protocol.lock().await.initialization_failed();

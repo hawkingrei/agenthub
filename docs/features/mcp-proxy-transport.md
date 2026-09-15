@@ -53,7 +53,7 @@ Mem server. Fresh and resumed local ACP sessions receive the same typed stdio de
 - Resolve the referenced secret inside the daemon. Accept HTTPS, or HTTP on a loopback host, with
   no URL user information, query, or fragment. Use the configured `/mcp` endpoint and tool-set header;
   a tool set is discovery configuration, not authorization or permission to replay a write.
-- Fingerprint endpoint/profile/credential references, space, and tool set. Secret values and the
+- Fingerprint endpoint/profile/credential references, space, tool set, and access-policy version. Secret values and the
   per-activation credential-file path are excluded, so rotation does not change configuration identity.
 - ACP receives only the local `agenthub mcp-proxy --server-id nowledge-mem` command and its
   activation credential-file reference. No descriptor field carries the upstream URL or headers.
@@ -63,6 +63,38 @@ Mem server. Fresh and resumed local ACP sessions receive the same typed stdio de
 - All discovered Mem tools currently use the conservative non-idempotent journal policy. Read and
   stable-identity retry declarations, Context Lens bootstrap, and complete scope authorization
   belong to the subsequent Mem integration; transport availability alone does not prove them.
+- The configured Mem binding currently grants tool access and standard tool callbacks. It denies
+  resource, prompt, completion, logging-control, and resource-subscription requests locally.
+  These surfaces need independent upstream namespace authorization before they can be enabled;
+  a routing header or an unscoped schema is insufficient. This boundary does not complete Mem
+  scope integration, including tools that omit a declared `space_id`.
+
+### Integration access policy
+
+Every binding supplies a trusted `McpAccessPolicy` independently of upstream discovery. Its default
+is no data-surface access. Tool names, resource URIs, resource template identifiers, prompt names,
+and callback methods have separate grants: none, exact named entries, or the entire surface when
+the integration has independently established authority. A resource template is not a prefix or
+permission to read every expanded URI. These grants cannot be supplied by provider JSON.
+
+Single requests, every March batch member, and modern subscription filters pass the same policy
+before committing request IDs or lifecycle changes. Task queries and task subscriptions additionally
+retain their existing receipt, current catalog, and executor checks. Callback IDs acquire response
+authority only after their incoming method passes policy. Modern deferred `inputRequests` use those
+same callback grants, including task creation/query responses and task notifications. Opaque tool
+result data and JSON-RPC error details are not interpreted as input requests. A revoked prepared exchange cannot start;
+previously admitted sends still finish their factual journal drain.
+
+Discovery hides unapproved tools, resources, templates, and prompts while preserving the schema,
+arguments, extensions, ordering, and pagination of retained entries. Initialization and modern server
+discovery omit capabilities for disabled surfaces. A returned resource read containing an unapproved
+URI is rejected before provider delivery, including when a deferred result carries resource content.
+Errors retain upstream JSON-RPC data. Deferred envelopes without a final list or resource body remain
+unchanged; non-tool continuation receipt linkage is a separate controller requirement.
+
+Named grants constrain protocol access; they do not prove upstream credential or namespace isolation.
+Integration configuration must bind arguments and establish that the server enforces the intended
+namespace, especially for opaque object IDs and prompts whose arguments select data.
 
 ### Version and lifecycle
 
@@ -103,8 +135,8 @@ differs from legacy handshake negotiation; the adapter must preserve this distin
 
 ### HTTP and JSONL
 
-- JSON-RPC methods, IDs, extension fields, schemas, result content, and error data remain unchanged.
-  JSON serialization can change whitespace or object member ordering.
+- JSON-RPC methods, IDs, permitted schemas and result content, and upstream error data remain unchanged.
+  Discovery applies the access projection above. JSON serialization can change whitespace or object ordering.
 - Each message is one JSONL line. Reads reject unterminated or malformed frames and enforce an
   8 MiB message limit before growing a line buffer beyond the limit.
 - HTTP POST accepts JSON or SSE. Legacy notifications/responses require an empty 202 acknowledgment.
@@ -254,8 +286,9 @@ subscription authorization below.
 `subscriptions/listen` opens one HTTP POST stream with the unchanged provider request. It follows
 the [pinned core contract](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/cd0623765886c8cc282e3e5e1a03ab7469055fab/docs/specification/2026-07-28/basic/patterns/subscriptions.mdx)
 and the released Tasks extension. Supported filters are the three core list-change flags, bounded
-resource URI lists, and task ID lists. Unknown filters cannot implicitly grant access. Full
-integration-specific resource/scope enforcement remains part of the open integration gate.
+resource URI lists, and task ID lists. Unknown filters cannot implicitly grant access. Every filter
+is checked against the binding access policy; concrete integration namespace enforcement remains
+part of the open integration gate.
 
 The first notification must acknowledge the same typed JSON-RPC ID and a subset of the requested
 filters. Subsequent notifications must carry that ID and match the acknowledged filter. Task IDs
@@ -370,6 +403,7 @@ Integration-specific continuation authorization for non-tool methods remains con
 | MRTR | Opaque state and explicit input responses survive; no automatic follow-up request |
 | Real shim | Binary subprocess with gRPC and fake HTTP: initialization callback, ordered initialized delivery, paged discovery, progress/result forwarding, and credential rotation |
 | RPC ownership | Dropped response stream after durable send retains the execution guard and records the actual upstream result |
+| Integration access | Named resource/prompt/tool/template and callback permissions, deferred-result preservation, filtered discovery and capability projection; signed RPC proves foreign calls and subscriptions never reach HTTP, including atomic March rejection and per-member response filtering |
 | Session admission | Cross-actor/activation rejection, revoked binding, cleanup, and invalid notifications without fabricated JSON-RPC replies |
 | Startup | Launch/session/mailbox prerequisites; initialization callback and discovery before running; no tool send or ordinary actor control until running |
 | Modern discovery | Startup RPC preserves metadata/cache hints; a real stdio probe preserves an upstream error and permits subsequent legacy initialization |
@@ -406,8 +440,10 @@ fixture additionally checks inherited provider/shim environments and an actual j
   not evidence that retrying an unresolved write is safe.
 - Cursors are not persisted across daemon restart; recovery cannot claim replayed stream history
   after losing that transient state.
-- Production bindings must intersect all advertised capabilities and non-tool methods with their
-  approved scope. Generic protocol forwarding alone does not establish resource/prompt authority.
+- The common access policy enforces declared surface grants. Mem namespace authorization, including
+  tools without a declared space field, still needs completion. The temporary tool-only Mem policy
+  must not be treated as a completed alternative to full scoped integration. Upstream routing
+  metadata cannot establish resource/prompt or namespace authority.
 
 ## Source Journals
 

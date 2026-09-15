@@ -51,6 +51,7 @@ impl McpProxySession {
             return Err(McpPolicyError::Scope);
         }
         json_bytes(&message)?;
+        self.binding.access.authorize_request(&message)?;
         if message_kind(&message)? != MessageKind::Request
             || message["method"] != "subscriptions/listen"
         {

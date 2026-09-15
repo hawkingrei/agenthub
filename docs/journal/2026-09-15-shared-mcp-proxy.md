@@ -518,10 +518,54 @@ The actual binary was built before the CLI fixtures; the only subsequent product
 an unnecessary lazy `Option` closure with its equivalent `and` expression. No dependencies,
 protobuf definitions, tables, or Bazel configuration changed. Slice 9 remains incomplete and unpublished.
 
+### Integration access follow-up (2026-09-16)
+
+Bindings now supply an explicit trusted policy for tool names, exact resource URIs, resource
+reference templates, prompt names, callback methods, and logging controls. Single requests,
+March batch members, and modern subscription filters check these grants before consuming IDs
+or changing lifecycle state. Discovery filters unauthorized entries without rebuilding approved
+schemas or losing pagination/extension fields. Server capabilities reflect disabled surfaces;
+resource reads with an unauthorized returned URI fail before provider delivery. An opaque deferred
+envelope remains intact, but it cannot bypass checks on resource content included alongside it.
+
+Callback registration checks incoming methods before granting reply authority. Deferred input
+requests in continuation responses and task responses/notifications use the same grants; an
+unauthorized callback cannot reach the provider through a different protocol envelope. Revoked prepared
+exchanges stop before execution, while admitted operations retain their factual drain. The configured
+Mem resolver now selects the tool-only policy and includes its version in the configuration
+fingerprint. This closes unchecked non-tool forwarding, but is an interim restriction: full Mem
+namespace authorization and scoped non-tool access remain requirements of the original goal.
+
+Focused tests cover exact grants and template/read separation, discovery and capability projection,
+unchanged errors/deferred envelopes, callback registration, revoked preparation, and atomic batch
+rejection. Authenticated RPC fixtures exercise permitted and denied resource/prompt/completion and
+subscription requests against a real HTTP server, prove denied IDs remain reusable, and check
+March response projection per request ID. Deferred prompt responses cover an allowed roots request
+and a denied sampling request without forwarding the forbidden input. Revocation returns a correlated
+JSON-RPC admission error and dispatches no HTTP request. Existing real-binary fixtures remain regression gates
+for the configured Mem tool and callback flow.
+
+Validation commands:
+
+```bash
+cargo test -p agenthub-mcp --locked --offline
+cargo build -p agenthub --bin agenthub --locked --offline
+cargo test -p agenthub --lib mcp_ --locked --offline
+cargo clippy -p agenthub -p agenthub-mcp --all-targets --locked --offline -- -D warnings
+cargo fmt --all --check
+```
+
+This access checkpoint passes 92 MCP crate tests and 28 root MCP tests, with the configured-launch
+child explicitly invoked by its parent. The actual binary build and root/MCP all-target Clippy
+with warnings denied also pass. The focused access tests include direct and deferred callbacks,
+task input envelopes, resource output rejection, and post-revocation admission. No database,
+protobuf, dependency, or Bazel configuration changes are included.
+
 ## Follow-Ups
 
-- Complete slice 9's remaining protocol controller paths and integration authorization. Do not infer namespace isolation from a Mem tool set
-  or a schema without a scope property.
+- Complete slice 9's remaining capability and non-tool continuation paths, upstream namespace
+  authorization, and authority-alias reconciliation. Restore scoped Mem non-tool access after its
+  authority is established; tool-only access does not complete the original integration goal.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

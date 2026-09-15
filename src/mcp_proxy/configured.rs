@@ -102,7 +102,7 @@ pub(crate) fn resolve_mem(
                 .map_err(|_| anyhow::anyhow!("Mem tool set is invalid"))?,
         );
     }
-    let revision = json!({"version":1, "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
+    let revision = json!({"version":2, "access_policy":"tools-only-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
         "credential_ref":reference, "space_id":resolved.space_id, "tool_set":resolved.profile.tool_set});
     let fingerprint = Sha256::digest(serde_json::to_vec(&revision)?)
         .iter()
@@ -122,6 +122,7 @@ pub(crate) fn resolve_mem(
     )?;
     let binding = Arc::new(McpProxyBinding::new(
         policy,
+        agenthub_mcp::access::McpAccessPolicy::tools_only(),
         Arc::new(move |_, schema, arguments| {
             agenthub_acp_core::nowledge_mem::bind_declared_space_id(schema, arguments, &scope)
                 .map_err(|_| McpPolicyError::Scope)

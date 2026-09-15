@@ -1,5 +1,6 @@
 //! Raw MCP transport and policy boundaries shared by local integrations.
 
+pub mod access;
 pub mod bridge;
 pub mod budget;
 mod continuation;

@@ -44,6 +44,7 @@ pub(super) async fn handle(
                 assert_eq!(member["params"]["arguments"]["space_id"], "space-a");
                 json!({"content":[{"type":"text","text":member["params"]["arguments"]["body"]}],"extension":{"preserved":true}})
             }
+            "resources/list" | "prompts/list" => access::result(member),
             "ping" => json!({}),
             _ => panic!("unexpected batch member"),
         };

@@ -5,6 +5,7 @@ use reqwest::header::HeaderMap;
 use super::*;
 use crate::{http::McpHttpTransport, protocol::ProtocolVersion};
 
+mod access;
 mod batch;
 mod lifecycle;
 mod subscription;
@@ -14,6 +15,13 @@ fn session() -> Arc<McpProxySession> {
 }
 
 fn session_with_budget(budget: Arc<McpProxyBudget>) -> Arc<McpProxySession> {
+    session_with_access(budget, crate::access::McpAccessPolicy::unrestricted())
+}
+
+fn session_with_access(
+    budget: Arc<McpProxyBudget>,
+    access: McpAccessPolicy,
+) -> Arc<McpProxySession> {
     let transport = McpHttpTransport::new(
         "http://127.0.0.1:1/mcp",
         HeaderMap::new(),
@@ -32,6 +40,7 @@ fn session_with_budget(budget: Arc<McpProxyBudget>) -> Arc<McpProxySession> {
         "session".into(),
         Arc::new(McpProxyBinding::new(
             policy,
+            access,
             Arc::new(|_, _, args| Ok(args)),
         )),
         budget,

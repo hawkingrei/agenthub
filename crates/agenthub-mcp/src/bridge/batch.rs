@@ -4,10 +4,12 @@ use super::*;
 use crate::{budget::Budgeted, http::HttpEvent, policy::PreparedBatchCall};
 
 type Discoveries = HashMap<[u8; 32], (u64, Option<String>)>;
+type Methods = HashMap<[u8; 32], String>;
 
 pub(super) struct PreparedProxyBatch {
     call: PreparedBatchCall,
     discoveries: Discoveries,
+    methods: Methods,
     initialized: bool,
 }
 
@@ -19,6 +21,9 @@ impl McpProxySession {
     ) -> Result<PreparedProxyExchange, McpPolicyError> {
         let exchange = self.exchanges.clone().read_owned().await;
         let members = message.as_array().ok_or(McpPolicyError::Call)?;
+        for member in members {
+            self.binding.access.authorize_request(member)?;
+        }
         let responses = members
             .iter()
             .filter(|member| message_kind(member).ok() == Some(MessageKind::Response))
@@ -100,6 +105,16 @@ impl McpProxySession {
             .filter(|member| message_kind(member).ok() == Some(MessageKind::Request))
             .map(|member| correlation_id(&member["id"]))
             .collect();
+        let methods = members
+            .iter()
+            .filter(|member| message_kind(member).ok() == Some(MessageKind::Request))
+            .map(|member| {
+                (
+                    correlation_id(&member["id"]),
+                    member["method"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
         let mut request_ids = self.request_ids.lock().await;
         if request_ids.len() + requests.len() > 4096
             || requests.iter().collect::<HashSet<_>>().len() != requests.len()
@@ -159,6 +174,7 @@ impl McpProxySession {
             kind: Exchange::Batch(Box::new(PreparedProxyBatch {
                 call,
                 discoveries,
+                methods,
                 initialized,
             })),
             handshake: initialized,
@@ -181,6 +197,7 @@ impl PreparedProxyBatch {
         let Self {
             call,
             discoveries,
+            methods,
             initialized,
         } = self;
         let (events, mut receiver) = mpsc::channel(8);
@@ -193,7 +210,7 @@ impl PreparedProxyBatch {
                 result = &mut operation => break result,
                 event = receiver.recv(), if events_open => {
                     if let Some(event) = event {
-                        forward(event, &session, &discoveries, context, initialized, sink).await;
+                        forward(event, &session, (&discoveries, &methods), context, initialized, sink).await;
                     } else { events_open = false; }
                 }
             }
@@ -201,7 +218,15 @@ impl PreparedProxyBatch {
         // A disconnected batch may already have durable partial results queued for delivery.
         // Drain those facts on both success and failure before closing the exchange.
         while let Ok(event) = receiver.try_recv() {
-            forward(event, &session, &discoveries, context, initialized, sink).await;
+            forward(
+                event,
+                &session,
+                (&discoveries, &methods),
+                context,
+                initialized,
+                sink,
+            )
+            .await;
         }
         match result {
             Ok(result) => {
@@ -229,11 +254,12 @@ impl PreparedProxyBatch {
 async fn forward(
     event: Budgeted<HttpEvent>,
     session: &McpProxySession,
-    discoveries: &Discoveries,
+    projection: (&Discoveries, &Methods),
     context: &HttpContext,
     initialized: bool,
     sink: &mut Sink,
 ) {
+    let (discoveries, methods) = projection;
     let (event, bytes) = event.into_parts();
     let Some(mut message) = event.message else {
         return;
@@ -245,6 +271,15 @@ async fn forward(
     for member in members {
         if message_kind(member).ok() != Some(MessageKind::Response) {
             continue;
+        }
+        if let Some(method) = methods.get(&correlation_id(&member["id"]))
+            && session
+                .binding
+                .access
+                .project_response(method, member)
+                .is_err()
+        {
+            sink.fail();
         }
         if initialized
             && member.get("id").is_none_or(Value::is_null)

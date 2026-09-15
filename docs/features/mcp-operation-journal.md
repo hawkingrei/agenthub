@@ -67,9 +67,10 @@ exercise this ownership boundary through provider disconnects.
 - Canonical hashes sort nested objects and normalize equivalent integer spellings such as `1`,
   `1.0`, and `1e0`. Exact large integer values are not rounded through floating-point conversion.
 - Discovery snapshots are bounded to 1,024 tools and 8 MiB. Tool names, schemas, ordering, and
-  extensions survive unchanged. Invalid July 2026 HTTP header annotations exclude that tool;
-  legacy versions retain the annotations as uninterpreted data. Pagination, refresh sequencing,
-  and integration-specific catalog authorization remain controller responsibilities.
+  extensions of approved tools survive unchanged. Invalid July 2026 HTTP header annotations exclude that tool;
+  legacy versions retain the annotations as uninterpreted data. The proxy applies trusted access
+  grants before storing or advertising the catalog. Rejected single/batch/subscription requests
+  cannot acquire send authority from discovery or protocol metadata.
 
 ### Send and recovery
 
@@ -348,8 +349,8 @@ proxy; complete integration authorization remains a separate acceptance gate.
 
 ## Open Risks
 
-- Integration adapters still need complete scope/capability authorization and endpoint-alias
-  reconciliation. Non-tool continuations remain incomplete.
+- The proxy enforces trusted surface grants; integration adapters still need complete upstream
+  namespace authorization, capability handling, and endpoint-alias reconciliation. Non-tool continuations remain incomplete.
   Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.
 - Retained ambiguous non-idempotent writes need explicit upstream reconciliation; changing

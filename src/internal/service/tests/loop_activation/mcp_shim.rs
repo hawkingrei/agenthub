@@ -34,6 +34,7 @@ use crate::loop_credentials::{
     LOOP_CREDENTIAL_FILE_ENV, LoopCredentialEnvelope, LoopCredentialFile,
 };
 
+mod access;
 mod batch;
 mod bootstrap;
 mod budget;
@@ -65,6 +66,7 @@ struct Upstream {
     task_inputs_answered: AtomicBool,
     legacy_tasks: AtomicBool,
     task_events: tokio::sync::broadcast::Sender<Value>,
+    access_fixture: AtomicBool,
 }
 
 async fn handler(
@@ -89,6 +91,14 @@ async fn handler(
         return StatusCode::ACCEPTED.into_response();
     }
     match message["method"].as_str().unwrap() {
+        "resources/list"
+        | "resources/templates/list"
+        | "resources/read"
+        | "resources/subscribe"
+        | "resources/unsubscribe"
+        | "prompts/list"
+        | "prompts/get"
+        | "completion/complete" => access::respond(&message),
         "tools/call" | "tasks/result" | "ping" if upstream.legacy_tasks.load(Ordering::Acquire) => {
             legacy_task::respond(upstream, message).await
         }
@@ -104,8 +114,14 @@ async fn handler(
                 return (StatusCode::NOT_FOUND, Json(json!({"jsonrpc":"2.0","id":message["id"],
                     "error":{"code":-32601,"message":"Method not found","data":{"fallback":"initialize"}}}))).into_response();
             }
-            Json(json!({"jsonrpc":"2.0","id":message["id"],"result":discovery::result()}))
-                .into_response()
+            let mut result = discovery::result();
+            if upstream.access_fixture.load(Ordering::Acquire) {
+                result["capabilities"]["resources"] = json!({"subscribe":true,"listChanged":true});
+                result["capabilities"]["prompts"] = json!({"listChanged":true});
+                result["capabilities"]["logging"] = json!({});
+                result["capabilities"]["completions"] = json!({});
+            }
+            Json(json!({"jsonrpc":"2.0","id":message["id"],"result":result})).into_response()
         }
         "initialize" => {
             let mut callback = json!({"jsonrpc":"2.0","id":"roots-1","method":"roots/list"});
@@ -119,6 +135,11 @@ async fn handler(
             if upstream.legacy_tasks.load(Ordering::Acquire) {
                 response["result"]["capabilities"]["tasks"] =
                     json!({"requests":{"tools":{"call":{}}}});
+            }
+            if upstream.access_fixture.load(Ordering::Acquire) {
+                response["result"]["capabilities"]["resources"] = json!({"subscribe":true});
+                response["result"]["capabilities"]["prompts"] = json!({});
+                response["result"]["capabilities"]["logging"] = json!({});
             }
             let first = futures::stream::once(async move {
                 Ok::<_, std::io::Error>(format!("data: {callback}\n\n"))
@@ -260,6 +281,19 @@ async fn setup_with_running(mark_running: bool) -> Harness {
 }
 
 async fn setup_with_replay(mark_running: bool, replay: TrustedReplayPolicy) -> Harness {
+    setup_with_access(
+        mark_running,
+        replay,
+        agenthub_mcp::access::McpAccessPolicy::unrestricted(),
+    )
+    .await
+}
+
+async fn setup_with_access(
+    mark_running: bool,
+    replay: TrustedReplayPolicy,
+    access: agenthub_mcp::access::McpAccessPolicy,
+) -> Harness {
     let (state, service, authz, run, reservation) = super::fixture_with_running(mark_running).await;
     agenthub_db::mcp_operations::migrate_mcp_operations(&state.db)
         .await
@@ -295,6 +329,7 @@ async fn setup_with_replay(mark_running: bool, replay: TrustedReplayPolicy) -> H
         task_inputs_answered: AtomicBool::new(false),
         legacy_tasks: AtomicBool::new(false),
         task_events: tokio::sync::broadcast::channel(8).0,
+        access_fixture: AtomicBool::new(false),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(
@@ -332,6 +367,7 @@ async fn setup_with_replay(mark_running: bool, replay: TrustedReplayPolicy) -> H
     .unwrap();
     let binding = Arc::new(McpProxyBinding::new(
         policy,
+        access,
         Arc::new(|_, _, mut arguments| {
             if arguments
                 .get("space_id")
