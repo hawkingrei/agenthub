@@ -233,3 +233,72 @@ fn private_environment_includes_all_profiles_and_ambient_mem_headers() {
         assert!(!is_private_environment(name, &names), "{name}");
     }
 }
+
+#[tokio::test]
+async fn unavailable_mem_preserves_configuration_but_never_mounts_unverified_authority() {
+    use axum::{http::StatusCode, routing::get};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}/mcp", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            axum::Router::new().route(
+                "/members/me",
+                get(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+            ),
+        )
+        .await
+        .unwrap();
+    });
+    let mut config = config();
+    config
+        .nowledge_mem
+        .as_mut()
+        .unwrap()
+        .profiles
+        .as_mut()
+        .unwrap()
+        .get_mut("profile")
+        .unwrap()
+        .endpoint = endpoint;
+    let fingerprint = |binding| match binding {
+        MemLaunchBinding::Unavailable { fingerprint } => fingerprint,
+        MemLaunchBinding::Ready(_) => panic!("unverified authority was mounted"),
+    };
+    let first = fingerprint(
+        resolve_mem_for_launch(&config, "team", "worker", |_| Some("private-first".into()))
+            .await
+            .unwrap(),
+    );
+    let rotated = fingerprint(
+        resolve_mem_for_launch(&config, "team", "worker", |_| {
+            Some("private-rotated".into())
+        })
+        .await
+        .unwrap(),
+    );
+    assert_eq!(first, rotated);
+    assert_eq!(first.len(), 64);
+    config
+        .nowledge_mem
+        .as_mut()
+        .unwrap()
+        .team_bindings
+        .as_mut()
+        .unwrap()
+        .get_mut("team")
+        .unwrap()
+        .space_id = "space-b".into();
+    let changed = fingerprint(
+        resolve_mem_for_launch(&config, "team", "worker", |_| Some("private-first".into()))
+            .await
+            .unwrap(),
+    );
+    assert_ne!(first, changed);
+    assert!(
+        resolve_mem_for_launch(&config, "team", "worker", |_| None)
+            .await
+            .is_err()
+    );
+    server.abort();
+}

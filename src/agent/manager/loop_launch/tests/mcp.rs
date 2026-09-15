@@ -90,13 +90,12 @@ async fn membership(State(state): State<Arc<Upstream>>, headers: HeaderMap) -> J
 
 #[tokio::test]
 async fn configured_mcp_launch_isolates_inherited_secrets() {
+    run_configured_child("agent::manager::loop_launch::tests::mcp::configured_mcp_child").await;
+}
+
+pub(super) async fn run_configured_child(test: &str) {
     let mut child = tokio::process::Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "agent::manager::loop_launch::tests::mcp::configured_mcp_child",
-            "--ignored",
-            "--nocapture",
-        ])
+        .args(["--exact", test, "--ignored", "--nocapture"])
         .env("TEST_MEM_UPSTREAM_KEY", "configured-secret")
         .env("TEST_OTHER_MEM_KEY", "other-profile-secret")
         .env("NMEM_API_KEY", "ambient-secret")

@@ -120,3 +120,32 @@ async fn membership_probe_never_follows_a_redirect_with_its_credential() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn authorization_availability_is_distinct_from_invalid_authority() {
+    for status in [200, 302, 400, 401, 403, 404, 408, 429, 500, 502, 503, 504] {
+        let wire = format!(
+            "HTTP/1.1 {status} Fixture\r\nContent-Length: 7\r\nConnection: close\r\n\r\nprivate"
+        );
+        let (endpoint, server) = serve_once(wire).await;
+        let error = verify(&endpoint, &headers(), "space-a").await.unwrap_err();
+        assert_eq!(
+            error.is::<Unavailable>(),
+            matches!(status, 408 | 429 | 500..=599),
+            "{status}"
+        );
+        assert!(!format!("{error:#}").contains("private"));
+        server.await.unwrap();
+    }
+    let (endpoint, server) = serve_once(
+        "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{\"partial\":".into(),
+    )
+    .await;
+    assert!(
+        verify(&endpoint, &headers(), "space-a")
+            .await
+            .unwrap_err()
+            .is::<Unavailable>()
+    );
+    server.await.unwrap();
+}

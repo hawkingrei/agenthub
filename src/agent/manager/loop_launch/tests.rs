@@ -9,6 +9,7 @@ use agenthub_db::loop_runtime::LoopPolicyUpdate;
 use super::*;
 
 mod mcp;
+mod mem;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3
 import json, os, subprocess, sys, uuid
@@ -59,6 +60,14 @@ for line in sys.stdin:
                 log.write(json.dumps({'mcp_bootstrap':True, 'server':server}) + '\n')
         result = {'sessionId': str(uuid.uuid4())}
     elif method == 'session/prompt':
+        if mode == 'mem':
+            prompt = ''.join(block.get('text', '') for block in request['params']['prompt'])
+            with open(log_path, 'a') as log:
+                log.write(json.dumps({'context_prompt':prompt}) + '\n')
+            with open(os.path.join(os.getcwd(), 'local-task-id')) as task_id:
+                task = actor('team-task-note', '--task-id', task_id.read(), '--kind', 'result', '--text', 'Independent local progress is durable')
+            with open(log_path, 'a') as log:
+                log.write(json.dumps({'local_task':task}) + '\n')
         if mode == 'mcp':
             result = mcp_call({'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'fixture_write','arguments':{'body':'private-business-body'}}})
             assert result['result']['structuredContent']['written'] is True
@@ -105,7 +114,7 @@ for line in sys.stdin:
             with open(path, 'w') as outcome:
                 json.dump({'kind':'handoff'}, outcome)
             actor('loop-finish', '--outcome-file', path)
-        if mode in ['finish', 'mcp']:
+        if mode in ['finish', 'mcp', 'mem']:
             for command in ['team-members', 'team-tasks', 'inbox']:
                 recovery = subprocess.run([control_binary, 'actor', command, '--json'], capture_output=True, text=True)
                 if recovery.returncode:
@@ -530,7 +539,7 @@ async fn loop_work_provider_dispatch_survives_leader_exit_and_report_wakes_offli
 
 #[test]
 fn loop_work_entry_prompt_is_a_bounded_versioned_recovery_pointer() {
-    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v2");
+    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v3");
     assert!(LOOP_ENTRY_PROMPT.len() < 1500);
     for command in ["loop-context", "loop-source", "loop-finish"] {
         assert!(LOOP_ENTRY_PROMPT.contains(command));

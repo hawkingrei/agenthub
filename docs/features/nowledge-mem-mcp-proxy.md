@@ -1,7 +1,7 @@
 # Nowledge Mem MCP Proxy
 
-Status: integration in progress. Scoped proxy startup and the shared operation journal exist;
-context bootstrap remains open. This is the initial Mem seam for the
+Status: integration in progress. Scoped proxy startup, the shared operation journal, and activation
+context bootstrap exist; selected learning remains open. This is the initial Mem seam for the
 [loop product model](agent-loop-product-model.md).
 
 ## Problem
@@ -13,8 +13,9 @@ MCP configuration, which cannot bind a Team run to an existing Mem space or
 preserve the write-recovery boundary required by Mem's current MCP contracts.
 
 The current implementation resolves existing profiles into the shared daemon proxy and supplies
-local ACP stdio descriptors after verifying upstream namespace authorization. Context Lens bootstrap
-remains integration work; the full contract below is not yet a completion claim.
+local ACP stdio descriptors after verifying upstream namespace authorization. Context Lens recovery
+uses the same proxy before the activation's entry prompt; the full contract below is not yet a
+completion claim.
 
 ## Scope
 
@@ -120,6 +121,31 @@ data rather than instructions, is passed through unchanged into the AgentHub
 runtime context. This is a read-only scope lens; it is not provider-session
 resume state.
 
+Both fresh and resumed ACP sessions reread the lens after the activation becomes Running and before
+its one entry prompt. A dedicated daemon-owned proxy session initializes, completes at most 32
+discovery pages, and calls the discovered lens. Only this integration-owned read contract receives
+trusted read-only replay classification; unknown tools retain non-idempotent semantics regardless
+of their annotations. The provider's separate session retains native discovery and error behavior.
+
+The context budget is 30 seconds and 64 KiB of markdown. An oversized, conflicting, malformed, or
+wrong-space bundle is rejected in full instead of truncating attribution. The original markdown is
+appended unchanged after an explicit attributed-DATA boundary in the entry prompt. Knowledge cannot
+grant runtime permissions or change canonical task ownership. Context bodies are excluded from
+operation receipts and activation trace events.
+
+Known invalid configuration, credential rejection, workspace mismatch, malformed membership, and
+redirects remain hard launch gates. Connection failures, incomplete transport responses, HTTP
+408/429, and server errors leave an explicit unavailable result and permit independent local work.
+An unverified binding is never mounted, and its configuration references still affect the launch
+fingerprint. No automatic retry or background authorization promotion occurs during that activation.
+
+Failed context discovery or retrieval produces one visible failure in the entry prompt and one
+fenced activation event: `mem_context_unavailable`, `mem_context_missing`, or `mem_context_invalid`.
+Success records `mem_context_ready`. The first bootstrap result is immutable for that generation.
+Only knowledge-dependent work should wait; local task notes and outcomes remain independent.
+An expired consumer deadline does not abandon a sent operation: the daemon retains its operation
+guard until the shared transport drains and journals its outcome, then retires the bootstrap session.
+
 Stable actor and Team/project bindings survive process exit. Activation/session IDs provide
 correlation, not new Mem spaces or user identities. Canonical tasks and IM supply current work;
 agents retrieve relevant prior knowledge through the discovered Mem tools.
@@ -218,5 +244,6 @@ delivery is the first slice; standalone/remote coverage needs explicit scope and
 
 ## Source Journals
 
+- [Scoped context bootstrap checkpoint](../journal/2026-09-16-mem-context-bootstrap.md)
 - [Shared MCP proxy checkpoint](../journal/2026-09-15-shared-mcp-proxy.md)
 - [Loop product definition](../journal/2026-09-15-agent-loop-product-definition.md)

@@ -50,7 +50,9 @@ string_enum!(LoopEventKind {
     TriggerAccepted => "trigger_accepted", Admitted => "admitted", Deferred => "deferred",
     LaunchResolved => "launch_resolved", Running => "running", OutcomeRecorded => "outcome_recorded",
     CleanupVerified => "cleanup_verified", Interrupted => "interrupted", Canceled => "canceled",
-    ToolCompleted => "tool_completed"
+    ToolCompleted => "tool_completed",
+    MemContextReady => "mem_context_ready", MemContextUnavailable => "mem_context_unavailable",
+    MemContextMissing => "mem_context_missing", MemContextInvalid => "mem_context_invalid"
 });
 string_enum!(LoopDeferralReason {
     Disabled => "disabled", Suspended => "suspended", NotDue => "not_due",
