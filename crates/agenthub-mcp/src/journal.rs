@@ -213,7 +213,7 @@ fn classify_completion(response: &Value) -> Result<McpCompletion, McpTransportEr
         .ok_or(McpTransportError::InvalidResponse)?;
     let deferred = if result["resultType"] == "input_required" {
         Some(McpDeferralKind::InputRequired)
-    } else if result.get("task").is_some() {
+    } else if result["resultType"] == "task" || result.get("task").is_some() {
         Some(McpDeferralKind::TaskAccepted)
     } else {
         None

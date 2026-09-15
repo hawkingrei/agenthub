@@ -194,6 +194,10 @@ The [MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/bas
 requires separate request IDs and exact state echoing; it does not grant a proxy permission to
 blindly repeat an ambiguous write.
 
+Legacy nested task receipts and modern flat `resultType: "task"` receipts also remain raw
+protocol results. Neither receipt shape counts as a completed tool action. Task-result retrieval
+still requires the pending version-specific controller and receipt authorization.
+
 ### Redaction
 
 Transport failures contain only fixed categories or an HTTP status code. They retain no reqwest

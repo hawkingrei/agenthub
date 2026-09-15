@@ -112,6 +112,13 @@ cannot overwrite that observed receipt. Even a read or stable-identity call cann
 initial request from this state. Modern tool continuations use a separate receipt-bound send path;
 asynchronous task-result resolution remains pending.
 
+Task receipts include both the legacy nested `task` object and the modern Tasks extension's
+flat `resultType: "task"` shape. The latter is defined by the
+[released extension schema](https://github.com/modelcontextprotocol/ext-tasks/blob/9263312d11a682ac83f83fe84794d4627efd22f5/schema/2026-07-28/schema.ts).
+An initial handle remains deferred even when it reports a terminal task status; only a linked
+result lookup can establish the tool outcome. The full receipt is forwarded unchanged while its
+digest, rather than the task ID or status text, is recorded in the journal.
+
 ### Multi round-trip tool calls
 
 For the [2026-07-28 MRTR pattern](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr),

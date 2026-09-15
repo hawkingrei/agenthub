@@ -374,6 +374,18 @@ parent. Root/MCP/database all-target Clippy with warnings denied, the real binar
 formatting, whitespace, and local document links pass using the commands above. No dependencies,
 protobuf definitions, or Bazel configuration change.
 
+Review against the released Tasks extension schema found that a modern flat `resultType: "task"`
+receipt was incorrectly classified as a successful tool result. The HTTP regression reproduced
+that error before the fix. The classifier now recognizes both modern and legacy receipt shapes
+as deferred. The regression covers every initial task status, unchanged payload delivery,
+durable unknown outcome, original-request replay denial, and task-ID redaction. This does not
+claim implementation of the pending task lookup/update/cancel controller.
+
+After the receipt fix, all 63 MCP crate tests and 22 root MCP tests pass, including the
+parent-invoked configured-launch child. Root/MCP all-target Clippy with warnings denied and the
+real binary build pass. Formatting, whitespace, and local document links also pass. The database
+code is unchanged from the 26-test continuation retry checkpoint.
+
 ## Follow-Ups
 
 - Complete slice 9's asynchronous task resolution, remaining protocol controller paths, and integration

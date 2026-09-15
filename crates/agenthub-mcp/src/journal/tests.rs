@@ -36,6 +36,7 @@ use super::*;
 mod batch;
 mod continuation;
 mod recovery;
+mod task;
 use crate::{
     http::{HttpContext, McpHttpTransport},
     policy::{McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, TrustedReplayPolicy},
