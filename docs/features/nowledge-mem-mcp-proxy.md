@@ -1,7 +1,7 @@
 # Nowledge Mem MCP Proxy
 
-Status: integration design with policy primitives only. Full proxy startup, context bootstrap, and
-operation journaling still require implementation. This is the initial Mem seam for the
+Status: integration in progress. Policy primitives and the shared operation journal exist; full
+proxy startup and context bootstrap still require implementation. This is the initial Mem seam for the
 [loop product model](agent-loop-product-model.md).
 
 ## Problem
@@ -71,6 +71,9 @@ agents retrieve relevant prior knowledge through the discovered Mem tools.
 
 ### Operation Journal
 
+The shared [MCP operation journal](mcp-operation-journal.md) owns persistence and replay
+enforcement. Mem uses the same status/error types and store as future app integrations.
+
 The AgentHub-local journal records only endpoint/profile references, tool name,
 scope, correlation id, status, Mem pointer, and a redacted safe summary. It
 does not store credentials, memory bodies, thread bodies, or raw diagnostic
@@ -139,4 +142,5 @@ delivery is the first slice; standalone/remote coverage needs explicit scope and
 
 ## Source Journals
 
+- [Shared MCP proxy checkpoint](../journal/2026-09-15-shared-mcp-proxy.md)
 - [Loop product definition](../journal/2026-09-15-agent-loop-product-definition.md)

@@ -6,6 +6,10 @@
 
 use serde_json::Value;
 
+pub use agenthub_agent_domain::mcp_operations::{
+    McpFailureKind as MemResponseErrorKind, McpOperationStatus as MemJournalStatus,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemScopeBinding {
     pub profile_ref: String,
@@ -30,35 +34,6 @@ impl MemScopeBinding {
             space_id,
         })
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemJournalStatus {
-    Prepared,
-    Sent,
-    Succeeded,
-    Failed,
-    OutcomeUnknown,
-}
-
-impl MemJournalStatus {
-    pub const fn can_transition_to(self, next: Self) -> bool {
-        matches!(
-            (self, next),
-            (Self::Prepared, Self::Sent)
-                | (Self::Prepared, Self::Failed)
-                | (Self::Sent, Self::Succeeded)
-                | (Self::Sent, Self::Failed)
-                | (Self::Sent, Self::OutcomeUnknown)
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemResponseErrorKind {
-    McpResult,
-    JsonRpc,
-    SuccessEnvelope,
 }
 
 /// Adds the bound scope only when the upstream JSON schema declares a

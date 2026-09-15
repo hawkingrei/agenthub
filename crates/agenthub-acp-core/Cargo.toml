@@ -5,6 +5,7 @@ edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
+agenthub-agent-domain = { path = "../agenthub-agent-domain" }
 anyhow = "1"
 agent-client-protocol = { version = "2.0.0", features = ["unstable"] }
 serde = { version = "1", features = ["derive"] }

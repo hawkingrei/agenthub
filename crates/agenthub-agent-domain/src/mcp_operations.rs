@@ -1,0 +1,224 @@
+//! Safe operation receipts shared by MCP integrations. Payloads stay in the transport.
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct McpDigest(String);
+
+impl McpDigest {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for McpDigest {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        anyhow::ensure!(
+            value.len() == 64
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+            "MCP journal digest must be a lowercase SHA-256 digest"
+        );
+        Ok(Self(value))
+    }
+}
+
+impl From<McpDigest> for String {
+    fn from(value: McpDigest) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpOperationStatus {
+    Prepared,
+    Sent,
+    Succeeded,
+    Failed,
+    OutcomeUnknown,
+}
+
+impl McpOperationStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Prepared => "prepared",
+            Self::Sent => "sent",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::OutcomeUnknown => "outcome_unknown",
+        }
+    }
+
+    /// A replay creates a new attempt; it never changes an old attempt back to sent.
+    pub const fn can_transition_to(self, next: Self) -> bool {
+        matches!(
+            (self, next),
+            (Self::Prepared, Self::Sent | Self::Failed)
+                | (
+                    Self::Sent,
+                    Self::Succeeded | Self::Failed | Self::OutcomeUnknown
+                )
+        )
+    }
+}
+
+impl std::str::FromStr for McpOperationStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "prepared" => Ok(Self::Prepared),
+            "sent" => Ok(Self::Sent),
+            "succeeded" => Ok(Self::Succeeded),
+            "failed" => Ok(Self::Failed),
+            "outcome_unknown" => Ok(Self::OutcomeUnknown),
+            _ => anyhow::bail!("invalid MCP operation status"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum McpReplaySafety {
+    ReadOnly,
+    NonIdempotent,
+    /// The trusted binding declares a schema field and the caller supplied its value.
+    /// An upstream idempotentHint by itself does not establish this guarantee.
+    StableIdentity {
+        identity_digest: McpDigest,
+    },
+}
+
+impl McpReplaySafety {
+    pub fn permits_retry(&self) -> bool {
+        !matches!(self, Self::NonIdempotent)
+    }
+
+    pub fn identity_digest(&self) -> Option<&McpDigest> {
+        match self {
+            Self::StableIdentity { identity_digest } => Some(identity_digest),
+            _ => None,
+        }
+    }
+}
+
+/// Constructed by trusted proxy policy after scope binding and schema validation.
+/// All digests cover canonical values; no raw arguments, identities, or URLs belong here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpOperationIntent {
+    pub request_key: McpDigest,
+    pub server_id: String,
+    pub scope_digest: McpDigest,
+    pub binding_digest: McpDigest,
+    pub tool_name: String,
+    pub schema_digest: McpDigest,
+    pub arguments_digest: McpDigest,
+    pub replay_safety: McpReplaySafety,
+}
+
+impl McpOperationIntent {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.server_id.is_empty()
+                && self.server_id.len() <= 128
+                && self
+                    .server_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte)),
+            "MCP journal requires a bounded server identifier"
+        );
+        // Upstream naming conventions are recommendations, not a namespace rewrite contract.
+        anyhow::ensure!(
+            !self.tool_name.is_empty()
+                && self.tool_name.len() <= 4096
+                && !self.tool_name.chars().any(char::is_control),
+            "MCP tool name must be bounded text without control characters"
+        );
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpFailureKind {
+    JsonRpc,
+    McpResult,
+    SuccessEnvelope,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpAmbiguityReason {
+    TransportLost,
+    Deadline,
+    InvalidResponse,
+    DaemonRestart,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum McpCompletion {
+    Succeeded {
+        response_digest: McpDigest,
+    },
+    Failed {
+        reason: McpFailureKind,
+        response_digest: McpDigest,
+    },
+    OutcomeUnknown {
+        reason: McpAmbiguityReason,
+    },
+}
+
+impl McpCompletion {
+    pub fn status(&self) -> McpOperationStatus {
+        match self {
+            Self::Succeeded { .. } => McpOperationStatus::Succeeded,
+            Self::Failed { .. } => McpOperationStatus::Failed,
+            Self::OutcomeUnknown { .. } => McpOperationStatus::OutcomeUnknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpOperationRecord {
+    pub id: String,
+    pub actor_id: String,
+    pub team_id: String,
+    pub origin_activation_id: String,
+    pub intent: McpOperationIntent,
+    pub status: McpOperationStatus,
+    pub attempt_count: u32,
+    pub completion: Option<McpCompletion>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpAttemptRecord {
+    pub operation_id: String,
+    pub number: u32,
+    pub activation_id: String,
+    pub generation: i64,
+    pub status: McpOperationStatus,
+    pub completion: Option<McpCompletion>,
+    pub sent_at: i64,
+    pub completed_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpOperationEvent {
+    pub id: i64,
+    pub operation_id: String,
+    pub attempt_number: u32,
+    pub activation_id: String,
+    pub status: McpOperationStatus,
+    pub completion: Option<McpCompletion>,
+    pub created_at: i64,
+}

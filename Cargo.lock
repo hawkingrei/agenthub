@@ -486,6 +486,7 @@ name = "agenthub-acp-core"
 version = "0.0.10"
 dependencies = [
  "agent-client-protocol",
+ "agenthub-agent-domain",
  "anyhow",
  "serde",
  "serde_json",

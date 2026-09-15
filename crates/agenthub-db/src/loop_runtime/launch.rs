@@ -1,5 +1,5 @@
 use agenthub_agent_domain::loop_runtime::{LoopLaunchSnapshot, LoopReservation};
-use sqlx::Row;
+use sqlx::{Row, Sqlite, Transaction};
 
 use super::{LoopStore, LoopStoreError, reservation::require_live_reservation};
 
@@ -12,12 +12,21 @@ impl LoopStore {
         now: i64,
     ) -> anyhow::Result<()> {
         let mut tx = self.pool.begin().await?;
-        let current = require_live_reservation(&mut tx, expected, now).await?;
-        super::policy::require_member(&mut tx, &current.team_id, &current.actor_id).await?;
-        let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_activations a JOIN loop_mailbox_partitions p ON p.run_id = a.mailbox_run_id AND p.team_id = a.team_id WHERE a.id = ? AND p.active = 1 AND a.state = 'running')")
-            .bind(&current.activation_id).fetch_one(&mut *tx).await?;
-        anyhow::ensure!(active, LoopStoreError::InvalidState);
+        Self::verify_executor_live_tx(&mut tx, expected, now).await?;
         tx.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn verify_executor_live_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        expected: &LoopReservation,
+        now: i64,
+    ) -> anyhow::Result<()> {
+        let current = require_live_reservation(tx, expected, now).await?;
+        super::policy::require_member(tx, &current.team_id, &current.actor_id).await?;
+        let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_activations a JOIN loop_mailbox_partitions p ON p.run_id = a.mailbox_run_id AND p.team_id = a.team_id WHERE a.id = ? AND p.active = 1 AND a.state = 'running')")
+            .bind(&current.activation_id).fetch_one(&mut **tx).await?;
+        anyhow::ensure!(active, LoopStoreError::InvalidState);
         Ok(())
     }
 
