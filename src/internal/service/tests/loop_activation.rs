@@ -20,6 +20,18 @@ async fn fixture() -> (
     crate::team::TeamRunRecord,
     LoopReservation,
 ) {
+    fixture_with_running(true).await
+}
+
+async fn fixture_with_running(
+    mark_running: bool,
+) -> (
+    crate::state::AppState,
+    TeamInternalControlService,
+    InternalAuthz,
+    crate::team::TeamRunRecord,
+    LoopReservation,
+) {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let store = LoopStore::new(state.db.clone());
@@ -86,7 +98,9 @@ async fn fixture() -> (
         .bind_session(&reservation, &session, now)
         .await
         .unwrap();
-    store.mark_running(&reservation, now).await.unwrap();
+    if mark_running {
+        store.mark_running(&reservation, now).await.unwrap();
+    }
     let authz = build_authz();
     let service = TeamInternalControlService::new(
         control_deps(&state),

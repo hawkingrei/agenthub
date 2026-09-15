@@ -25,7 +25,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
-- [2026-09-15: Shared MCP proxy](2026-09-15-shared-mcp-proxy.md): durable journal, HTTP transport, startup recovery, signed streaming RPCs and stdio shim; configured bindings and launch integration remain in progress.
+- [2026-09-15: Shared MCP proxy](2026-09-15-shared-mcp-proxy.md): durable journal, HTTP transport, signed streaming RPCs, stdio shim and restricted startup bootstrap; configured bindings and launch integration remain in progress.
 - [2026-09-15: Offline loop configuration](2026-09-15-agent-loop-offline-configuration.md): explicit policies, preflight, Card identity, and scope guards in progress.
 - [2026-09-15: Recoverable local loop providers](2026-09-15-agent-loop-local-provider.md): launch snapshots, stable mailbox, guardian cleanup evidence, scoped actor control, and verified local ACP/CLI recovery.
 

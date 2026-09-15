@@ -3,6 +3,7 @@ use agenthub_db::loop_runtime::LoopStore;
 use std::pin::Pin;
 use tokio::sync::mpsc;
 
+use super::loop_activation::ExecutionAdmission;
 use super::*;
 use crate::internal::proto::agenthub::internal::v1::{
     CloseMcpProxyRequest, CloseMcpProxyResponse, ExchangeMcpProxyRequest, McpProxyFrame,
@@ -16,8 +17,11 @@ impl TeamInternalControlService {
     async fn mcp_executor(
         &self,
         metadata: &MetadataMap,
+        admission: ExecutionAdmission,
     ) -> Result<(LoopReservation, tokio::sync::OwnedRwLockReadGuard<()>), Status> {
-        let (principal, guard) = self.authenticate_execution(metadata, false).await?;
+        let (principal, guard) = self
+            .authenticate_execution_admission(metadata, admission)
+            .await?;
         self.authz
             .ensure_permission(&principal, InternalAction::McpProxy)?;
         let execution = principal.loop_execution.as_ref().ok_or_else(|| {
@@ -48,7 +52,9 @@ impl TeamInternalControlService {
         &self,
         request: Request<OpenMcpProxyRequest>,
     ) -> Result<Response<OpenMcpProxyResponse>, Status> {
-        let (executor, _guard) = self.mcp_executor(request.metadata()).await?;
+        let (executor, _guard) = self
+            .mcp_executor(request.metadata(), ExecutionAdmission::Bootstrap)
+            .await?;
         let session_id = self
             .deps
             .agents
@@ -62,7 +68,9 @@ impl TeamInternalControlService {
         &self,
         request: Request<CloseMcpProxyRequest>,
     ) -> Result<Response<CloseMcpProxyResponse>, Status> {
-        let (executor, _guard) = self.mcp_executor(request.metadata()).await?;
+        let (executor, _guard) = self
+            .mcp_executor(request.metadata(), ExecutionAdmission::Bootstrap)
+            .await?;
         self.deps
             .agents
             .mcp_proxy()?
@@ -75,10 +83,13 @@ impl TeamInternalControlService {
         &self,
         request: Request<ExchangeMcpProxyRequest>,
     ) -> Result<Response<McpResponseStream>, Status> {
-        let (executor, guard) = self.mcp_executor(request.metadata()).await?;
+        let metadata = request.metadata().clone();
         let payload = request.into_inner();
         let message = agenthub_mcp::protocol::parse_message(payload.message_json.as_bytes())
             .map_err(|_| Status::invalid_argument("invalid or oversized MCP message"))?;
+        let (executor, guard) = self
+            .mcp_executor(&metadata, message_admission(&message))
+            .await?;
         let hub = self.deps.agents.mcp_proxy()?;
         let session = hub.session(&executor, &payload.session_id).await?;
         let (output, receiver) = mpsc::channel(8);
@@ -128,5 +139,39 @@ impl TeamInternalControlService {
             })
         });
         Ok(Response::new(Box::pin(stream)))
+    }
+}
+
+fn message_admission(message: &serde_json::Value) -> ExecutionAdmission {
+    use agenthub_mcp::protocol::{MessageKind, message_kind};
+
+    let method = message["method"].as_str().unwrap_or("");
+    let bootstrap = match message_kind(message) {
+        Ok(MessageKind::Request) => matches!(
+            method,
+            "initialize"
+                | "ping"
+                | "server/discover"
+                | "tools/list"
+                | "resources/list"
+                | "resources/templates/list"
+                | "prompts/list"
+        ),
+        Ok(MessageKind::Notification) => matches!(
+            method,
+            "notifications/initialized"
+                | "notifications/progress"
+                | "notifications/cancelled"
+                | "notifications/roots/list_changed"
+        ),
+        // Session preparation independently requires a pending upstream callback ID. This arm
+        // cannot manufacture permission to send an unsolicited response or another tool call.
+        Ok(MessageKind::Response) => true,
+        _ => false,
+    };
+    if bootstrap {
+        ExecutionAdmission::Bootstrap
+    } else {
+        ExecutionAdmission::Running
     }
 }

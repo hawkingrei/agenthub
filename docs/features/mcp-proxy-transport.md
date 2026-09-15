@@ -115,6 +115,12 @@ not copied into transport diagnostics or the operation journal.
 - Open accepts only an opaque server reference. Sessions are scoped to the authenticated Team,
   actor, activation, and generation; legacy mailbox tokens cannot create them. Every incoming
   message rechecks signed execution authority and `mcp:proxy` permission under the operation guard.
+- MCP bootstrap may run during `starting` only after an immutable launch snapshot and local session
+  are bound to the active mailbox. This admits open/close, initialization, discovery, protocol
+  notifications, and registered upstream callback responses. Tools, resource reads, prompt reads,
+  task operations, and batches still require `running`; ordinary actor-control admission and the
+  journal's prepare/send checks retain their running-only requirement. Generation, owner, lease,
+  membership, and mailbox revocation apply equally to bootstrap.
 - Each admitted message has a response stream. The daemon owns the HTTP operation and execution
   guard independently of that stream's receiver. Caller disconnect cannot cancel persistence of a
   factual result or release the guard while an upstream write is still running.
@@ -155,6 +161,7 @@ discovery, and integration-specific authorization for non-tool methods remain co
 | Real shim | Binary subprocess with gRPC and fake HTTP: initialization callback, ordered initialized delivery, paged discovery, progress/result forwarding, and credential rotation |
 | RPC ownership | Dropped response stream after durable send retains the execution guard and records the actual upstream result |
 | Session admission | Cross-actor/activation rejection, revoked binding, cleanup, and invalid notifications without fabricated JSON-RPC replies |
+| Startup | Launch/session/mailbox prerequisites; initialization callback and discovery before running; no tool send or ordinary actor control until running |
 
 ## Operational Notes
 
@@ -169,7 +176,7 @@ startup currently installs an empty binding set, so these fixtures do not establ
 
 ## Open Risks
 
-- Configured bindings, starting-phase initialization authority, and provider launch remain unwired.
+- Configured bindings and provider launch remain unwired.
 - Linked MRTR continuation/task-result admission remains controller work. Observed deferred receipts already block a replay
   of the original request without claiming a final tool outcome.
 - Existing static MCP configuration and provider environment isolation need real shim/ACP fixtures.

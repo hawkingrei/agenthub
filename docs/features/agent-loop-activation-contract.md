@@ -261,6 +261,13 @@ from releasing authority before admitted control requests settle. The daemon own
 through caller disconnects. After cleanup, only idempotent finish-receipt replay remains available.
 Native permission callbacks are interrupted when their local session is cleaned up.
 
+The [MCP proxy](mcp-proxy-transport.md) has a restricted protocol-bootstrap admission before the
+entry turn: after launch configuration and the local session are bound, `starting` may initialize
+and discover its already approved MCP bindings and answer their registered callbacks. This does
+not authorize tool sends or ordinary actor controls. Those still require `running`, and the
+operation journal independently enforces that boundary. Bootstrap retains the same signed
+identity, active mailbox, membership, owner, generation, lease, and operation-guard checks.
+
 ## Validation Matrix
 
 | Boundary | Required evidence |
@@ -273,6 +280,7 @@ Native permission callbacks are interrupted when their local session is cleaned 
 | Context | Fresh/resumed task and inbox recovery without new task attempts or mailbox rotation |
 | Local adapter | Guardian receipt, detached descendants, strict resume/profile negotiation, one entry turn |
 | Actor control | Credential rotation, stale owner/generation rejection, disconnect ownership, finish replay |
+| MCP bootstrap | Bound launch/session required; startup initialization/discovery cannot perform a journaled tool send |
 | Configuration | Offline creation/copy, preflight and authority, disconnect/start exclusion, concurrent removal/intake, claim/reply/permission guards |
 | Limits | Durable startup/no-progress limits, per-Team fan-out, due-time isolation and suspension |
 | Visibility | Safe trace after exit, stable ordering, authorization, bounded pagination, debug/release separation |
@@ -306,3 +314,4 @@ fail explicitly rather than claim parity. Track implementation and remaining val
 - [Fenced loop admission](../journal/2026-09-15-agent-loop-admission.md)
 - [Loop outcomes and cleanup](../journal/2026-09-15-agent-loop-lifecycle.md)
 - [Offline loop configuration](../journal/2026-09-15-agent-loop-offline-configuration.md)
+- [Shared MCP proxy and bootstrap](../journal/2026-09-15-shared-mcp-proxy.md)

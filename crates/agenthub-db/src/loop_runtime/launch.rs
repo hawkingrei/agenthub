@@ -22,10 +22,32 @@ impl LoopStore {
         expected: &LoopReservation,
         now: i64,
     ) -> anyhow::Result<()> {
+        Self::verify_executor_phase_tx(tx, expected, now, false).await
+    }
+
+    /// Authorize protocol bootstrap during startup only after launch configuration and a local
+    /// session are bound. This does not grant tool-send or ordinary actor-control authority.
+    pub async fn verify_executor_bootstrap_live(
+        &self,
+        expected: &LoopReservation,
+        now: i64,
+    ) -> anyhow::Result<()> {
+        let mut tx = self.pool.begin().await?;
+        Self::verify_executor_phase_tx(&mut tx, expected, now, true).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn verify_executor_phase_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        expected: &LoopReservation,
+        now: i64,
+        allow_bootstrap: bool,
+    ) -> anyhow::Result<()> {
         let current = require_live_reservation(tx, expected, now).await?;
         super::policy::require_member(tx, &current.team_id, &current.actor_id).await?;
-        let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_activations a JOIN loop_mailbox_partitions p ON p.run_id = a.mailbox_run_id AND p.team_id = a.team_id WHERE a.id = ? AND p.active = 1 AND a.state = 'running')")
-            .bind(&current.activation_id).fetch_one(&mut **tx).await?;
+        let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_activations a JOIN loop_mailbox_partitions p ON p.run_id = a.mailbox_run_id AND p.team_id = a.team_id WHERE a.id = ? AND p.active = 1 AND (a.state = 'running' OR (? AND a.state = 'starting' AND a.launch_json IS NOT NULL AND a.session_id IS NOT NULL)))")
+            .bind(&current.activation_id).bind(allow_bootstrap).fetch_one(&mut **tx).await?;
         anyhow::ensure!(active, LoopStoreError::InvalidState);
         Ok(())
     }

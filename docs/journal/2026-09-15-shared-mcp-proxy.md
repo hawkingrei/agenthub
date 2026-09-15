@@ -55,6 +55,9 @@ giving an expired executor authority to send more work.
   the upstream session header private even when initialization requests client roots first.
 - Use detached bounded JSONL reader/writer threads so a credential or RPC failure can exit the
   shim without waiting for the provider to close stdin.
+- Permit MCP protocol bootstrap during `starting` only after a launch snapshot and local session
+  are bound. Keep journal sends and ordinary actor controls running-only, sharing the same live
+  owner, generation, lease, membership, and mailbox validation for both phases.
 
 Stable contract: [MCP operation journal](../features/mcp-operation-journal.md).
 Transport contract: [MCP proxy transport](../features/mcp-proxy-transport.md).
@@ -129,11 +132,24 @@ cargo test -p agenthub-mcp --locked --offline
 cargo clippy -p agenthub -p agenthub-mcp --all-targets --locked --offline -- -D warnings
 ```
 
+The bootstrap follow-up separates protocol preparation from tool execution. A signed startup
+session must have an immutable launch snapshot and bound local session before opening MCP. Its
+initialize/roots callback/initialized/discovery sequence succeeds while the activation remains
+`starting`. Tools, resource reads, prompt reads, task operations, and batches are rejected without
+upstream I/O or journal entries; ordinary actor control remains rejected. After `mark_running`,
+the same MCP session can perform its first journaled tool call and return the real result.
+
+Database coverage also rejects missing launch/session, wrong owner/actor/Team/generation, expired
+lease, inactive mailbox, removed membership, and revoked execution. This follow-up passes 42 loop
+database tests, 15 journal tests, 35 MCP tests, and 80 internal tests including the new startup RPC
+fixture. The real binary build, formatting, whitespace, and local documentation links pass.
+Root/database/MCP all-target Clippy also passes with warnings denied.
+
 ## Follow-Ups
 
 - Complete slice 9's configured binding resolver, linked continuations, remaining protocol
-  controller paths, aggregate queue byte budget, provider environment isolation, starting-phase
-  admission, and ACP launch wiring. The production hub deliberately has no configured mounts yet.
+  controller paths, aggregate queue byte budget, provider environment isolation, and ACP launch
+  wiring. The production hub deliberately has no configured mounts yet.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

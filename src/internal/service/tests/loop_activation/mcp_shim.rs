@@ -34,6 +34,8 @@ use crate::loop_credentials::{
     LOOP_CREDENTIAL_FILE_ENV, LoopCredentialEnvelope, LoopCredentialFile,
 };
 
+mod bootstrap;
+
 struct Upstream {
     db: sqlx::SqlitePool,
     callback: Notify,
@@ -164,7 +166,11 @@ struct Harness {
 }
 
 async fn setup() -> Harness {
-    let (state, service, authz, run, reservation) = fixture().await;
+    setup_with_running(true).await
+}
+
+async fn setup_with_running(mark_running: bool) -> Harness {
+    let (state, service, authz, run, reservation) = super::fixture_with_running(mark_running).await;
     agenthub_db::mcp_operations::migrate_mcp_operations(&state.db)
         .await
         .unwrap();

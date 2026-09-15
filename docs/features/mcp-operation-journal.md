@@ -11,8 +11,9 @@ control store must retain the send boundary independently of provider and transp
 One journal serves the trusted local MCP proxy for Mem and registered apps. It records operation
 intent, individual send attempts, and ordered receipt events. The store, trusted call preparation,
 and journaled [HTTP transport](mcp-proxy-transport.md) are implemented. Daemon startup reconciles
-earlier sends before starting runtime services. The provider-facing MCP RPC/shim, binding resolver,
-credential delivery, and launch wiring remain incomplete.
+earlier sends before starting runtime services. Signed MCP streaming RPCs and a local stdio shim
+exercise this path; configured bindings, provider environment isolation, complete protocol
+orchestration, and launch wiring remain incomplete.
 
 ## Non-Goals
 
@@ -40,8 +41,8 @@ schema property path. It does not infer write replay permission from upstream hi
 `JournaledMcpClient` drains the actual exchange after committing `sent`. It persists a matching
 result before returning the raw response. Losing an event receiver does not stop that drain or
 discard a later result. Runtime callers must own the future in the daemon task group and retain the
-execution operation guard until it settles; the authenticated daemon integration fixture exercises
-this ownership seam. The MCP RPC surface itself is still pending.
+execution operation guard until it settles. The signed streaming RPC and real shim fixtures
+exercise this ownership boundary through provider disconnects.
 
 ## Contracts
 
@@ -59,6 +60,8 @@ this ownership seam. The MCP RPC surface itself is still pending.
   identity. An arbitrary MCP JSON-RPC request number is only a transport correlation value.
 - Prepare and send independently verify the current daemon generation and existing live loop
   executor fence, current Team membership, running activation, and active mailbox partition.
+  The separate MCP protocol-bootstrap admission during `starting` never grants a journal send
+  permit. A tool call remains subject to the running-only journal check.
 - Binding authorization and revocation must also be checked by the proxy before each send. The
   database journal does not replace that integration-specific authority check.
 - Canonical hashes sort nested objects and normalize equivalent integer spellings such as `1`,
