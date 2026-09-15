@@ -41,11 +41,14 @@ async fn configured_mem_pins_configuration_without_pinning_rotating_secrets() {
                 } else {
                     "space-a"
                 };
-                Json(
-                    json!({"workspace_id":"cd270331-80bc-4f90-8cc0-3fefbc7f74ab",
+                let workspace = if headers["authorization"] == "Bearer foreign-workspace-key" {
+                    "9405e041-1948-46d4-bc91-404e64ab6006"
+                } else {
+                    "cd270331-80bc-4f90-8cc0-3fefbc7f74ab"
+                };
+                Json(json!({"workspace_id":workspace,
                 "key_scope":{"scope_mode":"narrowed","grants":[space],"write_space":space},
-                "key_write_target":{"write_space":space,"write_space_live":true}}),
-                )
+                "key_write_target":{"write_space":space,"write_space_live":true}}))
             }),
         );
         axum::serve(listener, router).await.unwrap();
@@ -91,12 +94,49 @@ async fn configured_mem_pins_configuration_without_pinning_rotating_secrets() {
         .actor_profiles = Some(HashMap::from([("worker".into(), "other".into())]));
     assert!(
         resolve_mem(&overridden, "team", "worker", |reference| {
-            assert_eq!(reference, "OTHER_MEM_KEY");
-            Some("space-b-key".into())
+            Some(
+                if reference == "OTHER_MEM_KEY" {
+                    "space-b-key"
+                } else {
+                    "private-first"
+                }
+                .into(),
+            )
         })
         .await
         .is_err(),
         "an actor profile cannot change the Team's namespace"
+    );
+    let error = resolve_mem(&overridden, "team", "worker", |reference| {
+        Some(
+            if reference == "OTHER_MEM_KEY" {
+                "foreign-workspace-key"
+            } else {
+                "private-first"
+            }
+            .into(),
+        )
+    })
+    .await
+    .err()
+    .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "Mem actor profile does not match the Team workspace"
+    );
+    assert!(
+        resolve_mem(&overridden, "team", "worker", |_| Some(
+            "private-first".into()
+        ))
+        .await
+        .is_ok()
+    );
+    assert!(
+        validate_mem_configuration(&overridden, "team", "worker", |reference| {
+            (reference == "OTHER_MEM_KEY").then(|| "private-first".into())
+        })
+        .is_err(),
+        "the default Team authority also needs a credential reference"
     );
     let mut changed = config.clone();
     changed

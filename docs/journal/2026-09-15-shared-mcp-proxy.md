@@ -716,6 +716,12 @@ grant equal to the configured Team space, and an active effective write target i
 An actor's credential-profile override cannot select a different Team namespace. Full keys and
 deployments without this contract fail explicitly; no new upstream API or credential is created.
 
+Authority review also covers equal space names in different workspaces. For an actor profile
+override, the resolver verifies the Team default profile's key and requires equal authenticated
+workspace UUIDs. Both references must be available in offline preflight, and the default profile's
+references enter the launch fingerprint. The fixture covers foreign-workspace denial, matching
+override acceptance, and missing default credentials independently of space-name matching.
+
 The source gate is `nowledge-co/mem` at `f2d52afa86e5f17895f62d9d94608097f5581f8b`:
 `nmem-cloud/src/routes/members.rs` exposes the authenticated membership/key-scope projection;
 `auth.rs`, `key_scope.rs`, and `scope_access.rs` carry the key's live grants into MCP read/mutation
@@ -759,6 +765,8 @@ Root all-target Clippy passes with warnings denied, and the actual shim binary w
 the production change. An initial `loop_preflight` filter selected no tests; the final
 `loop_configuration` selection includes both preflight regression cases. No dependencies, database
 schema, protobuf, or Bazel configuration changed.
+After the workspace-identity follow-up, the actual binary rebuild, root all-target Clippy, all
+34 root MCP tests, and all 14 configuration tests pass again.
 
 ## Follow-Ups
 

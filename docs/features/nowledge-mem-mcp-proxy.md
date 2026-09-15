@@ -92,6 +92,11 @@ revoked/absent authorization, an inactive destination, or a malformed response p
 provider startup. The authenticated workspace identity contributes to the launch fingerprint without
 persisting the membership response or credential value. Configuration-only preflight remains offline.
 
+When an actor uses a different credential profile, the daemon also verifies the Team's default
+profile and requires the same authenticated workspace UUID. Equal space names in different
+workspaces do not establish equal authority. Offline preflight checks both credential references;
+the launch fingerprint includes the default-profile references used for this verification.
+
 The probe preserves the endpoint's path prefix, has a ten-second deadline and a 64 KiB response
 limit, and follows neither redirects nor ambient proxy configuration. Failures omit the URL, response
 body, and credential. No schema or authorization changes are required in Mem.
@@ -173,6 +178,8 @@ same stable value.
   bounded HTTP membership checks keep credentials on the configured origin. A configured ACP
   provider exercises native scoped/unscoped tool schemas, resource reads, prompt retrieval, and
   preserved upstream denials through the actual shim and signed RPC path.
+- Actor profile overrides accept the same workspace/space and reject a different workspace even
+  when its space has the same name; a missing default-profile credential fails offline validation.
 - Context Lens content and its contract line reach the runtime unchanged.
 - MCP result errors, JSON-RPC errors, and envelope errors are each preserved
   and journaled without bodies.

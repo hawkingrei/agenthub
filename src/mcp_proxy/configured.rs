@@ -57,6 +57,13 @@ fn resolve_connection(
     let resolved = config
         .resolve_nowledge_mem_binding(team_id, actor_id)
         .map_err(|_| anyhow::anyhow!("Mem binding configuration is invalid"))?;
+    connect_profile(resolved, secret)
+}
+
+fn connect_profile(
+    resolved: ResolvedNowledgeMemBinding,
+    secret: impl FnOnce(&str) -> Option<String>,
+) -> anyhow::Result<MemConnection> {
     let reference = &resolved.profile.credential_env;
     anyhow::ensure!(
         valid_credential_reference(reference),
@@ -120,31 +127,78 @@ fn resolve_connection(
     })
 }
 
+fn resolve_profile_connections(
+    config: &AppConfig,
+    team_id: &str,
+    actor_id: &str,
+    mut secret: impl FnMut(&str) -> Option<String>,
+) -> anyhow::Result<(MemConnection, Option<MemConnection>)> {
+    let actor = resolve_connection(config, team_id, actor_id, &mut secret)?;
+    let team_profile = config
+        .nowledge_mem
+        .as_ref()
+        .and_then(|mem| mem.team_bindings.as_ref())
+        .and_then(|bindings| bindings.get(team_id.trim()))
+        .ok_or_else(|| anyhow::anyhow!("Mem Team binding is unavailable"))?
+        .profile
+        .trim();
+    let team = if team_profile == actor.resolved.profile_name {
+        None
+    } else {
+        Some(connect_profile(
+            ResolvedNowledgeMemBinding {
+                profile_name: team_profile.to_owned(),
+                profile: config
+                    .nowledge_mem_profile(team_profile)
+                    .map_err(|_| anyhow::anyhow!("Mem Team profile is invalid"))?,
+                space_id: actor.resolved.space_id.clone(),
+            },
+            secret,
+        )?)
+    };
+    Ok((actor, team))
+}
+
 /// Offline preflight checks configuration and credential availability without contacting Mem.
 pub(crate) fn validate_mem_configuration(
     config: &AppConfig,
     team_id: &str,
     actor_id: &str,
-    secret: impl FnOnce(&str) -> Option<String>,
+    secret: impl FnMut(&str) -> Option<String>,
 ) -> anyhow::Result<()> {
-    resolve_connection(config, team_id, actor_id, secret).map(|_| ())
+    resolve_profile_connections(config, team_id, actor_id, secret).map(|_| ())
 }
 
 pub(crate) async fn resolve_mem(
     config: &AppConfig,
     team_id: &str,
     actor_id: &str,
-    secret: impl FnOnce(&str) -> Option<String>,
+    secret: impl FnMut(&str) -> Option<String>,
 ) -> anyhow::Result<ConfiguredMcpBinding> {
-    let MemConnection {
-        endpoint,
-        headers,
-        resolved,
-    } = resolve_connection(config, team_id, actor_id, secret)?;
+    let (
+        MemConnection {
+            endpoint,
+            headers,
+            resolved,
+        },
+        team,
+    ) = resolve_profile_connections(config, team_id, actor_id, secret)?;
     let workspace = authorization::verify(&endpoint, &headers, &resolved.space_id).await?;
-    let revision = json!({"version":3, "access_policy":"scoped-key-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
+    if let Some(team) = &team {
+        let team_workspace =
+            authorization::verify(&team.endpoint, &team.headers, &resolved.space_id).await?;
+        anyhow::ensure!(
+            workspace == team_workspace,
+            "Mem actor profile does not match the Team workspace"
+        );
+    }
+    let team_reference = team.as_ref().map(|team| {
+        json!({"profile":team.resolved.profile_name,
+        "endpoint":team.endpoint.as_str(),"credential_ref":team.resolved.profile.credential_env})
+    });
+    let revision = json!({"version":4, "access_policy":"scoped-key-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
         "credential_ref":resolved.profile.credential_env, "space_id":resolved.space_id,
-        "workspace_id":workspace, "tool_set":resolved.profile.tool_set});
+        "workspace_id":workspace, "team_reference":team_reference, "tool_set":resolved.profile.tool_set});
     let fingerprint = Sha256::digest(serde_json::to_vec(&revision)?)
         .iter()
         .map(|byte| format!("{byte:02x}"))
