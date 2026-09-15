@@ -337,15 +337,36 @@ pub(super) async fn run_actor_command(
 ) -> anyhow::Result<()> {
     let output_preference = actor_output_preference_for_command(&command);
     match command {
+        ActorCommand::LoopSource { source_id } => {
+            let detail = loop_control_client()
+                .await?
+                .loop_work_source(&source_id)
+                .await?;
+            write_actor_output(&detail, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopContext {
+            after_source_id,
+            limit,
+        } => {
+            let page = loop_control_client()
+                .await?
+                .loop_work_context(after_source_id.as_deref(), limit)
+                .await?;
+            write_actor_output(&page, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopActivate {
+            member_id,
+            source_key,
+            task_id,
+        } => {
+            let receipt = loop_control_client()
+                .await?
+                .activate_loop_member(&member_id, &source_key, task_id.as_deref())
+                .await?;
+            write_actor_output(&receipt, output_mode, output_preference)?;
+        }
         ActorCommand::LoopFinish { outcome } => {
-            let path = normalized_env_var(crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV)
-                .ok_or_else(|| {
-                    anyhow::anyhow!("loop-finish requires activation-scoped runtime credentials")
-                })?;
-            let credentials =
-                crate::loop_credentials::LoopCredentialEnvelope::read(std::path::Path::new(&path))?;
-            let receipt = credentials
-                .connect()
+            let receipt = loop_control_client()
                 .await?
                 .finish_loop_activation(&outcome)
                 .await?;
@@ -1014,6 +1035,17 @@ pub(super) async fn run_actor_command(
         }
     }
     Ok(())
+}
+
+async fn loop_control_client() -> anyhow::Result<crate::internal::client::InternalGrpcMailboxClient>
+{
+    let path =
+        normalized_env_var(crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV).ok_or_else(|| {
+            anyhow::anyhow!("loop commands require activation-scoped runtime credentials")
+        })?;
+    crate::loop_credentials::LoopCredentialEnvelope::read(std::path::Path::new(&path))?
+        .connect()
+        .await
 }
 
 #[cfg(test)]

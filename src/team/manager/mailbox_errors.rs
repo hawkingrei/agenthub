@@ -109,6 +109,21 @@ fn is_readonly_database_error(err: &anyhow::Error) -> bool {
 }
 
 pub(super) fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
+    if let Some(error) = err
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<agenthub_db::loop_runtime::LoopStoreError>())
+    {
+        let code = match error {
+            agenthub_db::loop_runtime::LoopStoreError::Capacity => {
+                ActorServiceErrorCode::TooManyRequests
+            }
+            agenthub_db::loop_runtime::LoopStoreError::ScopeMismatch => {
+                ActorServiceErrorCode::Forbidden
+            }
+            _ => ActorServiceErrorCode::Conflict,
+        };
+        return ActorServiceError::new(code, error.to_string());
+    }
     if TeamManager::is_actor_message_idempotency_conflict(&err) {
         return ActorServiceError::new(
             ActorServiceErrorCode::Conflict,
@@ -231,6 +246,7 @@ pub(super) fn map_actor_mailbox_store_error(
 ) -> anyhow::Error {
     match err {
         ActorMailboxError::Store(store_err) => match store_err {
+            SqlActorMailboxStoreError::WorkEvent(error) => error,
             SqlActorMailboxStoreError::Sql(sql_err) => anyhow::Error::new(sql_err),
             SqlActorMailboxStoreError::IdempotencyConflict => {
                 anyhow::Error::new(SqlActorMailboxStoreError::IdempotencyConflict)

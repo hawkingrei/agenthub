@@ -1,5 +1,6 @@
 mod helpers;
 mod loop_activation;
+mod loop_work;
 mod requests;
 mod rpc;
 
@@ -38,15 +39,17 @@ pub(super) use super::auth::{InternalAction, InternalAuthz, InternalRole};
 pub(super) use super::p2p::{CredentialProvider, NodeCredentialRequest};
 pub(super) use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
 pub(super) use super::proto::agenthub::internal::v1::{
-    AckActorMessageRequest, AckActorMessageResponse, ActorMessage, AgentEventRecord,
-    AppendTeamTaskNoteRequest, AppendTeamTaskNoteResponse, CancelTimeTriggerRequest,
-    CancelTimeTriggerResponse, CreateTeamChannelRequest, CreateTeamChannelResponse,
-    CreateTeamTaskRequest, CreateTeamTaskResponse, CreateTimeTriggerRequest,
-    CreateTimeTriggerResponse, DeleteManagedAgentRequest, DeleteManagedAgentResponse,
-    DeleteTeamChannelRequest, DeleteTeamChannelResponse, DescribeTeamContextRequest,
-    DescribeTeamContextResponse, EnsureAgentRecordRequest, EnsureAgentRecordResponse,
-    FinishLoopActivationRequest, FinishLoopActivationResponse, GetAgentRecordRequest,
-    GetAgentRecordResponse, GetTeamTaskRequest, GetTeamTaskResponse, IssueNodeCredentialRequest,
+    AckActorMessageRequest, AckActorMessageResponse, ActivateLoopMemberRequest,
+    ActivateLoopMemberResponse, ActorMessage, AgentEventRecord, AppendTeamTaskNoteRequest,
+    AppendTeamTaskNoteResponse, CancelTimeTriggerRequest, CancelTimeTriggerResponse,
+    CreateTeamChannelRequest, CreateTeamChannelResponse, CreateTeamTaskRequest,
+    CreateTeamTaskResponse, CreateTimeTriggerRequest, CreateTimeTriggerResponse,
+    DeleteManagedAgentRequest, DeleteManagedAgentResponse, DeleteTeamChannelRequest,
+    DeleteTeamChannelResponse, DescribeTeamContextRequest, DescribeTeamContextResponse,
+    EnsureAgentRecordRequest, EnsureAgentRecordResponse, FinishLoopActivationRequest,
+    FinishLoopActivationResponse, GetAgentRecordRequest, GetAgentRecordResponse,
+    GetLoopWorkRequest, GetLoopWorkResponse, GetLoopWorkSourceRequest, GetLoopWorkSourceResponse,
+    GetTeamTaskRequest, GetTeamTaskResponse, IssueNodeCredentialRequest,
     IssueNodeCredentialResponse, LinkActorMessageTaskRequest, LinkActorMessageTaskResponse,
     ListActorInboxRequest, ListActorInboxResponse, ListAgentEventsRequest, ListAgentEventsResponse,
     ListTeamTasksRequest, ListTeamTasksResponse, ListTimeTriggersRequest, ListTimeTriggersResponse,

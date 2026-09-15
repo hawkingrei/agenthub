@@ -18,6 +18,8 @@ mod conversation_insert_common;
 mod conversation_side_effects;
 mod conversation_tx_insert;
 mod loop_configuration;
+mod loop_work_context;
+mod loop_work_events;
 mod mailbox;
 mod mailbox_channels;
 mod mailbox_errors;

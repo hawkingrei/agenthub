@@ -1,6 +1,8 @@
 mod helpers;
+pub(crate) mod loop_context;
 mod mailbox_hint;
 mod manager;
+pub(crate) mod mentions;
 mod permission_review;
 mod reconcile_prompt;
 mod role_skills;

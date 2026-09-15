@@ -193,6 +193,8 @@ pub(super) async fn insert_task_conversation_message_with_tx(
     }
     if created {
         record_conversation_body_write(tx, message.message_id, stage_body).await?;
+        super::loop_work_events::stage_conversation_event(tx, conversation, &message, body_store)
+            .await?;
     }
 
     Ok((message, created))

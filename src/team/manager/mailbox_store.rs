@@ -87,6 +87,8 @@ impl SqlActorMailboxStore {
 #[derive(Debug, Error)]
 pub(super) enum SqlActorMailboxStoreError {
     #[error(transparent)]
+    WorkEvent(anyhow::Error),
+    #[error(transparent)]
     Sql(#[from] sqlx::Error),
     #[error("actor message idempotency conflict")]
     IdempotencyConflict,

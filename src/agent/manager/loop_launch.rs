@@ -16,7 +16,8 @@ use crate::team::TeamManager;
 use super::acp_provider::{AcpProviderSpec, codex_reasoning_effort_for_thinking_level};
 use super::{AgentInput, AgentManager};
 
-const LOOP_ENTRY_PROMPT: &str = "Run one bounded AgentHub activation. Recover current role and authority with `agenthub actor team-members --json`, canonical work with `agenthub actor team-tasks --json`, and the addressed mailbox with `agenthub actor inbox --json`. The mailbox run is stable transport identity; this activation does not create a task attempt. Respect canonical assignment and task acceptance authority. Provider reasoning and native tool rounds belong to this activation. Record durable task evidence before reporting progress. End with `agenthub actor loop-finish --outcome-file <path> --json`; `agenthub actor help loop-finish` describes the output contract. A provider exit or completed prompt is not an outcome. Do not poll for future work or start another resident loop.";
+const LOOP_ENTRY_PROMPT_VERSION: &str = "loop-entry-v2";
+const LOOP_ENTRY_PROMPT: &str = "Run one bounded AgentHub activation. Read `agenthub actor loop-context --json` and follow its next_cursor to recover all durable work sources; use `agenthub actor loop-source --source-id <id> --json` for exact source messages. Recover current role and authority with `agenthub actor team-members --json`, canonical work with `agenthub actor team-tasks --json`, and the addressed mailbox with `agenthub actor inbox --json`. The mailbox run is stable transport identity; this activation does not create a task attempt. Respect canonical assignment and task acceptance authority. Provider reasoning and native tool rounds belong to this activation. Record durable task evidence before reporting progress. End with `agenthub actor loop-finish --outcome-file <path> --json`; `agenthub actor help loop-finish` describes the output contract. A provider exit or completed prompt is not an outcome. Do not poll for future work or start another resident loop.";
 
 #[derive(Clone)]
 pub(crate) struct LoopControlEndpoint {
@@ -68,6 +69,7 @@ impl AgentManager {
                     InternalAction::TeamTaskWrite,
                     InternalAction::PermissionReview,
                     InternalAction::LoopFinish,
+                    InternalAction::LoopActivate,
                 ]
                 .into_iter()
                 .map(|action| action.as_str().to_string())
@@ -178,7 +180,7 @@ impl AgentManager {
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect(),
-            entry_prompt_version: LOOP_ACTIVATION_CONTRACT_VERSION.into(),
+            entry_prompt_version: LOOP_ENTRY_PROMPT_VERSION.into(),
             session_policy: policy.session_policy,
             workspace: workdir.into(),
             model: agent.runtime_model.clone(),
