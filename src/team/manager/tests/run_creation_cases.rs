@@ -350,3 +350,54 @@ async fn create_team_and_run_records_submission_event() {
     assert_eq!(run_id, run.id);
     assert_eq!(payload["continuity_mode"], json!("inherit_recent"));
 }
+
+#[tokio::test]
+async fn loop_mailbox_partition_is_stable_without_creating_task_attempts() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager.create_team(TeamDefinitionConfig {
+        name: "loop-mailbox".into(),
+        description: None,
+        spec: json!({"entrypoint":"leader","members":[{"member_id":"leader","role":"coordinator"}]}),
+    }).await.unwrap();
+    let (first, second) = tokio::join!(
+        manager.ensure_loop_mailbox_partition(&team.id),
+        manager.ensure_loop_mailbox_partition(&team.id)
+    );
+    let first = first.unwrap();
+    assert_eq!(first.id, second.unwrap().id);
+    assert_eq!(first.status, TeamRunStatus::Submitted);
+    for query in [
+        "SELECT COUNT(*) FROM team_tasks",
+        "SELECT COUNT(*) FROM team_steps",
+    ] {
+        let count: i64 = sqlx::query_scalar(query).fetch_one(&db).await.unwrap();
+        assert_eq!(count, 0);
+    }
+    manager.cancel_active_runs_on_startup().await.unwrap();
+    let recreated = TeamManager::new(db.clone());
+    assert_eq!(
+        recreated
+            .ensure_loop_mailbox_partition(&team.id)
+            .await
+            .unwrap()
+            .id,
+        first.id
+    );
+    sqlx::query("UPDATE team_runs SET status = 'canceled' WHERE id = ?")
+        .bind(&first.id)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert!(
+        recreated
+            .ensure_loop_mailbox_partition(&team.id)
+            .await
+            .is_err()
+    );
+    let partitions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM loop_mailbox_partitions")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(partitions, 1);
+}

@@ -1,4 +1,6 @@
 mod actor_runtime_skill;
+mod loop_launch;
+pub use loop_launch::{AcpLoopLaunchConfig, LOOP_ACTIVATION_CONTRACT_VERSION};
 mod team_role_skills;
 #[cfg(test)]
 mod test_utils;
@@ -129,6 +131,7 @@ pub struct SpawnAcpSessionRequest {
     pub agent_id: String,
     pub agent_session_id: String,
     pub self_reminders_enabled: bool,
+    pub loop_launch: Option<AcpLoopLaunchConfig>,
     pub resume_session_id: Option<String>,
     pub workdir: String,
     pub client_info: Implementation,
@@ -1448,6 +1451,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
         agent_id,
         agent_session_id,
         self_reminders_enabled,
+        loop_launch,
         resume_session_id,
         workdir,
         client_info,
@@ -1464,17 +1468,26 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
 
     std::thread::spawn(move || match runtime_location {
         AcpRuntimeLocation::LocalProcess => {
-            if actor_context.is_some()
+            if loop_launch.is_none()
+                && actor_context.is_some()
                 && let Err(err) = install_managed_skills(None)
             {
                 let _ = ready_tx.send(Err(format!("acp managed skill install failed: {err}")));
                 return;
             }
-            let mcp_servers = load_mcp_servers();
-            let mut skills = load_skills(Path::new(&workdir));
+            // Loop tools use scoped actor control until the shared proxy supplies journaled MCP.
+            let mcp_servers = if loop_launch.is_some() {
+                Vec::new()
+            } else {
+                load_mcp_servers()
+            };
+            let mut skills = loop_launch
+                .as_ref()
+                .map(|launch| launch.skills.clone())
+                .unwrap_or_else(|| load_skills(Path::new(&workdir)));
             skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
             let mut attached_team_role_skills = false;
-            if let Some(ctx) = actor_context.as_ref() {
+            if let Some(ctx) = actor_context.as_ref().filter(|_| loop_launch.is_none()) {
                 if should_attach_team_role_skills(Some(ctx)) {
                     let team_role_skills = match build_team_role_skills(ctx) {
                         Ok(team_role_skills) => team_role_skills,
@@ -1522,7 +1535,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             }
             let mut prompt_prefix_blocks =
                 build_prompt_prefix_blocks(&skills, actor_context.as_ref());
-            if self_reminders_enabled {
+            if self_reminders_enabled && loop_launch.is_none() {
                 prompt_prefix_blocks.push(reminder_context_block());
             }
             let skills_meta = build_skills_meta(&skills);
@@ -1586,6 +1599,11 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 }
             };
 
+            if loop_launch.as_ref().is_some_and(|launch| launch.require_resume)
+                && !init_response.agent_capabilities.load_session {
+                let _ = ready_tx.send(Err("provider does not advertise ACP session loading".to_string()));
+                return Ok(());
+            }
             let mcp_servers = filter_mcp_servers(
                 mcp_servers,
                 &init_response.agent_capabilities.mcp_capabilities,
@@ -1622,6 +1640,10 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                             let _ = ready_tx.send(Err(message));
                             return Ok(());
                         }
+                        if loop_launch.is_some() {
+                            let _ = ready_tx.send(Err("required provider session could not be resumed".to_string()));
+                            return Ok(());
+                        }
                         event_sink
                             .emit_raw(AcpStream::System, format!("acp load_session failed: {err}"))
                             .await;
@@ -1656,6 +1678,24 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             }
 
             let session_id = session_id.unwrap_or_else(|| "unknown".to_string());
+            if let Some(launch) = loop_launch.as_ref() {
+                let configured: anyhow::Result<()> = async {
+                    if let Some(mode) = &launch.mode_id {
+                        send_acp_request(&conn, SetSessionModeRequest::new(session_id.clone(), mode.clone())).await?;
+                    }
+                    if let Some(model) = &launch.model_id {
+                        send_acp_request(&conn, SetSessionConfigOptionRequest::new(session_id.clone(), "model", model.as_str())).await?;
+                    }
+                    for (key, value) in &launch.config {
+                        send_acp_request(&conn, SetSessionConfigOptionRequest::new(session_id.clone(), key.clone(), value.as_str())).await?;
+                    }
+                    Ok(())
+                }.await;
+                if configured.is_err() {
+                    let _ = ready_tx.send(Err("required provider launch configuration was rejected".to_string()));
+                    return Ok(());
+                }
+            }
             let _ = ready_tx.send(Ok(session_id.clone()));
 
             let conn = Rc::new(conn);
@@ -2509,6 +2549,19 @@ impl AcpPermissionService {
             .map_err(|err| anyhow::anyhow!("acp permission human notify join failed: {err}"))??
             .rows_affected();
         Ok(rows_affected > 0)
+    }
+
+    pub async fn interrupt_session_permissions(&self, session_id: &str) -> anyhow::Result<()> {
+        let db = self.db.clone();
+        let session_id = session_id.to_owned();
+        let ids: Vec<String> = self.runtime_handle.spawn(async move {
+            sqlx::query_scalar("SELECT id FROM acp_permission_requests WHERE session_id = ? AND status = 'pending'")
+                .bind(session_id).fetch_all(&db).await
+        }).await??;
+        for id in ids {
+            self.mark_timeout(&id, None).await?;
+        }
+        Ok(())
     }
 
     pub async fn mark_timeout(
@@ -3952,6 +4005,72 @@ Fallback to the user-level review contract.
         assert_eq!(
             row.get::<Option<String>, _>("selected_option_id"),
             Some("reject".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn loop_permission_cleanup_expires_only_the_exited_session_callbacks() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE acp_permission_requests (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, status TEXT NOT NULL, selected_option_id TEXT, reviewed_by_actor_id TEXT, responded_at INTEGER)")
+            .execute(&db).await.unwrap();
+        sqlx::query("CREATE TABLE agent_sessions (id TEXT PRIMARY KEY, status TEXT NOT NULL, ended_at INTEGER)")
+            .execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO agent_sessions VALUES ('exited', 'failed', 1), ('live', 'waiting_permission', NULL)")
+            .execute(&db).await.unwrap();
+        let service = AcpPermissionService::new(db.clone());
+        let mut receivers = Vec::new();
+        for session in ["exited", "live"] {
+            sqlx::query("INSERT INTO acp_permission_requests(id, session_id, status) VALUES (?, ?, 'pending')")
+                .bind(session).bind(session).execute(&db).await.unwrap();
+            let (sender, receiver) = tokio::sync::oneshot::channel();
+            service.pending.lock().await.insert(session.into(), sender);
+            receivers.push(receiver);
+        }
+        service
+            .interrupt_session_permissions("exited")
+            .await
+            .unwrap();
+        service
+            .interrupt_session_permissions("exited")
+            .await
+            .unwrap();
+        assert!(receivers[0].try_recv().is_err());
+        assert!(!service.pending.lock().await.contains_key("exited"));
+        assert!(service.pending.lock().await.contains_key("live"));
+        assert_eq!(
+            service
+                .respond("exited", RequestPermissionOutcome::Cancelled, None, None)
+                .await
+                .unwrap(),
+            AcpPermissionRespondResult::AlreadyResolved
+        );
+        let states: Vec<(String, String)> =
+            sqlx::query_as("SELECT id, status FROM agent_sessions ORDER BY id")
+                .fetch_all(&db)
+                .await
+                .unwrap();
+        assert_eq!(
+            states,
+            [
+                ("exited".into(), "failed".into()),
+                ("live".into(), "waiting_permission".into())
+            ]
+        );
+        let requests: Vec<(String, String)> =
+            sqlx::query_as("SELECT id, status FROM acp_permission_requests ORDER BY id")
+                .fetch_all(&db)
+                .await
+                .unwrap();
+        assert_eq!(
+            requests,
+            [
+                ("exited".into(), "timeout".into()),
+                ("live".into(), "pending".into())
+            ]
         );
     }
 

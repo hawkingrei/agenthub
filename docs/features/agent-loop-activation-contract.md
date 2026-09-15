@@ -6,7 +6,9 @@ of this specification does not enable automatic execution.
 The control store implements policy configuration, idempotent trigger acceptance, pending
 activation coalescing, safe event persistence, generation-fenced admission, structured finish,
 continuation recording, and verified cleanup. Configured manual starts share durable reservations.
-Automatic provider launch, authenticated actor tools, and product enablement remain rollout gates.
+Local ACP execution now resolves a launch snapshot and uses generation-scoped actor control.
+Product configuration, durable work-event intake, shared MCP tools, and role migration remain
+separate rollout gates; no existing actor is implicitly opted in.
 
 ## Problem
 
@@ -161,8 +163,12 @@ continuations but still needs cleanup. An early process exit without an outcome 
 even with exit code zero. Unknown external effects require reconciliation, not exactly-once claims.
 Revocation retains every source and its trace. Independently accepted coalesced work remains pending.
 Admission rechecks whether referenced tasks remain actionable before starting their continuations.
-The local supervisor's Linux evidence covers its process group, including surviving children after
-parent exit; deliberately detached execution requires stronger containment and is outside that proof.
+Configured Linux executors run beneath a single-threaded subreaper guardian. It adopts and reaps
+descendants that leave the provider process group, then sends a private cleanup receipt. Provider
+stdio remains the ACP transport; the provider never inherits the receipt descriptor. A missing
+receipt, guardian crash, or cleanup timeout retains the reservation. Closing the daemon control
+connection requests cleanup, but a restarted daemon still cannot infer proof that it did not observe.
+This is an execution-cleanup boundary, not a security sandbox for hostile same-user processes.
 Other platforms do not admit loop execution until equivalent verification is available.
 
 Restart first reconciles loop reservations and process authority. Legacy startup cancellation
@@ -188,6 +194,37 @@ monotonic clocks; do not compare raw monotonic clock values across restarts. Cor
 activation ID, but use bounded metric labels. Each later trigger/adapter/tool integration adds its
 own safe trace evidence when the behavior is introduced.
 
+### Local ACP Launch And Actor Control
+
+Resolve command, runtime profile, role/context, workspace, and skill inputs once before provider
+startup. The durable projection stores a version, SHA-256 configuration digest, provider, workspace,
+profile references, and entry-contract version. It excludes arguments, prompt/skill bodies, and
+credentials. Repeating the same launch snapshot is idempotent; conflicting retry configuration
+requires a later activation rather than overwriting the earlier snapshot.
+
+Fresh policy ignores provider continuity. Resume policy requires advertised ACP session loading;
+a rejected load fails startup without a fresh-session fallback. Required ACP mode/profile requests
+must succeed before the session is ready. One activation entry is submitted after the runtime session
+is bound and the activation is running. Provider reasoning/tool rounds stay inside that submission.
+A completed turn without a recorded outcome is interrupted and cleaned up. Legacy idle controllers,
+reminders, and mailbox prompt hints cannot inject another turn into this path.
+
+The initial entry points to `agenthub actor team-members`, `team-tasks`, and `inbox` for canonical
+recovery, and `agenthub actor loop-finish --outcome-file <path> --json` for the bounded outcome.
+These commands recover the signed stable mailbox; they do not scan historical run partitions.
+Legacy resident role skills are not attached to the loop contract. Loop ACP sessions leave direct
+static MCP servers disconnected until the shared proxy and operation journal supply those tools.
+Legacy sessions retain their configured MCP behavior.
+
+A private file with mode 0600 in a mode-0700 runtime directory supplies short-lived actor credentials.
+Renewal replaces it atomically using the reservation's lease duration; the token never appears in
+activation trace data. Missing/expired loop credentials fail without falling back to a legacy token
+or shared-secret configuration. Requests validate the signed actor, activation, generation, active
+mailbox, membership, lease, and current daemon owner. A per-actor operation guard prevents cleanup
+from releasing authority before admitted control requests settle. The daemon owns those requests
+through caller disconnects. After cleanup, only idempotent finish-receipt replay remains available.
+Native permission callbacks are interrupted when their local session is cleaned up.
+
 ## Validation Matrix
 
 | Boundary | Required evidence |
@@ -198,6 +235,8 @@ own safe trace evidence when the behavior is introduced.
 | Recovery | Crash around claim/effect/outcome/cleanup; surviving child; uncertain writer blocks replacement |
 | Compatibility | Legacy watchdog/reminders and manual startup unchanged; loop run not startup-canceled |
 | Context | Fresh/resumed task and inbox recovery without new task attempts or mailbox rotation |
+| Local adapter | Guardian receipt, detached descendants, strict resume/profile negotiation, one entry turn |
+| Actor control | Credential rotation, stale owner/generation rejection, disconnect ownership, finish replay |
 | Limits | Durable startup/no-progress limits, per-Team fan-out, due-time isolation and suspension |
 | Visibility | Safe trace after exit, stable ordering, authorization, bounded pagination, debug/release separation |
 

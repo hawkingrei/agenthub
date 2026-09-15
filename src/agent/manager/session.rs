@@ -383,6 +383,32 @@ impl AgentManager {
         agent_id: &str,
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
+        self.start_agent_owned(agent_id, actor_context, None).await
+    }
+
+    pub(super) async fn start_loop_agent(
+        &self,
+        reservation: &agenthub_agent_domain::loop_runtime::LoopReservation,
+        context: AcpActorSkillContext,
+    ) -> anyhow::Result<String> {
+        anyhow::ensure!(
+            reservation.owner_id == self.loop_owner_id,
+            "loop reservation belongs to another daemon"
+        );
+        self.start_agent_owned(
+            &reservation.actor_id,
+            Some(context),
+            Some(reservation.clone()),
+        )
+        .await
+    }
+
+    async fn start_agent_owned(
+        &self,
+        agent_id: &str,
+        actor_context: Option<AcpActorSkillContext>,
+        loop_reservation: Option<agenthub_agent_domain::loop_runtime::LoopReservation>,
+    ) -> anyhow::Result<String> {
         // A disconnected caller must not drop a half-completed process start. Daemon shutdown
         // owns this operation and waits for its supervisor permit before stopping processes.
         let manager = self.clone();
@@ -391,7 +417,11 @@ impl AgentManager {
         self.daemon_tasks
             .spawn_runtime_task(format!("agent-start:{agent_id}"), async move {
                 let result = manager
-                    .start_agent_with_actor_context_inner(&agent_id, actor_context)
+                    .start_agent_with_actor_context_inner(
+                        &agent_id,
+                        actor_context,
+                        loop_reservation,
+                    )
                     .await;
                 let _ = sender.send(result);
                 Ok(())
@@ -405,11 +435,18 @@ impl AgentManager {
         &self,
         agent_id: &str,
         actor_context: Option<AcpActorSkillContext>,
+        loop_reservation: Option<agenthub_agent_domain::loop_runtime::LoopReservation>,
     ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let running_session_id = self.get_running_session_id(agent_id).await;
         match build_agent_start_plan(agent, actor_context, running_session_id.as_deref())? {
-            AgentStartPlan::ReuseRunningSession { session_id } => Ok(session_id),
+            AgentStartPlan::ReuseRunningSession { session_id } => {
+                anyhow::ensure!(
+                    loop_reservation.is_none(),
+                    "a loop activation cannot reuse a live provider process"
+                );
+                Ok(session_id)
+            }
             AgentStartPlan::StartLocal {
                 agent,
                 actor_context,
@@ -425,7 +462,12 @@ impl AgentManager {
                 let session_tracker = Arc::new(Mutex::new(None));
                 let mut loop_reserved = false;
                 let result = async {
-                    loop_reserved = self.reserve_manual_loop_start(agent_id).await?;
+                    if let Some(reservation) = &loop_reservation {
+                        loop_reserved = true;
+                        agenthub_db::loop_runtime::LoopStore::new(self.db.clone()).renew(reservation, Utc::now().timestamp()).await?;
+                    } else {
+                        loop_reserved = self.reserve_manual_loop_start(agent_id).await?;
+                    }
                     let admission = self.start_scheduler.acquire(agent_id).await?;
                     match tokio::time::timeout(
                         admission.start_timeout(),
@@ -486,6 +528,16 @@ impl AgentManager {
                 target_node_id,
                 actor_context,
             } => {
+                let configured: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM loop_policies WHERE actor_id = ?)",
+                )
+                .bind(agent_id)
+                .fetch_one(&self.db)
+                .await?;
+                anyhow::ensure!(
+                    !configured && loop_reservation.is_none(),
+                    "loop execution does not support remote providers"
+                );
                 self.reserve_agent_start(agent_id).await?;
                 let result = self
                     .start_remote_agent(&agent, &target_node_id, actor_context.as_ref())
@@ -529,6 +581,28 @@ impl AgentManager {
         let session_id = Uuid::new_v4().to_string();
         *session_tracker.lock().await = Some(session_id.clone());
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
+        let loop_reservation = self
+            .loop_reservations
+            .lock()
+            .await
+            .get(&agent.id)
+            .filter(|reservation| reservation.activation_id.is_some())
+            .cloned();
+        let is_loop_activation = loop_reservation.is_some();
+        anyhow::ensure!(
+            actor_context
+                .as_ref()
+                .is_some_and(AcpActorSkillContext::is_loop_activation)
+                == is_loop_activation,
+            "loop runtime context requires its reserved activation"
+        );
+        if is_loop_activation {
+            anyhow::ensure!(
+                self.acp_provider_spec_for_agent(&agent.command, &agent.args)
+                    .is_some(),
+                "loop execution requires a supported local ACP provider"
+            );
+        }
         let persisted_workdir = super::expand_tilde(&agent.workdir);
         let persisted_worktree_repo = agent.worktree_repo.as_deref().map(super::expand_tilde);
         if (persisted_workdir != agent.workdir
@@ -560,7 +634,10 @@ impl AgentManager {
             actor_context.as_ref(),
             &persisted_workdir,
             persisted_worktree_repo.as_deref(),
-            Some(&session_id),
+            loop_reservation
+                .as_ref()
+                .and_then(|reservation| reservation.activation_id.as_deref())
+                .or(Some(&session_id)),
         )?;
         let mut runtime_agent = agent.clone();
         runtime_agent.worktree_mode = start_policy.worktree_mode.clone();
@@ -645,10 +722,45 @@ impl AgentManager {
         let is_acp = acp_provider.is_some();
         let (command_path, command_args) =
             self.resolve_launch_command(&agent.command, &agent.args, acp_provider);
-        let spawn_summary = format!(
-            "command={} workdir={} args={:?}",
-            command_path, start_policy.workdir, command_args
+        let spawn_summary = if is_loop_activation {
+            format!(
+                "provider={} workdir={}",
+                acp_provider
+                    .map(|provider| provider.id)
+                    .unwrap_or("unknown"),
+                start_policy.workdir
+            )
+        } else {
+            format!(
+                "command={} workdir={} args={:?}",
+                command_path, start_policy.workdir, command_args
+            )
+        };
+        let (loop_launch, loop_session_policy, loop_env) = if let (Some(provider), Some(context)) = (
+            acp_provider,
+            actor_context.as_ref().filter(|_| is_loop_activation),
+        ) {
+            let (launch, policy, env) = self
+                .resolve_loop_launch(
+                    &agent,
+                    provider,
+                    context,
+                    &start_policy.workdir,
+                    &command_path,
+                    &command_args,
+                )
+                .await?;
+            (Some(launch), Some(policy), env)
+        } else {
+            (None, None, Vec::new())
+        };
+        let mut extra_env = default_env_for_acp_provider(
+            acp_provider,
+            self.codex_acp_multi_agent_enabled,
+            agent.runtime_model.as_deref(),
+            agent.thinking_level.as_deref(),
         );
+        extra_env.extend(loop_env);
         let local_execution_request = LocalExecutionRequest {
             agent_id: agent.id.clone(),
             session_id: session_id.clone(),
@@ -656,12 +768,8 @@ impl AgentManager {
             args: command_args,
             workdir: start_policy.workdir.clone(),
             actor_context: actor_context.clone(),
-            extra_env: default_env_for_acp_provider(
-                acp_provider,
-                self.codex_acp_multi_agent_enabled,
-                agent.runtime_model.as_deref(),
-                agent.thinking_level.as_deref(),
-            ),
+            guard_descendants: self.loop_reservations.lock().await.contains_key(&agent.id),
+            extra_env,
         };
         let local_execution = match self
             .local_executor
@@ -801,12 +909,17 @@ impl AgentManager {
             acp_prompt_delivery_policy = Some(provider.prompt_delivery_policy);
             // Provider continuity is stored separately from the AgentHub runtime launch id
             // above so restarts can keep ACP memory while still recording a new local start.
-            let resume_session_id = match self.get_persistent_session(&agent.id, provider.id).await
+            let resume_session_id = if loop_session_policy
+                == Some(agenthub_agent_domain::loop_runtime::LoopSessionPolicy::Fresh)
             {
-                Ok(session_id) => session_id,
-                Err(err) => {
-                    let _ = self.process_supervisor.stop_session(&session_id).await;
-                    return Err(err);
+                None
+            } else {
+                match self.get_persistent_session(&agent.id, provider.id).await {
+                    Ok(session_id) => session_id,
+                    Err(err) => {
+                        let _ = self.process_supervisor.stop_session(&session_id).await;
+                        return Err(err);
+                    }
                 }
             };
             resumed_provider_id = Some(provider.id.to_string());
@@ -882,7 +995,8 @@ impl AgentManager {
                 .ok()
                 .and_then(|guard| guard.clone());
             let handle = match spawn_acp_session(SpawnAcpSessionRequest {
-                self_reminders_enabled: self.internal_peer_client.is_some(),
+                self_reminders_enabled: !is_loop_activation && self.internal_peer_client.is_some(),
+                loop_launch,
                 provider_id: provider.id.to_string(),
                 event_sink,
                 permissions: self.permissions.clone(),
@@ -944,7 +1058,7 @@ impl AgentManager {
                 self.acp_default_mode.as_deref(),
                 actor_context.is_some(),
             );
-            if provider.uses_default_mode_config() {
+            if !is_loop_activation && provider.uses_default_mode_config() {
                 if let Some(mode_id) = default_mode
                     && let Err(err) = handle.set_mode(mode_id.to_string()).await
                 {
@@ -970,7 +1084,7 @@ impl AgentManager {
             // ACP session config — currently Codex. Unset fields are skipped so the provider default
             // stays authoritative; failures are logged but never abort the launch. Claude takes the
             // profile as spawn env instead (handled where the launch environment is built).
-            if provider.applies_runtime_profile_via_session_config() {
+            if !is_loop_activation && provider.applies_runtime_profile_via_session_config() {
                 if let Some(model) = agent.runtime_model.as_deref()
                     && let Err(err) = handle.set_model(model.to_string()).await
                 {
@@ -1008,11 +1122,13 @@ impl AgentManager {
                     }
                 }
             }
-            if let Some(config) = normalize_agent_loop_config(
-                agent.agent_loop_enabled,
-                agent.agent_loop_idle_seconds,
-                agent.agent_loop_prompt.as_deref(),
-            ) {
+            if !is_loop_activation
+                && let Some(config) = normalize_agent_loop_config(
+                    agent.agent_loop_enabled,
+                    agent.agent_loop_idle_seconds,
+                    agent.agent_loop_prompt.as_deref(),
+                )
+            {
                 loop_controller = Some(spawn_agent_loop_controller(
                     &self.daemon_tasks,
                     self.event_dbs.clone(),
@@ -1586,6 +1702,66 @@ mod tests {
             second.session_id
         );
         agents.stop_all_on_shutdown().await.unwrap();
+        assert!(store.reservation(&team, &agent_id).await.unwrap().is_none());
+        agents
+            .daemon_tasks
+            .shutdown_runtime(Duration::from_secs(2))
+            .await
+            .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_unbound_fence_keeps_an_existing_legacy_writer_owned() {
+        let (agents, agent_id) = build_scheduled_test_manager(
+            Arc::new(FailingExecutor::default()),
+            AgentStartSchedulerSettings::default(),
+        )
+        .await;
+        let team = enable_loop_policy(&agents, &agent_id).await;
+        let store = agenthub_db::loop_runtime::LoopStore::new(agents.db.clone());
+        let reservation = store
+            .reserve_manual(
+                &team,
+                &agent_id,
+                agents.loop_owner_id(),
+                Utc::now().timestamp(),
+            )
+            .await
+            .unwrap();
+        let mut command = tokio::process::Command::new("/bin/sleep");
+        command.arg("30");
+        let (child, registration) = agents
+            .process_supervisor
+            .spawn(agent_id.clone(), "legacy-session".into(), command)
+            .await
+            .unwrap();
+        registration.commit();
+        agents
+            .track_loop_reservation(reservation.clone())
+            .await
+            .unwrap();
+        assert!(agents.fence_loop_reservation(&reservation).await.is_err());
+        assert!(
+            child
+                .lock()
+                .await
+                .as_mut()
+                .unwrap()
+                .try_wait()
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            store.reservation(&team, &agent_id).await.unwrap().unwrap(),
+            reservation
+        );
+        agents
+            .process_supervisor
+            .stop_session("legacy-session")
+            .await
+            .unwrap();
+        agents.fence_loop_reservation(&reservation).await.unwrap();
         assert!(store.reservation(&team, &agent_id).await.unwrap().is_none());
         agents
             .daemon_tasks

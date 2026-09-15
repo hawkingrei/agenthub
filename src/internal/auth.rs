@@ -210,6 +210,19 @@ impl InternalAuthz {
         principal: &InternalPrincipal,
         action: InternalAction,
     ) -> Result<(), Status> {
+        if principal.loop_execution.is_some()
+            && matches!(
+                action,
+                InternalAction::AgentManage
+                    | InternalAction::NodeIssue
+                    | InternalAction::TimeTriggerManage
+                    | InternalAction::StepTransition
+            )
+        {
+            return Err(Status::permission_denied(
+                "operation is unavailable to loop executors",
+            ));
+        }
         if principal.has_permission(action) {
             return Ok(());
         }
@@ -240,7 +253,7 @@ impl InternalAuthz {
         actor_id: &str,
         field_name: &str,
     ) -> Result<(), Status> {
-        if principal.role != InternalRole::Worker {
+        if principal.role != InternalRole::Worker && principal.loop_execution.is_none() {
             return Ok(());
         }
         let expected_actor_id = principal
@@ -298,7 +311,6 @@ impl CredentialProvider for InternalAuthz {
 }
 
 impl InternalAuthz {
-    #[cfg(test)]
     pub(crate) fn issue_loop_access_token(
         &self,
         request: NodeCredentialRequest,

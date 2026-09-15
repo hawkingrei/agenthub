@@ -38,6 +38,24 @@ use super::{
 };
 
 impl InternalGrpcMailboxClient {
+    pub(crate) async fn finish_loop_activation(
+        &self,
+        outcome: &agenthub_agent_domain::loop_runtime::LoopOutcome,
+    ) -> anyhow::Result<agenthub_agent_domain::loop_runtime::LoopFinishReceipt> {
+        outcome.validate()?;
+        let mut client = self.client();
+        let response =
+            timeout_internal_grpc_call(client.finish_loop_activation(self.control_request(
+                super::super::proto::agenthub::internal::v1::FinishLoopActivationRequest {
+                    outcome_json: serde_json::to_string(outcome)?,
+                },
+            )?))
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.receipt_json, "receipt_json")
+    }
+
     pub async fn create_team_channel(
         &self,
         team_id: &str,

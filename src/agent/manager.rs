@@ -1,7 +1,9 @@
 mod acp_provider;
 mod codec;
 mod executor;
+mod loop_launch;
 mod loop_lifecycle;
+pub(crate) use loop_launch::LoopControlEndpoint;
 mod nodes;
 mod process;
 mod runtime;
@@ -88,6 +90,9 @@ pub struct AgentManager {
     internal_peer_client: Option<InternalGrpcPeerClientConfig>,
     starting: Arc<Mutex<HashSet<String>>>,
     loop_owner_id: String,
+    loop_control_endpoint: Arc<RwLock<Option<LoopControlEndpoint>>>,
+    loop_credentials: Arc<Mutex<HashMap<String, loop_launch::LoopCredentialState>>>,
+    loop_operation_gates: Arc<Mutex<HashMap<String, Arc<RwLock<()>>>>>,
     loop_reservations:
         Arc<Mutex<HashMap<String, agenthub_agent_domain::loop_runtime::LoopReservation>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
@@ -827,6 +832,9 @@ impl AgentManager {
             permission_review_dispatcher: Arc::new(StdRwLock::new(None)),
             starting: Arc::new(Mutex::new(HashSet::new())),
             loop_owner_id: Uuid::new_v4().to_string(),
+            loop_control_endpoint: Arc::new(RwLock::new(None)),
+            loop_credentials: Arc::new(Mutex::new(HashMap::new())),
+            loop_operation_gates: Arc::new(Mutex::new(HashMap::new())),
             loop_reservations: Arc::new(Mutex::new(HashMap::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -2194,6 +2202,10 @@ impl AgentManager {
         message_id: Option<&str>,
         expected_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.has_loop_activation(agent_id).await,
+            "loop input must arrive through durable work intake"
+        );
         self.send_input_inner(
             agent_id,
             input,
@@ -2443,6 +2455,10 @@ impl AgentManager {
         message_id: &str,
         source: &super::AgentReminderSource,
     ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.has_loop_activation(agent_id).await,
+            "resident reminders are unavailable during loop activations"
+        );
         self.send_input_inner(agent_id, input, &[], Some(message_id), None, Some(source))
             .await
     }

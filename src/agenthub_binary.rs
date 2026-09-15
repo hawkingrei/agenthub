@@ -6,17 +6,17 @@ const AGENTHUB_BINARY_ENV: &str = "CARGO_BIN_EXE_agenthub";
 
 pub(crate) fn resolve_agenthub_binary_path() -> Option<PathBuf> {
     let current_exe = std::env::current_exe().ok();
-    resolve_agenthub_binary_path_from(current_exe.as_deref())
+    let cargo_binary = std::env::var_os(AGENTHUB_BINARY_ENV).map(PathBuf::from);
+    resolve_agenthub_binary_path_from(current_exe.as_deref(), cargo_binary.as_deref())
 }
 
-fn resolve_agenthub_binary_path_from(current_exe: Option<&Path>) -> Option<PathBuf> {
-    resolve_cargo_provided_agenthub_binary_path()
+fn resolve_agenthub_binary_path_from(
+    current_exe: Option<&Path>,
+    cargo_binary: Option<&Path>,
+) -> Option<PathBuf> {
+    cargo_binary
+        .and_then(|path| std::fs::canonicalize(path).ok())
         .or_else(|| resolve_sibling_agenthub_binary_path(current_exe))
-}
-
-fn resolve_cargo_provided_agenthub_binary_path() -> Option<PathBuf> {
-    let path = std::env::var(AGENTHUB_BINARY_ENV).ok()?;
-    std::fs::canonicalize(path).ok()
 }
 
 fn resolve_sibling_agenthub_binary_path(current_exe: Option<&Path>) -> Option<PathBuf> {
@@ -35,13 +35,9 @@ fn resolve_sibling_agenthub_binary_path(current_exe: Option<&Path>) -> Option<Pa
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Mutex, OnceLock};
-
     use uuid::Uuid;
 
     use super::*;
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     struct TempBinaryLayout {
         root: PathBuf,
@@ -50,36 +46,18 @@ mod tests {
         env_binary: PathBuf,
     }
 
-    struct EnvVarGuard;
-
     impl Drop for TempBinaryLayout {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
     }
 
-    impl Drop for EnvVarGuard {
-        fn drop(&mut self) {
-            unsafe {
-                std::env::remove_var(AGENTHUB_BINARY_ENV);
-            }
-        }
-    }
-
     #[test]
     fn resolve_agenthub_binary_path_prefers_cargo_env() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("lock env mutex");
         let layout = create_temp_binary_layout();
-        let _env_guard = EnvVarGuard;
-        unsafe {
-            std::env::set_var(AGENTHUB_BINARY_ENV, &layout.env_binary);
-        }
-
-        let resolved = resolve_agenthub_binary_path_from(Some(&layout.current_exe))
-            .expect("resolve path from cargo env");
+        let resolved =
+            resolve_agenthub_binary_path_from(Some(&layout.current_exe), Some(&layout.env_binary))
+                .expect("resolve path from cargo env");
 
         assert_eq!(
             resolved,
@@ -89,16 +67,8 @@ mod tests {
 
     #[test]
     fn resolve_agenthub_binary_path_falls_back_to_sibling_binary() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("lock env mutex");
         let layout = create_temp_binary_layout();
-        unsafe {
-            std::env::remove_var(AGENTHUB_BINARY_ENV);
-        }
-
-        let resolved = resolve_agenthub_binary_path_from(Some(&layout.current_exe))
+        let resolved = resolve_agenthub_binary_path_from(Some(&layout.current_exe), None)
             .expect("resolve sibling binary");
 
         assert_eq!(

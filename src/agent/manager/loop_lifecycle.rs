@@ -7,6 +7,30 @@ use chrono::Utc;
 use super::AgentManager;
 
 impl AgentManager {
+    pub(crate) fn loop_owner_id(&self) -> &str {
+        &self.loop_owner_id
+    }
+
+    pub(crate) async fn has_loop_activation(&self, actor_id: &str) -> bool {
+        self.loop_reservations
+            .lock()
+            .await
+            .get(actor_id)
+            .is_some_and(|reservation| reservation.activation_id.is_some())
+    }
+
+    pub(crate) async fn loop_operation_gate(
+        &self,
+        actor_id: &str,
+    ) -> std::sync::Arc<tokio::sync::RwLock<()>> {
+        self.loop_operation_gates
+            .lock()
+            .await
+            .entry(actor_id.to_owned())
+            .or_default()
+            .clone()
+    }
+
     pub(crate) fn schedule_loop_finalization(
         &self,
         reservation: LoopReservation,
@@ -45,7 +69,7 @@ impl AgentManager {
         // Other platforms keep legacy execution until they expose equivalent cleanup evidence.
         anyhow::ensure!(
             cfg!(target_os = "linux"),
-            "loop execution currently requires Linux process-group verification"
+            "loop execution currently requires a Linux executor guardian"
         );
         let store = LoopStore::new(self.db.clone());
         let reservation = store
@@ -78,6 +102,11 @@ impl AgentManager {
                 let Some(current) = current.filter(|current| current.generation == reservation.generation) else { return Ok(()); };
                 if let Err(error) = store.renew(&current, Utc::now().timestamp()).await {
                     tracing::warn!(actor_id, generation = current.generation, %error, "loop lease renewal failed; fencing the local executor");
+                    manager.fence_loop_reservation(&current).await?;
+                    return Ok(());
+                }
+                if let Err(error) = manager.refresh_loop_credentials(&current).await {
+                    tracing::warn!(actor_id, %error, "loop credential refresh failed; fencing executor");
                     manager.fence_loop_reservation(&current).await?;
                     return Ok(());
                 }
@@ -117,6 +146,12 @@ impl AgentManager {
         while self.starting.lock().await.contains(&expected.actor_id) {
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
+        // Requests accepted by this generation must complete before its authority is released.
+        let _operations = self
+            .loop_operation_gate(&expected.actor_id)
+            .await
+            .write_owned()
+            .await;
         let mut reservations = self.loop_reservations.lock().await;
         let Some(current) = reservations
             .get(&expected.actor_id)
@@ -132,18 +167,40 @@ impl AgentManager {
         if let Some(session_id) = &current.session_id {
             self.process_supervisor.stop_session(session_id).await?;
         } else {
-            self.process_supervisor
-                .stop_actor(&current.actor_id)
+            // A process without this reservation's session identity may be a legacy writer.
+            // Preserve the fence until its owner establishes cleanup instead of stopping it.
+            anyhow::ensure!(
+                !self
+                    .process_supervisor
+                    .has_actor_process(&current.actor_id)
+                    .await,
+                "unbound loop reservation cannot establish ownership of an existing process"
+            );
+        }
+        let store = LoopStore::new(self.db.clone());
+        let disposition = if let Some(activation_id) = &current.activation_id {
+            match store.activation(&current.team_id, activation_id).await? {
+                Some(activation)
+                    if activation.state
+                        == agenthub_agent_domain::loop_runtime::LoopActivationState::Starting =>
+                {
+                    LoopCleanupDisposition::StartupFailed
+                }
+                _ => LoopCleanupDisposition::Exited,
+            }
+        } else {
+            LoopCleanupDisposition::Exited
+        };
+        if let Some(session_id) = &current.session_id {
+            self.permissions
+                .interrupt_session_permissions(session_id)
                 .await?;
         }
-        LoopStore::new(self.db.clone())
-            .cleanup_verified(
-                &current,
-                LoopCleanupDisposition::Exited,
-                Utc::now().timestamp(),
-            )
+        store
+            .cleanup_verified(&current, disposition, Utc::now().timestamp())
             .await?;
         reservations.remove(&current.actor_id);
+        self.loop_credentials.lock().await.remove(&current.actor_id);
         drop(reservations);
         if let Some(session_id) = &current.session_id {
             Self::finalize_process_exit(
@@ -182,6 +239,7 @@ impl AgentManager {
         session_id: Option<&str>,
         disposition: LoopCleanupDisposition,
     ) -> anyhow::Result<()> {
+        let _operations = self.loop_operation_gate(actor_id).await.write_owned().await;
         let mut reservations = self.loop_reservations.lock().await;
         let Some(current) = reservations.get(actor_id) else {
             return Ok(());
@@ -189,10 +247,16 @@ impl AgentManager {
         if session_id.is_some() && current.session_id.as_deref() != session_id {
             return Ok(());
         }
+        if let Some(session_id) = &current.session_id {
+            self.permissions
+                .interrupt_session_permissions(session_id)
+                .await?;
+        }
         LoopStore::new(self.db.clone())
             .cleanup_verified(current, disposition, Utc::now().timestamp())
             .await?;
         reservations.remove(actor_id);
+        self.loop_credentials.lock().await.remove(actor_id);
         Ok(())
     }
 }

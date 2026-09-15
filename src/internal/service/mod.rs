@@ -1,5 +1,6 @@
 mod helpers;
 mod loop_activation;
+mod requests;
 mod rpc;
 
 #[cfg(test)]

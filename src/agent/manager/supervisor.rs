@@ -103,6 +103,28 @@ impl AgentProcessSupervisor {
         session_id: String,
         command: Command,
     ) -> anyhow::Result<(SharedSupervisedChild, PendingProcessRegistration)> {
+        self.spawn_registered(agent_id, session_id, || spawn_supervised(command))
+            .await
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(super) async fn spawn_guarded(
+        &self,
+        agent_id: String,
+        session_id: String,
+        command: Command,
+        channel: crate::executor_guardian::GuardianChannel,
+    ) -> anyhow::Result<(SharedSupervisedChild, PendingProcessRegistration)> {
+        self.spawn_registered(agent_id, session_id, || channel.spawn(command))
+            .await
+    }
+
+    async fn spawn_registered(
+        &self,
+        agent_id: String,
+        session_id: String,
+        spawn: impl FnOnce() -> std::io::Result<SupervisedChild> + Send,
+    ) -> anyhow::Result<(SharedSupervisedChild, PendingProcessRegistration)> {
         // Acquire the registry before spawning: cancellation must not leave an OS process
         // between spawn and its first recoverable supervisor registration.
         let mut processes = self.processes.write().await;
@@ -114,7 +136,7 @@ impl AgentProcessSupervisor {
             "duplicate supervised agent session: {session_id}"
         );
         let child = Arc::new(Mutex::new(Some(
-            spawn_supervised(command).context("failed to spawn supervised agent process")?,
+            spawn().context("failed to spawn supervised agent process")?,
         )));
         let target = StopTarget {
             agent_id,
@@ -199,19 +221,12 @@ impl AgentProcessSupervisor {
         Ok(status)
     }
 
-    pub(super) async fn stop_actor(&self, actor_id: &str) -> anyhow::Result<()> {
-        let sessions = self
-            .processes
+    pub(super) async fn has_actor_process(&self, actor_id: &str) -> bool {
+        self.processes
             .read()
             .await
             .values()
-            .filter(|target| target.agent_id == actor_id)
-            .map(|target| target.session_id.clone())
-            .collect::<Vec<_>>();
-        for session in sessions {
-            self.stop_session(&session).await?;
-        }
-        Ok(())
+            .any(|target| target.agent_id == actor_id)
     }
 
     pub(super) async fn stop_session_or_child(

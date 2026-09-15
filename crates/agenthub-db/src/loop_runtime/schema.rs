@@ -102,12 +102,25 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
         CREATE TABLE IF NOT EXISTS loop_mailbox_partitions (
             run_id TEXT PRIMARY KEY REFERENCES team_runs(id),
             team_id TEXT NOT NULL REFERENCES team_definitions(id),
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
             created_at INTEGER NOT NULL
         );
         "#,
     )
     .execute(&mut *tx)
     .await?;
+    let partition_columns = sqlx::query("PRAGMA table_info(loop_mailbox_partitions)")
+        .fetch_all(&mut *tx)
+        .await?;
+    if !partition_columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "active")
+    {
+        sqlx::query("ALTER TABLE loop_mailbox_partitions ADD COLUMN active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1))")
+            .execute(&mut *tx).await?;
+    }
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_loop_active_partition ON loop_mailbox_partitions(team_id) WHERE active = 1")
+        .execute(&mut *tx).await?;
     let columns = sqlx::query("PRAGMA table_info(loop_activations)")
         .fetch_all(&mut *tx)
         .await?;

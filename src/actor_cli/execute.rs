@@ -121,6 +121,11 @@ async fn resolve_inbox_run_id(actor_id: &str, run_id: Option<String>) -> anyhow:
     if let Some(run_id) = run_id {
         return Ok(run_id);
     }
+    if normalized_env_var(crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV).is_some()
+        || normalized_env_var(crate::loop_credentials::LOOP_ACTIVATION_ENV).is_some()
+    {
+        return resolve_direct_mailbox_run_id(actor_id, None, "actor loop inbox").await;
+    }
 
     let team_id = normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV).ok_or_else(|| {
         anyhow::anyhow!(
@@ -332,6 +337,20 @@ pub(super) async fn run_actor_command(
 ) -> anyhow::Result<()> {
     let output_preference = actor_output_preference_for_command(&command);
     match command {
+        ActorCommand::LoopFinish { outcome } => {
+            let path = normalized_env_var(crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("loop-finish requires activation-scoped runtime credentials")
+                })?;
+            let credentials =
+                crate::loop_credentials::LoopCredentialEnvelope::read(std::path::Path::new(&path))?;
+            let receipt = credentials
+                .connect()
+                .await?
+                .finish_loop_activation(&outcome)
+                .await?;
+            write_actor_output(&receipt, output_mode, output_preference)?;
+        }
         ActorCommand::Help { topic } => {
             let help = match topic {
                 Some(topic) => actor_topic_usage(topic),

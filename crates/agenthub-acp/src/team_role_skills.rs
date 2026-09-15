@@ -41,6 +41,9 @@ fn normalize_member_role(role: Option<&str>) -> Option<&str> {
 }
 
 pub(super) fn should_attach_team_role_skills(context: Option<&AcpActorSkillContext>) -> bool {
+    if context.is_some_and(AcpActorSkillContext::is_loop_activation) {
+        return false;
+    }
     matches!(
         context.and_then(|item| normalize_member_role(item.member_role.as_deref())),
         Some("coordinator" | "worker")

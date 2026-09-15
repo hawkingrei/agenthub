@@ -51,6 +51,15 @@ pub(crate) fn normalized_env_var(key: &str) -> Option<String> {
 }
 
 pub(crate) async fn maybe_remote_mailbox_service() -> OptionalRemoteMailboxClient {
+    if let Some(path) = normalized_env_var(crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV) {
+        let credential =
+            crate::loop_credentials::LoopCredentialEnvelope::read(std::path::Path::new(&path))?;
+        return Ok(Some(credential.connect().await?));
+    }
+    anyhow::ensure!(
+        normalized_env_var(crate::loop_credentials::LOOP_ACTIVATION_ENV).is_none(),
+        "loop credential envelope is missing; legacy credentials cannot be used"
+    );
     let Some(target) = normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV) else {
         return Ok(None);
     };
