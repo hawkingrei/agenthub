@@ -186,8 +186,6 @@ cargo test -p agenthub-config --locked --offline nowledge_mem
 cargo clippy -p agenthub -p agenthub-acp -p agenthub-acp-core -p agenthub-mcp --all-targets --locked --offline -- -D warnings
 ```
 
-## Follow-Ups
-
 The modern discovery follow-up passes 13 root MCP tests (plus the parent-invoked child fixture),
 35 MCP crate tests, and root/MCP all-target Clippy with warnings denied. The real binary build,
 formatting, and whitespace checks pass. The startup fixture preserves the exact discovery result
@@ -195,6 +193,8 @@ and records no tool operation; tools remain denied before running. The real shim
 an upstream HTTP 404 JSON-RPC `-32601` probe error, including its data, and subsequently completes
 the existing legacy initialize/callback/discovery/write flow. The result shape follows the final
 [July 2026 discovery specification](https://modelcontextprotocol.io/specification/2026-07-28/server/discover).
+
+## Follow-Ups
 
 - Complete slice 9's linked continuations, remaining protocol controller paths, aggregate queue
   byte budget, and integration authorization. Do not infer namespace isolation from a Mem tool set
