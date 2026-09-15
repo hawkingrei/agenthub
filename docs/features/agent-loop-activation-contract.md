@@ -4,8 +4,9 @@ Status: implementation contract. The lifecycle service is delivered incrementall
 of this specification does not enable automatic execution.
 
 The control store implements policy configuration, idempotent trigger acceptance, pending
-activation coalescing, safe event persistence, and generation-fenced admission/reservation methods.
-Daemon/provider wiring, structured outcome recording, and process recovery remain subsequent slices.
+activation coalescing, safe event persistence, generation-fenced admission, structured finish,
+continuation recording, and verified cleanup. Configured manual starts share durable reservations.
+Automatic provider launch, authenticated actor tools, and product enablement remain rollout gates.
 
 ## Problem
 
@@ -144,6 +145,12 @@ An authenticated finish operation requires the live activation generation and bo
 references. Persist the outcome and required continuation/wait atomically before acknowledging it.
 Repeated identical finish requests return the recorded receipt; conflicting requests fail without
 repeating effects. The receipt remains readable after cleanup, but does not authorize new mutations.
+The initial progress-evidence form references a canonical task note written by the executing actor
+in the same Team during its execution. A note is credited once across activations; it establishes
+recorded work, not acceptance or a guarantee about the note's claims. An outcome's `progress` label
+without new evidence increments the no-progress counter. Invalid continuation admission rolls back
+both the outcome and evidence credit. Wait reasons are typed; dependency and standing registrations
+are delivered separately from the initial due-time self-continuation record.
 Runnable remaining work requires a durable continuation; waiting requires an event/dependency or due
 time with an actionable condition. Outcome recording does not automatically consume IM.
 
@@ -152,6 +159,11 @@ execution reservation and moves finalization to `finished`. New triggers racing 
 after release remain pending under the same admission boundary. Cancellation invalidates obsolete
 continuations but still needs cleanup. An early process exit without an outcome is interrupted,
 even with exit code zero. Unknown external effects require reconciliation, not exactly-once claims.
+Revocation retains every source and its trace. Independently accepted coalesced work remains pending.
+Admission rechecks whether referenced tasks remain actionable before starting their continuations.
+The local supervisor's Linux evidence covers its process group, including surviving children after
+parent exit; deliberately detached execution requires stronger containment and is outside that proof.
+Other platforms do not admit loop execution until equivalent verification is available.
 
 Restart first reconciles loop reservations and process authority. Legacy startup cancellation
 continues for legacy runs only; it must not cancel loop-owned partitions or reopen their tasks.
@@ -216,3 +228,4 @@ fail explicitly rather than claim parity. Track implementation and remaining val
 - [Activation contract checkpoint](../journal/2026-09-15-agent-loop-activation-contract.md)
 - [Durable loop control store](../journal/2026-09-15-agent-loop-control-store.md)
 - [Fenced loop admission](../journal/2026-09-15-agent-loop-admission.md)
+- [Loop outcomes and cleanup](../journal/2026-09-15-agent-loop-lifecycle.md)

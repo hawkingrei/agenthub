@@ -31,6 +31,8 @@ pub struct InternalAccessClaims {
     pub actor_id: Option<String>,
     pub run_id: Option<String>,
     #[serde(default)]
+    pub loop_execution: Option<LoopExecutionClaims>,
+    #[serde(default)]
     pub permissions: Vec<String>,
     #[serde(default)]
     pub scope: Vec<String>,
@@ -38,6 +40,13 @@ pub struct InternalAccessClaims {
     pub audience: Option<String>,
     #[serde(default)]
     pub kid: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoopExecutionClaims {
+    pub activation_id: String,
+    pub generation: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +83,7 @@ pub struct InternalPrincipal {
     pub source_node_id: Option<String>,
     pub actor_id: Option<String>,
     pub run_id: Option<String>,
+    pub loop_execution: Option<LoopExecutionClaims>,
     pub scope: HashSet<String>,
     pub audience: Option<String>,
     pub kid: Option<String>,
@@ -100,6 +110,7 @@ pub enum InternalAction {
     StepTransition,
     NodeIssue,
     AgentManage,
+    LoopFinish,
 }
 
 impl InternalAction {
@@ -115,6 +126,7 @@ impl InternalAction {
             Self::StepTransition => "team:step:transition",
             Self::NodeIssue => "team:node:issue",
             Self::AgentManage => "agent:manage",
+            Self::LoopFinish => "loop:finish",
         }
     }
 }
@@ -183,6 +195,7 @@ impl InternalAuthz {
             source_node_id: claims.custom.source_node_id,
             actor_id: claims.custom.actor_id,
             run_id: claims.custom.run_id,
+            loop_execution: claims.custom.loop_execution,
             scope,
             audience: claims.custom.audience,
             kid: claims.custom.kid,
@@ -280,6 +293,37 @@ impl CredentialProvider for InternalAuthz {
         &self,
         request: NodeCredentialRequest,
     ) -> anyhow::Result<IssuedNodeAccessToken> {
+        self.issue_scoped_node_access_token(request, None)
+    }
+}
+
+impl InternalAuthz {
+    #[cfg(test)]
+    pub(crate) fn issue_loop_access_token(
+        &self,
+        request: NodeCredentialRequest,
+        executor: LoopExecutionClaims,
+    ) -> anyhow::Result<IssuedNodeAccessToken> {
+        agenthub_agent_domain::loop_runtime::validate_loop_id(&executor.activation_id)?;
+        anyhow::ensure!(
+            executor.generation > 0 && request.actor_id.is_some() && request.run_id.is_some(),
+            "loop credentials require executor identity and scope"
+        );
+        anyhow::ensure!(
+            matches!(
+                InternalRole::parse(&request.role),
+                Some(InternalRole::Coordinator | InternalRole::Worker)
+            ),
+            "loop credentials require a member role"
+        );
+        self.issue_scoped_node_access_token(request, Some(executor))
+    }
+
+    fn issue_scoped_node_access_token(
+        &self,
+        request: NodeCredentialRequest,
+        loop_execution: Option<LoopExecutionClaims>,
+    ) -> anyhow::Result<IssuedNodeAccessToken> {
         let ttl_seconds = request.ttl_seconds.clamp(60, 24 * 60 * 60);
         InternalRole::parse(&request.role)
             .ok_or_else(|| anyhow::anyhow!("unsupported internal role '{}'", request.role))?;
@@ -301,6 +345,7 @@ impl CredentialProvider for InternalAuthz {
                 source_node_id: Some(request.source_node_id.clone()),
                 actor_id: request.actor_id,
                 run_id: request.run_id,
+                loop_execution,
                 permissions: request.permissions,
                 scope: scope.clone(),
                 issuer: self.expected_issuer.clone(),
@@ -371,6 +416,7 @@ mod tests {
                 source_node_id: Some("node-test".to_string()),
                 actor_id: actor_id.map(|value| value.to_string()),
                 run_id: run_id.map(|value| value.to_string()),
+                loop_execution: None,
                 permissions: permissions.into_iter().map(str::to_string).collect(),
                 scope: vec!["node:p2p".to_string()],
                 issuer: Some("agenthub".to_string()),

@@ -282,6 +282,13 @@ impl AgentManager {
         match exit_result {
             Ok(None) => Some(session_id),
             Ok(Some(status)) => {
+                if let Err(error) = self
+                    .cleanup_observed_session(agent_id, &session_id, &child)
+                    .await
+                {
+                    tracing::error!(agent_id, session_id, %error, "exited session cleanup remains unverified");
+                    return Some(session_id);
+                }
                 Self::finalize_process_exit(
                     &self.db,
                     &self.event_dbs,
@@ -301,6 +308,13 @@ impl AgentManager {
                     agent_id,
                     err
                 );
+                if let Err(error) = self
+                    .cleanup_observed_session(agent_id, &session_id, &child)
+                    .await
+                {
+                    tracing::error!(agent_id, session_id, %error, "failed session cleanup remains unverified");
+                    return Some(session_id);
+                }
                 Self::finalize_process_exit(
                     &self.db,
                     &self.event_dbs,
@@ -369,6 +383,29 @@ impl AgentManager {
         agent_id: &str,
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
+        // A disconnected caller must not drop a half-completed process start. Daemon shutdown
+        // owns this operation and waits for its supervisor permit before stopping processes.
+        let manager = self.clone();
+        let agent_id = agent_id.to_owned();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.daemon_tasks
+            .spawn_runtime_task(format!("agent-start:{agent_id}"), async move {
+                let result = manager
+                    .start_agent_with_actor_context_inner(&agent_id, actor_context)
+                    .await;
+                let _ = sender.send(result);
+                Ok(())
+            })?;
+        receiver
+            .await
+            .context("agent start task ended without a result")?
+    }
+
+    async fn start_agent_with_actor_context_inner(
+        &self,
+        agent_id: &str,
+        actor_context: Option<AcpActorSkillContext>,
+    ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let running_session_id = self.get_running_session_id(agent_id).await;
         match build_agent_start_plan(agent, actor_context, running_session_id.as_deref())? {
@@ -378,14 +415,21 @@ impl AgentManager {
                 actor_context,
             } => {
                 self.reserve_agent_start(agent_id).await?;
+                let _start_permit = match self.process_supervisor.acquire_start_permit().await {
+                    Ok(permit) => permit,
+                    Err(error) => {
+                        self.release_agent_start(agent_id).await;
+                        return Err(error);
+                    }
+                };
+                let session_tracker = Arc::new(Mutex::new(None));
+                let mut loop_reserved = false;
                 let result = async {
+                    loop_reserved = self.reserve_manual_loop_start(agent_id).await?;
                     let admission = self.start_scheduler.acquire(agent_id).await?;
-                    let session_tracker = Arc::new(Mutex::new(None));
                     match tokio::time::timeout(
                         admission.start_timeout(),
                         async {
-                            let _start_permit =
-                                self.process_supervisor.acquire_start_permit().await?;
                             self.start_local_agent(
                                 agent,
                                 actor_context,
@@ -413,6 +457,27 @@ impl AgentManager {
                     }
                 }
                 .await;
+                if result.is_err() && loop_reserved {
+                    // The supervisor registers every spawned session before the first yield.
+                    // A failed start with no tracked process therefore has no surviving writer.
+                    let session_id = session_tracker.lock().await.clone();
+                    let cleanup = async {
+                        if let Some(session_id) = &session_id {
+                            self.process_supervisor.stop_session(session_id).await?;
+                            let mut handles = self.inner.write().await;
+                            if Self::handle_matches_session(handles.get(agent_id), session_id)
+                                && let Some(handle) = handles.remove(agent_id)
+                                && let Some(controller) = handle.loop_controller {
+                                controller.stop();
+                            }
+                        }
+                        self.release_loop_after_cleanup(agent_id, None, agenthub_agent_domain::loop_runtime::LoopCleanupDisposition::StartupFailed).await
+                    }.await;
+                    if let Err(error) = cleanup {
+                        self.release_agent_start(agent_id).await;
+                        return Err(error.context("failed start retained loop reservation because cleanup could not be verified"));
+                    }
+                }
                 self.release_agent_start(agent_id).await;
                 result
             }
@@ -442,8 +507,14 @@ impl AgentManager {
         actor_context: Option<AcpActorSkillContext>,
         session_tracker: Arc<Mutex<Option<String>>>,
     ) -> anyhow::Result<String> {
-        self.start_local_agent_with_resume_fallback(agent, actor_context, true, session_tracker)
-            .await
+        let allow_resume_retry = !self.loop_reservations.lock().await.contains_key(&agent.id);
+        self.start_local_agent_with_resume_fallback(
+            agent,
+            actor_context,
+            allow_resume_retry,
+            session_tracker,
+        )
+        .await
     }
 
     async fn start_local_agent_with_resume_fallback(
@@ -705,6 +776,7 @@ impl AgentManager {
             return Err(err.into());
         }
 
+        self.bind_loop_session(&agent.id, &session_id).await?;
         if let Err(err) = self
             .update_agent_status(&agent.id, AgentStatus::Running)
             .await
@@ -1146,6 +1218,37 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn stop_agent(&self, agent_id: &str) -> anyhow::Result<()> {
+        self.stop_agent_inner(agent_id, true).await
+    }
+
+    pub(super) async fn stop_agent_inner(
+        &self,
+        agent_id: &str,
+        cancel_work: bool,
+    ) -> anyhow::Result<()> {
+        let reservation = self.loop_reservations.lock().await.get(agent_id).cloned();
+        if let Some(reservation) = reservation {
+            let store = agenthub_db::loop_runtime::LoopStore::new(self.db.clone());
+            // Serialize against cleanup removing this exact reservation while stop begins.
+            let held = self.loop_reservations.lock().await;
+            if held
+                .get(agent_id)
+                .is_some_and(|current| current.generation == reservation.generation)
+            {
+                if cancel_work && let Some(id) = &reservation.activation_id {
+                    store
+                        .cancel(&reservation.team_id, id, Utc::now().timestamp())
+                        .await?;
+                }
+                store
+                    .revoke_execution(&reservation, Utc::now().timestamp())
+                    .await?;
+            }
+            drop(held);
+            while self.starting.lock().await.contains(agent_id) {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }
         let agent = self.get_agent(agent_id).await?;
         if let Some(target_node_id) = agent.target_node_id.as_deref() {
             let client = self
@@ -1175,6 +1278,13 @@ impl AgentManager {
                         "failed to stop agent process: agent_id={agent_id} session_id={session_id}"
                     )
                 })?;
+
+            self.release_loop_after_cleanup(
+                agent_id,
+                Some(&session_id),
+                agenthub_agent_domain::loop_runtime::LoopCleanupDisposition::Exited,
+            )
+            .await?;
 
             let removed = {
                 let mut guard = self.inner.write().await;
@@ -1402,6 +1512,163 @@ mod tests {
         .await
         .expect("insert scheduled test agent");
         (agents, agent_id)
+    }
+
+    async fn enable_loop_policy(agents: &AgentManager, agent_id: &str) -> String {
+        use agenthub_agent_domain::loop_runtime::{LoopLimits, LoopPolicyState, LoopSessionPolicy};
+        let team_id = uuid::Uuid::new_v4().to_string();
+        let spec = serde_json::json!({"members": [{"member_id": agent_id}]});
+        sqlx::query("INSERT INTO team_definitions(id, name, spec_json, created_at, updated_at) VALUES (?, 'loop-test', ?, 1, 1)")
+            .bind(&team_id).bind(spec.to_string()).execute(&agents.db).await.unwrap();
+        agenthub_db::loop_runtime::LoopStore::new(agents.db.clone())
+            .configure(
+                agenthub_db::loop_runtime::LoopPolicyUpdate {
+                    actor_id: agent_id,
+                    team_id: &team_id,
+                    expected_revision: 0,
+                    state: LoopPolicyState::Enabled,
+                    session_policy: LoopSessionPolicy::Fresh,
+                    limits: &LoopLimits::default(),
+                },
+                Utc::now().timestamp(),
+            )
+            .await
+            .unwrap();
+        team_id
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_manual_start_uses_durable_reservation_until_verified_stop() {
+        let (mut agents, agent_id) = build_scheduled_test_manager(
+            Arc::new(FailingExecutor::default()),
+            AgentStartSchedulerSettings::default(),
+        )
+        .await;
+        agents.local_executor = Arc::new(super::super::executor::LocalExecutor::new(
+            super::super::ProxyPolicy::new(Vec::new()),
+            agents.process_supervisor.clone(),
+        ));
+        sqlx::query("UPDATE agents SET command = 'cat' WHERE id = ?")
+            .bind(&agent_id)
+            .execute(&agents.db)
+            .await
+            .unwrap();
+        let team = enable_loop_policy(&agents, &agent_id).await;
+        let store = agenthub_db::loop_runtime::LoopStore::new(agents.db.clone());
+        let session = agents.start_agent(&agent_id).await.unwrap();
+        let first = store.reservation(&team, &agent_id).await.unwrap().unwrap();
+        assert_eq!(first.session_id.as_deref(), Some(session.as_str()));
+        assert_eq!(first.activation_id, None);
+        assert!(
+            store
+                .reserve_manual(&team, &agent_id, "another-daemon", Utc::now().timestamp())
+                .await
+                .is_err()
+        );
+        agents.stop_agent(&agent_id).await.unwrap();
+        assert!(store.reservation(&team, &agent_id).await.unwrap().is_none());
+        agents.start_agent(&agent_id).await.unwrap();
+        let second = store.reservation(&team, &agent_id).await.unwrap().unwrap();
+        assert!(second.generation > first.generation);
+        agents.fence_loop_reservation(&first).await.unwrap();
+        assert_eq!(
+            store
+                .reservation(&team, &agent_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .generation,
+            second.generation
+        );
+        assert_eq!(
+            agents.running_session_id_for_agent(&agent_id).await,
+            second.session_id
+        );
+        agents.stop_all_on_shutdown().await.unwrap();
+        assert!(store.reservation(&team, &agent_id).await.unwrap().is_none());
+        agents
+            .daemon_tasks
+            .shutdown_runtime(Duration::from_secs(2))
+            .await
+            .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_manual_start_cannot_release_another_executor_reservation() {
+        let (agents, agent_id) = build_scheduled_test_manager(
+            Arc::new(FailingExecutor::default()),
+            AgentStartSchedulerSettings::default(),
+        )
+        .await;
+        let team = enable_loop_policy(&agents, &agent_id).await;
+        let store = agenthub_db::loop_runtime::LoopStore::new(agents.db.clone());
+        let existing = store
+            .reserve_manual(&team, &agent_id, "prior-daemon", Utc::now().timestamp())
+            .await
+            .unwrap();
+        assert!(agents.start_agent(&agent_id).await.is_err());
+        assert_eq!(
+            store.reservation(&team, &agent_id).await.unwrap().unwrap(),
+            existing
+        );
+        assert!(!agents.starting.lock().await.contains(&agent_id));
+        assert!(!agents.inner.read().await.contains_key(&agent_id));
+        agents
+            .daemon_tasks
+            .shutdown_runtime(Duration::from_secs(2))
+            .await
+            .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_disconnected_start_caller_does_not_abandon_startup_cleanup() {
+        #[derive(Debug)]
+        struct ControlledFailure {
+            entered: tokio::sync::Notify,
+            release: tokio::sync::Notify,
+        }
+        #[async_trait]
+        impl AgentExecutor for ControlledFailure {
+            async fn spawn_process(
+                &self,
+                _: LocalExecutionRequest,
+            ) -> anyhow::Result<SpawnedLocalProcess> {
+                self.entered.notify_one();
+                self.release.notified().await;
+                anyhow::bail!("controlled startup failure")
+            }
+        }
+        let executor = Arc::new(ControlledFailure {
+            entered: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let (agents, agent_id) =
+            build_scheduled_test_manager(executor.clone(), AgentStartSchedulerSettings::default())
+                .await;
+        let team = enable_loop_policy(&agents, &agent_id).await;
+        let caller_manager = agents.clone();
+        let caller_actor = agent_id.clone();
+        let caller = tokio::spawn(async move { caller_manager.start_agent(&caller_actor).await });
+        executor.entered.notified().await;
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        executor.release.notify_one();
+        agents
+            .daemon_tasks
+            .shutdown_runtime(Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert!(!agents.starting.lock().await.contains(&agent_id));
+        assert!(
+            agenthub_db::loop_runtime::LoopStore::new(agents.db.clone())
+                .reservation(&team, &agent_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

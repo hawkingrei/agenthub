@@ -1292,6 +1292,9 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_context_flush_checkpoint");
+    agenthub_db::loop_runtime::migrate_loop_runtime(db)
+        .await
+        .expect("migrate loop runtime");
 }
 
 const DEFAULT_TEST_TEAM_MEMBER_IDS: &[&str] = &[

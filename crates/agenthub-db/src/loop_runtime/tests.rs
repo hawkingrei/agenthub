@@ -11,6 +11,8 @@ use super::{LoopPolicyUpdate, LoopStore, LoopStoreError, migrate_loop_runtime};
 
 #[path = "admission_tests.rs"]
 mod admission_tests;
+#[path = "lifecycle_tests.rs"]
+mod lifecycle_tests;
 
 struct Fixture {
     path: PathBuf,

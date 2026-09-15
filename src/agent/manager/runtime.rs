@@ -470,6 +470,9 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), err)]
     pub async fn mark_exited_on_startup(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
+        agenthub_db::loop_runtime::LoopStore::new(self.db.clone())
+            .interrupt_expired(Utc::now().timestamp())
+            .await?;
         self.mark_running_agents_exited(AgentSessionExitMarkReason::Startup)
             .await
     }
@@ -478,6 +481,21 @@ impl AgentManager {
     pub async fn stop_all_on_shutdown(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
         let _shutdown_guard = self.process_supervisor.begin_shutdown().await;
         self.process_supervisor.stop_all().await?;
+        let loop_actors = self
+            .loop_reservations
+            .lock()
+            .await
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for actor_id in loop_actors {
+            self.release_loop_after_cleanup(
+                &actor_id,
+                None,
+                agenthub_agent_domain::loop_runtime::LoopCleanupDisposition::Exited,
+            )
+            .await?;
+        }
 
         let stopped_handles = {
             let mut guard = self.inner.write().await;
@@ -510,6 +528,7 @@ impl AgentManager {
             UPDATE agent_sessions
             SET status = 'exited', ended_at = ?1
             WHERE status = 'running' AND ended_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM loop_execution_reservations r WHERE r.session_id = agent_sessions.id)
             "#,
         )
         .bind(now)
@@ -529,6 +548,7 @@ impl AgentManager {
             UPDATE agents
             SET status = 'exited', updated_at = ?1
             WHERE status = 'running'
+              AND NOT EXISTS (SELECT 1 FROM loop_execution_reservations r WHERE r.actor_id = agents.id)
             "#,
         )
         .bind(now)

@@ -46,6 +46,12 @@ fn actor_message_to_proto(message: agenthub_team_actor::ActorMessageRecord) -> A
 
 #[tonic::async_trait]
 impl TeamInternalControl for TeamInternalControlService {
+    async fn finish_loop_activation(
+        &self,
+        request: Request<FinishLoopActivationRequest>,
+    ) -> Result<Response<FinishLoopActivationResponse>, Status> {
+        self.finish_loop_activation_request(request).await
+    }
     async fn send_actor_message(
         &self,
         request: Request<SendActorMessageRequest>,

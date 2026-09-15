@@ -284,6 +284,7 @@ async fn seed_permission_review_request(
 }
 
 mod context_tasks;
+mod loop_activation;
 mod mailbox;
 mod misc;
 mod node_credentials;

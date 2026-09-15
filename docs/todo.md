@@ -7,13 +7,10 @@ Active backlog only. Keep this file small and current.
 Product: [features/agent-loop-product-model.md](features/agent-loop-product-model.md).
 Lifecycle: [features/agent-loop-runtime.md](features/agent-loop-runtime.md).
 Implementation: [features/agent-loop-activation-contract.md](features/agent-loop-activation-contract.md).
-The activation contract, control-store, and admission checkpoints complete slices 1-3; daemon/provider
-lifecycle wiring and execution remain pending.
+The activation contract, control store, admission, and lifecycle checkpoints complete slices 1-4;
+provider launch, production activation credentials, and automatic execution remain pending.
 Numbers below identify separate reviewable PR slices, not shipped capabilities.
 
-- [ ] 4. Record finish/outcome/continuation atomically; reconcile verified cleanup and restart.
-  Wire manual start/stop reservations, startup backoff, and outcome/no-progress accounting. Prove
-  crash/exit races, uncertain writers, idempotent finish, and legacy run compatibility.
 - [ ] 5. Connect local ACP launch/configuration snapshots and fresh/resumed context recovery.
   Preserve mailbox partitions, task attempts, and native permission callback lifetimes.
 - [ ] 6. Separate offline Card/Team configuration from enable/suspend/process controls. Prove

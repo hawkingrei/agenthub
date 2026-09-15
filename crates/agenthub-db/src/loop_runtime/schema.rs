@@ -70,6 +70,7 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             owner_id TEXT NOT NULL,
             lease_expires_at INTEGER NOT NULL,
             lease_seconds INTEGER NOT NULL DEFAULT 60 CHECK(lease_seconds > 0),
+            renewal_seconds INTEGER NOT NULL DEFAULT 15 CHECK(renewal_seconds > 0),
             session_id TEXT REFERENCES agent_sessions(id),
             created_at INTEGER NOT NULL
         );
@@ -84,6 +85,25 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_loop_event_activation
             ON loop_activation_events(activation_id, id);
+        CREATE TABLE IF NOT EXISTS loop_finish_receipts (
+            activation_id TEXT PRIMARY KEY REFERENCES loop_activations(id),
+            generation INTEGER NOT NULL,
+            owner_id TEXT NOT NULL,
+            receipt_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS loop_progress_receipts (
+            task_note_id INTEGER PRIMARY KEY REFERENCES team_conversation_messages(id),
+            activation_id TEXT NOT NULL REFERENCES loop_activations(id)
+        );
+        CREATE TABLE IF NOT EXISTS loop_revoked_sources (
+            trigger_id TEXT PRIMARY KEY REFERENCES loop_trigger_sources(id),
+            created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS loop_mailbox_partitions (
+            run_id TEXT PRIMARY KEY REFERENCES team_runs(id),
+            team_id TEXT NOT NULL REFERENCES team_definitions(id),
+            created_at INTEGER NOT NULL
+        );
         "#,
     )
     .execute(&mut *tx)
@@ -124,6 +144,18 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
     {
         sqlx::query("ALTER TABLE loop_execution_reservations ADD COLUMN lease_seconds INTEGER NOT NULL DEFAULT 60 CHECK(lease_seconds > 0)")
             .execute(&mut *tx).await?;
+    }
+    if !columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "renewal_seconds")
+    {
+        sqlx::query("ALTER TABLE loop_execution_reservations ADD COLUMN renewal_seconds INTEGER NOT NULL DEFAULT 15 CHECK(renewal_seconds > 0)")
+            .execute(&mut *tx).await?;
+        sqlx::query(
+            "UPDATE loop_execution_reservations SET renewal_seconds = MAX(1, lease_seconds / 4)",
+        )
+        .execute(&mut *tx)
+        .await?;
     }
     sqlx::raw_sql(
         "CREATE INDEX IF NOT EXISTS idx_loop_admission_due ON loop_activations(state, next_admission_at, id); \

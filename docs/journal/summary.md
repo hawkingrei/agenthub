@@ -25,6 +25,8 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-09-15: Loop outcomes and cleanup](2026-09-15-agent-loop-lifecycle.md): structured finish, atomic continuations, retained uncertainty, and manual/process lifecycle integration.
+
 - [2026-09-15: Fenced loop admission](2026-09-15-agent-loop-admission.md): atomic claims, retained expired reservations, finite admission budgets, and bounded queue scanning.
 
 - [2026-09-15: Durable loop control store](2026-09-15-agent-loop-control-store.md): explicit policy, idempotent trigger receipts, pending work, and safe lifecycle events.

@@ -1,6 +1,7 @@
 mod acp_provider;
 mod codec;
 mod executor;
+mod loop_lifecycle;
 mod nodes;
 mod process;
 mod runtime;
@@ -86,6 +87,9 @@ pub struct AgentManager {
     permission_review_dispatcher: Arc<StdRwLock<Option<Arc<dyn AcpPermissionReviewDispatcher>>>>,
     internal_peer_client: Option<InternalGrpcPeerClientConfig>,
     starting: Arc<Mutex<HashSet<String>>>,
+    loop_owner_id: String,
+    loop_reservations:
+        Arc<Mutex<HashMap<String, agenthub_agent_domain::loop_runtime::LoopReservation>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
 }
 
@@ -822,6 +826,8 @@ impl AgentManager {
             internal_peer_client,
             permission_review_dispatcher: Arc::new(StdRwLock::new(None)),
             starting: Arc::new(Mutex::new(HashSet::new())),
+            loop_owner_id: Uuid::new_v4().to_string(),
+            loop_reservations: Arc::new(Mutex::new(HashMap::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
     }

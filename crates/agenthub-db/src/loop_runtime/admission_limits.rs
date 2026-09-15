@@ -68,6 +68,7 @@ pub(super) async fn deferral_reason(
         "SELECT EXISTS(SELECT 1 FROM loop_trigger_sources s JOIN team_execution_claims c \
          ON c.entity_id = json_extract(s.input_json, '$.references.task_id') AND c.entity_kind = 'task' \
          WHERE s.activation_id = ? AND s.source_kind IN ('assignment', 'continuation') \
+         AND NOT EXISTS(SELECT 1 FROM loop_revoked_sources r WHERE r.trigger_id = s.id) \
          AND c.released_at IS NULL AND c.owner_member_id != ?)",
     ).bind(&activation.id).bind(&activation.actor_id).fetch_one(&mut **tx).await?;
     if conflicting_claim {

@@ -32,6 +32,10 @@ impl LoopStore {
         if activation.state != LoopActivationState::Pending {
             return Ok(LoopAdmission::NotPending);
         }
+        if super::lifecycle::retire_inactive_task_sources(&mut tx, &activation, now).await? {
+            tx.commit().await?;
+            return Ok(LoopAdmission::NotPending);
+        }
         let row = sqlx::query("SELECT * FROM loop_policies WHERE actor_id = ? AND team_id = ?")
             .bind(&activation.actor_id)
             .bind(team_id)
