@@ -3,7 +3,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
 };
 use serde_json::{Value, json};
 use std::sync::Mutex;
@@ -13,6 +13,7 @@ use super::*;
 struct Upstream {
     db: Mutex<Option<sqlx::SqlitePool>>,
     messages: Mutex<Vec<Value>>,
+    authorized: bool,
 }
 
 async fn upstream(
@@ -25,17 +26,14 @@ async fn upstream(
     state.messages.lock().unwrap().push(message.clone());
     let result = match message["method"].as_str().unwrap() {
         "initialize" => {
-            json!({"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1"}})
+            json!({"protocolVersion":"2025-11-25","capabilities":{"tools":{},"resources":{},"prompts":{}},"serverInfo":{"name":"fixture","version":"1"}})
         }
         "notifications/initialized" => return StatusCode::ACCEPTED.into_response(),
         "tools/list" => {
-            json!({"tools":[{"name":"fixture_write","description":"Fixture write","inputSchema":{"type":"object","properties":{"body":{"type":"string"},"space_id":{"type":"string"}}},"extension":{"preserved":true}}]})
+            json!({"tools":[{"name":"fixture_write","description":"Fixture write","inputSchema":{"type":"object","properties":{"body":{"type":"string"},"space_id":{"type":"string"}}},"extension":{"preserved":true}},
+                {"name":"fixture_lookup","inputSchema":{"type":"object","properties":{"memory_id":{"type":"string"}},"additionalProperties":false}}]})
         }
         "tools/call" => {
-            assert_eq!(
-                message["params"]["arguments"],
-                json!({"body":"private-business-body","space_id":"space-a"})
-            );
             let db = state.db.lock().unwrap().clone().unwrap();
             let sent: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM mcp_operation_attempts WHERE status = 'sent'",
@@ -44,11 +42,50 @@ async fn upstream(
             .await
             .unwrap();
             assert_eq!(sent, 1);
-            json!({"content":[],"structuredContent":{"written":true}})
+            if message["params"]["name"] == "fixture_write" {
+                assert_eq!(
+                    message["params"]["arguments"],
+                    json!({"body":"private-business-body","space_id":"space-a"})
+                );
+                json!({"content":[],"structuredContent":{"written":true}})
+            } else {
+                let arguments = &message["params"]["arguments"];
+                assert_eq!(
+                    arguments.as_object().unwrap().len(),
+                    1,
+                    "undeclared scope must not be injected"
+                );
+                // Model an upstream key ACL on opaque IDs, independent of argument binding.
+                let allowed = arguments["memory_id"] == "allowed";
+                json!({"content":[],"isError":!allowed,"extension":"preserved"})
+            }
         }
+        "resources/read" if message["params"]["uri"] == "mem://allowed" => {
+            json!({"contents":[{"uri":"mem://allowed","text":"private-resource-body"}]})
+        }
+        "resources/read" => {
+            return Json(json!({"jsonrpc":"2.0","id":message["id"],
+            "error":{"code":-32002,"message":"resource not found","data":{"native":true}}}))
+            .into_response();
+        }
+        "prompts/get" => json!({"messages":[],"extension":"preserved"}),
         _ => panic!("unexpected upstream method"),
     };
     Json(json!({"jsonrpc":"2.0","id":message["id"],"result":result})).into_response()
+}
+
+async fn membership(State(state): State<Arc<Upstream>>, headers: HeaderMap) -> Json<Value> {
+    assert_eq!(headers["authorization"], "Bearer configured-secret");
+    let scope = if state.authorized {
+        json!({"scope_mode":"narrowed","grants":["space-a"],"write_space":"space-a"})
+    } else {
+        Value::Null
+    };
+    Json(
+        json!({"workspace_id":"cd270331-80bc-4f90-8cc0-3fefbc7f74ab",
+        "key_scope":scope,
+        "key_write_target":{"write_space":"space-a","write_space_live":true}}),
+    )
 }
 
 #[tokio::test]
@@ -96,6 +133,11 @@ async fn configured_mcp_launch_isolates_inherited_secrets() {
 #[tokio::test]
 #[ignore = "Executed by the parent with an isolated inherited environment"]
 async fn configured_mcp_child() {
+    configured_mcp_case(false).await;
+    configured_mcp_case(true).await;
+}
+
+async fn configured_mcp_case(authorized: bool) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(
         "http://{}/private-endpoint/mcp",
@@ -104,15 +146,49 @@ async fn configured_mcp_child() {
     let state = Arc::new(Upstream {
         db: Mutex::new(None),
         messages: Mutex::new(Vec::new()),
+        authorized,
     });
     let router = axum::Router::new()
         .route("/private-endpoint/mcp", post(upstream))
+        .route("/private-endpoint/members/me", get(membership))
         .with_state(state.clone());
     let http = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
     let fixture = Fixture::new_with_mem("mcp", Some(&endpoint)).await;
     *state.db.lock().unwrap() = Some(fixture.state.db.clone());
+    if !authorized {
+        let reservation = fixture.admit("denied-mcp-scope").await;
+        let error = fixture
+            .state
+            .agents
+            .execute_loop_activation(fixture.state.teams.clone(), reservation.clone())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("Mem credential must grant only"));
+        fixture
+            .state
+            .agents
+            .fence_loop_reservation(&reservation)
+            .await
+            .unwrap();
+        assert!(
+            !fixture.directory.join("requests.jsonl").exists(),
+            "a broad key must not start the provider"
+        );
+        assert!(
+            state.messages.lock().unwrap().is_empty(),
+            "no MCP call before scope authorization"
+        );
+        let operations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_operations")
+            .fetch_one(&fixture.state.db)
+            .await
+            .unwrap();
+        assert_eq!(operations, 0);
+        fixture.close().await;
+        http.abort();
+        return;
+    }
     let activation = fixture.execute("configured-mcp").await;
     assert_eq!(activation.state, LoopActivationState::Finished);
     let log = std::fs::read_to_string(fixture.directory.join("requests.jsonl")).unwrap();
@@ -128,6 +204,7 @@ async fn configured_mcp_child() {
         "other-profile-secret",
         "ambient-secret",
         "private-business-body",
+        "private-resource-body",
         "private-mcp-headers",
         "private-ambient-headers",
     ] {
@@ -139,7 +216,7 @@ async fn configured_mcp_child() {
     .fetch_one(&fixture.state.db)
     .await
     .unwrap();
-    assert_eq!(succeeded, 1);
+    assert_eq!(succeeded, 2);
     assert_eq!(
         state
             .messages
@@ -148,7 +225,7 @@ async fn configured_mcp_child() {
             .iter()
             .filter(|message| message["method"] == "tools/call")
             .count(),
-        1
+        3
     );
     fixture.close().await;
     http.abort();

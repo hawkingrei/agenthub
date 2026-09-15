@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use agenthub_config::AppConfig;
+use agenthub_config::{AppConfig, ResolvedNowledgeMemBinding};
 use agenthub_mcp::{
     bridge::McpProxyBinding,
     http::McpHttpTransport,
@@ -14,6 +14,8 @@ use reqwest::{
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
+
+mod authorization;
 
 pub(crate) struct ConfiguredMcpBinding {
     pub binding: Arc<McpProxyBinding>,
@@ -40,12 +42,18 @@ pub(crate) fn has_mem_binding(config: &AppConfig, team_id: &str) -> bool {
         .is_some_and(|bindings| bindings.contains_key(team_id))
 }
 
-pub(crate) fn resolve_mem(
+struct MemConnection {
+    endpoint: Url,
+    headers: HeaderMap,
+    resolved: ResolvedNowledgeMemBinding,
+}
+
+fn resolve_connection(
     config: &AppConfig,
     team_id: &str,
     actor_id: &str,
     secret: impl FnOnce(&str) -> Option<String>,
-) -> anyhow::Result<ConfiguredMcpBinding> {
+) -> anyhow::Result<MemConnection> {
     let resolved = config
         .resolve_nowledge_mem_binding(team_id, actor_id)
         .map_err(|_| anyhow::anyhow!("Mem binding configuration is invalid"))?;
@@ -102,8 +110,41 @@ pub(crate) fn resolve_mem(
                 .map_err(|_| anyhow::anyhow!("Mem tool set is invalid"))?,
         );
     }
-    let revision = json!({"version":2, "access_policy":"tools-only-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
-        "credential_ref":reference, "space_id":resolved.space_id, "tool_set":resolved.profile.tool_set});
+    for value in headers.values_mut() {
+        value.set_sensitive(true);
+    }
+    Ok(MemConnection {
+        endpoint,
+        headers,
+        resolved,
+    })
+}
+
+/// Offline preflight checks configuration and credential availability without contacting Mem.
+pub(crate) fn validate_mem_configuration(
+    config: &AppConfig,
+    team_id: &str,
+    actor_id: &str,
+    secret: impl FnOnce(&str) -> Option<String>,
+) -> anyhow::Result<()> {
+    resolve_connection(config, team_id, actor_id, secret).map(|_| ())
+}
+
+pub(crate) async fn resolve_mem(
+    config: &AppConfig,
+    team_id: &str,
+    actor_id: &str,
+    secret: impl FnOnce(&str) -> Option<String>,
+) -> anyhow::Result<ConfiguredMcpBinding> {
+    let MemConnection {
+        endpoint,
+        headers,
+        resolved,
+    } = resolve_connection(config, team_id, actor_id, secret)?;
+    let workspace = authorization::verify(&endpoint, &headers, &resolved.space_id).await?;
+    let revision = json!({"version":3, "access_policy":"scoped-key-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
+        "credential_ref":resolved.profile.credential_env, "space_id":resolved.space_id,
+        "workspace_id":workspace, "tool_set":resolved.profile.tool_set});
     let fingerprint = Sha256::digest(serde_json::to_vec(&revision)?)
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -122,7 +163,13 @@ pub(crate) fn resolve_mem(
     )?;
     let binding = Arc::new(McpProxyBinding::new(
         policy,
-        agenthub_mcp::access::McpAccessPolicy::tools_only(),
+        agenthub_mcp::access::McpAccessPolicy {
+            resources: agenthub_mcp::access::McpSelection::All,
+            resource_templates: agenthub_mcp::access::McpSelection::All,
+            prompts: agenthub_mcp::access::McpSelection::All,
+            logging: true,
+            ..agenthub_mcp::access::McpAccessPolicy::tools_only()
+        },
         Arc::new(move |_, schema, arguments| {
             agenthub_acp_core::nowledge_mem::bind_declared_space_id(schema, arguments, &scope)
                 .map_err(|_| McpPolicyError::Scope)

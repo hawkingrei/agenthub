@@ -27,21 +27,77 @@ pub(super) fn config() -> AppConfig {
     }
 }
 
-#[test]
-fn configured_mem_pins_configuration_without_pinning_rotating_secrets() {
-    let config = config();
+#[tokio::test]
+async fn configured_mem_pins_configuration_without_pinning_rotating_secrets() {
+    use axum::{Json, http::HeaderMap, routing::get};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}/mcp", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let router = axum::Router::new().route(
+            "/members/me",
+            get(|headers: HeaderMap| async move {
+                let space = if headers["authorization"] == "Bearer space-b-key" {
+                    "space-b"
+                } else {
+                    "space-a"
+                };
+                Json(
+                    json!({"workspace_id":"cd270331-80bc-4f90-8cc0-3fefbc7f74ab",
+                "key_scope":{"scope_mode":"narrowed","grants":[space],"write_space":space},
+                "key_write_target":{"write_space":space,"write_space_live":true}}),
+                )
+            }),
+        );
+        axum::serve(listener, router).await.unwrap();
+    });
+    let mut config = config();
+    config
+        .nowledge_mem
+        .as_mut()
+        .unwrap()
+        .profiles
+        .as_mut()
+        .unwrap()
+        .get_mut("profile")
+        .unwrap()
+        .endpoint = endpoint;
     let first = resolve_mem(&config, "team", "worker", |name| {
         assert_eq!(name, "TEAM_MEM_KEY");
         Some("private-first".into())
     })
+    .await
     .unwrap();
     let rotated = resolve_mem(&config, "team", "worker", |_| {
         Some("private-rotated".into())
     })
+    .await
     .unwrap();
     assert_eq!(first.fingerprint, rotated.fingerprint);
     assert_eq!(first.binding.server_id(), "nowledge-mem");
     assert_eq!(first.fingerprint.len(), 64);
+    let mut overridden = config.clone();
+    let mem = overridden.nowledge_mem.as_mut().unwrap();
+    let mut other_profile = mem.profiles.as_ref().unwrap()["profile"].clone();
+    other_profile.credential_env = "OTHER_MEM_KEY".into();
+    mem.profiles
+        .as_mut()
+        .unwrap()
+        .insert("other".into(), other_profile);
+    mem.team_bindings
+        .as_mut()
+        .unwrap()
+        .get_mut("team")
+        .unwrap()
+        .actor_profiles = Some(HashMap::from([("worker".into(), "other".into())]));
+    assert!(
+        resolve_mem(&overridden, "team", "worker", |reference| {
+            assert_eq!(reference, "OTHER_MEM_KEY");
+            Some("space-b-key".into())
+        })
+        .await
+        .is_err(),
+        "an actor profile cannot change the Team's namespace"
+    );
     let mut changed = config.clone();
     changed
         .nowledge_mem
@@ -55,7 +111,8 @@ fn configured_mem_pins_configuration_without_pinning_rotating_secrets() {
         .space_id = "space-b".into();
     assert_ne!(
         first.fingerprint,
-        resolve_mem(&changed, "team", "worker", |_| Some("private-first".into()))
+        resolve_mem(&changed, "team", "worker", |_| Some("space-b-key".into()))
+            .await
             .unwrap()
             .fingerprint
     );
@@ -63,14 +120,16 @@ fn configured_mem_pins_configuration_without_pinning_rotating_secrets() {
         resolve_mem(&config, "foreign", "worker", |_| Some(
             "private-first".into()
         ))
+        .await
         .is_err()
     );
+    server.abort();
 }
 
 #[test]
 fn configured_mem_rejects_missing_credentials_and_unsafe_endpoint_without_echoing_them() {
     let config = config();
-    assert!(resolve_mem(&config, "team", "worker", |_| None).is_err());
+    assert!(resolve_connection(&config, "team", "worker", |_| None).is_err());
     for endpoint in [
         "https://user:private-password@mem.example/mcp",
         "https://mem.example/mcp?key=private-query",
@@ -89,7 +148,7 @@ fn configured_mem_rejects_missing_credentials_and_unsafe_endpoint_without_echoin
             .get_mut("profile")
             .unwrap()
             .endpoint = endpoint.into();
-        let error = resolve_mem(&invalid, "team", "worker", |_| Some("private-key".into()))
+        let error = resolve_connection(&invalid, "team", "worker", |_| Some("private-key".into()))
             .err()
             .unwrap()
             .to_string();
@@ -104,7 +163,7 @@ fn configured_mem_rejects_missing_credentials_and_unsafe_endpoint_without_echoin
         assert!(!valid_credential_reference(reference));
     }
     for key in ["", "private-key\nheader: injected", "private key"] {
-        let error = resolve_mem(&config, "team", "worker", |_| Some(key.into()))
+        let error = resolve_connection(&config, "team", "worker", |_| Some(key.into()))
             .err()
             .unwrap()
             .to_string();

@@ -61,13 +61,15 @@ Mem server. Fresh and resumed local ACP sessions receive the same typed stdio de
   `NMEM_*`, `NOWLEDGE_MEM_*`, and MCP header variables, including provider-specific overrides.
   Descendant shims inherit that sanitized environment. The legacy static MCP loader is unchanged.
 - All discovered Mem tools currently use the conservative non-idempotent journal policy. Read and
-  stable-identity retry declarations, Context Lens bootstrap, and complete scope authorization
-  belong to the subsequent Mem integration; transport availability alone does not prove them.
-- The configured Mem binding currently grants tool access and standard tool callbacks. It denies
-  resource, prompt, completion, logging-control, and resource-subscription requests locally.
-  These surfaces need independent upstream namespace authorization before they can be enabled;
-  a routing header or an unscoped schema is insufficient. This boundary does not complete Mem
-  scope integration, including tools that omit a declared `space_id`.
+  stable-identity retry declarations, Context Lens bootstrap, and selected learning belong to the
+  subsequent Mem integration; transport availability alone does not prove them.
+- Before mounting Mem, the daemon verifies the same credential through the configured endpoint's
+  sibling `/members/me` route. Its existing narrowed-key contract must grant exactly the configured
+  Team space and an active write target in that space. The binding then allows discovered tools,
+  resources, templates, prompts, logging, and standard callbacks under that upstream authority.
+  Missing or broader authorization rejects launch. Offline configuration preflight makes no network
+  request; namespace verification happens before the provider starts. See the
+  [Mem authorization contract](nowledge-mem-mcp-proxy.md#upstream-authorization).
 
 ### Legacy static MCP compatibility
 
@@ -513,10 +515,9 @@ tests separately cover committed prepared/sent/completed states.
   not evidence that retrying an unresolved write is safe.
 - Cursors are not persisted across daemon restart; recovery cannot claim replayed stream history
   after losing that transient state.
-- The common access policy enforces declared surface grants. Mem namespace authorization, including
-  tools without a declared space field, still needs completion. The temporary tool-only Mem policy
-  must not be treated as a completed alternative to full scoped integration. Upstream routing
-  metadata cannot establish resource/prompt or namespace authority.
+- Mem requires an upstream deployment with the authenticated narrowed-key contract. A desktop/local
+  server without that authorization cannot satisfy the binding, even when it accepts space routing
+  headers. The proxy cannot manufacture namespace isolation for a broader credential.
 
 ## Source Journals
 

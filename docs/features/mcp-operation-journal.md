@@ -350,8 +350,8 @@ proxy; complete integration authorization remains a separate acceptance gate.
 
 ## Open Risks
 
-- The proxy enforces trusted surface grants and client capability declarations; integration adapters
-  still need complete upstream namespace authorization and endpoint-alias reconciliation. Resource
+- The proxy enforces trusted surface grants and client capability declarations. Mem verifies its
+  existing upstream narrowed-key contract; endpoint-alias reconciliation remains open. Resource
   and prompt continuations use bounded session receipts in the [shared transport](mcp-proxy-transport.md).
   Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.

@@ -173,7 +173,8 @@ impl AgentManager {
                 &reservation.team_id,
                 &agent.id,
                 |key| std::env::var(key).ok(),
-            )?;
+            )
+            .await?;
             launch.add_mcp_proxy(
                 &crate::mcp_proxy::configured::shim_executable()?,
                 &file.path,

@@ -707,10 +707,62 @@ pass. The first final Clippy run identified a nonminimal logging predicate; the 
 predicate passes the full repeated validation. No database, dependency, protobuf, or Bazel changes
 were required.
 
+### Mem namespace authorization follow-up (2026-09-16)
+
+Configured Mem launches now require the deployment's existing authenticated narrowed-key contract.
+The daemon checks `GET /members/me` with the exact credential retained for MCP before recording
+the launch snapshot, mounting tools, or starting the provider. It requires a workspace UUID, one
+grant equal to the configured Team space, and an active effective write target in that space.
+An actor's credential-profile override cannot select a different Team namespace. Full keys and
+deployments without this contract fail explicitly; no new upstream API or credential is created.
+
+The source gate is `nowledge-co/mem` at `f2d52afa86e5f17895f62d9d94608097f5581f8b`:
+`nmem-cloud/src/routes/members.rs` exposes the authenticated membership/key-scope projection;
+`auth.rs`, `key_scope.rs`, and `scope_access.rs` carry the key's live grants into MCP read/mutation
+admission. `docs/design/DESKTOP_TEAM_PARITY.md` explicitly scopes key narrowing to Cloud and
+excludes desktop/Family. The space-protocol acknowledgment remains a selector compatibility
+declaration, not an authorization credential.
+
+Authorization permits the standard scoped resource/prompt surfaces alongside dynamic tools. The
+proxy still binds `space_id` only where the discovered schema declares it. It relies on the verified
+upstream key to reject foreign opaque IDs and resources, preserving those native MCP/JSON-RPC
+errors. The membership response remains private and transient; only its workspace identity enters
+the launch fingerprint. Endpoint-based operation scope identity is unchanged pending alias work.
+
+The probe has a ten-second deadline and a 64 KiB body limit, keeps the configured endpoint prefix,
+marks credentials sensitive, and disables redirects, retries, and ambient HTTP proxies. Offline
+configuration preflight uses the original synchronous validation without network access.
+
+Validation commands:
+
+```bash
+cargo test -p agenthub --lib mcp_proxy::configured --locked --offline
+cargo clippy -p agenthub --all-targets --locked --offline -- -D warnings
+cargo build -p agenthub --bin agenthub --locked --offline
+cargo test -p agenthub --lib mcp_ --locked --offline
+cargo test -p agenthub --lib loop_launch --locked --offline
+cargo test -p agenthub --lib loop_configuration --locked --offline
+cargo fmt --all --check
+```
+
+HTTP fixtures exercise malformed/full/multiple/foreign/empty authorization, inactive placement,
+large bodies with and without Content-Length, unsupported endpoints, redirection, private failure
+redaction, rotating credentials, and actor-profile confinement. The isolated configured-launch
+fixture now covers both rejection before provider/MCP startup and a successful actual ACP/shim/RPC
+path with declared/undeclared tool scope, resources, prompts, and preserved upstream denials.
+These fixtures validate integration behavior without a personal Mem account; they do not claim
+validation of a running Mem Cloud deployment.
+
+All six configured-Mem tests, 34 root MCP tests, three loop launch tests, and 14 configuration tests
+pass (the selections overlap). Parent tests execute the two otherwise ignored process helpers.
+Root all-target Clippy passes with warnings denied, and the actual shim binary was rebuilt after
+the production change. An initial `loop_preflight` filter selected no tests; the final
+`loop_configuration` selection includes both preflight regression cases. No dependencies, database
+schema, protobuf, or Bazel configuration changed.
+
 ## Follow-Ups
 
-- Complete slice 9's upstream namespace
-  authorization, and authority-alias reconciliation. Restore scoped Mem non-tool access after its
-  authority is established; tool-only access does not complete the original integration goal.
+- Complete slice 9's authority-alias reconciliation without changing immutable operation intents
+  or authorizing replay of unresolved writes after an endpoint move.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

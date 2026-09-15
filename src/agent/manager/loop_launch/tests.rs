@@ -44,6 +44,7 @@ for line in sys.stdin:
             assert all(not any(item.startswith(key.encode() + b'=') for item in inherited) for key in private_keys)
             initialized = mcp_call({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'fake-acp','version':'1'}}})
             assert initialized['result']['protocolVersion'] == '2025-11-25'
+            assert 'resources' in initialized['result']['capabilities'] and 'prompts' in initialized['result']['capabilities']
             shim.stdin.write(json.dumps({'jsonrpc':'2.0','method':'notifications/initialized'}) + '\n')
             tools = mcp_call({'jsonrpc':'2.0','id':2,'method':'tools/list'})
             assert tools['result']['tools'][0]['name'] == 'fixture_write'
@@ -54,6 +55,18 @@ for line in sys.stdin:
         if mode == 'mcp':
             result = mcp_call({'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'fixture_write','arguments':{'body':'private-business-body'}}})
             assert result['result']['structuredContent']['written'] is True
+            for request_id, memory, allowed in [(4, 'allowed', True), (5, 'foreign', False)]:
+                result = mcp_call({'jsonrpc':'2.0','id':request_id,'method':'tools/call','params':{'name':'fixture_lookup','arguments':{'memory_id':memory}}})
+                assert (result['result'].get('isError') is not True) == allowed
+                assert result['result']['extension'] == 'preserved'
+            for request_id, uri, allowed in [(6, 'mem://allowed', True), (7, 'mem://foreign', False)]:
+                result = mcp_call({'jsonrpc':'2.0','id':request_id,'method':'resources/read','params':{'uri':uri}})
+                if allowed:
+                    assert result['result']['contents'][0]['uri'] == uri
+                else:
+                    assert result['error']['code'] == -32002 and result['error']['data'] == {'native':True}
+            prompt = mcp_call({'jsonrpc':'2.0','id':8,'method':'prompts/get','params':{'name':'brief'}})
+            assert prompt['result']['extension'] == 'preserved'
             shim.stdin.close()
             assert shim.wait(timeout=5) == 0
             with open(log_path, 'a') as log:
@@ -202,7 +215,7 @@ impl Fixture {
         }
     }
 
-    async fn execute(&self, key: &str) -> agenthub_agent_domain::loop_runtime::LoopActivation {
+    async fn admit(&self, key: &str) -> LoopReservation {
         let store = LoopStore::new(self.state.db.clone());
         let now = Utc::now().timestamp();
         let trigger = store
@@ -236,6 +249,13 @@ impl Fixture {
             .track_loop_reservation(reservation.clone())
             .await
             .unwrap();
+        reservation
+    }
+
+    async fn execute(&self, key: &str) -> agenthub_agent_domain::loop_runtime::LoopActivation {
+        let reservation = self.admit(key).await;
+        let activation_id = reservation.activation_id.clone().unwrap();
+        let store = LoopStore::new(self.state.db.clone());
         tokio::time::timeout(
             Duration::from_secs(15),
             self.state
@@ -253,7 +273,7 @@ impl Fixture {
                 .is_none()
         );
         store
-            .activation(&self.team_id, &trigger.activation_id)
+            .activation(&self.team_id, &activation_id)
             .await
             .unwrap()
             .unwrap()

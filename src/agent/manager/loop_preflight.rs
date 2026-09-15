@@ -118,7 +118,7 @@ impl AgentManager {
             warnings.push("resume_capability_is_negotiated_before_entry");
         }
         if crate::mcp_proxy::configured::has_mem_binding(&self.loop_app_config, team_id) {
-            if crate::mcp_proxy::configured::resolve_mem(
+            if crate::mcp_proxy::configured::validate_mem_configuration(
                 &self.loop_app_config,
                 team_id,
                 actor_id,

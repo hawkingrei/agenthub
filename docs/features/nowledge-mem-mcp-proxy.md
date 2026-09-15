@@ -1,7 +1,7 @@
 # Nowledge Mem MCP Proxy
 
-Status: integration in progress. Policy primitives and the shared operation journal exist; full
-proxy startup and context bootstrap still require implementation. This is the initial Mem seam for the
+Status: integration in progress. Scoped proxy startup and the shared operation journal exist;
+context bootstrap and authority-alias reconciliation remain open. This is the initial Mem seam for the
 [loop product model](agent-loop-product-model.md).
 
 ## Problem
@@ -13,8 +13,8 @@ MCP configuration, which cannot bind a Team run to an existing Mem space or
 preserve the write-recovery boundary required by Mem's current MCP contracts.
 
 The current implementation resolves existing profiles into the shared daemon proxy and supplies
-local ACP stdio descriptors. Context Lens bootstrap and complete authorization for tools without
-declared scope remain integration work; the full contract below is not yet a completion claim.
+local ACP stdio descriptors after verifying upstream namespace authorization. Context Lens bootstrap
+remains integration work; the full contract below is not yet a completion claim.
 
 ## Scope
 
@@ -74,8 +74,38 @@ as ambient Mem/header variables before spawning the process. Remote loop executi
 
 For schemas declaring `space_id`, a missing value is injected and any supplied value other than
 the exact bound string is rejected, including null and non-string values. Schemas without that
-property remain unchanged. Upstream namespace authorization is still required for those calls;
-schema preservation and tool-set filtering alone do not establish that authorization.
+property remain unchanged; the verified upstream credential enforces their namespace. Schema
+preservation and tool-set filtering alone do not establish that authorization.
+
+### Upstream authorization
+
+The configured Mem deployment must expose the existing authenticated `GET /members/me` contract
+beside its `/mcp` route. The daemon sends the exact credential retained for MCP and requires:
+
+- a valid workspace UUID;
+- `key_scope.scope_mode` equal to `narrowed`, with exactly one grant equal to the explicit Team space;
+- a matching mint-time write space, or its documented null personal-space default;
+- `key_write_target.write_space` equal to the bound space and `write_space_live` equal to true.
+
+The scope declaration never comes from provider JSON. A full key, extra grants, a foreign target,
+revoked/absent authorization, an inactive destination, or a malformed response prevents mounting and
+provider startup. The authenticated workspace identity contributes to the launch fingerprint without
+persisting the membership response or credential value. Configuration-only preflight remains offline.
+
+The probe preserves the endpoint's path prefix, has a ten-second deadline and a 64 KiB response
+limit, and follows neither redirects nor ambient proxy configuration. Failures omit the URL, response
+body, and credential. No schema or authorization changes are required in Mem.
+
+Mem's narrowed-key authorization is immutable at mint apart from revocation; changing its reach
+requires another credential. Every subsequent MCP request uses that verified credential, and Mem
+applies its current member/key grants at request admission. Tools without a scope field and opaque
+resource/object identifiers therefore retain their native wire contract under upstream enforcement.
+Standard resources, templates, prompts, completion, logging, and callbacks are available subject to
+upstream support and the shared proxy's method/capability checks. Upstream errors remain intact.
+
+This contract is implemented by Mem Cloud. A desktop/Family endpoint without narrowed-key authority
+fails explicitly. A space header, tool-set selection, or exact-space protocol acknowledgment cannot
+replace authorization, and AgentHub does not create a space or mint a credential to bypass the gate.
 
 ### Context Lens
 
@@ -139,6 +169,10 @@ same stable value.
   `tools/list` call.
 - A tool with declared `space_id` receives the bound space; a tool without it
   is forwarded without an extra property.
+- Full/multiple/foreign/empty grants and inactive write destinations fail before provider startup;
+  bounded HTTP membership checks keep credentials on the configured origin. A configured ACP
+  provider exercises native scoped/unscoped tool schemas, resource reads, prompt retrieval, and
+  preserved upstream denials through the actual shim and signed RPC path.
 - Context Lens content and its contract line reach the runtime unchanged.
 - MCP result errors, JSON-RPC errors, and envelope errors are each preserved
   and journaled without bodies.
@@ -155,8 +189,10 @@ delivery is the first slice; standalone/remote coverage needs explicit scope and
 
 ## Open Risks
 
-- Policy helpers do not establish transport or authorization for tools without `space_id`;
-  upstream authorization must enforce the bound scope for those calls.
+- The configured deployment must implement the narrowed-key contract; schema/route availability
+  alone does not prove its authorization behavior. Deterministic fixtures do not validate a live
+  Mem deployment's configuration.
+- Endpoint aliases still need explicit reconciliation of existing journal scope identities.
 - Ambiguous non-idempotent writes require reconciliation across future activations.
 - Filesystem knowledge needs selective migration with provenance, not an automatic workspace upload.
 
