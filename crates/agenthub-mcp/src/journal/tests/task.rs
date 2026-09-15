@@ -1,5 +1,6 @@
 use super::*;
 mod cancellation;
+mod input;
 
 fn task_state(version: ProtocolVersion, status: &str) -> Value {
     let mut task = json!({"taskId":"private-task-id","status":status,
@@ -22,7 +23,7 @@ fn metadata(request: &mut Value, version: ProtocolVersion) {
     if version == ProtocolVersion::July2026 {
         request["params"]["_meta"] = json!({"io.modelcontextprotocol/protocolVersion":"2026-07-28",
             "io.modelcontextprotocol/clientInfo":{"name":"fixture","version":"1"},
-            "io.modelcontextprotocol/clientCapabilities":{"extensions":{"io.modelcontextprotocol/tasks":{}}}});
+            "io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{}},"extensions":{"io.modelcontextprotocol/tasks":{}}}});
     }
 }
 

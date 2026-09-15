@@ -148,8 +148,7 @@ wins; later conflicting responses remain inspectable on their own query records 
 the operation or a newer attempt. Daemon recovery marks interrupted queries unknown independently
 of the original task receipt. Queries are never automatically repeated.
 
-Task update admission, outstanding input-receipt metadata, and task notification/subscription
-settlement remain controller work. Callers retain actual task handles and observe upstream polling
+Task notification/subscription settlement remains controller work. Callers retain actual task handles and observe upstream polling
 and retention guidance; the journal neither polls on their behalf nor extends server retention.
 
 ### Task cancellation
@@ -172,6 +171,37 @@ changing the parent task. A process-local permit can record a late factual respo
 shutdown. A conflicting task result already recorded by another lookup takes precedence, with the
 late cancellation receipt retained for inspection. Cancellation inspection requires Team and actor
 scope and returns typed facts only.
+
+### Task input responses
+
+A modern `tasks/get` observation with `input_required` commits the input IDs and request payload
+digests before the provider receives that observation. Input requests retain their ordinary
+elicitation, sampling, or roots semantics and are delivered unchanged; the proxy never answers
+them itself. At most 64 inputs are accepted in one observation and 4,096 distinct IDs per task
+attempt. Repeated observations retain the first request digest and any prior send association.
+
+`tasks/update` requires the same recorded task and current authority as its lookup. Each supplied
+input ID must already be known and unused. A single FULL-synchronous transaction records the update
+send and consumes all of its input IDs; rejection of any member rolls back the whole update. Partial
+sets are allowed. Unknown or already-used IDs cannot authorize a send. The caller retains and
+supplies the actual input responses, while only their digests enter the journal. Old polls cannot
+release a consumed input, and an input response lost after sending cannot be repeated under a new
+request ID or activation. An update acknowledgment, RPC error, or transport loss is its own receipt
+and never completes the original tool attempt.
+
+The server must keep each input ID's meaning fixed for the task lifetime. A changed request payload
+under an observed ID records a persistent conflict and prevents that observation from reaching the
+provider. All further updates for that task are denied, including after reopen; the original
+request digest remains inspectable. Delayed responses to previously observed, unused IDs remain
+subject to the upstream's current outstanding-input state. The proxy does not reconstruct that
+state from polling order.
+
+Update admission is denied after a cancellation intent or a terminal tool outcome. Each operation
+allows at most 4,096 update sends. Input and update inspection uses Team/actor-scoped sequence
+pages. Daemon recovery marks interrupted updates unknown while retaining consumed input IDs.
+Admitted updates may record late acknowledgments after executor shutdown, without changing a
+tool result already established by a task lookup. Notifications must use this same input receipt
+contract when their controller path is connected.
 
 ### Multi round-trip tool calls
 
@@ -273,6 +303,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | Batch sends | Atomic rollback on a stale/conflicting member; one POST; out-of-order completion; partial-result uncertainty and replay rejection across activations |
 | Task lookup | Additive migration, authority/session/schema checks, legacy receipts without metadata rejected, concurrent admission, query-only restart recovery, terminal result settlement, and first-fact preservation without another tool send |
 | Task cancellation | Additive migration, exactly one concurrent send, acknowledgment versus terminal status, restart without resend, late/conflicting facts, scoped inspection, and tool queries after cancellation |
+| Task inputs | Input/update migration, atomic partial consumption, concurrent updates, unchanged wire payloads, key equivocation retained across reopen, stale polls, lost acknowledgment, fresh activations, and real shim input/update/result flow |
 
 ## Operational Notes
 
@@ -284,7 +315,7 @@ broken provider stream without abandoning a send. A full provider-facing proxy i
 ## Open Risks
 
 - Integration adapters still need complete scope/capability authorization and endpoint-alias
-  reconciliation. Task input/notification paths and non-tool continuations remain incomplete.
+  reconciliation. Task notification paths and non-tool continuations remain incomplete.
   Configured Mem launch fixtures establish provider credential/environment isolation for that path.
 - An upstream service must honor its declared stable identity for a retry to be safe.
 - Retained ambiguous non-idempotent writes need explicit upstream reconciliation; changing

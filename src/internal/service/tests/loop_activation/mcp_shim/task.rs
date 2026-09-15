@@ -5,6 +5,19 @@ pub(super) async fn respond(upstream: &Upstream, message: &Value) -> Response {
         "createdAt":"2026-09-15T00:00:00Z","lastUpdatedAt":"2026-09-15T00:00:00Z","ttlMs":null});
     if message["method"] == "tools/call" {
         result["resultType"] = "task".into();
+    } else if message["method"] == "tasks/update" {
+        assert_eq!(
+            message["params"]["inputResponses"],
+            json!({"private-input":{"action":"accept","content":{"answer":"private-answer"}}})
+        );
+        let sends: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_operation_task_updates u JOIN mcp_operation_task_inputs i ON i.update_id = u.id WHERE u.completed_at IS NULL")
+            .fetch_one(&upstream.db).await.unwrap();
+        assert_eq!(
+            sends, 1,
+            "input consumption and update send must be durable before HTTP"
+        );
+        upstream.task_inputs_answered.store(true, Ordering::Release);
+        result = json!({"resultType":"complete","extension":"input-ack"});
     } else if message["method"] == "tasks/cancel" {
         assert_eq!(message["params"]["taskId"], "private-task-handle");
         let sends: i64 = sqlx::query_scalar(
@@ -25,14 +38,19 @@ pub(super) async fn respond(upstream: &Upstream, message: &Value) -> Response {
         .unwrap();
         assert_eq!(queries, 1, "task lookup must be durable before HTTP");
         result["resultType"] = "complete".into();
-        result["status"] = "completed".into();
-        result["result"] = json!({"content":[{"type":"text","text":"private-task-result"}],"extension":{"preserved":true}});
+        if upstream.task_inputs_answered.load(Ordering::Acquire) {
+            result["status"] = "completed".into();
+            result["result"] = json!({"content":[{"type":"text","text":"private-task-result"}],"extension":{"preserved":true}});
+        } else {
+            result["status"] = "input_required".into();
+            result["inputRequests"] = json!({"private-input":{"method":"elicitation/create","params":{"message":"private-question"}}});
+        }
     }
     Json(json!({"jsonrpc":"2.0","id":message["id"],"result":result})).into_response()
 }
 
 #[tokio::test]
-async fn real_mcp_shim_records_cancel_ack_without_overwriting_the_eventual_task_result() {
+async fn real_mcp_shim_links_task_inputs_and_control_acks_before_the_eventual_result() {
     let Harness {
         state,
         service,
@@ -91,7 +109,7 @@ async fn real_mcp_shim_records_cancel_ack_without_overwriting_the_eventual_task_
     let mut output = BufReader::new(child.stdout.take().unwrap());
     let metadata = json!({"io.modelcontextprotocol/protocolVersion":"2026-07-28",
         "io.modelcontextprotocol/clientInfo":{"name":"task-provider","version":"1"},
-        "io.modelcontextprotocol/clientCapabilities":{"extensions":{"io.modelcontextprotocol/tasks":{}}}});
+        "io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{}},"extensions":{"io.modelcontextprotocol/tasks":{}}}});
     write_message(
         &mut input,
         &json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":metadata}}),
@@ -123,6 +141,15 @@ async fn real_mcp_shim_records_cancel_ack_without_overwriting_the_eventual_task_
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":3,"method":"tasks/get","params":{"taskId":"foreign-task","_meta":metadata}})).await.unwrap();
     assert!(next(&mut output).await.get("error").is_some());
     assert_eq!(upstream.calls.lock().unwrap().len(), 2);
+    write_message(&mut input, &json!({"jsonrpc":"2.0","id":20,"method":"tasks/get","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
+    assert_eq!(
+        next(&mut output).await["result"]["inputRequests"]["private-input"]["params"]["message"],
+        "private-question"
+    );
+    write_message(&mut input, &json!({"jsonrpc":"2.0","id":21,"method":"tasks/update","params":{"taskId":"private-task-handle","inputResponses":{"private-input":{"action":"accept","content":{"answer":"private-answer"}}},"_meta":metadata}})).await.unwrap();
+    assert_eq!(next(&mut output).await["result"]["extension"], "input-ack");
+    write_message(&mut input, &json!({"jsonrpc":"2.0","id":22,"method":"tasks/update","params":{"taskId":"private-task-handle","inputResponses":{"private-input":{"action":"decline"}},"_meta":metadata}})).await.unwrap();
+    assert!(next(&mut output).await.get("error").is_some());
     write_message(&mut input, &json!({"jsonrpc":"2.0","id":30,"method":"tasks/cancel","params":{"taskId":"private-task-handle","_meta":metadata}})).await.unwrap();
     assert_eq!(next(&mut output).await["result"]["extension"], "cancel-ack");
     assert_eq!(
@@ -168,9 +195,10 @@ async fn real_mcp_shim_records_cancel_ack_without_overwriting_the_eventual_task_
         )
         .await
         .unwrap();
-    assert_eq!(lookups.len(), 1);
-    assert!(lookups[0].outcome.is_some());
-    assert_eq!(upstream.calls.lock().unwrap().len(), 4);
+    assert_eq!(lookups.len(), 2);
+    assert!(lookups[0].outcome.is_none());
+    assert!(lookups[1].outcome.is_some());
+    assert_eq!(upstream.calls.lock().unwrap().len(), 6);
     drop(input);
     assert!(
         tokio::time::timeout(Duration::from_secs(3), child.wait())

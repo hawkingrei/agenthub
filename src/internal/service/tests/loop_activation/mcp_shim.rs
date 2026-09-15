@@ -60,6 +60,7 @@ struct Upstream {
     mrtr: AtomicBool,
     mrtr_drop_response: AtomicBool,
     tasks: AtomicBool,
+    task_inputs_answered: AtomicBool,
 }
 
 async fn handler(
@@ -84,7 +85,7 @@ async fn handler(
         return StatusCode::ACCEPTED.into_response();
     }
     match message["method"].as_str().unwrap() {
-        "tasks/get" | "tasks/cancel" => task::respond(&upstream, &message).await,
+        "tasks/get" | "tasks/cancel" | "tasks/update" => task::respond(&upstream, &message).await,
         "server/discover" => {
             assert_eq!(headers["mcp-protocol-version"], "2026-07-28");
             assert_eq!(headers["mcp-method"], "server/discover");
@@ -276,6 +277,7 @@ async fn setup_with_replay(mark_running: bool, replay: TrustedReplayPolicy) -> H
         mrtr: AtomicBool::new(false),
         mrtr_drop_response: AtomicBool::new(false),
         tasks: AtomicBool::new(false),
+        task_inputs_answered: AtomicBool::new(false),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!(

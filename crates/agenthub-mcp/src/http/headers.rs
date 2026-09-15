@@ -202,6 +202,7 @@ pub(super) fn add_request_metadata(
     let name_field = match method {
         "tools/call" | "prompts/get" => Some("name"),
         "resources/read" => Some("uri"),
+        "tasks/get" | "tasks/update" | "tasks/cancel" => Some("taskId"),
         _ => None,
     };
     if let Some(field) = name_field {

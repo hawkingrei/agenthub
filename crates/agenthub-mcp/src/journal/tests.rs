@@ -265,8 +265,18 @@ async fn upstream(
         .as_str()
         .is_some_and(|method| method.starts_with("tasks/"))
     {
+        if message["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] == "2026-07-28" {
+            assert_eq!(
+                headers
+                    .get("mcp-name")
+                    .and_then(|value| value.to_str().ok()),
+                message["params"]["taskId"].as_str()
+            );
+        }
         let lookups: i64 = sqlx::query_scalar(if message["method"] == "tasks/cancel" {
             "SELECT COUNT(*) FROM mcp_operation_task_cancellations WHERE completed_at IS NULL"
+        } else if message["method"] == "tasks/update" {
+            "SELECT COUNT(*) FROM mcp_operation_task_updates WHERE completed_at IS NULL"
         } else {
             "SELECT COUNT(*) FROM mcp_operation_task_lookups WHERE completed_at IS NULL"
         })

@@ -27,7 +27,7 @@ use crate::{
     journal::JournaledMcpClient,
     policy::{
         McpBinding, McpCallContext, McpPolicyError, McpToolCatalog, PreparedTaskCancellation,
-        PreparedTaskLookup, PreparedToolCall,
+        PreparedTaskLookup, PreparedTaskUpdate, PreparedToolCall,
     },
     protocol::{MessageKind, correlation_id, message_kind},
     session::McpProtocolSession,
@@ -140,6 +140,7 @@ enum Exchange {
     Tool(Box<PreparedToolCall>),
     Task(Box<PreparedTaskLookup>),
     TaskCancellation(Box<PreparedTaskCancellation>),
+    TaskUpdate(Box<PreparedTaskUpdate>),
     Control(PreparedHttpRequest),
     Discovery {
         request: PreparedHttpRequest,
@@ -284,7 +285,7 @@ impl McpProxySession {
         }
         let kind = if matches!(
             method.as_str(),
-            "tasks/get" | "tasks/result" | "tasks/cancel"
+            "tasks/get" | "tasks/result" | "tasks/cancel" | "tasks/update"
         ) {
             let discovery = self.discovery.lock().await;
             let catalog = discovery
@@ -296,7 +297,13 @@ impl McpProxySession {
                 proxy_session_id: &self.id,
                 http: &context,
             };
-            if method == "tasks/cancel" {
+            if method == "tasks/update" {
+                Exchange::TaskUpdate(Box::new(self.binding.policy.prepare_task_update(
+                    catalog,
+                    &call_context,
+                    message.clone(),
+                )?))
+            } else if method == "tasks/cancel" {
                 Exchange::TaskCancellation(Box::new(
                     self.binding.policy.prepare_task_cancellation(
                         catalog,
@@ -499,12 +506,16 @@ impl PreparedProxyExchange {
                     .run(session.clone(), journal, &mut sink, &self.context)
                     .await
             }
-            kind @ (Exchange::Tool(_) | Exchange::Task(_) | Exchange::TaskCancellation(_)) => {
+            kind @ (Exchange::Tool(_)
+            | Exchange::Task(_)
+            | Exchange::TaskCancellation(_)
+            | Exchange::TaskUpdate(_)) => {
                 let (events, mut receiver) = mpsc::channel(8);
                 let operation = async {
                     match kind {
                         Exchange::Tool(call) => journal.run(*call, events).await,
                         Exchange::Task(call) => journal.run_task_lookup(*call, events).await,
+                        Exchange::TaskUpdate(call) => journal.run_task_update(*call, events).await,
                         Exchange::TaskCancellation(call) => {
                             journal.run_task_cancellation(*call, events).await
                         }
@@ -627,6 +638,7 @@ fn supported_method(method: &str) -> bool {
             | "tasks/get"
             | "tasks/result"
             | "tasks/cancel"
+            | "tasks/update"
             | "notifications/initialized"
             | "notifications/cancelled"
             | "notifications/progress"

@@ -1,12 +1,19 @@
 use agenthub_agent_domain::mcp_operations::McpFailureKind;
 
 use super::*;
-use crate::policy::{PreparedTaskCancellation, PreparedTaskLookup, PreparedTaskRequest};
-use agenthub_db::mcp_operations::{McpTaskCancellationPermit, McpTaskLookupPermit};
+use crate::policy::{
+    PreparedTaskCancellation, PreparedTaskLookup, PreparedTaskRequest, PreparedTaskUpdate,
+};
+use agenthub_db::mcp_operations::{
+    McpTaskCancellationPermit, McpTaskLookupPermit, McpTaskUpdatePermit,
+};
+
+use crate::task::TaskObservation;
 
 enum TaskPermit {
     Lookup(McpTaskLookupPermit),
     Cancellation(McpTaskCancellationPermit),
+    Update(McpTaskUpdatePermit),
 }
 
 impl TaskPermit {
@@ -14,12 +21,14 @@ impl TaskPermit {
         match self {
             Self::Lookup(p) => p.operation_id(),
             Self::Cancellation(p) => p.operation_id(),
+            Self::Update(p) => p.operation_id(),
         }
     }
     fn attempt_number(&self) -> u32 {
         match self {
             Self::Lookup(p) => p.attempt_number(),
             Self::Cancellation(p) => p.attempt_number(),
+            Self::Update(p) => p.attempt_number(),
         }
     }
 }
@@ -39,7 +48,7 @@ impl JournaledMcpClient {
             call,
             TaskPermit::Lookup(permit),
             events,
-            crate::task::lookup_outcome,
+            crate::task::lookup_observation,
         )
         .await
     }
@@ -58,7 +67,29 @@ impl JournaledMcpClient {
             call,
             TaskPermit::Cancellation(permit),
             events,
-            crate::task::cancellation_outcome,
+            |input, response| {
+                crate::task::cancellation_outcome(input, response)
+                    .map(TaskObservation::from_outcome)
+            },
+        )
+        .await
+    }
+
+    pub async fn run_task_update(
+        &self,
+        call: PreparedTaskUpdate,
+        events: mpsc::Sender<Budgeted<HttpEvent>>,
+    ) -> Result<McpCallResult, McpCallError> {
+        let permit = self
+            .journal
+            .begin_task_update(&call.executor, &call.authority, &call.input, now())
+            .await
+            .map_err(journal_error)?;
+        self.run_task_request(
+            call,
+            TaskPermit::Update(permit),
+            events,
+            crate::task::update_observation,
         )
         .await
     }
@@ -67,17 +98,33 @@ impl JournaledMcpClient {
         &self,
         permit: &TaskPermit,
         completion: &McpCompletion,
-        outcome: Option<&McpCompletion>,
+        observation: &TaskObservation,
     ) -> Result<(), McpCallError> {
         match permit {
             TaskPermit::Lookup(permit) => {
                 self.journal
-                    .complete_task_lookup(permit, completion, outcome, now())
+                    .complete_task_lookup_with_inputs(
+                        permit,
+                        completion,
+                        observation.outcome.as_ref(),
+                        observation.inputs.as_deref(),
+                        now(),
+                    )
                     .await
             }
             TaskPermit::Cancellation(permit) => {
                 self.journal
-                    .complete_task_cancellation(permit, completion, outcome, now())
+                    .complete_task_cancellation(
+                        permit,
+                        completion,
+                        observation.outcome.as_ref(),
+                        now(),
+                    )
+                    .await
+            }
+            TaskPermit::Update(permit) => {
+                self.journal
+                    .complete_task_update(permit, completion, now())
                     .await
             }
         }
@@ -89,7 +136,7 @@ impl JournaledMcpClient {
         call: PreparedTaskRequest<I>,
         permit: TaskPermit,
         events: mpsc::Sender<Budgeted<HttpEvent>>,
-        outcome: fn(&I, &Value) -> Result<Option<McpCompletion>, McpTransportError>,
+        observe: fn(&I, &Value) -> Result<TaskObservation, McpTransportError>,
     ) -> Result<McpCallResult, McpCallError> {
         let observed = async {
             let (response, http_status, delivery_lost) = self
@@ -97,7 +144,7 @@ impl JournaledMcpClient {
                 .await?;
             let member = matching_response(&response, &call.response_id, http_status >= 400)?
                 .ok_or(McpTransportError::InvalidResponse)?;
-            let outcome = outcome(&call.input, member)?;
+            let observation = observe(&call.input, member)?;
             let mut receipt = member.clone();
             receipt.as_object_mut().unwrap().remove("id");
             let response_digest = digest("mcp-task-query-response-v1", &receipt)?;
@@ -109,12 +156,18 @@ impl JournaledMcpClient {
             } else {
                 McpCompletion::Succeeded { response_digest }
             };
-            Ok::<_, McpTransportError>((response, completion, outcome, http_status, delivery_lost))
+            Ok::<_, McpTransportError>((
+                response,
+                completion,
+                observation,
+                http_status,
+                delivery_lost,
+            ))
         }
         .await;
         match observed {
-            Ok((response, completion, outcome, http_status, event_delivery_lost)) => {
-                self.complete_task_request(&permit, &completion, outcome.as_ref())
+            Ok((response, completion, observation, http_status, event_delivery_lost)) => {
+                self.complete_task_request(&permit, &completion, &observation)
                     .await?;
                 Ok(McpCallResult {
                     operation_id: permit.operation_id().to_owned(),
@@ -134,7 +187,7 @@ impl JournaledMcpClient {
                 self.complete_task_request(
                     &permit,
                     &McpCompletion::OutcomeUnknown { reason },
-                    None,
+                    &TaskObservation::default(),
                 )
                 .await?;
                 Err(error.into())

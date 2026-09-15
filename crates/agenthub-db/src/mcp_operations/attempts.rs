@@ -272,8 +272,15 @@ impl McpOperationStore {
                 now,
             )
             .await?;
+        let updates = self
+            .recover_task_updates_tx(
+                &mut tx,
+                limit.clamp(1, 100) - rows.len() as u32 - lookups as u32 - cancellations as u32,
+                now,
+            )
+            .await?;
         tx.commit().await?;
-        Ok(rows.len() as u64 + lookups + cancellations)
+        Ok(rows.len() as u64 + lookups + cancellations + updates)
     }
 }
 

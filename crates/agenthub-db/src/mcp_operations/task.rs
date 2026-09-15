@@ -1,8 +1,9 @@
 use agenthub_agent_domain::{
     loop_runtime::LoopReservation,
     mcp_operations::{
-        McpCompletion, McpDeferralKind, McpOperationRecord, McpTaskAuthority, McpTaskLookupInput,
-        McpTaskLookupMethod, McpTaskLookupRecord, McpTaskReceipt, McpTaskVersion,
+        McpCompletion, McpDeferralKind, McpOperationRecord, McpTaskAuthority, McpTaskInputRequest,
+        McpTaskLookupInput, McpTaskLookupMethod, McpTaskLookupRecord, McpTaskReceipt,
+        McpTaskVersion,
     },
 };
 use sqlx::{Connection, Row, Sqlite, Transaction};
@@ -124,6 +125,18 @@ impl McpOperationStore {
         outcome: Option<&McpCompletion>,
         now: i64,
     ) -> anyhow::Result<()> {
+        self.complete_task_lookup_with_inputs(permit, completion, outcome, None, now)
+            .await
+    }
+
+    pub async fn complete_task_lookup_with_inputs(
+        &self,
+        permit: &McpTaskLookupPermit,
+        completion: &McpCompletion,
+        outcome: Option<&McpCompletion>,
+        inputs: Option<&[McpTaskInputRequest]>,
+        now: i64,
+    ) -> anyhow::Result<()> {
         anyhow::ensure!(now >= 0, "invalid MCP journal timestamp");
         anyhow::ensure!(
             outcome.is_none_or(|outcome| matches!(
@@ -134,6 +147,11 @@ impl McpOperationStore {
         );
         anyhow::ensure!(
             outcome.is_none() || matches!(completion, McpCompletion::Succeeded { .. }),
+            McpJournalError::ContinuationRequired
+        );
+        anyhow::ensure!(
+            inputs.is_none()
+                || outcome.is_none() && matches!(completion, McpCompletion::Succeeded { .. }),
             McpJournalError::ContinuationRequired
         );
         let mut connection = self.durable_connection().await?;
@@ -158,6 +176,33 @@ impl McpOperationStore {
             McpJournalError::StaleAttempt
         );
         let completed_at = now.max(row.try_get("sent_at")?);
+        let inputs_valid = if let Some(inputs) = inputs {
+            let task: String = sqlx::query_scalar("SELECT receipt_json FROM mcp_operation_tasks WHERE operation_id = ? AND attempt_number = ?")
+                .bind(&permit.operation_id).bind(permit.attempt_number).fetch_one(&mut *tx).await?;
+            anyhow::ensure!(
+                serde_json::from_str::<McpTaskReceipt>(&task)?.version == McpTaskVersion::July2026
+                    && serde_json::from_str::<McpTaskLookupMethod>(row.try_get("method_json")?)?
+                        == McpTaskLookupMethod::Get,
+                McpJournalError::ContinuationRequired
+            );
+            Self::record_task_inputs_tx(
+                &mut tx,
+                &permit.operation_id,
+                permit.attempt_number,
+                inputs,
+            )
+            .await?
+        } else {
+            true
+        };
+        let invalid_inputs = McpCompletion::OutcomeUnknown {
+            reason: agenthub_agent_domain::mcp_operations::McpAmbiguityReason::InvalidResponse,
+        };
+        let completion = if inputs_valid {
+            completion
+        } else {
+            &invalid_inputs
+        };
         sqlx::query("UPDATE mcp_operation_task_lookups SET completion_json = ?, outcome_json = ?, completed_at = ? WHERE id = ?")
             .bind(serde_json::to_string(completion)?).bind(outcome.map(serde_json::to_string).transpose()?)
             .bind(completed_at).bind(&permit.id).execute(&mut *tx).await?;
@@ -173,6 +218,7 @@ impl McpOperationStore {
             .await?;
         }
         tx.commit().await?;
+        anyhow::ensure!(inputs_valid, McpJournalError::TaskInputConflict);
         Ok(())
     }
 

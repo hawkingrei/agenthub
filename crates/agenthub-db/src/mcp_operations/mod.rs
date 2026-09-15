@@ -6,6 +6,8 @@ mod prepare;
 mod schema;
 mod task;
 mod task_cancel;
+mod task_inputs;
+mod task_update;
 
 #[cfg(test)]
 mod tests;
@@ -22,6 +24,7 @@ use crate::DaemonGeneration;
 pub use schema::migrate_mcp_operations;
 pub use task::McpTaskLookupPermit;
 pub use task_cancel::McpTaskCancellationPermit;
+pub use task_update::McpTaskUpdatePermit;
 
 #[derive(Debug, Error)]
 pub enum McpJournalError {
@@ -35,6 +38,8 @@ pub enum McpJournalError {
     UnsafeReplay,
     #[error("MCP operation requires a linked continuation or task result, not a replay")]
     ContinuationRequired,
+    #[error("MCP task input receipts are inconsistent or exceed journal capacity")]
+    TaskInputConflict,
     #[error("MCP send attempt is stale")]
     StaleAttempt,
     #[error("MCP journal daemon generation is stale")]

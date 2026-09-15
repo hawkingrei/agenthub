@@ -1,6 +1,7 @@
 use super::continuation::hash;
 use super::*;
 mod cancellation;
+mod input;
 use agenthub_agent_domain::mcp_operations::{
     McpTaskAuthority, McpTaskLookupInput, McpTaskLookupMethod, McpTaskReceipt, McpTaskVersion,
 };

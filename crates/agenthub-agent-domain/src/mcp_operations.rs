@@ -287,6 +287,46 @@ pub struct McpTaskCancellationRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpTaskInputRequest {
+    pub input_id_digest: McpDigest,
+    pub request_digest: McpDigest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpTaskInputResponse {
+    pub input_id_digest: McpDigest,
+    pub response_digest: McpDigest,
+}
+
+pub struct McpTaskUpdateInput {
+    pub receipt: McpTaskReceipt,
+    pub request_key: McpDigest,
+    pub request_digest: McpDigest,
+    pub inputs: Vec<McpTaskInputResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpTaskInputRecord {
+    pub sequence: i64,
+    pub attempt_number: u32,
+    pub input_id_digest: McpDigest,
+    pub request_digest: McpDigest,
+    pub update_id: Option<String>,
+    pub conflicted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpTaskUpdateRecord {
+    pub sequence: i64,
+    pub id: String,
+    pub operation_id: String,
+    pub attempt_number: u32,
+    pub activation_id: String,
+    pub inputs: Vec<McpTaskInputResponse>,
+    pub completion: Option<McpCompletion>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum McpCompletion {
     Succeeded {

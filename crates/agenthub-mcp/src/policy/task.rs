@@ -1,6 +1,6 @@
 use agenthub_agent_domain::mcp_operations::{
     McpTaskAuthority, McpTaskCancellationInput, McpTaskLookupInput, McpTaskLookupMethod,
-    McpTaskReceipt, McpTaskVersion,
+    McpTaskReceipt, McpTaskUpdateInput, McpTaskVersion,
 };
 
 use super::*;
@@ -8,6 +8,7 @@ use crate::task::{TaskContext, modern_capability, task_digest};
 
 pub type PreparedTaskLookup = PreparedTaskRequest<McpTaskLookupInput>;
 pub type PreparedTaskCancellation = PreparedTaskRequest<McpTaskCancellationInput>;
+pub type PreparedTaskUpdate = PreparedTaskRequest<McpTaskUpdateInput>;
 
 pub struct PreparedTaskRequest<I> {
     pub(crate) transport: McpHttpTransport,
@@ -68,6 +69,31 @@ impl McpBinding {
         )
     }
 
+    pub fn prepare_task_update(
+        &self,
+        catalog: &McpToolCatalog,
+        context: &McpCallContext<'_>,
+        message: Value,
+    ) -> Result<PreparedTaskUpdate, McpPolicyError> {
+        if message["method"] != "tasks/update" || context.http.version != ProtocolVersion::July2026
+        {
+            return Err(McpPolicyError::Call);
+        }
+        let inputs = crate::task::input_responses(&message["params"]["inputResponses"])?;
+        self.prepare_task_request(
+            catalog,
+            context,
+            message,
+            "mcp-task-update-v1",
+            |receipt, request_key, request_digest| McpTaskUpdateInput {
+                receipt,
+                request_key,
+                request_digest,
+                inputs,
+            },
+        )
+    }
+
     fn prepare_task_request<I>(
         &self,
         catalog: &McpToolCatalog,
@@ -86,7 +112,9 @@ impl McpBinding {
         if task.version == McpTaskVersion::July2026 && !modern_capability(params) {
             return Err(McpPolicyError::Call);
         }
-        if params.contains_key("inputResponses") || params.contains_key("requestState") {
+        if params.contains_key("inputResponses") && message["method"] != "tasks/update"
+            || params.contains_key("requestState")
+        {
             return Err(McpPolicyError::Call);
         }
         let activation = context

@@ -414,6 +414,48 @@ async fn redirects_are_never_followed_and_errors_do_not_expose_transport_secrets
 }
 
 #[tokio::test]
+async fn modern_task_methods_mirror_task_id_in_the_standard_name_header() {
+    for method in ["tasks/get", "tasks/update", "tasks/cancel"] {
+        for (task_id, expected) in [
+            ("private-task-id", "private-task-id"),
+            (" private-task-id ", "=?base64?IHByaXZhdGUtdGFzay1pZCA=?="),
+        ] {
+            let fixture = Fixture::new(vec![response(
+                200,
+                "application/json",
+                json!({"jsonrpc":"2.0","id":7,"result":{"resultType":"complete"}}),
+            )])
+            .await;
+            let transport = fixture.transport();
+            let context = HttpContext {
+                version: ProtocolVersion::July2026,
+                session_id: None,
+            };
+            let mut message = modern_call();
+            message["method"] = method.into();
+            message["params"] = json!({"taskId":task_id,"_meta":message["params"]["_meta"]});
+            let mut exchange = transport
+                .send(transport.prepare_post(&context, &message, None).unwrap())
+                .await
+                .unwrap();
+            exchange.next_event().await.unwrap();
+            let requests = fixture.received.lock().unwrap();
+            assert_eq!(
+                requests[0]
+                    .headers
+                    .get("mcp-name")
+                    .and_then(|value| value.to_str().ok()),
+                Some(expected)
+            );
+            assert_eq!(
+                serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+                message
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn accepted_write_with_truncated_response_is_not_retried() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

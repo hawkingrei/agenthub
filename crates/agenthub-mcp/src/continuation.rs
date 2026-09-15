@@ -58,14 +58,9 @@ pub(crate) fn receipt(response: &Value) -> Result<McpInputReceipt, McpTransportE
     let state_digest = state_digest(result.get("requestState"))?;
     let input_ids = input_ids(result.get("inputRequests"))?;
     if let Some(requests) = result.get("inputRequests").and_then(Value::as_object)
-        && requests.values().any(|request| {
-            !matches!(
-                request["method"].as_str(),
-                Some("elicitation/create" | "sampling/createMessage" | "roots/list")
-            ) || request
-                .get("params")
-                .is_some_and(|params| !params.is_object())
-        })
+        && requests
+            .values()
+            .any(|request| !valid_input_request(request))
     {
         return Err(McpTransportError::InvalidResponse);
     }
@@ -74,4 +69,11 @@ pub(crate) fn receipt(response: &Value) -> Result<McpInputReceipt, McpTransportE
         input_ids,
         request_id_digest: digest("mcp-json-rpc-id-v1", &response["id"])?,
     })
+}
+
+pub(crate) fn valid_input_request(request: &Value) -> bool {
+    matches!(
+        request["method"].as_str(),
+        Some("elicitation/create" | "sampling/createMessage" | "roots/list")
+    ) && request.get("params").is_none_or(Value::is_object)
 }

@@ -9,6 +9,24 @@ use crate::{
     protocol::ProtocolVersion,
 };
 
+mod input;
+pub(crate) use input::{input_responses, lookup_observation, update_observation};
+
+#[derive(Default)]
+pub(crate) struct TaskObservation {
+    pub outcome: Option<McpCompletion>,
+    pub inputs: Option<Vec<agenthub_agent_domain::mcp_operations::McpTaskInputRequest>>,
+}
+
+impl TaskObservation {
+    pub fn from_outcome(outcome: Option<McpCompletion>) -> Self {
+        Self {
+            outcome,
+            inputs: None,
+        }
+    }
+}
+
 pub(crate) struct TaskContext {
     pub version: McpTaskVersion,
     pub session_digest: Option<McpDigest>,

@@ -55,7 +55,7 @@ giving an expired executor authority to send more work.
   payloads unchanged; tool rounds use atomic journal links to their prior upstream receipt.
 - Preserve a deferred input/task receipt without claiming terminal tool success. Its typed receipt
   cannot be downgraded by transport loss or used to replay the original request. Modern tool
-  follow-ups, task lookups, and cancellation require a current matching receipt; task input and notification
+  follow-ups, task lookups, cancellation, and input updates require matching receipts; task notification
   settlement remain pending.
 - Stream each admitted MCP message independently. Callback replies carry freshly read signed
   credentials, and the daemon retains operation ownership after RPC receiver loss.
@@ -381,7 +381,7 @@ receipt was incorrectly classified as a successful tool result. The HTTP regress
 that error before the fix. The classifier now recognizes both modern and legacy receipt shapes
 as deferred. The regression covers every initial task status, unchanged payload delivery,
 durable unknown outcome, original-request replay denial, and task-ID redaction. The subsequent
-lookup and cancellation checkpoints resolve recorded handles and journal cancel intent; updates remain pending.
+lookup, cancellation, and input checkpoints resolve recorded handles and journal their control sends.
 
 After the receipt fix, all 63 MCP crate tests and 22 root MCP tests pass, including the
 parent-invoked configured-launch child. Root/MCP all-target Clippy with warnings denied and the
@@ -406,8 +406,8 @@ before upstream I/O, unchanged terminal result delivery, and exactly one origina
 The lookup checkpoint passes 30 database journal tests, 68 MCP crate tests, and 23 root MCP tests, including the configured-launch
 child invoked by its parent. Root/MCP/database all-target Clippy with warnings denied and the real
 binary build pass with the validation commands above. Formatting, whitespace, and local document
-links pass. The next checkpoint adds cancellation admission; task updates, input-receipt metadata,
-and notification/subscription settlement remain pending.
+links pass. Subsequent checkpoints add cancellation and input updates; notification/subscription
+settlement remains pending.
 
 Task cancellation now commits its own durable intent before HTTP while sharing the lookup path's
 authority resolution, request preparation, bounded transport drain, and first-terminal-fact rule.
@@ -426,9 +426,33 @@ including the parent-invoked configured-launch child. Root/MCP/database all-targ
 warnings denied, the real binary build, formatting, whitespace, and local document links pass.
 No dependencies, protobuf definitions, or Bazel configuration changed.
 
+Task input observations now commit digest-only input IDs and request identities before delivery.
+Update sends consume their supplied inputs atomically under the recorded task's current authority,
+with partial answers preserved unchanged. Unknown/used IDs roll back the complete update, and a
+lost acknowledgment does not release input consumption. Repeated polls retain both identity and
+consumption. If the upstream changes a request under the same ID, the query records invalid input
+and the conflicting ID remains persisted across reopen, denying further updates for the task.
+
+Database fixtures cover migration, partial/concurrent consumption, rollback, scoped sequence pages,
+equivocation, restart, late acknowledgments, stale authority, and cancellation intent. HTTP fixtures
+exercise partial answers across activations, raw payload preservation, stale polls, lost responses,
+RPC errors, and changed request payloads. The real shim fixture now receives elicitation input,
+sends its answer, rejects another answer for the consumed ID, then observes cancellation and final
+tool results independently. Task notifications remain follow-up work.
+
+Review against the current HTTP binding found that task methods omitted `Mcp-Name`. A real HTTP
+regression reproduced the missing header. The transport now mirrors `taskId` for get/update/cancel,
+including the standard encoding for padded values, while preserving the request body. Journal HTTP
+fixtures also check the name header on actual task exchanges.
+
+Input/header validation passes 37 database journal tests, 75 MCP crate tests, and 23 root MCP tests,
+including the configured-launch child invoked by its parent. Root/MCP/database all-target Clippy
+with warnings denied, the rebuilt real binary, formatting, whitespace, and local document links
+pass. No dependencies, protobuf definitions, or Bazel configuration changed.
+
 ## Follow-Ups
 
-- Complete slice 9's task input/notification paths, remaining protocol controller paths, and integration
+- Complete slice 9's task notification paths, remaining protocol controller paths, and integration
   authorization. Do not infer namespace isolation from a Mem tool set
   or a schema without a scope property.
 - Prove the complete proxy's crash/lost-ACK recovery and legacy static MCP configuration path.

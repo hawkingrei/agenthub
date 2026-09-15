@@ -270,7 +270,9 @@ fn journal_error(error: anyhow::Error) -> McpCallError {
         Some(McpJournalError::InFlight) => McpCallError::InFlight,
         Some(McpJournalError::AlreadyCompleted) => McpCallError::AlreadyCompleted,
         Some(McpJournalError::UnsafeReplay) => McpCallError::UnsafeReplay,
-        Some(McpJournalError::ContinuationRequired) => McpCallError::ContinuationRequired,
+        Some(McpJournalError::ContinuationRequired | McpJournalError::TaskInputConflict) => {
+            McpCallError::ContinuationRequired
+        }
         Some(
             McpJournalError::StaleAttempt
             | McpJournalError::StaleDaemon
