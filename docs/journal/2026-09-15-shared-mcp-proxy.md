@@ -825,6 +825,26 @@ commands are `cargo test -p agenthub --lib`, `cargo test -p agenthub-db --lib`, 
 `cargo test -p agenthub-agent-domain --lib`, all with `--locked --offline`. Draft PR
 [#1154](https://github.com/hawkingrei/agenthub/pull/1154) retains CI as the remaining promotion gate.
 
+### Workspace coverage feature unification
+
+PR #1154's Rust Coverage run passed all 896 root and 142 database tests, then failed the
+oversized-progress fixture. Workspace dependencies enable `serde_json/arbitrary_precision`, which
+preserves the short `1e6` representation; the fixture had incorrectly assumed numeric expansion
+would always exceed the output limit. Production journal behavior is unchanged.
+
+The HTTP regression now uses an explicit delivery budget to prove that a dropped progress event
+cannot discard a later durable write result. A separate direct-delivery regression constructs an
+oversized serialized value and verifies the frame bound before queue admission. Both regressions
+pass with normal and workspace-equivalent number handling:
+
+```bash
+cargo +1.96.0 test -p agenthub-mcp progress_ --locked --offline
+cargo +1.96.0 test -p agenthub-mcp progress_ --features serde_json/arbitrary_precision --locked --offline
+```
+
+Each command passes two tests. Cargo formatting and whitespace checks pass. The full current-head
+CI remains the promotion gate; these focused checks do not substitute for it.
+
 ## Follow-Ups
 
 - Complete PR CI validation before promoting slice 9 from draft.
