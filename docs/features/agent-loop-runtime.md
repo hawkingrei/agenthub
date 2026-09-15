@@ -6,6 +6,7 @@ API enum values or a database migration.
 
 The [activation implementation contract](agent-loop-activation-contract.md) selects identity,
 policy defaults, storage boundaries, and compatibility gates for the initial local implementation.
+[Loop scheduling](agent-loop-scheduling.md) defines the implemented future-work and revocation boundary.
 
 ## Problem
 

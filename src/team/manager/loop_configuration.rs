@@ -167,8 +167,8 @@ impl TeamManager {
             .keys()
             .filter(|actor| !next.contains_key(*actor))
         {
-            sqlx::query("DELETE FROM loop_policies WHERE actor_id = ? AND team_id = ? AND NOT EXISTS(SELECT 1 FROM loop_activations WHERE actor_id = ?)")
-                .bind(actor).bind(team_id).bind(actor).execute(&mut **tx).await?;
+            sqlx::query("DELETE FROM loop_policies WHERE actor_id = ?1 AND team_id = ?2 AND NOT EXISTS(SELECT 1 FROM loop_activations WHERE actor_id = ?1) AND NOT EXISTS(SELECT 1 FROM loop_registrations WHERE actor_id = ?1)")
+                .bind(actor).bind(team_id).execute(&mut **tx).await?;
             sqlx::query("UPDATE loop_policies SET state = 'disabled', revision = revision + 1 WHERE actor_id = ? AND team_id = ?")
                 .bind(actor).bind(team_id).execute(&mut **tx).await?;
         }

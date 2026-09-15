@@ -172,6 +172,13 @@ impl TeamManager {
         let updated_at = row.updated_at;
         let created_by_actor_id = row.created_by_actor_id;
 
+        agenthub_db::loop_runtime::LoopStore::revoke_task_schedules_tx(
+            &mut tx,
+            normalized_team_id,
+            &task_id,
+            chrono::Utc::now().timestamp(),
+        )
+        .await?;
         sqlx::query(
             "DELETE FROM team_channel_message_replicas WHERE conversation_id = ?1 OR task_id = ?2",
         )

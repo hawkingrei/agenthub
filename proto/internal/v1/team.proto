@@ -7,6 +7,10 @@ syntax = "proto3";
 package agenthub.internal.v1;
 
 service TeamInternalControl {
+  rpc RegisterLoopSchedule(RegisterLoopScheduleRequest) returns (RegisterLoopScheduleResponse);
+  rpc ListLoopSchedules(ListLoopSchedulesRequest) returns (ListLoopSchedulesResponse);
+  rpc GetLoopSchedule(GetLoopScheduleRequest) returns (GetLoopScheduleResponse);
+  rpc RevokeLoopSchedule(RevokeLoopScheduleRequest) returns (RevokeLoopScheduleResponse);
   rpc GetLoopWork(GetLoopWorkRequest) returns (GetLoopWorkResponse);
   rpc GetLoopWorkSource(GetLoopWorkSourceRequest) returns (GetLoopWorkSourceResponse);
   rpc ActivateLoopMember(ActivateLoopMemberRequest) returns (ActivateLoopMemberResponse);
@@ -41,6 +45,44 @@ service TeamInternalControl {
   rpc SendAgentInput(SendAgentInputRequest) returns (SendAgentInputResponse);
   rpc SendAgentReminder(SendAgentReminderRequest) returns (SendAgentInputResponse);
   rpc ListAgentEvents(ListAgentEventsRequest) returns (ListAgentEventsResponse);
+}
+
+// Scheduling identity is derived from signed activation credentials, never from request_json.
+message RegisterLoopScheduleRequest {
+  string member_id = 1;
+  string request_json = 2;
+}
+
+message RegisterLoopScheduleResponse {
+  string receipt_json = 1;
+}
+
+message ListLoopSchedulesRequest {
+  string member_id = 1;
+  string after_registration_id = 2;
+  uint32 limit = 3;
+}
+
+message ListLoopSchedulesResponse {
+  string page_json = 1;
+}
+
+message GetLoopScheduleRequest {
+  string registration_id = 1;
+  optional int64 after_firing_cursor = 2;
+  uint32 limit = 3;
+}
+
+message GetLoopScheduleResponse {
+  string detail_json = 1;
+}
+
+message RevokeLoopScheduleRequest {
+  string registration_id = 1;
+}
+
+message RevokeLoopScheduleResponse {
+  string registration_json = 1;
 }
 
 message GetLoopWorkRequest {

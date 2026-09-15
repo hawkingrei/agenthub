@@ -99,6 +99,49 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             trigger_id TEXT PRIMARY KEY REFERENCES loop_trigger_sources(id),
             created_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS loop_registrations (
+            id TEXT PRIMARY KEY,
+            actor_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            source_key TEXT NOT NULL,
+            input_json TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('active', 'completed', 'revoked')),
+            work_task_id TEXT,
+            dependency_task_id TEXT,
+            thread_root_message_id INTEGER,
+            origin_activation_id TEXT REFERENCES loop_activations(id),
+            next_due_at INTEGER,
+            observed_cursor INTEGER NOT NULL CHECK(observed_cursor >= 0),
+            condition_matches INTEGER NOT NULL DEFAULT 0 CHECK(condition_matches IN (0, 1)),
+            pending_cursor INTEGER,
+            pending_due_at INTEGER,
+            next_check_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            CHECK((pending_cursor IS NULL) = (pending_due_at IS NULL)),
+            UNIQUE(actor_id, team_id, source_key),
+            FOREIGN KEY(actor_id, team_id) REFERENCES loop_policies(actor_id, team_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_loop_registration_due
+            ON loop_registrations(next_check_at, id) WHERE state = 'active';
+        CREATE INDEX IF NOT EXISTS idx_loop_registration_actor
+            ON loop_registrations(team_id, actor_id, id);
+        CREATE INDEX IF NOT EXISTS idx_loop_registration_task
+            ON loop_registrations(team_id, dependency_task_id) WHERE state = 'active';
+        CREATE INDEX IF NOT EXISTS idx_loop_registration_thread
+            ON loop_registrations(team_id, thread_root_message_id) WHERE state = 'active';
+        CREATE INDEX IF NOT EXISTS idx_loop_registration_work
+            ON loop_registrations(team_id, work_task_id) WHERE state != 'revoked';
+        CREATE INDEX IF NOT EXISTS idx_loop_registration_origin
+            ON loop_registrations(team_id, origin_activation_id) WHERE state != 'revoked';
+        CREATE TABLE IF NOT EXISTS loop_registration_firings (
+            registration_id TEXT NOT NULL REFERENCES loop_registrations(id),
+            first_cursor INTEGER NOT NULL,
+            through_cursor INTEGER NOT NULL CHECK(through_cursor >= first_cursor),
+            trigger_id TEXT NOT NULL UNIQUE REFERENCES loop_trigger_sources(id),
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(registration_id, first_cursor)
+        );
         CREATE TABLE IF NOT EXISTS loop_mailbox_partitions (
             run_id TEXT PRIMARY KEY REFERENCES team_runs(id),
             team_id TEXT NOT NULL REFERENCES team_definitions(id),

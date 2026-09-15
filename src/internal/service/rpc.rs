@@ -2,6 +2,54 @@ use super::*;
 
 #[tonic::async_trait]
 impl TeamInternalControl for TeamInternalControlService {
+    async fn register_loop_schedule(
+        &self,
+        request: Request<RegisterLoopScheduleRequest>,
+    ) -> Result<Response<RegisterLoopScheduleResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.register_loop_schedule_request(request).await
+        })
+        .await
+    }
+
+    async fn list_loop_schedules(
+        &self,
+        request: Request<ListLoopSchedulesRequest>,
+    ) -> Result<Response<ListLoopSchedulesResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.list_loop_schedules_request(request).await
+        })
+        .await
+    }
+
+    async fn get_loop_schedule(
+        &self,
+        request: Request<GetLoopScheduleRequest>,
+    ) -> Result<Response<GetLoopScheduleResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.get_loop_schedule_request(request).await
+        })
+        .await
+    }
+
+    async fn revoke_loop_schedule(
+        &self,
+        request: Request<RevokeLoopScheduleRequest>,
+    ) -> Result<Response<RevokeLoopScheduleResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.revoke_loop_schedule_request(request).await
+        })
+        .await
+    }
+
     async fn get_loop_work_source(
         &self,
         request: Request<GetLoopWorkSourceRequest>,
