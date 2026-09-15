@@ -954,6 +954,10 @@ pub(super) async fn setup_concurrent_conversation_db() -> (SqlitePool, std::path
             .unwrap_or_else(|err| panic!("create {label}: {err}"));
     }
 
+    agenthub_db::loop_runtime::migrate_loop_runtime(&pool)
+        .await
+        .expect("migrate loop configuration guards");
+
     (pool, dir)
 }
 

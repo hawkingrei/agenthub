@@ -54,6 +54,10 @@ alone also cannot authorize moving a member with retained activation or task own
 - Tests requiring local provider/guardian IPC used normal local socket permissions because the
   restricted Codex sandbox rejects Unix socket sends. No paid-provider or browser smoke was needed
   for this backend configuration slice. Local Bazel was not run; remote checks validate its targets.
+- Full CI exposed an additional file-backed conversation test fixture that did not initialize loop
+  tables before creating a Team. Reuse the production loop migration in that fixture so the test
+  exercises the current configuration guard schema without weakening production checks.
+  The focused concurrent append/drain/read regression passed with the corrected fixture.
 
 ## Follow-Ups
 
