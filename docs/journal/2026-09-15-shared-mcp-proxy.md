@@ -597,13 +597,43 @@ sent, and completed rows. All 28 activation-related root tests pass, including t
 executes the ignored crash helper once per checkpoint. Root all-target Clippy with warnings denied,
 formatting, whitespace, and 75 local document links pass. The actual shim binary matches the
 unchanged production implementation from the access checkpoint. Static MCP launch compatibility
-remains a separate gate.
+is covered by the following follow-up.
+
+### Static launch compatibility follow-up (2026-09-16)
+
+The ACP startup implementation now accepts its static MCP loader through a private helper. The
+public entry continues supplying the existing loader; loop launch configuration still bypasses it.
+This lets the launch fixture use an isolated configuration file without changing the process home
+directory or installing a production test switch.
+
+A fake ACP provider exercises fresh and resumed sessions with and without HTTP MCP support. It
+starts the configured native stdio service, performs MCP initialization/discovery, calls its tool,
+and checks the response and extension fields. The fixture verifies unchanged command arguments,
+environment entries, HTTP URL/headers, and the provider capability filter. Two additional loop
+launch cases verify the static loader is never invoked. Only fixture observations are recorded;
+the provider fixture does not store prompts or full ACP request payloads.
+
+Validation commands:
+
+```bash
+cargo test -p agenthub-acp static_mcp_tests --locked --offline
+cargo test -p agenthub-acp loop_ --locked --offline
+cargo clippy -p agenthub-acp -p agenthub --all-targets --locked --offline -- -D warnings
+cargo build -p agenthub --bin agenthub --locked --offline
+cargo test -p agenthub --lib mcp_ --locked --offline
+cargo fmt --all --check
+```
+
+The static tests pass all six launch cases; eight loop-selected tests also pass (one overlaps the
+static selection). The actual binary rebuild and 29 root MCP tests also pass; the two ignored
+process helpers are explicitly executed by their parent tests. Root/ACP all-target Clippy passes
+with warnings denied. No public API,
+configuration schema, dependency, protobuf, or Bazel configuration changed.
 
 ## Follow-Ups
 
 - Complete slice 9's remaining capability and non-tool continuation paths, upstream namespace
   authorization, and authority-alias reconciliation. Restore scoped Mem non-tool access after its
   authority is established; tool-only access does not complete the original integration goal.
-- Prove the legacy static MCP configuration launch path.
 - Integrate existing Mem scope/context bootstrap in slice 10 and app bindings in slice 14 through
   this same journal. Slice 9 remains open in [TODO](../todo.md).

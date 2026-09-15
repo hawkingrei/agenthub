@@ -69,6 +69,14 @@ Mem server. Fresh and resumed local ACP sessions receive the same typed stdio de
   a routing header or an unscoped schema is insufficient. This boundary does not complete Mem
   scope integration, including tools that omit a declared `space_id`.
 
+### Legacy static MCP compatibility
+
+Local ACP launches without a loop launch configuration continue loading the existing static MCP
+configuration for both fresh sessions and session loading. Native stdio command, arguments, and
+environment entries pass to the provider unchanged. HTTP URLs and headers remain native descriptors
+and are included only when the provider advertises HTTP MCP support. Loop launches use their
+resolved proxy descriptors and never invoke the ambient static loader.
+
 ### Integration access policy
 
 Every binding supplies a trusted `McpAccessPolicy` independently of upstream discovery. Its default
@@ -418,6 +426,7 @@ Integration-specific continuation authorization for non-tool methods remains con
 | Task inputs | Real shim receives unchanged elicitation input, commits response consumption before HTTP, rejects a duplicate, and later observes the tool result; HTTP partial/foreign inputs, stale polls, lost ACK, RPC errors, and changed input requests |
 | Legacy task notices | Real shim receives pre-receipt notices on GET and POST, answers the intervening callback, verifies persistence before delivery, fetches the actual result, and preserves that result after a later cancellation |
 | Process crash | Actual shim and a killed control-service process; file-backed reopen and daemon lock/generation reclaim; before-call, sent-without-response, parsed-success-before-commit, and durable-success checkpoints; no provider output before commit and no unknown-write replay from a new activation/RPC ID |
+| Static compatibility | Fresh/resumed ACP provider starts a native stdio MCP server, initializes, discovers, and calls it; exact environment/arguments and HTTP descriptor fields retained, HTTP capability filtering, and no static-loader invocation in either loop launch path |
 | Modern subscriptions | HTTP acknowledgment/filter/order checks, typed IDs, local cancellation, idle authority revocation, capacity, and signed-RPC/shim task input/result delivery plus EOF with an idle subscription |
 
 ## Operational Notes
