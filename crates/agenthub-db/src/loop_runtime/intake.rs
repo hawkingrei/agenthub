@@ -154,6 +154,13 @@ async fn validate_references(
     input: &LoopTriggerInput,
 ) -> anyhow::Result<()> {
     let references = &input.references;
+    if let Some(user_id) = &references.scheduling_user_id {
+        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = ?)")
+            .bind(user_id)
+            .fetch_one(&mut **tx)
+            .await?;
+        anyhow::ensure!(valid, LoopStoreError::ScopeMismatch);
+    }
     if let Some(task_id) = &references.task_id {
         let valid: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM team_tasks WHERE id = ? AND team_id = ?)",

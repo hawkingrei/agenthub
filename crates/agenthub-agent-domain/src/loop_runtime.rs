@@ -301,6 +301,7 @@ pub struct LoopSourceReferences {
     pub thread_id: Option<i64>,
     pub scheduling_actor_id: Option<String>,
     pub scheduling_activation_id: Option<String>,
+    pub scheduling_user_id: Option<String>,
     pub app_id: Option<String>,
 }
 
@@ -310,6 +311,7 @@ impl LoopSourceReferences {
             self.task_id.as_deref(),
             self.scheduling_actor_id.as_deref(),
             self.scheduling_activation_id.as_deref(),
+            self.scheduling_user_id.as_deref(),
             self.app_id.as_deref(),
         ]
         .into_iter()
@@ -370,6 +372,14 @@ pub struct LoopTriggerRecord {
     pub input: LoopTriggerInput,
     pub created_at: i64,
     pub revoked: bool,
+}
+
+/// Current execution context is paged independently of the complete activation history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopWorkPage {
+    pub activation: LoopActivation,
+    pub sources: Vec<LoopTriggerRecord>,
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

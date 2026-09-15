@@ -17,6 +17,8 @@ mod launch_tests;
 mod lifecycle_tests;
 #[path = "scope_tests.rs"]
 mod scope_tests;
+#[path = "work_context_tests.rs"]
+mod work_context_tests;
 
 struct Fixture {
     path: PathBuf,
@@ -507,6 +509,7 @@ async fn loop_reference_checks_preserve_task_message_and_scheduler_scope() {
         thread_id: Some(123),
         scheduling_actor_id: Some("worker".into()),
         scheduling_activation_id: Some(origin.activation_id),
+        scheduling_user_id: None,
         app_id: None,
     };
     fixture.store.accept_trigger(&input, 100).await.unwrap();

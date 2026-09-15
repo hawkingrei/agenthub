@@ -7,6 +7,9 @@ syntax = "proto3";
 package agenthub.internal.v1;
 
 service TeamInternalControl {
+  rpc GetLoopWork(GetLoopWorkRequest) returns (GetLoopWorkResponse);
+  rpc GetLoopWorkSource(GetLoopWorkSourceRequest) returns (GetLoopWorkSourceResponse);
+  rpc ActivateLoopMember(ActivateLoopMemberRequest) returns (ActivateLoopMemberResponse);
   rpc FinishLoopActivation(FinishLoopActivationRequest) returns (FinishLoopActivationResponse);
   rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
   rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
@@ -38,6 +41,33 @@ service TeamInternalControl {
   rpc SendAgentInput(SendAgentInputRequest) returns (SendAgentInputResponse);
   rpc SendAgentReminder(SendAgentReminderRequest) returns (SendAgentInputResponse);
   rpc ListAgentEvents(ListAgentEventsRequest) returns (ListAgentEventsResponse);
+}
+
+message GetLoopWorkRequest {
+  string after_source_id = 1;
+  uint32 limit = 2;
+}
+
+message GetLoopWorkResponse {
+  string page_json = 1;
+}
+
+message GetLoopWorkSourceRequest {
+  string source_id = 1;
+}
+
+message GetLoopWorkSourceResponse {
+  string source_json = 1;
+}
+
+message ActivateLoopMemberRequest {
+  string member_id = 1;
+  string source_key = 2;
+  string task_id = 3;
+}
+
+message ActivateLoopMemberResponse {
+  string receipt_json = 1;
 }
 
 // Executor identity and scope come exclusively from signed activation credentials.

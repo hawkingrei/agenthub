@@ -83,6 +83,13 @@ impl ApiError {
             error: anyhow::anyhow!(msg.to_string()),
         }
     }
+
+    pub fn too_many_requests(msg: &str) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            error: anyhow::anyhow!(msg.to_string()),
+        }
+    }
 }
 
 pub fn ok_response() -> Json<serde_json::Value> {

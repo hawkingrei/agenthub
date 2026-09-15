@@ -111,6 +111,45 @@ fn require_member(team: &TeamDefinitionRecord, actor_id: &str) -> Result<(), Api
     Ok(())
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct LoopActivationRequest {
+    pub source_key: String,
+    pub task_id: Option<String>,
+}
+
+pub(super) async fn request_loop_activation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, actor_id)): Path<(String, String)>,
+    Json(request): Json<LoopActivationRequest>,
+) -> Result<Json<agenthub_agent_domain::loop_runtime::LoopTriggerReceipt>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::RuntimeOperate).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    require_teamspace_role(&state, &team, &user, &["owner"]).await?;
+    require_member(&team, &actor_id)?;
+    for id in std::iter::once(request.source_key.as_str()).chain(request.task_id.as_deref()) {
+        agenthub_agent_domain::loop_runtime::validate_loop_id(id)
+            .map_err(|_| ApiError::bad_request("invalid bounded loop identifier"))?;
+    }
+    let context = crate::team::loop_context::LoopSchedulingContext {
+        user_id: Some(user.id),
+        ..Default::default()
+    };
+    let receipt = crate::team::loop_context::with_scheduling_context(
+        context,
+        state.teams.request_loop_activation(
+            &team_id,
+            &actor_id,
+            &request.source_key,
+            request.task_id.as_deref(),
+        ),
+    )
+    .await
+    .map_err(map_team_internal_error)?;
+    Ok(Json(receipt))
+}
+
 pub(super) async fn update_team_spec_owned(
     state: &AppState,
     current: &TeamDefinitionRecord,

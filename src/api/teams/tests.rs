@@ -2139,6 +2139,7 @@ async fn team_upload_s3_route_fixture_publishes_metadata() {
 
 include!("tests_core.rs");
 include!("tests_loop_configuration.rs");
+include!("tests_loop_work.rs");
 include!("tests_router.rs");
 
 #[tokio::test]
