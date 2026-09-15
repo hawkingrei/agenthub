@@ -25,6 +25,8 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-09-15: Fenced loop admission](2026-09-15-agent-loop-admission.md): atomic claims, retained expired reservations, finite admission budgets, and bounded queue scanning.
+
 - [2026-09-15: Durable loop control store](2026-09-15-agent-loop-control-store.md): explicit policy, idempotent trigger receipts, pending work, and safe lifecycle events.
 
 - [2026-09-15: Agent loop activation contract](2026-09-15-agent-loop-activation-contract.md): identity, finite policy defaults, compatibility gates, and a deterministic transaction/cleanup experiment.

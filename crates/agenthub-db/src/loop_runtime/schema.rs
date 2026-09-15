@@ -1,4 +1,4 @@
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 
 /// Add loop records without inferring opt-in from any legacy runtime setting.
 pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
@@ -27,6 +27,7 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
                 'pending', 'starting', 'running', 'finalizing', 'finished', 'interrupted', 'canceled'
             )),
             due_at INTEGER NOT NULL,
+            next_admission_at INTEGER NOT NULL DEFAULT 0,
             coalesce_key TEXT,
             policy_revision INTEGER NOT NULL,
             generation INTEGER NOT NULL DEFAULT 0 CHECK(generation >= 0),
@@ -68,6 +69,7 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             generation INTEGER NOT NULL CHECK(generation > 0),
             owner_id TEXT NOT NULL,
             lease_expires_at INTEGER NOT NULL,
+            lease_seconds INTEGER NOT NULL DEFAULT 60 CHECK(lease_seconds > 0),
             session_id TEXT REFERENCES agent_sessions(id),
             created_at INTEGER NOT NULL
         );
@@ -77,6 +79,7 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             kind TEXT NOT NULL,
             generation INTEGER NOT NULL CHECK(generation >= 0),
             trigger_id TEXT REFERENCES loop_trigger_sources(id),
+            reason_code TEXT,
             created_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_loop_event_activation
@@ -85,6 +88,47 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
     )
     .execute(&mut *tx)
     .await?;
+    let columns = sqlx::query("PRAGMA table_info(loop_activations)")
+        .fetch_all(&mut *tx)
+        .await?;
+    if !columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "next_admission_at")
+    {
+        sqlx::query(
+            "ALTER TABLE loop_activations ADD COLUMN next_admission_at INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("UPDATE loop_activations SET next_admission_at = due_at")
+            .execute(&mut *tx)
+            .await?;
+    }
+    let columns = sqlx::query("PRAGMA table_info(loop_activation_events)")
+        .fetch_all(&mut *tx)
+        .await?;
+    if !columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "reason_code")
+    {
+        sqlx::query("ALTER TABLE loop_activation_events ADD COLUMN reason_code TEXT")
+            .execute(&mut *tx)
+            .await?;
+    }
+    let columns = sqlx::query("PRAGMA table_info(loop_execution_reservations)")
+        .fetch_all(&mut *tx)
+        .await?;
+    if !columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "lease_seconds")
+    {
+        sqlx::query("ALTER TABLE loop_execution_reservations ADD COLUMN lease_seconds INTEGER NOT NULL DEFAULT 60 CHECK(lease_seconds > 0)")
+            .execute(&mut *tx).await?;
+    }
+    sqlx::raw_sql(
+        "CREATE INDEX IF NOT EXISTS idx_loop_admission_due ON loop_activations(state, next_admission_at, id); \
+         CREATE INDEX IF NOT EXISTS idx_loop_admission_events ON loop_activation_events(created_at, activation_id) WHERE kind = 'admitted';",
+    ).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())
 }

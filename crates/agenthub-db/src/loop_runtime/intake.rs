@@ -119,10 +119,11 @@ impl LoopStore {
                 .bind(&input.actor_id).bind(&coalesce_key).execute(&mut **tx).await?;
             let id = Uuid::now_v7().to_string();
             sqlx::query(
-                "INSERT INTO loop_activations(id, actor_id, team_id, state, due_at, coalesce_key, policy_revision, mailbox_run_id, created_at, updated_at) \
-                 VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO loop_activations(id, actor_id, team_id, state, due_at, next_admission_at, coalesce_key, policy_revision, mailbox_run_id, created_at, updated_at) \
+                 VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&id).bind(&input.actor_id).bind(&input.team_id).bind(input.due_at.unwrap_or(now))
+            .bind(input.due_at.unwrap_or(now))
             .bind(&coalesce_key).bind(policy.revision).bind(&policy.mailbox_run_id).bind(now).bind(now)
             .execute(&mut **tx).await?;
             id

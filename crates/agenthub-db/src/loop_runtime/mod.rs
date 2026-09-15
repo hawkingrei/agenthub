@@ -1,7 +1,10 @@
 //! Durable loop control records. Runtime execution is owned by the daemon service.
 
+mod admission;
+mod admission_limits;
 mod intake;
 mod policy;
+mod reservation;
 mod schema;
 
 #[cfg(test)]
@@ -26,6 +29,10 @@ pub enum LoopStoreError {
     Capacity,
     #[error("loop source key reused with different work")]
     IdempotencyConflict,
+    #[error("loop execution reservation is held")]
+    ReservationHeld,
+    #[error("loop execution lease is stale or expired")]
+    StaleLease,
 }
 
 #[derive(Clone)]
@@ -102,6 +109,10 @@ impl LoopStore {
                     kind: row.try_get::<&str, _>("kind")?.parse()?,
                     generation: row.try_get("generation")?,
                     trigger_id: row.try_get("trigger_id")?,
+                    reason: row
+                        .try_get::<Option<&str>, _>("reason_code")?
+                        .map(str::parse)
+                        .transpose()?,
                     created_at: row.try_get("created_at")?,
                 })
             })
@@ -116,6 +127,7 @@ fn parse_activation(row: &SqliteRow) -> anyhow::Result<LoopActivation> {
         team_id: row.try_get("team_id")?,
         state: row.try_get::<&str, _>("state")?.parse()?,
         due_at: row.try_get("due_at")?,
+        next_admission_at: row.try_get("next_admission_at")?,
         policy_revision: row.try_get("policy_revision")?,
         generation: row.try_get("generation")?,
         attempt_count: row.try_get("attempt_count")?,
