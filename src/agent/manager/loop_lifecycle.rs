@@ -200,6 +200,7 @@ impl AgentManager {
             .cleanup_verified(&current, disposition, Utc::now().timestamp())
             .await?;
         reservations.remove(&current.actor_id);
+        self.release_mcp_activation(&current).await;
         self.loop_credentials.lock().await.remove(&current.actor_id);
         drop(reservations);
         if let Some(session_id) = &current.session_id {
@@ -255,6 +256,7 @@ impl AgentManager {
         LoopStore::new(self.db.clone())
             .cleanup_verified(current, disposition, Utc::now().timestamp())
             .await?;
+        self.release_mcp_activation(current).await;
         reservations.remove(actor_id);
         self.loop_credentials.lock().await.remove(actor_id);
         Ok(())

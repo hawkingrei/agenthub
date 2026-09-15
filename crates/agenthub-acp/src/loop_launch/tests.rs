@@ -150,6 +150,7 @@ fn config(require_resume: bool) -> AcpLoopLaunchConfig {
         mode_id: None,
         model_id: None,
         config: vec![],
+        mcp_proxies: vec![],
         skills: vec![AcpSkill {
             name: "fixture-skill".into(),
             path: "fixture".into(),
@@ -252,4 +253,64 @@ async fn loop_acp_required_profile_rejection_fails_startup() {
         fixture.methods(),
         vec!["initialize", "session/new", "session/set_config_option"]
     );
+}
+
+#[tokio::test]
+async fn loop_acp_proxy_descriptors_are_local_and_survive_fresh_and_resume_launch() {
+    for resume in [false, true] {
+        let mut fixture = Fixture::new(true, "").await;
+        let mut launch = config(resume);
+        let credential = fixture.directory.join("activation-credential.json");
+        launch
+            .add_mcp_proxy(
+                Path::new("/usr/bin/agenthub"),
+                &credential,
+                "nowledge-mem",
+                &"a".repeat(64),
+            )
+            .unwrap();
+        let fingerprint = launch.fingerprint_material().unwrap();
+        assert!(
+            !String::from_utf8(fingerprint.clone())
+                .unwrap()
+                .contains("activation-credential")
+        );
+        let mut rotated_path = config(resume);
+        rotated_path
+            .add_mcp_proxy(
+                Path::new("/usr/bin/agenthub"),
+                Path::new("/private/other-credential.json"),
+                "nowledge-mem",
+                &"a".repeat(64),
+            )
+            .unwrap();
+        assert_eq!(fingerprint, rotated_path.fingerprint_material().unwrap());
+        fixture
+            .launch(resume.then_some("existing"), launch)
+            .await
+            .unwrap();
+        let requests = fixture.requests();
+        let request = requests
+            .iter()
+            .find(|request| {
+                request["method"]
+                    == if resume {
+                        "session/load"
+                    } else {
+                        "session/new"
+                    }
+            })
+            .unwrap();
+        let server = &request["params"]["mcpServers"][0];
+        assert_eq!(server["command"], "/usr/bin/agenthub");
+        assert_eq!(
+            server["args"],
+            serde_json::json!(["mcp-proxy", "--server-id", "nowledge-mem"])
+        );
+        assert_eq!(
+            server["env"],
+            serde_json::json!([{"name":"AGENTHUB_LOOP_CREDENTIAL_FILE", "value":credential}])
+        );
+        assert!(server.get("url").is_none() && server.get("headers").is_none());
+    }
 }

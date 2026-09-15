@@ -774,6 +774,11 @@ impl AgentManager {
             workdir: start_policy.workdir.clone(),
             actor_context: actor_context.clone(),
             guard_descendants: self.loop_reservations.lock().await.contains_key(&agent.id),
+            private_env: if is_loop_activation {
+                crate::mcp_proxy::configured::private_environment(&self.loop_app_config)
+            } else {
+                Vec::new()
+            },
             extra_env,
         };
         let local_execution = match self

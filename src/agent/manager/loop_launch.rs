@@ -69,6 +69,7 @@ impl AgentManager {
                     InternalAction::TeamTaskWrite,
                     InternalAction::PermissionReview,
                     InternalAction::LoopFinish,
+                    InternalAction::McpProxy,
                     InternalAction::LoopActivate,
                 ]
                 .into_iter()
@@ -108,6 +109,7 @@ impl AgentManager {
         LoopSessionPolicy,
         Vec<(String, String)>,
     )> {
+        let _operations = self.loop_operation_gate(&agent.id).await.read_owned().await;
         let reservation = self
             .loop_reservations
             .lock()
@@ -162,6 +164,29 @@ impl AgentManager {
                     .push(("reasoning_effort".into(), effort.into()));
             }
         }
+        let file = Arc::new(LoopCredentialFile::create()?);
+        let path = file.path.to_string_lossy().to_string();
+        let mcp = if crate::mcp_proxy::configured::has_mem_binding(
+            &self.loop_app_config,
+            &reservation.team_id,
+        ) {
+            let mcp = crate::mcp_proxy::configured::resolve_mem(
+                &self.loop_app_config,
+                &reservation.team_id,
+                &agent.id,
+                |key| std::env::var(key).ok(),
+            )
+            .await?;
+            launch.add_mcp_proxy(
+                &crate::mcp_proxy::configured::shim_executable()?,
+                &file.path,
+                mcp.binding.server_id(),
+                &mcp.fingerprint,
+            )?;
+            Some(mcp)
+        } else {
+            None
+        };
         let mut digest = Sha256::new();
         digest.update(serde_json::to_vec(&(
             command,
@@ -189,6 +214,9 @@ impl AgentManager {
         store
             .record_launch(&reservation, &snapshot, Utc::now().timestamp())
             .await?;
+        if let Some(mcp) = mcp {
+            self.mcp_proxy()?.mount(&reservation, mcp.binding).await?;
+        }
         let role = InternalRole::parse(context.member_role.as_deref().unwrap_or_default())
             .filter(|role| matches!(role, InternalRole::Coordinator | InternalRole::Worker))
             .ok_or_else(|| anyhow::anyhow!("loop activation requires a supported member role"))?;
@@ -196,8 +224,6 @@ impl AgentManager {
             .current_run_id
             .clone()
             .ok_or_else(|| anyhow::anyhow!("loop mailbox identity is required"))?;
-        let file = Arc::new(LoopCredentialFile::create()?);
-        let path = file.path.to_string_lossy().to_string();
         self.loop_credentials
             .lock()
             .await

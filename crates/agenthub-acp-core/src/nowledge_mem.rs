@@ -6,6 +6,11 @@
 
 use serde_json::Value;
 
+pub use agenthub_agent_domain::mcp_operations::{
+    McpFailureKind as MemResponseErrorKind, McpOperationStatus as MemJournalStatus,
+    classify_response_error,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemScopeBinding {
     pub profile_ref: String,
@@ -32,35 +37,6 @@ impl MemScopeBinding {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemJournalStatus {
-    Prepared,
-    Sent,
-    Succeeded,
-    Failed,
-    OutcomeUnknown,
-}
-
-impl MemJournalStatus {
-    pub const fn can_transition_to(self, next: Self) -> bool {
-        matches!(
-            (self, next),
-            (Self::Prepared, Self::Sent)
-                | (Self::Prepared, Self::Failed)
-                | (Self::Sent, Self::Succeeded)
-                | (Self::Sent, Self::Failed)
-                | (Self::Sent, Self::OutcomeUnknown)
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemResponseErrorKind {
-    McpResult,
-    JsonRpc,
-    SuccessEnvelope,
-}
-
 /// Adds the bound scope only when the upstream JSON schema declares a
 /// `space_id` property. A caller-provided conflicting value is rejected rather
 /// than silently redirected to another space.
@@ -80,8 +56,8 @@ pub fn bind_declared_space_id(
     let mut arguments = arguments.as_object().cloned().ok_or_else(|| {
         anyhow::anyhow!("MCP tool arguments must be an object when schema declares space_id")
     })?;
-    if let Some(provided) = arguments.get("space_id").and_then(Value::as_str)
-        && provided != binding.space_id
+    if let Some(provided) = arguments.get("space_id")
+        && provided.as_str() != Some(binding.space_id.as_str())
     {
         anyhow::bail!("MCP tool call space_id does not match the bound Mem space");
     }
@@ -90,27 +66,6 @@ pub fn bind_declared_space_id(
         Value::String(binding.space_id.clone()),
     );
     Ok(Value::Object(arguments))
-}
-
-/// Recognizes the three error shapes observed across the existing Mem MCP
-/// surfaces while preserving the upstream value for the caller.
-pub fn classify_response_error(response: &Value) -> Option<MemResponseErrorKind> {
-    if response.get("error").is_some() {
-        return Some(MemResponseErrorKind::JsonRpc);
-    }
-    if response
-        .get("result")
-        .and_then(|result| result.get("isError"))
-        .and_then(Value::as_bool)
-        == Some(true)
-    {
-        return Some(MemResponseErrorKind::McpResult);
-    }
-    response
-        .get("result")
-        .and_then(|result| result.get("error"))
-        .is_some()
-        .then_some(MemResponseErrorKind::SuccessEnvelope)
 }
 
 #[cfg(test)]
@@ -154,13 +109,22 @@ mod tests {
 
     #[test]
     fn conflicting_space_is_rejected() {
-        let err = bind_declared_space_id(
-            &json!({"properties":{"space_id":{"type":"string"}}}),
-            json!({"space_id":"other-space"}),
-            &binding(),
-        )
-        .expect_err("reject cross-space call");
-        assert!(err.to_string().contains("does not match"));
+        for scope in [
+            json!("other-space"),
+            json!(null),
+            json!(1),
+            json!(false),
+            json!([]),
+            json!({}),
+        ] {
+            let err = bind_declared_space_id(
+                &json!({"properties":{"space_id":{"type":"string"}}}),
+                json!({"space_id":scope}),
+                &binding(),
+            )
+            .expect_err("reject cross-space or invalid scope");
+            assert!(err.to_string().contains("does not match"));
+        }
     }
 
     #[test]

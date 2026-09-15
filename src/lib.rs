@@ -23,6 +23,8 @@ pub use agenthub_db as db;
 mod internal;
 mod linkers;
 mod loop_credentials;
+mod mcp_proxy;
+mod mcp_proxy_cli;
 pub mod message_body_store;
 mod migrate_cli;
 pub mod object_upload;

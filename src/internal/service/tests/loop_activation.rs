@@ -10,6 +10,9 @@ use agenthub_db::loop_runtime::{LoopPolicyUpdate, LoopStore};
 
 use super::*;
 
+mod mcp_operations;
+mod mcp_shim;
+
 pub(super) async fn fixture() -> (
     crate::state::AppState,
     TeamInternalControlService,
@@ -17,7 +20,31 @@ pub(super) async fn fixture() -> (
     crate::team::TeamRunRecord,
     LoopReservation,
 ) {
-    let state = build_test_state().await;
+    fixture_with_running(true).await
+}
+
+async fn fixture_with_running(
+    mark_running: bool,
+) -> (
+    crate::state::AppState,
+    TeamInternalControlService,
+    InternalAuthz,
+    crate::team::TeamRunRecord,
+    LoopReservation,
+) {
+    fixture_with_state(build_test_state().await, mark_running).await
+}
+
+async fn fixture_with_state(
+    state: crate::state::AppState,
+    mark_running: bool,
+) -> (
+    crate::state::AppState,
+    TeamInternalControlService,
+    InternalAuthz,
+    crate::team::TeamRunRecord,
+    LoopReservation,
+) {
     let run = create_team_run(&state).await;
     let store = LoopStore::new(state.db.clone());
     let now = chrono::Utc::now().timestamp();
@@ -35,13 +62,33 @@ pub(super) async fn fixture() -> (
         )
         .await
         .unwrap();
+    let reservation = reserve_fixture(&state, &run, "fixture", mark_running).await;
+    let authz = build_authz();
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz.clone(),
+        InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap".into(),
+    );
+    (state, service, authz, run, reservation)
+}
+
+async fn reserve_fixture(
+    state: &crate::state::AppState,
+    run: &crate::team::TeamRunRecord,
+    source_key: &str,
+    mark_running: bool,
+) -> LoopReservation {
+    let store = LoopStore::new(state.db.clone());
+    let now = chrono::Utc::now().timestamp();
     let trigger = store
         .accept_trigger(
             &LoopTriggerInput {
                 actor_id: "reviewer".into(),
                 team_id: run.team_id.clone(),
                 kind: LoopTriggerKind::Operator,
-                source_key: "fixture".into(),
+                source_key: source_key.into(),
                 due_at: None,
                 references: LoopSourceReferences::default(),
             },
@@ -62,7 +109,7 @@ pub(super) async fn fixture() -> (
         panic!("not admitted");
     };
     sqlx::query(
-        "INSERT INTO loop_mailbox_partitions(run_id, team_id, created_at) VALUES (?, ?, ?)",
+        "INSERT OR IGNORE INTO loop_mailbox_partitions(run_id, team_id, created_at) VALUES (?, ?, ?)",
     )
     .bind(&run.id)
     .bind(&run.team_id)
@@ -83,16 +130,10 @@ pub(super) async fn fixture() -> (
         .bind_session(&reservation, &session, now)
         .await
         .unwrap();
-    store.mark_running(&reservation, now).await.unwrap();
-    let authz = build_authz();
-    let service = TeamInternalControlService::new(
-        control_deps(&state),
-        authz.clone(),
-        InternalGrpcSecurityMode::Disabled,
-        std::env::temp_dir(),
-        "bootstrap".into(),
-    );
-    (state, service, authz, run, reservation)
+    if mark_running {
+        store.mark_running(&reservation, now).await.unwrap();
+    }
+    reservation
 }
 
 fn token(

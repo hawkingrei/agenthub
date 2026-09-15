@@ -135,7 +135,9 @@ pub async fn maybe_spawn_internal_grpc(state: AppState, config: &AppConfig) -> a
     let service =
         proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControlServer::new(
             TeamInternalControlService::new(deps, authz, mode, cert_dir, bootstrap_token),
-        );
+        )
+        .max_decoding_message_size(crate::mcp_proxy::MCP_RPC_MESSAGE_LIMIT)
+        .max_encoding_message_size(crate::mcp_proxy::MCP_RPC_MESSAGE_LIMIT);
 
     let cancellation = state.agents.daemon_tasks().background_cancellation();
     state

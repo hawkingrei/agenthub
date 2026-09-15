@@ -6,6 +6,7 @@ members = [
     "crates/agenthub-acp-adapter",
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
+    "crates/agenthub-mcp",
     "crates/agenthub-managed-skills",
     "crates/agenthub-internal-p2p",
     "crates/agenthub-text",
@@ -101,6 +102,7 @@ zstd = "0.13"
 # stale OpenSSL 1.0.2 sysroot that ships in the default cross images.
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 agenthub-acp = { path = "crates/agenthub-acp" }
+agenthub-acp-core = { path = "crates/agenthub-acp-core" }
 agenthub-managed-skills = { path = "crates/agenthub-managed-skills" }
 agenthub-internal-p2p = { path = "crates/agenthub-internal-p2p" }
 agenthub-text = { path = "crates/agenthub-text" }
@@ -121,6 +123,7 @@ agenthub-logging = { path = "crates/agenthub-logging" }
 agenthub-message-archive = { path = "crates/agenthub-message-archive" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
+agenthub-mcp = { path = "crates/agenthub-mcp" }
 agenthub-message-store = { path = "crates/agenthub-message-store" }
 agenthub-object-store = { path = "crates/agenthub-object-store" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
