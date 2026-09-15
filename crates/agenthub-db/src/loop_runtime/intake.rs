@@ -149,7 +149,7 @@ impl LoopStore {
     }
 }
 
-async fn validate_references(
+pub(super) async fn validate_references(
     tx: &mut Transaction<'_, Sqlite>,
     input: &LoopTriggerInput,
 ) -> anyhow::Result<()> {

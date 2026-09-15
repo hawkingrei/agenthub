@@ -326,6 +326,13 @@ impl TeamManager {
         if reassigned || reopened {
             super::loop_work_events::stage_assignment_event(tx, task_id, None).await?;
         }
+        agenthub_db::loop_runtime::LoopStore::observe_task_schedule_tx(
+            tx,
+            &prepared.current.team_id,
+            task_id,
+            now,
+        )
+        .await?;
         Ok(())
     }
 }

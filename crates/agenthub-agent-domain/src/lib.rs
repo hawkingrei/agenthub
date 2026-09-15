@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 pub mod loop_runtime;
+pub mod loop_scheduling;
 pub mod mcp_operations;
 
 pub const AGENT_NODE_MAIN_ID: &str = "main";

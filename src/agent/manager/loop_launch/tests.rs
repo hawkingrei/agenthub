@@ -12,7 +12,7 @@ mod mcp;
 mod mem;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3
-import json, os, subprocess, sys, uuid
+import json, os, subprocess, sys, time, uuid
 log_path, mode, control_binary = sys.argv[1:]
 if mode == 'mem':
     import mem_provider
@@ -111,6 +111,34 @@ for line in sys.stdin:
             path = os.path.join(os.getcwd(), 'loop-outcome.json')
             with open(path, 'w') as outcome:
                 json.dump({'kind':'handoff'}, outcome)
+            actor('loop-finish', '--outcome-file', path)
+        if mode == 'scheduling':
+            activation = actor('loop-context')['activation']
+            target = 'planner' if activation['actor_id'] == 'worker' else 'worker'
+            path = os.path.join(os.getcwd(), 'loop-schedule.json')
+            intent = {'source_key': 'cycle:' + activation['id'], 'schedule': {'kind': 'due', 'due_at': int(time.time())}}
+            with open(path, 'w') as output:
+                json.dump(intent, output)
+            receipt = actor('loop-schedule', '--member-id', target, '--request-file', path)
+            registration_id = receipt['registration']['id']
+            assert actor('loop-schedule-show', '--registration-id', registration_id)['registration']['input']['actor_id'] == target
+            page = actor('loop-schedules', '--member-id', target, '--limit', '1')
+            registered_ids = [r['id'] for r in page['registrations']]
+            while page['next_cursor'] is not None:
+                page = actor('loop-schedules', '--member-id', target, '--limit', '1', '--after-registration-id', page['next_cursor'])
+                registered_ids.extend(r['id'] for r in page['registrations'])
+            assert registration_id in registered_ids
+            intent['source_key'] = 'temporary:' + activation['id']
+            intent['schedule']['due_at'] += 3600
+            with open(path, 'w') as output:
+                json.dump(intent, output)
+            temporary = actor('loop-schedule', '--member-id', target, '--request-file', path)
+            assert actor('loop-schedule-revoke', '--registration-id', temporary['registration']['id'])['state'] == 'revoked'
+            with open(log_path, 'a') as log:
+                log.write(json.dumps({'scheduled_by': activation['actor_id'], 'registration_id': registration_id}) + '\n')
+            path = os.path.join(os.getcwd(), 'loop-outcome.json')
+            with open(path, 'w') as output:
+                json.dump({'kind': 'no_actionable_work'}, output)
             actor('loop-finish', '--outcome-file', path)
         if mode in ['finish', 'mcp', 'mem']:
             for command in ['team-members', 'team-tasks', 'inbox']:
@@ -540,9 +568,112 @@ async fn loop_work_provider_dispatch_survives_leader_exit_and_report_wakes_offli
 
 #[test]
 fn loop_work_entry_prompt_is_a_bounded_versioned_recovery_pointer() {
-    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v4");
+    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v5");
     assert!(LOOP_ENTRY_PROMPT.len() < 1500);
-    for command in ["loop-context", "loop-source", "loop-finish"] {
+    for command in [
+        "loop-context",
+        "loop-source",
+        "loop-schedule",
+        "loop-finish",
+    ] {
         assert!(LOOP_ENTRY_PROMPT.contains(command));
     }
+}
+
+#[tokio::test]
+async fn loop_schedule_provider_cli_cycles_stop_under_each_members_durable_budget() {
+    let fixture = Fixture::new("scheduling").await;
+    let store = LoopStore::new(fixture.state.db.clone());
+    let limits = LoopLimits {
+        consecutive_no_progress: 2,
+        ..LoopLimits::default()
+    };
+    for actor in ["planner", "worker"] {
+        let policy = store
+            .policy(&fixture.team_id, actor)
+            .await
+            .unwrap()
+            .unwrap();
+        store
+            .configure(
+                LoopPolicyUpdate {
+                    actor_id: actor,
+                    team_id: &fixture.team_id,
+                    expected_revision: policy.revision,
+                    state: LoopPolicyState::Enabled,
+                    session_policy: LoopSessionPolicy::Fresh,
+                    limits: &limits,
+                },
+                Utc::now().timestamp(),
+            )
+            .await
+            .unwrap();
+    }
+    let mut previous = fixture.execute("schedule-cycle").await;
+    assert_eq!(previous.state, LoopActivationState::Finished);
+    for actor in ["planner", "worker", "planner"] {
+        let firing = store
+            .reconcile_schedules(Utc::now().timestamp())
+            .await
+            .unwrap();
+        assert_eq!(firing.len(), 1);
+        let detail = store
+            .registration_detail(&fixture.team_id, &firing[0].registration_id, None, 1)
+            .await
+            .unwrap();
+        assert_eq!(
+            detail
+                .registration
+                .input
+                .references
+                .scheduling_activation_id
+                .as_deref(),
+            Some(previous.id.as_str())
+        );
+        let next = fixture.execute_pending(actor).await;
+        assert_ne!(next.session_id, previous.session_id);
+        previous = next;
+    }
+    let firing = store
+        .reconcile_schedules(Utc::now().timestamp())
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        store
+            .admit(
+                &fixture.team_id,
+                &firing.receipt.activation_id,
+                fixture.state.agents.loop_owner_id(),
+                Utc::now().timestamp()
+            )
+            .await
+            .unwrap(),
+        LoopAdmission::Deferred(
+            agenthub_agent_domain::loop_runtime::LoopDeferralReason::NoProgressLimit
+        )
+    );
+    for actor in ["planner", "worker"] {
+        assert_eq!(
+            store
+                .policy(&fixture.team_id, actor)
+                .await
+                .unwrap()
+                .unwrap()
+                .no_progress_count,
+            2
+        );
+        assert!(
+            store
+                .reservation(&fixture.team_id, actor)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    let requests = std::fs::read_to_string(fixture.directory.join("requests.jsonl")).unwrap();
+    assert_eq!(requests.matches("scheduled_by").count(), 4, "{requests}");
+    assert_eq!(requests.matches("session/prompt").count(), 4, "{requests}");
+    assert!(!requests.contains("cli_error"), "{requests}");
+    fixture.close().await;
 }

@@ -19,8 +19,8 @@ use super::{AgentInput, AgentManager};
 mod mem;
 use mem::MemBootstrap;
 
-const LOOP_ENTRY_PROMPT_VERSION: &str = "loop-entry-v4";
-const LOOP_ENTRY_PROMPT: &str = "Run one bounded AgentHub activation. Read `agenthub actor loop-context --json` and follow its next_cursor to recover all durable work sources; use `agenthub actor loop-source --source-id <id> --json` for exact source messages. Recover current role and authority with `agenthub actor team-members --json`, canonical work with `agenthub actor team-tasks --json`, and the addressed mailbox with `agenthub actor inbox --json`. The mailbox run is stable transport identity; this activation does not create a task attempt. Respect canonical assignment and task acceptance authority. Provider reasoning and native tool rounds belong to this activation. Record durable task evidence before reporting progress. End with `agenthub actor loop-finish --outcome-file <path> --json`; `agenthub actor help loop-finish` describes the output contract. A provider exit or completed prompt is not an outcome. Do not poll for future work or start another resident loop.";
+const LOOP_ENTRY_PROMPT_VERSION: &str = "loop-entry-v5";
+const LOOP_ENTRY_PROMPT: &str = "Run one bounded AgentHub activation. Read `agenthub actor loop-context --json` and follow its next_cursor to recover all durable work sources; use `agenthub actor loop-source --source-id <id> --json` for exact source messages. Recover current role and authority with `agenthub actor team-members --json`, canonical work with `agenthub actor team-tasks --json`, and the addressed mailbox with `agenthub actor inbox --json`. The mailbox run is stable transport identity; this activation does not create a task attempt. Respect canonical assignment and task acceptance authority. Provider reasoning and native tool rounds belong to this activation. Record durable task evidence before reporting progress. For future work, use `agenthub actor help loop-schedule` and register before finishing. End with `agenthub actor loop-finish --outcome-file <path> --json`; `agenthub actor help loop-finish` describes the output contract. A provider exit or completed prompt is not an outcome. Do not poll for future work or start another resident loop.";
 
 #[derive(Clone)]
 pub(crate) struct LoopControlEndpoint {
@@ -287,6 +287,9 @@ impl AgentManager {
             loop {
                 tokio::select! { _ = cancel.cancelled() => return Ok(()), _ = interval.tick() => {} }
                 if manager.loop_control_endpoint.read().await.is_none() { continue; }
+                if let Err(error) = store.reconcile_schedules(Utc::now().timestamp()).await {
+                    tracing::warn!(%error, "loop schedule reconciliation failed");
+                }
                 let reservation = match store.admit_next(&manager.loop_owner_id, Utc::now().timestamp()).await {
                     Ok(Some(reservation)) => reservation,
                     Ok(None) => continue,

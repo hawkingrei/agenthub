@@ -192,6 +192,13 @@ impl LoopStore {
         .fetch_one(&mut *tx)
         .await?;
         anyhow::ensure!(exists, LoopStoreError::ScopeMismatch);
+        super::scheduling_revocation::revoke_origin_registrations(
+            &mut tx,
+            team_id,
+            activation_id,
+            now,
+        )
+        .await?;
         // Retire only this continuation's source; a coalesced independent wake must survive.
         sqlx::query("INSERT OR IGNORE INTO loop_revoked_sources(trigger_id, created_at) SELECT id, ? FROM loop_trigger_sources WHERE team_id = ? AND source_kind = 'continuation' AND json_extract(input_json, '$.references.scheduling_activation_id') = ?")
             .bind(now).bind(team_id).bind(activation_id).execute(&mut *tx).await?;

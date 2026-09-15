@@ -104,7 +104,7 @@ pub(super) async fn set_loop_configuration(
     Ok(Json(result))
 }
 
-fn require_member(team: &TeamDefinitionRecord, actor_id: &str) -> Result<(), ApiError> {
+pub(super) fn require_member(team: &TeamDefinitionRecord, actor_id: &str) -> Result<(), ApiError> {
     if !parse_member_ids(team.spec.get("members"))?.contains(actor_id) {
         return Err(ApiError::not_found("team member not found"));
     }

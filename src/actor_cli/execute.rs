@@ -337,6 +337,46 @@ pub(super) async fn run_actor_command(
 ) -> anyhow::Result<()> {
     let output_preference = actor_output_preference_for_command(&command);
     match command {
+        ActorCommand::LoopSchedule { member_id, request } => {
+            let receipt = loop_control_client()
+                .await?
+                .register_loop_schedule(member_id.as_deref(), &request)
+                .await?;
+            write_actor_output(&receipt, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopSchedules {
+            member_id,
+            after_registration_id,
+            limit,
+        } => {
+            let page = loop_control_client()
+                .await?
+                .list_loop_schedules(
+                    member_id.as_deref(),
+                    after_registration_id.as_deref(),
+                    limit,
+                )
+                .await?;
+            write_actor_output(&page, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopScheduleShow {
+            registration_id,
+            after_firing_cursor,
+            limit,
+        } => {
+            let detail = loop_control_client()
+                .await?
+                .get_loop_schedule(&registration_id, after_firing_cursor, limit)
+                .await?;
+            write_actor_output(&detail, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopScheduleRevoke { registration_id } => {
+            let registration = loop_control_client()
+                .await?
+                .revoke_loop_schedule(&registration_id)
+                .await?;
+            write_actor_output(&registration, output_mode, output_preference)?;
+        }
         ActorCommand::LoopSource { source_id } => {
             let detail = loop_control_client()
                 .await?

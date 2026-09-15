@@ -7,7 +7,7 @@ use agenthub_agent_domain::loop_runtime::{
 };
 use agenthub_db::loop_runtime::{LoopPolicyUpdate, LoopStore};
 
-fn work_token(
+pub(super) fn work_token(
     authz: &InternalAuthz,
     run: &str,
     reservation: &LoopReservation,
