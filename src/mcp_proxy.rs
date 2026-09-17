@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 use tonic::Status;
 
 pub(crate) mod configured;
+pub(crate) mod context;
 
 pub(crate) const MCP_RPC_MESSAGE_LIMIT: usize = agenthub_mcp::MAX_MESSAGE_BYTES + 65_536;
 

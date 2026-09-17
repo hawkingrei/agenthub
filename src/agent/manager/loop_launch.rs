@@ -16,7 +16,10 @@ use crate::team::TeamManager;
 use super::acp_provider::{AcpProviderSpec, codex_reasoning_effort_for_thinking_level};
 use super::{AgentInput, AgentManager};
 
-const LOOP_ENTRY_PROMPT_VERSION: &str = "loop-entry-v2";
+mod mem;
+use mem::MemBootstrap;
+
+const LOOP_ENTRY_PROMPT_VERSION: &str = "loop-entry-v4";
 const LOOP_ENTRY_PROMPT: &str = "Run one bounded AgentHub activation. Read `agenthub actor loop-context --json` and follow its next_cursor to recover all durable work sources; use `agenthub actor loop-source --source-id <id> --json` for exact source messages. Recover current role and authority with `agenthub actor team-members --json`, canonical work with `agenthub actor team-tasks --json`, and the addressed mailbox with `agenthub actor inbox --json`. The mailbox run is stable transport identity; this activation does not create a task attempt. Respect canonical assignment and task acceptance authority. Provider reasoning and native tool rounds belong to this activation. Record durable task evidence before reporting progress. End with `agenthub actor loop-finish --outcome-file <path> --json`; `agenthub actor help loop-finish` describes the output contract. A provider exit or completed prompt is not an outcome. Do not poll for future work or start another resident loop.";
 
 #[derive(Clone)]
@@ -30,6 +33,7 @@ pub(super) struct LoopCredentialState {
     pub file: Arc<LoopCredentialFile>,
     pub role: InternalRole,
     pub run_id: String,
+    mem_bootstrap: MemBootstrap,
 }
 
 impl AgentManager {
@@ -166,24 +170,41 @@ impl AgentManager {
         }
         let file = Arc::new(LoopCredentialFile::create()?);
         let path = file.path.to_string_lossy().to_string();
+        let mut mem_bootstrap = MemBootstrap::NotConfigured;
+        let mut unavailable_fingerprint = None;
         let mcp = if crate::mcp_proxy::configured::has_mem_binding(
             &self.loop_app_config,
             &reservation.team_id,
         ) {
-            let mcp = crate::mcp_proxy::configured::resolve_mem(
+            let mcp = crate::mcp_proxy::configured::resolve_mem_for_launch(
                 &self.loop_app_config,
                 &reservation.team_id,
                 &agent.id,
                 |key| std::env::var(key).ok(),
             )
             .await?;
-            launch.add_mcp_proxy(
-                &crate::mcp_proxy::configured::shim_executable()?,
-                &file.path,
-                mcp.binding.server_id(),
-                &mcp.fingerprint,
-            )?;
-            Some(mcp)
+            match mcp {
+                crate::mcp_proxy::configured::MemLaunchBinding::Ready(mcp) => {
+                    launch.add_mcp_proxy(
+                        &crate::mcp_proxy::configured::shim_executable()?,
+                        &file.path,
+                        mcp.binding.server_id(),
+                        &mcp.fingerprint,
+                    )?;
+                    mem_bootstrap = MemBootstrap::Ready {
+                        space: self
+                            .loop_app_config
+                            .resolve_nowledge_mem_binding(&reservation.team_id, &agent.id)?
+                            .space_id,
+                    };
+                    Some(mcp)
+                }
+                crate::mcp_proxy::configured::MemLaunchBinding::Unavailable { fingerprint } => {
+                    mem_bootstrap = MemBootstrap::Unavailable;
+                    unavailable_fingerprint = Some(fingerprint);
+                    None
+                }
+            }
         } else {
             None
         };
@@ -197,6 +218,9 @@ impl AgentManager {
             spec.get("required_capabilities"),
         ))?);
         digest.update(launch.fingerprint_material()?);
+        if let Some(fingerprint) = unavailable_fingerprint {
+            digest.update(fingerprint.as_bytes());
+        }
         let snapshot = LoopLaunchSnapshot {
             version: 1,
             provider_id: provider.id.into(),
@@ -224,10 +248,15 @@ impl AgentManager {
             .current_run_id
             .clone()
             .ok_or_else(|| anyhow::anyhow!("loop mailbox identity is required"))?;
-        self.loop_credentials
-            .lock()
-            .await
-            .insert(agent.id.clone(), LoopCredentialState { file, role, run_id });
+        self.loop_credentials.lock().await.insert(
+            agent.id.clone(),
+            LoopCredentialState {
+                file,
+                role,
+                run_id,
+                mem_bootstrap,
+            },
+        );
         self.refresh_loop_credentials(&reservation).await?;
         Ok((
             launch,
@@ -320,6 +349,7 @@ impl AgentManager {
         store
             .mark_running(&reservation, Utc::now().timestamp())
             .await?;
+        let entry = self.loop_entry_with_mem(&reservation).await?;
         let submission = format!(
             "loop-entry:{}:{}",
             reservation.activation_id.as_deref().unwrap_or_default(),
@@ -327,7 +357,7 @@ impl AgentManager {
         );
         self.send_input_inner(
             &reservation.actor_id,
-            LOOP_ENTRY_PROMPT,
+            &entry,
             &[],
             Some(&submission),
             Some(&session_id),

@@ -7,6 +7,11 @@ use serde_json::Value;
 
 const MAX_AUTHORIZATION_BYTES: usize = 65_536;
 
+/// Availability is not authority: this permits local work, never an unverified MCP mount.
+#[derive(Debug, thiserror::Error)]
+#[error("Mem authorization check is temporarily unavailable")]
+pub(super) struct Unavailable;
+
 /// The configured endpoint and this sibling route must share the same trusted Mem deployment.
 /// Use exactly the credential retained for MCP; never expose the membership response to a provider.
 pub(super) async fn verify(
@@ -33,7 +38,10 @@ pub(super) async fn verify(
         .headers(headers.clone())
         .send()
         .await
-        .map_err(|_| anyhow::anyhow!("Mem authorization check is unavailable"))?;
+        .map_err(|_| Unavailable)?;
+    if response.status().is_server_error() || matches!(response.status().as_u16(), 408 | 429) {
+        return Err(Unavailable.into());
+    }
     anyhow::ensure!(
         response.status().is_success(),
         "Mem credential scope could not be verified"
@@ -45,11 +53,7 @@ pub(super) async fn verify(
         "Mem authorization response exceeds its limit"
     );
     let mut body = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| anyhow::anyhow!("Mem authorization response is incomplete"))?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|_| Unavailable)? {
         anyhow::ensure!(
             chunk.len() <= MAX_AUTHORIZATION_BYTES - body.len(),
             "Mem authorization response exceeds its limit"

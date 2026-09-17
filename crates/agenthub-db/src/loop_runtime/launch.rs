@@ -1,9 +1,45 @@
-use agenthub_agent_domain::loop_runtime::{LoopLaunchSnapshot, LoopReservation};
+use agenthub_agent_domain::loop_runtime::{LoopEventKind, LoopLaunchSnapshot, LoopReservation};
 use sqlx::{Row, Sqlite, Transaction};
 
 use super::{LoopStore, LoopStoreError, reservation::require_live_reservation};
 
 impl LoopStore {
+    /// A context result is local activation evidence, never a memory body or an authority grant.
+    pub async fn record_mem_context(
+        &self,
+        expected: &LoopReservation,
+        kind: LoopEventKind,
+        now: i64,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            matches!(
+                kind,
+                LoopEventKind::MemContextReady
+                    | LoopEventKind::MemContextUnavailable
+                    | LoopEventKind::MemContextMissing
+                    | LoopEventKind::MemContextInvalid
+            ),
+            LoopStoreError::InvalidState
+        );
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        Self::verify_executor_live_tx(&mut tx, expected, now).await?;
+        let previous: Option<String> = sqlx::query_scalar(
+            "SELECT kind FROM loop_activation_events WHERE activation_id = ? AND generation = ? AND kind IN ('mem_context_ready', 'mem_context_unavailable', 'mem_context_missing', 'mem_context_invalid') LIMIT 1")
+            .bind(&expected.activation_id).bind(expected.generation).fetch_optional(&mut *tx).await?;
+        if let Some(previous) = previous {
+            anyhow::ensure!(
+                previous == kind.as_str(),
+                LoopStoreError::IdempotencyConflict
+            );
+        } else {
+            sqlx::query("INSERT INTO loop_activation_events(activation_id, kind, generation, created_at) VALUES (?, ?, ?, ?)")
+                .bind(&expected.activation_id).bind(kind.as_str()).bind(expected.generation).bind(now)
+                .execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Validate the signed execution identity at request admission. The local runtime also
     /// holds an operation guard until the request ends, preventing cleanup from releasing it.
     pub async fn verify_executor_live(

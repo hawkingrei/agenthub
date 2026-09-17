@@ -20,6 +20,110 @@ async fn starting(fixture: &Fixture) -> LoopReservation {
     reservation
 }
 
+#[tokio::test]
+async fn loop_mem_context_evidence_is_fenced_immutable_and_survives_reopen() {
+    use agenthub_agent_domain::loop_runtime::LoopEventKind;
+    let mut fixture = Fixture::new().await;
+    let reservation = starting(&fixture).await;
+    partition(&fixture, "mailbox", "team").await;
+    fixture
+        .store
+        .bind_mailbox(&reservation, "mailbox", 101)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .record_launch(&reservation, &snapshot(), 101)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO agent_sessions(id, agent_id, status, started_at) VALUES ('local-session', 'worker', 'running', 101)")
+        .execute(&fixture.store.pool).await.unwrap();
+    let reservation = fixture
+        .store
+        .bind_session(&reservation, "local-session", 101)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .record_mem_context(&reservation, LoopEventKind::MemContextReady, 101)
+            .await
+            .is_err()
+    );
+    fixture.store.mark_running(&reservation, 102).await.unwrap();
+    for mutate in [0, 1, 2] {
+        let mut invalid = reservation.clone();
+        match mutate {
+            0 => invalid.generation += 1,
+            1 => invalid.owner_id = "foreign".into(),
+            _ => invalid.team_id = "other".into(),
+        }
+        assert!(
+            fixture
+                .store
+                .record_mem_context(&invalid, LoopEventKind::MemContextReady, 102)
+                .await
+                .is_err()
+        );
+    }
+    fixture
+        .store
+        .record_mem_context(&reservation, LoopEventKind::MemContextUnavailable, 102)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .record_mem_context(&reservation, LoopEventKind::MemContextUnavailable, 103)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .record_mem_context(&reservation, LoopEventKind::MemContextReady, 103)
+            .await
+            .is_err()
+    );
+    assert!(
+        fixture
+            .store
+            .record_mem_context(&reservation, LoopEventKind::Running, 103)
+            .await
+            .is_err()
+    );
+    fixture.store.pool.close().await;
+    fixture.store = LoopStore::new(crate::init_db_at_path(&fixture.path).await.unwrap());
+    let events = fixture
+        .store
+        .events(
+            "team",
+            reservation.activation_id.as_deref().unwrap(),
+            0,
+            100,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.kind == LoopEventKind::MemContextUnavailable)
+            .count(),
+        1
+    );
+    assert!(
+        events
+            .iter()
+            .all(|event| event.kind != LoopEventKind::MemContextReady)
+    );
+    assert!(
+        fixture
+            .store
+            .record_mem_context(&reservation, LoopEventKind::MemContextUnavailable, 161)
+            .await
+            .is_err()
+    );
+    fixture.close().await;
+}
+
 async fn partition(fixture: &Fixture, run: &str, team: &str) {
     sqlx::query("INSERT INTO team_runs(id, team_id, context_id, status, input_json, created_at) VALUES (?, ?, 'loop', 'submitted', '{}', 100)")
         .bind(run).bind(team).execute(&fixture.store.pool).await.unwrap();

@@ -1,12 +1,12 @@
 //! Resolve existing Mem profiles inside the daemon. No secret-bearing type implements Debug.
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use agenthub_config::{AppConfig, ResolvedNowledgeMemBinding};
 use agenthub_mcp::{
     bridge::McpProxyBinding,
     http::McpHttpTransport,
-    policy::{McpBinding, McpPolicyError},
+    policy::{McpBinding, McpPolicyError, TrustedReplayPolicy},
 };
 use reqwest::{
     Url,
@@ -20,6 +20,11 @@ mod authorization;
 pub(crate) struct ConfiguredMcpBinding {
     pub binding: Arc<McpProxyBinding>,
     pub fingerprint: String,
+}
+
+pub(crate) enum MemLaunchBinding {
+    Ready(ConfiguredMcpBinding),
+    Unavailable { fingerprint: String },
 }
 
 pub(crate) fn shim_executable() -> anyhow::Result<std::path::PathBuf> {
@@ -169,11 +174,52 @@ pub(crate) fn validate_mem_configuration(
     resolve_profile_connections(config, team_id, actor_id, secret).map(|_| ())
 }
 
+#[cfg(test)]
 pub(crate) async fn resolve_mem(
     config: &AppConfig,
     team_id: &str,
     actor_id: &str,
     secret: impl FnMut(&str) -> Option<String>,
+) -> anyhow::Result<ConfiguredMcpBinding> {
+    let (actor, team) = resolve_profile_connections(config, team_id, actor_id, secret)?;
+    resolve_verified_mem(actor, team).await
+}
+
+/// Configuration failures remain hard launch gates. A failed availability probe has no authority
+/// to create a binding, but its configuration still contributes to the activation snapshot.
+pub(crate) async fn resolve_mem_for_launch(
+    config: &AppConfig,
+    team_id: &str,
+    actor_id: &str,
+    secret: impl FnMut(&str) -> Option<String>,
+) -> anyhow::Result<MemLaunchBinding> {
+    let (actor, team) = resolve_profile_connections(config, team_id, actor_id, secret)?;
+    let reference = |connection: &MemConnection| {
+        json!({"profile":connection.resolved.profile_name,
+            "endpoint":connection.endpoint.as_str(),
+            "credential_ref":connection.resolved.profile.credential_env,
+            "space_id":connection.resolved.space_id,
+            "tool_set":connection.resolved.profile.tool_set})
+    };
+    let fingerprint = Sha256::digest(serde_json::to_vec(&json!({
+        "version":1,"authorization":"unavailable",
+        "actor":reference(&actor),"team":team.as_ref().map(reference)
+    }))?)
+    .iter()
+    .map(|byte| format!("{byte:02x}"))
+    .collect();
+    match resolve_verified_mem(actor, team).await {
+        Ok(binding) => Ok(MemLaunchBinding::Ready(binding)),
+        Err(error) if error.is::<authorization::Unavailable>() => {
+            Ok(MemLaunchBinding::Unavailable { fingerprint })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn resolve_verified_mem(
+    actor: MemConnection,
+    team: Option<MemConnection>,
 ) -> anyhow::Result<ConfiguredMcpBinding> {
     let (
         MemConnection {
@@ -182,7 +228,7 @@ pub(crate) async fn resolve_mem(
             resolved,
         },
         team,
-    ) = resolve_profile_connections(config, team_id, actor_id, secret)?;
+    ) = (actor, team);
     let workspace = authorization::verify(&endpoint, &headers, &resolved.space_id).await?;
     if let Some(team) = &team {
         let team_workspace =
@@ -196,7 +242,7 @@ pub(crate) async fn resolve_mem(
         json!({"profile":team.resolved.profile_name,
         "endpoint":team.endpoint.as_str(),"credential_ref":team.resolved.profile.credential_env})
     });
-    let revision = json!({"version":5, "access_policy":"scoped-key-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
+    let revision = json!({"version":7, "access_policy":"scoped-key-v1", "replay_policy":"knowledge-reads-v1", "endpoint":endpoint.as_str(), "profile":resolved.profile_name,
         "credential_ref":resolved.profile.credential_env, "space_id":resolved.space_id,
         "workspace_id":workspace, "team_reference":team_reference, "tool_set":resolved.profile.tool_set});
     let fingerprint = Sha256::digest(serde_json::to_vec(&revision)?)
@@ -209,7 +255,18 @@ pub(crate) async fn resolve_mem(
         &json!({"service":"nowledge-mem", "workspace_id":workspace, "space_id":resolved.space_id}),
         &revision,
         transport,
-        BTreeMap::new(),
+        // These native retrieval contracts are integration-owned. Discovery annotations cannot
+        // grant replay authority to additional tools, including memory writes with caller IDs.
+        [
+            "read_context_bundle",
+            "memory_search",
+            "read_working_memory",
+            "thread_search",
+            "search_source_chunks",
+        ]
+        .into_iter()
+        .map(|name| (name.into(), TrustedReplayPolicy::ReadOnly))
+        .collect(),
     )?
     .with_verified_authority();
     let scope = agenthub_acp_core::nowledge_mem::MemScopeBinding::new(
