@@ -39,6 +39,8 @@ policy revisions, preflight, and admission.
   enablement after preflight succeeds. Suspension preserves queued work and permits a current
   activation to finish; resume does not imply task acceptance.
 - Profile editing works offline. In loop mode, an empty prompt preserves the built-in role prompt.
+  The profile reads member identity, role, model, and description from the current Team specification
+  even when there is no execution record; closing it retains the existing channel navigation contract.
   Explicit overrides can be saved or cleared. The UI does not inject legacy role defaults or edit
   the legacy process idle watchdog through this flow. Legacy Teams retain their existing defaults.
 - Configuration writes include the observed revision and preserve unrelated limits. Conflicts or

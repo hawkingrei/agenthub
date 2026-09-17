@@ -776,6 +776,24 @@ export async function mockTeamPageApis(
     await route.fulfill(jsonResponse({ agent, team: updated }));
   });
 
+  await page.route(/\/api\/teams\/[^/]+\/members$/, async (route, request) => {
+    const teamId = new URL(request.url()).pathname.split("/")[3];
+    await route.fulfill(jsonResponse([
+      { team_id: teamId, user_id: auth.userId, role: "owner", created_at: now, updated_at: now },
+    ]));
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/members\/[^/]+\/loop$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fulfill(jsonResponse({ error: "manual fixture requires explicit loop setup" }, 409));
+      return;
+    }
+    await route.fulfill(jsonResponse({
+      policy: null,
+      preflight: { ready: false, provider_id: null, capabilities: [], blockers: ["team_loop_mode_required"], warnings: [] },
+    }));
+  });
+
   await page.route(/\/api\/teams\/[^/]+\/runtime$/, async (route, request) => {
     const url = new URL(request.url());
     const teamId = url.pathname.match(/\/api\/teams\/([^/]+)\/runtime$/)?.[1] ?? "";

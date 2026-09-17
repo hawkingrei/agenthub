@@ -84,6 +84,28 @@ The isolated fixture directory contains `page-closed.json` and
 `completed-with-page-closed.json`. These are local test artifacts, not committed credentials.
 No live model, production user data, or real external message recipient participated.
 
+## CI Profile Follow-Up
+
+The first desktop E2E run found that the replacement channel profile omitted the profile title,
+member identifier, description, and accessible close name. Restore these facts from the current
+Team specification, including role/model, without requiring a live run or snapshot. A browser
+regression now opens the channel profile with every process stopped and no execution records.
+The shared manual-Team browser fixture supplies membership and disabled loop-preflight responses
+instead of allowing those requests to fall through to the development server's HTML fallback.
+
+The complete desktop E2E selection passes 33 tests with one conditional skip. The final channel
+selection passes seven tests after the fixture follow-up. The core coverage selection passes
+1,535 tests before the additional interaction cases; the final focused selection passes 18 tests
+across the API, member panel, and history suites. These exercise observed-revision budget saves,
+unsaved-edit discard, lost opt-in response reconciliation, read-only membership failures, opaque
+pagination, zero tool cursors, revoked sources, and retained facts after subsequent page failures.
+TypeScript and targeted ESLint checks pass. Existing coverage thresholds remain unchanged.
+
+Local follow-up evidence uses `/tmp/agenthub-loop-pr13-` with suffixes `profile-e2e-final.log`,
+`e2e-full.log`, `interaction-regression.log`, and `profile-fixed.{txt,png}`. The final snapshot and
+screenshot use Chrome DevTools MCP with the synthetic E2E API fixture; they supplement, rather
+than replace, the production-schema lifecycle exercise above.
+
 ## Follow-Ups
 
 - Complete slice 13 publication and applicable current-head CI; track it in [TODO](../todo.md).

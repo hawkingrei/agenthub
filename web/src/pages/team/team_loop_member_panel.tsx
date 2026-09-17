@@ -22,6 +22,7 @@ import type {
   LoopSessionPolicy,
 } from "../../loop_types";
 import type { AuthState } from "../../types";
+import { buildTeamMemberDraftFromSpec } from "./create_helpers";
 import { LoopActivationHistory } from "./loop_activation_history";
 import { loopLabel, loopPreflightMessages } from "./loop_labels";
 import { useLoopConfiguration } from "./use_loop_configuration";
@@ -68,6 +69,7 @@ export function TeamLoopMemberPanel({
       ? (team.spec as Record<string, unknown>)
       : {};
   const loopMode = spec.execution_mode === "loop";
+  const profile = buildTeamMemberDraftFromSpec(team.spec, actorId);
   const accessScope = JSON.stringify([
     auth.token,
     auth.userId,
@@ -165,19 +167,39 @@ export function TeamLoopMemberPanel({
         <Stack gap="sm">
           <Group justify="space-between" align="start">
             <div>
+              <Text size="sm" c="dimmed">
+                Agent Profile
+              </Text>
               <Text component="h2" fw={600} size="lg">
-                {label}
+                {label === actorId ? label : `${label} ${actorId}`}
               </Text>
               <Text size="sm" c="dimmed">
                 Member configuration and work
               </Text>
             </div>
             {onClose && (
-              <Button size="xs" variant="subtle" onClick={onClose}>
+              <Button
+                size="xs"
+                variant="subtle"
+                aria-label="Close agent profile"
+                onClick={onClose}
+              >
                 Close profile
               </Button>
             )}
           </Group>
+          {profile && (
+            <>
+              <Text size="sm">
+                Role: {profile.role}. Model: {profile.model || "Default"}.
+              </Text>
+              {profile.description && (
+                <Text size="sm" className="whitespace-pre-wrap break-words">
+                  {profile.description}
+                </Text>
+              )}
+            </>
+          )}
           <Group gap="xs">
             <Badge
               variant="light"

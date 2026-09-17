@@ -62,6 +62,10 @@ const team = {
 };
 
 describe("offline loop member panel", () => {
+  const scrollIntoView = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "scrollIntoView",
+  );
   let root: Root;
   let container: HTMLDivElement;
   const onEdit = vi.fn();
@@ -105,6 +109,10 @@ describe("offline loop member panel", () => {
   }
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
     vi.stubGlobal(
       "matchMedia",
       vi.fn(() => ({
@@ -143,6 +151,13 @@ describe("offline loop member panel", () => {
   });
   afterEach(() => {
     act(() => root.unmount());
+    if (scrollIntoView)
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "scrollIntoView",
+        scrollIntoView,
+      );
+    else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
     container.remove();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -202,6 +217,39 @@ describe("offline loop member panel", () => {
     expect(button("Enable execution").disabled).toBe(false);
   });
 
+  it("shows the current offline profile and preserves its accessible close action", async () => {
+    const onClose = vi.fn();
+    const member = {
+      member_id: "worker",
+      role: "worker",
+      model: "gemini",
+      description: "Handles browser route validation",
+    };
+    await render({ team: { ...team, spec: { members: [member] } }, onClose });
+    expect(container.textContent).toContain("Agent Profile");
+    expect(container.querySelector("h2")?.textContent).toBe("Worker worker");
+    expect(container.textContent).toContain("Role: worker. Model: gemini.");
+    expect(container.textContent).toContain(member.description);
+    const close = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Close agent profile"]',
+    );
+    expect(close).not.toBeNull();
+    act(() => close!.click());
+    expect(onClose).toHaveBeenCalledOnce();
+    await render({
+      team: {
+        ...team,
+        spec: {
+          members: [{ ...member, description: "Updated while stopped" }],
+        },
+      },
+      label: "worker",
+    });
+    expect(container.querySelector("h2")?.textContent).toBe("worker");
+    expect(container.textContent).toContain("Updated while stopped");
+    expect(container.textContent).not.toContain(member.description);
+  });
+
   it("queues a request while suspended without resuming execution", async () => {
     vi.mocked(api.getTeamMemberLoop).mockResolvedValue(
       configuration("suspended"),
@@ -233,6 +281,96 @@ describe("offline loop member panel", () => {
     expect(container.textContent).toContain("Choose an available workspace.");
     expect(button("Enable execution").disabled).toBe(true);
     expect(button("Activate member").disabled).toBe(true);
+    vi.mocked(api.getTeamMemberLoop).mockResolvedValue(configuration());
+    await act(async () => button("Check again").click());
+    expect(button("Enable execution").disabled).toBe(false);
+  });
+
+  it("saves edited budgets against the observed revision and discards unsaved edits", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const initial = configuration("suspended");
+    vi.mocked(api.getTeamMemberLoop).mockResolvedValue(initial);
+    const configure = vi
+      .spyOn(api, "configureTeamMemberLoop")
+      .mockResolvedValue(initial);
+    await render();
+    await act(async () => button("Execution settings").click());
+    function input(label: string) {
+      const element = [...container.querySelectorAll("label")].find(
+        (item) => item.textContent === label,
+      );
+      expect(element).toBeDefined();
+      return document.getElementById(element!.htmlFor) as HTMLInputElement;
+    }
+    async function change(label: string, value: string) {
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(input(label), value);
+        input(label).dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await change("Activations per window", "");
+    expect(button("Save execution settings").disabled).toBe(true);
+    await change("Activations per window", "5");
+    await change("Window in seconds", "120");
+    await act(async () => input("Session policy").click());
+    const resume = [
+      ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+    ].find((item) => item.textContent?.includes("Resume when supported"));
+    expect(resume).toBeDefined();
+    await act(async () => resume!.click());
+    await act(async () => button("Save execution settings").click());
+    expect(configure).toHaveBeenCalledExactlyOnceWith(
+      "token",
+      "team",
+      "worker",
+      {
+        expected_revision: 3,
+        state: "suspended",
+        session_policy: "resume",
+        limits: {
+          ...initial.policy!.limits,
+          activations_per_actor: 5,
+          window_seconds: 120,
+        },
+      },
+    );
+    await change("Activations per window", "2");
+    await act(async () => button("Close settings").click());
+    await act(async () => button("Execution settings").click());
+    expect(input("Activations per window").value).toBe("12");
+    expect(configure).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles a lost opt-in response without repeating the write", async () => {
+    const update = vi
+      .spyOn(api, "updateTeamSpec")
+      .mockRejectedValue(new Error("Response lost"));
+    const read = vi.spyOn(api, "getTeam").mockResolvedValue(team);
+    await render({ team: { ...team, spec: {} } });
+    await act(async () => button("Use durable execution").click());
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledExactlyOnceWith("token", "team");
+    expect(onTeamUpdated).toHaveBeenCalledWith(team);
+    expect(container.textContent).toContain("Response lost");
+  });
+
+  it("keeps controls disabled when membership cannot be read", async () => {
+    vi.mocked(api.listTeamspaceMembers).mockRejectedValue(
+      new Error("Unavailable"),
+    );
+    await render();
+    expect(button("Enable execution").disabled).toBe(true);
+    expect(button("Edit profile").disabled).toBe(true);
   });
 
   it("keeps history visible to an observer without offering writable controls", async () => {
