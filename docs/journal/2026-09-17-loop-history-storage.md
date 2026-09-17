@@ -125,15 +125,17 @@ directory resolved the environment failure without changing source or project bu
 The debug executable was rebuilt, and its actual `doctor agent-trace --help` output exposes the
 activation, actor, Team, session, and event-limit selectors.
 
-Coverage CI exposed a trace-test lifetime race: the SQLite worker retains a clone of the query's
-span while returning its result, so a span-close record need not exist when the awaited operation
-returns. The capture now checks the latest synchronous span-exit record, preserving all identity
-and redaction assertions without waiting for background references. The unrelated spawn-backoff
+Coverage CI exposed nondeterministic formatter-event capture in the trace test. SQLite workers
+retain query spans while returning results, and the coverage runs omitted different synthesized
+span records. The capture now observes span creation and field updates directly through a test
+subscriber layer, preserving all identity and redaction assertions independently of formatter events
+and background span lifetimes. Missing spans report all captured fields for diagnosis. The unrelated spawn-backoff
 regression now uses the normal startup timeout and a broad retry window; it still requires the
 synthetic spawn error, rejection of the next start, and exactly one executor invocation. Its short
 startup deadline could previously test timeout behavior under coverage instead of spawn failure.
 The integrated root library regression passes 919 tests with four intentionally ignored child
-fixtures. The new head still requires both coverage jobs to pass before draft promotion.
+fixtures after the direct-capture change. The new head still requires both coverage jobs to pass
+before draft promotion.
 
 ## Follow-Ups
 - Complete slice 12 current-head CI before treating observability as delivered.

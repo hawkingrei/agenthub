@@ -68,19 +68,63 @@ async fn loop_history_tracing_correlates_lifecycle_without_private_inputs() {
     };
     use agenthub_db::loop_runtime::{LoopPolicyUpdate, LoopStore};
     use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::prelude::*;
+
+    #[derive(Default)]
+    struct Fields(serde_json::Map<String, Value>);
+
+    impl tracing::field::Visit for Fields {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.insert(field.name().into(), json!(format!("{value:?}")));
+        }
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.insert(field.name().into(), json!(value));
+        }
+        fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+            self.0.insert(field.name().into(), json!(value));
+        }
+        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+            self.0.insert(field.name().into(), json!(value));
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct Capture(std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<u64, Fields>>>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
+        fn on_new_span(
+            &self,
+            attributes: &tracing::span::Attributes<'_>,
+            id: &tracing::span::Id,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            if !attributes.metadata().name().starts_with("loop.") {
+                return;
+            }
+            let mut fields = Fields::default();
+            attributes.record(&mut fields);
+            fields.0.insert("name".into(), json!(attributes.metadata().name()));
+            self.0.lock().unwrap().insert(id.into_u64(), fields);
+        }
+
+        fn on_record(
+            &self,
+            id: &tracing::span::Id,
+            values: &tracing::span::Record<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            if let Some(fields) = self.0.lock().unwrap().get_mut(&id.into_u64()) {
+                values.record(fields);
+            }
+        }
+    }
 
     let state = build_test_state().await;
     let (team, _, activations) = history_api_fixture(&state).await;
-    let path = std::env::temp_dir().join(format!("loop-tracing-{}.jsonl", Uuid::new_v4()));
-    let subscriber = tracing_subscriber::fmt()
-        .json()
-        .without_time()
-        .with_max_level(tracing::Level::INFO)
-        // SQLx workers can retain the span after a query returns. The final exit records
-        // all fields synchronously without waiting for those background references to close.
-        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::EXIT)
-        .with_writer(std::fs::File::create(&path).unwrap())
-        .finish();
+    // Observe span creation and field updates directly. Formatter-generated events and
+    // background SQLite span references have independent timing and are not this contract.
+    let capture = Capture::default();
+    let subscriber = tracing_subscriber::registry().with(capture.clone());
     async {
         let store = LoopStore::new(state.db.clone());
         let receipt = store.accept_trigger(&LoopTriggerInput {
@@ -106,8 +150,10 @@ async fn loop_history_tracing_correlates_lifecycle_without_private_inputs() {
         }, 104).await.unwrap();
         store.cleanup_verified(&reservation, LoopCleanupDisposition::Exited, 105).await.unwrap();
     }.with_subscriber(subscriber).await;
-    let output = std::fs::read_to_string(&path).unwrap();
-    std::fs::remove_file(path).unwrap();
+    let records = capture.0.lock().unwrap().values()
+        .map(|fields| Value::Object(fields.0.clone()))
+        .collect::<Vec<_>>();
+    let output = serde_json::to_string(&records).unwrap();
     for private in [
         "private-alpha",
         "private-owner",
@@ -117,10 +163,6 @@ async fn loop_history_tracing_correlates_lifecycle_without_private_inputs() {
     ] {
         assert!(!output.contains(private), "{private}");
     }
-    let records = output
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).unwrap())
-        .collect::<Vec<_>>();
     for name in [
         "loop.trigger_intake",
         "loop.admission",
@@ -129,11 +171,10 @@ async fn loop_history_tracing_correlates_lifecycle_without_private_inputs() {
         "loop.finish",
         "loop.cleanup",
     ] {
-        let span = &records
+        let span = records
             .iter()
-            .rev()
-            .find(|record| record["span"]["name"] == name)
-            .expect(name)["span"];
+            .find(|record| record["name"] == name)
+            .unwrap_or_else(|| panic!("missing {name}: {output}"));
         assert_eq!(span["activation_id"], activations[0], "{name}");
         assert_eq!(span["actor_id"], "planner", "{name}");
         assert_eq!(span["team_id"], team, "{name}");
