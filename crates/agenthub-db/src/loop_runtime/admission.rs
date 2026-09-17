@@ -10,6 +10,11 @@ use super::{
 };
 
 impl LoopStore {
+    #[tracing::instrument(name = "loop.admission", skip_all, fields(
+        team_id = %team_id, activation_id = %activation_id,
+        actor_id = tracing::field::Empty, generation = tracing::field::Empty,
+        deferral = tracing::field::Empty,
+    ))]
     pub async fn admit(
         &self,
         team_id: &str,
@@ -29,6 +34,7 @@ impl LoopStore {
             return Ok(LoopAdmission::NotPending);
         };
         let activation = parse_activation(&row)?;
+        tracing::Span::current().record("actor_id", &activation.actor_id);
         if activation.state != LoopActivationState::Pending {
             return Ok(LoopAdmission::NotPending);
         }
@@ -43,6 +49,7 @@ impl LoopStore {
             .await?;
         let policy = parse_policy(&row)?;
         if let Some(reason) = deferral_reason(&mut tx, &activation, &policy, now).await? {
+            tracing::Span::current().record("deferral", reason.as_str());
             if reason != LoopDeferralReason::NotDue {
                 record_deferral(&mut tx, activation_id, reason, now).await?;
             }
@@ -60,6 +67,7 @@ impl LoopStore {
             .bind(activation_id).bind(LoopEventKind::Admitted.as_str()).bind(reservation.generation).bind(now)
             .execute(&mut *tx).await?;
         tx.commit().await?;
+        tracing::Span::current().record("generation", reservation.generation);
         Ok(LoopAdmission::Admitted(reservation))
     }
 

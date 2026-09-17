@@ -264,15 +264,23 @@ baseline; duplicate totals are lower bounds when such sources remain. Duplicate 
 one counter in the intake transaction without expanding the lifecycle event log.
 
 Runtime spans reuse the existing `tracing` subscriber and optional fastrace bridge from
-[runtime diagnostics](runtime-diagnostics.md); the activation id becomes a span attribute so
-wall-clock timelines join durable lifecycle records. `agenthub doctor agent-trace` extends from
-session-centric stall analysis to activation-centric explanation: given an actor or activation
-reference, it must answer why the agent was activated, what state it read, what it changed, why it
-exited, and what will wake it next. Its stall classification gains loop layers such as
-`pending_not_admitted`, `lease_expired_unfenced`, `waiting_dependency`, and `continuation_missing`
-alongside the existing provider/persistence/SSE layers. The diagnostics redaction rules apply
-unchanged to trace storage and doctor output; provider-native identifiers appear only through the
-adapter's safe-metadata allowlist.
+[runtime diagnostics](runtime-diagnostics.md#activation-evidence-and-classifications). Intake,
+admission, session binding, execution, running, finish, cancellation, fencing, and cleanup carry
+safe activation/actor/Team/generation/session attributes. These operation spans correlate with
+durable lifecycle records without treating an attempted transaction as committed work.
+
+The debug-only `agenthub doctor agent-trace --activation-id <id>` explains recorded sources,
+configuration references, outcomes, cleanup, continuation linkage, and current actor wake conditions.
+Actor inspection selects a retained reservation, earliest pending activation, or latest history;
+explicit session inspection preserves the legacy path. A selected activation never borrows a newer
+session's events, permission requests, or live overlay. Bounded pages expose continuation cursors,
+while latest cleanup and open-tool evidence are queried independently of first-page limits.
+
+Loop findings include `pending_not_admitted`, `lease_expired_unfenced`, `waiting_dependency`,
+`continuation_missing`, and `tool_boundary_stall`. An old open tool is an observation gap, not
+proof of failure or an external effect. Product history and metrics remain independently authorized
+in release builds; doctor remains debug-only. Redaction rules apply unchanged to trace storage and
+doctor output; provider-native identifiers appear only through the adapter's safe-metadata allowlist.
 
 ## Validation Matrix
 

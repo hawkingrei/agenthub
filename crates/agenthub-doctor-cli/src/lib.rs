@@ -27,13 +27,15 @@ struct DoctorCli {
 enum DoctorSubcommand {
     #[command(
         name = "agent-trace",
-        about = "Inspect read-only agent delivery metadata for stalled ACP/team sessions. Debug builds only."
+        about = "Inspect read-only activation history and agent delivery metadata. Debug builds only."
     )]
     AgentTrace(AgentTraceCli),
 }
 
 #[derive(Debug, Clone, Args, PartialEq, Eq)]
 struct AgentTraceCli {
+    #[arg(long, conflicts_with_all = ["agent_id", "team_id", "member_id", "session_id"])]
+    activation_id: Option<String>,
     #[arg(long, conflicts_with_all = ["team_id", "member_id"])]
     agent_id: Option<String>,
     #[arg(long, requires = "member_id")]
@@ -126,6 +128,7 @@ async fn run_agent_trace(args: AgentTraceCli) -> anyhow::Result<()> {
         .clone()
         .or_else(|| std::env::var("AGENTHUB_TOKEN").ok());
     let request = AgentTraceRequest {
+        activation_id: args.activation_id,
         agent_id: args.agent_id,
         team_id: args.team_id,
         member_id: args.member_id,
@@ -171,6 +174,9 @@ async fn collect_from_live_server(
         .extend(["api", "diagnostics", "agent_trace"]);
     {
         let mut pairs = url.query_pairs_mut();
+        if let Some(activation_id) = request.activation_id.as_deref() {
+            pairs.append_pair("activation_id", activation_id);
+        }
         if let Some(agent_id) = request.agent_id.as_deref() {
             pairs.append_pair("agent_id", agent_id);
         }
@@ -277,6 +283,49 @@ mod tests {
         };
         assert_eq!(args.team_id.as_deref(), Some("team-1"));
         assert_eq!(args.member_id.as_deref(), Some("worker"));
+    }
+
+    #[test]
+    fn parse_doctor_accepts_activation_and_rejects_mixed_selectors() {
+        let base = ["agent-trace", "--activation-id", "activation-1"];
+        let parsed = parse_doctor_args(&base.map(str::to_owned)).unwrap();
+        let DoctorCommand::AgentTrace(args) = parsed else {
+            panic!("expected agent trace command");
+        };
+        assert_eq!(args.activation_id.as_deref(), Some("activation-1"));
+        for selector in [
+            vec!["--agent-id", "actor"],
+            vec!["--session-id", "session"],
+            vec!["--team-id", "team", "--member-id", "actor"],
+        ] {
+            let arguments = base
+                .iter()
+                .copied()
+                .chain(selector)
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            assert!(parse_doctor_args(&arguments).is_err());
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn release_agent_trace_remains_disabled() {
+        use std::future::Future;
+        use std::task::{Context, Poll, Waker};
+
+        let args = ["agent-trace", "--activation-id", "activation-1"].map(str::to_owned);
+        let mut request = std::pin::pin!(super::run_from_args(&args));
+        let Poll::Ready(Err(error)) = request
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+        else {
+            panic!("release diagnostics must reject immediately without any I/O");
+        };
+        assert_eq!(
+            error.to_string(),
+            "agent-trace diagnostics are only available in debug builds"
+        );
     }
 
     #[test]

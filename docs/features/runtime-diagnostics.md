@@ -20,11 +20,9 @@ stalls from CPU hotspots and avoid relying on UI status alone.
 - A read-only backend diagnostic service plus CLI surface for operators and AgentHub-managed agents
   to collect a compact trace bundle for one stuck agent or Team member without manually joining
   database, log, and ACP state by hand.
-- Target extension: activation-centric correlation for the
-  [agent loop runtime](agent-loop-runtime.md#8-observability-and-activation-trace). Once durable
-  activation records exist, `agenthub doctor agent-trace` accepts an activation reference and the
-  stall classification gains loop-lifecycle layers. This does not change the current
-  session-centric contract below.
+- Activation-centric correlation for the
+  [agent loop runtime](agent-loop-runtime.md#8-observability-and-activation-trace): durable triggers,
+  outcomes, cleanup, tool boundaries, and subsequent wake conditions remain inspectable after exit.
 
 ## Non-Goals
 
@@ -73,14 +71,21 @@ question is not only "is the process alive", but where the backend output pipeli
 5. SSE broadcaster fan-out;
 6. frontend cache/render state, only as downstream evidence.
 
-The implementation is staged. The first CLI surface, `agenthub doctor agent-trace`, is a
-debug-build-only read-only SQLite snapshot that accepts either a standalone `agent_id` or a
-Team-scoped `team_id + member_id`, resolves the active AgentHub session, and prints a compact
-human-readable plus machine-readable JSON summary. This snapshot is useful both to a human operator
-and to an AgentHub-managed agent.
+`agenthub doctor agent-trace` is a debug-build-only read-only SQLite snapshot with human-readable
+and JSON output. It accepts exactly one of `--activation-id`, `--agent-id`, or
+`--team-id` plus `--member-id`. An explicit `--session-id` remains available with an actor selector
+for legacy session inspection; it cannot be combined with `--activation-id`.
+
+Without an explicit session, actor inspection prefers a retained execution reservation, then the
+earliest pending activation, then the latest historical activation. Actors without loop history
+retain the legacy session path. Explicit activation inspection uses historical scope even if the
+actor no longer appears in the current Team roster. It never substitutes the actor's latest session
+for the selected activation's session, and unbound activations return no session events or pending
+permissions. Current actor mailbox, policy, scheduling, and metrics observations are distinct from
+the selected activation's own outcome and continuation.
 
 When a debug-build server is running, `agenthub doctor agent-trace --server-url <url> --token
-<root-session-token>` calls a root-authenticated live backend diagnostic endpoint and overlays the
+<session-token>` calls the `diagnostics:read`-authorized live backend endpoint and overlays the
 SQLite report with redacted in-memory runtime state. The first live overlay includes local runtime
 handle presence, ACP command-channel closure/capacity, active prompt count, pending command count,
 active AgentHub submission ids, last provider event class/timestamp, pending tool-call
@@ -88,6 +93,41 @@ ids/statuses, last command error metadata, output broadcast subscriber count, ac
 stream/forwarder counts, last forwarded/emitted event ids and timestamps, and last SSE delivery
 error metadata. It still does not claim full provider truth: provider-native turn ids are
 adapter-specific and should be exposed only when the adapter can report them as safe metadata.
+
+For loop reports, live overlays must match the selected activation's session and a running or
+finalizing durable classification. A new process cannot overwrite an old activation's completed,
+waiting, interrupted, or unfenced-lease finding. Invalid selector combinations return HTTP 400;
+an unknown explicit activation returns 404 after capability authorization.
+
+### Activation evidence and classifications
+
+The optional `activation` report contains bounded source/event/tool pages, a separately queried
+latest event, safe lease generation/expiry, the recorded outcome, a verified continuation link,
+current actor next wake, typed active scheduling conditions, and scoped metrics. Each history page
+uses the clamped `--event-limit` (1 through 100); continuation cursors signal omitted rows. Complete
+source/event/tool history is available through the independently authorized product history APIs.
+Latest-event and open-tool queries are independent of page truncation. Inspection performs no
+schema migration or repair. These related observations are not one atomic global snapshot; the
+metrics object uses its own read transaction.
+
+- `pending_not_admitted`: due work awaits admission; policy, budgets, and deferral events explain why.
+- `loop_scheduled`, `loop_suspended`, `loop_disabled`: a deadline/backoff or policy gates pending work.
+- `lease_expired_unfenced`: a retained lease expired without verified cleanup, including interrupted
+  activations. This does not prove that the process exited or permit replacement execution.
+- `waiting_dependency` and `loop_waiting`: the selected outcome records a business wait.
+- `continuation_missing`: a requested continuation lacks its matching finish receipt and durable
+  source linkage. A revoked continuation remains visible as revoked, not missing.
+- `tool_boundary_stall`: the current generation has an open tool boundary at least 60 seconds old
+  with a retained, unexpired lease. It does not establish success, failure, or external side effects.
+- `loop_running`, `loop_finalizing`, `loop_completed`, `loop_canceled`, `loop_interrupted`: durable
+  lifecycle findings; running alone is not evidence of provider liveness or task acceptance.
+
+Lifecycle spans cover trigger intake, admission, session binding, running, finish, cancellation,
+cleanup, execution, and fencing. Safe actor/Team/activation/generation/session fields correlate
+these operations with controller RPC spans through the existing tracing/fastrace bridge. No raw
+arguments, source keys, owner secrets, prompts, or tool results are attached. Spans describe
+operations; an intake span inside a caller transaction is not proof that the transaction committed.
+Persisted lifecycle history remains the authority across restarts.
 
 ## Contracts
 
@@ -149,8 +189,9 @@ adapter-specific and should be exposed only when the adapter can report them as 
   - compiled out or hard-disabled in release builds;
   - if a future release-build implementation is added, it must require a new security review before
     introducing any explicit configuration or local/admin authorization model.
-- Remote HTTP exposure is not part of the initial contract. If added later, it must be authenticated,
-  authorization-checked, rate-limited, and covered by redaction tests.
+- Live HTTP diagnostics require `diagnostics:read` and remain debug-only. Release history and
+  metrics APIs instead require `runtime:inspect` plus historical Team access; they do not import
+  this SQLite diagnostic collector or expose its global inspection authority.
 
 ## Validation Matrix
 
@@ -171,6 +212,12 @@ adapter-specific and should be exposed only when the adapter can report them as 
 - `python3 /Users/weizhenwang/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/agenthub-agent-debug`
 - `cargo test -p agenthub diagnostics::agent_trace`
 - `cargo test -p agenthub doctor_cli`
+- `cargo test -p agenthub-diagnostics --lib --locked`
+- `cargo test -p agenthub-doctor-cli --lib --locked`
+- `cargo test -p agenthub --lib api::diagnostics::tests --locked`
+- Activation cases cover read-only reopen after exit, coalesced source pagination, latest-event
+  and open-tool evidence beyond the first page, current-versus-historical session isolation,
+  outcome/continuation linkage, lease uncertainty, and payload redaction.
 - `cargo test -p agenthub-acp acp_handle_send_times_out_when_channel_is_backpressured`
 - `cargo test -p agenthub-acp acp_runtime_diagnostics_tracks_redacted_live_state`
 - `cargo test -p agenthub sse::tests::output_stream_emits_events_from_forwarders`
@@ -203,7 +250,17 @@ the backend path shows that events were persisted and emitted:
    runtime ownership;
 5. if persisted events are advancing but SSE is stale, focus on backend broadcaster fan-out;
 6. only if persisted events and SSE are healthy should the investigation move to browser
-   cache/render state.
+  cache/render state.
+
+To explain a prior activation independently of the current process, use a debug binary:
+
+```bash
+agenthub doctor agent-trace --activation-id <activation-id> --json
+agenthub doctor agent-trace --team-id <team-id> --member-id <actor-id>
+```
+
+Release product history and metric routes are described in
+[the loop runtime contract](agent-loop-runtime.md#8-observability-and-activation-trace).
 
 ## Open Risks
 
@@ -225,3 +282,4 @@ the backend path shows that events were persisted and emitted:
 - [2026-05-04 Node Detail Runtime Labels](../journal/2026-05-04-node-detail-runtime-labels.md)
 - [2026-05-07 Runtime Diagnostics Fastrace Bridge](../journal/2026-05-07-runtime-diagnostics-fastrace.md)
 - [2026-05-08 Agent Trace Diagnostics](../journal/2026-05-08-agent-trace-diagnostics.md)
+- [2026-09-17 Loop History Storage](../journal/2026-09-17-loop-history-storage.md)

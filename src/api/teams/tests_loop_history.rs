@@ -60,6 +60,87 @@ async fn history_api_fixture(state: &AppState) -> (String, String, Vec<String>) 
 }
 
 #[tokio::test]
+async fn loop_history_tracing_correlates_lifecycle_without_private_inputs() {
+    use agenthub_agent_domain::loop_runtime::{
+        LoopAdmission, LoopCleanupDisposition, LoopLimits, LoopOutcome, LoopOutcomeKind,
+        LoopPolicyState, LoopSessionPolicy, LoopSourceReferences, LoopTriggerInput,
+        LoopTriggerKind,
+    };
+    use agenthub_db::loop_runtime::{LoopPolicyUpdate, LoopStore};
+    use tracing::instrument::WithSubscriber;
+
+    let state = build_test_state().await;
+    let (team, _, activations) = history_api_fixture(&state).await;
+    let path = std::env::temp_dir().join(format!("loop-tracing-{}.jsonl", Uuid::new_v4()));
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .without_time()
+        .with_max_level(tracing::Level::INFO)
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
+        .with_writer(std::fs::File::create(&path).unwrap())
+        .finish();
+    async {
+        let store = LoopStore::new(state.db.clone());
+        let receipt = store.accept_trigger(&LoopTriggerInput {
+            actor_id: "planner".into(), team_id: team.clone(), kind: LoopTriggerKind::Operator,
+            source_key: "private-alpha".into(), due_at: None, references: LoopSourceReferences::default(),
+        }, 100).await.unwrap();
+        assert!(receipt.duplicate);
+        assert_eq!(receipt.activation_id, activations[0]);
+        store.configure(LoopPolicyUpdate {
+            actor_id: "planner", team_id: &team, expected_revision: 2,
+            state: LoopPolicyState::Enabled, session_policy: LoopSessionPolicy::Fresh,
+            limits: &LoopLimits::default(),
+        }, 101).await.unwrap();
+        let LoopAdmission::Admitted(reservation) = store.admit(&team, &activations[0], "private-owner", 102).await.unwrap() else {
+            panic!("expected admission");
+        };
+        sqlx::query("INSERT INTO agent_sessions(id, agent_id, status, started_at) VALUES ('trace-session', 'planner', 'running', 102)")
+            .execute(&state.db).await.unwrap();
+        let reservation = store.bind_session(&reservation, "trace-session", 102).await.unwrap();
+        store.mark_running(&reservation, 103).await.unwrap();
+        store.finish(&reservation, &LoopOutcome {
+            kind: LoopOutcomeKind::NoActionableWork, wait_reason: None, task_note_id: None, continuation: None,
+        }, 104).await.unwrap();
+        store.cleanup_verified(&reservation, LoopCleanupDisposition::Exited, 105).await.unwrap();
+    }.with_subscriber(subscriber).await;
+    let output = std::fs::read_to_string(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    for private in [
+        "private-alpha",
+        "private-owner",
+        "source_key",
+        "input_json",
+        "owner_id",
+    ] {
+        assert!(!output.contains(private), "{private}");
+    }
+    let records = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    for name in [
+        "loop.trigger_intake",
+        "loop.admission",
+        "loop.bind_session",
+        "loop.running",
+        "loop.finish",
+        "loop.cleanup",
+    ] {
+        let span = &records
+            .iter()
+            .find(|record| record["span"]["name"] == name)
+            .expect(name)["span"];
+        assert_eq!(span["activation_id"], activations[0], "{name}");
+        assert_eq!(span["actor_id"], "planner", "{name}");
+        assert_eq!(span["team_id"], team, "{name}");
+        if name != "loop.trigger_intake" {
+            assert_eq!(span["generation"], 1, "{name}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn loop_history_api_requires_capability_and_team_access_on_every_surface() {
     let state = build_test_state().await;
     let (team, owner, activations) = history_api_fixture(&state).await;

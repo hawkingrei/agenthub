@@ -47,6 +47,11 @@ impl LoopStore {
 
     /// Persist an outcome and its self-continuation in one control-store transaction.
     /// The caller authenticates the executor; this method checks its durable fence.
+    #[tracing::instrument(name = "loop.finish", skip_all, fields(
+        team_id = %reservation.team_id, actor_id = %reservation.actor_id,
+        activation_id = reservation.activation_id.as_deref(), generation = reservation.generation,
+        session_id = reservation.session_id.as_deref(), outcome = outcome.kind.as_str(),
+    ))]
     pub async fn finish(
         &self,
         reservation: &LoopReservation,

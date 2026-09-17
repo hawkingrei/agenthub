@@ -2,9 +2,10 @@
 
 ## Summary
 
-Add bounded, payload-free activation history projections, authorized release history APIs, and
-durable controller RPC/MCP observations and scoped metrics as the foundation for activation diagnostics. This
-checkpoint does not complete the observability slice.
+Add bounded, payload-free activation history projections, authorized release history APIs, durable
+controller RPC/MCP observations, scoped metrics, and activation-aware debug diagnostics. Lifecycle
+spans correlate these records through the existing tracing/fastrace bridge. The observability slice
+still needs its publication and CI gate.
 
 ## Background
 
@@ -29,6 +30,11 @@ checks without recovering raw trigger inputs into the response.
 - Scoped metric snapshots cover due work, first admission, per-generation run durations,
   retries/startup failures, cleanup reasons, no-progress evidence, business/registered waits, and Mem.
 - Durable duplicate counters do not expand the event log; new exit reasons accompany verified cleanup.
+- Debug-only doctor accepts an exact activation or resolves one from its actor. It reports safe
+  lease/outcome/continuation evidence, current wake conditions, and distinct loop stall layers.
+- Live overlays require the inspected activation's session. Unbound activations do not borrow
+  events or permission requests from another execution.
+- Lifecycle spans supplement RPC correlation with explicit identities and bounded status fields.
 
 ## Key Decisions
 
@@ -44,6 +50,16 @@ checks without recovering raw trigger inputs into the response.
   local handles exist, and never infer success from disconnection or process absence.
 - Controller RPC spans carry activation, actor, mailbox, and generation attributes through the
   existing tracing subscriber. A stream-opening RPC is not a terminal upstream tool result.
+- Keep explicit session selectors on the legacy diagnostic path; historical activation selectors
+  survive current roster changes and never substitute the actor's latest session.
+- Query the latest lifecycle event and the oldest open tool independently of paged summaries, so
+  a small display limit cannot hide verified cleanup or a later open boundary.
+- A continuation must match the finish receipt, actor/Team, scheduling activation, deadline, and
+  task reference. Revocation remains a visible fact rather than being misclassified as lost work.
+- Treat the database as read-only during inspection. Metrics are transactional, but the combined
+  diagnostic bundle is a series of observations rather than a global atomic snapshot.
+- All new spans skip arbitrary function arguments. Private source keys, executor owner IDs,
+  credentials, tool inputs/results, and prompts are excluded from their fields.
 
 ## Validation
 
@@ -58,6 +74,11 @@ cargo +1.96.0 test -p agenthub-db loop_tool_history --locked --offline
 cargo +1.96.0 test -p agenthub-db mcp_tool_history --locked --offline
 cargo +1.96.0 test -p agenthub-mcp --lib --locked --offline
 cargo +1.96.0 test -p agenthub --lib loop_history_api --locked --offline
+cargo +1.96.0 test -p agenthub --lib loop_history_tracing --locked --offline
+cargo +1.96.0 test -p agenthub --lib api::diagnostics::tests --locked --offline
+cargo +1.96.0 test -p agenthub-diagnostics -p agenthub-doctor-cli --lib --locked --offline
+cargo +1.96.0 test -p agenthub-doctor-cli --lib --release --locked --offline
+cargo +1.96.0 check -p agenthub --lib --release --locked --offline
 cargo +1.96.0 test -p agenthub --lib internal::service::tests::loop_activation --locked --offline
 cargo +1.96.0 clippy -p agenthub -p agenthub-db --all-targets --locked --offline -- -D warnings
 cargo +1.96.0 test -p agenthub-db --lib --locked --offline
@@ -83,13 +104,26 @@ counters, actor/Team isolation, event windows, exact queue/run/progress/wait/Mem
 recurring wait rearm, wall-clock regression, unfenced interruption, reopen, and unknown migration
 coverage. The metrics API rejects invalid windows and retains historical Team authorization.
 
-Root/database all-target Clippy passes with warnings denied. Formatting, whitespace, and all 104
-local documentation targets pass.
+The debug diagnostic suite covers the original nine session cases and five activation cases:
+read-only reopen after cleanup, coalesced-source pagination, outcome/continuation linkage, pending
+and suspended policy, open tools beyond page one, unfenced interruption, historical/current session
+isolation, overlay matching, and redaction. CLI selector tests reject mixed activation/session/actor
+targets. The two debug HTTP tests cover capability checks plus malformed-selector 400 and
+unknown-activation 404 responses.
+
+Lifecycle trace validation runs intake, admission, binding, running, finish, and cleanup against
+real storage while capturing structured spans. It checks shared activation identity, generation,
+scope, and private-input exclusion. The release CLI test requires immediate rejection before I/O.
+
+Final diagnostic/CLI selections pass 14 and nine debug tests respectively; all ten release CLI
+tests pass. Root release library checking succeeds, retaining three existing unused-state warnings
+in unchanged SSE code. Root/database/diagnostics/doctor all-target debug Clippy passes with warnings
+denied. Formatting, whitespace, and 112 local documentation targets pass.
+
+The initial root release build lost its pre-existing temporary directory. A fresh private `/tmp`
+directory resolved the environment failure without changing source or project build configuration.
 
 ## Follow-Ups
-
-- Add diagnostic classification, activation-aware doctor selection, and the remaining lifecycle
-  tracing correlation. Complete debug/release boundary verification.
 - Complete slice 12 validation and publication before treating observability as delivered.
 - Contracts: [loop runtime](../features/agent-loop-runtime.md) and
   [runtime diagnostics](../features/runtime-diagnostics.md).

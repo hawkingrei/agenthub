@@ -27,7 +27,7 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
-- [2026-09-17: Loop history storage](2026-09-17-loop-history-storage.md): scoped history APIs and payload-free source/event/tool pages with durable RPC/MCP observations and scoped metrics; doctor integration remains open.
+- [2026-09-17: Loop history storage](2026-09-17-loop-history-storage.md): scoped history APIs, durable RPC/MCP observations and metrics, activation-aware debug doctor, and lifecycle trace correlation; publication validation remains open.
 
 - [2026-09-16: Loop role prompts](2026-09-16-loop-role-prompts.md): configured role selection, pinned runtime skill, structured finish, and provider/CLI authority checks.
 
