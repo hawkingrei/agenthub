@@ -106,6 +106,15 @@ Local follow-up evidence uses `/tmp/agenthub-loop-pr13-` with suffixes `profile-
 screenshot use Chrome DevTools MCP with the synthetic E2E API fixture; they supplement, rather
 than replace, the production-schema lifecycle exercise above.
 
+Two additional desktop browser workflows now exercise the loop route in CI: bounded settings and
+revision writes, enable/suspend/queue/resume, unchanged stopped-process and task state, source/event/
+tool pagination (including zero cursors), recorded waits, offline profile saving with no prompt
+override, canonical task navigation, and reuse of an uncertain activation request after reload.
+Both pass with the CI coverage collector enabled. These synthetic API tests assert UI and request
+contracts; they do not simulate or claim real provider execution. Their evidence is
+`/tmp/agenthub-loop-pr13-loop-e2e-coverage.log`. Initial history reads tolerate development
+StrictMode restarts, while explicit pagination requests retain exact cursor assertions.
+
 ## Follow-Ups
 
 - Complete slice 13 publication and applicable current-head CI; track it in [TODO](../todo.md).

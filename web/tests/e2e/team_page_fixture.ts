@@ -62,6 +62,7 @@ export type TeamSpecStep = {
 
 export type TeamSpecPayload = {
   spec_version?: number;
+  execution_mode?: "loop";
   entrypoint?: string;
   coordinator_member_id?: string;
   members: TeamSpecMember[];
@@ -117,6 +118,7 @@ export type TeamTaskRecord = {
   title: string;
   status: "open" | "in_progress" | "completed" | "archived";
   created_by_actor_id: string;
+  assigned_member_id?: string | null;
   context: Record<string, unknown>;
   created_at: number;
   updated_at: number;
