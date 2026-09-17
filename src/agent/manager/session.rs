@@ -1940,10 +1940,11 @@ mod tests {
     async fn spawn_failure_backoff_rejects_immediate_retry_without_respawn() {
         let settings = AgentStartSchedulerSettings {
             max_concurrent_starts: 1,
-            queue_timeout: Duration::from_millis(100),
-            start_timeout: Duration::from_secs(1),
-            spawn_backoff_initial: Duration::from_secs(1),
-            spawn_backoff_max: Duration::from_secs(2),
+            // This exercises spawn failure and retry admission, not startup latency.
+            // Keep failure persistence under coverage from consuming the backoff window.
+            spawn_backoff_initial: Duration::from_secs(60),
+            spawn_backoff_max: Duration::from_secs(60),
+            ..AgentStartSchedulerSettings::default()
         };
         let executor = Arc::new(FailingExecutor::default());
         let (agents, agent_id) = build_scheduled_test_manager(executor.clone(), settings).await;
@@ -1952,12 +1953,19 @@ mod tests {
             .start_agent(&agent_id)
             .await
             .expect_err("synthetic spawn must fail");
-        assert!(first_error.to_string().contains("retry_after_ms"));
+        assert!(
+            first_error.to_string().contains("synthetic spawn failure")
+                && first_error.to_string().contains("retry_after_ms"),
+            "{first_error:#}"
+        );
         let retry_error = agents
             .start_agent(&agent_id)
             .await
             .expect_err("immediate retry must hit spawn backoff");
-        assert!(retry_error.to_string().contains("spawn backoff active"));
+        assert!(
+            retry_error.to_string().contains("spawn backoff active"),
+            "{retry_error:#}"
+        );
         assert_eq!(executor.attempts.load(Ordering::SeqCst), 1);
     }
 

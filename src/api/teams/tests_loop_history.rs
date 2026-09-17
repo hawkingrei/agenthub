@@ -76,7 +76,9 @@ async fn loop_history_tracing_correlates_lifecycle_without_private_inputs() {
         .json()
         .without_time()
         .with_max_level(tracing::Level::INFO)
-        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
+        // SQLx workers can retain the span after a query returns. The final exit records
+        // all fields synchronously without waiting for those background references to close.
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::EXIT)
         .with_writer(std::fs::File::create(&path).unwrap())
         .finish();
     async {
@@ -129,6 +131,7 @@ async fn loop_history_tracing_correlates_lifecycle_without_private_inputs() {
     ] {
         let span = &records
             .iter()
+            .rev()
             .find(|record| record["span"]["name"] == name)
             .expect(name)["span"];
         assert_eq!(span["activation_id"], activations[0], "{name}");
