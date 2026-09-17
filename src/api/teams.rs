@@ -113,7 +113,7 @@ pub(crate) async fn load_team_for_user(
     Ok(team)
 }
 
-async fn require_teamspace_role(
+pub(super) async fn require_teamspace_role(
     state: &AppState,
     team: &TeamDefinitionRecord,
     user: &UserRecord,
@@ -5525,7 +5525,7 @@ fn parse_team_spec_version(version_value: Option<&Value>) -> Result<i64, ApiErro
     Ok(version)
 }
 
-fn parse_member_ids(members_value: Option<&Value>) -> Result<HashSet<String>, ApiError> {
+pub(super) fn parse_member_ids(members_value: Option<&Value>) -> Result<HashSet<String>, ApiError> {
     let member_specs = parse_member_specs(members_value)?;
     Ok(member_specs
         .into_iter()

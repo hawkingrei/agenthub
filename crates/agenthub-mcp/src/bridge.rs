@@ -41,12 +41,14 @@ use crate::{
 const CALLBACK_SLOTS: u32 = 8;
 
 type BindArguments = dyn Fn(&str, &Value, Value) -> Result<Value, McpPolicyError> + Send + Sync;
+type ValidateToolDeclaration = dyn Fn(&Value) -> Result<(), McpPolicyError> + Send + Sync;
 
 /// Built from trusted integration configuration, never from provider-supplied endpoint data.
 pub struct McpProxyBinding {
     policy: McpBinding,
     access: McpAccessPolicy,
     bind_arguments: Arc<BindArguments>,
+    validate_tool_declaration: Option<Arc<ValidateToolDeclaration>>,
     revoked: AtomicBool,
 }
 
@@ -64,8 +66,19 @@ impl McpProxyBinding {
             policy,
             access,
             bind_arguments,
+            validate_tool_declaration: None,
             revoked: AtomicBool::new(false),
         }
+    }
+
+    /// An integration may pin declarations independently of upstream discovery. This runs only on
+    /// approved tools, before either advertising a page or installing its admission catalog.
+    pub fn with_tool_declaration_validator(
+        mut self,
+        validate: Arc<ValidateToolDeclaration>,
+    ) -> Self {
+        self.validate_tool_declaration = Some(validate);
+        self
     }
 
     /// In-flight operations retain their factual outcome; future requests lose authority.
@@ -523,12 +536,39 @@ impl McpProxySession {
         generation: u64,
         cursor: &Option<String>,
     ) -> Result<(), McpTransportError> {
+        let result = self
+            .apply_discovery_page(response, context, generation, cursor)
+            .await;
+        if result.is_err() && self.binding.validate_tool_declaration.is_some() {
+            // A failed refresh cannot leave an older catalog authorizing calls against a server
+            // that no longer honors the pinned declarations.
+            self.close();
+        }
+        result
+    }
+
+    async fn apply_discovery_page(
+        &self,
+        response: &mut Value,
+        context: &HttpContext,
+        generation: u64,
+        cursor: &Option<String>,
+    ) -> Result<(), McpTransportError> {
         if response.get("error").is_some() {
             return Ok(());
         }
         let tools = response
             .pointer("/result/tools")
             .ok_or(McpTransportError::InvalidResponse)?;
+        if let Some(validate) = &self.binding.validate_tool_declaration {
+            let mut approved = tools.clone();
+            self.binding.access.filter_tools(&mut approved)?;
+            for declaration in approved.as_array().unwrap() {
+                // Validate before transport-specific header filtering can hide an incompatible
+                // declaration that is still named in this integration's grant.
+                validate(declaration).map_err(|_| McpTransportError::InvalidResponse)?;
+            }
+        }
         let page = McpToolCatalog::from_tools(tools, context.version)
             .map_err(|_| McpTransportError::InvalidResponse)?;
         let mut advertised = page.advertised_tools();

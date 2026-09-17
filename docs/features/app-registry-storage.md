@@ -79,8 +79,9 @@ use durable admission for every request, including sessions opened before revoca
 
 ## Open Risks
 
-Public API, launch/preflight, shared proxy enforcement, safe discovery, and trace projections are
-the remaining integration work for slice 14. App event ingress belongs to slice 15.
+The [management API](app-management-api.md) applies human capability and ownership checks.
+Launch/preflight, shared proxy enforcement, safe discovery, and trace projections remain open for
+slice 14. App event ingress belongs to slice 15.
 
 ## Source Journals
 

@@ -8,6 +8,7 @@ use crate::{http::McpHttpTransport, protocol::ProtocolVersion};
 mod access;
 mod batch;
 mod lifecycle;
+mod manifest;
 mod read;
 mod subscription;
 

@@ -1295,6 +1295,9 @@ async fn init_test_schema(db: &SqlitePool) {
     agenthub_db::loop_runtime::migrate_loop_runtime(db)
         .await
         .expect("migrate loop runtime");
+    agenthub_db::app_registry::migrate_app_registry(db)
+        .await
+        .expect("migrate app registry");
 }
 
 const DEFAULT_TEST_TEAM_MEMBER_IDS: &[&str] = &[
