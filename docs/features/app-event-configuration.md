@@ -1,7 +1,7 @@
 # App Event Configuration
 
-Status: configuration foundation implemented. Signed HTTP ingress, durable event receipts, and
-standing event conditions remain part of the active [event intake work](../todo.md#agent-loop-product-transition).
+Status: configuration foundation implemented. [Signed intake](app-event-ingress.md) consumes these
+records; standing event conditions remain part of the active [event work](../todo.md#agent-loop-product-transition).
 
 ## Problem
 
@@ -16,8 +16,8 @@ Incoming event identity also requires credentials separate from outbound MCP aut
 
 ## Non-Goals
 
-This foundation does not accept events, advance cursors, schedule activations, or verify signatures
-in a production HTTP handler. No raw event payload, remote command, or task assignment is supported.
+Signature processing, replay protection, and trigger intake live in [signed App event intake](app-event-ingress.md).
+No raw event payload, remote command, or task assignment is supported.
 
 ## Architecture
 
@@ -91,14 +91,13 @@ event routing alone preserves the independent tool configuration.
 ## Operational Notes
 
 Provision distinct inbound signing-key material in daemon environment storage. These routes
-configure references offline; production signature verification and its wire format are not yet
-available in this foundation. Existing [tool invocation](app-tool-runtime.md) remains independent.
+configure references offline; [signed intake](app-event-ingress.md) defines production verification
+and the wire format. Existing [tool invocation](app-tool-runtime.md) remains independent.
 
 ## Open Risks
 
-The event delivery slice must ship timestamp/signature validation, atomic event ID/cursor/trigger
-receipts, replay protection, bounded denial audit, admission budgets, and standing-condition authority
-together before advertising event ingress.
+Standing conditions must preserve the same current route authority and immutable event references.
+The complete event slice still requires its standing-condition integration and final delivery gates.
 
 ## Source Journals
 

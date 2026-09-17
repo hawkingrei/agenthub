@@ -222,7 +222,7 @@ async fn signing_key_rotation_preserves_secret_isolation_and_revision_fencing() 
 }
 
 impl Fixture {
-    async fn event_app(&self) -> RegisteredApp {
+    pub(super) async fn event_app(&self) -> RegisteredApp {
         self.prepare_members().await;
         let mut manifest = manifest();
         manifest.events = vec![

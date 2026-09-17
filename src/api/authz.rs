@@ -59,7 +59,7 @@ mod tests {
         "user.role != \"viewer\"",
     ];
 
-    const API_SOURCES: [(&str, &str); 17] = [
+    const API_SOURCES: [(&str, &str); 18] = [
         ("admin.rs", include_str!("admin.rs")),
         ("agent_nodes.rs", include_str!("agent_nodes.rs")),
         ("agents.rs", include_str!("agents.rs")),
@@ -67,6 +67,10 @@ mod tests {
         ("apps/registration.rs", include_str!("apps/registration.rs")),
         ("apps/bindings.rs", include_str!("apps/bindings.rs")),
         ("apps/event_config.rs", include_str!("apps/event_config.rs")),
+        (
+            "apps/event_ingress.rs",
+            include_str!("apps/event_ingress.rs"),
+        ),
         ("auth.rs", include_str!("auth.rs")),
         ("diagnostics.rs", include_str!("diagnostics.rs")),
         ("error.rs", include_str!("error.rs")),

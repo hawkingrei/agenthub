@@ -17,6 +17,19 @@ use super::{
     ApiError, Revision, bindings, payload, registration::owned, revision, scopes, store_error,
 };
 
+pub(super) async fn event_audit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(app_id): Path<String>,
+) -> Result<Json<Vec<agenthub_db::app_registry::AppEventDenial>>, ApiError> {
+    let user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
+    let registry = AppRegistry::new(state.db);
+    owned(&registry, &app_id, &user.id).await?;
+    Ok(Json(
+        registry.event_denials(&app_id).await.map_err(store_error)?,
+    ))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct KeyConfiguration {

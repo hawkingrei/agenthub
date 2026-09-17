@@ -6,6 +6,7 @@ use serde_json::json;
 use super::*;
 
 mod binding_tests;
+mod event_intake;
 mod event_tests;
 mod pin_tests;
 

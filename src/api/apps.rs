@@ -3,6 +3,8 @@
 mod bindings;
 mod discovery;
 mod event_config;
+mod event_ingress;
+mod event_signature;
 mod registration;
 pub(super) use discovery::{AppCapability, member_capabilities};
 #[cfg(test)]
@@ -36,6 +38,13 @@ pub(super) fn router(state: AppState) -> Router {
             get(event_config::get_key).put(event_config::configure_key),
         )
         .route("/{app_id}/event-key/revoke", post(event_config::revoke_key))
+        .route("/{app_id}/event-audit", get(event_config::event_audit))
+        .route(
+            "/{app_id}/events",
+            post(event_ingress::ingest).layer(DefaultBodyLimit::max(
+                agenthub_agent_domain::app_events::APP_EVENT_MAX_BYTES,
+            )),
+        )
         .layer(DefaultBodyLimit::max(524_288))
         .with_state(state)
 }

@@ -50,7 +50,8 @@ cargo +1.96.0 fmt --all --check
 
 ## Follow-Ups
 
-- Implement authenticated ingress with atomic deduplication/cursor/intake, bounded audit and budgets.
+- The [signed intake checkpoint](2026-09-18-app-event-intake.md) supplies authenticated ingress,
+  atomic deduplication/cursor/intake, bounded audit, and budgets.
 - Integrate standing conditions and safe context/history/doctor attribution, then publish the
   complete event slice and validate current-head CI.
 
