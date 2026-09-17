@@ -80,7 +80,8 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   call-time scope checks, fixed activation versions, immediate revocation, and safe attribution.
   The [storage checkpoint](journal/2026-09-17-app-registry-storage.md) covers durable registrations,
   grants, bindings, and activation pins. The [management API](features/app-management-api.md) adds
-  human authorization. Launch, shared proxy, Cards, and trace integration remain open.
+  human authorization, and [result validation](journal/2026-09-18-app-result-validation.md) protects
+  immediate and deferred outcomes. Production launch, proxy authorization, Cards, and trace remain open.
 - [ ] 15. Accept signed app events through durable intake. Ship signatures, event ID/cursor replay
   protection, declared-class routing, revocation checks, and storm budgets together.
 - [ ] 16. Pin and validate the Rara app-server transport/handshake; add local launch and cleanup.

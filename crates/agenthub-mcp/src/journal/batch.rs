@@ -44,7 +44,7 @@ impl JournaledMcpClient {
             .tools
             .iter()
             .zip(permits)
-            .map(|((id, _), permit)| (correlation_id(id), permit))
+            .map(|((id, intent), permit)| (correlation_id(id), (permit, intent.tool_name.clone())))
             .collect();
         let mut expected = batch.expected;
         let mut delivery_lost = false;
@@ -56,6 +56,7 @@ impl JournaledMcpClient {
             while let Some(event) = exchange.next_event().await? {
                 http_status = exchange.status_code();
                 if let Some(message) = &event.message {
+                    let mut invalid_tool_result = false;
                     let members = message
                         .as_array()
                         .map(Vec::as_slice)
@@ -69,7 +70,7 @@ impl JournaledMcpClient {
                             && response.get("error").is_some()
                         {
                             let completion = classify_completion(response, None)?;
-                            for permit in pending.values() {
+                            for (permit, _) in pending.values() {
                                 self.journal
                                     .complete(permit, &completion, now())
                                     .await
@@ -83,8 +84,17 @@ impl JournaledMcpClient {
                         if !expected.contains(&key) {
                             return Err(McpTransportError::InvalidResponse.into());
                         }
-                        if let Some(permit) = pending.get(&key) {
-                            let completion = classify_completion(response, None)?;
+                        if let Some((permit, name)) = pending.get(&key) {
+                            let mut completion = classify_completion(response, None)?;
+                            if self
+                                .validate_result(name, response, ToolResultLocation::Rpc)
+                                .is_err()
+                            {
+                                completion = McpCompletion::OutcomeUnknown {
+                                    reason: McpAmbiguityReason::InvalidResponse,
+                                };
+                                invalid_tool_result = true;
+                            }
                             self.journal
                                 .complete(permit, &completion, now())
                                 .await
@@ -92,6 +102,11 @@ impl JournaledMcpClient {
                             pending.remove(&key);
                         }
                         expected.remove(&key);
+                    }
+                    if invalid_tool_result {
+                        // Retain every observed member's factual outcome before rejecting delivery
+                        // of a mixed frame. A bad result must not erase its valid neighbors.
+                        return Err(McpTransportError::InvalidResponse.into());
                     }
                 }
                 let forward = if let Some(message) = &event.message {
@@ -130,7 +145,7 @@ impl JournaledMcpClient {
             };
             // Already completed members are absent from pending. A truncated response cannot
             // downgrade their facts or authorize replay of the remaining members.
-            for permit in pending.values() {
+            for (permit, _) in pending.values() {
                 if self
                     .journal
                     .complete(permit, &McpCompletion::OutcomeUnknown { reason }, now())

@@ -36,6 +36,7 @@ use super::*;
 mod batch;
 mod continuation;
 mod recovery;
+mod result_validation;
 mod task;
 use crate::{
     http::{HttpContext, McpHttpTransport},

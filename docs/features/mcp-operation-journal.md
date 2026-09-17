@@ -128,6 +128,31 @@ An initial handle remains deferred even when it reports a terminal task status; 
 result lookup can establish the tool outcome. The full receipt is forwarded unchanged. The journal
 records only digests and typed protocol/session correlation facts, without raw task IDs or status text.
 
+### Integration-owned result validation
+
+A trusted binding may provide a validator for completed native tool results. The shared journal
+applies it before accepting the corresponding tool outcome, using the tool name from the original
+admitted intent. This applies to immediate and continued calls, March batch members, November
+`tasks/result`, July completed `tasks/get`, and completed July task subscription notifications.
+Task observation/lookup permits retain the immutable originating tool name; caller-supplied task
+metadata cannot select another tool's schema.
+
+Task acceptance and input-required receipts are deferred protocol state, not completed output.
+Legacy completed-status notifications have no tool result and remain status-only. Native tool-error
+results still reach the validator so integrations can bound their size while exempting them from a
+success-only output schema. JSON-RPC error envelopes are handled by the existing failure contract.
+
+Invalid output after a tool send records `outcome_unknown` with `invalid_response`; it cannot
+authorize a non-idempotent retry. A batch frame retains every valid member's factual outcome before
+rejecting delivery of an invalid mixed frame. Invalid task query output records an unknown query
+receipt without settling the original task. An invalid subscribed result is rejected before it can
+settle the task or reach the provider. A later valid task observation may reconcile the original
+operation without another tool send. No raw invalid output is stored in diagnostic records.
+
+Bindings without a validator retain existing behavior. The registered App adapter is responsible
+for supplying its pinned manifest validator and whole-result size bounds; this seam alone does not
+mount or authorize an App.
+
 ### Asynchronous task lookups
 
 A valid task acceptance records an immutable link to the originating tool attempt. Lookup admission
@@ -348,6 +373,7 @@ reconstructed tool result. Transport code must preserve the real response while 
 | Task inputs | Input/update migration, atomic partial consumption, concurrent updates, unchanged wire payloads, key equivocation retained across reopen, stale polls, lost acknowledgment, fresh activations, and real shim input/update/result flow |
 | Legacy task notices | Authenticated owner, binding/protocol/session matching, receipt races across POST/GET, callbacks during the race, bounded pending data, late facts, delivery loss, and status-only completion |
 | Task subscriptions | Receipt authorization, notification migration/deduplication, bounded scoped history, input consumption/conflicts, late settlement and first-terminal-fact preservation; actual shim delivery follows committed facts |
+| Result validation | Completed output uses the originating tool schema; immediate/batch/continued invalid writes cannot replay; deferred receipts remain distinct; legacy/modern task observations can reconcile without another write |
 
 ## Operational Notes
 
@@ -371,3 +397,4 @@ proxy under the configured integration's namespace authorization.
 ## Source Journals
 
 - [Shared MCP proxy implementation checkpoint](../journal/2026-09-15-shared-mcp-proxy.md)
+- [App tool result validation](../journal/2026-09-18-app-result-validation.md)

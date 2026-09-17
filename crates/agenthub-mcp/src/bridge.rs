@@ -49,6 +49,7 @@ pub struct McpProxyBinding {
     access: McpAccessPolicy,
     bind_arguments: Arc<BindArguments>,
     validate_tool_declaration: Option<Arc<ValidateToolDeclaration>>,
+    validate_tool_result: Option<Arc<crate::journal::ToolResultValidator>>,
     revoked: AtomicBool,
 }
 
@@ -67,6 +68,7 @@ impl McpProxyBinding {
             access,
             bind_arguments,
             validate_tool_declaration: None,
+            validate_tool_result: None,
             revoked: AtomicBool::new(false),
         }
     }
@@ -78,6 +80,16 @@ impl McpProxyBinding {
         validate: Arc<ValidateToolDeclaration>,
     ) -> Self {
         self.validate_tool_declaration = Some(validate);
+        self
+    }
+
+    /// Applies to completed immediate, batched, continued, and deferred tool results. Native
+    /// errors are passed through the validator too; success schema checks may distinguish them.
+    pub fn with_tool_result_validator(
+        mut self,
+        validate: Arc<crate::journal::ToolResultValidator>,
+    ) -> Self {
+        self.validate_tool_result = Some(validate);
         self
     }
 
@@ -628,7 +640,9 @@ impl PreparedProxyExchange {
             return;
         }
         let journal = match session.bound_task_observer(&self.context) {
-            Ok(observer) => journal.observing(observer),
+            Ok(observer) => journal
+                .observing(observer)
+                .validating(session.binding.validate_tool_result.clone()),
             Err(_) => {
                 session.close();
                 return;

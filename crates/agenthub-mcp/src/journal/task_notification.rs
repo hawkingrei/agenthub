@@ -25,6 +25,12 @@ impl JournaledMcpClient {
         message: &Value,
     ) -> Result<(), McpCallError> {
         let observation = crate::task::notification_observation(permit.receipt(), message)?;
+        if permit.receipt().version
+            == agenthub_agent_domain::mcp_operations::McpTaskVersion::July2026
+            && message["params"]["status"] == "completed"
+        {
+            self.validate_native_result(permit.tool_name(), &message["params"]["result"])?;
+        }
         let mut fact = message["params"].clone();
         // A reconnect may carry the same observation under a new subscription RPC ID.
         if let Some(meta) = fact.get_mut("_meta").and_then(Value::as_object_mut) {

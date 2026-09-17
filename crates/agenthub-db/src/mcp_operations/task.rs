@@ -17,9 +17,15 @@ pub struct McpTaskLookupPermit {
     id: String,
     operation_id: String,
     attempt_number: u32,
+    tool_name: String,
 }
 
 impl McpTaskLookupPermit {
+    /// Immutable originating tool, resolved under the same authority checks as this receipt.
+    pub fn tool_name(&self) -> &str {
+        &self.tool_name
+    }
+
     pub fn operation_id(&self) -> &str {
         &self.operation_id
     }
@@ -77,6 +83,7 @@ impl McpOperationStore {
             id,
             operation_id: operation.id,
             attempt_number,
+            tool_name: operation.intent.tool_name,
         })
     }
 

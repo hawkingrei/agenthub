@@ -47,7 +47,7 @@ impl McpOperationStore {
         let mut connection = self.durable_connection().await?;
         let mut tx = connection.begin_with("BEGIN IMMEDIATE").await?;
         let rows = sqlx::query(
-            "SELECT t.* FROM mcp_operation_tasks t JOIN mcp_operations o ON o.id = t.operation_id \
+            "SELECT t.*, o.tool_name FROM mcp_operation_tasks t JOIN mcp_operations o ON o.id = t.operation_id \
             WHERE o.team_id = ? AND o.actor_id = ? AND o.server_id = ? AND o.scope_digest = ? \
             AND json_extract(o.intent_json, '$.binding_digest') = ? AND t.task_digest = ? LIMIT 65",
         )
@@ -71,6 +71,7 @@ impl McpOperationStore {
                 operation_id: row.try_get("operation_id")?,
                 attempt_number: row.try_get("attempt_number")?,
                 activation_id: owner.activation_id.clone(),
+                tool_name: row.try_get("tool_name")?,
                 receipt,
             });
         }

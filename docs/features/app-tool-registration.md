@@ -66,7 +66,9 @@ manifest does not declare never reach an agent, even when the upstream server of
 The shared proxy supports an integration-owned declaration validator. It checks approved raw
 declarations before transport-specific header filtering and before publishing or admitting a catalog.
 A malformed or incompatible pinned catalog closes the session, including when a previous valid
-catalog exists. App launch mounting and result validation remain separate integration requirements.
+catalog exists. The shared journal also supports
+[completed-result validation](mcp-operation-journal.md#integration-owned-result-validation), including
+deferred tasks. Production App launch mounting and manifest adapter wiring remain integration requirements.
 
 ## Contracts
 
@@ -167,3 +169,4 @@ the Mem integration rather than a parallel enforcement stack.
 
 - [Loop product definition](../journal/2026-09-15-agent-loop-product-definition.md)
 - [App management and discovery checkpoint](../journal/2026-09-18-app-management-api.md)
+- [App result validation](../journal/2026-09-18-app-result-validation.md)
