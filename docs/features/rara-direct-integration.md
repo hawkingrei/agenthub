@@ -14,6 +14,11 @@ boundaries.
 
 ## Scope
 
+The dedicated configuration, bounded wire codec, connection lifecycle and pinned
+process fixtures are implemented in `agenthub-config` and `agenthub-rara`. Managed launch/cleanup,
+durable request/event mapping and loop admission remain the separate active
+implementation gates tracked in [the transition TODO](../todo.md).
+
 - Local and remote AgentHub placement of a Rara runtime process.
 - Rara app-server / runtime-control interaction as the only supported integration path.
 - Session lifecycle, user input, follow-up, cancel, interrupt, approval, and output event mapping.
@@ -225,6 +230,10 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
   - transport id is exactly `stdio-jsonl`
   - all phase 1 required request and event families are present
   - required identity/version fields are non-empty
+- Exact `request_methods`, rather than family names alone, establish operation
+  support. The transport requires session create/query/cancel/interrupt, prompt
+  and follow-up input, user/plan/shell answers, and semantic server shutdown.
+  Role/source consumers must separately require the methods they use.
 - Any missing required field, incompatible protocol version, incompatible transport id, unsupported
   request/event family, malformed JSON, or non-handshake first frame is a handshake rejection.
 - If the app-server handshake is unsupported, AgentHub fails startup with an actionable
@@ -232,6 +241,41 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
 - Graceful shutdown is a semantic runtime-control request followed by child-process drain. Process
   kill is reserved for startup failure, transport loss, explicit force-stop, or graceful shutdown
   timeout.
+
+The compatible protocol fixture is pinned to upstream commit
+`6f489462251b73e1695bb22a59d2ece59ba26a21` in
+[the independently validated prerequisite PR](https://github.com/linkerdog/rara/pull/885).
+Package version `0.0.22` alone does not identify this protocol. The version1 envelope
+uses `type`/`payload`; the handshake carries `runtime_id`, `runtime_version`,
+`request_methods`, family lists and explicit receipt/replay/approval lifetimes.
+The tested build advertises runtime-only receipts and replay, and no persistent
+approvals or session resume. Missing required capabilities fail startup visibly.
+
+Frames contain at most1,048,576 UTF-8 payload bytes, excluding LF or CRLF delimiters.
+Blank, partial-EOF, malformed and oversized frames fail the transport. A cancelled
+asynchronous read retains its partial frame for the next poll. All protocol errors
+contain fixed categories without raw input or provider diagnostics.
+
+The connection uses one ordered writer and a cancellation-safe reader. Its local
+queues hold at most 8 commands, 8 encoded write packets and 32 output frames;
+at most 32 requests await ACKs. A stalled event consumer terminates the transport
+with an explicit incomplete-delivery error instead of silently dropping events.
+Received frames must retain the negotiated runtime identity. ACKs and shutdown
+completion require an issued request identity; a second handshake is rejected.
+
+The connection sends each request identity once. Cancelling the caller after
+queue admission does not retract or retry its operation. A request timeout closes
+the connection with an unknown-outcome error. The local receipt identity bound
+is the smaller of 4,096 and the peer's advertised limit, with one slot reserved for
+shutdown. Durable receipt reconciliation and explicit replay policy belong to
+the request/event mapping slice.
+
+A shutdown ACK alone is not success. The same request must receive an accepted
+ACK, then its matching `shutdown_complete`, then clean stdout EOF within the
+shutdown deadline. Stdin stays open during drain; the child must not depend on its
+EOF to initiate shutdown. This transport receipt does not prove process exit,
+descendant cleanup, task completion or durable consumption of queued events.
+Those remain the process supervisor's and event consumer's separate obligations.
 
 ### 2) Configuration
 
@@ -244,6 +288,8 @@ binary = "rara"
 transport = "stdio-jsonl"
 default_provider = "deepseek"
 default_model = "deepseek-chat"
+startup_timeout_seconds = 120
+shutdown_timeout_seconds = 30
 ```
 
 The exact field names can evolve during implementation, but the boundary is stable:
@@ -252,6 +298,15 @@ The exact field names can evolve during implementation, but the boundary is stab
 - AgentHub may choose default provider/model labels for startup, but Rara owns credential lookup and
   provider-specific config.
 - AgentHub must not copy provider API keys from Rara config into AgentHub's database.
+
+The binary defaults to `rara`; provider/model defaults are optional and leave
+runtime-owned credential resolution intact. Only `stdio-jsonl` is accepted.
+Timeouts must be1-600 seconds. Explicit overrides are
+`AGENTHUB_RARA_BINARY`, `AGENTHUB_RARA_PROVIDER`, `AGENTHUB_RARA_MODEL`,
+`AGENTHUB_RARA_STARTUP_TIMEOUT_SECONDS` and
+`AGENTHUB_RARA_SHUTDOWN_TIMEOUT_SECONDS`. Unknown fields, including credential
+fields, reject configuration. Startup argv uses the fixed protocol prefix and
+one argument per value; model/provider labels cannot inject permission flags.
 
 ### 3) Input Control
 
@@ -348,7 +403,9 @@ AgentHub should persist these provider-native identifiers alongside each normali
 
 Replay contract:
 
-- The tuple `(rara_thread_or_session_id, event_id)` is the primary dedupe key.
+- The tuple `(runtime_id, owning_session_id, event_id)` is the primary dedupe key
+  for the pinned runtime-only stream. The outer event envelope supplies the owned
+  session independently of event provenance, which may have no session ID.
 - `sequence` is the gap-detection cursor within one Rara thread/session stream.
 - Reconnect should resume from the last persisted Rara sequence when Rara supports replay.
 - If replay is unavailable or returns a gap, AgentHub must mark the stream as having a replay gap
@@ -483,8 +540,9 @@ Phase 1 implementation validation:
 
 ## Open Risks
 
-- Rara currently has runtime-control types, but the stable app-server command/transport may need to
-  be finalized in Rara before AgentHub can depend on it.
+- Deployment must supply the tested upstream build or an independently validated
+  compatible implementation. Shared enums or a matching package version do not
+  establish command, capability or cleanup support.
 - Rara and AgentHub both have memory and skill concepts; careless sharing could create duplicated
   or conflicting context unless all cross-runtime data flows through structured source registration.
 - AgentHub's existing ACP conversation UI may need neutral provider labels so Rara events do not
@@ -499,6 +557,8 @@ Phase 1 implementation validation:
   reject valid Team work or hide role/card drift behind model judgment.
 
 ## Source Journals
+
+- [2026-09-18: Direct runtime transport](../journal/2026-09-18-rara-local-transport.md)
 
 - [2026-06-06-rara-app-server-phase1-contract.md](../journal/2026-06-06-rara-app-server-phase1-contract.md)
 - [2026-06-08-rara-team-modes-requirements.md](../journal/2026-06-08-rara-team-modes-requirements.md)

@@ -807,6 +807,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "agenthub-rara"
+version = "0.0.10"
+dependencies = [
+ "agenthub-config",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "agenthub-team-actor"
 version = "0.0.10"
 dependencies = [
