@@ -1,7 +1,8 @@
 # App Tool Registration
 
-Status: target integration design for the [loop product model](agent-loop-product-model.md). No
-registry, public API, storage schema, or runtime behavior ships with this document.
+Status: target integration design for the [loop product model](agent-loop-product-model.md).
+The [registry storage foundation](app-registry-storage.md) is implemented; public management APIs,
+runtime integration, and event ingress remain pending.
 
 ## Problem
 

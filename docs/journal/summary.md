@@ -27,6 +27,8 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-09-17: App registration storage](2026-09-17-app-registry-storage.md): bounded manifests, immutable versions, approved scope bindings, activation pins, and durable authorization epochs; public API and shared proxy integration remain open.
+
 - [2026-09-17: Loop workspace UI](2026-09-17-loop-workspace-ui.md): offline member configuration, independent execution/process/task state, paged history, and browser lifecycle/page-reopen evidence; current-head PR validation remains open.
 
 - [2026-09-17: Loop history storage](2026-09-17-loop-history-storage.md): scoped history APIs, durable RPC/MCP observations and metrics, activation-aware debug doctor, and lifecycle trace correlation; PR #1159 passed applicable CI at `7f2b9a2a` and is ready for review.

@@ -70,12 +70,16 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   RPC/MCP boundaries, scoped metrics, lifecycle trace correlation, and activation-aware doctor.
   [PR #1159](https://github.com/hawkingrei/agenthub/pull/1159) passed applicable CI at
   `7f2b9a2a97600a034622e517aab6c3d678f8ad1b`, including Rust/Bazel coverage, and is ready for review.
-- [ ] 13. Expose offline configuration and task/IM/activation views with distinct process/policy
+- [x] 13. Expose offline configuration and task/IM/activation views with distinct process/policy
   state. [Workspace UI checkpoint](journal/2026-09-17-loop-workspace-ui.md) records local web
-  validation and actual Chrome DevTools lifecycle/page-reopen evidence. Publication and current-head
-  CI remain open.
+  validation and actual Chrome DevTools lifecycle/page-reopen evidence.
+  [PR #1160](https://github.com/hawkingrei/agenthub/pull/1160) passed applicable CI at
+  `0486b19db9a829a782f2f61d647a0f5053c64009`, including browser workflows and Rust/Bazel coverage,
+  and is ready for review.
 - [ ] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove
   call-time scope checks, fixed activation versions, immediate revocation, and safe attribution.
+  The [storage checkpoint](journal/2026-09-17-app-registry-storage.md) covers durable registrations,
+  grants, bindings, and activation pins. Management and runtime integration remain open.
 - [ ] 15. Accept signed app events through durable intake. Ship signatures, event ID/cursor replay
   protection, declared-class routing, revocation checks, and storm budgets together.
 - [ ] 16. Pin and validate the Rara app-server transport/handshake; add local launch and cleanup.

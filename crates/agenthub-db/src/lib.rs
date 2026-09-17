@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 
 use anyhow::Context;
 
+pub mod app_registry;
 pub mod control_store;
 mod daemon_generation;
 pub mod loop_runtime;
@@ -1073,6 +1074,7 @@ pub async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<Sqlite
     ensure_app_linker_schema(&pool).await?;
     loop_runtime::migrate_loop_runtime(&pool).await?;
     mcp_operations::migrate_mcp_operations(&pool).await?;
+    app_registry::migrate_app_registry(&pool).await?;
 
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_team_tasks_add_assigned_member_id(&pool).await?;
