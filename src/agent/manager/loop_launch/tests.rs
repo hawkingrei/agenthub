@@ -10,6 +10,7 @@ use super::*;
 
 mod mcp;
 mod mem;
+mod roles;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3
 import json, os, subprocess, sys, time, uuid
@@ -38,6 +39,11 @@ for line in sys.stdin:
     if method == 'initialize':
         result = {'protocolVersion': 1, 'agentCapabilities': {'loadSession': True}}
     elif method in ['session/new', 'session/load']:
+        if mode == 'role-pin':
+            with open(os.path.join(os.getcwd(), 'role-ready'), 'w') as ready:
+                ready.write(os.environ['AGENTHUB_LOOP_ACTIVATION_ID'])
+            while not os.path.exists(os.path.join(os.getcwd(), 'role-release')):
+                time.sleep(0.01)
         if mode == 'mem':
             mem_provider.start(request['params'], log_path)
         if mode == 'mcp':
@@ -64,6 +70,9 @@ for line in sys.stdin:
                 log.write(json.dumps({'mcp_bootstrap':True, 'server':server}) + '\n')
         result = {'sessionId': str(uuid.uuid4())} if method == 'session/new' else {}
     elif method == 'session/prompt':
+        if mode == 'role-pin':
+            with open(log_path, 'a') as log:
+                log.write(json.dumps({'role_prompt': request['params']['prompt']}) + '\n')
         if mode == 'mem':
             mem_provider.work(request['params'], actor, log_path)
         if mode == 'mcp':
@@ -88,6 +97,13 @@ for line in sys.stdin:
         if mode == 'handoff':
             page = actor('loop-context', '--limit', '1')
             activation = page['activation']
+            prompt = '\n'.join(block.get('text', '') for block in request['params']['prompt'])
+            role_label = 'Team Coordinator' if activation['actor_id'] == 'planner' else 'Team Worker'
+            assert prompt.count('You are ' + ('the ' if activation['actor_id'] == 'planner' else 'a ') + role_label) == 1
+            assert '<name>team-loop-runtime</name>' in prompt
+            assert 'team-worker-executor' not in prompt and 'Team workflow phases' not in prompt
+            for round_number in range(2):
+                print(json.dumps({'jsonrpc':'2.0', 'method':'session/update', 'params':{'sessionId':request['params']['sessionId'], 'update':{'sessionUpdate':'agent_message_chunk', 'content':{'type':'text', 'text':'Recover durable work round ' + str(round_number)}}}}), flush=True)
             sources = page['sources']
             while page['next_cursor'] is not None:
                 page = actor('loop-context', '--limit', '1', '--after-source-id', page['next_cursor'])
@@ -103,11 +119,24 @@ for line in sys.stdin:
                 task_ids = {d['source']['input']['references']['task_id'] for d in details if d['source']['input']['references']['task_id']}
                 assert len(task_ids) == 1
                 task_id = next(iter(task_ids))
-                actor('team-task-show', '--task-id', task_id)
+                detail = actor('team-task-show', '--task-id', task_id)
+                assert detail['task']['assigned_member_id'] == 'worker'
+                denied = subprocess.run([control_binary, 'actor', 'team-task-update', '--team-id', activation['team_id'], '--task-id', task_id, '--status', 'completed', '--note-kind', 'result', '--note', 'Self acceptance is forbidden', '--json'], capture_output=True, text=True)
+                assert denied.returncode != 0 and 'coordinator' in denied.stderr.lower(), denied.stderr
+                assert actor('team-task-show', '--task-id', task_id)['task']['status'] == 'open'
+                with open(log_path, 'a') as log:
+                    log.write(json.dumps({'worker_acceptance_denied': True}) + '\n')
                 actor('team-task-note', '--task-id', task_id, '--kind', 'result', '--text', 'Review evidence is ready')
                 actor('send', '--to', 'planner', '--text', 'worker report', '--idempotency-key', 'report:one')
             else:
                 assert any(d['mailbox_message'] and d['mailbox_message']['payload']['text'] == 'worker report' for d in details)
+                tasks = actor('team-tasks')
+                task = next(task for task in tasks if task['title'] == 'Offline review')
+                detail = actor('team-task-show', '--task-id', task['id'])
+                assert any(note['from_actor_id'] == 'worker' and note['text'] == 'Review evidence is ready' for note in detail['notes'])
+                actor('team-task-update', '--team-id', activation['team_id'], '--task-id', task['id'], '--status', 'completed', '--note-kind', 'decision', '--note', 'Accepted after reviewing worker evidence')
+                with open(log_path, 'a') as log:
+                    log.write(json.dumps({'coordinator_accepted': task['id']}) + '\n')
             path = os.path.join(os.getcwd(), 'loop-outcome.json')
             with open(path, 'w') as outcome:
                 json.dump({'kind':'handoff'}, outcome)
@@ -140,7 +169,16 @@ for line in sys.stdin:
             with open(path, 'w') as output:
                 json.dump({'kind': 'no_actionable_work'}, output)
             actor('loop-finish', '--outcome-file', path)
-        if mode in ['finish', 'mcp', 'mem']:
+        if mode == 'role-wait':
+            context = actor('loop-context')
+            path = os.path.join(os.getcwd(), 'loop-outcome.json')
+            outcome = {'kind':'waiting', 'wait_reason':'due_time', 'continuation':{'due_at':int(time.time()), 'task_id':None}}
+            if any(source['input']['kind'] == 'continuation' for source in context['sources']):
+                outcome = {'kind':'no_actionable_work'}
+            with open(path, 'w') as output:
+                json.dump(outcome, output)
+            actor('loop-finish', '--outcome-file', path)
+        if mode in ['finish', 'mcp', 'mem', 'role-pin']:
             for command in ['team-members', 'team-tasks', 'inbox']:
                 recovery = subprocess.run([control_binary, 'actor', command, '--json'], capture_output=True, text=True)
                 if recovery.returncode:
@@ -562,13 +600,19 @@ async fn loop_work_provider_dispatch_survives_leader_exit_and_report_wakes_offli
             .fetch_one(&fixture.state.db)
             .await
             .unwrap();
-    assert_eq!(status, "open");
+    assert_eq!(status, "completed");
+    let transcript = std::fs::read_to_string(fixture.directory.join("requests.jsonl")).unwrap();
+    assert!(transcript.contains("worker_acceptance_denied"));
+    assert!(transcript.contains("coordinator_accepted"));
+    assert_eq!(transcript.matches("session/prompt").count(), 3);
+    assert_eq!(transcript.matches("session/new").count(), 3);
+    assert!(!transcript.contains("session/load"));
     fixture.close().await;
 }
 
 #[test]
 fn loop_work_entry_prompt_is_a_bounded_versioned_recovery_pointer() {
-    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v5");
+    assert_eq!(LOOP_ENTRY_PROMPT_VERSION, "loop-entry-v6");
     assert!(LOOP_ENTRY_PROMPT.len() < 1500);
     for command in [
         "loop-context",

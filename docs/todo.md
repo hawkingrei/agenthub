@@ -52,12 +52,15 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   Context bootstrap, availability handling, and selected-learning contracts are implemented in the
   [slice 10 checkpoint](journal/2026-09-16-mem-context-bootstrap.md), with focused runtime checks
   passing. Deadline/late-settlement, learning provenance, eager-provider failure, and adapter/proxy
-  regressions are covered. [PR #1155](https://github.com/hawkingrei/agenthub/pull/1155) is published;
-  current-head CI remains the delivery gate.
+  regressions are covered. [PR #1155](https://github.com/hawkingrei/agenthub/pull/1155) is ready for
+  review at `7d784296` with all current-head CI checks passing; it has not been merged.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.
   Prove one configured entry prompt, role authority, structured finish, and transcript-free recovery.
   The [dependency integration checkpoint](journal/2026-09-16-loop-dependency-integration.md) combines
-  scheduling and Mem with full backend regression coverage. Role prompt/skill changes remain open.
+  scheduling and Mem with full backend regression coverage. The
+  [role integration checkpoint](journal/2026-09-16-loop-role-prompts.md) adds configured role
+  selection, the shared loop skill, and provider/CLI regression coverage. Focused local validation
+  passes; publication and current-head CI remain the delivery gates.
 - [ ] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
   Prove durable redacted trace reconstruction and preserve debug-only diagnostic boundaries.
 - [ ] 13. Expose offline configuration and task/IM/activation views with distinct process/policy

@@ -18,8 +18,10 @@ use super::{AgentInput, AgentManager};
 
 mod mem;
 use mem::MemBootstrap;
+mod role;
+pub(super) use role::RolePrompt;
 
-const LOOP_ENTRY_PROMPT_VERSION: &str = "loop-entry-v5";
+const LOOP_ENTRY_PROMPT_VERSION: &str = "loop-entry-v6";
 const LOOP_ENTRY_PROMPT: &str = "Run one bounded AgentHub activation. Read `agenthub actor loop-context --json` and follow its next_cursor to recover all durable work sources; use `agenthub actor loop-source --source-id <id> --json` for exact source messages. Recover current role and authority with `agenthub actor team-members --json`, canonical work with `agenthub actor team-tasks --json`, and the addressed mailbox with `agenthub actor inbox --json`. The mailbox run is stable transport identity; this activation does not create a task attempt. Respect canonical assignment and task acceptance authority. Provider reasoning and native tool rounds belong to this activation. Record durable task evidence before reporting progress. For future work, use `agenthub actor help loop-schedule` and register before finishing. End with `agenthub actor loop-finish --outcome-file <path> --json`; `agenthub actor help loop-finish` describes the output contract. A provider exit or completed prompt is not an outcome. Do not poll for future work or start another resident loop.";
 
 #[derive(Clone)]
@@ -34,6 +36,7 @@ pub(super) struct LoopCredentialState {
     pub role: InternalRole,
     pub run_id: String,
     mem_bootstrap: MemBootstrap,
+    entry_prompt: String,
 }
 
 impl AgentManager {
@@ -145,10 +148,15 @@ impl AgentManager {
             "loop preflight failed: {}",
             preflight.blockers.join(", ")
         );
+        let role = InternalRole::parse(context.member_role.as_deref().unwrap_or_default())
+            .filter(|role| matches!(role, InternalRole::Coordinator | InternalRole::Worker))
+            .ok_or_else(|| anyhow::anyhow!("loop activation requires a supported member role"))?;
+        let role_prompt = RolePrompt::resolve(&spec, &agent.id, role)?;
         let mut launch = AcpLoopLaunchConfig::resolve(
             Path::new(workdir),
             policy.session_policy == LoopSessionPolicy::Resume,
         );
+        launch.install_loop_runtime_skill()?;
         if provider.uses_default_mode_config() {
             launch.mode_id = super::session::effective_acp_default_mode(
                 provider,
@@ -216,6 +224,8 @@ impl AgentManager {
             &agent.runtime_model,
             &agent.thinking_level,
             spec.get("required_capabilities"),
+            &role_prompt.version,
+            &role_prompt.entry,
         ))?);
         digest.update(launch.fingerprint_material()?);
         if let Some(fingerprint) = unavailable_fingerprint {
@@ -229,7 +239,7 @@ impl AgentManager {
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect(),
-            entry_prompt_version: LOOP_ENTRY_PROMPT_VERSION.into(),
+            entry_prompt_version: role_prompt.version,
             session_policy: policy.session_policy,
             workspace: workdir.into(),
             model: agent.runtime_model.clone(),
@@ -241,9 +251,6 @@ impl AgentManager {
         if let Some(mcp) = mcp {
             self.mcp_proxy()?.mount(&reservation, mcp.binding).await?;
         }
-        let role = InternalRole::parse(context.member_role.as_deref().unwrap_or_default())
-            .filter(|role| matches!(role, InternalRole::Coordinator | InternalRole::Worker))
-            .ok_or_else(|| anyhow::anyhow!("loop activation requires a supported member role"))?;
         let run_id = context
             .current_run_id
             .clone()
@@ -255,6 +262,7 @@ impl AgentManager {
                 role,
                 run_id,
                 mem_bootstrap,
+                entry_prompt: role_prompt.entry,
             },
         );
         self.refresh_loop_credentials(&reservation).await?;
