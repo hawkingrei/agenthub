@@ -22,7 +22,7 @@ async fn admitted(fixture: &Fixture, key: &str, now: i64) -> LoopReservation {
     reservation
 }
 
-async fn running(fixture: &Fixture, key: &str, now: i64) -> LoopReservation {
+pub(super) async fn running(fixture: &Fixture, key: &str, now: i64) -> LoopReservation {
     let reservation = admitted(fixture, key, now).await;
     let session = Uuid::new_v4().to_string();
     sqlx::query("INSERT INTO agent_sessions(id, agent_id, status, started_at) VALUES (?, 'worker', 'running', ?)")

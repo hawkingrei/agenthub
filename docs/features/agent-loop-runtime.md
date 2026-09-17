@@ -197,6 +197,12 @@ touched task ids, the mailbox `run_id` partition that was read, and any provider
 Correlation uses durable records, not process memory: the trace of a finished or interrupted loop
 must remain reconstructable after its process exits.
 
+Historical storage reads bind both Team and actor IDs and do not require a live executor or current
+membership. Callers must separately authorize access to the historical Team. Activation pages use
+descending creation time plus ID; source and event pages use activation-scoped cursors. Each page
+contains at most 100 records and an explicit continuation cursor. Source projections contain typed
+references and revocation state, excluding original source keys and raw input objects.
+
 Each activation records, with monotonic timestamps and stable references:
 
 - trigger acceptance with source identity and every coalesced source reference;
@@ -267,6 +273,7 @@ and run records keep their behavior until explicit opt-in and compatible migrati
 
 ## Source Journals
 
+- [History storage checkpoint](../journal/2026-09-17-loop-history-storage.md)
 - [Product redefinition checkpoint](../journal/2026-09-15-agent-loop-product-definition.md)
 - [Start scheduling](../journal/2026-08-28-agent-start-scheduler.md)
 - [Delivery receipts](../journal/2026-08-28-team-runtime-delivery-receipts.md)

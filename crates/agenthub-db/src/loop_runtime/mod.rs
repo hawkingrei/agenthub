@@ -2,6 +2,7 @@
 
 mod admission;
 mod admission_limits;
+mod history;
 mod intake;
 mod launch;
 mod lifecycle;
@@ -106,23 +107,23 @@ impl LoopStore {
         .bind(limit.clamp(1, 100))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter()
-            .map(|row| {
-                Ok(LoopEvent {
-                    id: row.try_get("id")?,
-                    activation_id: row.try_get("activation_id")?,
-                    kind: row.try_get::<&str, _>("kind")?.parse()?,
-                    generation: row.try_get("generation")?,
-                    trigger_id: row.try_get("trigger_id")?,
-                    reason: row
-                        .try_get::<Option<&str>, _>("reason_code")?
-                        .map(str::parse)
-                        .transpose()?,
-                    created_at: row.try_get("created_at")?,
-                })
-            })
-            .collect()
+        rows.iter().map(parse_event).collect()
     }
+}
+
+fn parse_event(row: &SqliteRow) -> anyhow::Result<LoopEvent> {
+    Ok(LoopEvent {
+        id: row.try_get("id")?,
+        activation_id: row.try_get("activation_id")?,
+        kind: row.try_get::<&str, _>("kind")?.parse()?,
+        generation: row.try_get("generation")?,
+        trigger_id: row.try_get("trigger_id")?,
+        reason: row
+            .try_get::<Option<&str>, _>("reason_code")?
+            .map(str::parse)
+            .transpose()?,
+        created_at: row.try_get("created_at")?,
+    })
 }
 
 fn parse_activation(row: &SqliteRow) -> anyhow::Result<LoopActivation> {
