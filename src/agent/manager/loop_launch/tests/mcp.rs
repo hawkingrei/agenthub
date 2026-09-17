@@ -94,6 +94,10 @@ async fn configured_mcp_launch_isolates_inherited_secrets() {
 }
 
 pub(super) async fn run_configured_child(test: &str) {
+    run_configured_child_with_env(test, &[]).await;
+}
+
+pub(super) async fn run_configured_child_with_env(test: &str, extra_env: &[(&str, &str)]) {
     let mut child = tokio::process::Command::new(std::env::current_exe().unwrap())
         .args(["--exact", test, "--ignored", "--nocapture"])
         .env("TEST_MEM_UPSTREAM_KEY", "configured-secret")
@@ -102,6 +106,7 @@ pub(super) async fn run_configured_child(test: &str) {
         .env("NMEM_API_URL", "https://private-upstream.example/mcp")
         .env("NOWLEDGE_MEM_HEADERS", "private-ambient-headers")
         .env("MCP_HTTP_HEADERS", "private-mcp-headers")
+        .envs(extra_env.iter().copied())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)

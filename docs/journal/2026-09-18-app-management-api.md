@@ -53,6 +53,6 @@ cargo +1.96.0 fmt --all --check
 
 ## Follow-Ups
 
-Complete launch/preflight resolution, shared-proxy enforcement against opened sessions, safe Card
-capabilities, and App/version trace attribution before publishing slice 14. Signed event ingress and
-the remaining transport slices are still separate unfinished parts of the active goal.
+The [runtime checkpoint](2026-09-18-app-runtime.md) now supplies launch/preflight, authorization
+against opened sessions, safe Cards, and pinned history. Complete final validation and CI delivery.
+Signed events and the remaining transport slices are still separate unfinished parts of the goal.

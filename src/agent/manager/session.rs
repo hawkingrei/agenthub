@@ -775,7 +775,14 @@ impl AgentManager {
             actor_context: actor_context.clone(),
             guard_descendants: self.loop_reservations.lock().await.contains_key(&agent.id),
             private_env: if is_loop_activation {
-                crate::mcp_proxy::configured::private_environment(&self.loop_app_config)
+                let mut private =
+                    crate::mcp_proxy::configured::private_environment(&self.loop_app_config);
+                private.extend(
+                    agenthub_db::app_registry::AppRegistry::new(self.db.clone())
+                        .credential_references()
+                        .await?,
+                );
+                private
             } else {
                 Vec::new()
             },

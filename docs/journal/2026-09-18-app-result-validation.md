@@ -32,7 +32,8 @@ defines the completed-result boundary.
   The invalid frame is not delivered. A failed task-result observation does not settle the original
   accepted task; a later valid observation can reconcile without another tool send.
 - Keep a single proxy and journal. The optional validator is binding configuration; Mem defaults
-  remain unchanged. App-specific total-result bounds and schema adapter wiring are still required.
+  remain unchanged. The subsequent [runtime checkpoint](2026-09-18-app-runtime.md) adds the
+  App-specific total-result bounds and schema adapter.
 
 ## Validation
 
@@ -54,6 +55,6 @@ cargo +1.96.0 fmt --all --check
 
 ## Follow-Ups
 
-Wire App manifests into the production resolver, launch snapshot, shared proxy request/stream
-admission, Card projection, and activation trace. Prove the registered-App path through an actual
-controller/CLI/HTTP fixture before publishing slice 14. Slices 15–18 remain part of the active goal.
+The [runtime checkpoint](2026-09-18-app-runtime.md) supplies the production consumers and real
+controller/CLI/HTTP fixture. Complete its final validation and slice 14 CI delivery. Slices 15–18
+remain part of the active goal.

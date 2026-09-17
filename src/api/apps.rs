@@ -1,7 +1,9 @@
 //! Human management of App configuration. Provider calls use the authenticated MCP proxy.
 
 mod bindings;
+mod discovery;
 mod registration;
+pub(super) use discovery::{AppCapability, member_capabilities};
 #[cfg(test)]
 mod tests;
 

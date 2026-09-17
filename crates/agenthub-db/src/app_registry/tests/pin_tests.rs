@@ -129,8 +129,32 @@ async fn activation_selection_including_empty_pins_survives_startup_retry_and_ve
         let app = fixture.register().await;
         approve_and_bind(&fixture, &app, initially_bound).await;
         let (store, first) = starting(&fixture).await;
+        assert!(
+            fixture
+                .store
+                .activation_selection("team", first.activation_id.as_deref().unwrap())
+                .await
+                .unwrap()
+                .is_none()
+        );
         let pins = fixture.store.pin_activation(&first, 101).await.unwrap();
         assert_eq!(pins.len(), usize::from(initially_bound));
+        assert_eq!(
+            fixture
+                .store
+                .activation_selection("team", first.activation_id.as_deref().unwrap())
+                .await
+                .unwrap(),
+            Some(pins.clone())
+        );
+        assert!(
+            fixture
+                .store
+                .activation_selection("elsewhere", first.activation_id.as_deref().unwrap())
+                .await
+                .unwrap()
+                .is_none()
+        );
         fixture
             .store
             .publish_version(&app.id, "owner", 1, &manifest(), 101)

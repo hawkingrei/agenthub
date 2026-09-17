@@ -79,6 +79,8 @@ pub struct AgentDiscoveryCardResponse {
     pub capability_tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub loop_execution: Option<AgentLoopDiscovery>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub bound_apps: Vec<super::apps::AppCapability>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -428,13 +430,19 @@ async fn get_agent_discovery_card(
         .acp_provider_for_agent(&agent.command, &agent.args);
     let member_profile = resolve_team_member_profile(&state, user.id.as_str(), &agent.id).await;
     let mut card = build_agent_discovery_card(&agent, provider, member_profile.as_ref());
-    let loop_team: Option<String> = sqlx::query_scalar("SELECT p.team_id FROM loop_policies p JOIN team_definitions t ON t.id = p.team_id WHERE p.actor_id = ? AND (t.owner_user_id IS NULL OR t.owner_user_id = ?)")
-        .bind(&agent.id).bind(&user.id).fetch_optional(&state.db).await?;
+    let loop_team: Option<String> = sqlx::query_scalar("SELECT p.team_id FROM loop_policies p JOIN team_definitions t ON t.id = p.team_id WHERE p.actor_id = ? AND (t.owner_user_id IS NULL OR t.owner_user_id = ? OR EXISTS(SELECT 1 FROM team_members m WHERE m.team_id = p.team_id AND m.user_id = ? AND m.revoked_at IS NULL))")
+        .bind(&agent.id).bind(&user.id).bind(&user.id).fetch_optional(&state.db).await?;
     if let Some(team_id) = loop_team
         && let Some(policy) = agenthub_db::loop_runtime::LoopStore::new(state.db.clone())
             .policy(&team_id, &agent.id)
             .await?
     {
+        card.bound_apps = super::apps::member_capabilities(
+            &agenthub_db::app_registry::AppRegistry::new(state.db.clone()),
+            &team_id,
+            &agent.id,
+        )
+        .await?;
         card.loop_execution = Some(AgentLoopDiscovery {
             state: policy.state,
             session_policy: policy.session_policy,
@@ -1323,6 +1331,7 @@ fn build_agent_discovery_card(
             .unwrap_or_default(),
         capability_tags,
         loop_execution: None,
+        bound_apps: Vec::new(),
     }
 }
 
@@ -4380,6 +4389,9 @@ mod tests {
         .execute(&state.db)
         .await
         .expect("create team_definitions table");
+
+        sqlx::query("CREATE TABLE team_members (team_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, revoked_at INTEGER, PRIMARY KEY(team_id, user_id))")
+            .execute(&state.db).await.expect("create discovery membership table");
 
         let team_spec = json!({
             "spec_version": 1,

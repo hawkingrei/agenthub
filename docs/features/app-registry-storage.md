@@ -80,8 +80,8 @@ use durable admission for every request, including sessions opened before revoca
 ## Open Risks
 
 The [management API](app-management-api.md) applies human capability and ownership checks.
-Launch/preflight, shared proxy enforcement, safe discovery, and trace projections remain open for
-slice 14. App event ingress belongs to slice 15.
+[Runtime integration](app-tool-runtime.md) consumes launch pins and durable call-time authority,
+and projects safe capabilities and historical versions. App event ingress belongs to slice 15.
 
 ## Source Journals
 

@@ -18,6 +18,30 @@ pub struct AppBindingUpdate<'a> {
 }
 
 impl AppRegistry {
+    /// Current configuration for offline preflight and capability projections, not call authority.
+    pub async fn active_member_bindings(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+    ) -> anyhow::Result<Vec<AppMemberBinding>> {
+        let rows = sqlx::query("SELECT b.*, g.scopes_json AS granted_scopes FROM app_member_bindings b \
+            JOIN app_team_grants g ON g.app_id = b.app_id AND g.team_id = b.team_id \
+            JOIN registered_apps a ON a.id = b.app_id WHERE b.team_id = ? AND b.actor_id = ? \
+            AND b.revoked_at IS NULL AND g.revoked_at IS NULL AND a.revoked_at IS NULL ORDER BY b.app_id LIMIT 17")
+            .bind(team_id).bind(actor_id).fetch_all(&self.pool).await?;
+        anyhow::ensure!(rows.len() <= 16, AppStoreError::Capacity);
+        let mut bindings = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut binding = parse_binding(&row)?;
+            let granted: BTreeSet<String> = serde_json::from_str(row.try_get("granted_scopes")?)?;
+            binding.scopes.retain(|scope| granted.contains(scope));
+            if !binding.scopes.is_empty() {
+                bindings.push(binding);
+            }
+        }
+        Ok(bindings)
+    }
+
     pub async fn member_binding(
         &self,
         app_id: &str,

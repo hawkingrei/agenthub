@@ -77,6 +77,24 @@ impl AppRegistry {
         Ok(connection)
     }
 
+    /// Strip all registered credentials from children, including unbound and revoked Apps.
+    /// References stay daemon-private and must never be returned by management projections.
+    pub async fn credential_references(&self) -> anyhow::Result<Vec<String>> {
+        let names: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT json_extract(connection_json, '$.credential_env') AS name \
+             FROM registered_apps WHERE json_type(connection_json, '$.credential_env') = 'text' ORDER BY name",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        anyhow::ensure!(
+            names
+                .iter()
+                .all(|name| agenthub_agent_domain::app_tools::valid_credential_reference(name)),
+            "invalid app credential reference"
+        );
+        Ok(names)
+    }
+
     pub async fn version(&self, app_id: &str, version: i64) -> anyhow::Result<Option<AppVersion>> {
         sqlx::query("SELECT * FROM app_manifest_versions WHERE app_id = ? AND version = ?")
             .bind(app_id)

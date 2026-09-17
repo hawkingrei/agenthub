@@ -22,9 +22,8 @@ impl TeamInternalControlService {
             .mcp_executor(request.metadata(), ExecutionAdmission::Bootstrap)
             .await?;
         let hub = self.deps.agents.mcp_proxy()?;
-        let session = hub
-            .session(&executor, &request.into_inner().session_id)
-            .await?;
+        let session_id = request.into_inner().session_id;
+        let session = hub.session(&executor, &session_id).await?;
         let prepared = session
             .prepare_listener()
             .await
@@ -44,6 +43,7 @@ impl TeamInternalControlService {
                             store.clone(),
                             executor.clone(),
                             ExecutionAdmission::Bootstrap,
+                            session_id.clone(),
                         )
                     })
                     .await;
@@ -163,6 +163,7 @@ impl TeamInternalControlService {
                                         store.clone(),
                                         executor.clone(),
                                         admission,
+                                        payload.session_id.clone(),
                                     )
                                 })
                                 .await;
@@ -236,6 +237,7 @@ async fn validate_stream(
     store: LoopStore,
     executor: LoopReservation,
     admission: ExecutionAdmission,
+    session_id: String,
 ) -> Result<tokio::sync::OwnedRwLockReadGuard<()>, agenthub_mcp::McpTransportError> {
     let guard = agents
         .loop_operation_gate(&executor.actor_id)
@@ -258,6 +260,12 @@ async fn validate_stream(
         }
     };
     result.map_err(|_| agenthub_mcp::McpTransportError::Disconnected)?;
+    agents
+        .mcp_proxy()
+        .map_err(|_| agenthub_mcp::McpTransportError::Disconnected)?
+        .session(&executor, &session_id)
+        .await
+        .map_err(|_| agenthub_mcp::McpTransportError::Disconnected)?;
     Ok(guard)
 }
 

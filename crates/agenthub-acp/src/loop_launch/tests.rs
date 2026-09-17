@@ -395,3 +395,29 @@ async fn loop_acp_proxy_descriptors_are_local_and_survive_fresh_and_resume_launc
         assert!(server.get("url").is_none() && server.get("headers").is_none());
     }
 }
+
+#[test]
+fn loop_acp_proxy_capacity_fits_registered_apps_and_mem_with_a_hard_bound() {
+    let mut launch = config(false);
+    for index in 0..32 {
+        launch
+            .add_mcp_proxy(
+                Path::new("/usr/bin/agenthub"),
+                Path::new("/private/credentials"),
+                &format!("app-{index}"),
+                &"a".repeat(64),
+            )
+            .unwrap();
+    }
+    assert_eq!(launch.mcp_servers().len(), 32);
+    assert!(
+        launch
+            .add_mcp_proxy(
+                Path::new("/usr/bin/agenthub"),
+                Path::new("/private/credentials"),
+                "one-too-many",
+                &"a".repeat(64)
+            )
+            .is_err()
+    );
+}

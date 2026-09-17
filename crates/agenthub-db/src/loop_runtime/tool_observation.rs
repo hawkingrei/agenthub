@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use agenthub_agent_domain::{
-    loop_history::{LoopToolHistoryPage, LoopToolSummary},
+    loop_history::{LoopAppToolAttribution, LoopToolHistoryPage, LoopToolSummary},
     loop_runtime::{LoopReservation, LoopToolStatus, LoopToolSurface, validate_loop_id},
 };
 use sqlx::{Row, sqlite::SqliteRow};
@@ -134,11 +134,36 @@ impl LoopStore {
         .bind(i64::from(limit) + 1)
         .fetch_all(&mut *tx)
         .await?;
-        let tools = rows
+        let mut tools = rows
             .iter()
             .take(limit as usize)
             .map(parse_tool)
             .collect::<anyhow::Result<Vec<_>>>()?;
+        // Doctor may inspect a database predating App registration. Ordinary history remains
+        // readable there; attribution is derived only from durable pins, never current bindings.
+        let apps_available: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'app_activation_pins')")
+            .fetch_one(&mut *tx).await?;
+        if apps_available
+            && tools
+                .iter()
+                .any(|tool| tool.surface == LoopToolSurface::McpTool)
+        {
+            let pins: Vec<(String, i64)> = sqlx::query_as("SELECT app_id, version FROM app_activation_pins WHERE activation_id = ? AND team_id = ? AND actor_id = ? ORDER BY app_id LIMIT 16")
+                .bind(activation_id).bind(team_id).bind(actor_id).fetch_all(&mut *tx).await?;
+            for tool in &mut tools {
+                if tool.surface == LoopToolSurface::McpTool
+                    && tool.operation_id.is_some()
+                    && let Some((app_id, version)) = pins.iter().find(|(app_id, _)| {
+                        tool.target_ref.as_deref() == Some(format!("app-{app_id}").as_str())
+                    })
+                {
+                    tool.app = Some(LoopAppToolAttribution {
+                        app_id: app_id.clone(),
+                        version: *version,
+                    });
+                }
+            }
+        }
         let next_cursor =
             (rows.len() > limit as usize).then(|| tools.last().expect("positive page size").id);
         tx.commit().await?;
@@ -154,6 +179,7 @@ fn parse_tool(row: &SqliteRow) -> anyhow::Result<LoopToolSummary> {
         surface: row.try_get::<&str, _>("surface")?.parse()?,
         tool_name: row.try_get("tool_name")?,
         target_ref: row.try_get("target_ref")?,
+        app: None,
         operation_id: row.try_get("operation_id")?,
         attempt_number: row.try_get("attempt_number")?,
         status: row.try_get::<&str, _>("status")?.parse()?,

@@ -8,7 +8,7 @@ use serde_json::Value;
 mod connection;
 #[cfg(test)]
 mod tests;
-pub use connection::AppConnection;
+pub use connection::{AppConnection, valid_credential_reference};
 
 pub const APP_MANIFEST_MAX_BYTES: usize = 262_144;
 pub const APP_ARGUMENT_MAX_BYTES: usize = 1_048_576;
@@ -208,6 +208,11 @@ pub fn valid_name(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:".contains(&byte))
+}
+
+/// Bound the complete native payload, including content outside a declared structured output.
+pub fn validate_app_payload(value: &Value) -> anyhow::Result<()> {
+    bounded_value(value, APP_ARGUMENT_MAX_BYTES)
 }
 
 fn bounded_value(value: &Value, bytes: usize) -> anyhow::Result<()> {

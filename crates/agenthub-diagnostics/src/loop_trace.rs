@@ -423,6 +423,12 @@ pub(super) fn render(trace: &ActivationTrace) -> Vec<String> {
             tool.status.as_str(),
             tool.duration_ms
         ));
+        if let Some(app) = &tool.app {
+            lines.push(format!(
+                "loop.tool.app: observation={} app_id={} version={}",
+                tool.id, app.app_id, app.version
+            ));
+        }
     }
     lines.push(format!(
         "loop.tools.next_cursor: {:?}",

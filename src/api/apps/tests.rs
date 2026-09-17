@@ -68,5 +68,6 @@ async fn team(state: &AppState, owner: Option<&str>, actor: &str) -> String {
 }
 
 mod bindings;
+mod discovery;
 mod registration;
 mod validation;

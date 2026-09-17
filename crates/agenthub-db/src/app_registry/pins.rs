@@ -75,6 +75,24 @@ impl AppRegistry {
         Ok(pins)
     }
 
+    /// Distinguish a retained empty selection from an activation that has not pinned configuration.
+    pub async fn activation_selection(
+        &self,
+        team_id: &str,
+        activation_id: &str,
+    ) -> anyhow::Result<Option<Vec<AppActivationPin>>> {
+        let mut tx = self.pool.begin().await?;
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM app_activation_snapshots s JOIN loop_activations a ON a.id = s.activation_id WHERE a.team_id = ? AND a.id = ?)")
+            .bind(team_id).bind(activation_id).fetch_one(&mut *tx).await?;
+        let pins = if exists {
+            Some(pins_tx(&mut tx, team_id, activation_id).await?)
+        } else {
+            None
+        };
+        tx.commit().await?;
+        Ok(pins)
+    }
+
     /// Linearize each proxy admission against durable grants, including already-open sessions.
     /// A call admitted before revocation may finish; later admissions see the revoked epoch.
     pub async fn authorize_pin(

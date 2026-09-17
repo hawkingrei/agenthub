@@ -2,8 +2,9 @@
 
 Status: target integration design for the [loop product model](agent-loop-product-model.md).
 The [registry storage foundation](app-registry-storage.md) and
-[management API](app-management-api.md) are implemented; runtime integration and event ingress
-remain pending.
+[management API](app-management-api.md) are implemented. [Runtime integration](app-tool-runtime.md)
+connects local HTTP Apps, safe Card capabilities, and historical version attribution. Event ingress
+remains pending.
 
 ## Problem
 
@@ -68,7 +69,7 @@ declarations before transport-specific header filtering and before publishing or
 A malformed or incompatible pinned catalog closes the session, including when a previous valid
 catalog exists. The shared journal also supports
 [completed-result validation](mcp-operation-journal.md#integration-owned-result-validation), including
-deferred tasks. Production App launch mounting and manifest adapter wiring remain integration requirements.
+deferred tasks. Production launch mounts the pinned manifest adapter through the shared proxy.
 
 ## Contracts
 
@@ -139,7 +140,7 @@ deferred tasks. Production App launch mounting and manifest adapter wiring remai
 | --- | --- |
 | Registration | Undeclared tool/scope rejected at call time; secrets absent from context, Cards, and logs |
 | Versioning | Bound manifest version recorded per activation; a schema change never mutates an active loop |
-| Binding | Unbind/revoke invalidates future calls and tokens; in-flight calls fail explicitly |
+| Binding | Unbind/revoke denies later calls and stream delivery; admitted effects retain factual completion |
 | Identity | Calls carry actor and activation identity without provider-session leakage |
 | Ambiguity | Unknown-outcome non-idempotent call is recorded and never auto-replayed |
 | Fail-closed | Unavailable app produces a bounded visible error and a recorded wait |
@@ -170,3 +171,4 @@ the Mem integration rather than a parallel enforcement stack.
 - [Loop product definition](../journal/2026-09-15-agent-loop-product-definition.md)
 - [App management and discovery checkpoint](../journal/2026-09-18-app-management-api.md)
 - [App result validation](../journal/2026-09-18-app-result-validation.md)
+- [App runtime integration](../journal/2026-09-18-app-runtime.md)

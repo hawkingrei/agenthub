@@ -93,6 +93,10 @@ async fn app_versions_are_immutable_owned_and_survive_migration_and_reopen() {
             .is_empty()
     );
     let app = fixture.register().await;
+    assert_eq!(
+        fixture.store.credential_references().await.unwrap(),
+        vec!["PRIVATE_APP_TOKEN"]
+    );
     let original = fixture.store.version(&app.id, 1).await.unwrap().unwrap();
     let mut second = manifest();
     second.tools[0].input_schema["properties"]["key"]["minLength"] = json!(1);
@@ -190,6 +194,10 @@ async fn app_revocation_keeps_history_and_prevents_authority_alias_re_registrati
     assert_eq!(revoked.revoked_at, Some(20));
     assert_eq!(revoked.revision, 2);
     assert!(fixture.store.connection(&app.id).await.is_err());
+    assert_eq!(
+        fixture.store.credential_references().await.unwrap(),
+        vec!["PRIVATE_APP_TOKEN"]
+    );
     assert!(
         fixture
             .store

@@ -89,9 +89,9 @@ gates in the [App tool contract](app-tool-registration.md).
 
 ## Open Risks
 
-The shared proxy, launch resolver, Cards, and trace attribution must consume the durable contracts
-before slice 14 is complete. Events are slice 15. Frontend authoring and cross-owner approval flows
-remain separate scope.
+[Runtime integration](app-tool-runtime.md) consumes these durable contracts for shared proxy calls,
+launch, safe Cards, and pinned history. Events are slice 15. Frontend authoring and cross-owner
+approval flows remain separate scope.
 
 ## Source Journals
 

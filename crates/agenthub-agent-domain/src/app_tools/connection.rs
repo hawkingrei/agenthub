@@ -43,19 +43,26 @@ impl AppConnection {
         );
         if let Some(reference) = &self.credential_env {
             anyhow::ensure!(
-                !reference.is_empty()
-                    && reference.len() <= 128
-                    && reference
-                        .bytes()
-                        .enumerate()
-                        .all(|(index, byte)| byte == b'_'
-                            || byte.is_ascii_alphabetic()
-                            || (index > 0 && byte.is_ascii_digit())),
+                valid_credential_reference(reference),
                 "invalid app credential reference"
             );
         }
         Ok(())
     }
+}
+
+/// Credential removal must not strip process configuration or the daemon's actor credentials.
+pub fn valid_credential_reference(reference: &str) -> bool {
+    !reference.is_empty()
+        && reference.len() <= 128
+        && reference.bytes().enumerate().all(|(index, byte)| {
+            byte == b'_' || byte.is_ascii_alphabetic() || (index > 0 && byte.is_ascii_digit())
+        })
+        && !reference.starts_with("AGENTHUB_")
+        && !matches!(
+            reference,
+            "HOME" | "PATH" | "USER" | "SHELL" | "TMPDIR" | "TMP" | "TEMP"
+        )
 }
 
 #[cfg(test)]
@@ -91,7 +98,15 @@ mod tests {
             assert!(!error.contains(endpoint) && !error.contains("secret"));
         }
         connection.endpoint = "https://tools.example.test/mcp".into();
-        for reference in ["", "1TOKEN", "APP-TOKEN", "APP\nTOKEN"] {
+        for reference in [
+            "",
+            "1TOKEN",
+            "APP-TOKEN",
+            "APP\nTOKEN",
+            "HOME",
+            "PATH",
+            "AGENTHUB_LOOP_CREDENTIAL_FILE",
+        ] {
             connection.credential_env = Some(reference.into());
             assert!(connection.validate().is_err());
         }
