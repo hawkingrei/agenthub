@@ -1,6 +1,8 @@
 //! Immutable app manifests and durable grants. HTTP authorization precedes administrative writes.
 
 mod bindings;
+mod event_keys;
+mod event_routes;
 mod grants;
 mod pins;
 mod registration;
@@ -17,6 +19,8 @@ use sqlx::SqlitePool;
 use thiserror::Error;
 
 pub use bindings::AppBindingUpdate;
+pub use event_keys::{AppEventKey, AppEventSigningKey};
+pub use event_routes::{AppEventRoute, AppEventRouteUpdate};
 pub use grants::AppGrantUpdate;
 pub use registration::RegisterApp;
 pub use schema::migrate_app_registry;

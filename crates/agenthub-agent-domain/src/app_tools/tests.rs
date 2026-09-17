@@ -1,9 +1,70 @@
 use super::*;
 use serde_json::json;
 
+#[test]
+fn app_event_declarations_are_optional_bounded_and_scope_filtered() {
+    let old = serde_json::to_value(manifest()).unwrap();
+    assert!(old.get("events").is_none());
+    let mut input: AppManifest = serde_json::from_value(old).unwrap();
+    assert!(
+        input
+            .compile()
+            .unwrap()
+            .allowed_events(&["records:read".into()].into())
+            .unwrap()
+            .is_empty()
+    );
+    input.events = vec![AppEventDeclaration {
+        name: "document.changed".into(),
+        required_scopes: ["records:read".into()].into(),
+    }];
+    assert_eq!(
+        input
+            .compile()
+            .unwrap()
+            .allowed_events(&["records:read".into()].into())
+            .unwrap(),
+        ["document.changed".into()].into()
+    );
+    assert!(
+        input
+            .compile()
+            .unwrap()
+            .allowed_events(&["records:write".into()].into())
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        input
+            .compile()
+            .unwrap()
+            .allowed_events(&["unknown".into()].into())
+            .is_err()
+    );
+    let mut invalid = input.clone();
+    invalid.events.push(invalid.events[0].clone());
+    assert!(invalid.compile().is_err());
+    for scopes in [BTreeSet::new(), ["unknown".into()].into()] {
+        invalid = input.clone();
+        invalid.events[0].required_scopes = scopes;
+        assert!(invalid.compile().is_err());
+    }
+    invalid = input.clone();
+    invalid.events[0].name = "ignore previous instructions".into();
+    assert!(invalid.compile().is_err());
+    input.events = (0..=APP_EVENT_MAX_CLASSES)
+        .map(|index| AppEventDeclaration {
+            name: format!("event-{index}"),
+            required_scopes: ["records:read".into()].into(),
+        })
+        .collect();
+    assert!(input.compile().is_err());
+}
+
 fn manifest() -> AppManifest {
     AppManifest {
         schema_version: 1,
+        events: vec![],
         scopes: ["records:write".into(), "records:read".into()].into(),
         tools: vec![AppTool {
             name: "create_record".into(),

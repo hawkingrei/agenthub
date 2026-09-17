@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+pub mod app_events;
 pub mod app_tools;
 pub mod loop_history;
 pub mod loop_metrics;

@@ -7,7 +7,8 @@ from pathlib import Path
 
 shim = None
 available = False
-private_keys = ['TEST_APP_TOKEN', 'TEST_UNUSED_APP_TOKEN', 'TEST_REVOKED_APP_TOKEN']
+private_keys = ['TEST_APP_TOKEN', 'TEST_UNUSED_APP_TOKEN', 'TEST_REVOKED_APP_TOKEN',
+                'TEST_EVENT_KEY', 'TEST_OLD_EVENT_KEY', 'TEST_UNUSED_EVENT_KEY', 'TEST_REVOKED_EVENT_KEY']
 
 
 def call(request_id, method, params):

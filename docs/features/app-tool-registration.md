@@ -4,7 +4,8 @@ Status: target integration design for the [loop product model](agent-loop-produc
 The [registry storage foundation](app-registry-storage.md) and
 [management API](app-management-api.md) are implemented. [Runtime integration](app-tool-runtime.md)
 connects local HTTP Apps, safe Card capabilities, and historical version attribution. Event ingress
-remains pending.
+remains pending; its [configuration foundation](app-event-configuration.md) adds explicit declarations,
+independent signing-key references, and separately approved member routes.
 
 ## Problem
 

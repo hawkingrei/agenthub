@@ -5,6 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::app_events::{APP_EVENT_MAX_CLASSES, AppEventDeclaration};
+
 mod connection;
 #[cfg(test)]
 mod tests;
@@ -21,6 +23,8 @@ pub struct AppManifest {
     pub schema_version: u32,
     pub scopes: BTreeSet<String>,
     pub tools: Vec<AppTool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<AppEventDeclaration>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -69,6 +73,20 @@ impl AppManifest {
                 && self.scopes.iter().all(|scope| valid_name(scope)),
             "invalid app scopes"
         );
+        anyhow::ensure!(
+            self.events.len() <= APP_EVENT_MAX_CLASSES,
+            "invalid app event count"
+        );
+        let mut event_names = BTreeSet::new();
+        for event in &self.events {
+            anyhow::ensure!(
+                valid_name(&event.name)
+                    && event_names.insert(&event.name)
+                    && !event.required_scopes.is_empty()
+                    && event.required_scopes.is_subset(&self.scopes),
+                "invalid app event declaration"
+            );
+        }
         // Bound nested values before serializing or cloning the complete declaration.
         for tool in &self.tools {
             anyhow::ensure!(valid_name(&tool.name), "invalid app tool name");
@@ -117,6 +135,20 @@ impl AppManifest {
 impl CompiledAppManifest {
     pub fn manifest(&self) -> &AppManifest {
         &self.manifest
+    }
+
+    pub fn allowed_events(&self, granted: &BTreeSet<String>) -> anyhow::Result<BTreeSet<String>> {
+        anyhow::ensure!(
+            granted.is_subset(&self.manifest.scopes),
+            "app grant includes undeclared scopes"
+        );
+        Ok(self
+            .manifest
+            .events
+            .iter()
+            .filter(|event| event.required_scopes.is_subset(granted))
+            .map(|event| event.name.clone())
+            .collect())
     }
 
     pub fn allowed_tools(&self, granted: &BTreeSet<String>) -> anyhow::Result<BTreeSet<String>> {

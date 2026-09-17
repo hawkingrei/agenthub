@@ -10,7 +10,9 @@ use super::*;
 
 fn manifest() -> AppManifest {
     AppManifest {
-        schema_version: 1, scopes: ["read".into(), "write".into()].into(),
+        schema_version: 1,
+        events: vec![],
+        scopes: ["read".into(), "write".into()].into(),
         tools: ["write", "read"].into_iter().map(|name| AppTool {
             name: name.into(),
             input_schema: json!({"type":"object","properties":{"body":{"type":"string","x-mcp-header":"x-agenthub-actor-id"}},"required":["body"],"additionalProperties":false}),

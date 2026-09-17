@@ -72,6 +72,33 @@ pub async fn migrate_app_registry(pool: &SqlitePool) -> anyhow::Result<()> {
             FOREIGN KEY(app_id, team_id, actor_id) REFERENCES app_member_bindings(app_id, team_id, actor_id),
             FOREIGN KEY(app_id, version) REFERENCES app_manifest_versions(app_id, version)
         );
+        CREATE TABLE IF NOT EXISTS app_event_key_versions (
+            app_id TEXT NOT NULL REFERENCES registered_apps(id),
+            version INTEGER NOT NULL CHECK(version > 0),
+            credential_env TEXT,
+            revoked_at INTEGER,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(app_id, version),
+            CHECK(credential_env IS NOT NULL OR revoked_at IS NOT NULL)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_app_event_active_key
+            ON app_event_key_versions(app_id) WHERE revoked_at IS NULL;
+        CREATE TABLE IF NOT EXISTS app_event_routes (
+            app_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            classes_json TEXT NOT NULL,
+            grant_epoch INTEGER NOT NULL CHECK(grant_epoch > 0),
+            binding_epoch INTEGER NOT NULL CHECK(binding_epoch > 0),
+            revision INTEGER NOT NULL CHECK(revision > 0),
+            revoked_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY(app_id, team_id, actor_id),
+            FOREIGN KEY(app_id, team_id, actor_id) REFERENCES app_member_bindings(app_id, team_id, actor_id),
+            FOREIGN KEY(app_id, version) REFERENCES app_manifest_versions(app_id, version)
+        );
     "#).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())

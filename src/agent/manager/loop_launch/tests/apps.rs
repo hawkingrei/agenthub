@@ -18,6 +18,7 @@ pub(super) const PROVIDER: &str = provider::SCRIPT;
 fn manifest() -> AppManifest {
     AppManifest {
         schema_version: 1,
+        events: vec![],
         scopes: ["write".into()].into(),
         tools: vec![AppTool {
             name: "write".into(),
@@ -75,6 +76,10 @@ async fn registered_app_launch_uses_real_shim_and_isolates_all_registered_creden
             ("TEST_APP_TOKEN", "app-private-key"),
             ("TEST_UNUSED_APP_TOKEN", "unused-private-key"),
             ("TEST_REVOKED_APP_TOKEN", "revoked-private-key"),
+            ("TEST_EVENT_KEY", "event-active-key"),
+            ("TEST_OLD_EVENT_KEY", "event-rotated-key"),
+            ("TEST_UNUSED_EVENT_KEY", "event-unused-key"),
+            ("TEST_REVOKED_EVENT_KEY", "event-revoked-key"),
         ],
     )
     .await;
@@ -135,8 +140,26 @@ async fn registered_app_child() {
                 )
                 .await
                 .unwrap();
+            let signing_key = match index {
+                0 => "TEST_OLD_EVENT_KEY",
+                1 => "TEST_UNUSED_EVENT_KEY",
+                _ => "TEST_REVOKED_EVENT_KEY",
+            };
+            registry
+                .configure_event_key(&app.id, 0, Some(signing_key), now)
+                .await
+                .unwrap();
             if index == 0 {
+                registry
+                    .configure_event_key(&app.id, 1, Some("TEST_EVENT_KEY"), now)
+                    .await
+                    .unwrap();
                 selected = Some(app);
+            } else if index == 1 {
+                registry
+                    .configure_event_key(&app.id, 1, None, now)
+                    .await
+                    .unwrap();
             } else if index == 2 {
                 registry
                     .revoke_app(&app.id, "app-owner", 1, now)
@@ -197,6 +220,10 @@ async fn registered_app_child() {
             "app-private-key",
             "unused-private-key",
             "revoked-private-key",
+            "event-active-key",
+            "event-rotated-key",
+            "event-unused-key",
+            "event-revoked-key",
             "native-app-input",
         ] {
             assert!(!log.contains(private));

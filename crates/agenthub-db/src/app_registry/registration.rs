@@ -82,7 +82,8 @@ impl AppRegistry {
     pub async fn credential_references(&self) -> anyhow::Result<Vec<String>> {
         let names: Vec<String> = sqlx::query_scalar(
             "SELECT DISTINCT json_extract(connection_json, '$.credential_env') AS name \
-             FROM registered_apps WHERE json_type(connection_json, '$.credential_env') = 'text' ORDER BY name",
+             FROM registered_apps WHERE json_type(connection_json, '$.credential_env') = 'text' \
+             UNION SELECT credential_env AS name FROM app_event_key_versions WHERE credential_env IS NOT NULL ORDER BY name",
         )
         .fetch_all(&self.pool)
         .await?;

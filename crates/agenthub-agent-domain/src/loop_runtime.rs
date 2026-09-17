@@ -315,10 +315,16 @@ pub struct LoopSourceReferences {
     pub scheduling_activation_id: Option<String>,
     pub scheduling_user_id: Option<String>,
     pub app_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_event: Option<crate::app_events::AppEventAttribution>,
 }
 
 impl LoopSourceReferences {
     pub fn validate(&self) -> anyhow::Result<()> {
+        if let Some(event) = &self.app_event {
+            anyhow::ensure!(self.app_id.is_some(), "app event requires app identity");
+            event.validate()?;
+        }
         for value in [
             self.task_id.as_deref(),
             self.scheduling_actor_id.as_deref(),
