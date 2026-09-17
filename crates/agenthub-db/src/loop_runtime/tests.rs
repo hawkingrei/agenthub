@@ -21,6 +21,8 @@ mod lifecycle_tests;
 mod scheduling_tests;
 #[path = "scope_tests.rs"]
 mod scope_tests;
+#[path = "tool_observation_tests.rs"]
+mod tool_observation_tests;
 #[path = "work_context_tests.rs"]
 mod work_context_tests;
 

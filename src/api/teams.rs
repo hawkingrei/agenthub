@@ -5,6 +5,7 @@ use std::path::{Path as StdPath, PathBuf};
 
 mod errors;
 mod loop_configuration;
+mod loop_history;
 mod loop_scheduling;
 use loop_configuration::{
     get_loop_configuration, request_loop_activation, set_loop_configuration, update_team_spec_owned,
@@ -619,6 +620,26 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/{id}/members/{member_id}/loop/activate",
             post(request_loop_activation),
+        )
+        .route(
+            "/{id}/members/{member_id}/loop/activations",
+            get(loop_history::list_activations),
+        )
+        .route(
+            "/{id}/members/{member_id}/loop/activations/{activation_id}",
+            get(loop_history::get_activation),
+        )
+        .route(
+            "/{id}/members/{member_id}/loop/activations/{activation_id}/sources",
+            get(loop_history::list_sources),
+        )
+        .route(
+            "/{id}/members/{member_id}/loop/activations/{activation_id}/events",
+            get(loop_history::list_events),
+        )
+        .route(
+            "/{id}/members/{member_id}/loop/activations/{activation_id}/tools",
+            get(loop_history::list_tools),
         )
         .route(
             "/{id}/members/{member_id}/loop/schedules",

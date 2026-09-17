@@ -2,7 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::loop_runtime::{LoopActivation, LoopEvent, LoopSourceReferences, LoopTriggerKind};
+use crate::loop_runtime::{
+    LoopActivation, LoopEvent, LoopSourceReferences, LoopToolStatus, LoopToolSurface,
+    LoopTriggerKind,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LoopHistoryPage {
@@ -30,5 +33,29 @@ pub struct LoopSourceHistoryPage {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LoopEventHistoryPage {
     pub events: Vec<LoopEvent>,
+    pub next_cursor: Option<i64>,
+}
+
+/// A boundary observation is not a task outcome or evidence of an external effect.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LoopToolSummary {
+    pub id: i64,
+    pub activation_id: String,
+    pub generation: i64,
+    pub surface: LoopToolSurface,
+    pub tool_name: String,
+    pub target_ref: Option<String>,
+    pub operation_id: Option<String>,
+    pub attempt_number: Option<u32>,
+    pub status: LoopToolStatus,
+    pub started_at: i64,
+    pub completed_at: Option<i64>,
+    /// Measured with a process-local monotonic clock; absent if no completion was observed.
+    pub duration_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LoopToolHistoryPage {
+    pub tools: Vec<LoopToolSummary>,
     pub next_cursor: Option<i64>,
 }

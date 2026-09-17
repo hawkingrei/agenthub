@@ -1,4 +1,4 @@
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 
 pub async fn migrate_mcp_operations(pool: &SqlitePool) -> anyhow::Result<()> {
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
@@ -51,6 +51,7 @@ pub async fn migrate_mcp_operations(pool: &SqlitePool) -> anyhow::Result<()> {
             completion_json TEXT,
             sent_at INTEGER NOT NULL,
             completed_at INTEGER,
+            tool_observation_id INTEGER REFERENCES loop_tool_observations(id),
             PRIMARY KEY(operation_id, number)
         );
         CREATE INDEX IF NOT EXISTS idx_mcp_attempt_recovery
@@ -209,6 +210,19 @@ pub async fn migrate_mcp_operations(pool: &SqlitePool) -> anyhow::Result<()> {
     )
     .execute(&mut *tx)
     .await?;
+    let columns = sqlx::query("PRAGMA table_info(mcp_operation_attempts)")
+        .fetch_all(&mut *tx)
+        .await?;
+    if !columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "tool_observation_id")
+    {
+        sqlx::query("ALTER TABLE mcp_operation_attempts ADD COLUMN tool_observation_id INTEGER REFERENCES loop_tool_observations(id)")
+            .execute(&mut *tx).await?;
+        super::trace::backfill(&mut tx).await?;
+    }
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_attempt_tool_observation ON mcp_operation_attempts(tool_observation_id)")
+        .execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())
 }

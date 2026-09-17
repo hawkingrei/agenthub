@@ -89,6 +89,20 @@ async fn mcp_task_lookup_migration_and_queries_do_not_repeat_the_tool_send() {
         .unwrap();
     fixture.reopen(false).await;
     let scope = authority(&operation);
+    let history = fixture
+        .loops
+        .activation_tool_history(
+            "team",
+            "worker",
+            executor.activation_id.as_deref().unwrap(),
+            None,
+            100,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(history.tools[0].status.as_str(), "task_accepted");
+    assert!(history.tools[0].duration_ms.is_some());
     let query = fixture
         .store
         .begin_task_lookup(&executor, &scope, &lookup(80), 104)
@@ -137,6 +151,24 @@ async fn mcp_task_lookup_migration_and_queries_do_not_repeat_the_tool_send() {
         .unwrap();
     assert_eq!(attempts.len(), 1);
     assert_eq!(attempts[0].status, McpOperationStatus::Succeeded);
+    let history = fixture
+        .loops
+        .activation_tool_history(
+            "team",
+            "worker",
+            executor.activation_id.as_deref().unwrap(),
+            None,
+            100,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(history.tools[0].status.as_str(), "succeeded");
+    assert_eq!(history.tools[0].completed_at, Some(107));
+    assert!(
+        history.tools[0].duration_ms.is_none(),
+        "a task's later result has no surviving send clock"
+    );
     assert_eq!(
         fixture
             .store

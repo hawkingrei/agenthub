@@ -10,6 +10,7 @@ mod task_inputs;
 mod task_notification;
 mod task_observer;
 mod task_update;
+mod trace;
 
 #[cfg(test)]
 mod tests;
@@ -66,6 +67,7 @@ pub struct McpSendPermit {
     operation_id: String,
     attempt_number: u32,
     permit_id: String,
+    started: std::time::Instant,
 }
 
 impl McpSendPermit {

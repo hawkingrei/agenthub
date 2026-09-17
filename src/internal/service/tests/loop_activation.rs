@@ -12,6 +12,7 @@ use super::*;
 
 mod mcp_operations;
 mod mcp_shim;
+mod observations;
 
 pub(super) async fn fixture() -> (
     crate::state::AppState,
@@ -415,7 +416,7 @@ async fn loop_rpc_disconnected_caller_keeps_the_admitted_operation_owned() {
     let operation_effect = effect.clone();
     let caller = tokio::spawn(async move {
         service
-            .complete_control_request(&metadata, async move {
+            .complete_control_request(&metadata, "test_control", async move {
                 let (_, _guard) = operation_service
                     .authenticate_execution(&operation_metadata, false)
                     .await?;
@@ -427,6 +428,21 @@ async fn loop_rpc_disconnected_caller_keeps_the_admitted_operation_owned() {
             .await
     });
     started.notified().await;
+    let store = LoopStore::new(state.db.clone());
+    let page = store
+        .activation_tool_history(
+            &run.team_id,
+            "reviewer",
+            reservation.activation_id.as_deref().unwrap(),
+            None,
+            100,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(page.tools.len(), 1);
+    assert_eq!(page.tools[0].status.as_str(), "started");
+    assert!(page.tools[0].duration_ms.is_none());
     caller.abort();
     let _ = caller.await;
     let gate = state.agents.loop_operation_gate("reviewer").await;
@@ -442,4 +458,17 @@ async fn loop_rpc_disconnected_caller_keeps_the_admitted_operation_owned() {
         .shutdown_runtime(std::time::Duration::from_secs(2))
         .await
         .unwrap();
+    let page = store
+        .activation_tool_history(
+            &run.team_id,
+            "reviewer",
+            reservation.activation_id.as_deref().unwrap(),
+            None,
+            100,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(page.tools[0].status.as_str(), "succeeded");
+    assert!(page.tools[0].duration_ms.is_some());
 }

@@ -4,7 +4,7 @@ use agenthub_agent_domain::loop_history::{
 use agenthub_agent_domain::loop_runtime::validate_loop_id;
 use sqlx::{Sqlite, Transaction};
 
-use super::{LoopStore, parse_activation, parse_event, parse_trigger};
+use super::{LoopStore, LoopStoreError, parse_activation, parse_event, parse_trigger};
 
 impl LoopStore {
     /// Caller authorization is separate; every query additionally binds both durable scope IDs.
@@ -18,11 +18,11 @@ impl LoopStore {
         validate_scope(team_id, actor_id, limit)?;
         let mut tx = self.pool.begin().await?;
         let cursor = if let Some(before) = before {
-            validate_loop_id(before)?;
+            history_id(before)?;
             Some(sqlx::query_as::<_, (i64, String)>(
                 "SELECT created_at, id FROM loop_activations WHERE team_id = ? AND actor_id = ? AND id = ?",
             ).bind(team_id).bind(actor_id).bind(before).fetch_optional(&mut *tx).await?
-                .ok_or_else(|| anyhow::anyhow!("invalid activation history cursor"))?)
+                .ok_or(LoopStoreError::InvalidHistoryQuery)?)
         } else {
             None
         };
@@ -62,17 +62,17 @@ impl LoopStore {
         limit: u32,
     ) -> anyhow::Result<Option<LoopSourceHistoryPage>> {
         validate_scope(team_id, actor_id, limit)?;
-        validate_loop_id(activation_id)?;
+        history_id(activation_id)?;
         let mut tx = self.pool.begin().await?;
         if !contains_activation(&mut tx, team_id, actor_id, activation_id).await? {
             return Ok(None);
         }
         if let Some(after) = after {
-            validate_loop_id(after)?;
+            history_id(after)?;
             let valid: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM loop_trigger_sources WHERE activation_id = ? AND id = ?)",
             ).bind(activation_id).bind(after).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(valid, "invalid source history cursor");
+            anyhow::ensure!(valid, LoopStoreError::InvalidHistoryQuery);
         }
         let rows = sqlx::query(
             "SELECT s.*, EXISTS(SELECT 1 FROM loop_revoked_sources r WHERE r.trigger_id = s.id) AS revoked \
@@ -113,10 +113,10 @@ impl LoopStore {
         limit: u32,
     ) -> anyhow::Result<Option<LoopEventHistoryPage>> {
         validate_scope(team_id, actor_id, limit)?;
-        validate_loop_id(activation_id)?;
+        history_id(activation_id)?;
         anyhow::ensure!(
             after.is_none_or(|id| id > 0),
-            "invalid event history cursor"
+            LoopStoreError::InvalidHistoryQuery
         );
         let mut tx = self.pool.begin().await?;
         if !contains_activation(&mut tx, team_id, actor_id, activation_id).await? {
@@ -126,7 +126,7 @@ impl LoopStore {
             let valid: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM loop_activation_events WHERE activation_id = ? AND id = ?)",
             ).bind(activation_id).bind(after).fetch_one(&mut *tx).await?;
-            anyhow::ensure!(valid, "invalid event history cursor");
+            anyhow::ensure!(valid, LoopStoreError::InvalidHistoryQuery);
         }
         let rows = sqlx::query(
             "SELECT * FROM loop_activation_events WHERE activation_id = ? AND id > ? ORDER BY id LIMIT ?",
@@ -147,14 +147,21 @@ impl LoopStore {
     }
 }
 
-fn validate_scope(team_id: &str, actor_id: &str, limit: u32) -> anyhow::Result<()> {
-    validate_loop_id(team_id)?;
-    validate_loop_id(actor_id)?;
-    anyhow::ensure!((1..=100).contains(&limit), "invalid history page size");
+pub(super) fn validate_scope(team_id: &str, actor_id: &str, limit: u32) -> anyhow::Result<()> {
+    history_id(team_id)?;
+    history_id(actor_id)?;
+    anyhow::ensure!(
+        (1..=100).contains(&limit),
+        LoopStoreError::InvalidHistoryQuery
+    );
     Ok(())
 }
 
-async fn contains_activation(
+pub(super) fn history_id(value: &str) -> anyhow::Result<()> {
+    validate_loop_id(value).map_err(|_| LoopStoreError::InvalidHistoryQuery.into())
+}
+
+pub(super) async fn contains_activation(
     tx: &mut Transaction<'_, Sqlite>,
     team_id: &str,
     actor_id: &str,

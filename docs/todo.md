@@ -61,11 +61,12 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   [role integration checkpoint](journal/2026-09-16-loop-role-prompts.md) adds configured role
   selection, the shared loop skill, and provider/CLI regression coverage. Focused local validation
   passes. [PR #1158](https://github.com/hawkingrei/agenthub/pull/1158) is published at `c23010e5`;
-  current-head CI remains the delivery gate.
+  all current-head checks pass and the PR is ready for review; it has not been merged.
 - [ ] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
   Prove durable redacted trace reconstruction and preserve debug-only diagnostic boundaries.
-  [History storage](journal/2026-09-17-loop-history-storage.md) adds scoped paged queries; authorized
-  endpoints, safe tool summaries, metrics, tracing, and doctor integration remain open.
+  [History storage](journal/2026-09-17-loop-history-storage.md) adds authorized paged APIs, durable
+  RPC/MCP boundaries, and RPC trace correlation; metrics, lifecycle spans, and doctor integration
+  remain open.
 - [ ] 13. Expose offline configuration and task/IM/activation views with distinct process/policy
   state. Require focused web checks and Chrome DevTools lifecycle/reconnect evidence.
 - [ ] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove

@@ -15,6 +15,7 @@ mod scheduling_reconcile;
 mod scheduling_revocation;
 mod schema;
 mod scope;
+mod tool_observation;
 mod work_context;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ use thiserror::Error;
 
 pub use policy::LoopPolicyUpdate;
 pub use schema::migrate_loop_runtime;
+pub use tool_observation::LoopToolObservation;
 
 #[derive(Debug, Error)]
 pub enum LoopStoreError {
@@ -47,6 +49,8 @@ pub enum LoopStoreError {
     InvalidState,
     #[error("loop scope change requires quiescence: {0}")]
     ScopeBusy(&'static str),
+    #[error("invalid loop history query or cursor")]
+    InvalidHistoryQuery,
 }
 
 #[derive(Clone)]

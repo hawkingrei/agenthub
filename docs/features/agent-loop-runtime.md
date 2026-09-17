@@ -203,6 +203,27 @@ descending creation time plus ID; source and event pages use activation-scoped c
 contains at most 100 records and an explicit continuation cursor. Source projections contain typed
 references and revocation state, excluding original source keys and raw input objects.
 
+Release builds expose `GET /api/teams/{team_id}/members/{actor_id}/loop/activations`, the individual
+activation, and its `/sources`, `/events`, and `/tools` pages. Every surface requires `runtime:inspect`
+and access to the historical Team. Revoked Team access is rejected even if the caller can inspect
+other runtimes. An actor leaving the roster does not erase the Team's history. Invalid page limits
+or cursors return a bounded 400 response; missing or foreign activation records return 404.
+
+Tool boundary pages contain only an approved tool name, surface, optional safe target reference,
+generation, status, wall-clock boundaries, and an optional monotonic duration in milliseconds.
+MCP records also identify their canonical operation and attempt. History reads depend only on loop
+records, so controller history does not require optional MCP storage. MCP projections commit in the
+same transaction as the send or completion record. `input_required` and `task_accepted` preserve
+nonterminal receipts without asserting success or granting replay permission. Legacy attempts are
+backfilled once without invented durations. Restart recovery and asynchronous task settlement have
+no surviving monotonic clock; their durations remain absent.
+A `control_rpc` record describes the controller RPC return, including stream establishment when
+applicable; it does not assert a terminal upstream tool effect. A missing completion remains
+`started` with no duration after restart, and must not be interpreted as proof of a live call.
+Late observations may complete their original record after executor cleanup without restoring
+execution authority. Trace spans attach activation, actor, mailbox, and generation references to
+the existing subscriber; these identities are not metric labels.
+
 Each activation records, with monotonic timestamps and stable references:
 
 - trigger acceptance with source identity and every coalesced source reference;

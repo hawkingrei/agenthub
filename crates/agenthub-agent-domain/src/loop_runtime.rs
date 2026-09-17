@@ -54,6 +54,12 @@ string_enum!(LoopEventKind {
     MemContextReady => "mem_context_ready", MemContextUnavailable => "mem_context_unavailable",
     MemContextMissing => "mem_context_missing", MemContextInvalid => "mem_context_invalid"
 });
+string_enum!(LoopToolSurface { ControlRpc => "control_rpc", McpTool => "mcp_tool" });
+string_enum!(LoopToolStatus {
+    Started => "started", Succeeded => "succeeded", Failed => "failed",
+    OutcomeUnknown => "outcome_unknown", InputRequired => "input_required",
+    TaskAccepted => "task_accepted"
+});
 string_enum!(LoopDeferralReason {
     Disabled => "disabled", Suspended => "suspended", NotDue => "not_due",
     Reserved => "reserved", StartupLimit => "startup_limit", NoProgressLimit => "no_progress_limit",

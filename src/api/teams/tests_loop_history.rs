@@ -1,0 +1,262 @@
+async fn history_api_fixture(state: &AppState) -> (String, String, Vec<String>) {
+    use agenthub_agent_domain::loop_runtime::{
+        LoopLimits, LoopPolicyState, LoopSessionPolicy, LoopSourceReferences, LoopTriggerInput,
+        LoopTriggerKind,
+    };
+    use agenthub_db::loop_runtime::{LoopPolicyUpdate, LoopStore};
+    let owner = create_auth_token(state).await;
+    let Json(team) = create_team(State(state.clone()), auth_headers_for_token(&owner), Json(CreateTeamRequest {
+        name: format!("history-{}", Uuid::new_v4()), description: None,
+        spec: json!({"execution_mode":"loop", "entrypoint":"planner", "members":[{"member_id":"planner", "role":"coordinator"}]}),
+    })).await.unwrap();
+    let store = LoopStore::new(state.db.clone());
+    store
+        .configure(
+            LoopPolicyUpdate {
+                actor_id: "planner",
+                team_id: &team.id,
+                expected_revision: 1,
+                state: LoopPolicyState::Suspended,
+                session_policy: LoopSessionPolicy::Fresh,
+                limits: &LoopLimits::default(),
+            },
+            100,
+        )
+        .await
+        .unwrap();
+    let mut activations = Vec::new();
+    for (key, due) in [
+        ("private-alpha", None),
+        ("private-beta", None),
+        ("private-gamma", Some(200)),
+    ] {
+        let receipt = store
+            .accept_trigger(
+                &LoopTriggerInput {
+                    actor_id: "planner".into(),
+                    team_id: team.id.clone(),
+                    kind: LoopTriggerKind::Operator,
+                    source_key: key.into(),
+                    due_at: due,
+                    references: LoopSourceReferences::default(),
+                },
+                100,
+            )
+            .await
+            .unwrap();
+        if !activations.contains(&receipt.activation_id) {
+            activations.push(receipt.activation_id);
+        }
+    }
+    for (name, status, completed, duration) in [
+        ("list_tasks", "succeeded", Some(101_i64), Some(3_i64)),
+        ("read_context", "started", None, None),
+    ] {
+        sqlx::query("INSERT INTO loop_tool_observations(activation_id, generation, surface, tool_name, status, started_at, completed_at, duration_ms) VALUES (?, 1, 'control_rpc', ?, ?, 100, ?, ?)")
+            .bind(&activations[0]).bind(name).bind(status).bind(completed).bind(duration)
+            .execute(&state.db).await.unwrap();
+    }
+    (team.id, owner, activations)
+}
+
+#[tokio::test]
+async fn loop_history_api_requires_capability_and_team_access_on_every_surface() {
+    let state = build_test_state().await;
+    let (team, owner, activations) = history_api_fixture(&state).await;
+    let foreign = create_auth_token(&state).await;
+    let device = create_auth_token_with_role(&state, UserRole::Device).await;
+    let app = super::router(state.clone());
+    let base = format!("/{team}/members/planner/loop/activations");
+    for suffix in [
+        String::new(),
+        format!("/{}", activations[0]),
+        format!("/{}/sources", activations[0]),
+        format!("/{}/events", activations[0]),
+        format!("/{}/tools", activations[0]),
+    ] {
+        let uri = format!("{base}{suffix}");
+        for (token, expected) in [
+            (None, StatusCode::UNAUTHORIZED),
+            (Some(device.as_str()), StatusCode::UNAUTHORIZED),
+            (Some(foreign.as_str()), StatusCode::NOT_FOUND),
+            (Some(owner.as_str()), StatusCode::OK),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(Method::GET, &uri, token, None))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected, "{uri}");
+        }
+    }
+    let (viewer_id, viewer) =
+        create_auth_token_with_role_and_user_id(&state, UserRole::Viewer).await;
+    sqlx::query("INSERT INTO team_members(team_id,user_id,role,created_at,updated_at) VALUES (?,?,'observer',100,100)")
+        .bind(&team).bind(&viewer_id).execute(&state.db).await.unwrap();
+    assert_eq!(
+        app.clone()
+            .oneshot(build_json_request(Method::GET, &base, Some(&viewer), None))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    sqlx::query("UPDATE team_members SET revoked_at = 101 WHERE team_id = ? AND user_id = ?")
+        .bind(&team)
+        .bind(&viewer_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(
+        app.oneshot(build_json_request(Method::GET, &base, Some(&viewer), None))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn loop_history_api_pages_redacted_records_and_keeps_history_after_membership_changes() {
+    let state = build_test_state().await;
+    let (team, owner, activations) = history_api_fixture(&state).await;
+    let store = agenthub_db::loop_runtime::LoopStore::new(state.db.clone());
+    for id in &activations {
+        store.cancel(&team, id, 101).await.unwrap();
+    }
+    sqlx::query("UPDATE team_definitions SET spec_json = ? WHERE id = ?")
+        .bind(json!({"execution_mode":"loop","members":[]}).to_string())
+        .bind(&team)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let app = super::router(state.clone());
+    let base = format!("/{team}/members/planner/loop/activations");
+    let mut all = Vec::new();
+    let mut uri = format!("{base}?limit=1");
+    loop {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(Method::GET, &uri, Some(&owner), None))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let value: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        all.extend(
+            value["activations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|item| item["id"].as_str().unwrap().to_owned()),
+        );
+        let Some(cursor) = value["next_cursor"].as_str() else {
+            break;
+        };
+        uri = format!("{base}?limit=1&before_activation_id={cursor}");
+    }
+    assert_eq!(all.len(), 2);
+    assert!(activations.iter().all(|id| all.contains(id)));
+    for (suffix, field, cursor_name, expected) in [
+        ("sources", "sources", "after_source_id", 2),
+        ("events", "events", "after_event_id", 3),
+        ("tools", "tools", "after_tool_id", 2),
+    ] {
+        let endpoint = format!("{base}/{}/{suffix}", activations[0]);
+        let mut uri = format!("{endpoint}?limit=1");
+        let mut count = 0;
+        loop {
+            let response = app
+                .clone()
+                .oneshot(build_json_request(Method::GET, &uri, Some(&owner), None))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+            let text = std::str::from_utf8(&body).unwrap();
+            assert!(
+                !text.contains("private-")
+                    && !text.contains("source_key")
+                    && !text.contains("input_json")
+            );
+            let value: Value = serde_json::from_slice(&body).unwrap();
+            count += value[field].as_array().unwrap().len();
+            if value["next_cursor"].is_null() {
+                break;
+            }
+            let cursor = value["next_cursor"]
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| value["next_cursor"].to_string());
+            uri = format!("{endpoint}?limit=1&{cursor_name}={cursor}");
+        }
+        assert_eq!(count, expected);
+    }
+    let sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_sessions")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(sessions, 0);
+}
+
+#[tokio::test]
+async fn loop_history_api_rejects_foreign_actors_and_invalid_query_cursors() {
+    let state = build_test_state().await;
+    let (team, owner, activations) = history_api_fixture(&state).await;
+    let app = super::router(state);
+    let base = format!("/{team}/members/planner/loop/activations");
+    for suffix in [
+        "?limit=0",
+        "?limit=101",
+        "?before_activation_id=unknown",
+        "?unsupported=1",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                &format!("{base}{suffix}"),
+                Some(&owner),
+                None,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    for suffix in [
+        "/sources?after_source_id=unknown",
+        "/events?after_event_id=-1",
+        "/events?after_event_id=9999",
+        "/tools?after_tool_id=-1",
+        "/tools?after_tool_id=9999",
+        "/tools?limit=0",
+        "/tools?limit=101",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                &format!("{base}/{}{suffix}", activations[0]),
+                Some(&owner),
+                None,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    for suffix in ["", "/sources", "/events", "/tools"] {
+        let uri = format!(
+            "/{team}/members/foreign/loop/activations/{}{suffix}",
+            activations[0]
+        );
+        assert_eq!(
+            app.clone()
+                .oneshot(build_json_request(Method::GET, &uri, Some(&owner), None))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+}

@@ -144,6 +144,12 @@ pub(super) fn map_runtime_start_error(err: anyhow::Error) -> ApiError {
 
 pub(super) fn map_team_internal_error(err: anyhow::Error) -> ApiError {
     if let Some(error) = err.downcast_ref::<agenthub_db::loop_runtime::LoopStoreError>() {
+        if matches!(
+            error,
+            agenthub_db::loop_runtime::LoopStoreError::InvalidHistoryQuery
+        ) {
+            return ApiError::bad_request(&error.to_string());
+        }
         if matches!(error, agenthub_db::loop_runtime::LoopStoreError::Capacity) {
             return ApiError::too_many_requests(&error.to_string());
         }

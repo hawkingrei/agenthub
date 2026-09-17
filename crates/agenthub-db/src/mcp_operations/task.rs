@@ -303,6 +303,7 @@ pub(super) async fn settle_task_tx(
             activation_id,
             outcome,
             now.max(operation.updated_at),
+            None,
         )
         .await?;
     }

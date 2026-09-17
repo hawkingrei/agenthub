@@ -85,6 +85,26 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_loop_event_activation
             ON loop_activation_events(activation_id, id);
+        CREATE TABLE IF NOT EXISTS loop_tool_observations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            activation_id TEXT NOT NULL REFERENCES loop_activations(id),
+            generation INTEGER NOT NULL CHECK(generation > 0),
+            surface TEXT NOT NULL CHECK(surface IN ('control_rpc', 'mcp_tool')),
+            tool_name TEXT NOT NULL,
+            target_ref TEXT,
+            operation_id TEXT,
+            attempt_number INTEGER CHECK(attempt_number > 0),
+            status TEXT NOT NULL CHECK(status IN ('started', 'succeeded', 'failed', 'outcome_unknown', 'input_required', 'task_accepted')),
+            started_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            duration_ms INTEGER CHECK(duration_ms >= 0),
+            CHECK(duration_ms IS NULL OR completed_at IS NOT NULL),
+            CHECK((operation_id IS NULL) = (attempt_number IS NULL)),
+            UNIQUE(operation_id, attempt_number),
+            CHECK((status = 'started') = (completed_at IS NULL))
+        );
+        CREATE INDEX IF NOT EXISTS idx_loop_tool_activation
+            ON loop_tool_observations(activation_id, id);
         CREATE TABLE IF NOT EXISTS loop_finish_receipts (
             activation_id TEXT PRIMARY KEY REFERENCES loop_activations(id),
             generation INTEGER NOT NULL,
