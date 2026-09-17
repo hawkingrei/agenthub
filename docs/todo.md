@@ -22,6 +22,31 @@ Durable work evidence: [slice 7 checkpoint](journal/2026-09-15-agent-loop-work-e
   dependency wake, bounded catch-up, suspension, and convergent leader/worker wake cycles.
 - [ ] 9. Add the shared local MCP proxy and persistent operation journal. Prove schema/result
   preservation, secret isolation, and no blind replay of unknown non-idempotent writes.
+  The [operation journal](features/mcp-operation-journal.md) and
+  [transport and bound HTTP calls](features/mcp-proxy-transport.md) are implemented, with daemon
+  startup recovery, signed MCP session RPCs, a local stdio shim, and configured local ACP launch
+  with inherited-secret isolation, shared payload budgets, journaled March batches, and legacy
+  GET/resumption/DELETE, failed-handshake retirement, and receipt-linked modern tool MRTR rounds.
+  Declared retries now preserve the uncertain round's exact parameters and original identity.
+  Modern and legacy task lookups now resolve recorded tool attempts through separately journaled
+  queries. Cancellation has a separate durable send/receipt and never treats a modern acknowledgment
+  as tool completion. Task updates now consume recorded input IDs atomically and retain conflicting
+  request identities across reopen. Modern subscriptions validate acknowledgment filters,
+  journal task notifications before delivery, and release idle execution guards. Legacy GET/POST
+  task notifications now match authenticated ownership and accepted receipts, with bounded waiting
+  for creation receipts while callbacks continue. A trusted access policy now checks single requests,
+  batch members, subscription filters, callback registration, and discovery visibility. Configured
+  Mem now requires authenticated single-space key narrowing before provider startup and enables
+  its scoped non-tool surfaces under upstream authorization. Verified workspace/space identity now
+  keeps endpoint aliases within the same journal boundary; legacy unclassified effects retain
+  conservative replay checks without rewriting their intents. Client capability
+  snapshots now gate callbacks and deferred/task inputs throughout the proxy, including concurrent
+  modern requests, logging opt-in/severity, and retired method admission. Resource/prompt MRTR now links bounded session receipts to unchanged requests,
+  including parallel/foreign receipt rejection and no continuation replay after HTTP loss.
+  Native static MCP fresh/resume launch and
+  capability filtering are covered through a provider that starts and calls the configured server. Real shim/RPC
+  process-crash tests cover before-call, sent-without-response, parsed-success-before-commit,
+  and durable-success recovery, including no output before commit and no ambiguous-write replay.
 - [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
   rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.

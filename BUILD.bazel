@@ -56,6 +56,7 @@ rust_library(
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [
         "//crates/agenthub-acp:agenthub_acp",
+        "//crates/agenthub-acp-core:agenthub_acp_core",
         "//crates/agenthub-internal-p2p:agenthub_internal_p2p",
         "//crates/agenthub-text:agenthub_text",
         "//crates/agenthub-team-actor:agenthub_team_actor",
@@ -78,6 +79,7 @@ rust_library(
         "//crates/agenthub-pyroscope:agenthub_pyroscope",
         "//crates/agenthub-config:agenthub_config",
         "//crates/agenthub-db:agenthub_db",
+        "//crates/agenthub-mcp:agenthub_mcp",
         "//crates/agenthub-managed-skills:agenthub_managed_skills",
     ],
     proc_macro_deps = all_crate_deps(proc_macro = True),

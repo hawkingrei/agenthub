@@ -24,6 +24,7 @@ pub(super) struct LocalExecutionRequest {
     pub workdir: String,
     pub actor_context: Option<AcpActorSkillContext>,
     pub extra_env: Vec<(String, String)>,
+    pub private_env: Vec<String>,
     pub guard_descendants: bool,
 }
 
@@ -112,6 +113,21 @@ impl AgentExecutor for LocalExecutor {
         }
         for (key, value) in &request.extra_env {
             command.env(key, value);
+        }
+        if request.guard_descendants {
+            // Run after all additions, so a provider-specific override cannot reintroduce a
+            // configured upstream credential or ambient Mem header into the provider or its shim.
+            let names = std::env::vars_os()
+                .map(|(key, _)| key)
+                .chain(request.extra_env.iter().map(|(key, _)| OsString::from(key)));
+            for name in names {
+                if crate::mcp_proxy::configured::is_private_environment(
+                    &name.to_string_lossy(),
+                    &request.private_env,
+                ) {
+                    command.env_remove(name);
+                }
+            }
         }
         // Identity is available in standalone sessions without inventing a Team actor context.
         command.env("AGENTHUB_ACTOR_AGENT_ID", &request.agent_id);
@@ -257,6 +273,7 @@ mod tests {
             workdir: workdir.to_string_lossy().to_string(),
             actor_context: None,
             guard_descendants: false,
+            private_env: Vec::new(),
             extra_env: vec![("RUST_BACKTRACE".to_string(), "1".to_string())],
         };
 
@@ -310,6 +327,7 @@ mod tests {
             workdir: workdir.to_string_lossy().to_string(),
             actor_context: None,
             guard_descendants: false,
+            private_env: Vec::new(),
             extra_env: Vec::new(),
         };
 
@@ -395,6 +413,7 @@ mod tests {
             ],
             actor_context: None,
             guard_descendants: false,
+            private_env: Vec::new(),
             extra_env: [
                 "AGENTHUB_ACTOR_AGENT_ID",
                 "AGENTHUB_ACTOR_ID",

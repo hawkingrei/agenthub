@@ -3,6 +3,13 @@ use agenthub_db::loop_runtime::LoopStore;
 
 use super::*;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ExecutionAdmission {
+    Running,
+    Bootstrap,
+    FinishReplay,
+}
+
 impl TeamInternalControlService {
     pub(super) async fn complete_control_request<T: Send + 'static>(
         &self,
@@ -102,6 +109,26 @@ impl TeamInternalControlService {
         ),
         Status,
     > {
+        let admission = if allow_finish_replay {
+            ExecutionAdmission::FinishReplay
+        } else {
+            ExecutionAdmission::Running
+        };
+        self.authenticate_execution_admission(metadata, admission)
+            .await
+    }
+
+    pub(super) async fn authenticate_execution_admission(
+        &self,
+        metadata: &MetadataMap,
+        admission: ExecutionAdmission,
+    ) -> Result<
+        (
+            super::super::auth::InternalPrincipal,
+            Option<tokio::sync::OwnedRwLockReadGuard<()>>,
+        ),
+        Status,
+    > {
         let principal = self.authz.authenticate(metadata)?;
         let Some(executor) = principal.loop_execution.as_ref() else {
             return Ok((principal, None));
@@ -121,7 +148,7 @@ impl TeamInternalControlService {
             .await
             .read_owned()
             .await;
-        if !allow_finish_replay {
+        if admission != ExecutionAdmission::FinishReplay {
             let store = LoopStore::new(self.deps.db.clone());
             let reservation = store
                 .executor_reservation(actor, run, &executor.activation_id, executor.generation)
@@ -134,12 +161,17 @@ impl TeamInternalControlService {
                     "executor belongs to an earlier daemon",
                 ));
             }
-            store
-                .verify_executor_live(&reservation, chrono::Utc::now().timestamp())
-                .await
-                .map_err(|_| {
-                    Status::permission_denied("executor generation is no longer active")
-                })?;
+            let now = chrono::Utc::now().timestamp();
+            let validation = if admission == ExecutionAdmission::Bootstrap {
+                store
+                    .verify_executor_bootstrap_live(&reservation, now)
+                    .await
+            } else {
+                store.verify_executor_live(&reservation, now).await
+            };
+            validation.map_err(|_| {
+                Status::permission_denied("executor generation is no longer active")
+            })?;
         }
         Ok((principal, Some(guard)))
     }

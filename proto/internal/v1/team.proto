@@ -7,6 +7,10 @@ syntax = "proto3";
 package agenthub.internal.v1;
 
 service TeamInternalControl {
+  rpc OpenMcpProxy(OpenMcpProxyRequest) returns (OpenMcpProxyResponse);
+  rpc ExchangeMcpProxy(ExchangeMcpProxyRequest) returns (stream McpProxyFrame);
+  rpc ListenMcpProxy(ListenMcpProxyRequest) returns (stream McpProxyFrame);
+  rpc CloseMcpProxy(CloseMcpProxyRequest) returns (CloseMcpProxyResponse);
   rpc GetLoopWork(GetLoopWorkRequest) returns (GetLoopWorkResponse);
   rpc GetLoopWorkSource(GetLoopWorkSourceRequest) returns (GetLoopWorkSourceResponse);
   rpc ActivateLoopMember(ActivateLoopMemberRequest) returns (ActivateLoopMemberResponse);
@@ -43,6 +47,21 @@ service TeamInternalControl {
   rpc ListAgentEvents(ListAgentEventsRequest) returns (ListAgentEventsResponse);
 }
 
+// Upstream endpoint and credential material never cross this provider-facing bridge.
+message OpenMcpProxyRequest { string server_id = 1; }
+message OpenMcpProxyResponse { string session_id = 1; }
+message ExchangeMcpProxyRequest {
+  string session_id = 1;
+  string message_json = 2;
+}
+message McpProxyFrame {
+  string message_json = 1;
+  bool finished = 2;
+  bool can_listen = 3;
+}
+message CloseMcpProxyRequest { string session_id = 1; }
+message ListenMcpProxyRequest { string session_id = 1; }
+message CloseMcpProxyResponse {}
 message GetLoopWorkRequest {
   string after_source_id = 1;
   uint32 limit = 2;

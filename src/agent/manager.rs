@@ -5,6 +5,7 @@ mod executor;
 mod loop_launch;
 mod loop_lifecycle;
 mod loop_preflight;
+mod mcp_proxy;
 pub(crate) use loop_launch::LoopControlEndpoint;
 pub(crate) use loop_preflight::LoopPreflight;
 mod nodes;
@@ -93,6 +94,7 @@ pub struct AgentManager {
     internal_peer_client: Option<InternalGrpcPeerClientConfig>,
     starting: Arc<Mutex<HashSet<String>>>,
     loop_owner_id: String,
+    mcp_proxy: Arc<std::sync::OnceLock<Arc<crate::mcp_proxy::McpProxyHub>>>,
     loop_control_endpoint: Arc<RwLock<Option<LoopControlEndpoint>>>,
     loop_credentials: Arc<Mutex<HashMap<String, loop_launch::LoopCredentialState>>>,
     loop_operation_gates: Arc<Mutex<HashMap<String, Arc<RwLock<()>>>>>,
@@ -837,6 +839,7 @@ impl AgentManager {
             permission_review_dispatcher: Arc::new(StdRwLock::new(None)),
             starting: Arc::new(Mutex::new(HashSet::new())),
             loop_owner_id: Uuid::new_v4().to_string(),
+            mcp_proxy: Arc::new(std::sync::OnceLock::new()),
             loop_control_endpoint: Arc::new(RwLock::new(None)),
             loop_credentials: Arc::new(Mutex::new(HashMap::new())),
             loop_operation_gates: Arc::new(Mutex::new(HashMap::new())),

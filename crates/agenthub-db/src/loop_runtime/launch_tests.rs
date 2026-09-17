@@ -181,3 +181,169 @@ fn loop_launch_snapshot_is_bounded_and_excludes_credentials() {
     assert!(invalid.validate().is_err());
     snapshot().validate().unwrap();
 }
+
+#[tokio::test]
+async fn loop_bootstrap_requires_bound_launch_and_session_without_granting_execution() {
+    let fixture = Fixture::new().await;
+    let reservation = starting(&fixture).await;
+    partition(&fixture, "mailbox", "team").await;
+    fixture
+        .store
+        .bind_mailbox(&reservation, "mailbox", 101)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .verify_executor_bootstrap_live(&reservation, 101)
+            .await
+            .is_err()
+    );
+    fixture
+        .store
+        .record_launch(&reservation, &snapshot(), 101)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .verify_executor_bootstrap_live(&reservation, 101)
+            .await
+            .is_err()
+    );
+    sqlx::query("INSERT INTO agent_sessions(id, agent_id, status, started_at) VALUES ('local-session', 'worker', 'running', 101)")
+        .execute(&fixture.store.pool).await.unwrap();
+    let reservation = fixture
+        .store
+        .bind_session(&reservation, "local-session", 101)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .verify_executor_bootstrap_live(&reservation, 101)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .verify_executor_live(&reservation, 101)
+            .await
+            .is_err()
+    );
+    for change in ["generation", "owner", "team", "actor"] {
+        let mut invalid = reservation.clone();
+        match change {
+            "generation" => invalid.generation += 1,
+            "owner" => invalid.owner_id = "foreign".into(),
+            "team" => invalid.team_id = "elsewhere".into(),
+            "actor" => invalid.actor_id = "other".into(),
+            _ => unreachable!(),
+        }
+        assert!(
+            fixture
+                .store
+                .verify_executor_bootstrap_live(&invalid, 101)
+                .await
+                .is_err(),
+            "{change}"
+        );
+    }
+    assert!(
+        fixture
+            .store
+            .verify_executor_bootstrap_live(&reservation, 161)
+            .await
+            .is_err()
+    );
+    fixture.store.mark_running(&reservation, 102).await.unwrap();
+    fixture
+        .store
+        .verify_executor_live(&reservation, 102)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .verify_executor_bootstrap_live(&reservation, 102)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE loop_mailbox_partitions SET active = 0 WHERE run_id = 'mailbox'")
+        .execute(&fixture.store.pool)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .verify_executor_bootstrap_live(&reservation, 102)
+            .await
+            .is_err()
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn loop_bootstrap_is_fenced_by_member_removal_and_executor_revocation() {
+    let fixture = Fixture::new().await;
+    let reservation = starting(&fixture).await;
+    partition(&fixture, "mailbox", "team").await;
+    fixture
+        .store
+        .bind_mailbox(&reservation, "mailbox", 101)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .record_launch(&reservation, &snapshot(), 101)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO agent_sessions(id, agent_id, status, started_at) VALUES ('local-session', 'worker', 'running', 101)")
+        .execute(&fixture.store.pool).await.unwrap();
+    let reservation = fixture
+        .store
+        .bind_session(&reservation, "local-session", 101)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .verify_executor_bootstrap_live(&reservation, 101)
+        .await
+        .unwrap();
+    let spec: String =
+        sqlx::query_scalar("SELECT spec_json FROM team_definitions WHERE id = 'team'")
+            .fetch_one(&fixture.store.pool)
+            .await
+            .unwrap();
+    sqlx::query("UPDATE team_definitions SET spec_json = '{\"members\":[]}' WHERE id = 'team'")
+        .execute(&fixture.store.pool)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .verify_executor_bootstrap_live(&reservation, 101)
+            .await
+            .is_err()
+    );
+    sqlx::query("UPDATE team_definitions SET spec_json = ? WHERE id = 'team'")
+        .bind(spec)
+        .execute(&fixture.store.pool)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .verify_executor_bootstrap_live(&reservation, 101)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .revoke_execution(&reservation, 101)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .verify_executor_bootstrap_live(&reservation, 101)
+            .await
+            .is_err()
+    );
+    fixture.close().await;
+}

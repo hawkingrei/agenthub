@@ -1,6 +1,8 @@
 mod actor_runtime_skill;
 mod loop_launch;
 pub use loop_launch::{AcpLoopLaunchConfig, LOOP_ACTIVATION_CONTRACT_VERSION};
+#[cfg(test)]
+mod static_mcp_tests;
 mod team_role_skills;
 #[cfg(test)]
 mod test_utils;
@@ -1443,6 +1445,13 @@ async fn handle_auth_required_failure(
 }
 
 pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Result<AcpHandle> {
+    spawn_acp_session_with_static_mcp(request, load_mcp_servers).await
+}
+
+async fn spawn_acp_session_with_static_mcp(
+    request: SpawnAcpSessionRequest,
+    load_static_mcp: impl FnOnce() -> Vec<McpServer> + Send + 'static,
+) -> anyhow::Result<AcpHandle> {
     let SpawnAcpSessionRequest {
         provider_id,
         event_sink,
@@ -1475,12 +1484,10 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 let _ = ready_tx.send(Err(format!("acp managed skill install failed: {err}")));
                 return;
             }
-            // Loop tools use scoped actor control until the shared proxy supplies journaled MCP.
-            let mcp_servers = if loop_launch.is_some() {
-                Vec::new()
-            } else {
-                load_mcp_servers()
-            };
+            let mcp_servers = loop_launch
+                .as_ref()
+                .map(AcpLoopLaunchConfig::mcp_servers)
+                .unwrap_or_else(load_static_mcp);
             let mut skills = loop_launch
                 .as_ref()
                 .map(|launch| launch.skills.clone())

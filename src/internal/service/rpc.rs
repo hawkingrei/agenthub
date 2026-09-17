@@ -2,38 +2,59 @@ use super::*;
 
 #[tonic::async_trait]
 impl TeamInternalControl for TeamInternalControlService {
-    async fn get_loop_work_source(
+    type ExchangeMcpProxyStream = super::mcp_proxy::McpResponseStream;
+    type ListenMcpProxyStream = super::mcp_proxy::McpResponseStream;
+
+    async fn listen_mcp_proxy(
         &self,
-        request: Request<GetLoopWorkSourceRequest>,
-    ) -> Result<Response<GetLoopWorkSourceResponse>, Status> {
+        request: Request<crate::internal::proto::agenthub::internal::v1::ListenMcpProxyRequest>,
+    ) -> Result<Response<Self::ListenMcpProxyStream>, Status> {
         let metadata = request.metadata().clone();
         let service = self.clone();
         self.complete_control_request(&metadata, async move {
-            service.get_loop_work_source_request(request).await
+            service.listen_mcp_proxy_request(request).await
         })
         .await
     }
 
-    async fn get_loop_work(
+    async fn open_mcp_proxy(
         &self,
-        request: Request<GetLoopWorkRequest>,
-    ) -> Result<Response<GetLoopWorkResponse>, Status> {
+        request: Request<crate::internal::proto::agenthub::internal::v1::OpenMcpProxyRequest>,
+    ) -> Result<
+        Response<crate::internal::proto::agenthub::internal::v1::OpenMcpProxyResponse>,
+        Status,
+    > {
         let metadata = request.metadata().clone();
         let service = self.clone();
         self.complete_control_request(&metadata, async move {
-            service.get_loop_work_request(request).await
+            service.open_mcp_proxy_request(request).await
         })
         .await
     }
 
-    async fn activate_loop_member(
+    async fn exchange_mcp_proxy(
         &self,
-        request: Request<ActivateLoopMemberRequest>,
-    ) -> Result<Response<ActivateLoopMemberResponse>, Status> {
+        request: Request<crate::internal::proto::agenthub::internal::v1::ExchangeMcpProxyRequest>,
+    ) -> Result<Response<Self::ExchangeMcpProxyStream>, Status> {
         let metadata = request.metadata().clone();
         let service = self.clone();
         self.complete_control_request(&metadata, async move {
-            service.activate_loop_member_request(request).await
+            service.exchange_mcp_proxy_request(request).await
+        })
+        .await
+    }
+
+    async fn close_mcp_proxy(
+        &self,
+        request: Request<crate::internal::proto::agenthub::internal::v1::CloseMcpProxyRequest>,
+    ) -> Result<
+        Response<crate::internal::proto::agenthub::internal::v1::CloseMcpProxyResponse>,
+        Status,
+    > {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.close_mcp_proxy_request(request).await
         })
         .await
     }
@@ -406,6 +427,42 @@ impl TeamInternalControl for TeamInternalControlService {
         let service = self.clone();
         self.complete_control_request(&metadata, async move {
             service.list_agent_events_request(request).await
+        })
+        .await
+    }
+
+    async fn get_loop_work_source(
+        &self,
+        request: Request<GetLoopWorkSourceRequest>,
+    ) -> Result<Response<GetLoopWorkSourceResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.get_loop_work_source_request(request).await
+        })
+        .await
+    }
+
+    async fn get_loop_work(
+        &self,
+        request: Request<GetLoopWorkRequest>,
+    ) -> Result<Response<GetLoopWorkResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.get_loop_work_request(request).await
+        })
+        .await
+    }
+
+    async fn activate_loop_member(
+        &self,
+        request: Request<ActivateLoopMemberRequest>,
+    ) -> Result<Response<ActivateLoopMemberResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let service = self.clone();
+        self.complete_control_request(&metadata, async move {
+            service.activate_loop_member_request(request).await
         })
         .await
     }
