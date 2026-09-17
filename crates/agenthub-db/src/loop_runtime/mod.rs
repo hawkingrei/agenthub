@@ -6,6 +6,7 @@ mod history;
 mod intake;
 mod launch;
 mod lifecycle;
+mod metrics;
 mod outcome;
 mod policy;
 mod reservation;
@@ -124,6 +125,10 @@ fn parse_event(row: &SqliteRow) -> anyhow::Result<LoopEvent> {
         trigger_id: row.try_get("trigger_id")?,
         reason: row
             .try_get::<Option<&str>, _>("reason_code")?
+            .map(str::parse)
+            .transpose()?,
+        exit_reason: row
+            .try_get::<Option<&str>, _>("exit_reason_code")?
             .map(str::parse)
             .transpose()?,
         created_at: row.try_get("created_at")?,

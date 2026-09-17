@@ -45,7 +45,7 @@ fn outcome() -> LoopOutcome {
     }
 }
 
-async fn task_note(fixture: &Fixture, actor: &str, now: i64) -> i64 {
+pub(super) async fn task_note(fixture: &Fixture, actor: &str, now: i64) -> i64 {
     sqlx::query("INSERT OR IGNORE INTO team_tasks(id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at) VALUES ('task', 'team', 'Work', 'in_progress', 'worker', '{}', 100, 100)")
         .execute(&fixture.store.pool).await.unwrap();
     sqlx::query("INSERT OR IGNORE INTO team_conversations(id, team_id, task_id, mode, created_at, updated_at) VALUES ('conversation', 'team', 'task', 'group', 100, 100)")

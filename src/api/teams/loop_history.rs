@@ -1,6 +1,7 @@
 use agenthub_agent_domain::loop_history::{
     LoopEventHistoryPage, LoopHistoryPage, LoopSourceHistoryPage, LoopToolHistoryPage,
 };
+use agenthub_agent_domain::loop_metrics::LoopMetricsSnapshot;
 use agenthub_agent_domain::loop_runtime::{LoopActivation, validate_loop_id};
 use agenthub_db::loop_runtime::LoopStore;
 
@@ -34,6 +35,12 @@ pub(super) struct ToolsQuery {
     limit: Option<u32>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct MetricsQuery {
+    window_seconds: Option<i64>,
+}
+
 async fn authorize_history(
     state: &AppState,
     headers: &HeaderMap,
@@ -45,6 +52,26 @@ async fn authorize_history(
     validate_loop_id(actor_id).map_err(|_| ApiError::bad_request("invalid actor reference"))?;
     // Membership changes must not erase a Team's authority to inspect its own historical work.
     Ok(LoopStore::new(state.db.clone()))
+}
+
+pub(super) async fn metrics(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, actor_id)): Path<(String, String)>,
+    Query(query): Query<MetricsQuery>,
+) -> Result<Json<LoopMetricsSnapshot>, ApiError> {
+    let store = authorize_history(&state, &headers, &team_id, &actor_id).await?;
+    Ok(Json(
+        store
+            .metrics(
+                &team_id,
+                &actor_id,
+                chrono::Utc::now().timestamp(),
+                query.window_seconds.unwrap_or(86400),
+            )
+            .await
+            .map_err(map_team_internal_error)?,
+    ))
 }
 
 pub(super) async fn list_activations(

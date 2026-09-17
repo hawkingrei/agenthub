@@ -55,6 +55,10 @@ string_enum!(LoopEventKind {
     MemContextMissing => "mem_context_missing", MemContextInvalid => "mem_context_invalid"
 });
 string_enum!(LoopToolSurface { ControlRpc => "control_rpc", McpTool => "mcp_tool" });
+string_enum!(LoopExitReason {
+    OutcomeRecorded => "outcome_recorded", StartupFailed => "startup_failed",
+    UnexpectedExit => "unexpected_exit", Canceled => "canceled"
+});
 string_enum!(LoopToolStatus {
     Started => "started", Succeeded => "succeeded", Failed => "failed",
     OutcomeUnknown => "outcome_unknown", InputRequired => "input_required",
@@ -418,6 +422,8 @@ pub struct LoopEvent {
     pub generation: i64,
     pub trigger_id: Option<String>,
     pub reason: Option<LoopDeferralReason>,
+    #[serde(default)]
+    pub exit_reason: Option<LoopExitReason>,
     pub created_at: i64,
 }
 

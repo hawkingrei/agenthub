@@ -3,7 +3,7 @@
 ## Summary
 
 Add bounded, payload-free activation history projections, authorized release history APIs, and
-durable controller RPC/MCP observations as the foundation for activation diagnostics. This
+durable controller RPC/MCP observations and scoped metrics as the foundation for activation diagnostics. This
 checkpoint does not complete the observability slice.
 
 ## Background
@@ -25,6 +25,10 @@ checks without recovering raw trigger inputs into the response.
   operation/attempt without returning private intent, request digests, or completion receipts.
 - Existing MCP attempts migrate to safe observations once; later initialization retains their
   identities and never invents historical monotonic durations.
+
+- Scoped metric snapshots cover due work, first admission, per-generation run durations,
+  retries/startup failures, cleanup reasons, no-progress evidence, business/registered waits, and Mem.
+- Durable duplicate counters do not expand the event log; new exit reasons accompany verified cleanup.
 
 ## Key Decisions
 
@@ -49,6 +53,7 @@ verified cleanup, complete coalesced-source pagination, event ordering, and sour
 
 ```bash
 cargo +1.96.0 test -p agenthub-db loop_history --locked --offline
+cargo +1.96.0 test -p agenthub-db loop_metrics --locked --offline
 cargo +1.96.0 test -p agenthub-db loop_tool_history --locked --offline
 cargo +1.96.0 test -p agenthub-db mcp_tool_history --locked --offline
 cargo +1.96.0 test -p agenthub-mcp --lib --locked --offline
@@ -60,27 +65,31 @@ cargo fmt --all --check
 git diff --check
 ```
 
-Final database regression passes all 161 tests. The four focused tool-history tests cover stale
+Final database regression passes all 166 tests. The four focused tool-history tests cover stale
 fences, scoped cursors, cleanup before completion, database reopen, additive/idempotent MCP
 migration, deferred input, restart recovery, and a late factual result without replay. The task
 lookup regression also checks that a receipt is not success and that its duration is not attributed
 to a later asynchronous result.
 
 Proxy regressions pass 111 tests. The final controller selection passes 32 tests plus its
-parent-invoked crash helper, and all three history API tests pass, including capability/Team
+parent-invoked crash helper, and all four history API tests pass, including capability/Team
 access, revoked membership, actor removal, invalid cursors, redaction, and tool pagination.
 The tool projection stores safe operation IDs directly: a controller-only database does not need
 an optional MCP table to inspect its history. Existing loopback/process fixtures require execution
 permissions beyond the sandbox; their permission failure was resolved before final validation.
+
+Five metric tests additionally cover concurrent duplicates/rollback/conflicting input, bounded
+counters, actor/Team isolation, event windows, exact queue/run/progress/wait/Mem aggregates,
+recurring wait rearm, wall-clock regression, unfenced interruption, reopen, and unknown migration
+coverage. The metrics API rejects invalid windows and retains historical Team authorization.
 
 Root/database all-target Clippy passes with warnings denied. Formatting, whitespace, and all 104
 local documentation targets pass.
 
 ## Follow-Ups
 
-- Add metrics, diagnostic classification, activation-aware doctor selection, and the remaining
-  lifecycle tracing correlation. Persist missing facts such as
-  duplicate-suppression counters before exposing their metrics.
+- Add diagnostic classification, activation-aware doctor selection, and the remaining lifecycle
+  tracing correlation. Complete debug/release boundary verification.
 - Complete slice 12 validation and publication before treating observability as delivered.
 - Contracts: [loop runtime](../features/agent-loop-runtime.md) and
   [runtime diagnostics](../features/runtime-diagnostics.md).

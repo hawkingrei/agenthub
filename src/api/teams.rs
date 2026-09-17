@@ -626,6 +626,10 @@ pub fn router(state: AppState) -> Router {
             get(loop_history::list_activations),
         )
         .route(
+            "/{id}/members/{member_id}/loop/metrics",
+            get(loop_history::metrics),
+        )
+        .route(
             "/{id}/members/{member_id}/loop/activations/{activation_id}",
             get(loop_history::get_activation),
         )

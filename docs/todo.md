@@ -65,8 +65,8 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
 - [ ] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
   Prove durable redacted trace reconstruction and preserve debug-only diagnostic boundaries.
   [History storage](journal/2026-09-17-loop-history-storage.md) adds authorized paged APIs, durable
-  RPC/MCP boundaries, and RPC trace correlation; metrics, lifecycle spans, and doctor integration
-  remain open.
+  RPC/MCP boundaries, scoped metrics, and RPC trace correlation; lifecycle spans and doctor
+  integration remain open.
 - [ ] 13. Expose offline configuration and task/IM/activation views with distinct process/policy
   state. Require focused web checks and Chrome DevTools lifecycle/reconnect evidence.
 - [ ] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove

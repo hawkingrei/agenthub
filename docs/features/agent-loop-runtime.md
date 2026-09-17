@@ -241,6 +241,28 @@ suppression, no-progress loop rate per actor, wait-condition age, and Mem availa
 keys on stuck durable state — old pending work, expired leases without fencing resolution, growing
 no-progress rates — not on process uptime.
 
+`GET /api/teams/{team_id}/members/{actor_id}/loop/metrics` uses the same authorization as history.
+The default event window is 24 hours; `window_seconds` must be between 1 and 604800. Counts and
+duration aggregates use that window. Queue/wait gauges describe the current durable snapshot;
+duplicate suppression is a cumulative observed counter. Categories are bounded enums, with no
+actor, activation, task, tool-name, or workspace labels. No observations means unknown, not zero
+service availability or a zero-sample progress rate.
+
+Admission latency measures the first admission after work becomes due, excluding deliberate future
+scheduling. Running duration spans each generation's running-to-verified-cleanup interval. These
+cross-process intervals are wall-clock estimates: clock regressions are counted and excluded from
+duration samples. A retained reservation contributes to unsettled age even after interruption;
+it never proves provider liveness or verified exit. Exit distributions use only verified cleanup,
+with separate startup-failure, canceled, recorded-outcome, and unexpected-exit categories.
+
+No-progress rate is the fraction of finalized, non-canceled activations without newly credited
+canonical progress evidence. Reusing a task note is not new progress. A newer admission clears the
+previous business-wait observation, while future pending work does not. Active registration wait
+age starts at registration or its latest firing, so recurring waits reset after each firing.
+Historical cleanup reasons are not inferred. Pre-instrumentation source counters carry an unknown
+baseline; duplicate totals are lower bounds when such sources remain. Duplicate acceptance updates
+one counter in the intake transaction without expanding the lifecycle event log.
+
 Runtime spans reuse the existing `tracing` subscriber and optional fastrace bridge from
 [runtime diagnostics](runtime-diagnostics.md); the activation id becomes a span attribute so
 wall-clock timelines join durable lifecycle records. `agenthub doctor agent-trace` extends from

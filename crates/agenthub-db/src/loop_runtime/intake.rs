@@ -46,6 +46,8 @@ impl LoopStore {
             if original != *input {
                 return Err(LoopStoreError::IdempotencyConflict.into());
             }
+            sqlx::query("UPDATE loop_trigger_sources SET duplicate_count = MIN(duplicate_count, 9223372036854775806) + 1 WHERE id = ?")
+                .bind(row.try_get::<&str, _>("id")?).execute(&mut **tx).await?;
             return Ok(LoopTriggerReceipt {
                 trigger_id: row.try_get("id")?,
                 activation_id: row.try_get("activation_id")?,
@@ -130,11 +132,12 @@ impl LoopStore {
         };
         let trigger_id = Uuid::now_v7().to_string();
         sqlx::query(
-            "INSERT INTO loop_trigger_sources(id, activation_id, actor_id, team_id, source_kind, source_key, input_json, created_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO loop_trigger_sources(id, activation_id, actor_id, team_id, source_kind, source_key, input_json, created_at, duplicate_observation_started_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&trigger_id).bind(&activation_id).bind(&input.actor_id).bind(&input.team_id)
         .bind(input.kind.as_str()).bind(&input.source_key).bind(serde_json::to_string(input)?).bind(now)
+        .bind(now)
         .execute(&mut **tx).await?;
         sqlx::query(
             "INSERT INTO loop_activation_events(activation_id, kind, generation, trigger_id, created_at) VALUES (?, ?, 0, ?, ?)",

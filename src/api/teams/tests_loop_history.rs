@@ -67,14 +67,18 @@ async fn loop_history_api_requires_capability_and_team_access_on_every_surface()
     let device = create_auth_token_with_role(&state, UserRole::Device).await;
     let app = super::router(state.clone());
     let base = format!("/{team}/members/planner/loop/activations");
-    for suffix in [
+    let mut paths: Vec<String> = [
         String::new(),
         format!("/{}", activations[0]),
         format!("/{}/sources", activations[0]),
         format!("/{}/events", activations[0]),
         format!("/{}/tools", activations[0]),
-    ] {
-        let uri = format!("{base}{suffix}");
+    ]
+    .into_iter()
+    .map(|suffix| format!("{base}{suffix}"))
+    .collect();
+    paths.push(format!("/{team}/members/planner/loop/metrics"));
+    for uri in paths {
         for (token, expected) in [
             (None, StatusCode::UNAUTHORIZED),
             (Some(device.as_str()), StatusCode::UNAUTHORIZED),
@@ -259,4 +263,76 @@ async fn loop_history_api_rejects_foreign_actors_and_invalid_query_cursors() {
             StatusCode::NOT_FOUND
         );
     }
+}
+
+#[tokio::test]
+async fn loop_history_api_metrics_bound_windows_and_preserve_historical_scope() {
+    let state = build_test_state().await;
+    let (team, owner, _) = history_api_fixture(&state).await;
+    sqlx::query("UPDATE team_definitions SET spec_json = ? WHERE id = ?")
+        .bind(json!({"execution_mode":"loop","members":[]}).to_string())
+        .bind(&team)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let app = super::router(state);
+    let endpoint = format!("/{team}/members/planner/loop/metrics");
+    for suffix in [
+        "?window_seconds=0",
+        "?window_seconds=604801",
+        "?window_seconds=-1",
+        "?activation_id=private",
+    ] {
+        assert_eq!(
+            app.clone()
+                .oneshot(build_json_request(
+                    Method::GET,
+                    &format!("{endpoint}{suffix}"),
+                    Some(&owner),
+                    None
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let response = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &endpoint,
+            Some(&owner),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    let text = std::str::from_utf8(&body).unwrap();
+    for private in ["private-", "source_key", "input_json", "activation_id"] {
+        assert!(!text.contains(private));
+    }
+    let data: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(data["pending"]["count"], 2);
+    assert_eq!(data["duplicates"]["suppressed_total"], 0);
+    assert_eq!(data["duplicates"]["sources_with_unknown_baseline"], 0);
+    assert!(data["mem"]["latest"].is_null());
+    assert_eq!(
+        data["observed_at"].as_i64().unwrap() - data["window_start"].as_i64().unwrap(),
+        86400
+    );
+    let foreign = format!("/{team}/members/foreign/loop/metrics");
+    let response = app
+        .oneshot(build_json_request(
+            Method::GET,
+            &foreign,
+            Some(&owner),
+            None,
+        ))
+        .await
+        .unwrap();
+    let data: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    assert_eq!(data["pending"]["count"], 0);
 }
