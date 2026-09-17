@@ -8,6 +8,7 @@ use agenthub_db::loop_runtime::LoopPolicyUpdate;
 
 use super::*;
 
+mod browser;
 mod mcp;
 mod mem;
 mod roles;
@@ -70,6 +71,9 @@ for line in sys.stdin:
                 log.write(json.dumps({'mcp_bootstrap':True, 'server':server}) + '\n')
         result = {'sessionId': str(uuid.uuid4())} if method == 'session/new' else {}
     elif method == 'session/prompt':
+        # The opt-in browser fixture can hold execution across page closure.
+        while os.path.exists(os.path.join(os.getcwd(), 'browser-hold')):
+            time.sleep(0.05)
         if mode == 'role-pin':
             with open(log_path, 'a') as log:
                 log.write(json.dumps({'role_prompt': request['params']['prompt']}) + '\n')
@@ -210,11 +214,27 @@ impl Fixture {
     }
 
     async fn new_with_mem(mode: &str, endpoint: Option<&str>) -> Self {
-        let mut state = crate::api::team_tests::build_test_state().await;
-        sqlx::query("ALTER TABLE agents ADD COLUMN runtime_model TEXT")
-            .execute(&state.db)
-            .await
-            .unwrap();
+        let state = crate::api::team_tests::build_test_state().await;
+        Self::with_state(state, mode, endpoint).await
+    }
+
+    async fn with_state(
+        mut state: crate::state::AppState,
+        mode: &str,
+        endpoint: Option<&str>,
+    ) -> Self {
+        let has_model: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('agents') WHERE name = 'runtime_model')",
+        )
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+        if !has_model {
+            sqlx::query("ALTER TABLE agents ADD COLUMN runtime_model TEXT")
+                .execute(&state.db)
+                .await
+                .unwrap();
+        }
         let directory =
             std::env::temp_dir().join(format!("agenthub-loop-provider-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();

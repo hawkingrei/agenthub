@@ -215,6 +215,18 @@ describe("useTeamWorkspaceViewModel", () => {
     }
   });
 
+  it.each(["loop", "legacy"])("selects the default member surface for %s execution", async (mode) => {
+    const params = createParams();
+    params.selectedTeam = { ...params.selectedTeam!, spec: { execution_mode: mode } };
+    const mounted = await mountHook(params);
+    try {
+      act(() => { mounted.getSnapshot()?.onSelectAgentWorkspace("worker-1"); });
+      expect(params.navigateToTeamMemberWorkspace).toHaveBeenCalledWith("team-1", "worker-1", mode === "loop" ? "overview" : "agent_acp");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
   it("routes agent workspace selections through team detail and compact sidebar collapse", async () => {
     const prefetchWorkspaceLens = vi.fn();
     const params = createParams({
