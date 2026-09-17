@@ -154,6 +154,8 @@ impl AppRegistry {
         let row = sqlx::query("UPDATE registered_apps SET revoked_at = COALESCE(revoked_at, ?), revision = ?, updated_at = ? WHERE id = ? RETURNING *")
             .bind(now).bind(next_revision(app.revision)?).bind(now).bind(app_id).fetch_one(&mut *tx).await?;
         let app = parse_app(&row)?;
+        crate::loop_runtime::LoopStore::revoke_app_schedules_tx(&mut tx, app_id, None, None, now)
+            .await?;
         tx.commit().await?;
         Ok(app)
     }

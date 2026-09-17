@@ -91,6 +91,14 @@ impl AppRegistry {
             .bind(binding.try_get::<i64, _>("authorization_epoch")?).bind(next_revision(revision)?).bind(now).bind(now)
             .fetch_one(&mut *tx).await?;
         let route = parse_route(&row)?;
+        crate::loop_runtime::LoopStore::revoke_app_schedules_tx(
+            &mut tx,
+            input.app_id,
+            Some(input.team_id),
+            Some(input.actor_id),
+            now,
+        )
+        .await?;
         tx.commit().await?;
         Ok(route)
     }
@@ -105,11 +113,22 @@ impl AppRegistry {
     ) -> anyhow::Result<AppEventRoute> {
         anyhow::ensure!(now >= 0, "invalid app timestamp");
         let revision = next_revision(expected_revision)?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let row = sqlx::query("UPDATE app_event_routes SET revoked_at = COALESCE(revoked_at, ?), revision = ?, updated_at = ? \
             WHERE app_id = ? AND team_id = ? AND actor_id = ? AND revision = ? RETURNING *")
             .bind(now).bind(revision).bind(now).bind(app_id).bind(team_id).bind(actor_id).bind(expected_revision)
-            .fetch_optional(&self.pool).await?.ok_or(AppStoreError::RevisionConflict)?;
-        parse_route(&row)
+            .fetch_optional(&mut *tx).await?.ok_or(AppStoreError::RevisionConflict)?;
+        let route = parse_route(&row)?;
+        crate::loop_runtime::LoopStore::revoke_app_schedules_tx(
+            &mut tx,
+            app_id,
+            Some(team_id),
+            Some(actor_id),
+            now,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(route)
     }
 
     /// Also used by standing conditions, under their existing canonical transaction.

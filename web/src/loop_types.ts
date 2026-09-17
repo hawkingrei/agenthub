@@ -135,6 +135,12 @@ export type LoopSourceSummary = {
     scheduling_activation_id: string | null;
     scheduling_user_id: string | null;
     app_id: string | null;
+    app_event?: {
+      event_id: string;
+      event_class: string;
+      cursor: number;
+      version: number;
+    } | null;
   };
   due_at: number | null;
   created_at: number;
@@ -193,6 +199,13 @@ export type LoopSchedule =
       kind: "thread_reply";
       root_message_id: number;
       after_message_id: number;
+      repeat: boolean;
+    }
+  | {
+      kind: "app_event";
+      app_id: string;
+      event_class: string;
+      after_cursor: number;
       repeat: boolean;
     };
 export type LoopRegistration = {
@@ -254,7 +267,7 @@ export type LoopMetrics = {
     current_no_progress_streak: number | null;
   };
   waits: Array<{
-    kind: "due" | "recurring" | "task_status" | "thread_reply";
+    kind: LoopSchedule["kind"];
     count: number;
     oldest_age_seconds: number | null;
   }>;

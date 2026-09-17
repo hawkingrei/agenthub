@@ -1,7 +1,7 @@
 # App Event Configuration
 
-Status: configuration foundation implemented. [Signed intake](app-event-ingress.md) consumes these
-records; standing event conditions remain part of the active [event work](../todo.md#agent-loop-product-transition).
+Status: configuration implemented. [Signed intake and standing conditions](app-event-ingress.md)
+consume these records; final delivery remains in [active work](../todo.md#agent-loop-product-transition).
 
 ## Problem
 
@@ -12,7 +12,7 @@ Incoming event identity also requires credentials separate from outbound MCP aut
 
 - Optional, versioned event declarations in the existing App manifest.
 - Independent inbound signing-key references and explicit per-member event routes.
-- Safe source-attribution types for later durable intake.
+- Safe source-attribution types for durable intake.
 
 ## Non-Goals
 
@@ -23,7 +23,7 @@ No raw event payload, remote command, or task assignment is supported.
 
 The App registry owns additive key-version and event-route tables alongside existing immutable
 manifests, Team grants, and member bindings. Management uses the existing human capability and
-Teamspace role gates. The eventual signed intake consumes these records inside its write transaction.
+Teamspace role gates. Signed intake consumes these records inside its write transaction.
 
 ## Contracts
 
@@ -78,6 +78,11 @@ unselected version preserves authority; selecting another binding version requir
 reapproval. Permission changes and revoke/restore cycles cannot reactivate stale routes. Revoking
 event routing alone preserves the independent tool configuration.
 
+Authority changes and route replacement also revoke affected standing conditions through the
+canonical scheduling cancellation path in the same transaction. Unchanged grant/binding authority,
+unselected manifest publication, and signing-key rotation preserve existing watches. See
+[standing conditions](app-event-ingress.md#standing-conditions) for lifetime and replay semantics.
+
 ## Validation Matrix
 
 | Boundary | Focused proof |
@@ -96,8 +101,8 @@ and the wire format. Existing [tool invocation](app-tool-runtime.md) remains ind
 
 ## Open Risks
 
-Standing conditions must preserve the same current route authority and immutable event references.
-The complete event slice still requires its standing-condition integration and final delivery gates.
+Retained signing-key references stay in the environment isolation set after rotation or revocation.
+Operators must retain historical configuration while corresponding durable receipts remain stored.
 
 ## Source Journals
 

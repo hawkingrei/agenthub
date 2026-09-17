@@ -13,7 +13,7 @@ must not reuse outbound MCP credentials or allow ordinary App owners to select d
 ## Scope
 
 Domain validation, additive registry tables, credential isolation, and authorized configuration
-routes. Production event delivery and standing conditions remain unfinished.
+routes. The [intake checkpoint](2026-09-18-app-event-intake.md) adds delivery and standing conditions.
 
 ## Key Decisions
 
@@ -52,7 +52,7 @@ cargo +1.96.0 fmt --all --check
 
 - The [signed intake checkpoint](2026-09-18-app-event-intake.md) supplies authenticated ingress,
   atomic deduplication/cursor/intake, bounded audit, and budgets.
-- Integrate standing conditions and safe context/history/doctor attribution, then publish the
-  complete event slice and validate current-head CI.
+- The same intake checkpoint now includes standing conditions and context/history/doctor attribution.
+  Publish the complete event slice and validate current-head CI.
 
 The stable boundary is [App event configuration](../features/app-event-configuration.md).

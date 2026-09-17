@@ -193,6 +193,7 @@ async fn accept_tx(
         .bind(&event.event_class).bind(serde_json::to_string(event)?)
         .bind(route.version).bind(signing_version).bind(route.revision).bind(&receipt.trigger_id).bind(now)
         .execute(&mut **tx).await?;
+    LoopStore::observe_app_event_schedule_tx(tx, app_id, event, route.revision, now).await?;
     Ok(AppEventReceipt {
         app_id: app_id.into(),
         event_id: event.event_id.clone(),

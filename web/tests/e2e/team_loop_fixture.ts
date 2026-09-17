@@ -204,6 +204,13 @@ export async function mockLoopWorkspace(page: Page) {
       after_message_id: 1,
       repeat: false,
     },
+    {
+      kind: "app_event",
+      app_id: "app-release",
+      event_class: "build.finished",
+      after_cursor: 7,
+      repeat: true,
+    },
   ];
   const registrations: LoopRegistration[] = schedules.map(
     (schedule, index) => ({
@@ -249,8 +256,19 @@ export async function mockLoopWorkspace(page: Page) {
           sources: [
             {
               id: cursor ? "source-2" : "source-1",
-              kind: cursor ? "assignment" : "message",
-              references,
+              kind: cursor ? "assignment" : "app_event",
+              references: cursor
+                ? references
+                : {
+                    ...references,
+                    app_id: "app-release",
+                    app_event: {
+                      event_id: "release-7",
+                      event_class: "build.finished",
+                      cursor: 7,
+                      version: 2,
+                    },
+                  },
               due_at: null,
               created_at: fixture.now,
               revoked: !cursor,

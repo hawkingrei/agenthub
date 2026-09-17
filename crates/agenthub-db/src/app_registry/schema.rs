@@ -123,6 +123,17 @@ pub async fn migrate_app_registry(pool: &SqlitePool) -> anyhow::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_app_event_receipt_route
             ON app_event_receipts(app_id, team_id, actor_id, event_class, cursor);
+        CREATE TABLE IF NOT EXISTS app_event_watches (
+            registration_id TEXT PRIMARY KEY REFERENCES loop_registrations(id),
+            app_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            event_class TEXT NOT NULL,
+            route_revision INTEGER NOT NULL CHECK(route_revision > 0),
+            FOREIGN KEY(app_id, team_id, actor_id) REFERENCES app_event_routes(app_id, team_id, actor_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_event_watch_route
+            ON app_event_watches(app_id, team_id, actor_id, event_class, route_revision);
         CREATE TABLE IF NOT EXISTS app_event_budgets (
             scope_kind TEXT NOT NULL CHECK(scope_kind IN ('app', 'actor', 'team')),
             scope_id TEXT NOT NULL,

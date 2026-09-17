@@ -64,5 +64,7 @@ export function loopScheduleLabel(registration: LoopRegistration): string {
   if (schedule.kind === "task_status")
     return `Task condition: ${schedule.statuses.map(loopLabel).join(", ")}`;
   if (schedule.kind === "thread_reply") return "Waiting for a new thread reply";
+  if (schedule.kind === "app_event")
+    return `Waiting for App event: ${schedule.event_class} (${schedule.app_id})`;
   return `${schedule.kind === "recurring" ? "Recurring wake" : "Scheduled wake"}: ${loopTime(registration.next_due_at)}`;
 }

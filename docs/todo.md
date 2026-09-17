@@ -89,8 +89,8 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   protection, declared-class routing, revocation checks, and storm budgets together.
   The [configuration foundation](features/app-event-configuration.md) provides declarations,
   independent signing-key references and explicit routes. [Signed intake](features/app-event-ingress.md)
-  adds atomic receipt/cursor/intake and bounded audit/budgets. Complete validation, standing
-  conditions, doctor/context presentation, and final PR/CI.
+  adds atomic receipt/cursor/intake, bounded audit/budgets, standing conditions, and safe
+  doctor/context/web history. Complete final review and individual PR/CI delivery.
 - [ ] 16. Pin and validate the Rara app-server transport/handshake; add local launch and cleanup.
   Any missing upstream protocol work is an explicit prerequisite, not an ACP fallback.
 - [ ] 17. Map Rara control acknowledgments, events, replay, and live permissions into existing

@@ -7,6 +7,8 @@ use super::*;
 
 mod binding_tests;
 mod event_intake;
+mod event_scheduling;
+mod event_scheduling_authority;
 mod event_tests;
 mod pin_tests;
 

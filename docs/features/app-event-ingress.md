@@ -1,7 +1,7 @@
 # Signed App Event Intake
 
-Status: signed HTTP intake and atomic storage implemented. Standing App-event conditions and final
-slice delivery remain tracked in [active work](../todo.md#agent-loop-product-transition).
+Status: signed intake, standing conditions, and safe context/history presentation are implemented.
+Final slice delivery remains tracked in [active work](../todo.md#agent-loop-product-transition).
 
 ## Problem
 
@@ -13,11 +13,12 @@ Acknowledging an event separately from its wakeup or cursor would lose work acro
 - Signed, bounded App notifications targeting one explicitly approved Team member.
 - Atomic event identity, monotonic cursor, intake budgets, trigger, and durable receipt.
 - Bounded rejection audit and safe activation source attribution.
+- Standing conditions through the existing registration and reconciliation engine.
 
 ## Non-Goals
 
 No raw event payload, remote commands, task assignments, arbitrary future deadlines, or App-owned
-execution policy. This checkpoint does not yet implement standing App-event conditions.
+execution policy, arbitrary event predicates, or a second scheduler.
 
 ## Architecture
 
@@ -97,7 +98,8 @@ returning duplicate receipts. The original decoded notification defines retry id
 JSON formatting changes may be signed again without changing logical identity. A modified cursor,
 target, or class cannot reuse an accepted event ID.
 
-A savepoint contains budget updates, cursor advancement, ordinary loop intake, and event receipt.
+A savepoint contains budget updates, cursor advancement, ordinary loop intake, event receipt, and
+matching standing-condition observations.
 Any failure rolls all of them back. A fixed rejection aggregate may then commit independently in the
 outer transaction. A crash before the outer commit leaves no accepted event; a lost response after
 commit is recovered by its original ID. Valid duplicates reuse the original trigger/version and update
@@ -123,6 +125,54 @@ ID, and timestamp. `GET /api/apps/{app_id}/event-audit` requires App-owner inspe
 returns only these aggregates. Accepted-event history retains the safe reference in its trigger;
 signatures and raw bodies are never journaled.
 
+### Standing conditions
+
+The existing [scheduling entrypoints](agent-loop-scheduling.md) accept:
+
+```json
+{
+  "source_key": "watch-document-changes",
+  "schedule": {
+    "kind": "app_event",
+    "app_id": "app-id",
+    "event_class": "document.changed",
+    "after_cursor": 0,
+    "repeat": true
+  }
+}
+```
+
+`after_cursor` is nonnegative. Registration requires current event route authority for this exact
+App, target Team/member, and class; a tool binding alone is insufficient. Under the canonical write
+lock, registration reads accepted matching receipts after that cursor and installs an indexed watch
+pinned to the route revision. Already accepted events may satisfy new authorized intent, including
+facts recorded under an earlier manifest version. Their original attribution never changes.
+
+New accepted events latch matching active watches in the same event transaction. Exact delivery
+retries do not observe conditions again. A pending observation retains the first matching cursor and
+coalesces through the latest matching cursor. Events for another member, Team, App, or class never
+advance that watch. A cursor greater than the current event stream waits for a later matching event.
+
+Ordinary reconciliation rechecks membership, route authority, and the pinned route revision before
+firing. The source retains the first event's ID, class, cursor, and original manifest version; the
+registration firing retains the represented first/through cursor range. One-shot conditions complete
+after their first accepted firing; repeating conditions return to idle without polling. Capacity
+deferral preserves the observation and uses the existing five-second retry. Direct event intake and
+each registration are distinct sources; ordinary activation coalescing and admission apply to all.
+
+App revocation, grant permission changes/revocation, binding version or permission changes/revocation,
+and event route replacement/revocation retire affected registrations in the configuration transaction.
+This includes dormant and completed registrations and revokes their outstanding firing sources.
+Reapproval cannot revive old business keys; use new scheduling intent. Unselected manifest publication,
+unchanged grant/binding permissions and version, and signing-key rotation preserve existing watches.
+Key rotation alone does not invalidate an already accepted fact.
+
+Task and creating-activation lifetimes retain ordinary scheduling semantics. Independent accepted
+event sources survive condition revocation; exclusively dependent work uses normal cancellation and
+verified executor cleanup. Safe references remain readable in actor context, authorized history, and
+doctor after revocation or process exit. The web history distinguishes event waits from timers and
+shows original event attribution beside revoked sources.
+
 ## Validation Matrix
 
 | Boundary | Focused proof |
@@ -133,6 +183,10 @@ signatures and raw bodies are never journaled.
 | Transaction | Injected receipt failure leaves no cursor, budget, activation, or trigger; retry succeeds |
 | Admission | Suspended pending work, disabled/capacity rollback, actor/App/Team storm caps |
 | HTTP | Isolated daemon environment, signed delivery, safe responses, retry/status mapping, owner audit |
+| Conditions | Registration/event race, initial catch-up, reopen, cursor coalescing, once/repeat, no duplicate firing |
+| Lifetime | Route/grant/binding/App revocation, no-op preservation, reapproval fencing, task/origin expiry |
+| Context | Signed RPC provenance, next activation source lookup, old credential rejection, doctor reopen |
+| Web | Focused history tests, typecheck/lint/build, browser before/after and paged history workflow |
 
 ## Operational Notes
 
@@ -143,8 +197,8 @@ or route reapproval. Accepted receipts and loop sources remain factual history a
 ## Open Risks
 
 The caps govern accepted logical work; they do not replace HTTP connection/traffic controls. Accepted
-history follows the existing durable loop retention model. Standing event conditions still need the
-same route authority, transaction, and replay rules before the full event slice is ready.
+history follows the existing durable loop retention model. Publishers must serialize per-App cursors;
+this contract does not reorder concurrent out-of-order deliveries on their behalf.
 
 ## Source Journals
 

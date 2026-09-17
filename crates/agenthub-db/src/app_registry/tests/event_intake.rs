@@ -7,7 +7,7 @@ use agenthub_agent_domain::{
 use super::*;
 
 impl Fixture {
-    async fn event_intake(&self) -> RegisteredApp {
+    pub(super) async fn event_intake(&self) -> RegisteredApp {
         let app = self.event_app().await;
         self.store
             .configure_event_key(&app.id, 0, Some("SIGNED_EVENT_KEY"), 13)
@@ -31,7 +31,12 @@ impl Fixture {
         app
     }
 
-    async fn event_policy(&self, state: LoopPolicyState, revision: i64, limits: &LoopLimits) {
+    pub(super) async fn event_policy(
+        &self,
+        state: LoopPolicyState,
+        revision: i64,
+        limits: &LoopLimits,
+    ) {
         LoopStore::new(self.store.pool.clone())
             .configure(
                 LoopPolicyUpdate {
@@ -49,7 +54,7 @@ impl Fixture {
     }
 }
 
-fn notification(cursor: i64) -> AppEventNotification {
+pub(super) fn notification(cursor: i64) -> AppEventNotification {
     AppEventNotification {
         schema_version: 1,
         event_id: format!("event-{cursor}"),

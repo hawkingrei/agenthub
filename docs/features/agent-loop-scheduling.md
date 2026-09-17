@@ -8,7 +8,7 @@ every missed timer interval can overload admission after a restart.
 
 ## Scope
 
-- One-shot due times, recurring timers, task-status conditions, and thread-reply watches.
+- One-shot due times, recurring timers, task-status conditions, thread-reply watches, and signed App-event conditions.
 - Actor and owner registration, bounded inspection, revocation, and ordinary activation admission.
 - Recovery after process loss and cancellation of work derived from obsolete registrations.
 
@@ -16,7 +16,7 @@ every missed timer interval can overload admission after a restart.
 
 - Legacy process reminders, arbitrary predicates, cron expressions, or a second scheduling engine.
 - Task assignment, task acceptance, roster changes, or approval authority through scheduling.
-- External app event subscriptions; signed app ingress is a separate integration gate.
+- Arbitrary external payload subscriptions; [signed App notifications](app-event-ingress.md) have explicit routing authority.
 
 ## Architecture
 
@@ -55,6 +55,7 @@ All schedule timestamps are nonnegative Unix seconds. Supported schedules are:
 | `recurring` | `first_at`, `interval_seconds` (1–86400) | One catch-up firing for all overdue intervals, then the next future deadline |
 | `task_status` | `task_id`, nonempty unique `statuses`, `repeat` | Initially satisfied, or a false-to-true condition edge |
 | `thread_reply` | `root_message_id`, `after_message_id`, `repeat` | Later canonical replies in that thread, excluding the target actor's own replies |
+| `app_event` | `app_id`, `event_class`, nonnegative `after_cursor`, `repeat` | Accepted notifications for that exact target and approved class, including initial history catch-up |
 
 Task statuses use the canonical task enum. Rewriting notes or an unchanged matching status does not
 create another edge. A pending match survives subsequent nonmatching states. Repeated observations
@@ -67,6 +68,11 @@ A thread cursor must identify the root or an existing reply in that exact conver
 Registration examines replies after that cursor under the same write lock. The firing references an
 exact canonical reply, recoverable through `loop-source`; recent-message windows and delivery copies
 are not prerequisites. Further replies coalesce while acceptance is deferred.
+
+App event watches pin current route authority and use indexed receipt cursors. They observe accepted
+notifications in the same transaction and retain original event attribution in each firing source.
+Authority changes revoke idle and completed watches; delivery retries never refire them. The complete
+scope, route-reapproval, and lifetime contract is [standing App conditions](app-event-ingress.md#standing-conditions).
 
 ### Admission and lifetime
 
@@ -146,9 +152,10 @@ activation history for admission or cleanup state. Do not recreate registrations
 - Future canonical dependency writers must call the observation hook in their write transaction.
 - Retained firing history grows with accepted work; lifecycle history retention remains a separate
   administrative contract. Active intent and per-tick processing are bounded now.
-- Real provider behavior and externally signed app events need their own integration evidence.
+- Provider and signed-ingress contracts retain their own integration evidence alongside scheduler tests.
 
 ## Source Journals
 
 - [Bounded follow-ups and standing triggers](../journal/2026-09-15-agent-loop-scheduling.md).
 - [Durable work events](../journal/2026-09-15-agent-loop-work-events.md).
+- [Signed App intake and conditions](../journal/2026-09-18-app-event-intake.md).

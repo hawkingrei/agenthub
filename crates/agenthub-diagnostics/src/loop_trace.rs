@@ -388,6 +388,14 @@ pub(super) fn render(trace: &ActivationTrace) -> Vec<String> {
             source.references.task_id.as_deref().unwrap_or("<none>"),
             source.revoked
         ));
+        if let (Some(app_id), Some(event)) =
+            (&source.references.app_id, &source.references.app_event)
+        {
+            lines.push(format!(
+                "loop.source.app_event: source={} app={} event={} class={} cursor={} version={}",
+                source.id, app_id, event.event_id, event.event_class, event.cursor, event.version
+            ));
+        }
     }
     for event in &trace.events.events {
         lines.push(format!(

@@ -25,6 +25,12 @@ pub enum LoopSchedule {
         after_message_id: i64,
         repeat: bool,
     },
+    AppEvent {
+        app_id: String,
+        event_class: String,
+        after_cursor: i64,
+        repeat: bool,
+    },
 }
 
 impl LoopSchedule {
@@ -69,6 +75,19 @@ impl LoopSchedule {
                     "invalid thread observation cursor"
                 );
             }
+            Self::AppEvent {
+                app_id,
+                event_class,
+                after_cursor,
+                ..
+            } => {
+                validate_loop_id(app_id)?;
+                anyhow::ensure!(
+                    crate::app_tools::valid_name(event_class),
+                    "invalid app event class"
+                );
+                anyhow::ensure!(*after_cursor >= 0, "invalid app event observation cursor");
+            }
         }
         Ok(())
     }
@@ -77,7 +96,9 @@ impl LoopSchedule {
         match self {
             Self::Due { .. } => false,
             Self::Recurring { .. } => true,
-            Self::TaskStatus { repeat, .. } | Self::ThreadReply { repeat, .. } => *repeat,
+            Self::TaskStatus { repeat, .. }
+            | Self::ThreadReply { repeat, .. }
+            | Self::AppEvent { repeat, .. } => *repeat,
         }
     }
 }
@@ -178,6 +199,33 @@ pub struct LoopRegistrationDetail {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_event_conditions_accept_only_bounded_notification_references() {
+        let request = serde_json::json!({"source_key":"watch","schedule":{"kind":"app_event","app_id":"app-a","event_class":"changed","after_cursor":0,"repeat":true}});
+        let input: LoopScheduleRequest = serde_json::from_value(request.clone()).unwrap();
+        input.validate().unwrap();
+        assert!(input.schedule.repeats());
+        for (field, value) in [
+            ("app_id", serde_json::json!("")),
+            ("event_class", serde_json::json!("class with spaces")),
+            ("after_cursor", serde_json::json!(-1)),
+        ] {
+            let mut invalid = request.clone();
+            invalid["schedule"][field] = value;
+            assert!(
+                serde_json::from_value::<LoopScheduleRequest>(invalid)
+                    .unwrap()
+                    .validate()
+                    .is_err()
+            );
+        }
+        for field in ["command", "payload", "references", "team_id", "actor_id"] {
+            let mut invalid = request.clone();
+            invalid["schedule"][field] = serde_json::json!("forged");
+            assert!(serde_json::from_value::<LoopScheduleRequest>(invalid).is_err());
+        }
+    }
 
     #[test]
     fn loop_schedule_rejects_unbounded_or_ambiguous_conditions() {

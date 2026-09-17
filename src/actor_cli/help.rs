@@ -96,11 +96,15 @@ The request file contains source_key, schedule, and optional work_task_id. Examp
   {"source_key":"clock:1","schedule":{"kind":"recurring","first_at":1900000000,"interval_seconds":60}}
   {"source_key":"dependency:1","schedule":{"kind":"task_status","task_id":"task-id","statuses":["completed","canceled"],"repeat":false}}
   {"source_key":"thread:1","schedule":{"kind":"thread_reply","root_message_id":12,"after_message_id":12,"repeat":true}}
+  {"source_key":"app:1","schedule":{"kind":"app_event","app_id":"app-id","event_class":"changed","after_cursor":0,"repeat":true}}
 
 Times are Unix seconds. Recurrences coalesce missed intervals; task watches fire on false-to-true
 edges and once if already satisfied at registration. Thread cursors must identify the root or a
 reply in the same thread. Self-authored replies do not fire a watch. work_task_id binds lifetime
 separately from a dependency task; completing/canceling that work revokes the registration.
+App conditions require an approved event route for the target member and class. Cursors are
+nonnegative; existing accepted notifications after that cursor are included. Authority changes
+revoke old watches; register new intent after reapproval. Events carry identifiers, never commands.
 All firings use ordinary loop budgets. Suspension retains work and pauses admission.
 Use loop-schedules, loop-schedule-show, and loop-schedule-revoke for inspection and revocation.
 Do not poll for the condition or keep a provider process alive to wait.

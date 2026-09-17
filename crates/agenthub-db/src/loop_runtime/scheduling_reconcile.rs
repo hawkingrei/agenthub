@@ -141,6 +141,9 @@ async fn registration_obsolete(
     tx: &mut Transaction<'_, Sqlite>,
     registration: &LoopRegistration,
 ) -> anyhow::Result<bool> {
+    if super::scheduling_app_events::watch_obsolete(tx, registration).await? {
+        return Ok(true);
+    }
     sqlx::query_scalar(
         "SELECT (work_task_id IS NOT NULL AND NOT EXISTS \
          (SELECT 1 FROM team_tasks t WHERE t.id = r.work_task_id AND t.team_id = r.team_id AND t.status NOT IN ('completed', 'canceled'))) \
@@ -198,6 +201,13 @@ async fn accept_firing(
     // The firing table retains the exact timer/event cursor without a separate overdue bucket.
     if let LoopSchedule::ThreadReply { .. } = registration.input.schedule {
         input.references.conversation_message_id = Some(first_cursor);
+    }
+    if let Some((app_id, attribution)) =
+        super::scheduling_app_events::event_attribution(tx, &registration.input, first_cursor)
+            .await?
+    {
+        input.references.app_id = Some(app_id);
+        input.references.app_event = Some(attribution);
     }
     let mut savepoint = tx.begin().await?;
     let accepted = LoopStore::accept_in_transaction(&mut savepoint, &input, now).await;

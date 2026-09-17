@@ -79,8 +79,15 @@ impl LoopStore {
             LoopSchedule::Recurring { first_at, .. } => Some(first_at),
             _ => None,
         };
-        let (observed_cursor, matches, pending_cursor) =
-            super::scheduling_observation::initial_observation(tx, input).await?;
+        let app_observation = super::scheduling_app_events::prepare_watch(tx, input).await?;
+        let (observed_cursor, matches, pending_cursor) = match &app_observation {
+            Some(observation) => (
+                observation.observed_cursor,
+                false,
+                observation.pending_cursor,
+            ),
+            None => super::scheduling_observation::initial_observation(tx, input).await?,
+        };
         let pending_due_at = pending_cursor.map(|_| now);
         let next_check_at = if pending_cursor.is_some() {
             now
@@ -99,8 +106,12 @@ impl LoopStore {
         .bind(&input.references.scheduling_activation_id).bind(next_due_at)
         .bind(observed_cursor).bind(matches).bind(pending_cursor).bind(pending_due_at)
         .bind(next_check_at).bind(now).bind(now).fetch_one(&mut **tx).await?;
+        let registration = parse_registration(&row)?;
+        if let Some(observation) = &app_observation {
+            super::scheduling_app_events::install_watch(tx, &registration, observation).await?;
+        }
         Ok(LoopRegistrationReceipt {
-            registration: parse_registration(&row)?,
+            registration,
             duplicate: false,
         })
     }

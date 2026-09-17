@@ -78,11 +78,19 @@ test("offline loop settings, work, and retained history remain separate", async 
   await page.getByRole("button", { name: "Load more wake records" }).click();
   await expect(page.getByText("Task condition: in review")).toBeVisible();
   await expect(page.getByText("Waiting for a new thread reply")).toBeVisible();
+  await expect(
+    page.getByText("Waiting for App event: build.finished (app-release)"),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Inspect activation" })
     .first()
     .click();
   await expect(page.getByText("app_write: outcome unknown")).toBeVisible();
+  await expect(
+    page.getByText(
+      "App app-release · build.finished · Event release-7 · Cursor 7 · Version 2",
+    ),
+  ).toBeVisible();
   await page.getByRole("button", { name: "More trigger sources" }).click();
   await page.getByRole("button", { name: "More lifecycle events" }).click();
   await page.getByRole("button", { name: "More tool observations" }).click();
