@@ -108,20 +108,22 @@ The debug diagnostic suite covers the original nine session cases and five activ
 read-only reopen after cleanup, coalesced-source pagination, outcome/continuation linkage, pending
 and suspended policy, open tools beyond page one, unfenced interruption, historical/current session
 isolation, overlay matching, and redaction. CLI selector tests reject mixed activation/session/actor
-targets. The two debug HTTP tests cover capability checks plus malformed-selector 400 and
+targets. Subcommand help preserves Clap output so activation selectors remain discoverable. The two debug HTTP tests cover capability checks plus malformed-selector 400 and
 unknown-activation 404 responses.
 
 Lifecycle trace validation runs intake, admission, binding, running, finish, and cleanup against
 real storage while capturing structured spans. It checks shared activation identity, generation,
 scope, and private-input exclusion. The release CLI test requires immediate rejection before I/O.
 
-Final diagnostic/CLI selections pass 14 and nine debug tests respectively; all ten release CLI
+Final diagnostic/CLI selections pass 14 and ten debug tests respectively; all eleven release CLI
 tests pass. Root release library checking succeeds, retaining three existing unused-state warnings
 in unchanged SSE code. Root/database/diagnostics/doctor all-target debug Clippy passes with warnings
 denied. Formatting, whitespace, and 112 local documentation targets pass.
 
 The initial root release build lost its pre-existing temporary directory. A fresh private `/tmp`
 directory resolved the environment failure without changing source or project build configuration.
+The debug executable was rebuilt, and its actual `doctor agent-trace --help` output exposes the
+activation, actor, Team, session, and event-limit selectors.
 
 ## Follow-Ups
 - Complete slice 12 validation and publication before treating observability as delivered.

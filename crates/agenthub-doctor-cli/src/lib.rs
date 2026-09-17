@@ -7,7 +7,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DoctorCommand {
     Run,
-    Help,
+    Help(String),
     AgentTrace(AgentTraceCli),
 }
 
@@ -65,7 +65,7 @@ fn render_doctor_help_result() -> anyhow::Result<String> {
 
 fn parse_doctor_args(args: &[String]) -> anyhow::Result<DoctorCommand> {
     if matches!(args, [arg] if arg.trim() == "help") {
-        return Ok(DoctorCommand::Help);
+        return Ok(DoctorCommand::Help(render_doctor_help_result()?));
     }
 
     let argv = std::iter::once("doctor".to_string()).chain(args.iter().cloned());
@@ -74,7 +74,9 @@ fn parse_doctor_args(args: &[String]) -> anyhow::Result<DoctorCommand> {
             Some(DoctorSubcommand::AgentTrace(args)) => Ok(DoctorCommand::AgentTrace(args)),
             None => Ok(DoctorCommand::Run),
         },
-        Err(err) if err.kind() == ErrorKind::DisplayHelp => Ok(DoctorCommand::Help),
+        Err(err) if err.kind() == ErrorKind::DisplayHelp => {
+            Ok(DoctorCommand::Help(err.to_string()))
+        }
         Err(err) => Err(err.into()),
     }
 }
@@ -94,8 +96,8 @@ fn render_install_report(installed: &[PathBuf]) -> String {
 
 async fn run_doctor_command(command: DoctorCommand) -> anyhow::Result<()> {
     match command {
-        DoctorCommand::Help => {
-            print!("{}", render_doctor_help_result()?);
+        DoctorCommand::Help(help) => {
+            print!("{help}");
         }
         DoctorCommand::Run => {
             let installed = install_managed_skills(None)?;
@@ -230,7 +232,29 @@ mod tests {
     #[test]
     fn parse_doctor_accepts_help_flag() {
         let parsed = parse_doctor_args(&["--help".to_string()]).expect("parse doctor help");
-        assert_eq!(parsed, DoctorCommand::Help);
+        let DoctorCommand::Help(help) = parsed else {
+            panic!("expected doctor help");
+        };
+        assert!(help.contains("Usage: agenthub doctor"));
+        assert!(help.contains("agent-trace"));
+    }
+
+    #[test]
+    fn parse_doctor_preserves_agent_trace_help() {
+        let parsed = parse_doctor_args(&["agent-trace".into(), "--help".into()]).unwrap();
+        let DoctorCommand::Help(help) = parsed else {
+            panic!("expected agent trace help");
+        };
+        assert!(help.contains("Usage: agenthub doctor agent-trace"));
+        for option in [
+            "--activation-id",
+            "--agent-id",
+            "--team-id",
+            "--session-id",
+            "--event-limit",
+        ] {
+            assert!(help.contains(option), "{option}");
+        }
     }
 
     #[test]
