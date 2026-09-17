@@ -16,6 +16,7 @@ rust_library(
         "//:skills/team/team-task-lifecycle.SKILL.md",
         "//:skills/team/team-deliberation-rules.SKILL.md",
         "//:skills/team/team-actor-mailbox.SKILL.md",
+        "//:skills/team/team-loop-runtime.SKILL.md",
     ],
     edition = "2024",
     aliases = aliases(),
@@ -35,6 +36,7 @@ rust_test(
         "//:skills/team/team-task-lifecycle.SKILL.md",
         "//:skills/team/team-deliberation-rules.SKILL.md",
         "//:skills/team/team-actor-mailbox.SKILL.md",
+        "//:skills/team/team-loop-runtime.SKILL.md",
     ],
     edition = "2024",
     aliases = aliases(

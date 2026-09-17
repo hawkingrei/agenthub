@@ -211,6 +211,14 @@ must belong to the current actor, Team, and activation under a live fence. Messa
 canonical stores and are hydrated through the existing body-store boundary. These reads do not
 consume messages or accept tasks; current task state still comes from the task tools.
 
+### Durable future work
+
+[Loop scheduling](agent-loop-scheduling.md) defines due-time and recurring follow-ups, task-status
+conditions, thread-reply watches, bounded firing reconciliation, and authenticated inspection and
+revocation. Registration and dependency observation share canonical write transactions. Accepted
+firings use the same intake and admission budgets; no provider process is kept alive to wait.
+Active registrations block scope changes and retained registrations preserve original actor identity.
+
 ### Finish and recovery
 
 States are `pending`, `starting`, `running`, `finalizing`, `finished`, `interrupted`, and `canceled`.
@@ -346,6 +354,8 @@ fail explicitly rather than claim parity. Track implementation and remaining val
 - Remote credential delivery and remote-writer fencing require a separate implementation.
 
 ## Source Journals
+
+- [Bounded loop scheduling](../journal/2026-09-15-agent-loop-scheduling.md).
 
 - [Durable work events and offline delegation](../journal/2026-09-15-agent-loop-work-events.md).
 

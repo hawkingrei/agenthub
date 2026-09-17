@@ -35,7 +35,23 @@ pointers.
 The [loop product model](agent-loop-product-model.md) selects one configured prompt per activation.
 Leader (`coordinator`) and worker prompts are different policies on the same lifecycle engine.
 A loop can make multiple model/tool calls; phase changes do not require additional bespoke prompts.
-Current prompt templates remain unchanged until the loop/tool migration lands.
+Loop activations select compact coordinator/worker templates. Manual execution keeps its
+existing role templates and skill composition.
+
+Before recording the launch snapshot, select the member's non-empty `prompt`, or the built-in
+loop template for that role when unset; append non-empty `prompt_append` from the same member.
+The selected role text is limited to 20,000 bytes. Non-string or oversized configuration reports
+`role_prompt_invalid` in preflight and is rejected before provider startup.
+Loop execution has no run-scoped prompt override: its mailbox run is transport identity.
+The snapshot records the entry/role version and a digest covering the effective prompt, profile,
+and skill contents. Edits affect the next activation, including resumed provider sessions.
+Prompt bodies remain in launch memory rather than inspectable trace records.
+
+The shared `team-loop-runtime` procedure is pinned in a private launch file and delivered through
+ACP skill metadata and the single entry prompt. Its temporary path is excluded from the
+configuration digest; its content is included. Launch clones retain the file until the provider
+releases them. Loop skill discovery excludes managed legacy phase/watchdog skills, while other
+configured workspace skills remain available within runtime authority.
 
 Team prompt assembly should use layered, pointer-first context:
 
@@ -133,6 +149,11 @@ Both roles must treat `task` as the ownership object and `run`/`step` as executi
 
 Prompts should name stable entry points rather than embed full procedures:
 
+- loop mode loads `team-loop-runtime` for task/IM recovery, role procedures, evidence routing,
+  scoped knowledge, durable waits, and structured finish; it does not load the legacy six-phase
+  skill graph;
+- the following legacy index and workflow pointers continue to apply to manual execution;
+
 - load `team-agents-index` before role-specific Team skills;
 - use `skills/team/TEAM_AGENTS.md` as the Team-level index template;
 - load `team-message-intake` when a Team inbox, channel, thread, or human-visible message must be
@@ -188,7 +209,9 @@ need a personal Mem deployment to validate prompt contracts.
 | Add a new repeated Team workflow | Add or update a skill/checklist first, then link it from the prompt only if the trigger is stable. |
 | Add prompt-facing runtime state | Prove it is bounded and pointer-first; prefer `.cache/context/state.md` or `.cache/context/run/<run_id>/...` artifacts. |
 | Add durable worker knowledge guidance | Follow `team-workspace-memory-contract.md` and the Mem adapter boundary; use discovered capabilities. |
-| Migrate role prompts to loops | Verify one entry prompt, shared engine, fresh-session recovery, and structured outcome recording. |
+| Migrate role prompts to loops | Verify coordinator delegation, worker evidence and denied self-acceptance, coordinator review, multiple rounds under one entry, durable wait/continuation, and fresh-session recovery through real signed CLI calls. |
+| Change configured role selection | Change configuration during provider startup; verify the active prompt stays fixed, the next activation selects the edit, and the digest changes without exposing prompt bodies. |
+| Change managed loop skill delivery | Verify a real file and ACP prefix, clone-safe cleanup, exclusion of legacy skills, and stable digests across temporary paths. |
 | Add or revise a Team message-routing procedure | Keep `team-message-intake` aligned with channel/thread, mailbox, task governance, and lifecycle specs. |
 | Add or revise the idea-propagation judgment boundary | Assert the compact rule in both prompts and keep the detailed procedure in `team-message-intake`. |
 | Add or revise the self-propagation defense | Assert rejection and the normal-handoff distinction in both prompts; keep detection and escalation guidance in `team-message-intake`. |
@@ -218,6 +241,7 @@ need a personal Mem deployment to validate prompt contracts.
 
 ## Source Journals
 
+- [2026-09-16 Loop Role Prompts](../journal/2026-09-16-loop-role-prompts.md)
 - [2026-04-05 Team Prompt First Principles](../journal/2026-04-05-team-prompt-first-principles.md)
 - [2026-04-10 Team Prompt Tail Slimming](../journal/2026-04-10-team-prompt-tail-slimming.md)
 - [2026-04-27 Team Prompt Followups](../journal/2026-04-27-team-prompt-followups.md)

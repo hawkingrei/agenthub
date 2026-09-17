@@ -35,6 +35,10 @@ const ACTOR_HELP_TOPIC_TEAM_THREAD_REPLY: &str = "team-thread-reply";
 const ACTOR_HELP_TOPIC_TEAM_STEP_DECISION: &str = "team-step-decision";
 const ACTOR_HELP_TOPIC_TEAM_STEP_TRANSITION: &str = "team-step-transition";
 const ACTOR_HELP_TOPICS: &[&str] = &[
+    "loop-schedule",
+    "loop-schedules",
+    "loop-schedule-show",
+    "loop-schedule-revoke",
     "loop-context",
     "loop-source",
     "loop-activate",
@@ -156,6 +160,23 @@ impl TeamTaskNoteKind {
 
 #[derive(Debug)]
 enum ActorCommand {
+    LoopSchedule {
+        member_id: Option<String>,
+        request: agenthub_agent_domain::loop_scheduling::LoopScheduleRequest,
+    },
+    LoopSchedules {
+        member_id: Option<String>,
+        after_registration_id: Option<String>,
+        limit: u32,
+    },
+    LoopScheduleShow {
+        registration_id: String,
+        after_firing_cursor: Option<i64>,
+        limit: u32,
+    },
+    LoopScheduleRevoke {
+        registration_id: String,
+    },
     LoopSource {
         source_id: String,
     },
@@ -345,6 +366,7 @@ mod help;
 mod output;
 mod parse;
 mod runtime;
+mod scheduling;
 mod upload;
 
 use self::execute::run_actor_command;

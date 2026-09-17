@@ -151,6 +151,7 @@ fn config(require_resume: bool) -> AcpLoopLaunchConfig {
         model_id: None,
         config: vec![],
         mcp_proxies: vec![],
+        runtime_skill: None,
         skills: vec![AcpSkill {
             name: "fixture-skill".into(),
             path: "fixture".into(),
@@ -162,7 +163,10 @@ fn config(require_resume: bool) -> AcpLoopLaunchConfig {
 #[tokio::test]
 async fn loop_acp_fresh_launch_delivers_one_prompt_with_multiple_provider_updates() {
     let mut fixture = Fixture::new(false, "").await;
-    let handle = fixture.launch(None, config(false)).await.unwrap();
+    let mut launch = config(false);
+    launch.install_loop_runtime_skill().unwrap();
+    let skill_path = launch.runtime_skill.as_ref().unwrap().path();
+    let handle = fixture.launch(None, launch).await.unwrap();
     assert_eq!(handle.session_id, "fresh-session");
     handle
         .prompt_with_images_with_submission(
@@ -195,6 +199,9 @@ async fn loop_acp_fresh_launch_delivers_one_prompt_with_multiple_provider_update
     assert!(prompt.contains("stable-mailbox"));
     assert!(prompt.contains("mailbox_run_id"));
     assert!(prompt.contains("Launch snapshot instructions."));
+    assert!(prompt.contains("<name>team-loop-runtime</name>"));
+    assert!(prompt.contains("Recover Before Acting"));
+    assert!(skill_path.is_file());
     assert!(!prompt.contains("time-trigger-set"));
     assert!(!prompt.contains("team-worker-executor"));
     assert_eq!(
@@ -206,6 +213,80 @@ async fn loop_acp_fresh_launch_delivers_one_prompt_with_multiple_provider_update
     );
     let output = fixture.sink.0.lock().unwrap().join("\n");
     assert!(output.contains("first round") && output.contains("second round"));
+}
+
+#[test]
+fn loop_runtime_skill_is_pinned_without_random_paths_changing_configuration() {
+    let mut first = config(false);
+    let mut second = config(false);
+    let before = first.fingerprint_material().unwrap();
+    first.install_loop_runtime_skill().unwrap();
+    second.install_loop_runtime_skill().unwrap();
+    assert_ne!(first.fingerprint_material().unwrap(), before);
+    assert_eq!(
+        first.fingerprint_material().unwrap(),
+        second.fingerprint_material().unwrap()
+    );
+    let path = first.runtime_skill.as_ref().unwrap().path();
+    assert_ne!(path, second.runtime_skill.as_ref().unwrap().path());
+    let clone = first.clone();
+    first.install_loop_runtime_skill().unwrap();
+    assert_eq!(first.skills.len(), 2);
+    drop(first);
+    assert!(path.is_file());
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("Recover Before Acting")
+    );
+    drop(clone);
+    assert!(!path.parent().unwrap().exists());
+}
+
+#[tokio::test]
+async fn loop_skill_discovery_replaces_reserved_workflows_and_preserves_workspace_extensions() {
+    let fixture = Fixture::new(false, "").await;
+    let root = fixture.directory.join(".agents/skills");
+    for kind in ManagedSkillKind::ALL {
+        let name = managed_skill_name(kind);
+        let directory = root.join(name);
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("SKILL.md"),
+            format!(
+                "---\nname: {}\n---\nUntrusted replacement workflow.\n",
+                name.to_ascii_uppercase()
+            ),
+        )
+        .unwrap();
+    }
+    let extension = root.join("project-validation");
+    std::fs::create_dir_all(&extension).unwrap();
+    std::fs::write(
+        extension.join("SKILL.md"),
+        "---\nname: project-validation\n---\nValidate the project.\n",
+    )
+    .unwrap();
+    let mut launch = AcpLoopLaunchConfig::resolve(&fixture.directory, false);
+    assert!(
+        launch
+            .skills
+            .iter()
+            .any(|skill| skill.name == "project-validation")
+    );
+    assert!(!launch.skills.iter().any(|skill| {
+        skill
+            .instructions
+            .contains("Untrusted replacement workflow.")
+    }));
+    launch.install_loop_runtime_skill().unwrap();
+    let reserved: Vec<_> = launch
+        .skills
+        .iter()
+        .filter(|skill| skill.name == "team-loop-runtime")
+        .collect();
+    assert_eq!(reserved.len(), 1);
+    assert!(reserved[0].instructions.contains("Recover Before Acting"));
 }
 
 #[tokio::test]

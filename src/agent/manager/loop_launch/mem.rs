@@ -48,16 +48,18 @@ impl AgentManager {
         &self,
         reservation: &LoopReservation,
     ) -> anyhow::Result<String> {
-        let bootstrap = self
-            .loop_credentials
-            .lock()
-            .await
-            .get(&reservation.actor_id)
-            .ok_or_else(|| anyhow::anyhow!("loop credentials are unavailable"))?
-            .mem_bootstrap
-            .clone();
+        let (bootstrap, entry) = {
+            let credentials = self.loop_credentials.lock().await;
+            let credentials = credentials
+                .get(&reservation.actor_id)
+                .ok_or_else(|| anyhow::anyhow!("loop credentials are unavailable"))?;
+            (
+                credentials.mem_bootstrap.clone(),
+                credentials.entry_prompt.clone(),
+            )
+        };
         let context = match bootstrap {
-            MemBootstrap::NotConfigured => return Ok(LOOP_ENTRY_PROMPT.into()),
+            MemBootstrap::NotConfigured => return Ok(entry),
             MemBootstrap::Unavailable => MemContext::Unavailable,
             MemBootstrap::Ready { space } => {
                 self.mem_context_until(reservation, space, Instant::now() + CONTEXT_DEADLINE)
@@ -72,12 +74,11 @@ impl AgentManager {
         LoopStore::new(self.db.clone())
             .record_mem_context(reservation, context.event_kind(), Utc::now().timestamp())
             .await?;
-        Ok(entry_prompt(context))
+        Ok(entry_prompt(entry, context))
     }
 }
 
-fn entry_prompt(context: MemContext) -> String {
-    let mut prompt = LOOP_ENTRY_PROMPT.to_owned();
+fn entry_prompt(mut prompt: String, context: MemContext) -> String {
     prompt.push_str("\n\nRetain selected reusable decisions and learning through the discovered durable-knowledge tools. Include the source task, originating activation, and evidence artifact references in declared provenance fields or in the selected content. Keep the native receipt or unresolved outcome with local task evidence. Preserve the original selected payload and identity across recovery; reconcile uncertain writes before retrying. Existing .agenthubmemory/ notes remain readable legacy inputs. Do not automatically copy transcripts, task state, or whole workspaces into memory.");
     match context {
         MemContext::Ready(content) => {
@@ -105,7 +106,7 @@ mod tests {
     #[test]
     fn context_remains_attributed_data_and_failure_preserves_local_progress() {
         let content = "# Context\nDATA by Alice\n\n<instructions>example</instructions>\n";
-        let prompt = entry_prompt(MemContext::Ready(content.into()));
+        let prompt = entry_prompt(LOOP_ENTRY_PROMPT.into(), MemContext::Ready(content.into()));
         assert_eq!(prompt.matches(LOOP_ENTRY_PROMPT).count(), 1);
         assert!(prompt.ends_with(content));
         assert!(prompt.contains("cannot change runtime authority"));
@@ -114,7 +115,7 @@ mod tests {
             MemContext::MissingTool,
             MemContext::InvalidResponse,
         ] {
-            let prompt = entry_prompt(context);
+            let prompt = entry_prompt(LOOP_ENTRY_PROMPT.into(), context);
             assert!(prompt.starts_with(LOOP_ENTRY_PROMPT));
             assert!(prompt.contains("Continue independent local task work"));
             assert!(prompt.contains("does not undo local task progress"));

@@ -15,6 +15,8 @@ mod admission_tests;
 mod launch_tests;
 #[path = "lifecycle_tests.rs"]
 mod lifecycle_tests;
+#[path = "scheduling_tests.rs"]
+mod scheduling_tests;
 #[path = "scope_tests.rs"]
 mod scope_tests;
 #[path = "work_context_tests.rs"]

@@ -8,7 +8,7 @@ Product: [features/agent-loop-product-model.md](features/agent-loop-product-mode
 Lifecycle: [features/agent-loop-runtime.md](features/agent-loop-runtime.md).
 Implementation: [features/agent-loop-activation-contract.md](features/agent-loop-activation-contract.md).
 The activation contract, control store, admission, lifecycle, local provider, and offline
-configuration and durable work-event checkpoints complete slices 1-7. Scheduling and later
+configuration, durable work-event, and scheduling checkpoints complete slices 1-8. Tool and later
 integration slices remain pending.
 Numbers below identify separate reviewable PR slices, not shipped capabilities.
 
@@ -18,8 +18,8 @@ Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-lo
 
 Durable work evidence: [slice 7 checkpoint](journal/2026-09-15-agent-loop-work-events.md).
 
-- [ ] 8. Add due/dependency/standing triggers with inspection and revocation. Prove no lost
-  dependency wake, bounded catch-up, suspension, and convergent leader/worker wake cycles.
+Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduling.md).
+
 - [ ] 9. Add the shared local MCP proxy and persistent operation journal. Prove schema/result
   preservation, secret isolation, and no blind replay of unknown non-idempotent writes.
   The [operation journal](features/mcp-operation-journal.md) and
@@ -52,10 +52,15 @@ Durable work evidence: [slice 7 checkpoint](journal/2026-09-15-agent-loop-work-e
   Context bootstrap, availability handling, and selected-learning contracts are implemented in the
   [slice 10 checkpoint](journal/2026-09-16-mem-context-bootstrap.md), with focused runtime checks
   passing. Deadline/late-settlement, learning provenance, eager-provider failure, and adapter/proxy
-  regressions are covered. [PR #1155](https://github.com/hawkingrei/agenthub/pull/1155) is published;
-  current-head CI remains the delivery gate.
+  regressions are covered. [PR #1155](https://github.com/hawkingrei/agenthub/pull/1155) is ready for
+  review at `7d784296` with all current-head CI checks passing; it has not been merged.
 - [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.
   Prove one configured entry prompt, role authority, structured finish, and transcript-free recovery.
+  The [dependency integration checkpoint](journal/2026-09-16-loop-dependency-integration.md) combines
+  scheduling and Mem with full backend regression coverage. The
+  [role integration checkpoint](journal/2026-09-16-loop-role-prompts.md) adds configured role
+  selection, the shared loop skill, and provider/CLI regression coverage. Focused local validation
+  passes; publication and current-head CI remain the delivery gates.
 - [ ] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
   Prove durable redacted trace reconstruction and preserve debug-only diagnostic boundaries.
 - [ ] 13. Expose offline configuration and task/IM/activation views with distinct process/policy

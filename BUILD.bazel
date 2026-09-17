@@ -16,6 +16,7 @@ exports_files(
         "skills/team/team-task-lifecycle.SKILL.md",
         "skills/team/team-deliberation-rules.SKILL.md",
         "skills/team/team-actor-mailbox.SKILL.md",
+        "skills/team/team-loop-runtime.SKILL.md",
         "skills/team/TEAM_AGENTS.md",
     ],
     visibility = ["//visibility:public"],

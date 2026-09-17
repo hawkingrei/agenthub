@@ -182,5 +182,7 @@ pub(super) async fn sync_linked_task_status_tx(
     builder.push(" AND team_id = ");
     builder.push_bind(team_id);
     builder.build().execute(&mut **tx).await?;
+    agenthub_db::loop_runtime::LoopStore::observe_task_schedule_tx(tx, team_id, task_id, now)
+        .await?;
     Ok(())
 }

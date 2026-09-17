@@ -514,6 +514,9 @@ pub(super) fn parse_actor_command(
                 source_id: source_id.ok_or_else(|| anyhow::anyhow!("--source-id is required"))?,
             })
         }
+        "loop-schedule" | "loop-schedules" | "loop-schedule-show" | "loop-schedule-revoke" => {
+            super::scheduling::parse_schedule_command(args, output_mode)
+        }
         "loop-context" => {
             let mut after_source_id = None;
             let mut limit = 64;

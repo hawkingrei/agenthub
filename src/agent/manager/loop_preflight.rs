@@ -59,6 +59,10 @@ impl AgentManager {
             .and_then(Value::as_str);
         if !matches!(role, Some("coordinator" | "worker")) {
             blockers.push("member_role_required");
+        } else if let Some(role) = role.and_then(crate::internal::auth::InternalRole::parse)
+            && super::loop_launch::RolePrompt::resolve(spec, actor_id, role).is_err()
+        {
+            blockers.push("role_prompt_invalid");
         }
         let scopes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM team_definitions t WHERE EXISTS(SELECT 1 FROM json_each(t.spec_json, '$.members') m WHERE json_extract(m.value, '$.member_id') = ?)")
             .bind(actor_id).fetch_one(&self.db).await?;
