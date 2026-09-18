@@ -219,7 +219,7 @@ impl AgentManager {
                     manager
                         .cleanup_observed_session(&agent_id, &session_id, &child_mutex)
                         .await?;
-                    let success = super::rara::exit_success(success, direct.as_ref()).await;
+                    let success = super::rara::exit_success(success, direct.as_deref()).await;
                     Self::finalize_process_exit(
                         &db,
                         &event_dbs,

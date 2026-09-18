@@ -1,6 +1,8 @@
 //! Direct, bounded runtime-control transport. Process ownership stays with the supervisor.
 
 mod connection;
+mod control;
+mod events;
 mod framing;
 mod handshake;
 mod launch;
@@ -9,6 +11,11 @@ mod protocol;
 pub use connection::{
     Client, Connection, ConnectionError, ConnectionOptions, ConnectionStatus, OutputFrame,
     ShutdownReceipt,
+};
+pub use control::{ControlKind, ControlRequest, InputTarget, PlanDecision, ShellDecision};
+pub use events::{
+    EventEffect, EventProjection, EventProjector, PendingInput, PendingInputKind, ProjectedHistory,
+    SessionPhase, SessionSnapshot, TurnEnd,
 };
 pub use framing::{FrameReader, encode_request};
 pub use handshake::{Capabilities, Handshake, ReceiptCapability, ReplayCapability};

@@ -402,6 +402,7 @@ impl AgentManager {
             Some(&submission),
             Some(&session_id),
             None,
+            None,
         )
         .await?;
         let cancellation = self.daemon_tasks.runtime_cancellation();

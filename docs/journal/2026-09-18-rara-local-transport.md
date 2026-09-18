@@ -97,8 +97,15 @@ stderr burst without diagnostic persistence, handshake failure/timeout cleanup,
 concurrent semantic stop, stalled drain with a descendant, daemon shutdown,
 exit-code-zero transport failure and pre-spawn placement/argument rejection.
 
+[PR #1163](https://github.com/hawkingrei/agenthub/pull/1163) is ready for review at
+`e6b0cd6cc32736a6139356aa8c46d61ef871c7e5`. All applicable CI checks passed, including
+Cargo, Clippy, both coverage jobs, Bazel build/root/crate tests, distributed P2P,
+protocol, S3, RocksDB, documentation and Web/E2E. Conditional gRPC integration was
+skipped by its workflow. Codecov's patch/project gates pass with 92.27% patch coverage.
+Reviews and inline comments contain no outstanding requests. No merge was performed.
+
 ## Follow-Ups
 
-Complete separate PR/CI delivery for this slice. Durable ACK/event mapping belongs
-to slice 17; role/source and loop outcome alignment belongs to slice 18. The canonical contract is
+Durable ACK/event mapping belongs to slice 17; role/source and loop outcome alignment
+belongs to slice 18. The canonical contract is
 [Rara Direct Integration](../features/rara-direct-integration.md).

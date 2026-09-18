@@ -1,3 +1,4 @@
+import { inputDeliveryLabel } from "../../native_input";
 import React from "react";
 import {
   CONVERSATION_MESSAGE_STACK_ROW_CLASS,
@@ -23,6 +24,7 @@ export const MarkdownBubble = React.memo(function MarkdownBubble({
   delivery,
   markdownRenderVersion,
 }: MarkdownBubbleProps) {
+  const deliveryLabel = inputDeliveryLabel(delivery);
   const isAgent = className === "agent_message";
   return (
     <div
@@ -33,9 +35,9 @@ export const MarkdownBubble = React.memo(function MarkdownBubble({
         data-markdown-render-version={markdownRenderVersion}
         className={isAgent ? ACP_MESSAGE_BUBBLE_AGENT_CLASS : ACP_MESSAGE_BUBBLE_USER_CLASS}
       >
-        {delivery === "async" ? (
+        {deliveryLabel ? (
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-indigo-600">
-            Background update
+            {deliveryLabel}
           </div>
         ) : null}
         <div className="space-y-2">

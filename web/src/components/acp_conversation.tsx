@@ -1,3 +1,4 @@
+import type { SubmitRequestUserInput } from "../native_input";
 import React from "react";
 import { ConversationItem } from "../conversation";
 import { ACP_CONVERSATION_TOP_HINT_CLASS } from "../ui/tailwind_classes";
@@ -47,7 +48,7 @@ type AcpConversationProps = {
   onWheel?: (event: React.WheelEvent<HTMLDivElement>) => void;
   containerRef: React.Ref<HTMLDivElement>;
   ansi: (input: string) => string;
-  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
+  onSubmitRequestUserInput?: SubmitRequestUserInput;
 };
 
 export function resetAcpConversationCaches(): void {
