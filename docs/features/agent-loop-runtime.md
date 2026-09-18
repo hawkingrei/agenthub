@@ -197,6 +197,33 @@ touched task ids, the mailbox `run_id` partition that was read, and any provider
 Correlation uses durable records, not process memory: the trace of a finished or interrupted loop
 must remain reconstructable after its process exits.
 
+Historical storage reads bind both Team and actor IDs and do not require a live executor or current
+membership. Callers must separately authorize access to the historical Team. Activation pages use
+descending creation time plus ID; source and event pages use activation-scoped cursors. Each page
+contains at most 100 records and an explicit continuation cursor. Source projections contain typed
+references and revocation state, excluding original source keys and raw input objects.
+
+Release builds expose `GET /api/teams/{team_id}/members/{actor_id}/loop/activations`, the individual
+activation, and its `/sources`, `/events`, and `/tools` pages. Every surface requires `runtime:inspect`
+and access to the historical Team. Revoked Team access is rejected even if the caller can inspect
+other runtimes. An actor leaving the roster does not erase the Team's history. Invalid page limits
+or cursors return a bounded 400 response; missing or foreign activation records return 404.
+
+Tool boundary pages contain only an approved tool name, surface, optional safe target reference,
+generation, status, wall-clock boundaries, and an optional monotonic duration in milliseconds.
+MCP records also identify their canonical operation and attempt. History reads depend only on loop
+records, so controller history does not require optional MCP storage. MCP projections commit in the
+same transaction as the send or completion record. `input_required` and `task_accepted` preserve
+nonterminal receipts without asserting success or granting replay permission. Legacy attempts are
+backfilled once without invented durations. Restart recovery and asynchronous task settlement have
+no surviving monotonic clock; their durations remain absent.
+A `control_rpc` record describes the controller RPC return, including stream establishment when
+applicable; it does not assert a terminal upstream tool effect. A missing completion remains
+`started` with no duration after restart, and must not be interpreted as proof of a live call.
+Late observations may complete their original record after executor cleanup without restoring
+execution authority. Trace spans attach activation, actor, mailbox, and generation references to
+the existing subscriber; these identities are not metric labels.
+
 Each activation records, with monotonic timestamps and stable references:
 
 - trigger acceptance with source identity and every coalesced source reference;
@@ -214,16 +241,46 @@ suppression, no-progress loop rate per actor, wait-condition age, and Mem availa
 keys on stuck durable state — old pending work, expired leases without fencing resolution, growing
 no-progress rates — not on process uptime.
 
+`GET /api/teams/{team_id}/members/{actor_id}/loop/metrics` uses the same authorization as history.
+The default event window is 24 hours; `window_seconds` must be between 1 and 604800. Counts and
+duration aggregates use that window. Queue/wait gauges describe the current durable snapshot;
+duplicate suppression is a cumulative observed counter. Categories are bounded enums, with no
+actor, activation, task, tool-name, or workspace labels. No observations means unknown, not zero
+service availability or a zero-sample progress rate.
+
+Admission latency measures the first admission after work becomes due, excluding deliberate future
+scheduling. Running duration spans each generation's running-to-verified-cleanup interval. These
+cross-process intervals are wall-clock estimates: clock regressions are counted and excluded from
+duration samples. A retained reservation contributes to unsettled age even after interruption;
+it never proves provider liveness or verified exit. Exit distributions use only verified cleanup,
+with separate startup-failure, canceled, recorded-outcome, and unexpected-exit categories.
+
+No-progress rate is the fraction of finalized, non-canceled activations without newly credited
+canonical progress evidence. Reusing a task note is not new progress. A newer admission clears the
+previous business-wait observation, while future pending work does not. Active registration wait
+age starts at registration or its latest firing, so recurring waits reset after each firing.
+Historical cleanup reasons are not inferred. Pre-instrumentation source counters carry an unknown
+baseline; duplicate totals are lower bounds when such sources remain. Duplicate acceptance updates
+one counter in the intake transaction without expanding the lifecycle event log.
+
 Runtime spans reuse the existing `tracing` subscriber and optional fastrace bridge from
-[runtime diagnostics](runtime-diagnostics.md); the activation id becomes a span attribute so
-wall-clock timelines join durable lifecycle records. `agenthub doctor agent-trace` extends from
-session-centric stall analysis to activation-centric explanation: given an actor or activation
-reference, it must answer why the agent was activated, what state it read, what it changed, why it
-exited, and what will wake it next. Its stall classification gains loop layers such as
-`pending_not_admitted`, `lease_expired_unfenced`, `waiting_dependency`, and `continuation_missing`
-alongside the existing provider/persistence/SSE layers. The diagnostics redaction rules apply
-unchanged to trace storage and doctor output; provider-native identifiers appear only through the
-adapter's safe-metadata allowlist.
+[runtime diagnostics](runtime-diagnostics.md#activation-evidence-and-classifications). Intake,
+admission, session binding, execution, running, finish, cancellation, fencing, and cleanup carry
+safe activation/actor/Team/generation/session attributes. These operation spans correlate with
+durable lifecycle records without treating an attempted transaction as committed work.
+
+The debug-only `agenthub doctor agent-trace --activation-id <id>` explains recorded sources,
+configuration references, outcomes, cleanup, continuation linkage, and current actor wake conditions.
+Actor inspection selects a retained reservation, earliest pending activation, or latest history;
+explicit session inspection preserves the legacy path. A selected activation never borrows a newer
+session's events, permission requests, or live overlay. Bounded pages expose continuation cursors,
+while latest cleanup and open-tool evidence are queried independently of first-page limits.
+
+Loop findings include `pending_not_admitted`, `lease_expired_unfenced`, `waiting_dependency`,
+`continuation_missing`, and `tool_boundary_stall`. An old open tool is an observation gap, not
+proof of failure or an external effect. Product history and metrics remain independently authorized
+in release builds; doctor remains debug-only. Redaction rules apply unchanged to trace storage and
+doctor output; provider-native identifiers appear only through the adapter's safe-metadata allowlist.
 
 ## Validation Matrix
 
@@ -267,6 +324,7 @@ and run records keep their behavior until explicit opt-in and compatible migrati
 
 ## Source Journals
 
+- [History storage checkpoint](../journal/2026-09-17-loop-history-storage.md)
 - [Product redefinition checkpoint](../journal/2026-09-15-agent-loop-product-definition.md)
 - [Start scheduling](../journal/2026-08-28-agent-start-scheduler.md)
 - [Delivery receipts](../journal/2026-08-28-team-runtime-delivery-receipts.md)

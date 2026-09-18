@@ -11,14 +11,20 @@ use super::{LoopPolicyUpdate, LoopStore, LoopStoreError, migrate_loop_runtime};
 
 #[path = "admission_tests.rs"]
 mod admission_tests;
+#[path = "history_tests.rs"]
+mod history_tests;
 #[path = "launch_tests.rs"]
 mod launch_tests;
 #[path = "lifecycle_tests.rs"]
 mod lifecycle_tests;
+#[path = "metrics_tests.rs"]
+mod metrics_tests;
 #[path = "scheduling_tests.rs"]
 mod scheduling_tests;
 #[path = "scope_tests.rs"]
 mod scope_tests;
+#[path = "tool_observation_tests.rs"]
+mod tool_observation_tests;
 #[path = "work_context_tests.rs"]
 mod work_context_tests;
 

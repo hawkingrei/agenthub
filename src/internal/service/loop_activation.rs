@@ -1,5 +1,6 @@
-use agenthub_agent_domain::loop_runtime::LoopOutcome;
-use agenthub_db::loop_runtime::LoopStore;
+use agenthub_agent_domain::loop_runtime::{LoopOutcome, LoopToolStatus, LoopToolSurface};
+use agenthub_db::loop_runtime::{LoopStore, LoopToolObservation};
+use tracing::Instrument;
 
 use super::*;
 
@@ -14,6 +15,7 @@ impl TeamInternalControlService {
     pub(super) async fn complete_control_request<T: Send + 'static>(
         &self,
         metadata: &MetadataMap,
+        operation_name: &'static str,
         operation: impl std::future::Future<Output = Result<Response<T>, Status>> + Send + 'static,
     ) -> Result<Response<T>, Status> {
         let executor = self
@@ -24,6 +26,21 @@ impl TeamInternalControlService {
         let Some(executor) = executor else {
             return operation.await;
         };
+        let span = tracing::info_span!(
+            "loop.control_rpc",
+            activation_id = executor
+                .loop_execution
+                .as_ref()
+                .map(|value| value.activation_id.as_str()),
+            generation = executor
+                .loop_execution
+                .as_ref()
+                .map(|value| value.generation),
+            actor_id = executor.actor_id.as_deref(),
+            mailbox_run_id = executor.run_id.as_deref(),
+            rpc = operation_name,
+        );
+        let service = self.clone();
         let (sender, receiver) = tokio::sync::oneshot::channel();
         // SQLite may finish an enqueued write after its caller disconnects. Keep the entire
         // admitted request and its operation guard owned by the daemon until it settles.
@@ -36,6 +53,9 @@ impl TeamInternalControlService {
                     executor.actor_id.as_deref().unwrap_or("unknown")
                 ),
                 async move {
+                    let observation = service
+                        .start_control_observation(&executor, operation_name)
+                        .await;
                     let context = crate::team::loop_context::LoopSchedulingContext {
                         actor_id: executor.actor_id,
                         activation_id: executor
@@ -46,14 +66,80 @@ impl TeamInternalControlService {
                     let result =
                         crate::team::loop_context::with_scheduling_context(context, operation)
                             .await;
+                    let status = match &result {
+                        Ok(_) => LoopToolStatus::Succeeded,
+                        Err(error)
+                            if matches!(
+                                error.code(),
+                                tonic::Code::Cancelled
+                                    | tonic::Code::Unknown
+                                    | tonic::Code::DeadlineExceeded
+                                    | tonic::Code::Unavailable
+                                    | tonic::Code::Internal
+                                    | tonic::Code::DataLoss
+                            ) =>
+                        {
+                            LoopToolStatus::OutcomeUnknown
+                        }
+                        Err(_) => LoopToolStatus::Failed,
+                    };
+                    if let Some(observation) = observation
+                        && LoopStore::new(service.deps.db.clone())
+                            .complete_tool_observation(
+                                observation,
+                                status,
+                                chrono::Utc::now().timestamp(),
+                            )
+                            .await
+                            .is_err()
+                    {
+                        tracing::warn!(
+                            "loop control completion observation could not be persisted"
+                        );
+                    }
+                    tracing::debug!(status = status.as_str(), "loop control boundary returned");
                     let _ = sender.send(result);
                     Ok(())
-                },
+                }
+                .instrument(span),
             )
             .map_err(|_| Status::unavailable("loop control is shutting down"))?;
         receiver
             .await
             .map_err(|_| Status::unavailable("loop control request did not settle"))?
+    }
+
+    async fn start_control_observation(
+        &self,
+        principal: &super::super::auth::InternalPrincipal,
+        operation_name: &'static str,
+    ) -> Option<LoopToolObservation> {
+        let execution = principal.loop_execution.as_ref()?;
+        let store = LoopStore::new(self.deps.db.clone());
+        let reservation = store
+            .executor_reservation(
+                principal.actor_id.as_deref()?,
+                principal.run_id.as_deref()?,
+                &execution.activation_id,
+                execution.generation,
+            )
+            .await
+            .ok()?;
+        if reservation.owner_id != self.deps.agents.loop_owner_id() {
+            return None;
+        }
+        // Observation is separate from handler authorization. In particular, a historical
+        // finish replay remains valid even when no live reservation can issue an observation.
+        store
+            .begin_tool_observation(
+                &reservation,
+                LoopToolSurface::ControlRpc,
+                operation_name,
+                None,
+                chrono::Utc::now().timestamp(),
+            )
+            .await
+            .ok()
     }
 
     pub(super) async fn load_team_context(

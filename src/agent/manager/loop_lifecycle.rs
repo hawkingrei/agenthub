@@ -137,6 +137,11 @@ impl AgentManager {
         result
     }
 
+    #[tracing::instrument(name = "loop.fence", skip_all, fields(
+        team_id = %expected.team_id, actor_id = %expected.actor_id,
+        activation_id = expected.activation_id.as_deref(), generation = expected.generation,
+        session_id = expected.session_id.as_deref(),
+    ))]
     pub(super) async fn fence_loop_reservation(
         &self,
         expected: &LoopReservation,

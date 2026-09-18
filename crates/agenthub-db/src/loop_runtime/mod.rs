@@ -2,9 +2,11 @@
 
 mod admission;
 mod admission_limits;
+mod history;
 mod intake;
 mod launch;
 mod lifecycle;
+mod metrics;
 mod outcome;
 mod policy;
 mod reservation;
@@ -14,6 +16,7 @@ mod scheduling_reconcile;
 mod scheduling_revocation;
 mod schema;
 mod scope;
+mod tool_observation;
 mod work_context;
 
 #[cfg(test)]
@@ -25,6 +28,7 @@ use thiserror::Error;
 
 pub use policy::LoopPolicyUpdate;
 pub use schema::migrate_loop_runtime;
+pub use tool_observation::LoopToolObservation;
 
 #[derive(Debug, Error)]
 pub enum LoopStoreError {
@@ -46,6 +50,8 @@ pub enum LoopStoreError {
     InvalidState,
     #[error("loop scope change requires quiescence: {0}")]
     ScopeBusy(&'static str),
+    #[error("invalid loop history query or cursor")]
+    InvalidHistoryQuery,
 }
 
 #[derive(Clone)]
@@ -106,23 +112,27 @@ impl LoopStore {
         .bind(limit.clamp(1, 100))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter()
-            .map(|row| {
-                Ok(LoopEvent {
-                    id: row.try_get("id")?,
-                    activation_id: row.try_get("activation_id")?,
-                    kind: row.try_get::<&str, _>("kind")?.parse()?,
-                    generation: row.try_get("generation")?,
-                    trigger_id: row.try_get("trigger_id")?,
-                    reason: row
-                        .try_get::<Option<&str>, _>("reason_code")?
-                        .map(str::parse)
-                        .transpose()?,
-                    created_at: row.try_get("created_at")?,
-                })
-            })
-            .collect()
+        rows.iter().map(parse_event).collect()
     }
+}
+
+fn parse_event(row: &SqliteRow) -> anyhow::Result<LoopEvent> {
+    Ok(LoopEvent {
+        id: row.try_get("id")?,
+        activation_id: row.try_get("activation_id")?,
+        kind: row.try_get::<&str, _>("kind")?.parse()?,
+        generation: row.try_get("generation")?,
+        trigger_id: row.try_get("trigger_id")?,
+        reason: row
+            .try_get::<Option<&str>, _>("reason_code")?
+            .map(str::parse)
+            .transpose()?,
+        exit_reason: row
+            .try_get::<Option<&str>, _>("exit_reason_code")?
+            .map(str::parse)
+            .transpose()?,
+        created_at: row.try_get("created_at")?,
+    })
 }
 
 fn parse_activation(row: &SqliteRow) -> anyhow::Result<LoopActivation> {

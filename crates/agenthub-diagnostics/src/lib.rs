@@ -1,5 +1,9 @@
 #[cfg(debug_assertions)]
+mod loop_trace;
+
+#[cfg(debug_assertions)]
 pub mod agent_trace {
+    pub use crate::loop_trace::{ActivationNotFound, ActivationTrace};
     use std::{
         collections::BTreeMap,
         path::{Path, PathBuf},
@@ -36,6 +40,7 @@ pub mod agent_trace {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct AgentTraceRequest {
+        pub activation_id: Option<String>,
         pub agent_id: Option<String>,
         pub team_id: Option<String>,
         pub member_id: Option<String>,
@@ -49,6 +54,17 @@ pub mod agent_trace {
         }
 
         pub fn validate(&self) -> anyhow::Result<()> {
+            if let Some(id) = &self.activation_id {
+                agenthub_agent_domain::loop_runtime::validate_loop_id(id)?;
+                anyhow::ensure!(
+                    self.agent_id.is_none()
+                        && self.team_id.is_none()
+                        && self.member_id.is_none()
+                        && self.session_id.is_none(),
+                    "--activation-id cannot be combined with agent, Team, member, or session selectors"
+                );
+                return Ok(());
+            }
             let has_agent = self
                 .agent_id
                 .as_deref()
@@ -80,6 +96,7 @@ pub mod agent_trace {
     impl Default for AgentTraceRequest {
         fn default() -> Self {
             Self {
+                activation_id: None,
                 agent_id: None,
                 team_id: None,
                 member_id: None,
@@ -110,6 +127,8 @@ pub mod agent_trace {
         pub provider_adapter: AgentTraceAvailability,
         pub sse: AgentTraceAvailability,
         pub verdict: AgentTraceVerdict,
+        #[serde(default)]
+        pub activation: Option<ActivationTrace>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -120,6 +139,8 @@ pub mod agent_trace {
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     pub struct AgentTraceTarget {
+        #[serde(default)]
+        pub activation_id: Option<String>,
         pub agent_id: String,
         pub team_id: Option<String>,
         pub member_id: Option<String>,
@@ -220,6 +241,20 @@ pub mod agent_trace {
         MailboxPending,
         NoPersistedEvents,
         EventStreamPresent,
+        PendingNotAdmitted,
+        LeaseExpiredUnfenced,
+        WaitingDependency,
+        ContinuationMissing,
+        ToolBoundaryStall,
+        LoopScheduled,
+        LoopSuspended,
+        LoopDisabled,
+        LoopWaiting,
+        LoopCompleted,
+        LoopRunning,
+        LoopFinalizing,
+        LoopCanceled,
+        LoopInterrupted,
     }
 
     pub async fn collect_from_default_paths(
@@ -242,21 +277,69 @@ pub mod agent_trace {
         request: AgentTraceRequest,
     ) -> anyhow::Result<AgentTraceReport> {
         request.validate()?;
-        let resolved = resolve_target(db, &request).await?;
+        let selected = crate::loop_trace::resolve(db, &request).await?;
+        let resolved = if let Some(activation) = &selected {
+            ResolvedTarget {
+                target: AgentTraceTarget {
+                    activation_id: Some(activation.id.clone()),
+                    agent_id: activation.actor_id.clone(),
+                    team_id: Some(activation.team_id.clone()),
+                    member_id: Some(activation.actor_id.clone()),
+                },
+                team: Some(load_team(db, &activation.team_id, &activation.actor_id).await?),
+                agent_id: activation.actor_id.clone(),
+                team_id: Some(activation.team_id.clone()),
+            }
+        } else {
+            resolve_target(db, &request).await?
+        };
         let agent = load_agent(db, &resolved.agent_id).await?;
-        let session = load_session(db, &resolved.agent_id, request.session_id.as_deref()).await?;
-        let session_id = session.as_ref().map(|session| session.id.as_str());
-        let events = load_events(
-            &event_db_dir,
-            &resolved.agent_id,
-            session_id,
-            request.normalize_limit(),
-        )
-        .await?;
-        let permissions = load_pending_permissions(db, &resolved.agent_id, session_id).await?;
+        let session = if let Some(activation) = &selected {
+            if let Some(id) = &activation.session_id {
+                load_session(db, &resolved.agent_id, Some(id)).await?
+            } else {
+                None
+            }
+        } else {
+            load_session(db, &resolved.agent_id, request.session_id.as_deref()).await?
+        };
+        // Persisted activation identity remains authoritative even if its session row was removed.
+        // An activation without a session must not inherit another execution's events or permissions.
+        let session_id = match &selected {
+            Some(activation) => activation.session_id.as_deref(),
+            None => session.as_ref().map(|session| session.id.as_str()),
+        };
+        let (events, permissions) = if selected.is_some() && session_id.is_none() {
+            let path = event_db_dir.join(format!("{}.db", resolved.agent_id));
+            (
+                AgentTraceEventSummary {
+                    event_db_path: path.display().to_string(),
+                    event_db_exists: path.exists(),
+                    count: 0,
+                    latest: None,
+                    recent: vec![],
+                },
+                AgentTracePermissionSummary {
+                    pending_count: 0,
+                    pending_tool_call_ids: vec![],
+                    pending_permission_ids: vec![],
+                },
+            )
+        } else {
+            (
+                load_events(
+                    &event_db_dir,
+                    &resolved.agent_id,
+                    session_id,
+                    request.normalize_limit(),
+                )
+                .await?,
+                load_pending_permissions(db, &resolved.agent_id, session_id).await?,
+            )
+        };
         let mailbox =
             load_mailbox_summary(db, &resolved.agent_id, resolved.team_id.as_deref()).await?;
-        let verdict = classify_stall(
+        let mut verdict = classify_stall(
             &agent,
             &resolved.team,
             &session,
@@ -264,6 +347,20 @@ pub mod agent_trace {
             &permissions,
             &mailbox,
         );
+        let activation = if let Some(selected) = selected {
+            let now = i64::try_from(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs(),
+            )?;
+            let trace =
+                crate::loop_trace::collect(db, selected, request.normalize_limit() as u32, now)
+                    .await?;
+            verdict = crate::loop_trace::verdict(&trace);
+            Some(trace)
+        } else {
+            None
+        };
 
         Ok(AgentTraceReport {
             build: AgentTraceBuild {
@@ -291,10 +388,21 @@ pub mod agent_trace {
                 details: Value::Null,
             },
             verdict,
+            activation,
         })
     }
 
     pub fn apply_live_overlay(report: &mut AgentTraceReport, overlay: AgentTraceLiveOverlay) {
+        if let Some(trace) = &report.activation
+            && (trace.activation.session_id.is_none()
+                || trace.activation.session_id != overlay.runtime.active_session_id
+                || !matches!(
+                    report.verdict.layer,
+                    AgentTraceStallLayer::LoopRunning | AgentTraceStallLayer::LoopFinalizing
+                ))
+        {
+            return;
+        }
         report.runtime = overlay.runtime;
         report.provider_adapter = overlay.provider_adapter;
         report.sse = overlay.sse;
@@ -311,6 +419,9 @@ pub mod agent_trace {
             "Agent trace diagnostics (debug build only)".to_string(),
             format!("target.agent_id: {}", report.target.agent_id),
         ];
+        if let Some(trace) = &report.activation {
+            lines.extend(crate::loop_trace::render(trace));
+        }
         if let Some(team_id) = &report.target.team_id {
             lines.push(format!("target.team_id: {team_id}"));
         }
@@ -432,6 +543,7 @@ pub mod agent_trace {
         {
             return Ok(ResolvedTarget {
                 target: AgentTraceTarget {
+                    activation_id: None,
                     agent_id: agent_id.to_string(),
                     team_id: None,
                     member_id: None,
@@ -457,6 +569,7 @@ pub mod agent_trace {
         let team = load_team(db, team_id, member_id).await?;
         Ok(ResolvedTarget {
             target: AgentTraceTarget {
+                activation_id: None,
                 agent_id: member_id.to_string(),
                 team_id: Some(team_id.to_string()),
                 member_id: Some(member_id.to_string()),

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+pub mod loop_history;
+pub mod loop_metrics;
 pub mod loop_runtime;
 pub mod loop_scheduling;
 pub mod mcp_operations;

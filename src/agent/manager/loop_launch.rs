@@ -319,6 +319,11 @@ impl AgentManager {
         })
     }
 
+    #[tracing::instrument(name = "loop.execute", skip_all, fields(
+        team_id = %reservation.team_id, actor_id = %reservation.actor_id,
+        activation_id = reservation.activation_id.as_deref(), generation = reservation.generation,
+        session_id = tracing::field::Empty, mailbox_run_id = tracing::field::Empty,
+    ))]
     async fn execute_loop_activation(
         &self,
         teams: Arc<TeamManager>,
@@ -341,6 +346,7 @@ impl AgentManager {
         let mailbox = teams
             .ensure_loop_mailbox_partition(&reservation.team_id)
             .await?;
+        tracing::Span::current().record("mailbox_run_id", &mailbox.id);
         let store = LoopStore::new(self.db.clone());
         store
             .bind_mailbox(&reservation, &mailbox.id, Utc::now().timestamp())
@@ -353,6 +359,7 @@ impl AgentManager {
         );
         context.contract_version = Some(LOOP_ACTIVATION_CONTRACT_VERSION.into());
         let session_id = self.start_loop_agent(&reservation, context).await?;
+        tracing::Span::current().record("session_id", &session_id);
         let reservation = store
             .reservation(&reservation.team_id, &reservation.actor_id)
             .await?

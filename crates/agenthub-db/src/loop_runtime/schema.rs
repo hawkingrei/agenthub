@@ -57,6 +57,8 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             source_key TEXT NOT NULL,
             input_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
+            duplicate_count INTEGER NOT NULL DEFAULT 0 CHECK(duplicate_count >= 0),
+            duplicate_observation_started_at INTEGER,
             UNIQUE(actor_id, team_id, source_kind, source_key),
             FOREIGN KEY(activation_id, actor_id, team_id) REFERENCES loop_activations(id, actor_id, team_id),
             FOREIGN KEY(actor_id, team_id) REFERENCES loop_policies(actor_id, team_id)
@@ -81,10 +83,33 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             generation INTEGER NOT NULL CHECK(generation >= 0),
             trigger_id TEXT REFERENCES loop_trigger_sources(id),
             reason_code TEXT,
+            exit_reason_code TEXT CHECK(exit_reason_code IN ('outcome_recorded', 'startup_failed', 'unexpected_exit', 'canceled')),
             created_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_loop_event_activation
             ON loop_activation_events(activation_id, id);
+        CREATE INDEX IF NOT EXISTS idx_loop_event_metrics
+            ON loop_activation_events(activation_id, kind, generation, id);
+        CREATE TABLE IF NOT EXISTS loop_tool_observations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            activation_id TEXT NOT NULL REFERENCES loop_activations(id),
+            generation INTEGER NOT NULL CHECK(generation > 0),
+            surface TEXT NOT NULL CHECK(surface IN ('control_rpc', 'mcp_tool')),
+            tool_name TEXT NOT NULL,
+            target_ref TEXT,
+            operation_id TEXT,
+            attempt_number INTEGER CHECK(attempt_number > 0),
+            status TEXT NOT NULL CHECK(status IN ('started', 'succeeded', 'failed', 'outcome_unknown', 'input_required', 'task_accepted')),
+            started_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            duration_ms INTEGER CHECK(duration_ms >= 0),
+            CHECK(duration_ms IS NULL OR completed_at IS NOT NULL),
+            CHECK((operation_id IS NULL) = (attempt_number IS NULL)),
+            UNIQUE(operation_id, attempt_number),
+            CHECK((status = 'started') = (completed_at IS NULL))
+        );
+        CREATE INDEX IF NOT EXISTS idx_loop_tool_activation
+            ON loop_tool_observations(activation_id, id);
         CREATE TABLE IF NOT EXISTS loop_finish_receipts (
             activation_id TEXT PRIMARY KEY REFERENCES loop_activations(id),
             generation INTEGER NOT NULL,
@@ -185,6 +210,13 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
         .await?;
     if !columns
         .iter()
+        .any(|row| row.get::<&str, _>("name") == "exit_reason_code")
+    {
+        sqlx::query("ALTER TABLE loop_activation_events ADD COLUMN exit_reason_code TEXT CHECK(exit_reason_code IN ('outcome_recorded', 'startup_failed', 'unexpected_exit', 'canceled'))")
+            .execute(&mut *tx).await?;
+    }
+    if !columns
+        .iter()
         .any(|row| row.get::<&str, _>("name") == "reason_code")
     {
         sqlx::query("ALTER TABLE loop_activation_events ADD COLUMN reason_code TEXT")
@@ -217,6 +249,26 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_loop_admission_due ON loop_activations(state, next_admission_at, id); \
          CREATE INDEX IF NOT EXISTS idx_loop_admission_events ON loop_activation_events(created_at, activation_id) WHERE kind = 'admitted';",
     ).execute(&mut *tx).await?;
+    let columns = sqlx::query("PRAGMA table_info(loop_trigger_sources)")
+        .fetch_all(&mut *tx)
+        .await?;
+    if !columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "duplicate_count")
+    {
+        sqlx::query("ALTER TABLE loop_trigger_sources ADD COLUMN duplicate_count INTEGER NOT NULL DEFAULT 0 CHECK(duplicate_count >= 0)")
+            .execute(&mut *tx).await?;
+    }
+    if !columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "duplicate_observation_started_at")
+    {
+        sqlx::query(
+            "ALTER TABLE loop_trigger_sources ADD COLUMN duplicate_observation_started_at INTEGER",
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
     tx.commit().await?;
     Ok(())
 }

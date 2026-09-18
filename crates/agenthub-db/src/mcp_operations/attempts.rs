@@ -135,11 +135,14 @@ impl McpOperationStore {
             .as_deref()
             .ok_or(McpJournalError::ScopeMismatch)?;
         let sent_at = now.max(operation.updated_at);
+        let started = std::time::Instant::now();
+        let tool_observation_id =
+            super::trace::begin(tx, executor, operation, number, sent_at).await?;
         sqlx::query("INSERT INTO mcp_operation_attempts(operation_id, number, permit_id, activation_id, generation, \
-            daemon_node_id, daemon_generation, daemon_owner_id, status, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)")
+            daemon_node_id, daemon_generation, daemon_owner_id, status, sent_at, tool_observation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)")
             .bind(operation_id).bind(number).bind(&permit_id).bind(activation).bind(executor.generation)
             .bind(&self.daemon.node_id).bind(self.daemon.generation).bind(&self.daemon.owner_id)
-            .bind(sent_at).execute(&mut **tx).await?;
+            .bind(sent_at).bind(tool_observation_id).execute(&mut **tx).await?;
         sqlx::query("UPDATE mcp_operations SET status = 'sent', attempt_count = ?, completion_json = NULL, updated_at = ? WHERE id = ?")
             .bind(number).bind(sent_at).bind(operation_id).execute(&mut **tx).await?;
         record_event(
@@ -156,6 +159,7 @@ impl McpOperationStore {
             operation_id: operation_id.to_owned(),
             attempt_number: number,
             permit_id,
+            started,
         })
     }
 
@@ -229,6 +233,7 @@ impl McpOperationStore {
             activation,
             completion,
             completed_at,
+            Some(i64::try_from(permit.started.elapsed().as_millis()).unwrap_or(i64::MAX)),
         )
         .await?;
         tx.commit().await?;
@@ -259,6 +264,7 @@ impl McpOperationStore {
                 row.try_get("activation_id")?,
                 &completion,
                 now.max(row.try_get("updated_at")?),
+                None,
             )
             .await?;
         }
@@ -291,6 +297,7 @@ pub(super) async fn complete_attempt(
     activation_id: &str,
     completion: &McpCompletion,
     now: i64,
+    duration_ms: Option<i64>,
 ) -> anyhow::Result<()> {
     let json = serde_json::to_string(completion)?;
     sqlx::query("UPDATE mcp_operation_attempts SET status = ?, completion_json = ?, completed_at = ? WHERE operation_id = ? AND number = ?")
@@ -299,6 +306,7 @@ pub(super) async fn complete_attempt(
     sqlx::query("UPDATE mcp_operations SET status = ?, completion_json = ?, updated_at = ? WHERE id = ? AND attempt_count = ?")
         .bind(completion.status().as_str()).bind(&json).bind(now).bind(operation_id).bind(number)
         .execute(&mut **tx).await?;
+    super::trace::complete(tx, operation_id, number, completion, now, duration_ms).await?;
     record_event(
         tx,
         operation_id,

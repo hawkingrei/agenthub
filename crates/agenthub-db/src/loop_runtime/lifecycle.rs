@@ -1,5 +1,5 @@
 use agenthub_agent_domain::loop_runtime::{
-    LoopActivation, LoopCleanupDisposition, LoopReservation,
+    LoopActivation, LoopCleanupDisposition, LoopExitReason, LoopReservation,
 };
 use sqlx::{Row, Sqlite, Transaction};
 
@@ -39,6 +39,10 @@ pub(super) async fn retire_inactive_task_sources(
 
 impl LoopStore {
     /// Fence further executor writes immediately; process cleanup remains the caller's duty.
+    #[tracing::instrument(name = "loop.revoke_execution", skip_all, fields(
+        team_id = %expected.team_id, actor_id = %expected.actor_id,
+        activation_id = expected.activation_id.as_deref(), generation = expected.generation,
+    ))]
     pub async fn revoke_execution(
         &self,
         expected: &LoopReservation,
@@ -52,6 +56,11 @@ impl LoopStore {
         Ok(())
     }
     /// Bind a runtime session after its row is inserted, before exposing actor tools.
+    #[tracing::instrument(name = "loop.bind_session", skip_all, fields(
+        team_id = %expected.team_id, actor_id = %expected.actor_id,
+        activation_id = expected.activation_id.as_deref(), generation = expected.generation,
+        session_id = %session_id,
+    ))]
     pub async fn bind_session(
         &self,
         expected: &LoopReservation,
@@ -90,6 +99,11 @@ impl LoopStore {
         Ok(current)
     }
 
+    #[tracing::instrument(name = "loop.running", skip_all, fields(
+        team_id = %expected.team_id, actor_id = %expected.actor_id,
+        activation_id = expected.activation_id.as_deref(), generation = expected.generation,
+        session_id = expected.session_id.as_deref(),
+    ))]
     pub async fn mark_running(&self, expected: &LoopReservation, now: i64) -> anyhow::Result<()> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let current = require_live_reservation(&mut tx, expected, now).await?;
@@ -109,6 +123,11 @@ impl LoopStore {
 
     /// This is a trusted supervisor boundary, never an agent-supplied cleanup assertion.
     /// Lease expiry is allowed here, but the owner and generation must still match.
+    #[tracing::instrument(name = "loop.cleanup", skip_all, fields(
+        team_id = %expected.team_id, actor_id = %expected.actor_id,
+        activation_id = expected.activation_id.as_deref(), generation = expected.generation,
+        session_id = expected.session_id.as_deref(),
+    ))]
     pub async fn cleanup_verified(
         &self,
         expected: &LoopReservation,
@@ -155,8 +174,17 @@ impl LoopStore {
                 sqlx::query("UPDATE loop_policies SET no_progress_count = MIN(no_progress_count + 1, 86400), updated_at = ? WHERE actor_id = ?")
                     .bind(now).bind(&current.actor_id).execute(&mut *tx).await?;
             }
-            sqlx::query("INSERT INTO loop_activation_events(activation_id, kind, generation, created_at) VALUES (?, 'cleanup_verified', ?, ?)")
-                .bind(id).bind(current.generation).bind(now).execute(&mut *tx).await?;
+            let exit_reason = if disposition == LoopCleanupDisposition::StartupFailed {
+                LoopExitReason::StartupFailed
+            } else if state == "canceled" {
+                LoopExitReason::Canceled
+            } else if finished {
+                LoopExitReason::OutcomeRecorded
+            } else {
+                LoopExitReason::UnexpectedExit
+            };
+            sqlx::query("INSERT INTO loop_activation_events(activation_id, kind, generation, created_at, exit_reason_code) VALUES (?, 'cleanup_verified', ?, ?, ?)")
+                .bind(id).bind(current.generation).bind(now).bind(exit_reason.as_str()).execute(&mut *tx).await?;
             if !finished && !retry && state != "canceled" && state != "interrupted" {
                 sqlx::query("INSERT INTO loop_activation_events(activation_id, kind, generation, created_at) VALUES (?, 'interrupted', ?, ?)")
                     .bind(id).bind(current.generation).bind(now).execute(&mut *tx).await?;
@@ -182,6 +210,7 @@ impl LoopStore {
     }
 
     /// Cancel pending intent while retaining any active writer's reservation.
+    #[tracing::instrument(name = "loop.cancel", skip_all, fields(team_id = %team_id, activation_id = %activation_id))]
     pub async fn cancel(&self, team_id: &str, activation_id: &str, now: i64) -> anyhow::Result<()> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let exists: bool = sqlx::query_scalar(

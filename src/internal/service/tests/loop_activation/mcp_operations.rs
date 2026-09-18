@@ -78,7 +78,7 @@ async fn mcp_send_remains_daemon_owned_after_authenticated_request_disconnects()
     let (events, receiver) = mpsc::channel(2);
     let caller = tokio::spawn(async move {
         service
-            .complete_control_request(&metadata, async move {
+            .complete_control_request(&metadata, "test_mcp_control", async move {
                 let (_principal, _guard) = task_service
                     .authenticate_execution(&task_metadata, false)
                     .await?;

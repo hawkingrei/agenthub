@@ -23,6 +23,11 @@ impl LoopStore {
 
     /// Call inside the canonical task/message transaction to avoid a lost-wake dual write.
     /// The caller must roll back the enclosing transaction on error.
+    #[tracing::instrument(name = "loop.trigger_intake", skip_all, fields(
+        actor_id = %input.actor_id, team_id = %input.team_id, source_kind = input.kind.as_str(),
+        activation_id = tracing::field::Empty, trigger_id = tracing::field::Empty,
+        duplicate = tracing::field::Empty,
+    ))]
     pub async fn accept_in_transaction(
         tx: &mut Transaction<'_, Sqlite>,
         input: &LoopTriggerInput,
@@ -46,11 +51,15 @@ impl LoopStore {
             if original != *input {
                 return Err(LoopStoreError::IdempotencyConflict.into());
             }
-            return Ok(LoopTriggerReceipt {
+            sqlx::query("UPDATE loop_trigger_sources SET duplicate_count = MIN(duplicate_count, 9223372036854775806) + 1 WHERE id = ?")
+                .bind(row.try_get::<&str, _>("id")?).execute(&mut **tx).await?;
+            let receipt = LoopTriggerReceipt {
                 trigger_id: row.try_get("id")?,
                 activation_id: row.try_get("activation_id")?,
                 duplicate: true,
-            });
+            };
+            trace_receipt(&receipt);
+            return Ok(receipt);
         }
         let policy = sqlx::query("SELECT * FROM loop_policies WHERE actor_id = ? AND team_id = ?")
             .bind(&input.actor_id)
@@ -130,23 +139,33 @@ impl LoopStore {
         };
         let trigger_id = Uuid::now_v7().to_string();
         sqlx::query(
-            "INSERT INTO loop_trigger_sources(id, activation_id, actor_id, team_id, source_kind, source_key, input_json, created_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO loop_trigger_sources(id, activation_id, actor_id, team_id, source_kind, source_key, input_json, created_at, duplicate_observation_started_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&trigger_id).bind(&activation_id).bind(&input.actor_id).bind(&input.team_id)
         .bind(input.kind.as_str()).bind(&input.source_key).bind(serde_json::to_string(input)?).bind(now)
+        .bind(now)
         .execute(&mut **tx).await?;
         sqlx::query(
             "INSERT INTO loop_activation_events(activation_id, kind, generation, trigger_id, created_at) VALUES (?, ?, 0, ?, ?)",
         )
         .bind(&activation_id).bind(LoopEventKind::TriggerAccepted.as_str()).bind(&trigger_id).bind(now)
         .execute(&mut **tx).await?;
-        Ok(LoopTriggerReceipt {
+        let receipt = LoopTriggerReceipt {
             trigger_id,
             activation_id,
             duplicate: false,
-        })
+        };
+        trace_receipt(&receipt);
+        Ok(receipt)
     }
+}
+
+fn trace_receipt(receipt: &LoopTriggerReceipt) {
+    tracing::Span::current()
+        .record("activation_id", &receipt.activation_id)
+        .record("trigger_id", &receipt.trigger_id)
+        .record("duplicate", receipt.duplicate);
 }
 
 pub(super) async fn validate_references(

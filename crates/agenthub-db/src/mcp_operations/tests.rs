@@ -21,6 +21,7 @@ mod continuation;
 mod continuation_retry;
 mod scope;
 mod task;
+mod trace;
 
 struct Fixture {
     path: PathBuf,
