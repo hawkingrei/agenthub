@@ -155,10 +155,17 @@ impl AgentManager {
                 if consumed.is_err() {
                     observer.abort();
                 }
+                let permissions_closed = observer.expire_permissions().await;
                 let closed = store.close(chrono::Utc::now().timestamp()).await;
-                observer.finish_delivery(consumed.is_ok() && closed.is_ok());
+                observer.finish_delivery(
+                    consumed.is_ok() && closed.is_ok() && permissions_closed.is_ok(),
+                );
                 let result = observer.closed().await;
-                if consumed.is_err() || closed.is_err() || result.is_err() {
+                if consumed.is_err()
+                    || closed.is_err()
+                    || permissions_closed.is_err()
+                    || result.is_err()
+                {
                     tracing::warn!(%agent_id, %session_id, "direct runtime delivery failed");
                     // Serialize with replacement launches; clean only this owned child/session.
                     let _configuration = manager

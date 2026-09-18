@@ -18,8 +18,9 @@ The dedicated configuration, bounded wire codec, connection lifecycle and manage
 local launch/cleanup are implemented in `agenthub-config`, `agenthub-rara` and the
 existing agent manager. The per-agent event database also provides durable control
 receipts, event deduplication and contiguous replay cursors. Managed event consumption,
-prompt/follow-up submission and fenced user answers are integrated. Live permissions,
-turn cancellation, recovery visibility and loop admission remain implementation gates tracked in [the transition TODO](../todo.md).
+prompt/follow-up submission, fenced user answers, live permissions and turn cancellation
+are integrated. Recovery visibility and loop admission remain implementation gates tracked
+in [the transition TODO](../todo.md).
 
 - Local and remote AgentHub placement of a Rara runtime process.
 - Rara app-server / runtime-control interaction as the only supported integration path.
@@ -300,8 +301,8 @@ commit history and cursor before broadcast; exit observation waits for that drai
 well as semantic transport completion. Managed text input maps idle submissions to prompts
 and active-turn submissions to ordered follow-ups. A pending user question requires its
 explicit runtime/session/waiting-turn fence. Image input is unsupported. Remote placement,
-Team binding, legacy idle loops and durable loop admission remain rejected. Complete slice
-17 delivery still requires live permission and cancellation integration.
+Team binding, legacy idle loops and durable loop admission remain rejected. Live plan/shell
+callbacks and fenced cancel/interrupt controls reuse the existing permission and control surfaces.
 
 ### 2) Configuration
 
@@ -419,6 +420,8 @@ Event projection uses the outer owned session, not optional provenance, and comp
 a SHA-256 fingerprint over recursively sorted JSON object keys. Assistant deltas retain
 contiguous message identities. Tool output follows the original open call across an
 approval answer's new turn; later reuse of a completed call ID creates a new card.
+Terminal or discarded turns fail unfinished tool cards and retire their identities;
+an old turn's cleanup cannot retire calls owned by its successor.
 Question cards carry runtime, native session and waiting turn for reply validation.
 An approval notice alone never creates a live callback. Projection state is installed
 only after its event transaction commits; duplicates and failed transactions cannot
@@ -433,6 +436,17 @@ counts and statuses, while conversation bodies remain attributed history content
   option; it must not silently kill or restart the Rara runtime.
 - Team permission-review routing may be reused, but the requester must never review its own Rara
   approval request.
+
+Only a committed pending plan or shell input creates a live permission callback. It retains
+the original tool card and runtime/session/waiting-turn ownership. Explicit option IDs map
+to native decisions; unknown choices and cancellation cannot grant execution. Timeout sends
+one explicit denial while the waiting turn remains owned. Superseded inputs, turn cancellation
+and transport loss expire the callback without answering a replacement turn.
+
+The operator's selected choice and the native control ACK are recorded separately. Rejected
+or uncertain answers never become implicit approval or an automatic retry. Cancel/interrupt
+controls capture their target once and require a matching accepted ACK; they cannot stop a
+successor turn. A transport failure retires the owned runtime through existing supervision.
 
 ### 6) Prompt, Skills, Memory, MCP, And Hooks
 

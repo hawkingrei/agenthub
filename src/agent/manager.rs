@@ -2674,8 +2674,19 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn cancel_acp(&self, agent_id: &str) -> anyhow::Result<()> {
-        let acp = self.get_acp_handle(agent_id).await?;
-        acp.cancel().await
+        let input = self
+            .inner
+            .read()
+            .await
+            .get(agent_id)
+            .ok_or_else(|| anyhow::anyhow!("agent not running"))?
+            .input
+            .clone();
+        match input {
+            AgentInput::Acp(acp) => acp.cancel().await,
+            AgentInput::Rara(runtime) => runtime.stop_turn(false).await,
+            AgentInput::Stdin(_) => anyhow::bail!("agent does not support turn cancellation"),
+        }
     }
 
     async fn get_acp_handle(&self, agent_id: &str) -> anyhow::Result<AcpHandle> {

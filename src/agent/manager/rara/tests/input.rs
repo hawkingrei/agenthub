@@ -1,7 +1,10 @@
 use super::*;
 use crate::agent::{AgentOutput, AgentSendInputError};
 
-async fn output(receiver: &mut tokio::sync::broadcast::Receiver<AgentOutput>, kind: &str) -> Value {
+pub(super) async fn output(
+    receiver: &mut tokio::sync::broadcast::Receiver<AgentOutput>,
+    kind: &str,
+) -> Value {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let entry = receiver.recv().await.unwrap();
@@ -17,7 +20,7 @@ async fn output(receiver: &mut tokio::sync::broadcast::Receiver<AgentOutput>, ki
 }
 
 impl Fixture {
-    async fn input_receipt(&self, id: &str) -> (String, Option<String>) {
+    pub(super) async fn input_receipt(&self, id: &str) -> (String, Option<String>) {
         let pool = self
             .manager
             .event_dbs
@@ -31,7 +34,7 @@ impl Fixture {
             .unwrap()
     }
 
-    fn input_requests(&self) -> Vec<Value> {
+    pub(super) fn input_requests(&self) -> Vec<Value> {
         std::fs::read_to_string(self.directory.join("requests.jsonl"))
             .unwrap_or_default()
             .lines()

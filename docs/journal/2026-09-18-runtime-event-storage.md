@@ -5,8 +5,8 @@
 The per-agent event database now provides atomic native event deduplication, history
 associations, contiguous replay cursors and durable control-request receipts. This is
 the storage foundation for slice 17. Typed projection and the managed durable event
-consumer, managed text input and fenced browser answers are integrated. Live permission
-callbacks, cancellation and recovery visibility remain open. The full 18-slice objective is not complete.
+consumer, managed text input, fenced browser answers, live permission callbacks and turn
+cancellation are integrated. Recovery visibility remains open. The full 18-slice objective is not complete.
 
 ## Background
 
@@ -84,11 +84,10 @@ cargo clippy --locked --offline -p agenthub-rara --all-targets -- -D warnings
 
 ## Follow-Ups
 
-- Connect cancel/interrupt controls and existing live permission callbacks; add durable
-  receipt/cursor recovery visibility. Reconcile abandoned runtime owners only after supervisor
+- Add durable receipt/cursor recovery visibility. Reconcile abandoned runtime owners only after supervisor
   evidence establishes their process lifetime has ended.
-- Prove disconnect around ACK, stale permissions, output compatibility and a native
-  process round trip, then publish/validate the complete slice 17 PR.
+- Prove a native prompt/approval process round trip, then publish/validate the complete
+  slice 17 PR. Fake-peer checks cover disconnect around ACK and stale permissions.
 - Keep slice 18 activation identity, role/source binding, semantic outcomes and nested
   worker isolation separate. See [the transition TODO](../todo.md).
 
@@ -163,3 +162,28 @@ The fixture lacks live SSE and prompt-default routes: existing fallback refreshe
 console entries remained, with no new JavaScript exception. Bounded `before_id=1` requests
 returned an empty page; no deeper backfill was introduced. This is local fixture validation,
 not production or native model-call evidence. Temporary browser processes were cleaned up.
+
+## Permission And Cancellation Checkpoint
+
+Committed pending plan/shell input now allocates a callback through the existing permission
+service. Choices preserve their native semantics and the original tool card; unknown option
+IDs deny execution. Timeout sends one explicit denial, while transport loss, superseded
+input and cancellation expire callbacks without retargeting them. Operator selection history
+stays separate from the native accepted/rejected/unknown receipt.
+
+Native cancel/interrupt controls retain their captured turn fence. The existing manager cancel
+route supports the direct runtime. Projection retires unfinished calls on terminal/discarded
+turns, preserves approval handoffs and ignores old-turn cleanup against successor calls.
+
+Validation records: 36 protocol cases passed (one opt-in native case excluded), 23 managed
+runtime cases passed (one opt-in native case excluded), and protocol all-target plus root
+library/test Clippy passed with warnings denied. Cases include all supported plan/shell choices,
+unknown options, shared permission-service expiry, connection loss, superseded callbacks,
+rejected native answers and both cancel/interrupt controls.
+
+```bash
+cargo test --offline --locked -p agenthub-rara
+cargo clippy --offline --locked -p agenthub-rara --all-targets -- -D warnings
+cargo test --offline --locked -p agenthub --lib agent::manager::rara:: -- --nocapture
+cargo clippy --offline --locked -p agenthub --lib --tests -- -D warnings
+```

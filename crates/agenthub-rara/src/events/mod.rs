@@ -31,11 +31,24 @@ pub enum EventEffect {
     None,
     Created,
     Snapshot(SessionSnapshot),
-    TurnStarted { turn_id: String },
-    TurnEnded { turn_id: String, outcome: TurnEnd },
-    InputRequested(PendingInput),
-    InputCleared { waiting_turn: String },
-    ApprovalAnswered { approval_id: String, approved: bool },
+    TurnStarted {
+        turn_id: String,
+    },
+    TurnEnded {
+        turn_id: String,
+        outcome: TurnEnd,
+    },
+    InputRequested {
+        pending: PendingInput,
+        tool_call_id: String,
+    },
+    InputCleared {
+        waiting_turn: String,
+    },
+    ApprovalAnswered {
+        approval_id: String,
+        approved: bool,
+    },
 }
 
 pub struct EventProjection {
@@ -53,6 +66,8 @@ pub struct EventProjector {
     session_id: String,
     chunk: Option<Chunk>,
     question_turn: Option<String>,
+    pending_turn: Option<String>,
+    active_turn: Option<String>,
     tools: BTreeMap<String, (String, String)>,
 }
 
@@ -73,6 +88,8 @@ impl EventProjector {
             session_id: session_id.into(),
             chunk: None,
             question_turn: None,
+            pending_turn: None,
+            active_turn: None,
             tools: BTreeMap::new(),
         })
     }
@@ -251,6 +268,9 @@ impl EventProjector {
         if let Some(call_id) = call_id {
             match &event {
                 ToolEvent::Use { .. } => {
+                    if self.active_turn.is_none() {
+                        self.active_turn.clone_from(&frame.event.turn_id);
+                    }
                     if self.tools.contains_key(call_id) {
                         return Err(ProtocolError::InvalidTarget);
                     }
@@ -295,7 +315,7 @@ impl EventProjector {
     }
 
     fn session(
-        &self,
+        &mut self,
         frame: &EventFrame,
         event: SessionEvent,
         history: &mut Vec<ProjectedHistory>,
@@ -314,9 +334,15 @@ impl EventProjector {
                     json!({"event": "runtime_state", "generation": snapshot.generation,
                     "last_sequence": snapshot.last_sequence, "phase": snapshot.phase.name()}),
                 ));
+                history.push(run_status(match snapshot.phase {
+                    SessionPhase::AwaitingInput { .. } => "waiting_permission",
+                    SessionPhase::Closed => "stopped",
+                    _ => snapshot.phase.name(),
+                }));
                 *effect = EventEffect::Snapshot(snapshot);
             }
             SessionEvent::TurnStarted => {
+                self.active_turn = Some(required_turn(frame)?);
                 *effect = EventEffect::TurnStarted {
                     turn_id: required_turn(frame)?,
                 };
@@ -326,6 +352,7 @@ impl EventProjector {
                 let status = if reason.as_deref() == Some("awaiting_input") {
                     "waiting_permission"
                 } else {
+                    self.retire_tools(&required_turn(frame)?, history);
                     "idle"
                 };
                 *effect = EventEffect::TurnEnded {
@@ -336,6 +363,7 @@ impl EventProjector {
             }
             SessionEvent::TurnCancelled | SessionEvent::TurnInterrupted => {
                 let interrupted = matches!(event, SessionEvent::TurnInterrupted);
+                self.retire_tools(&required_turn(frame)?, history);
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
                     outcome: if interrupted {
@@ -348,6 +376,7 @@ impl EventProjector {
             }
             SessionEvent::TurnFailed { reason } => {
                 drop(reason);
+                self.retire_tools(&required_turn(frame)?, history);
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
                     outcome: TurnEnd::Failed,
@@ -411,6 +440,34 @@ impl EventProjector {
                 {
                     return Err(ProtocolError::InvalidTarget);
                 }
+                self.active_turn = Some(pending.turn_id.clone());
+                self.pending_turn = Some(pending.turn_id.clone());
+                let tool_call_id = match &pending.kind {
+                    PendingInputKind::User { .. } => self.question_id(&pending.turn_id),
+                    PendingInputKind::Plan { approval_id, .. }
+                    | PendingInputKind::Shell { approval_id, .. } => {
+                        if let Some((_, id)) = self.tools.get(approval_id) {
+                            id.clone()
+                        } else {
+                            let id =
+                                format!("direct:{}:approval:{}", self.session_id, pending.turn_id);
+                            let (title, raw_input) = match &pending.kind {
+                                PendingInputKind::Plan { plan, .. } => {
+                                    ("Plan approval", json!({"plan":plan}))
+                                }
+                                PendingInputKind::Shell { request, .. } => {
+                                    ("Shell approval", request.clone())
+                                }
+                                _ => unreachable!("approval kind"),
+                            };
+                            history.push(ProjectedHistory::Conversation(
+                                json!({"type":"tool_call", "id":id,
+                                "title":title,"status":"pending","raw_input":raw_input}),
+                            ));
+                            id
+                        }
+                    }
+                };
                 if let PendingInputKind::User {
                     question,
                     options,
@@ -430,7 +487,10 @@ impl EventProjector {
                     self.question_turn = None;
                 }
                 history.push(run_status("waiting_permission"));
-                *effect = EventEffect::InputRequested(pending);
+                *effect = EventEffect::InputRequested {
+                    pending,
+                    tool_call_id,
+                };
             }
             InputEvent::Discarded {
                 waiting_turn,
@@ -438,6 +498,10 @@ impl EventProjector {
             } => {
                 validate_id(&waiting_turn)?;
                 let _ = reason;
+                if self.pending_turn.as_deref() == Some(&waiting_turn) {
+                    self.retire_tools(&waiting_turn, history);
+                    self.pending_turn = None;
+                }
                 if self.question_turn.as_deref() == Some(&waiting_turn) {
                     history.push(ProjectedHistory::Conversation(
                         json!({"type":"tool_call_update", "id":self.question_id(&waiting_turn),
@@ -449,6 +513,9 @@ impl EventProjector {
             }
             InputEvent::Answered { waiting_turn } => {
                 validate_id(&waiting_turn)?;
+                if self.pending_turn.as_deref() == Some(&waiting_turn) {
+                    self.pending_turn = None;
+                }
                 if self.question_turn.as_deref() == Some(&waiting_turn) {
                     history.push(ProjectedHistory::Conversation(
                         json!({"type":"tool_call_update", "id":self.question_id(&waiting_turn),
@@ -464,6 +531,19 @@ impl EventProjector {
             InputEvent::UserPromptSubmitted | InputEvent::PendingInputAnswered => {}
         }
         Ok(())
+    }
+
+    fn retire_tools(&mut self, turn: &str, history: &mut Vec<ProjectedHistory>) {
+        if self.active_turn.as_deref() != Some(turn) {
+            return;
+        }
+        for (_, (_, id)) in std::mem::take(&mut self.tools) {
+            history.push(ProjectedHistory::Conversation(
+                json!({"type":"tool_call_update", "id":id,
+                "status":"failed", "raw_output":"The turn ended before this tool completed."}),
+            ));
+        }
+        self.active_turn = None;
     }
 
     fn question_id(&self, turn: &str) -> String {

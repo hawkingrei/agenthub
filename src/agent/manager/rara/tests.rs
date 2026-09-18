@@ -8,6 +8,7 @@ use crate::agent::AgentStatus;
 use crate::agent::manager::executor::{AgentExecutor, LocalExecutionRequest, SpawnedLocalProcess};
 
 mod input;
+mod permissions;
 
 const PEER: &str = r#"#!/usr/bin/env python3
 import json, os, pathlib, signal, subprocess, sys, time
@@ -81,18 +82,33 @@ for line in sys.stdin:
             inputs += 1
             with (root / 'requests.jsonl').open('a') as record:
                 record.write(json.dumps(request) + '\n')
+            if operation in ('cancel_current_turn', 'interrupt_current_turn'):
+                turn = request['payload']['expected_turn_id']
+                emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'],
+                    'result': {'status': 'accepted', 'session_id': native, 'turn_id': turn, 'last_sequence': sequence}})
+                sequence += 1
+                emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                    'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': turn,
+                    'provenance': {'session_id': None}, 'event': {'type': 'input', 'payload': {'type': 'discarded', 'payload': {
+                        'waiting_turn': turn, 'reason': 'interrupted' if operation == 'interrupt_current_turn' else 'cancelled'}}}}})
+                continue
             if mode == 'input_drop':
                 sys.exit(0)
             if mode == 'input_delayed':
                 while not (root / 'release-ack').exists():
                     time.sleep(0.01)
-            if mode == 'input_reject':
+            if mode == 'input_reject' or (mode == 'permission_reject' and operation.startswith('answer_')):
                 result = {'status': 'rejected', 'code': 'busy', 'message': 'private-diagnostic-token'}
             elif operation == 'submit_follow_up':
                 result = {'status': 'queued', 'session_id': native}
             else:
                 result = {'status': 'accepted', 'session_id': native, 'turn_id': 'turn-' + str(inputs), 'last_sequence': sequence}
             emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'], 'result': result})
+            if result['status'] == 'accepted' and operation.startswith('answer_') and mode.startswith('permission_'):
+                sequence += 1
+                emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                    'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-1',
+                    'provenance': {'session_id': None}, 'event': {'type': 'input', 'payload': {'type': 'answered', 'payload': {'waiting_turn': 'turn-1'}}}}})
             if result['status'] == 'accepted':
                 sequence += 1
                 emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
@@ -105,6 +121,29 @@ for line in sys.stdin:
                         'provenance': {'session_id': None}, 'event': {'type': 'input', 'payload': {'type': 'requested', 'payload': {
                             'pending': {'turn_id': 'turn-' + str(inputs), 'kind': {'type': 'user', 'payload': {
                                 'question': 'Choose a path', 'options': [['alpha', 'First path']], 'note': None}}}}}}}})
+                if mode.startswith('permission_') and operation == 'submit_user_prompt':
+                    kind = 'plan' if mode == 'permission_plan' else 'shell'
+                    body = {'approval_id': 'approval-1', 'plan': 'Review the release'} if kind == 'plan' else {'approval_id': 'approval-1', 'request': {'command': 'echo fixture', 'justification': 'Fixture approval'}}
+                    for family, payload in [
+                        ('tool', {'type': 'use', 'payload': {'call_id': 'approval-1', 'name': 'fixture_tool', 'input': {'command': 'echo fixture'}}}),
+                        ('input', {'type': 'requested', 'payload': {'pending': {'turn_id': 'turn-1', 'kind': {'type': kind, 'payload': body}}}}),
+                    ]:
+                        sequence += 1
+                        emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                            'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-1',
+                            'provenance': {'session_id': None}, 'event': {'type': family, 'payload': payload}}})
+                    if mode == 'permission_drop':
+                        while not (root / 'drop-permission').exists():
+                            time.sleep(0.01)
+                        sys.exit(0)
+                    if mode == 'permission_stale':
+                        while not (root / 'replace-permission').exists():
+                            time.sleep(0.01)
+                        sequence += 1
+                        emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                            'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-2',
+                            'provenance': {'session_id': None}, 'event': {'type': 'input', 'payload': {'type': 'requested', 'payload': {
+                                'pending': {'turn_id': 'turn-2', 'kind': {'type': 'shell', 'payload': {'approval_id': 'approval-2', 'request': {'command': 'echo replacement'}}}}}}}}})
             continue
         assert envelope['provenance']['session_id'] is None
         if mode == 'create_drop':

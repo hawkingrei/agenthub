@@ -1,4 +1,96 @@
 use super::*;
+
+#[test]
+fn terminal_turns_retire_open_tools_and_allow_native_call_id_reuse() {
+    for kind in [
+        "turn_cancelled",
+        "turn_interrupted",
+        "turn_failed",
+        "turn_finished",
+    ] {
+        let mut projector = projector();
+        let first = projector
+            .project(&event(
+                1,
+                "tool",
+                "use",
+                json!({"call_id":"call", "name":"bash", "input":{}}),
+            ))
+            .unwrap();
+        let id = conversation(&first, 0)["id"].clone();
+        let payload = if matches!(kind, "turn_cancelled" | "turn_interrupted") {
+            Value::Null
+        } else {
+            json!({"reason":"done"})
+        };
+        let terminal = projector
+            .project(&event(2, "session", kind, payload))
+            .unwrap();
+        assert_eq!(conversation(&terminal, 0)["id"], id);
+        assert_eq!(conversation(&terminal, 0)["status"], "failed");
+        let next = projector
+            .project(&event(
+                3,
+                "tool",
+                "use",
+                json!({"call_id":"call", "name":"bash", "input":{}}),
+            ))
+            .unwrap();
+        assert_ne!(conversation(&next, 0)["id"], id);
+    }
+}
+
+#[test]
+fn approval_handoff_keeps_the_original_card_and_ignores_old_turn_cleanup() {
+    let mut projector = projector();
+    let first = projector
+        .project(&event(
+            1,
+            "tool",
+            "use",
+            json!({"call_id":"call", "name":"bash", "input":{}}),
+        ))
+        .unwrap();
+    let id = conversation(&first, 0)["id"].as_str().unwrap();
+    let approval = projector.project(&event(2, "input", "requested", json!({"pending":{
+        "turn_id":"turn-1", "kind":{"type":"shell","payload":{"approval_id":"call","request":{"command":"echo test"}}}
+    }}))).unwrap();
+    assert!(
+        matches!(approval.effect, EventEffect::InputRequested { tool_call_id, .. } if tool_call_id == id)
+    );
+    assert_eq!(approval.history.len(), 1);
+    projector
+        .project(&event(
+            3,
+            "session",
+            "turn_finished",
+            json!({"reason":"awaiting_input"}),
+        ))
+        .unwrap();
+    let mut started = event(4, "session", "turn_started", Value::Null);
+    started.event.turn_id = Some("turn-2".into());
+    projector.project(&started).unwrap();
+    let expired = projector
+        .project(&event(
+            5,
+            "input",
+            "discarded",
+            json!({"waiting_turn":"turn-1", "reason":"superseded"}),
+        ))
+        .unwrap();
+    assert!(expired.history.is_empty());
+    let mut result = event(
+        6,
+        "tool",
+        "result",
+        json!({"call_id":"call", "name":"bash", "content":"done", "is_error":false}),
+    );
+    result.event.turn_id = Some("turn-2".into());
+    assert_eq!(
+        conversation(&projector.project(&result).unwrap(), 0)["id"],
+        id
+    );
+}
 use crate::{RuntimeEvent, ServerFrame};
 
 fn event(sequence: u64, family: &str, kind: &str, payload: Value) -> EventFrame {
@@ -230,7 +322,7 @@ fn questions_carry_native_fences_and_old_answers_cannot_clear_new_question() {
         conversation(&first, 0)["raw_input"][0]["options"][0]["label"],
         "alpha"
     );
-    assert!(matches!(first.effect, EventEffect::InputRequested(_)));
+    assert!(matches!(first.effect, EventEffect::InputRequested { .. }));
     let current = projector.project(&question(2, "new-turn")).unwrap();
     let old = projector
         .project(&event(
@@ -296,8 +388,11 @@ fn approval_notice_is_not_a_live_input_request() {
                 }}),
             ))
             .unwrap();
-        assert!(matches!(projected.effect, EventEffect::InputRequested(_)));
-        assert_eq!(projected.history.len(), 1);
+        assert!(matches!(
+            projected.effect,
+            EventEffect::InputRequested { .. }
+        ));
+        assert_eq!(projected.history.len(), 2);
         let answer = projector
             .project(&event(
                 index + 1,

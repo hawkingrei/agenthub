@@ -14,7 +14,9 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+mod controls;
 mod input;
+mod permissions;
 
 use super::{AgentManager, events::DurableEvents, receipts};
 use crate::agent::AgentOutput;
@@ -31,6 +33,8 @@ pub struct RaraHandle {
     idle_gc: Option<agenthub_db::AgentEventIdleGc>,
     event_dbs: agenthub_db::AgentEventDbRouter,
     input_gate: Arc<Mutex<()>>,
+    permissions: Arc<agenthub_acp::AcpPermissionService>,
+    permission: Arc<Mutex<Option<permissions::LivePermission>>>,
     state: Arc<RwLock<LiveState>>,
     delivery: watch::Sender<Option<bool>>,
 }
@@ -89,6 +93,8 @@ impl RaraHandle {
             idle_gc: manager.idle_gc.clone(),
             event_dbs: manager.event_dbs.clone(),
             input_gate: Arc::new(Mutex::new(())),
+            permissions: manager.permissions.clone(),
+            permission: Arc::new(Mutex::new(None)),
             state: Arc::new(RwLock::new(LiveState {
                 phase: SessionPhase::Idle,
                 pending: None,
@@ -176,7 +182,7 @@ impl RaraHandle {
                         }
                     }
                     while let Some(committed) = events.commit_next().await? {
-                        self.apply_effect(committed.effect, committed.sequence).await;
+                        self.apply_effect(committed.effect, committed.sequence).await?;
                         if let Some(idle_gc) = &self.idle_gc { idle_gc.record_activity(&self.agent_id).await; }
                         for entry in committed.output { let _ = self.output_tx.send(entry); }
                     }
@@ -231,7 +237,8 @@ impl RaraHandle {
         }
     }
 
-    async fn apply_effect(&self, effect: EventEffect, sequence: u64) {
+    async fn apply_effect(&self, effect: EventEffect, sequence: u64) -> anyhow::Result<()> {
+        let mut interaction = None;
         let mut state = self.state.write().await;
         state.sequence = sequence;
         match effect {
@@ -240,17 +247,30 @@ impl RaraHandle {
                 state.pending = snapshot.pending_input;
             }
             EventEffect::TurnStarted { turn_id } => state.phase = SessionPhase::Running { turn_id },
-            EventEffect::TurnEnded { turn_id, .. } => {
+            EventEffect::TurnEnded { turn_id, outcome } => {
+                let awaiting_input = matches!(outcome, agenthub_rara::TurnEnd::Finished { reason: Some(ref reason) } if reason == "awaiting_input");
+                if !awaiting_input
+                    && state
+                        .pending
+                        .as_ref()
+                        .is_some_and(|pending| pending.turn_id == turn_id)
+                {
+                    state.pending = None;
+                }
                 if let Some(pending) = &state.pending {
                     state.phase = SessionPhase::AwaitingInput {
                         turn_id: pending.turn_id.clone(),
                     };
-                } else if matches!(&state.phase, SessionPhase::Running { turn_id: active } | SessionPhase::Cancelling { turn_id: active } if active == &turn_id)
+                } else if matches!(&state.phase, SessionPhase::Running { turn_id: active } | SessionPhase::Cancelling { turn_id: active } | SessionPhase::AwaitingInput { turn_id: active } if active == &turn_id)
                 {
                     state.phase = SessionPhase::Idle;
                 }
             }
-            EventEffect::InputRequested(pending) => {
+            EventEffect::InputRequested {
+                pending,
+                tool_call_id,
+            } => {
+                interaction = Some((pending.clone(), tool_call_id));
                 state.phase = SessionPhase::AwaitingInput {
                     turn_id: pending.turn_id.clone(),
                 };
@@ -270,5 +290,12 @@ impl RaraHandle {
             }
             _ => {}
         }
+        let pending = state.pending.clone();
+        drop(state);
+        self.expire_obsolete_permission(pending.as_ref()).await?;
+        if let Some((pending, tool_call_id)) = interaction {
+            self.request_permission(pending, tool_call_id).await?;
+        }
+        Ok(())
     }
 }
