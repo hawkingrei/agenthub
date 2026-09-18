@@ -9,10 +9,12 @@ use agenthub_rara::{
     Client, ClientFrame, ConnectionError, ControlRequest, EventEffect, OutputFrame, PendingInput,
     SessionPhase, ShutdownReceipt,
 };
-use tokio::sync::{RwLock, broadcast, mpsc, watch};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
+
+mod input;
 
 use super::{AgentManager, events::DurableEvents, receipts};
 use crate::agent::AgentOutput;
@@ -27,6 +29,8 @@ pub struct RaraHandle {
     tasks: DaemonTaskGroup,
     output_tx: broadcast::Sender<AgentOutput>,
     idle_gc: Option<agenthub_db::AgentEventIdleGc>,
+    event_dbs: agenthub_db::AgentEventDbRouter,
+    input_gate: Arc<Mutex<()>>,
     state: Arc<RwLock<LiveState>>,
     delivery: watch::Sender<Option<bool>>,
 }
@@ -83,6 +87,8 @@ impl RaraHandle {
             tasks: manager.daemon_tasks.clone(),
             output_tx,
             idle_gc: manager.idle_gc.clone(),
+            event_dbs: manager.event_dbs.clone(),
+            input_gate: Arc::new(Mutex::new(())),
             state: Arc::new(RwLock::new(LiveState {
                 phase: SessionPhase::Idle,
                 pending: None,

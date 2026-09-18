@@ -1,3 +1,4 @@
+import { hasNativeInputMetadata, readNativeInputTarget } from "../native_input";
 import React from "react";
 import { ACP_TOOL_STATUS_CLASS, ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS } from "../ui/tailwind_classes";
 import { formatRequestUserInputSummary, parseRequestUserInputQuestions, parseRequestUserInputResponse } from "../request_user_input";
@@ -42,6 +43,8 @@ export const ToolCallBubble = React.memo(
     indexLabel,
     onSubmitRequestUserInput,
   }: ToolCallBubbleProps) {
+    const nativeInputTarget = readNativeInputTarget(msg.meta);
+    const canAnswer = !hasNativeInputMetadata(msg.meta) || nativeInputTarget !== undefined;
     const isLive = isToolCallEffectivelyLive(msg.status, runStatus);
     const [open, setOpen] = React.useState(
       () => !defaultCollapsed && !autoCollapse && isLive
@@ -192,7 +195,8 @@ export const ToolCallBubble = React.memo(
               <RequestUserInputCard
                 toolCallId={msg.id}
                 questions={requestUserInputQuestions}
-                canSubmit={typeof onSubmitRequestUserInput === "function"}
+                canSubmit={canAnswer && typeof onSubmitRequestUserInput === "function"}
+                nativeInputTarget={nativeInputTarget}
                 onSubmitRequestUserInput={onSubmitRequestUserInput}
               />
             ) : null}

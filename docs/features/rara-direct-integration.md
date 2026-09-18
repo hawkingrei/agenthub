@@ -17,9 +17,9 @@ boundaries.
 The dedicated configuration, bounded wire codec, connection lifecycle and managed
 local launch/cleanup are implemented in `agenthub-config`, `agenthub-rara` and the
 existing agent manager. The per-agent event database also provides durable control
-receipts, event deduplication and contiguous replay cursors. Managed request/event
-mapping, live permissions and loop admission remain the separate active implementation
-gates tracked in [the transition TODO](../todo.md).
+receipts, event deduplication and contiguous replay cursors. Managed event consumption,
+prompt/follow-up submission and fenced user answers are integrated. Live permissions,
+turn cancellation, recovery visibility and loop admission remain implementation gates tracked in [the transition TODO](../todo.md).
 
 - Local and remote AgentHub placement of a Rara runtime process.
 - Rara app-server / runtime-control interaction as the only supported integration path.
@@ -297,9 +297,11 @@ launch ID and negotiated runtime ID remain separate.
 Managed startup creates one native session after the handshake. Its durable creation
 ACK establishes stream ownership before initial events are consumed. Received events
 commit history and cursor before broadcast; exit observation waits for that drain as
-well as semantic transport completion. User input remains gated until input and live
-permission integration is complete. Remote placement, Team binding, legacy idle loops
-and durable loop admission remain rejected.
+well as semantic transport completion. Managed text input maps idle submissions to prompts
+and active-turn submissions to ordered follow-ups. A pending user question requires its
+explicit runtime/session/waiting-turn fence. Image input is unsupported. Remote placement,
+Team binding, legacy idle loops and durable loop admission remain rejected. Complete slice
+17 delivery still requires live permission and cancellation integration.
 
 ### 2) Configuration
 
@@ -393,8 +395,21 @@ does not authorize another send. Creation ACK and native stream ownership commit
 together; ACK sequence information never advances the persisted event cursor. Cancel
 and interrupt ACKs must name the fenced turn; pending-input answers may start a new turn.
 Receipt metadata contains safe identifiers, method/status, timestamps and an allowlisted
-rejection code, without request bodies or provider rejection prose. This storage boundary
-does not itself enable managed input or an automatic control-request retry path.
+rejection code, without request bodies or provider rejection prose. No control-request
+outcome authorizes an automatic replacement send.
+
+Managed user input atomically persists the attempted conversation message and prepared
+receipt under the caller's message ID before sending. A daemon-owned task finishes receipt
+persistence even if the HTTP caller disconnects. Reusing the ID cannot create another
+attempt or send. The conversation separately displays sending, accepted, queued, rejected,
+not-sent or unknown delivery; acceptance is not execution completion. Receipt updates match
+local session, runtime, native session and request ID, including out-of-order history pages.
+
+The input API accepts an optional `native_input` object with `runtime_id`, `session_id` and
+`turn_id`. Question cards carry their original target through both web workbenches. A stale
+native answer is never retargeted to a replacement local session, and malformed native cards
+cannot fall back to ordinary text input. Untargeted text cannot answer a pending question
+or permission. Existing ACP callers retain their input format and session-retry behavior.
 
 The typed control mapper validates target, turn and encoded size before dispatch.
 Native shell rejection is explicitly represented as `Deny`, serialized to the pinned

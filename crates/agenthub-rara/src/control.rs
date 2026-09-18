@@ -1,7 +1,16 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{ClientFrame, ControlEnvelope, MAX_FRAME_BYTES, ProtocolError, Provenance};
+
+/// An answer refers to the interaction shown to the operator, never the latest turn.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputTarget {
+    pub runtime_id: String,
+    pub session_id: String,
+    pub turn_id: String,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ControlKind {

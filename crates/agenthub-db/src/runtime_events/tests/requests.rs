@@ -26,6 +26,107 @@ fn accepted(session: &str) -> RuntimeRequestAck {
 }
 
 #[tokio::test]
+async fn input_preparation_commits_one_attempt_and_receipt_without_advancing_native_cursor() {
+    let fixture = Fixture::new().await;
+    let id = fixture
+        .owner
+        .prepare_input_request(
+            intent("input", RuntimeRequestKind::Prompt),
+            1,
+            history("attempt"),
+        )
+        .await
+        .unwrap();
+    assert!(id > 0);
+    assert_eq!(fixture.history_count().await, 1);
+    assert_eq!(
+        fixture
+            .owner
+            .request_receipt("input")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        RuntimeRequestStatus::Prepared
+    );
+    assert_eq!(fixture.stream.cursor().await.unwrap().sequence, 0);
+    assert!(
+        fixture
+            .owner
+            .prepare_input_request(
+                intent("input", RuntimeRequestKind::Prompt),
+                2,
+                history("duplicate")
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(fixture.history_count().await, 1);
+    for kind in [
+        RuntimeRequestKind::CreateSession,
+        RuntimeRequestKind::Query,
+        RuntimeRequestKind::ShellAnswer,
+    ] {
+        assert!(
+            fixture
+                .owner
+                .prepare_input_request(intent("invalid", kind), 2, history("invalid"))
+                .await
+                .is_err()
+        );
+    }
+    assert!(
+        fixture
+            .owner
+            .request_receipt("invalid")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn failed_input_history_insert_rolls_back_the_request_identity() {
+    let fixture = Fixture::new().await;
+    sqlx::query("CREATE TRIGGER reject_input BEFORE INSERT ON agent_events BEGIN SELECT RAISE(ABORT, 'fixture failure'); END")
+        .execute(&fixture.pool).await.unwrap();
+    assert!(
+        fixture
+            .owner
+            .prepare_input_request(
+                intent("input", RuntimeRequestKind::UserAnswer),
+                1,
+                history("attempt")
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        fixture
+            .owner
+            .request_receipt("input")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(fixture.history_count().await, 0);
+    sqlx::query("DROP TRIGGER reject_input")
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    fixture
+        .owner
+        .prepare_input_request(
+            intent("input", RuntimeRequestKind::UserAnswer),
+            2,
+            history("attempt"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(fixture.history_count().await, 1);
+}
+
+#[tokio::test]
 async fn send_permit_is_issued_once_and_ack_is_admission_only() {
     let fixture = Fixture::new().await;
     fixture

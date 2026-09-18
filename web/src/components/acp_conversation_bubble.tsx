@@ -1,3 +1,4 @@
+import type { SubmitRequestUserInput } from "../native_input";
 import React from "react";
 import { ConversationItem, type MessageConversationItem } from "../conversation";
 import { MarkdownBubble } from "./bubbles/markdown_bubble";
@@ -30,7 +31,7 @@ export type AcpConversationBubbleProps = {
   runStatus?: string | null;
   ansi: (input: string) => string;
   markdownRenderVersion: number;
-  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
+  onSubmitRequestUserInput?: SubmitRequestUserInput;
 };
 
 export function shouldAutoCollapseConversationItem(
@@ -166,6 +167,7 @@ export const AcpConversationBubble = React.memo(
         className="user_message"
         text={msg.text}
         media={msg.media}
+        delivery={msg.delivery}
         markdownRenderVersion={markdownRenderVersion}
       />
     );

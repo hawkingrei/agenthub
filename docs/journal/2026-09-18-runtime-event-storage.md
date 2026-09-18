@@ -5,8 +5,8 @@
 The per-agent event database now provides atomic native event deduplication, history
 associations, contiguous replay cursors and durable control-request receipts. This is
 the storage foundation for slice 17. Typed projection and the managed durable event
-consumer are integrated. User input and live permission callbacks remain gated until
-their integration is complete. The full 18-slice objective is not complete.
+consumer, managed text input and fenced browser answers are integrated. Live permission
+callbacks, cancellation and recovery visibility remain open. The full 18-slice objective is not complete.
 
 ## Background
 
@@ -67,8 +67,8 @@ The protocol crate now maps typed controls and native events from the pinned ups
 revision. It adds canonical SHA-256 fingerprints, conversation/tool/plan/question history,
 post-commit state effects, and allowlisted diagnostic observations. Open tool calls retain
 their card identity across approval answer turns, while reused completed call IDs remain
-separate. Question metadata retains the native waiting-turn fence; integrating that fence
-into browser submission and the managed consumer remains required.
+separate. Question metadata retains the native waiting-turn fence; the input checkpoint
+below connects it to browser submission and managed validation.
 
 Validation records for this checkpoint report 34 protocol tests passing, one opt-in native
 process test excluded, and all-target Clippy with warnings denied passing. Cases cover
@@ -84,8 +84,8 @@ cargo clippy --locked --offline -p agenthub-rara --all-targets -- -D warnings
 
 ## Follow-Ups
 
-- Connect prompt/follow-up/answer/cancel controls to durable receipts and existing
-  live permission callbacks. Reconcile abandoned runtime owners only after supervisor
+- Connect cancel/interrupt controls and existing live permission callbacks; add durable
+  receipt/cursor recovery visibility. Reconcile abandoned runtime owners only after supervisor
   evidence establishes their process lifetime has ended.
 - Prove disconnect around ACK, stale permissions, output compatibility and a native
   process round trip, then publish/validate the complete slice 17 PR.
@@ -120,3 +120,46 @@ It creates a session and consumes initial events without issuing a paid model re
 The upstream prerequisite PR #885 was merged into its main branch on 2026-09-17;
 the downstream prerequisite PR #1163 was merged into its dependency branch on
 2026-09-18. Neither merge implies that the complete downstream stack is in main.
+
+## Managed Input And Browser Checkpoint
+
+Prompt, follow-up and explicit user answers now persist one attempted user message and
+prepared receipt atomically. Caller message IDs are single-use request identities. Owned
+background tasks complete ACK persistence after caller disconnects; ambiguous transport
+failure stays `outcome_unknown`. Native question answers require their original runtime,
+native session and waiting turn, and cannot be silently redirected after session mismatch.
+
+The web projection matches receipts to their owned user messages even when receipt/history
+pages arrive out of order. Identical text with distinct native request IDs remains distinct.
+User-message conversion and bubble props now preserve delivery status. Malformed native
+question targets disable submission; existing ACP submissions retain their callback shape.
+
+Validation records: 22 focused database storage cases and database Clippy passed; 17 focused
+managed/consumer cases passed (one opt-in native case excluded); 132 manager regressions
+passed (six excluded); root library/test Clippy passed. The web suite passed 1,588 tests
+across 171 files, followed by 115 focused rendering/input tests after the final user-bubble
+prop fix. Type checking, lint and production build passed on that final web revision.
+
+```bash
+cargo test --offline --locked -p agenthub-db runtime_events:: -- --test-threads=1
+cargo test --offline --locked -p agenthub --lib agent::manager:: -- --test-threads=1
+cargo clippy --offline --locked -p agenthub --lib --tests -- -D warnings
+cd web
+npx tsc --noEmit
+npm test -- --maxWorkers=2
+npx vitest run src/native_input.test.ts src/components/native_input.test.tsx src/components/use_agents_workbench_panel.test.tsx src/acp_conversation.interaction.test.tsx src/acp_conversation_render.test.tsx src/pages/team_member_acp_panel.test.tsx
+npm run lint
+npm run build
+```
+
+Chrome DevTools MCP inspected the actual member thread page with isolated synthetic API
+data at `/workspace/teams/team-native-input/members/agent-worker-1/thread`, using local
+session `session-team-native-input-agent-worker-1`. Before the change the accepted receipt
+had no visible label and the answer POST lacked its native target. After the change the
+same message displayed `Accepted`, and the POST retained `fixture-runtime`, `native-session`
+and `waiting-turn`. An injected session-mismatch response produced one attempt, retained
+the original target and displayed the error in the card without retrying the new session.
+The fixture lacks live SSE and prompt-default routes: existing fallback refreshes and 404
+console entries remained, with no new JavaScript exception. Bounded `before_id=1` requests
+returned an empty page; no deeper backfill was introduced. This is local fixture validation,
+not production or native model-call evidence. Temporary browser processes were cleaned up.

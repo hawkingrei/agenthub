@@ -1,6 +1,6 @@
 use agenthub_db::runtime_events::{
     RuntimeEventStore, RuntimeRejectionCode, RuntimeRequestAck, RuntimeRequestIntent,
-    RuntimeRequestKind, RuntimeSubmissionFailure,
+    RuntimeRequestKind, RuntimeSendPermit, RuntimeSubmissionFailure,
 };
 use agenthub_rara::{
     Client, ClientFrame, ConnectionError, ControlKind, ControlRequest, RequestResult,
@@ -21,17 +21,7 @@ pub(super) async fn control(
 ) -> anyhow::Result<RuntimeRequestAck> {
     let request_id = Uuid::now_v7().to_string();
     let frame = request.frame(store.runtime_id(), &request_id, session)?;
-    let kind = match request.kind() {
-        ControlKind::CreateSession => RuntimeRequestKind::CreateSession,
-        ControlKind::Query => RuntimeRequestKind::Query,
-        ControlKind::Prompt => RuntimeRequestKind::Prompt,
-        ControlKind::FollowUp => RuntimeRequestKind::FollowUp,
-        ControlKind::Cancel => RuntimeRequestKind::Cancel,
-        ControlKind::Interrupt => RuntimeRequestKind::Interrupt,
-        ControlKind::UserAnswer => RuntimeRequestKind::UserAnswer,
-        ControlKind::PlanAnswer => RuntimeRequestKind::PlanAnswer,
-        ControlKind::ShellAnswer => RuntimeRequestKind::ShellAnswer,
-    };
+    let kind = kind(request.kind());
     let session = session.map(str::to_owned);
     let turn = request.expected_turn_id().map(str::to_owned);
     let client = client.clone();
@@ -53,6 +43,20 @@ pub(super) async fn control(
     response
         .await
         .map_err(|_| anyhow::anyhow!("direct control receipt task stopped"))?
+}
+
+pub(super) fn kind(kind: ControlKind) -> RuntimeRequestKind {
+    match kind {
+        ControlKind::CreateSession => RuntimeRequestKind::CreateSession,
+        ControlKind::Query => RuntimeRequestKind::Query,
+        ControlKind::Prompt => RuntimeRequestKind::Prompt,
+        ControlKind::FollowUp => RuntimeRequestKind::FollowUp,
+        ControlKind::Cancel => RuntimeRequestKind::Cancel,
+        ControlKind::Interrupt => RuntimeRequestKind::Interrupt,
+        ControlKind::UserAnswer => RuntimeRequestKind::UserAnswer,
+        ControlKind::PlanAnswer => RuntimeRequestKind::PlanAnswer,
+        ControlKind::ShellAnswer => RuntimeRequestKind::ShellAnswer,
+    }
 }
 
 pub(super) async fn submit(
@@ -78,6 +82,19 @@ pub(super) async fn submit(
     let permit = store
         .mark_request_sent(frame.request_id(), Utc::now().timestamp())
         .await?;
+    send_prepared(client, store, frame, permit).await
+}
+
+pub(super) async fn send_prepared(
+    client: &Client,
+    store: &RuntimeEventStore,
+    frame: ClientFrame,
+    permit: RuntimeSendPermit,
+) -> anyhow::Result<RuntimeRequestAck> {
+    anyhow::ensure!(
+        frame.request_id() == permit.request_id(),
+        "direct request permit identity mismatch"
+    );
     match client.request(frame).await {
         Ok(ack) => {
             let result = async {

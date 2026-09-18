@@ -7,6 +7,8 @@ use super::*;
 use crate::agent::AgentStatus;
 use crate::agent::manager::executor::{AgentExecutor, LocalExecutionRequest, SpawnedLocalProcess};
 
+mod input;
+
 const PEER: &str = r#"#!/usr/bin/env python3
 import json, os, pathlib, signal, subprocess, sys, time
 root = pathlib.Path.cwd()
@@ -15,6 +17,8 @@ root = pathlib.Path.cwd()
 mode = (root / 'scenario').read_text()
 runtime = 'managed-runtime'
 native = 'native-session'
+sequence = 1
+inputs = 0
 def emit(kind, payload):
     print(json.dumps({'type': kind, 'payload': payload}), flush=True)
 def delta(sequence, text):
@@ -71,7 +75,37 @@ for line in sys.stdin:
         continue
     if request['type'] == 'control':
         envelope = request['payload']['envelope']
-        assert envelope['request']['payload']['type'] == 'create_session'
+        operation = envelope['request']['payload']['type']
+        if operation != 'create_session':
+            assert envelope['provenance']['session_id'] == native
+            inputs += 1
+            with (root / 'requests.jsonl').open('a') as record:
+                record.write(json.dumps(request) + '\n')
+            if mode == 'input_drop':
+                sys.exit(0)
+            if mode == 'input_delayed':
+                while not (root / 'release-ack').exists():
+                    time.sleep(0.01)
+            if mode == 'input_reject':
+                result = {'status': 'rejected', 'code': 'busy', 'message': 'private-diagnostic-token'}
+            elif operation == 'submit_follow_up':
+                result = {'status': 'queued', 'session_id': native}
+            else:
+                result = {'status': 'accepted', 'session_id': native, 'turn_id': 'turn-' + str(inputs), 'last_sequence': sequence}
+            emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'], 'result': result})
+            if result['status'] == 'accepted':
+                sequence += 1
+                emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                    'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-' + str(inputs),
+                    'provenance': {'session_id': None}, 'event': {'type': 'session', 'payload': {'type': 'turn_started'}}}})
+                if mode == 'input_question':
+                    sequence += 1
+                    emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+                        'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-' + str(inputs),
+                        'provenance': {'session_id': None}, 'event': {'type': 'input', 'payload': {'type': 'requested', 'payload': {
+                            'pending': {'turn_id': 'turn-' + str(inputs), 'kind': {'type': 'user', 'payload': {
+                                'question': 'Choose a path', 'options': [['alpha', 'First path']], 'note': None}}}}}}}})
+            continue
         assert envelope['provenance']['session_id'] is None
         if mode == 'create_drop':
             sys.exit(0)
@@ -212,17 +246,22 @@ async fn managed_start_drains_stderr_and_preserves_protocol_ownership() {
         .map(Value::from)
     );
     assert_eq!(args[6], fixture.directory.to_str().unwrap());
-    let error = fixture
+    fixture
         .manager
         .send_input(
             &fixture.agent_id,
-            "must not enter stdin",
-            None,
+            "native prompt",
+            Some("prompt"),
             Some(&session),
         )
         .await
-        .unwrap_err();
-    assert!(error.to_string().contains("input mapping is unavailable"));
+        .unwrap();
+    let requests = std::fs::read_to_string(fixture.directory.join("requests.jsonl")).unwrap();
+    let request: Value = serde_json::from_str(requests.trim()).unwrap();
+    assert_eq!(
+        request["payload"]["envelope"]["request"]["payload"]["type"],
+        "submit_user_prompt"
+    );
     let (first, second) = tokio::join!(
         fixture.manager.stop_agent(&fixture.agent_id),
         fixture.manager.stop_agent(&fixture.agent_id),

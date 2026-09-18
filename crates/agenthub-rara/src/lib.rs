@@ -12,7 +12,7 @@ pub use connection::{
     Client, Connection, ConnectionError, ConnectionOptions, ConnectionStatus, OutputFrame,
     ShutdownReceipt,
 };
-pub use control::{ControlKind, ControlRequest, PlanDecision, ShellDecision};
+pub use control::{ControlKind, ControlRequest, InputTarget, PlanDecision, ShellDecision};
 pub use events::{
     EventEffect, EventProjection, EventProjector, PendingInput, PendingInputKind, ProjectedHistory,
     SessionPhase, SessionSnapshot, TurnEnd,

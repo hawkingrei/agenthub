@@ -120,6 +120,44 @@ impl RuntimeEventStore {
         intent: RuntimeRequestIntent<'_>,
         now: i64,
     ) -> anyhow::Result<()> {
+        self.prepare_with_history(intent, now, None)
+            .await
+            .map(|_| ())
+    }
+
+    /// Atomically attribute a visible input attempt to its single-use request identity.
+    pub async fn prepare_input_request(
+        &self,
+        intent: RuntimeRequestIntent<'_>,
+        now: i64,
+        history: super::RuntimeHistoryEntry<'_>,
+    ) -> anyhow::Result<i64> {
+        anyhow::ensure!(
+            matches!(
+                intent.kind,
+                RuntimeRequestKind::Prompt
+                    | RuntimeRequestKind::FollowUp
+                    | RuntimeRequestKind::UserAnswer
+            ),
+            RuntimeEventError::InvalidTarget
+        );
+        validate_id(history.seq)?;
+        anyhow::ensure!(
+            matches!(history.stream, agenthub_agent_domain::OutputStream::Acp)
+                && history.message.len() <= 2 * 1024 * 1024,
+            RuntimeEventError::ProjectionLimit
+        );
+        self.prepare_with_history(intent, now, Some(history))
+            .await?
+            .ok_or_else(|| RuntimeEventError::ReceiptConflict.into())
+    }
+
+    async fn prepare_with_history(
+        &self,
+        intent: RuntimeRequestIntent<'_>,
+        now: i64,
+        history: Option<super::RuntimeHistoryEntry<'_>>,
+    ) -> anyhow::Result<Option<i64>> {
         validate_id(intent.request_id)?;
         for id in [intent.target_session_id, intent.expected_turn_id]
             .into_iter()
@@ -160,8 +198,15 @@ impl RuntimeEventStore {
             .bind(intent.target_session_id).bind(intent.expected_turn_id).bind(now).bind(now)
             .execute(&mut *tx).await?.rows_affected();
         anyhow::ensure!(changed == 1, RuntimeEventError::RequestReused);
+        let history_id = if let Some(entry) = history {
+            Some(sqlx::query("INSERT INTO agent_events(session_id, seq, ts, stream, message) VALUES (?, ?, ?, 'acp', ?)")
+                .bind(&self.local_session_id).bind(entry.seq).bind(entry.ts).bind(entry.message)
+                .execute(&mut *tx).await?.last_insert_rowid())
+        } else {
+            None
+        };
         tx.commit().await?;
-        Ok(())
+        Ok(history_id)
     }
 
     pub async fn mark_request_sent(

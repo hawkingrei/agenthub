@@ -163,6 +163,7 @@ pub struct SendInputRequest {
     pub input: String,
     pub message_id: Option<String>,
     pub session_id: Option<String>,
+    pub native_input: Option<agenthub_rara::InputTarget>,
     #[serde(default)]
     pub images: Vec<SendInputImageRequest>,
 }
@@ -535,12 +536,13 @@ async fn send_input(
     let session_id = normalize_optional_request_field("session_id", payload.session_id)?;
     match state
         .agents
-        .send_input_with_images(
+        .send_input_with_native_target(
             &agent_id,
             &input,
             &images,
             message_id.as_deref(),
             session_id.as_deref(),
+            payload.native_input.as_ref(),
         )
         .await
     {
@@ -548,7 +550,11 @@ async fn send_input(
         Err(err) => {
             if let Some(send_error) = err.downcast_ref::<AgentSendInputError>() {
                 return match send_error {
-                    AgentSendInputError::SessionMismatch { .. } => {
+                    AgentSendInputError::SessionMismatch { .. }
+                    | AgentSendInputError::NativeInputMismatch
+                    | AgentSendInputError::NativeInputRequired
+                    | AgentSendInputError::NativeRequestReused { .. }
+                    | AgentSendInputError::NativeInputNotAccepted { .. } => {
                         Err(ApiError::conflict(&err.to_string()))
                     }
                     AgentSendInputError::MultimodalUnsupported => {

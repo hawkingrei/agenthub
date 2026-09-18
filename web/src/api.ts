@@ -1,3 +1,4 @@
+import type { NativeInputTarget } from "./native_input";
 import {
   clearAuthAndRedirect,
   shouldRedirectOnAuthError,
@@ -1569,11 +1570,12 @@ export const api = {
     input: string,
     message_id?: string,
     session_id?: string,
-    images: AgentInputImage[] = []
+    images: AgentInputImage[] = [],
+    native_input?: NativeInputTarget
   ) =>
     apiFetch<{ status: string }>(`/api/agents/${encodePathSegment(id)}/input`, token, {
       method: "POST",
-      body: JSON.stringify({ input, message_id, session_id, images }),
+      body: JSON.stringify({ input, message_id, session_id, images, native_input }),
     }),
   createAgent: (token: string, payload: AgentConfig) =>
     apiFetch<AgentRecord>("/api/agents", token, {
