@@ -8,6 +8,7 @@ use agenthub_db::loop_runtime::LoopPolicyUpdate;
 
 use super::*;
 
+mod apps;
 mod browser;
 mod mcp;
 mod mem;
@@ -18,6 +19,8 @@ import json, os, subprocess, sys, time, uuid
 log_path, mode, control_binary = sys.argv[1:]
 if mode == 'mem':
     import mem_provider
+if mode == 'apps':
+    import app_provider
 shim = None
 def mcp_call(message):
     shim.stdin.write(json.dumps(message) + '\n')
@@ -47,6 +50,8 @@ for line in sys.stdin:
                 time.sleep(0.01)
         if mode == 'mem':
             mem_provider.start(request['params'], log_path)
+        if mode == 'apps':
+            app_provider.start(request['params'], log_path)
         if mode == 'mcp':
             private_keys = ['TEST_MEM_UPSTREAM_KEY', 'TEST_OTHER_MEM_KEY', 'NMEM_API_KEY', 'NMEM_API_URL', 'NOWLEDGE_MEM_HEADERS', 'MCP_HTTP_HEADERS']
             assert all(key not in os.environ for key in private_keys)
@@ -79,6 +84,8 @@ for line in sys.stdin:
                 log.write(json.dumps({'role_prompt': request['params']['prompt']}) + '\n')
         if mode == 'mem':
             mem_provider.work(request['params'], actor, log_path)
+        if mode == 'apps':
+            app_provider.work(actor, log_path)
         if mode == 'mcp':
             result = mcp_call({'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'fixture_write','arguments':{'body':'private-business-body'}}})
             assert result['result']['structuredContent']['written'] is True
@@ -182,7 +189,7 @@ for line in sys.stdin:
             with open(path, 'w') as output:
                 json.dump(outcome, output)
             actor('loop-finish', '--outcome-file', path)
-        if mode in ['finish', 'mcp', 'mem', 'role-pin']:
+        if mode in ['finish', 'mcp', 'mem', 'role-pin', 'apps']:
             for command in ['team-members', 'team-tasks', 'inbox']:
                 recovery = subprocess.run([control_binary, 'actor', command, '--json'], capture_output=True, text=True)
                 if recovery.returncode:
@@ -243,6 +250,9 @@ impl Fixture {
         if mode == "mem" {
             std::fs::write(directory.join("mem_provider.py"), mem::provider::SCRIPT).unwrap();
         }
+        if mode == "apps" {
+            std::fs::write(directory.join("app_provider.py"), apps::PROVIDER).unwrap();
+        }
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
         let control = crate::agenthub_binary::resolve_agenthub_binary_path().unwrap();
         for actor in ["planner", "worker"] {
@@ -301,6 +311,8 @@ impl Fixture {
                 )])),
             });
             state.agents = Arc::new((*state.agents).clone().with_loop_app_config(config.clone()));
+        }
+        if endpoint.is_some() || mode == "apps" {
             agenthub_db::mcp_operations::migrate_mcp_operations(&state.db)
                 .await
                 .unwrap();

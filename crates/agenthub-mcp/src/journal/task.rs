@@ -11,7 +11,7 @@ use agenthub_db::mcp_operations::{
 use crate::task::TaskObservation;
 
 enum TaskPermit {
-    Lookup(McpTaskLookupPermit),
+    Lookup(McpTaskLookupPermit, Option<ToolResultLocation>),
     Cancellation(McpTaskCancellationPermit),
     Update(McpTaskUpdatePermit),
 }
@@ -19,14 +19,14 @@ enum TaskPermit {
 impl TaskPermit {
     fn operation_id(&self) -> &str {
         match self {
-            Self::Lookup(p) => p.operation_id(),
+            Self::Lookup(p, _) => p.operation_id(),
             Self::Cancellation(p) => p.operation_id(),
             Self::Update(p) => p.operation_id(),
         }
     }
     fn attempt_number(&self) -> u32 {
         match self {
-            Self::Lookup(p) => p.attempt_number(),
+            Self::Lookup(p, _) => p.attempt_number(),
             Self::Cancellation(p) => p.attempt_number(),
             Self::Update(p) => p.attempt_number(),
         }
@@ -44,9 +44,10 @@ impl JournaledMcpClient {
             .begin_task_lookup(&call.executor, &call.authority, &call.input, now())
             .await
             .map_err(journal_error)?;
+        let location = ToolResultLocation::lookup(&call.input);
         self.run_task_request(
             call,
-            TaskPermit::Lookup(permit),
+            TaskPermit::Lookup(permit, location),
             events,
             crate::task::lookup_observation,
         )
@@ -101,7 +102,7 @@ impl JournaledMcpClient {
         observation: &TaskObservation,
     ) -> Result<(), McpCallError> {
         match permit {
-            TaskPermit::Lookup(permit) => {
+            TaskPermit::Lookup(permit, _) => {
                 self.journal
                     .complete_task_lookup_with_inputs(
                         permit,
@@ -145,6 +146,9 @@ impl JournaledMcpClient {
             let member = matching_response(&response, &call.response_id, http_status >= 400)?
                 .ok_or(McpTransportError::InvalidResponse)?;
             let observation = observe(&call.input, member)?;
+            if let TaskPermit::Lookup(permit, Some(location)) = &permit {
+                self.validate_result(permit.tool_name(), member, *location)?;
+            }
             let mut receipt = member.clone();
             receipt.as_object_mut().unwrap().remove("id");
             let response_digest = digest("mcp-task-query-response-v1", &receipt)?;

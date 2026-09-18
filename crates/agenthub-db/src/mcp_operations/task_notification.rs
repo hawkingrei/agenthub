@@ -16,9 +16,15 @@ pub struct McpTaskNotificationPermit {
     pub(super) attempt_number: u32,
     pub(super) activation_id: String,
     pub(super) receipt: McpTaskReceipt,
+    pub(super) tool_name: String,
 }
 
 impl McpTaskNotificationPermit {
+    /// Trusted tool identity from the original admitted operation, never notification metadata.
+    pub fn tool_name(&self) -> &str {
+        &self.tool_name
+    }
+
     pub fn receipt(&self) -> &McpTaskReceipt {
         &self.receipt
     }
@@ -47,6 +53,7 @@ impl McpOperationStore {
             attempt_number: operation.attempt_count,
             activation_id,
             receipt: receipt.clone(),
+            tool_name: operation.intent.tool_name,
         })
     }
 

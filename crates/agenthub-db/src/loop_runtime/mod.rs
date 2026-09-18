@@ -27,6 +27,8 @@ use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
 use thiserror::Error;
 
 pub use policy::LoopPolicyUpdate;
+pub(crate) use policy::require_member;
+pub(crate) use reservation::require_live_reservation;
 pub use schema::migrate_loop_runtime;
 pub use tool_observation::LoopToolObservation;
 

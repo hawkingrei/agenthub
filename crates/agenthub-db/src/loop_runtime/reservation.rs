@@ -112,7 +112,7 @@ pub(super) async fn reserve_in_transaction(
     })
 }
 
-pub(super) async fn require_live_reservation(
+pub(crate) async fn require_live_reservation(
     tx: &mut Transaction<'_, Sqlite>,
     expected: &LoopReservation,
     now: i64,

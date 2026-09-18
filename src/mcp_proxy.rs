@@ -1,7 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use agenthub_agent_domain::loop_runtime::LoopReservation;
-use agenthub_db::mcp_operations::McpOperationStore;
+use agenthub_db::{
+    app_registry::{AppActivationPin, AppRegistry},
+    mcp_operations::McpOperationStore,
+};
 use agenthub_mcp::{
     bridge::{McpProxyBinding, McpProxySession},
     budget::McpProxyBudget,
@@ -10,6 +13,7 @@ use agenthub_mcp::{
 use tokio::sync::Mutex;
 use tonic::Status;
 
+pub(crate) mod apps;
 pub(crate) mod configured;
 pub(crate) mod context;
 
@@ -37,12 +41,26 @@ impl Scope {
     }
 }
 
-type Mounts = HashMap<(Scope, String), Arc<McpProxyBinding>>;
-type Sessions = HashMap<String, (Scope, Arc<McpProxySession>)>;
+#[derive(Clone)]
+struct Mount {
+    binding: Arc<McpProxyBinding>,
+    app: Option<AppActivationPin>,
+}
+
+#[derive(Clone)]
+struct Session {
+    scope: Scope,
+    proxy: Arc<McpProxySession>,
+    app: Option<AppActivationPin>,
+}
+
+type Mounts = HashMap<(Scope, String), Mount>;
+type Sessions = HashMap<String, Session>;
 
 pub(crate) struct McpProxyHub {
     pub journal: JournaledMcpClient,
     pub budget: Arc<McpProxyBudget>,
+    apps: AppRegistry,
     mounts: Mutex<Mounts>,
     sessions: Mutex<Sessions>,
 }
@@ -51,6 +69,7 @@ impl McpProxyHub {
     /// Mounts are resolved by trusted launch configuration, never by a provider RPC payload.
     pub(crate) fn new(
         journal: McpOperationStore,
+        apps: AppRegistry,
         mounts: Vec<(LoopReservation, Arc<McpProxyBinding>)>,
     ) -> anyhow::Result<Self> {
         anyhow::ensure!(mounts.len() <= 1024, "too many MCP bindings");
@@ -61,7 +80,7 @@ impl McpProxyHub {
                 binding.server_id().to_owned(),
             );
             anyhow::ensure!(
-                index.insert(key, binding).is_none(),
+                index.insert(key, Mount { binding, app: None }).is_none(),
                 "duplicate MCP binding"
             );
         }
@@ -69,6 +88,7 @@ impl McpProxyHub {
         Ok(Self {
             journal: JournaledMcpClient::new(journal, budget.delivery.clone()),
             budget,
+            apps,
             mounts: Mutex::new(index),
             sessions: Mutex::new(HashMap::new()),
         })
@@ -83,7 +103,7 @@ impl McpProxyHub {
             return Err(Status::invalid_argument("invalid MCP server reference"));
         }
         let scope = Scope::from_executor(executor)?;
-        let binding = self
+        let mount = self
             .mounts
             .lock()
             .await
@@ -92,13 +112,14 @@ impl McpProxyHub {
             .ok_or_else(|| {
                 Status::permission_denied("MCP binding is not available to this activation")
             })?;
+        self.authorize_app(executor, mount.app.as_ref()).await?;
         let mut sessions = self.sessions.lock().await;
         let mut retired = Vec::new();
-        sessions.retain(|_, (_, session)| {
-            if session.is_active() {
+        sessions.retain(|_, session| {
+            if session.proxy.is_active() {
                 true
             } else {
-                retired.push(session.clone());
+                retired.push(session.proxy.clone());
                 false
             }
         });
@@ -114,23 +135,30 @@ impl McpProxyHub {
         if sessions.len() >= 128
             || sessions
                 .values()
-                .filter(|(owner, _)| owner == &scope)
+                .filter(|session| session.scope == scope)
                 .count()
-                >= 8
+                >= 32
         {
             return Err(Status::resource_exhausted("MCP session limit reached"));
         }
         let id = uuid::Uuid::new_v4().to_string();
         let session = McpProxySession::with_task_observer(
             id.clone(),
-            binding,
+            mount.binding,
             self.budget.clone(),
             Some(observer),
         );
         if !session.is_active() {
             return Err(Status::permission_denied("MCP binding has been revoked"));
         }
-        sessions.insert(id.clone(), (scope, session));
+        sessions.insert(
+            id.clone(),
+            Session {
+                scope,
+                proxy: session,
+                app: mount.app,
+            },
+        );
         Ok(id)
     }
 
@@ -140,16 +168,43 @@ impl McpProxyHub {
         executor: &LoopReservation,
         binding: Arc<McpProxyBinding>,
     ) -> anyhow::Result<()> {
+        self.mount_binding(executor, Mount { binding, app: None })
+            .await
+    }
+
+    pub(crate) async fn mount_app(
+        &self,
+        executor: &LoopReservation,
+        app: apps::AppLaunchBinding,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            executor.activation_id.as_deref() == Some(&app.pin.activation_id)
+                && executor.team_id == app.pin.team_id
+                && executor.actor_id == app.pin.actor_id
+                && executor.generation >= app.pin.pinned_generation,
+            "app mount does not match its activation"
+        );
+        self.mount_binding(
+            executor,
+            Mount {
+                binding: app.binding,
+                app: Some(app.pin),
+            },
+        )
+        .await
+    }
+
+    async fn mount_binding(&self, executor: &LoopReservation, mount: Mount) -> anyhow::Result<()> {
         let key = (
             Scope::from_executor(executor)?,
-            binding.server_id().to_owned(),
+            mount.binding.server_id().to_owned(),
         );
         let mut mounts = self.mounts.lock().await;
         anyhow::ensure!(
             mounts.len() < 1024 && !mounts.contains_key(&key),
             "MCP binding cannot be mounted"
         );
-        mounts.insert(key, binding);
+        mounts.insert(key, mount);
         Ok(())
     }
 
@@ -158,6 +213,37 @@ impl McpProxyHub {
         executor: &LoopReservation,
         id: &str,
     ) -> Result<Arc<McpProxySession>, Status> {
+        let session = self.scoped_session(executor, id).await?;
+        if let Err(error) = self.authorize_app(executor, session.app.as_ref()).await {
+            session.proxy.close();
+            return Err(error);
+        }
+        Ok(session.proxy)
+    }
+
+    async fn authorize_app(
+        &self,
+        executor: &LoopReservation,
+        pin: Option<&AppActivationPin>,
+    ) -> Result<(), Status> {
+        if let Some(pin) = pin {
+            let current = self
+                .apps
+                .authorize_pin(executor, &pin.app_id, true, chrono::Utc::now().timestamp())
+                .await
+                .map_err(|_| Status::permission_denied("App authorization is no longer active"))?;
+            if &current != pin {
+                return Err(Status::permission_denied("App activation pin changed"));
+            }
+        }
+        Ok(())
+    }
+
+    async fn scoped_session(
+        &self,
+        executor: &LoopReservation,
+        id: &str,
+    ) -> Result<Session, Status> {
         if id.len() > 128 {
             return Err(Status::invalid_argument("invalid MCP session reference"));
         }
@@ -166,16 +252,17 @@ impl McpProxyHub {
             .lock()
             .await
             .get(id)
-            .filter(|(owner, _)| owner == &scope)
-            .map(|(_, session)| session.clone())
+            .filter(|session| session.scope == scope)
+            .cloned()
             .ok_or_else(|| {
                 Status::permission_denied("MCP session is not available to this activation")
             })
     }
 
     pub(crate) async fn close(&self, executor: &LoopReservation, id: &str) -> Result<(), Status> {
-        let session = self.session(executor, id).await?;
-        let result = session.shutdown().await;
+        // Revocation denies new work, but must not prevent scoped transport cleanup.
+        let session = self.scoped_session(executor, id).await?;
+        let result = session.proxy.shutdown().await;
         self.sessions.lock().await.remove(id);
         result.map_err(|_| Status::unavailable("MCP upstream session termination failed"))
     }
@@ -189,10 +276,10 @@ impl McpProxyHub {
             .await
             .retain(|(owner, _), _| owner != &scope);
         let mut removed = Vec::new();
-        self.sessions.lock().await.retain(|_, (owner, session)| {
-            if owner == &scope {
-                session.close();
-                removed.push(session.clone());
+        self.sessions.lock().await.retain(|_, session| {
+            if session.scope == scope {
+                session.proxy.close();
+                removed.push(session.proxy.clone());
                 false
             } else {
                 true

@@ -106,7 +106,7 @@ impl AcpLoopLaunchConfig {
         binding_fingerprint: &str,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.mcp_proxies.len() < 8
+            self.mcp_proxies.len() < 32
                 && executable.is_absolute()
                 && credential_file.is_absolute()
                 && !server_id.is_empty()

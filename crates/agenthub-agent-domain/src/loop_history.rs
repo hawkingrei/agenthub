@@ -45,6 +45,8 @@ pub struct LoopToolSummary {
     pub surface: LoopToolSurface,
     pub tool_name: String,
     pub target_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<LoopAppToolAttribution>,
     pub operation_id: Option<String>,
     pub attempt_number: Option<u32>,
     pub status: LoopToolStatus,
@@ -52,6 +54,13 @@ pub struct LoopToolSummary {
     pub completed_at: Option<i64>,
     /// Measured with a process-local monotonic clock; absent if no completion was observed.
     pub duration_ms: Option<i64>,
+}
+
+/// Historical configuration attribution, never a live invocation grant.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LoopAppToolAttribution {
+    pub app_id: String,
+    pub version: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

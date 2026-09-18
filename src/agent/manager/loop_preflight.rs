@@ -139,6 +139,27 @@ impl AgentManager {
                 capabilities.push("nowledge_mem");
             }
         }
+        let activation_id: Option<String> = sqlx::query_scalar("SELECT r.activation_id FROM loop_execution_reservations r JOIN loop_policies p ON p.actor_id = r.actor_id WHERE p.team_id = ? AND r.actor_id = ?")
+            .bind(team_id).bind(actor_id).fetch_optional(&self.db).await?.flatten();
+        match crate::mcp_proxy::apps::validate_configuration(
+            &agenthub_db::app_registry::AppRegistry::new(self.db.clone()),
+            team_id,
+            actor_id,
+            activation_id.as_deref(),
+            |key| std::env::var(key).ok(),
+        )
+        .await
+        {
+            Ok(true)
+                if self.mcp_proxy().is_err()
+                    || crate::mcp_proxy::configured::shim_executable().is_err() =>
+            {
+                blockers.push("app_proxy_unavailable");
+            }
+            Ok(true) => capabilities.push("app_tools"),
+            Ok(false) => {}
+            Err(_) => blockers.push("app_binding_unavailable"),
+        }
         if let Some(required) = spec.get("required_capabilities") {
             if let Some(required) = required.as_array() {
                 for capability in required {

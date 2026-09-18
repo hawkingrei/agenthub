@@ -1,5 +1,48 @@
 use super::*;
 
+#[tokio::test]
+async fn deferred_input_receipts_skip_output_schema_but_completed_continuations_do_not() {
+    let fixture = Fixture::new().await;
+    let executor = fixture.running().await;
+    let upstream = Upstream::new(fixture.pool.clone()).await;
+    let binding = upstream.binding(TrustedReplayPolicy::NonIdempotent);
+    let client = super::result_validation::validating_client(&fixture);
+    *upstream.state.response.lock().unwrap() = required("private-state");
+    let (events, _receiver) = mpsc::channel(8);
+    let first = client
+        .run(modern_call(&binding, &executor, modern_message(1)), events)
+        .await
+        .unwrap();
+    assert!(matches!(first.completion, McpCompletion::Deferred { .. }));
+    let mut follow = modern_message(2);
+    follow["params"]["requestState"] = "private-state".into();
+    follow["params"]["inputResponses"] =
+        json!({"private-confirmation":{"action":"accept","content":{"confirmed":true}}});
+    *upstream.state.response.lock().unwrap() = json!({"resultType":"complete","content":[],"structuredContent":{"saved":"private-invalid"}});
+    let (events, _receiver) = mpsc::channel(8);
+    assert_eq!(
+        client
+            .run(modern_call(&binding, &executor, follow), events)
+            .await
+            .err(),
+        Some(McpCallError::Transport(McpTransportError::InvalidResponse))
+    );
+    assert_eq!(
+        fixture.operations().await[0].status,
+        McpOperationStatus::OutcomeUnknown
+    );
+    let (events, _receiver) = mpsc::channel(8);
+    assert!(
+        client
+            .run(modern_call(&binding, &executor, modern_message(3)), events)
+            .await
+            .is_err()
+    );
+    assert_eq!(upstream.count(), 2);
+    drop(upstream);
+    fixture.close().await;
+}
+
 fn modern_message(id: i64) -> Value {
     let mut request = message(id);
     request["params"]["_meta"] = json!({

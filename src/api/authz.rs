@@ -59,10 +59,13 @@ mod tests {
         "user.role != \"viewer\"",
     ];
 
-    const API_SOURCES: [(&str, &str); 13] = [
+    const API_SOURCES: [(&str, &str); 16] = [
         ("admin.rs", include_str!("admin.rs")),
         ("agent_nodes.rs", include_str!("agent_nodes.rs")),
         ("agents.rs", include_str!("agents.rs")),
+        ("apps.rs", include_str!("apps.rs")),
+        ("apps/registration.rs", include_str!("apps/registration.rs")),
+        ("apps/bindings.rs", include_str!("apps/bindings.rs")),
         ("auth.rs", include_str!("auth.rs")),
         ("diagnostics.rs", include_str!("diagnostics.rs")),
         ("error.rs", include_str!("error.rs")),

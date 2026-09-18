@@ -3,6 +3,7 @@ mod cancellation;
 mod input;
 mod legacy_notification;
 mod notification;
+mod result_validation;
 
 fn task_state(version: ProtocolVersion, status: &str) -> Value {
     let mut task = json!({"taskId":"private-task-id","status":status,
@@ -36,6 +37,17 @@ async fn create_task(
     binding: &McpBinding,
     version: ProtocolVersion,
 ) -> McpCallResult {
+    run(fixture, prepare_task(upstream, executor, binding, version))
+        .await
+        .unwrap()
+}
+
+fn prepare_task(
+    upstream: &Upstream,
+    executor: &LoopReservation,
+    binding: &McpBinding,
+    version: ProtocolVersion,
+) -> PreparedToolCall {
     let mut request = message(1);
     metadata(&mut request, version);
     let mut task = task_state(version, "working");
@@ -46,7 +58,7 @@ async fn create_task(
         task = json!({"task":task});
     }
     *upstream.state.response.lock().unwrap() = task;
-    let call = binding
+    binding
         .prepare_call(
             &task_catalog(version),
             &McpCallContext {
@@ -63,8 +75,7 @@ async fn create_task(
                 Ok(arguments)
             },
         )
-        .unwrap();
-    run(fixture, call).await.unwrap()
+        .unwrap()
 }
 
 fn query(

@@ -100,6 +100,19 @@ async fn loop_tool_history_preserves_incomplete_boundaries_and_late_completion_a
     ] {
         assert!(!encoded.contains(private), "{private}");
     }
+    sqlx::query("DROP TABLE app_activation_pins")
+        .execute(&reopened.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened
+            .activation_tool_history("team", "worker", id, None, 100)
+            .await
+            .unwrap()
+            .unwrap(),
+        page,
+        "older control databases remain inspectable without App registry tables"
+    );
     reopened.pool.close().await;
     fixture.close().await;
 }

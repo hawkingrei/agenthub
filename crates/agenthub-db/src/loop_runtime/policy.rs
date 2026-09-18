@@ -104,7 +104,7 @@ impl LoopStore {
     }
 }
 
-pub(super) async fn require_member(
+pub(crate) async fn require_member(
     tx: &mut Transaction<'_, Sqlite>,
     team_id: &str,
     actor_id: &str,

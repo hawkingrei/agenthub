@@ -112,7 +112,7 @@ impl McpProxySession {
             .insert(request_id, cancel);
         Ok(PreparedProxySubscription {
             session: self.clone(),
-            journal,
+            journal: journal.validating(self.binding.validate_tool_result.clone()),
             request,
             tasks,
             cancelled,

@@ -35,6 +35,7 @@ use crate::loop_credentials::{
 };
 
 mod access;
+mod apps;
 mod batch;
 mod bootstrap;
 mod budget;

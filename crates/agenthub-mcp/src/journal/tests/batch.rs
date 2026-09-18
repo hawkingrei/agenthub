@@ -1,6 +1,62 @@
 use super::*;
 use crate::policy::PreparedBatchCall;
 
+#[tokio::test]
+async fn batch_schema_failure_preserves_valid_neighbors_and_never_delivers_invalid_frame() {
+    for invalid_body in ["private-arguments", "second-private-body"] {
+        let fixture = Fixture::new().await;
+        let executor = fixture.running().await;
+        let upstream = Upstream::new(fixture.pool.clone()).await;
+        let client = JournaledMcpClient::new(
+            fixture.journal.clone(),
+            ByteBudget::new(crate::MAX_MESSAGE_BYTES),
+        )
+        .validating(Some(Arc::new(move |name, result| {
+            assert_eq!(name, "write");
+            if result["body"] == invalid_body {
+                Err(McpTransportError::InvalidResponse)
+            } else {
+                Ok(())
+            }
+        })));
+        let call = prepare_batch(&upstream, &executor, 0);
+        let first = call.tools[0].1.request_key.clone();
+        let (events, mut receiver) = mpsc::channel(8);
+        assert_eq!(
+            client.run_batch(call, events).await.err(),
+            Some(McpCallError::Transport(McpTransportError::InvalidResponse))
+        );
+        assert!(receiver.recv().await.is_none());
+        let records = fixture.operations().await;
+        assert_eq!(records.len(), 2);
+        for record in records {
+            let body = if record.intent.request_key == first {
+                "private-arguments"
+            } else {
+                "second-private-body"
+            };
+            assert_eq!(
+                record.status,
+                if body == invalid_body {
+                    McpOperationStatus::OutcomeUnknown
+                } else {
+                    McpOperationStatus::Succeeded
+                }
+            );
+        }
+        let (events, _receiver) = mpsc::channel(8);
+        assert!(
+            client
+                .run_batch(prepare_batch(&upstream, &executor, 10), events)
+                .await
+                .is_err()
+        );
+        assert_eq!(upstream.count(), 1);
+        drop(upstream);
+        fixture.close().await;
+    }
+}
+
 fn prepare_batch(
     upstream: &Upstream,
     executor: &LoopReservation,

@@ -216,6 +216,25 @@ impl AgentManager {
         } else {
             None
         };
+        let registry = agenthub_db::app_registry::AppRegistry::new(self.db.clone());
+        let pins = registry
+            .pin_activation(&reservation, Utc::now().timestamp())
+            .await?;
+        let mut apps = Vec::with_capacity(pins.len());
+        for pin in pins {
+            let app =
+                crate::mcp_proxy::apps::resolve_pinned(&registry, pin, Path::new(workdir), |key| {
+                    std::env::var(key).ok()
+                })
+                .await?;
+            launch.add_mcp_proxy(
+                &crate::mcp_proxy::configured::shim_executable()?,
+                &file.path,
+                app.binding.server_id(),
+                &app.fingerprint,
+            )?;
+            apps.push(app);
+        }
         let mut digest = Sha256::new();
         digest.update(serde_json::to_vec(&(
             command,
@@ -250,6 +269,9 @@ impl AgentManager {
             .await?;
         if let Some(mcp) = mcp {
             self.mcp_proxy()?.mount(&reservation, mcp.binding).await?;
+        }
+        for app in apps {
+            self.mcp_proxy()?.mount_app(&reservation, app).await?;
         }
         let run_id = context
             .current_run_id

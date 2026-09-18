@@ -10,7 +10,11 @@ impl AgentManager {
         journal: agenthub_db::mcp_operations::McpOperationStore,
         mounts: Vec<(LoopReservation, Arc<McpProxyBinding>)>,
     ) -> anyhow::Result<()> {
-        let hub = crate::mcp_proxy::McpProxyHub::new(journal, mounts)?;
+        let hub = crate::mcp_proxy::McpProxyHub::new(
+            journal,
+            agenthub_db::app_registry::AppRegistry::new(self.db.clone()),
+            mounts,
+        )?;
         self.mcp_proxy
             .set(Arc::new(hub))
             .map_err(|_| anyhow::anyhow!("MCP proxy was already initialized"))

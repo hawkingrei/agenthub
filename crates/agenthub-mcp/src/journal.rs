@@ -8,9 +8,12 @@ mod batch;
 mod task;
 mod task_events;
 mod task_notification;
+mod validation;
 pub use batch::McpBatchResult;
 pub use task_events::JournaledTaskObserver;
 pub(crate) use task_events::{BoundTaskObserver, TaskEventDisposition, TaskEventDrain};
+use validation::ToolResultLocation;
+pub use validation::ToolResultValidator;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -68,6 +71,7 @@ pub struct JournaledMcpClient {
     journal: McpOperationStore,
     delivery: ByteBudget,
     observer: Option<BoundTaskObserver>,
+    result_validator: Option<std::sync::Arc<ToolResultValidator>>,
 }
 
 impl JournaledMcpClient {
@@ -76,6 +80,7 @@ impl JournaledMcpClient {
             journal,
             delivery,
             observer: None,
+            result_validator: None,
         }
     }
 
@@ -124,6 +129,7 @@ impl JournaledMcpClient {
             let member = matching_response(&response, &call.response_id, http_status >= 400)?
                 .ok_or(McpTransportError::InvalidResponse)?;
             let completion = classify_completion(member, call.task_context.as_ref())?;
+            self.validate_result(&call.intent.tool_name, member, ToolResultLocation::Rpc)?;
             Ok::<_, McpTransportError>((response, completion, http_status, delivery_lost, drain))
         }
         .await;

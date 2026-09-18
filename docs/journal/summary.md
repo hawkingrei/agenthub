@@ -27,6 +27,11 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-09-18: App runtime integration](2026-09-18-app-runtime.md): activation mounts, trusted HTTP identity, native schema enforcement, call/stream revocation, safe Cards, and pinned history attribution; focused regressions and Clippy pass, with PR/CI delivery remaining.
+- [2026-09-18: App result validation](2026-09-18-app-result-validation.md): original-tool schema attribution for immediate, batch, continuation, and deferred results; invalid output retains replay protections and valid neighboring facts.
+- [2026-09-18: App management API](2026-09-18-app-management-api.md): root connection provisioning, owner publication, intersected Team grants, member bindings, and safe bounded HTTP responses; shared proxy integration remains open.
+- [2026-09-17: App registration storage](2026-09-17-app-registry-storage.md): bounded manifests, immutable versions, approved scope bindings, activation pins, and durable authorization epochs.
+
 - [2026-09-17: Loop workspace UI](2026-09-17-loop-workspace-ui.md): offline member configuration, independent execution/process/task state, paged history, and browser lifecycle/page-reopen evidence; current-head PR validation remains open.
 
 - [2026-09-17: Loop history storage](2026-09-17-loop-history-storage.md): scoped history APIs, durable RPC/MCP observations and metrics, activation-aware debug doctor, and lifecycle trace correlation; PR #1159 passed applicable CI at `7f2b9a2a` and is ready for review.
