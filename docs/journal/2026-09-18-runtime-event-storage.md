@@ -238,3 +238,18 @@ cargo clippy --offline --locked -p agenthub-db --all-targets -- -D warnings
 
 The ignored fixture requires `AGENTHUB_RARA_TEST_BINARY` from the pinned upstream and localhost
 HTTP access; the test configuration routes model traffic exclusively to its local server.
+
+## CI Fixture Follow-Up
+
+Bazel coverage exposed a race in the existing member auto-start test: its default
+`agenthub actor` command has no subcommand and exits with an error before or after the
+startup status assertion. That test now uses `/bin/cat` for both members, retaining the
+worker worktree policy and letting the supervisor own their lifetime. It also checks that
+both running session handles exist after creation and disappear after Team deletion.
+
+The focused test passes. The native adapter is unchanged; current-head CI must confirm
+the coverage upload and aggregate checks after this fixture correction.
+
+```bash
+cargo test --offline --locked -p agenthub --lib api::teams::tests::teams_api_create_team_auto_starts_member_runtime -- --exact
+```

@@ -1282,6 +1282,14 @@ async fn teams_api_delete_team_cascades_related_run_data() {
 async fn teams_api_create_team_auto_starts_member_runtime() {
     let state = build_test_state().await;
     configure_worker_team_member_agent(&state, "reviewer").await;
+    // Keep both members alive until supervised cleanup; the default actor CLI exits
+    // immediately without a subcommand and races the startup status assertions.
+    sqlx::query(
+        "UPDATE agents SET command = '/bin/cat', args = '[]' WHERE id IN ('planner', 'reviewer')",
+    )
+    .execute(&state.db)
+    .await
+    .expect("configure resident member runtimes");
     let headers = auth_headers(&state).await;
 
     let Json(team) = create_team(
@@ -1317,11 +1325,29 @@ async fn teams_api_create_team_auto_starts_member_runtime() {
     .await
     .expect("count failed member agents");
     assert_eq!(failed_count, 0);
+    for member_id in ["planner", "reviewer"] {
+        assert!(
+            state
+                .agents
+                .running_session_id_for_agent(member_id)
+                .await
+                .is_some()
+        );
+    }
 
     let Json(deleted) = delete_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
         .await
         .expect("delete team");
     assert_eq!(deleted.id, team.id);
+    for member_id in ["planner", "reviewer"] {
+        assert!(
+            state
+                .agents
+                .running_session_id_for_agent(member_id)
+                .await
+                .is_none()
+        );
+    }
 }
 
 #[tokio::test]
