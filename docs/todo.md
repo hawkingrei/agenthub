@@ -113,6 +113,10 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   native question/plan/shell fixture passes both approval and denial. PR/CI delivery remains open.
 - [ ] 18. Align Rara with shared activation identity, semantic guard outcomes, capability-gated
   durable approvals, nested-subteam isolation, and safe event cursors in activation traces.
+  Initial [native activation wiring](journal/2026-09-18-native-loop-activation.md) reuses
+  shared launch/cleanup, pins role and skill sources, and gates unsupported resume/tool
+  bindings. Complete Card/task context, stable memory prefixes, controlled tool sources,
+  semantic outcomes, trace enrichment and real leader/worker validation before delivery.
 
 Each behavior slice includes focused tests and its owning spec/journal updates. Cargo and the
 normal Bazel targets remain viable. Remote ownership/credential parity, standalone Mem scope,

@@ -16,6 +16,8 @@ pub enum RuntimeRequestKind {
     ShellAnswer,
     Query,
     Replay,
+    PromptSource,
+    SkillSource,
 }
 
 impl RuntimeRequestKind {
@@ -294,6 +296,8 @@ impl RuntimeEventStore {
                 }
                 let valid_turn = match receipt.kind {
                     RuntimeRequestKind::CreateSession
+                    | RuntimeRequestKind::PromptSource
+                    | RuntimeRequestKind::SkillSource
                     | RuntimeRequestKind::Query
                     | RuntimeRequestKind::Replay => turn_id.is_none(),
                     RuntimeRequestKind::Cancel | RuntimeRequestKind::Interrupt => {

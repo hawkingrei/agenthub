@@ -37,6 +37,7 @@ pub(super) struct LoopCredentialState {
     pub run_id: String,
     mem_bootstrap: MemBootstrap,
     entry_prompt: String,
+    pub(super) native_sources: Option<AcpLoopLaunchConfig>,
 }
 
 impl AgentManager {
@@ -106,7 +107,7 @@ impl AgentManager {
     pub(super) async fn resolve_loop_launch(
         &self,
         agent: &crate::agent::AgentRecord,
-        provider: AcpProviderSpec,
+        provider: Option<AcpProviderSpec>,
         context: &AcpActorSkillContext,
         workdir: &str,
         command: &str,
@@ -157,7 +158,7 @@ impl AgentManager {
             policy.session_policy == LoopSessionPolicy::Resume,
         );
         launch.install_loop_runtime_skill()?;
-        if provider.uses_default_mode_config() {
+        if let Some(provider) = provider.filter(|provider| provider.uses_default_mode_config()) {
             launch.mode_id = super::session::effective_acp_default_mode(
                 provider,
                 agent.codex_acp_default_mode.as_deref(),
@@ -166,7 +167,7 @@ impl AgentManager {
             )
             .map(str::to_owned);
         }
-        if provider.applies_runtime_profile_via_session_config() {
+        if provider.is_some_and(|provider| provider.applies_runtime_profile_via_session_config()) {
             launch.model_id = agent.runtime_model.clone();
             if let Some(level) = &agent.thinking_level {
                 let effort = codex_reasoning_effort_for_thinking_level(level)
@@ -247,18 +248,29 @@ impl AgentManager {
             &role_prompt.entry,
         ))?);
         digest.update(launch.fingerprint_material()?);
+        if provider.is_none() {
+            digest.update(super::rara::LOOP_SOURCE_VERSION);
+        }
         if let Some(fingerprint) = unavailable_fingerprint {
             digest.update(fingerprint.as_bytes());
         }
         let snapshot = LoopLaunchSnapshot {
             version: 1,
-            provider_id: provider.id.into(),
+            provider_id: provider.map_or("rara", |provider| provider.id).into(),
             configuration_digest: digest
                 .finalize()
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect(),
-            entry_prompt_version: role_prompt.version,
+            entry_prompt_version: if provider.is_none() {
+                format!(
+                    "{}:{}",
+                    role_prompt.version,
+                    super::rara::LOOP_SOURCE_VERSION
+                )
+            } else {
+                role_prompt.version
+            },
             session_policy: policy.session_policy,
             workspace: workdir.into(),
             model: agent.runtime_model.clone(),
@@ -285,6 +297,7 @@ impl AgentManager {
                 run_id,
                 mem_bootstrap,
                 entry_prompt: role_prompt.entry,
+                native_sources: provider.is_none().then(|| launch.clone()),
             },
         );
         self.refresh_loop_credentials(&reservation).await?;
@@ -380,7 +393,7 @@ impl AgentManager {
             role,
         );
         context.contract_version = Some(LOOP_ACTIVATION_CONTRACT_VERSION.into());
-        let session_id = self.start_loop_agent(&reservation, context).await?;
+        let session_id = self.start_loop_agent(&reservation, context.clone()).await?;
         tracing::Span::current().record("session_id", &session_id);
         let reservation = store
             .reservation(&reservation.team_id, &reservation.actor_id)
@@ -390,6 +403,9 @@ impl AgentManager {
             .mark_running(&reservation, Utc::now().timestamp())
             .await?;
         let entry = self.loop_entry_with_mem(&reservation).await?;
+        let entry = self
+            .prepare_loop_entry(&reservation, &context, entry)
+            .await?;
         let submission = format!(
             "loop-entry:{}:{}",
             reservation.activation_id.as_deref().unwrap_or_default(),
@@ -411,7 +427,7 @@ impl AgentManager {
                 _ = cancellation.cancelled() => return self.fence_loop_reservation(&reservation).await,
                 _ = tokio::time::sleep(Duration::from_millis(100)) => {}
             }
-            let diagnostics = {
+            let input = {
                 let handles = self.inner.read().await;
                 let Some(handle) = handles
                     .get(&reservation.actor_id)
@@ -419,16 +435,22 @@ impl AgentManager {
                 else {
                     return Ok(());
                 };
-                let AgentInput::Acp(acp) = &handle.input else {
-                    anyhow::bail!("loop provider is not ACP");
-                };
-                acp.diagnostics()
+                handle.input.clone()
             };
-            if diagnostics.command_channel_closed
-                || (diagnostics.last_submission_id.as_deref() == Some(&submission)
-                    && diagnostics.active_submission_ids.is_empty()
-                    && diagnostics.active_prompt_count == 0)
-            {
+            let completed = match input {
+                AgentInput::Acp(acp) => {
+                    let diagnostics = acp.diagnostics();
+                    diagnostics.command_channel_closed
+                        || (diagnostics.last_submission_id.as_deref() == Some(&submission)
+                            && diagnostics.active_submission_ids.is_empty()
+                            && diagnostics.active_prompt_count == 0)
+                }
+                AgentInput::Rara(runtime) => runtime.loop_turn_complete().await,
+                AgentInput::Stdin(_) => {
+                    anyhow::bail!("loop provider does not expose turn lifecycle")
+                }
+            };
+            if completed {
                 // A transport turn may end without a durable outcome. Cleanup classifies that as interrupted.
                 return self.fence_loop_reservation(&reservation).await;
             }

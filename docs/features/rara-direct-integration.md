@@ -302,8 +302,32 @@ commit history and cursor before broadcast; exit observation waits for that drai
 well as semantic transport completion. Managed text input maps idle submissions to prompts
 and active-turn submissions to ordered follow-ups. A pending user question requires its
 explicit runtime/session/waiting-turn fence. Image input is unsupported. Remote placement,
-Team binding, legacy idle loops and durable loop admission remain rejected. Live plan/shell
+legacy Team sessions and legacy idle loops remain rejected. Reserved local loop activations
+can use fresh native sessions through the shared launch and cleanup path. Live plan/shell
 callbacks and fenced cancel/interrupt controls reuse the existing permission and control surfaces.
+
+The native loop bootstrap requires `prompt_source.register` and `skill_source.register`
+before creating a session. It pins the configured role entry and managed skills in the same
+launch configuration used by other local adapters. The role entry and outer identity arrive
+as a session-scoped user-layer prompt source; skills arrive as inline registrations. One
+input starts the activation only after every registration has an accepted durable receipt
+and its acknowledged event prefix has committed. A partial bootstrap is not retried in the
+same native session. Source limits are checked before sending the first registration.
+
+The `native-loop-v1` source contract is part of the configuration digest and entry version.
+It keeps activation, local launch, native runtime and native session identities distinct;
+native subagents receive no independent outer membership, mailbox or execution credentials.
+An ordinary completed turn is insufficient to finish an activation: the existing structured
+finish service owns that outcome. A terminal turn without an outcome becomes interrupted
+only after existing supervised cleanup. A live input/approval wait keeps its callback owner;
+canceling that wait may end the native turn through input-discarded alone.
+
+The pinned build has no cross-process resume, durable approval recovery, controlled MCP source
+registration, or semantic-guard event contract. Resume policies and configured native MCP/App
+bindings therefore fail preflight. Loop launches disable ambient extension discovery and native
+memory facilities. They never replace missing controlled sources with ambient configuration.
+Full Card/task source binding, stable task memory prefixes, semantic outcome adaptation and
+activation trace enrichment remain separate unfinished parts of this integration.
 
 ### 2) Configuration
 
@@ -692,6 +716,7 @@ Phase 1 implementation validation:
 
 ## Source Journals
 
+- [2026-09-18: Direct runtime loop activation](../journal/2026-09-18-native-loop-activation.md)
 - [2026-09-18: Direct runtime event storage](../journal/2026-09-18-runtime-event-storage.md)
 - [2026-09-18: Direct runtime transport](../journal/2026-09-18-rara-local-transport.md)
 

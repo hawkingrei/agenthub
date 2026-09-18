@@ -168,6 +168,25 @@ impl AcpLoopLaunchConfig {
             "mcp_proxies": self.mcp_proxies.iter().map(|proxy| (&proxy.server_id, &proxy.executable, &proxy.binding_fingerprint)).collect::<Vec<_>>(),
         }))?)
     }
+
+    /// Reuse the launch-pinned skill content in transports with inline source registration.
+    pub fn inline_skill_sources(&self) -> Vec<(String, String)> {
+        self.skills
+            .iter()
+            .map(|skill| {
+                let content = if skill.name == managed_skill_name(ManagedSkillKind::TeamLoopRuntime)
+                {
+                    self.runtime_skill
+                        .as_ref()
+                        .map(|runtime| runtime.contents.clone())
+                        .unwrap_or_else(|| skill.instructions.clone())
+                } else {
+                    skill.instructions.clone()
+                };
+                (skill.name.clone(), content)
+            })
+            .collect()
+    }
 }
 
 impl super::AcpActorSkillContext {

@@ -18,6 +18,7 @@ use uuid::Uuid;
 mod controls;
 mod input;
 mod permissions;
+mod sources;
 
 use super::{AgentManager, events::DurableEvents, receipts};
 use crate::agent::AgentOutput;
@@ -46,6 +47,9 @@ struct LiveState {
     phase: SessionPhase,
     pending: Option<PendingInput>,
     sequence: u64,
+    sources_registered: bool,
+    terminal_turn: bool,
+    input_attempted: bool,
 }
 
 struct Replay {
@@ -110,6 +114,9 @@ impl RaraHandle {
                 phase: SessionPhase::Idle,
                 pending: None,
                 sequence: 0,
+                sources_registered: false,
+                terminal_turn: false,
+                input_attempted: false,
             })),
             delivery,
         })
@@ -257,9 +264,15 @@ impl RaraHandle {
                 state.phase = snapshot.phase;
                 state.pending = snapshot.pending_input;
             }
-            EventEffect::TurnStarted { turn_id } => state.phase = SessionPhase::Running { turn_id },
+            EventEffect::TurnStarted { turn_id } => {
+                state.terminal_turn = false;
+                state.phase = SessionPhase::Running { turn_id };
+            }
             EventEffect::TurnEnded { turn_id, outcome } => {
                 let awaiting_input = matches!(outcome, agenthub_rara::TurnEnd::Finished { reason: Some(ref reason) } if reason == "awaiting_input");
+                if !awaiting_input {
+                    state.terminal_turn = true;
+                }
                 if !awaiting_input
                     && state
                         .pending
@@ -282,18 +295,22 @@ impl RaraHandle {
                 tool_call_id,
             } => {
                 interaction = Some((pending.clone(), tool_call_id));
+                state.terminal_turn = false;
                 state.phase = SessionPhase::AwaitingInput {
                     turn_id: pending.turn_id.clone(),
                 };
                 state.pending = Some(pending);
             }
-            EventEffect::InputCleared { waiting_turn }
-                if state
-                    .pending
-                    .as_ref()
-                    .is_some_and(|p| p.turn_id == waiting_turn) =>
+            EventEffect::InputCleared {
+                waiting_turn,
+                terminal,
+            } if state
+                .pending
+                .as_ref()
+                .is_some_and(|p| p.turn_id == waiting_turn) =>
             {
                 state.pending = None;
+                state.terminal_turn = terminal;
                 if matches!(&state.phase, SessionPhase::AwaitingInput { turn_id } if turn_id == &waiting_turn)
                 {
                     state.phase = SessionPhase::Idle;

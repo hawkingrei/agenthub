@@ -56,6 +56,8 @@ pub(super) fn kind(kind: ControlKind) -> RuntimeRequestKind {
         ControlKind::UserAnswer => RuntimeRequestKind::UserAnswer,
         ControlKind::PlanAnswer => RuntimeRequestKind::PlanAnswer,
         ControlKind::ShellAnswer => RuntimeRequestKind::ShellAnswer,
+        ControlKind::PromptSource => RuntimeRequestKind::PromptSource,
+        ControlKind::SkillSource => RuntimeRequestKind::SkillSource,
     }
 }
 
