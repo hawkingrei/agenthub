@@ -134,6 +134,19 @@ impl AppRegistry {
             .bind(input.app_id).bind(input.team_id).bind(input.actor_id).bind(input.version).bind(serde_json::to_string(input.scopes)?)
             .bind(next_revision(input.expected_revision)?).bind(epoch).bind(now).bind(now).fetch_one(&mut *tx).await?;
         let binding = parse_binding(&row)?;
+        if previous.as_ref().is_some_and(|previous| {
+            previous.authorization_epoch != binding.authorization_epoch
+                || previous.version != binding.version
+        }) {
+            crate::loop_runtime::LoopStore::revoke_app_schedules_tx(
+                &mut tx,
+                input.app_id,
+                Some(input.team_id),
+                Some(input.actor_id),
+                now,
+            )
+            .await?;
+        }
         tx.commit().await?;
         Ok(binding)
     }
@@ -166,6 +179,14 @@ impl AppRegistry {
             .bind(now).bind(next_revision(previous.revision)?).bind(next_revision(previous.authorization_epoch)?).bind(now)
             .bind(app_id).bind(team_id).bind(actor_id).fetch_one(&mut *tx).await?;
         let binding = parse_binding(&row)?;
+        crate::loop_runtime::LoopStore::revoke_app_schedules_tx(
+            &mut tx,
+            app_id,
+            Some(team_id),
+            Some(actor_id),
+            now,
+        )
+        .await?;
         tx.commit().await?;
         Ok(binding)
     }

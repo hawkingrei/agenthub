@@ -6,6 +6,10 @@ use serde_json::json;
 use super::*;
 
 mod binding_tests;
+mod event_intake;
+mod event_scheduling;
+mod event_scheduling_authority;
+mod event_tests;
 mod pin_tests;
 
 struct Fixture {
@@ -69,6 +73,7 @@ fn connection() -> AppConnection {
 fn manifest() -> AppManifest {
     AppManifest {
         schema_version: 1,
+        events: vec![],
         scopes: ["read".into(), "write".into()].into(),
         tools: vec![AppTool {
             name: "lookup".into(),

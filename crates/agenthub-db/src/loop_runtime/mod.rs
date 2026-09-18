@@ -11,6 +11,7 @@ mod outcome;
 mod policy;
 mod reservation;
 mod scheduling;
+mod scheduling_app_events;
 mod scheduling_observation;
 mod scheduling_reconcile;
 mod scheduling_revocation;

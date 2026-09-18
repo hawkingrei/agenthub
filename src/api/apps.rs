@@ -2,6 +2,9 @@
 
 mod bindings;
 mod discovery;
+mod event_config;
+mod event_ingress;
+mod event_signature;
 mod registration;
 pub(super) use discovery::{AppCapability, member_capabilities};
 #[cfg(test)]
@@ -30,6 +33,18 @@ pub(super) fn router(state: AppState) -> Router {
             get(registration::get_version),
         )
         .route("/{app_id}/revoke", post(registration::revoke))
+        .route(
+            "/{app_id}/event-key",
+            get(event_config::get_key).put(event_config::configure_key),
+        )
+        .route("/{app_id}/event-key/revoke", post(event_config::revoke_key))
+        .route("/{app_id}/event-audit", get(event_config::event_audit))
+        .route(
+            "/{app_id}/events",
+            post(event_ingress::ingest).layer(DefaultBodyLimit::max(
+                agenthub_agent_domain::app_events::APP_EVENT_MAX_BYTES,
+            )),
+        )
         .layer(DefaultBodyLimit::max(524_288))
         .with_state(state)
 }
@@ -55,6 +70,14 @@ pub(super) fn team_router(state: AppState) -> Router {
         .route(
             "/teams/{team_id}/members/{actor_id}/apps/{app_id}/revoke",
             post(bindings::revoke_binding),
+        )
+        .route(
+            "/teams/{team_id}/members/{actor_id}/apps/{app_id}/events",
+            get(event_config::get_route).put(event_config::configure_route),
+        )
+        .route(
+            "/teams/{team_id}/members/{actor_id}/apps/{app_id}/events/revoke",
+            post(event_config::revoke_route),
         )
         .layer(DefaultBodyLimit::max(16_384))
         .with_state(state)

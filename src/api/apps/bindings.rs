@@ -23,7 +23,7 @@ use crate::{
 
 use super::{ApiError, Page, Revision, payload, revision, scopes, store_error};
 
-async fn owner(
+pub(super) async fn owner(
     state: &AppState,
     headers: &HeaderMap,
     team_id: &str,
@@ -40,7 +40,7 @@ async fn owner(
     Ok(user)
 }
 
-async fn inspect(
+pub(super) async fn inspect(
     state: &AppState,
     headers: &HeaderMap,
     team_id: &str,

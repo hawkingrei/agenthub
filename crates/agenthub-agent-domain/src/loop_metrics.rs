@@ -53,14 +53,16 @@ pub enum LoopWaitMetricKind {
     Recurring,
     TaskStatus,
     ThreadReply,
+    AppEvent,
 }
 
 impl LoopWaitMetricKind {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Due,
         Self::Recurring,
         Self::TaskStatus,
         Self::ThreadReply,
+        Self::AppEvent,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -69,6 +71,7 @@ impl LoopWaitMetricKind {
             Self::Recurring => "recurring",
             Self::TaskStatus => "task_status",
             Self::ThreadReply => "thread_reply",
+            Self::AppEvent => "app_event",
         }
     }
 }

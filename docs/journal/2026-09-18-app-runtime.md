@@ -54,8 +54,11 @@ reservation; it now joins the owning policy. History assertions explicitly disti
 from their enclosing control RPC observations. No production protocol or replay protection was
 relaxed to satisfy fixtures.
 
+PR [#1161](https://github.com/hawkingrei/agenthub/pull/1161) passed all applicable checks at
+`5fd553b3d7773db94b5401ba68be1b7f83958d29`, including Rust and Bazel coverage, and is ready for review.
+Patch coverage is 98.58%; project coverage is 86.57%. No merge was performed.
+
 ## Follow-Ups
 
-Publish and validate the full slice in CI. Signed event ingress
-remains the following slice. See
+Signed event ingress remains the following slice. See
 [runtime contracts](../features/app-tool-runtime.md) and [active work](../todo.md#agent-loop-product-transition).

@@ -519,6 +519,7 @@ async fn loop_reference_checks_preserve_task_message_and_scheduler_scope() {
         scheduling_activation_id: Some(origin.activation_id),
         scheduling_user_id: None,
         app_id: None,
+        app_event: None,
     };
     fixture.store.accept_trigger(&input, 100).await.unwrap();
     let mut invalid = input.clone();

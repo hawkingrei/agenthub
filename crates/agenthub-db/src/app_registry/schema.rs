@@ -72,6 +72,83 @@ pub async fn migrate_app_registry(pool: &SqlitePool) -> anyhow::Result<()> {
             FOREIGN KEY(app_id, team_id, actor_id) REFERENCES app_member_bindings(app_id, team_id, actor_id),
             FOREIGN KEY(app_id, version) REFERENCES app_manifest_versions(app_id, version)
         );
+        CREATE TABLE IF NOT EXISTS app_event_key_versions (
+            app_id TEXT NOT NULL REFERENCES registered_apps(id),
+            version INTEGER NOT NULL CHECK(version > 0),
+            credential_env TEXT,
+            revoked_at INTEGER,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(app_id, version),
+            CHECK(credential_env IS NOT NULL OR revoked_at IS NOT NULL)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_app_event_active_key
+            ON app_event_key_versions(app_id) WHERE revoked_at IS NULL;
+        CREATE TABLE IF NOT EXISTS app_event_routes (
+            app_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            classes_json TEXT NOT NULL,
+            grant_epoch INTEGER NOT NULL CHECK(grant_epoch > 0),
+            binding_epoch INTEGER NOT NULL CHECK(binding_epoch > 0),
+            revision INTEGER NOT NULL CHECK(revision > 0),
+            revoked_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY(app_id, team_id, actor_id),
+            FOREIGN KEY(app_id, team_id, actor_id) REFERENCES app_member_bindings(app_id, team_id, actor_id),
+            FOREIGN KEY(app_id, version) REFERENCES app_manifest_versions(app_id, version)
+        );
+        CREATE TABLE IF NOT EXISTS app_event_cursors (
+            app_id TEXT PRIMARY KEY REFERENCES registered_apps(id),
+            cursor INTEGER NOT NULL CHECK(cursor > 0)
+        );
+        CREATE TABLE IF NOT EXISTS app_event_receipts (
+            app_id TEXT NOT NULL REFERENCES registered_apps(id),
+            event_id TEXT NOT NULL,
+            cursor INTEGER NOT NULL CHECK(cursor > 0),
+            team_id TEXT NOT NULL REFERENCES team_definitions(id),
+            actor_id TEXT NOT NULL REFERENCES agents(id),
+            event_class TEXT NOT NULL,
+            notification_json TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            signing_version INTEGER NOT NULL,
+            route_revision INTEGER NOT NULL,
+            trigger_id TEXT NOT NULL REFERENCES loop_trigger_sources(id),
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(app_id, event_id),
+            UNIQUE(app_id, cursor),
+            FOREIGN KEY(app_id, version) REFERENCES app_manifest_versions(app_id, version),
+            FOREIGN KEY(app_id, signing_version) REFERENCES app_event_key_versions(app_id, version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_event_receipt_route
+            ON app_event_receipts(app_id, team_id, actor_id, event_class, cursor);
+        CREATE TABLE IF NOT EXISTS app_event_watches (
+            registration_id TEXT PRIMARY KEY REFERENCES loop_registrations(id),
+            app_id TEXT NOT NULL,
+            team_id TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            event_class TEXT NOT NULL,
+            route_revision INTEGER NOT NULL CHECK(route_revision > 0),
+            FOREIGN KEY(app_id, team_id, actor_id) REFERENCES app_event_routes(app_id, team_id, actor_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_event_watch_route
+            ON app_event_watches(app_id, team_id, actor_id, event_class, route_revision);
+        CREATE TABLE IF NOT EXISTS app_event_budgets (
+            scope_kind TEXT NOT NULL CHECK(scope_kind IN ('app', 'actor', 'team')),
+            scope_id TEXT NOT NULL,
+            window_started_at INTEGER NOT NULL,
+            accepted_count INTEGER NOT NULL CHECK(accepted_count > 0),
+            PRIMARY KEY(scope_kind, scope_id)
+        );
+        CREATE TABLE IF NOT EXISTS app_event_denials (
+            app_id TEXT NOT NULL REFERENCES registered_apps(id),
+            code TEXT NOT NULL CHECK(code IN ('unauthorized', 'id_conflict', 'cursor_replay', 'capacity', 'disabled')),
+            count INTEGER NOT NULL CHECK(count > 0),
+            last_event_id TEXT NOT NULL,
+            last_seen_at INTEGER NOT NULL,
+            PRIMARY KEY(app_id, code)
+        );
     "#).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())

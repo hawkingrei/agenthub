@@ -27,7 +27,9 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
-- [2026-09-18: App runtime integration](2026-09-18-app-runtime.md): activation mounts, trusted HTTP identity, native schema enforcement, call/stream revocation, safe Cards, and pinned history attribution; focused regressions and Clippy pass, with PR/CI delivery remaining.
+- [2026-09-18: Signed App intake](2026-09-18-app-event-intake.md): exact-body HMAC, atomic receipts/cursors/triggers, budgets, standing conditions, and safe context/doctor/web attribution; final PR/CI delivery remains open.
+- [2026-09-18: App event configuration](2026-09-18-app-event-configuration.md): explicit event classes, independent signing-key versions, and epoch/version-pinned member routes consumed by signed intake and standing conditions.
+- [2026-09-18: App runtime integration](2026-09-18-app-runtime.md): activation mounts, trusted HTTP identity, native schema enforcement, call/stream revocation, safe Cards, and pinned history attribution; PR #1161 passed applicable CI at `5fd553b3` and is ready for review.
 - [2026-09-18: App result validation](2026-09-18-app-result-validation.md): original-tool schema attribution for immediate, batch, continuation, and deferred results; invalid output retains replay protections and valid neighboring facts.
 - [2026-09-18: App management API](2026-09-18-app-management-api.md): root connection provisioning, owner publication, intersected Team grants, member bindings, and safe bounded HTTP responses; shared proxy integration remains open.
 - [2026-09-17: App registration storage](2026-09-17-app-registry-storage.md): bounded manifests, immutable versions, approved scope bindings, activation pins, and durable authorization epochs.

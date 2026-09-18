@@ -86,7 +86,7 @@ export function LoopActivationHistory({
             </Text>
           ))}
           {activeSchedules.map((item) => (
-            <Text key={item.id} size="sm">
+            <Text key={item.id} size="sm" className="break-words">
               {loopScheduleLabel(item)}
             </Text>
           ))}
@@ -278,10 +278,24 @@ function LoopActivationDetail({
         Trigger sources
       </Text>
       {sources.state?.items.map((source) => (
-        <Text key={source.id} size="sm">
-          {loopLabel(source.kind)} · {loopTime(source.created_at)}
-          {source.revoked ? " · revoked" : ""}
-        </Text>
+        <Stack key={source.id} gap={2}>
+          <Text size="sm">
+            {loopLabel(source.kind)} · {loopTime(source.created_at)}
+            {source.revoked ? " · revoked" : ""}
+          </Text>
+          {source.references.app_id && source.references.app_event && (
+            <Text size="xs" c="dimmed" className="break-words">
+              App {source.references.app_id} ·{" "}
+              {source.references.app_event.event_class}
+              {" · Event "}
+              {source.references.app_event.event_id}
+              {" · Cursor "}
+              {source.references.app_event.cursor}
+              {" · Version "}
+              {source.references.app_event.version}
+            </Text>
+          )}
+        </Stack>
       ))}
       {sources.state?.error && <Alert color="red">{sources.state.error}</Alert>}
       {sources.state?.nextCursor != null && (

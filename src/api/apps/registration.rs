@@ -161,7 +161,7 @@ pub(super) async fn revoke(
     ))
 }
 
-async fn owned(
+pub(super) async fn owned(
     store: &AppRegistry,
     app_id: &str,
     user_id: &str,

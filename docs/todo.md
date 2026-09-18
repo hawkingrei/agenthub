@@ -76,16 +76,21 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   [PR #1160](https://github.com/hawkingrei/agenthub/pull/1160) passed applicable CI at
   `0486b19db9a829a782f2f61d647a0f5053c64009`, including browser workflows and Rust/Bazel coverage,
   and is ready for review.
-- [ ] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove
+- [x] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove
   call-time scope checks, fixed activation versions, immediate revocation, and safe attribution.
   The [storage checkpoint](journal/2026-09-17-app-registry-storage.md) covers durable registrations,
   grants, bindings, and activation pins. The [management API](features/app-management-api.md) adds
   human authorization, and [result validation](journal/2026-09-18-app-result-validation.md) protects
   immediate and deferred outcomes. [Runtime integration](features/app-tool-runtime.md) connects
   launch, preflight, schema enforcement, call/stream authorization, safe Cards, and App/version history
-  attribution. Complete final regression validation and PR/CI delivery.
+  attribution. [PR #1161](https://github.com/hawkingrei/agenthub/pull/1161) passed all applicable CI
+  at `5fd553b3d7773db94b5401ba68be1b7f83958d29` and is ready for review.
 - [ ] 15. Accept signed app events through durable intake. Ship signatures, event ID/cursor replay
   protection, declared-class routing, revocation checks, and storm budgets together.
+  The [configuration foundation](features/app-event-configuration.md) provides declarations,
+  independent signing-key references and explicit routes. [Signed intake](features/app-event-ingress.md)
+  adds atomic receipt/cursor/intake, bounded audit/budgets, standing conditions, and safe
+  doctor/context/web history. Complete final review and individual PR/CI delivery.
 - [ ] 16. Pin and validate the Rara app-server transport/handshake; add local launch and cleanup.
   Any missing upstream protocol work is an explicit prerequisite, not an ACP fallback.
 - [ ] 17. Map Rara control acknowledgments, events, replay, and live permissions into existing

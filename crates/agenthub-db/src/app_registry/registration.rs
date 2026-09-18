@@ -82,7 +82,8 @@ impl AppRegistry {
     pub async fn credential_references(&self) -> anyhow::Result<Vec<String>> {
         let names: Vec<String> = sqlx::query_scalar(
             "SELECT DISTINCT json_extract(connection_json, '$.credential_env') AS name \
-             FROM registered_apps WHERE json_type(connection_json, '$.credential_env') = 'text' ORDER BY name",
+             FROM registered_apps WHERE json_type(connection_json, '$.credential_env') = 'text' \
+             UNION SELECT credential_env AS name FROM app_event_key_versions WHERE credential_env IS NOT NULL ORDER BY name",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -153,6 +154,8 @@ impl AppRegistry {
         let row = sqlx::query("UPDATE registered_apps SET revoked_at = COALESCE(revoked_at, ?), revision = ?, updated_at = ? WHERE id = ? RETURNING *")
             .bind(now).bind(next_revision(app.revision)?).bind(now).bind(app_id).fetch_one(&mut *tx).await?;
         let app = parse_app(&row)?;
+        crate::loop_runtime::LoopStore::revoke_app_schedules_tx(&mut tx, app_id, None, None, now)
+            .await?;
         tx.commit().await?;
         Ok(app)
     }

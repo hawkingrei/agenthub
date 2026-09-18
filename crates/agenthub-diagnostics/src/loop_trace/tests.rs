@@ -125,6 +125,54 @@ impl Fixture {
 }
 
 #[tokio::test]
+async fn activation_trace_renders_safe_event_attribution_after_exit_and_reopen() {
+    let mut fixture = Fixture::new().await;
+    let receipt = fixture
+        .store
+        .accept_trigger(
+            &LoopTriggerInput {
+                actor_id: "actor".into(),
+                team_id: "team".into(),
+                kind: LoopTriggerKind::AppEvent,
+                source_key: "private-delivery-key".into(),
+                due_at: None,
+                references: LoopSourceReferences {
+                    app_id: Some("app-a".into()),
+                    app_event: Some(agenthub_agent_domain::app_events::AppEventAttribution {
+                        event_id: "change-7".into(),
+                        event_class: "changed".into(),
+                        cursor: 7,
+                        version: 2,
+                    }),
+                    ..Default::default()
+                },
+            },
+            fixture.now,
+        )
+        .await
+        .unwrap();
+    fixture
+        .store
+        .cancel("team", &receipt.activation_id, fixture.now + 1)
+        .await
+        .unwrap();
+    fixture.pool.close().await;
+    fixture.pool = SqlitePool::connect_with(
+        sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(fixture.directory.join("control.sqlite"))
+            .read_only(true),
+    )
+    .await
+    .unwrap();
+    fixture.store = LoopStore::new(fixture.pool.clone());
+    let trace = fixture.trace(&receipt.activation_id, fixture.now + 2).await;
+    let rendered = render(&trace).join("\n");
+    assert!(rendered.contains("app=app-a event=change-7 class=changed cursor=7 version=2"));
+    assert!(!rendered.contains("private-delivery-key"));
+    fixture.close().await;
+}
+
+#[tokio::test]
 async fn activation_trace_never_falls_back_to_unrelated_session_evidence() {
     let fixture = Fixture::new().await;
     let id = fixture.pending().await;

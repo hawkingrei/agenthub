@@ -98,6 +98,52 @@ describe("retained activation and wake history", () => {
     expect(button, label).toBeDefined();
     await act(async () => button!.click());
   }
+  it("shows App conditions and retained event identity on revoked dependency sources", async () => {
+    vi.spyOn(api, "listTeamMemberLoopSchedules").mockResolvedValue({
+      registrations: [
+        registration("app-watch", {
+          kind: "app_event",
+          app_id: "app-release",
+          event_class: "build.finished",
+          after_cursor: 7,
+          repeat: true,
+        }),
+      ],
+      next_cursor: null,
+    });
+    vi.spyOn(api, "listTeamMemberActivationSources").mockResolvedValue({
+      sources: [
+        {
+          id: "event-source",
+          kind: "dependency",
+          references: {
+            ...references,
+            app_id: "app-release",
+            app_event: {
+              event_id: "release-7",
+              event_class: "build.finished",
+              cursor: 7,
+              version: 2,
+            },
+          },
+          due_at: null,
+          created_at: 1,
+          revoked: true,
+        },
+      ],
+      next_cursor: null,
+    });
+    await render();
+    expect(container.textContent).toContain(
+      "Waiting for App event: build.finished (app-release)",
+    );
+    expect(container.textContent).not.toContain("Scheduled wake: Not recorded");
+    await click("Inspect activation");
+    expect(container.textContent).toContain("revoked");
+    expect(container.textContent).toContain(
+      "App app-release · build.finished · Event release-7 · Cursor 7 · Version 2",
+    );
+  });
   beforeEach(() => {
     vi.stubGlobal(
       "matchMedia",

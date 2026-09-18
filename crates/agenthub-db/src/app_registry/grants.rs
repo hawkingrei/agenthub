@@ -86,6 +86,19 @@ impl AppRegistry {
             .bind(next_revision(input.expected_revision)?).bind(epoch).bind(now).bind(now)
             .fetch_one(&mut *tx).await?;
         let grant = parse_grant(&row)?;
+        if existing
+            .as_ref()
+            .is_some_and(|previous| previous.authorization_epoch != grant.authorization_epoch)
+        {
+            crate::loop_runtime::LoopStore::revoke_app_schedules_tx(
+                &mut tx,
+                input.app_id,
+                Some(input.team_id),
+                None,
+                now,
+            )
+            .await?;
+        }
         tx.commit().await?;
         Ok(grant)
     }
@@ -115,6 +128,14 @@ impl AppRegistry {
             .bind(now).bind(next_revision(previous.revision)?).bind(next_revision(previous.authorization_epoch)?)
             .bind(now).bind(app_id).bind(team_id).fetch_one(&mut *tx).await?;
         let grant = parse_grant(&row)?;
+        crate::loop_runtime::LoopStore::revoke_app_schedules_tx(
+            &mut tx,
+            app_id,
+            Some(team_id),
+            None,
+            now,
+        )
+        .await?;
         tx.commit().await?;
         Ok(grant)
     }

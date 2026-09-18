@@ -145,6 +145,21 @@ mod tests {
             std::fs::write(&path, body).unwrap();
             assert!(parse_schedule_command(&args, &mut ActorOutputMode::Default).is_err());
         }
+        std::fs::write(&path, r#"{"source_key":"events","schedule":{"kind":"app_event","app_id":"app-a","event_class":"changed","after_cursor":7,"repeat":true}}"#).unwrap();
+        let ActorCommand::LoopSchedule { member_id, request } =
+            parse_schedule_command(&args, &mut ActorOutputMode::Default).unwrap()
+        else {
+            panic!("expected schedule command");
+        };
+        assert!(member_id.is_none());
+        assert!(matches!(
+            request.schedule,
+            agenthub_agent_domain::loop_scheduling::LoopSchedule::AppEvent {
+                after_cursor: 7,
+                repeat: true,
+                ..
+            }
+        ));
         std::fs::remove_file(path).unwrap();
         for args in [
             vec!["loop-schedules", "--limit", "257"],

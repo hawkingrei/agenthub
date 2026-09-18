@@ -68,6 +68,7 @@ fn app_headers_are_sensitive_and_credentials_are_optional_and_bounded() {
 fn app_result_bounds_cover_native_content_and_error_results() {
     let manifest = AppManifest {
         schema_version: 1,
+        events: vec![],
         scopes: ["write".into()].into(),
         tools: vec![AppTool {
             name: "write".into(),
