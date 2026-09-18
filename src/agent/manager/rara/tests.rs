@@ -14,8 +14,14 @@ root = pathlib.Path.cwd()
 (root / 'argv.json').write_text(json.dumps(sys.argv[1:]))
 mode = (root / 'scenario').read_text()
 runtime = 'managed-runtime'
+native = 'native-session'
 def emit(kind, payload):
     print(json.dumps({'type': kind, 'payload': payload}), flush=True)
+def delta(sequence, text):
+    emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+        'event_id': 'event-' + str(sequence), 'sequence': sequence, 'turn_id': 'turn-1',
+        'provenance': {'session_id': None},
+        'event': {'type': 'assistant', 'payload': {'type': 'text_delta', 'payload': text}}}})
 def terminated(*_):
     (root / 'forced').write_text('signal')
     sys.exit(1)
@@ -33,20 +39,57 @@ methods = ['session.create', 'session.query_state', 'session.cancel', 'session.i
     'input.answer_shell', 'server.shutdown']
 if mode == 'missing_method':
     methods.remove('input.answer_shell')
+if mode in ('replay', 'gap'):
+    methods.append('output.replay')
 emit('handshake', {'protocol_version': 1, 'runtime_version': 'fixture', 'runtime_id': runtime,
-    'transport': 'stdio-jsonl', 'request_families': ['session', 'input', 'server'],
+    'transport': 'stdio-jsonl', 'request_families': ['session', 'input', 'server'] + (['output'] if mode in ('replay', 'gap') else []),
     'request_methods': methods,
     'event_families': ['session', 'input', 'assistant', 'tool', 'approval', 'plan', 'warning', 'error'],
     'capabilities': {'graceful_shutdown': True, 'approval_persistence': False,
-        'replay': {'lifetime': 'unavailable'}, 'request_receipts': {'lifetime': 'runtime', 'max_requests': 32}},
+        'replay': ({'lifetime': 'runtime', 'max_events_per_session': 256} if mode in ('replay', 'gap') else {'lifetime': 'unavailable'}),
+        'request_receipts': {'lifetime': 'runtime', 'max_requests': 32}},
     'provider': None, 'model': None})
-if mode == 'exit_zero':
-    sys.exit(0)
 if mode == 'descendant':
     child = subprocess.Popen(['sleep', '60'])
     (root / 'descendant').write_text(str(child.pid))
 for line in sys.stdin:
     request = json.loads(line)
+    if request['type'] == 'replay':
+        payload = request['payload']
+        assert payload['session_id'] == native
+        assert payload['after_sequence'] == 1
+        if mode == 'gap':
+            emit('ack', {'runtime_id': runtime, 'request_id': payload['request_id'],
+                'result': {'status': 'rejected', 'code': 'invalid_request', 'message': 'private-diagnostic-token'}})
+            emit('replay_gap', {'runtime_id': runtime, 'request_id': payload['request_id'], 'session_id': native,
+                'requested_after': 1, 'oldest_available': 3, 'latest': 3})
+        else:
+            emit('ack', {'runtime_id': runtime, 'request_id': payload['request_id'],
+                'result': {'status': 'accepted', 'session_id': native, 'turn_id': None, 'last_sequence': 3}})
+            delta(2, 'second')
+            delta(3, 'third')
+        continue
+    if request['type'] == 'control':
+        envelope = request['payload']['envelope']
+        assert envelope['request']['payload']['type'] == 'create_session'
+        assert envelope['provenance']['session_id'] is None
+        if mode == 'create_drop':
+            sys.exit(0)
+        if mode == 'create_reject':
+            emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'],
+                'result': {'status': 'rejected', 'code': 'busy', 'message': 'private-diagnostic-token'}})
+            continue
+        emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'],
+            'result': {'status': 'accepted', 'session_id': native, 'turn_id': None, 'last_sequence': 1}})
+        emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {
+            'event_id': 'event-1', 'sequence': 1, 'provenance': {'session_id': None},
+            'event': {'type': 'session', 'payload': {'type': 'created', 'payload': {'session_id': native}}}}})
+        if mode == 'exit_zero':
+            time.sleep(0.05)
+            sys.exit(0)
+        if mode in ('replay', 'gap'):
+            delta(3, 'third')
+        continue
     assert request['type'] == 'shutdown'
     assert request['payload']['runtime_id'] == runtime
     request_id = request['payload']['request_id']
@@ -345,6 +388,136 @@ async fn unsupported_placement_and_arguments_fail_before_spawn() {
 struct NativeFixtureEnvironment {
     delegate: std::sync::Arc<dyn AgentExecutor>,
     state: PathBuf,
+}
+
+#[tokio::test]
+async fn managed_creation_records_rejection_and_unknown_outcomes_without_retry() {
+    for (scenario, expected) in [
+        ("create_reject", "rejected"),
+        ("create_drop", "outcome_unknown"),
+    ] {
+        let fixture = Fixture::new(scenario).await;
+        assert!(
+            fixture
+                .manager
+                .start_agent(&fixture.agent_id)
+                .await
+                .is_err()
+        );
+        let pool = fixture
+            .manager
+            .event_dbs
+            .pool_for_agent(&fixture.agent_id)
+            .await
+            .unwrap();
+        let rows: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT status, ack_json FROM runtime_control_receipts")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, expected);
+        assert!(
+            !rows[0]
+                .1
+                .as_deref()
+                .unwrap_or("")
+                .contains("private-diagnostic-token")
+        );
+        let closed: bool = sqlx::query_scalar("SELECT closed FROM runtime_event_owners")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert!(closed);
+        fixture.assert_clean().await;
+        fixture.finish().await;
+    }
+}
+
+#[tokio::test]
+async fn managed_replay_repairs_order_and_persists_before_history_delivery() {
+    let fixture = Fixture::new("replay").await;
+    let local = fixture
+        .manager
+        .start_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let pool = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let sequence: i64 =
+                sqlx::query_scalar("SELECT last_sequence FROM runtime_event_streams")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            if sequence == 3 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let rows: Vec<(String, Vec<u8>)> = sqlx::query_as("SELECT e.session_id, e.message FROM agent_events e JOIN runtime_event_history h ON h.history_id = e.id ORDER BY e.id")
+        .fetch_all(&pool).await.unwrap();
+    assert_eq!(rows.len(), 2);
+    for ((session, bytes), (text, index)) in rows.iter().zip([("second", 0), ("third", 1)]) {
+        assert_eq!(session, &local);
+        let value: Value = serde_json::from_str(
+            &crate::agent::event_message_codec::decode_message_from_storage(bytes),
+        )
+        .unwrap();
+        assert_eq!(value["text"], text);
+        assert_eq!(value["chunk_index"], index);
+    }
+    fixture.manager.stop_agent(&fixture.agent_id).await.unwrap();
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM runtime_control_receipts WHERE status = 'accepted'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 2);
+    fixture.assert_clean().await;
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn managed_replay_gap_preserves_cursor_and_fails_visible() {
+    let fixture = Fixture::new("gap").await;
+    fixture
+        .manager
+        .start_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let pool = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    fixture.assert_clean().await;
+    let cursor: (i64, Option<i64>, Option<i64>) =
+        sqlx::query_as("SELECT last_sequence, gap_after, gap_oldest FROM runtime_event_streams")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(cursor, (1, Some(1), Some(3)));
+    assert_eq!(
+        fixture
+            .manager
+            .get_agent(&fixture.agent_id)
+            .await
+            .unwrap()
+            .status,
+        AgentStatus::Failed
+    );
+    fixture.finish().await;
 }
 
 #[async_trait::async_trait]

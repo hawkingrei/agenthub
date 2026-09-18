@@ -12,6 +12,11 @@ use super::{AgentInput, AgentManager};
 use crate::acp::AcpActorSkillContext;
 use crate::agent::AgentRecord;
 
+mod events;
+mod receipts;
+mod session;
+pub use session::RaraHandle;
+
 const PROCESS_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[cfg(all(test, unix))]
@@ -23,7 +28,7 @@ pub(super) struct RaraPipes {
     pub stdin: ChildStdin,
 }
 
-pub(super) async fn exit_success(success: bool, client: Option<&Client>) -> bool {
+pub(super) async fn exit_success(success: bool, client: Option<&RaraHandle>) -> bool {
     let Some(client) = client else {
         return success;
     };
@@ -109,8 +114,9 @@ impl AgentManager {
         session_id: &str,
         pipes: RaraPipes,
         config: &RaraLaunchConfig,
-    ) -> anyhow::Result<Client> {
-        let Connection { client, mut output } = Connection::open(
+        output_tx: tokio::sync::broadcast::Sender<crate::agent::AgentOutput>,
+    ) -> anyhow::Result<std::sync::Arc<RaraHandle>> {
+        let Connection { client, output } = Connection::open(
             BufReader::new(pipes.stdout),
             pipes.stdin,
             ConnectionOptions {
@@ -120,34 +126,50 @@ impl AgentManager {
             },
         )
         .await?;
+        let store = agenthub_db::runtime_events::RuntimeEventStore::bind(
+            self.event_dbs.pool_for_agent(agent_id).await?,
+            session_id,
+            &client.handshake().runtime_id,
+        )
+        .await?;
+        let startup =
+            session::RaraHandle::create(self, client.clone(), store.clone(), agent_id, output_tx)
+                .await;
+        let handle = match startup {
+            Ok(handle) => std::sync::Arc::new(handle),
+            Err(error) => {
+                client.abort();
+                store.close(chrono::Utc::now().timestamp()).await?;
+                return Err(error);
+            }
+        };
         let manager = self.clone();
         let agent_id = agent_id.to_owned();
         let session_id = session_id.to_owned();
-        let observer = client.clone();
+        let observer = handle.clone();
         let cancellation = self.daemon_tasks.runtime_cancellation();
         self.daemon_tasks.spawn_runtime_task(
             format!("direct-runtime-transport:{agent_id}:{session_id}"),
             async move {
-                tokio::select! {
-                    _ = cancellation.cancelled() => {
-                        observer.abort();
-                        return Ok(());
-                    }
-                    frame = output.recv() => {
-                        if frame.is_some() {
-                            // This slice admits transport startup and shutdown only. Live input
-                            // remains gated until the durable event consumer is installed.
-                            observer.abort();
-                            tracing::warn!(%agent_id, %session_id, "direct runtime event mapping is unavailable");
-                        }
-                    }
+                let consumed = observer.consume(output, cancellation).await;
+                if consumed.is_err() {
+                    observer.abort();
                 }
+                let closed = store.close(chrono::Utc::now().timestamp()).await;
+                observer.finish_delivery(consumed.is_ok() && closed.is_ok());
                 let result = observer.closed().await;
-                if let Err(error) = result {
-                    tracing::warn!(%agent_id, %session_id, %error, "direct runtime transport failed");
+                if consumed.is_err() || closed.is_err() || result.is_err() {
+                    tracing::warn!(%agent_id, %session_id, "direct runtime delivery failed");
                     // Serialize with replacement launches; clean only this owned child/session.
-                    let _configuration = manager.configuration_gate(&agent_id).await.lock_owned().await;
-                    manager.process_supervisor.stop_session_or_child(&session_id, &pipes.child).await
+                    let _configuration = manager
+                        .configuration_gate(&agent_id)
+                        .await
+                        .lock_owned()
+                        .await;
+                    manager
+                        .process_supervisor
+                        .stop_session_or_child(&session_id, &pipes.child)
+                        .await
                         .context("failed to clean direct runtime after transport loss")?;
                     let current = {
                         let handles = manager.inner.read().await;
@@ -155,15 +177,22 @@ impl AgentManager {
                     };
                     if current {
                         Self::finalize_process_exit(
-                            &manager.db, &manager.event_dbs, manager.idle_gc.clone(),
-                            &manager.inner, &manager.push, &agent_id, &session_id, false,
-                        ).await;
+                            &manager.db,
+                            &manager.event_dbs,
+                            manager.idle_gc.clone(),
+                            &manager.inner,
+                            &manager.push,
+                            &agent_id,
+                            &session_id,
+                            false,
+                        )
+                        .await;
                     }
                 }
                 Ok(())
             },
         )?;
-        Ok(client)
+        Ok(handle)
     }
 
     pub(super) async fn shutdown_rara_transport(

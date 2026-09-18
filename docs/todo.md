@@ -102,8 +102,9 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   runtime/history boundaries. Prove unknown-ack and duplicate-event handling.
   The [storage foundation](journal/2026-09-18-runtime-event-storage.md) adds atomic history,
   native event associations, contiguous cursors and single-use control receipts. Managed
-  request/event projection now covers the pinned native protocol. Managed wiring, bounded
-  replay consumption, live callbacks, browser reply fences and PR/CI delivery remain open.
+  request/event projection now covers the pinned native protocol. Managed session creation
+  and bounded replay consumption are integrated. User input, live callbacks, browser reply
+  fences and PR/CI delivery remain open.
 - [ ] 18. Align Rara with shared activation identity, semantic guard outcomes, capability-gated
   durable approvals, nested-subteam isolation, and safe event cursors in activation traces.
 

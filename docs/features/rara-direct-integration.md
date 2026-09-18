@@ -294,12 +294,12 @@ terminal state is recorded. Both exit watchers and live-session lookups require
 semantic completion in addition to process success for this transport. The local
 launch ID and negotiated runtime ID remain separate.
 
-This transport slice starts an app-server without creating a provider session or
-submitting work. User input is explicitly unavailable until durable request/event
-mapping is installed; unexpected runtime events fail visibly rather than being
-discarded. Remote placement, Team binding, legacy idle loops and durable loop
-admission are rejected. These gates prevent unsupported work from entering the
-ordinary raw-stdin or ACP paths.
+Managed startup creates one native session after the handshake. Its durable creation
+ACK establishes stream ownership before initial events are consumed. Received events
+commit history and cursor before broadcast; exit observation waits for that drain as
+well as semantic transport completion. User input remains gated until input and live
+permission integration is complete. Remote placement, Team binding, legacy idle loops
+and durable loop admission remain rejected.
 
 ### 2) Configuration
 
@@ -486,6 +486,14 @@ cannot resurrect expired transcript content. Local launch, runtime and native se
 ownership remain distinct; unsolicited events cannot allocate their own binding.
 Reopening this database for a live runtime is not evidence of cross-process native
 session resume or durable approval support.
+
+The managed consumer buffers at most 256 out-of-order events and 8 MiB. It requests
+replay from the committed contiguous cursor without blocking output consumption on
+the ACK. A replay must finish within 30 seconds; absent replay support, overflow,
+identity conflicts and unavailable history fail visibly. Only persisted events update
+live phase/pending-input state and presentation state. The pinned stdio protocol does
+not reconnect across process lifetimes; reopening a cursor alone cannot rebuild live
+projection state or resurrect a pending approval.
 
 ### 8) Diagnostics
 

@@ -4,9 +4,9 @@
 
 The per-agent event database now provides atomic native event deduplication, history
 associations, contiguous replay cursors and durable control-request receipts. This is
-the storage foundation for slice 17. Managed request mapping, the durable event consumer
-and live permission callbacks remain open; user input is still gated by the transport
-integration. The full 18-slice objective is not complete.
+the storage foundation for slice 17. Typed projection and the managed durable event
+consumer are integrated. User input and live permission callbacks remain gated until
+their integration is complete. The full 18-slice objective is not complete.
 
 ## Background
 
@@ -84,11 +84,39 @@ cargo clippy --locked --offline -p agenthub-rara --all-targets -- -D warnings
 
 ## Follow-Ups
 
-- Connect the typed projection to atomic history persistence before enabling managed input.
-- Connect request receipts to the transport, bounded replay consumption and existing
+- Connect prompt/follow-up/answer/cancel controls to durable receipts and existing
   live permission callbacks. Reconcile abandoned runtime owners only after supervisor
   evidence establishes their process lifetime has ended.
 - Prove disconnect around ACK, stale permissions, output compatibility and a native
   process round trip, then publish/validate the complete slice 17 PR.
 - Keep slice 18 activation identity, role/source binding, semantic outcomes and nested
   worker isolation separate. See [the transition TODO](../todo.md).
+
+## Managed Consumer Checkpoint
+
+Startup now durably records native session creation before accepting its events. The
+consumer bounds reordering to 256 events and 8 MiB, requests live replay from the
+committed cursor, and installs projection state only after history commits. Repeated
+events produce no new history or effects. Explicit gaps preserve the cursor and fail
+the owned launch. The existing supervisor still owns process cleanup; semantic exit
+also waits for event drain. Control receipt tasks retain ownership through caller
+disconnects, and close converts unresolved sends to unknown outcomes without retry.
+
+Validation records report 13 focused consumer/managed-process cases passing, a separate
+round trip against the pinned native binary passing, 128 manager regressions passing
+with six fixture/opt-in tests excluded, 34 protocol cases passing, and root library/test
+Clippy with warnings denied passing. The initial manager run had 12 local-listener
+permission failures in the sandbox; rerunning with local test networking allowed
+resolved all 12 without implementation changes.
+
+```bash
+cargo test --locked --offline -p agenthub --lib agent::manager:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::rara::tests::managed_native_process_transport -- --ignored --exact
+cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
+```
+
+The native check requires `AGENTHUB_RARA_TEST_BINARY` built from the pinned revision.
+It creates a session and consumes initial events without issuing a paid model request.
+The upstream prerequisite PR #885 was merged into its main branch on 2026-09-17;
+the downstream prerequisite PR #1163 was merged into its dependency branch on
+2026-09-18. Neither merge implies that the complete downstream stack is in main.

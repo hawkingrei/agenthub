@@ -323,11 +323,16 @@ impl EventProjector {
                 history.push(run_status("running"));
             }
             SessionEvent::TurnFinished { reason } => {
+                let status = if reason.as_deref() == Some("awaiting_input") {
+                    "waiting_permission"
+                } else {
+                    "idle"
+                };
                 *effect = EventEffect::TurnEnded {
                     turn_id: required_turn(frame)?,
                     outcome: TurnEnd::Finished { reason },
                 };
-                history.push(run_status("idle"));
+                history.push(run_status(status));
             }
             SessionEvent::TurnCancelled | SessionEvent::TurnInterrupted => {
                 let interrupted = matches!(event, SessionEvent::TurnInterrupted);

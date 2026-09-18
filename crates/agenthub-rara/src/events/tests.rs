@@ -479,6 +479,15 @@ fn native_turn_outcomes_and_plan_progress_keep_their_meaning() {
     let mut no_turn = event(7, "session", "turn_started", Value::Null);
     no_turn.event.turn_id = None;
     assert!(projector.project(&no_turn).is_err());
+    let waiting = projector
+        .project(&event(
+            8,
+            "session",
+            "turn_finished",
+            json!({"reason":"awaiting_input"}),
+        ))
+        .unwrap();
+    assert_eq!(conversation(&waiting, 0)["status"], "waiting_permission");
 }
 
 #[test]

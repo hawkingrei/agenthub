@@ -742,7 +742,7 @@ pub struct AgentHandle {
 pub enum AgentInput {
     Stdin(Arc<Mutex<Option<ChildStdin>>>),
     Acp(AcpHandle),
-    Rara(agenthub_rara::Client),
+    Rara(Arc<rara::RaraHandle>),
 }
 
 struct AgentManagerMembershipView<'a> {
