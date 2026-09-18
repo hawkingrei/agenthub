@@ -267,11 +267,15 @@ impl AgentManager {
     async fn get_running_session_id(&self, agent_id: &str) -> Option<String> {
         // Running-session lookups return the active AgentHub launch id only. Provider continuity
         // lives in `agent_persistent_sessions` and may survive across multiple launch ids.
-        let (child, session_id) = {
+        let (child, session_id, direct) = {
             let guard = self.inner.read().await;
-            guard
-                .get(agent_id)
-                .map(|handle| (handle.child.clone(), handle.session_id.clone()))?
+            guard.get(agent_id).map(|handle| {
+                let direct = match &handle.input {
+                    AgentInput::Rara(client) => Some(client.clone()),
+                    _ => None,
+                };
+                (handle.child.clone(), handle.session_id.clone(), direct)
+            })?
         };
         let exit_result = {
             let mut child_guard = child.lock().await;
@@ -289,6 +293,7 @@ impl AgentManager {
                     tracing::error!(agent_id, session_id, %error, "exited session cleanup remains unverified");
                     return Some(session_id);
                 }
+                let success = super::rara::exit_success(status.success(), direct.as_ref()).await;
                 Self::finalize_process_exit(
                     &self.db,
                     &self.event_dbs,
@@ -297,7 +302,7 @@ impl AgentManager {
                     &self.push,
                     agent_id,
                     &session_id,
-                    status.success(),
+                    success,
                 )
                 .await;
                 None
@@ -443,6 +448,15 @@ impl AgentManager {
         loop_reservation: Option<agenthub_agent_domain::loop_runtime::LoopReservation>,
     ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
+        let rara_config = self.rara_launch_configuration(&agent, actor_context.as_ref())?;
+        if rara_config.is_some() {
+            let configured: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM loop_policies WHERE actor_id = ?)")
+                    .bind(agent_id)
+                    .fetch_one(&self.db)
+                    .await?;
+            anyhow::ensure!(!configured, "direct runtime loop execution is unavailable");
+        }
         let running_session_id = self.get_running_session_id(agent_id).await;
         match build_agent_start_plan(agent, actor_context, running_session_id.as_deref())? {
             AgentStartPlan::ReuseRunningSession { session_id } => {
@@ -474,13 +488,17 @@ impl AgentManager {
                         loop_reserved = self.reserve_manual_loop_start(agent_id).await?;
                     }
                     let admission = self.start_scheduler.acquire(agent_id).await?;
+                    let start_timeout = rara_config.as_ref().map_or(admission.start_timeout(), |config| {
+                        admission.start_timeout().max(config.startup_timeout + Duration::from_secs(5))
+                    });
                     match tokio::time::timeout(
-                        admission.start_timeout(),
+                        start_timeout,
                         async {
                             self.start_local_agent(
                                 agent,
                                 actor_context,
                                 session_tracker.clone(),
+                                rara_config,
                             )
                             .await
                         },
@@ -498,7 +516,7 @@ impl AgentManager {
                                 })?;
                             anyhow::bail!(
                                 "agent start timed out: agent_id={agent_id} timeout_ms={}",
-                                admission.start_timeout().as_millis()
+                                start_timeout.as_millis()
                             );
                         }
                     }
@@ -554,7 +572,7 @@ impl AgentManager {
     }
 
     #[tracing::instrument(
-        skip(self, agent, actor_context),
+        skip(self, agent, actor_context, rara_config),
         fields(agent_id = %agent.id),
         err
     )]
@@ -563,6 +581,7 @@ impl AgentManager {
         agent: crate::agent::AgentRecord,
         actor_context: Option<AcpActorSkillContext>,
         session_tracker: Arc<Mutex<Option<String>>>,
+        rara_config: Option<agenthub_config::RaraLaunchConfig>,
     ) -> anyhow::Result<String> {
         let allow_resume_retry = !self.loop_reservations.lock().await.contains_key(&agent.id);
         self.start_local_agent_with_resume_fallback(
@@ -570,6 +589,7 @@ impl AgentManager {
             actor_context,
             allow_resume_retry,
             session_tracker,
+            rara_config,
         )
         .await
     }
@@ -580,6 +600,7 @@ impl AgentManager {
         actor_context: Option<AcpActorSkillContext>,
         allow_resume_retry: bool,
         session_tracker: Arc<Mutex<Option<String>>>,
+        rara_config: Option<agenthub_config::RaraLaunchConfig>,
     ) -> anyhow::Result<String> {
         // This UUID tracks the current AgentHub runtime launch only. ACP/Codex continuity
         // can still resume a previously persisted provider session later in this method.
@@ -723,11 +744,25 @@ impl AgentManager {
             return Err(err);
         }
 
-        let acp_provider = self.acp_provider_spec_for_agent(&agent.command, &agent.args);
+        let is_rara = rara_config.is_some();
+        let acp_provider = if is_rara {
+            None
+        } else {
+            self.acp_provider_spec_for_agent(&agent.command, &agent.args)
+        };
         let is_acp = acp_provider.is_some();
-        let (command_path, command_args) =
-            self.resolve_launch_command(&agent.command, &agent.args, acp_provider);
-        let spawn_summary = if is_loop_activation {
+        let (command_path, command_args) = if let Some(config) = &rara_config {
+            let launch = agenthub_rara::LaunchCommand::new(
+                config,
+                std::path::Path::new(&start_policy.workdir),
+            )?;
+            (launch.program, launch.args)
+        } else {
+            self.resolve_launch_command(&agent.command, &agent.args, acp_provider)
+        };
+        let spawn_summary = if is_rara {
+            format!("provider=direct-runtime workdir={}", start_policy.workdir)
+        } else if is_loop_activation {
             format!(
                 "provider={} workdir={}",
                 acp_provider
@@ -833,7 +868,7 @@ impl AgentManager {
             registration,
             runtime_location,
         } = local_execution;
-        let (mut stdout, stderr, stdin) = {
+        let (mut stdout, mut stderr, stdin) = {
             let mut child_guard = child.lock().await;
             let process = child_guard
                 .as_mut()
@@ -847,6 +882,10 @@ impl AgentManager {
 
         let (output_tx, _rx) = broadcast::channel(256);
         let stdin = Arc::new(Mutex::new(stdin));
+        if is_rara && let Some(stderr) = stderr.take() {
+            // Start draining before handshake: startup diagnostics may fill the child pipe.
+            self.spawn_rara_stderr_drain(agent.id.clone(), session_id.clone(), stderr)?;
+        }
 
         let now = Utc::now().timestamp();
         if let Err(err) = sqlx::query(
@@ -922,7 +961,44 @@ impl AgentManager {
         let mut resumed_persistent_session_id = None::<String>;
         let mut active_acp_session_id = None::<String>;
         let mut acp_prompt_delivery_policy = None;
-        let input = if let Some(provider) = acp_provider {
+        let input = if let Some(config) = &rara_config {
+            let connection = async {
+                let stdout = stdout
+                    .take()
+                    .ok_or_else(|| anyhow::anyhow!("direct runtime stdout missing"))?;
+                let stdin = stdin
+                    .lock()
+                    .await
+                    .take()
+                    .ok_or_else(|| anyhow::anyhow!("direct runtime stdin missing"))?;
+                self.connect_rara(
+                    &agent.id,
+                    &session_id,
+                    super::rara::RaraPipes {
+                        child: child.clone(),
+                        stdout,
+                        stdin,
+                    },
+                    config,
+                )
+                .await
+            }
+            .await;
+            match connection {
+                Ok(client) => AgentInput::Rara(client),
+                Err(error) => {
+                    self.process_supervisor
+                        .stop_session_or_child(&session_id, &child)
+                        .await
+                        .context("failed to clean direct runtime startup")?;
+                    self.record_failed_session(&agent.id, &session_id, &error.to_string())
+                        .await?;
+                    self.update_agent_status(&agent.id, AgentStatus::Failed)
+                        .await?;
+                    return Err(error);
+                }
+            }
+        } else if let Some(provider) = acp_provider {
             acp_prompt_delivery_policy = Some(provider.prompt_delivery_policy);
             // Provider continuity is stored separately from the AgentHub runtime launch id
             // above so restarts can keep ACP memory while still recording a new local start.
@@ -1178,7 +1254,10 @@ impl AgentManager {
         }
         registration.commit();
 
-        if !is_acp && let Some(stdout) = stdout {
+        if !is_acp
+            && !is_rara
+            && let Some(stdout) = stdout
+        {
             self.spawn_output_reader(
                 agent.id.clone(),
                 session_id.clone(),
@@ -1294,6 +1373,7 @@ impl AgentManager {
                     actor_context,
                     false,
                     session_tracker,
+                    rara_config,
                 ))
                 .await;
             }
@@ -1399,10 +1479,17 @@ impl AgentManager {
                     handle.child.clone(),
                     handle.output_tx.clone(),
                     handle.session_id.clone(),
+                    match &handle.input {
+                        AgentInput::Rara(client) => Some(client.clone()),
+                        _ => None,
+                    },
                 )
             })
         };
-        if let Some((child, output_tx, session_id)) = process {
+        if let Some((child, output_tx, session_id, rara)) = process {
+            if let Some(client) = rara {
+                self.shutdown_rara_transport(&client, &child).await;
+            }
             self.process_supervisor
                 .stop_session_or_child(&session_id, &child)
                 .await

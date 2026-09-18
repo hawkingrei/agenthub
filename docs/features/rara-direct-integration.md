@@ -14,10 +14,10 @@ boundaries.
 
 ## Scope
 
-The dedicated configuration, bounded wire codec, connection lifecycle and pinned
-process fixtures are implemented in `agenthub-config` and `agenthub-rara`. Managed launch/cleanup,
-durable request/event mapping and loop admission remain the separate active
-implementation gates tracked in [the transition TODO](../todo.md).
+The dedicated configuration, bounded wire codec, connection lifecycle and managed
+local launch/cleanup are implemented in `agenthub-config`, `agenthub-rara` and the
+existing agent manager. Durable request/event mapping and loop admission remain
+the separate active implementation gates tracked in [the transition TODO](../todo.md).
 
 - Local and remote AgentHub placement of a Rara runtime process.
 - Rara app-server / runtime-control interaction as the only supported integration path.
@@ -245,13 +245,13 @@ provider raw JSON must stay redacted from diagnostics metadata by default.
 The compatible protocol fixture is pinned to upstream commit
 `6f489462251b73e1695bb22a59d2ece59ba26a21` in
 [the independently validated prerequisite PR](https://github.com/linkerdog/rara/pull/885).
-Package version `0.0.22` alone does not identify this protocol. The version1 envelope
+Package version `0.0.22` alone does not identify this protocol. The version 1 envelope
 uses `type`/`payload`; the handshake carries `runtime_id`, `runtime_version`,
 `request_methods`, family lists and explicit receipt/replay/approval lifetimes.
 The tested build advertises runtime-only receipts and replay, and no persistent
 approvals or session resume. Missing required capabilities fail startup visibly.
 
-Frames contain at most1,048,576 UTF-8 payload bytes, excluding LF or CRLF delimiters.
+Frames contain at most 1,048,576 UTF-8 payload bytes, excluding LF or CRLF delimiters.
 Blank, partial-EOF, malformed and oversized frames fail the transport. A cancelled
 asynchronous read retains its partial frame for the next poll. All protocol errors
 contain fixed categories without raw input or provider diagnostics.
@@ -276,6 +276,28 @@ shutdown deadline. Stdin stays open during drain; the child must not depend on i
 EOF to initiate shutdown. This transport receipt does not prove process exit,
 descendant cleanup, task completion or durable consumption of queued events.
 Those remain the process supervisor's and event consumer's separate obligations.
+
+Managed local startup selects this transport with agent command `rara` and empty
+agent arguments. `[rara].binary` selects the actual executable. The existing local
+executor supplies workspace, environment and proxy policy; the process supervisor
+retains registration and cleanup ownership. Stderr is drained before handshake in
+fixed-size chunks. Only a byte counter reaches diagnostics; diagnostic text cannot
+grant readiness or enter the conversation as an ACP event.
+
+Stopping one agent or the daemon first requests semantic shutdown and allows two
+seconds for process exit after clean transport drain. The existing supervisor
+then verifies process-group cleanup, with its signal/kill fallback on failure or
+timeout. Startup failures and transport loss clean the same owned launch before
+terminal state is recorded. Both exit watchers and live-session lookups require
+semantic completion in addition to process success for this transport. The local
+launch ID and negotiated runtime ID remain separate.
+
+This transport slice starts an app-server without creating a provider session or
+submitting work. User input is explicitly unavailable until durable request/event
+mapping is installed; unexpected runtime events fail visibly rather than being
+discarded. Remote placement, Team binding, legacy idle loops and durable loop
+admission are rejected. These gates prevent unsupported work from entering the
+ordinary raw-stdin or ACP paths.
 
 ### 2) Configuration
 
@@ -307,6 +329,9 @@ Timeouts must be1-600 seconds. Explicit overrides are
 `AGENTHUB_RARA_SHUTDOWN_TIMEOUT_SECONDS`. Unknown fields, including credential
 fields, reject configuration. Startup argv uses the fixed protocol prefix and
 one argument per value; model/provider labels cannot inject permission flags.
+An agent's explicit `runtime_model` overrides the configured default model;
+thinking-level overrides remain unsupported. The overall start admission deadline
+is at least the configured handshake timeout plus five seconds for local setup.
 
 ### 3) Input Control
 

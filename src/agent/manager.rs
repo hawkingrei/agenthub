@@ -10,6 +10,7 @@ pub(crate) use loop_launch::LoopControlEndpoint;
 pub(crate) use loop_preflight::LoopPreflight;
 mod nodes;
 mod process;
+mod rara;
 mod runtime;
 mod session;
 mod start_plan;
@@ -741,6 +742,7 @@ pub struct AgentHandle {
 pub enum AgentInput {
     Stdin(Arc<Mutex<Option<ChildStdin>>>),
     Acp(AcpHandle),
+    Rara(agenthub_rara::Client),
 }
 
 struct AgentManagerMembershipView<'a> {
@@ -2146,6 +2148,21 @@ impl AgentManager {
                     "input_kind": "stdin"
                 }),
             ),
+            AgentInput::Rara(client) => (
+                match client.status() {
+                    agenthub_rara::ConnectionStatus::Running => "transport_ready",
+                    agenthub_rara::ConnectionStatus::Closing => "closing",
+                    agenthub_rara::ConnectionStatus::Closed(Ok(_)) => "closed",
+                    agenthub_rara::ConnectionStatus::Closed(Err(_)) => "transport_failed",
+                },
+                serde_json::json!({
+                    "input_kind": "runtime_control",
+                    "provider": "rara",
+                    "runtime_id": client.handshake().runtime_id,
+                    "protocol_version": client.handshake().protocol_version,
+                    "transport": client.handshake().transport,
+                }),
+            ),
         };
         let subscriber_count = handle.output_tx.receiver_count();
         let sse_diagnostics = crate::sse::agent_sse_diagnostics(agent_id);
@@ -2286,6 +2303,7 @@ impl AgentManager {
                     Some(handle.output_tx.clone()),
                     Some(handle.session_id.clone()),
                 ),
+                AgentInput::Rara(_) => (None, None, None, Some(handle.session_id.clone())),
             })
         };
         let (stdin, acp, output_tx, session_id) = match handle_snapshot {
@@ -2337,7 +2355,8 @@ impl AgentManager {
             return Err(anyhow::anyhow!("agent stdin closed"));
         }
 
-        let acp = acp.ok_or_else(|| anyhow::anyhow!("agent not running"))?;
+        let acp =
+            acp.ok_or_else(|| anyhow::anyhow!("direct runtime input mapping is unavailable"))?;
         let output_tx = output_tx.ok_or_else(|| anyhow::anyhow!("agent output missing"))?;
 
         let seq = Uuid::now_v7().to_string();

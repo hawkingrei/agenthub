@@ -175,10 +175,19 @@ impl AgentManager {
             async move {
                 let child = {
                     let guard = inner.read().await;
-                    guard.get(&agent_id).map(|h| h.child.clone())
+                    guard
+                        .get(&agent_id)
+                        .filter(|h| h.session_id == session_id)
+                        .map(|h| {
+                            let direct = match &h.input {
+                                super::AgentInput::Rara(client) => Some(client.clone()),
+                                _ => None,
+                            };
+                            (h.child.clone(), direct)
+                        })
                 };
 
-                if let Some(child_mutex) = child {
+                if let Some((child_mutex, direct)) = child {
                     let success = loop {
                         let poll_result = {
                             let mut child_guard = child_mutex.lock().await;
@@ -210,6 +219,7 @@ impl AgentManager {
                     manager
                         .cleanup_observed_session(&agent_id, &session_id, &child_mutex)
                         .await?;
+                    let success = super::rara::exit_success(success, direct.as_ref()).await;
                     Self::finalize_process_exit(
                         &db,
                         &event_dbs,
@@ -278,7 +288,7 @@ impl AgentManager {
             }
             return;
         }
-        let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
+        let ended_at: Option<i64> = row.and_then(|r| r.get("ended_at"));
         if ended_at.is_some() {
             let removed = {
                 let mut guard = inner.write().await;
@@ -325,11 +335,17 @@ impl AgentManager {
             UPDATE agents
             SET status = ?1, updated_at = ?2
             WHERE id = ?3
+              AND NOT EXISTS (
+                  SELECT 1 FROM agent_sessions newer
+                  WHERE newer.agent_id = ?3
+                    AND newer.rowid > (SELECT rowid FROM agent_sessions WHERE id = ?4)
+              )
             "#,
         )
         .bind(status)
         .bind(now)
         .bind(agent_id)
+        .bind(session_id)
         .execute(db)
         .await
         {
@@ -530,6 +546,72 @@ mod tests {
         .into_iter()
         .map(|row| row.get::<String, _>("stream"))
         .collect()
+    }
+
+    #[tokio::test]
+    async fn finalize_process_exit_updates_sessions_with_null_end_time() {
+        let state = crate::api::team_tests::build_test_state().await;
+        for success in [false, true] {
+            let (agent_id, session_id) = insert_agent_and_session(&state.db, "null-ended").await;
+            super::AgentManager::finalize_process_exit(
+                &state.db,
+                &state.agents.event_dbs,
+                None,
+                &state.agents.inner,
+                &state.push,
+                &agent_id,
+                &session_id,
+                success,
+            )
+            .await;
+            let row = sqlx::query("SELECT status, ended_at FROM agent_sessions WHERE id = ?")
+                .bind(&session_id)
+                .fetch_one(&state.db)
+                .await
+                .unwrap();
+            assert_eq!(
+                row.get::<String, _>("status"),
+                if success { "completed" } else { "failed" }
+            );
+            assert!(row.get::<Option<i64>, _>("ended_at").is_some());
+            let status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = ?")
+                .bind(&agent_id)
+                .fetch_one(&state.db)
+                .await
+                .unwrap();
+            assert_eq!(status, if success { "stopped" } else { "failed" });
+        }
+    }
+
+    #[tokio::test]
+    async fn finalize_late_exit_preserves_the_newer_launch_status_in_the_same_second() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) = insert_agent_and_session(&state.db, "late-exit").await;
+        sqlx::query("INSERT INTO agent_sessions (id, agent_id, status, started_at) SELECT ?, agent_id, 'running', started_at FROM agent_sessions WHERE id = ?")
+            .bind(Uuid::new_v4().to_string()).bind(&session_id).execute(&state.db).await.unwrap();
+        super::AgentManager::finalize_process_exit(
+            &state.db,
+            &state.agents.event_dbs,
+            None,
+            &state.agents.inner,
+            &state.push,
+            &agent_id,
+            &session_id,
+            false,
+        )
+        .await;
+        let status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = ?")
+            .bind(&agent_id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(status, "running");
+        let old: String = sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = ?")
+            .bind(&session_id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(old, "failed");
     }
 
     #[tokio::test]

@@ -395,6 +395,7 @@ dependencies = [
  "agenthub-object-store",
  "agenthub-push",
  "agenthub-pyroscope",
+ "agenthub-rara",
  "agenthub-team-actor",
  "agenthub-team-domain",
  "agenthub-team-prompts",

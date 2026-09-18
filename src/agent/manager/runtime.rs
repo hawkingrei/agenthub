@@ -371,6 +371,10 @@ impl AgentManager {
         prompt: Option<&str>,
     ) -> anyhow::Result<()> {
         let current = self.get_agent(agent_id).await?;
+        anyhow::ensure!(
+            !enabled || current.command != "rara",
+            "direct runtime loop execution is unavailable"
+        );
         let next_idle_seconds = idle_seconds.or(current.agent_loop_idle_seconds);
         let next_prompt = prompt
             .map(str::trim)
@@ -431,7 +435,7 @@ impl AgentManager {
                         controller.stop();
                     }
                 }
-                (AgentInput::Stdin(_), Some(_)) => {}
+                (AgentInput::Stdin(_) | AgentInput::Rara(_), Some(_)) => {}
             }
         }
         Ok(())
@@ -513,6 +517,7 @@ impl AgentManager {
     #[tracing::instrument(skip(self), err)]
     pub async fn stop_all_on_shutdown(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
         let _shutdown_guard = self.process_supervisor.begin_shutdown().await;
+        self.shutdown_rara_transports().await;
         self.process_supervisor.stop_all().await?;
         let loop_actors = self
             .loop_reservations
