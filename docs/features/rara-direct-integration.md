@@ -396,6 +396,20 @@ Receipt metadata contains safe identifiers, method/status, timestamps and an all
 rejection code, without request bodies or provider rejection prose. This storage boundary
 does not itself enable managed input or an automatic control-request retry path.
 
+The typed control mapper validates target, turn and encoded size before dispatch.
+Native shell rejection is explicitly represented as `Deny`, serialized to the pinned
+protocol's `suggestion` decision, which rejects execution and resumes reasoning.
+
+Event projection uses the outer owned session, not optional provenance, and computes
+a SHA-256 fingerprint over recursively sorted JSON object keys. Assistant deltas retain
+contiguous message identities. Tool output follows the original open call across an
+approval answer's new turn; later reuse of a completed call ID creates a new card.
+Question cards carry runtime, native session and waiting turn for reply validation.
+An approval notice alone never creates a live callback. Projection state is installed
+only after its event transaction commits; duplicates and failed transactions cannot
+advance chunk or tool state. Diagnostic/source events expose allowlisted identifiers,
+counts and statuses, while conversation bodies remain attributed history content.
+
 ### 5) Approval And Permission
 
 - Rara owns local sandbox and tool approval semantics.

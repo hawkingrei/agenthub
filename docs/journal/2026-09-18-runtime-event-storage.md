@@ -61,10 +61,30 @@ git diff --check
 No dependencies or Bazel configuration change; existing Rust source globs include the
 new modules. Remote CI for the complete slice 17 PR remains a delivery gate.
 
+## Typed Projection Checkpoint
+
+The protocol crate now maps typed controls and native events from the pinned upstream
+revision. It adds canonical SHA-256 fingerprints, conversation/tool/plan/question history,
+post-commit state effects, and allowlisted diagnostic observations. Open tool calls retain
+their card identity across approval answer turns, while reused completed call IDs remain
+separate. Question metadata retains the native waiting-turn fence; integrating that fence
+into browser submission and the managed consumer remains required.
+
+Validation records for this checkpoint report 34 protocol tests passing, one opt-in native
+process test excluded, and all-target Clippy with warnings denied passing. Cases cover
+wire methods and encoded limits, canonical digests, chunk rollback, tool identity, stale
+answers, approval notices, snapshot ownership, semantic outcomes and secret redaction.
+The existing workspace SHA-256 dependency is now used by the protocol crate; the lockfile
+adds only that crate's dependency edge. No Bazel configuration changes are required.
+
+```bash
+cargo test --locked --offline -p agenthub-rara
+cargo clippy --locked --offline -p agenthub-rara --all-targets -- -D warnings
+```
+
 ## Follow-Ups
 
-- Compute canonical native fingerprints and translate events into the existing history
-  vocabulary before enabling managed user input.
+- Connect the typed projection to atomic history persistence before enabling managed input.
 - Connect request receipts to the transport, bounded replay consumption and existing
   live permission callbacks. Reconcile abandoned runtime owners only after supervisor
   evidence establishes their process lifetime has ended.
