@@ -13,6 +13,7 @@ use crate::acp::AcpActorSkillContext;
 use crate::agent::AgentRecord;
 
 mod events;
+mod history;
 mod receipts;
 mod session;
 pub use session::RaraHandle;

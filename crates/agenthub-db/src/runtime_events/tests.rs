@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use super::*;
 
+mod history;
 mod requests;
 
 struct Fixture {

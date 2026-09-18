@@ -7,7 +7,9 @@ use super::*;
 use crate::agent::AgentStatus;
 use crate::agent::manager::executor::{AgentExecutor, LocalExecutionRequest, SpawnedLocalProcess};
 
+mod history;
 mod input;
+mod native;
 mod permissions;
 
 const PEER: &str = r#"#!/usr/bin/env python3
@@ -103,7 +105,12 @@ for line in sys.stdin:
                 result = {'status': 'queued', 'session_id': native}
             else:
                 result = {'status': 'accepted', 'session_id': native, 'turn_id': 'turn-' + str(inputs), 'last_sequence': sequence}
+            if mode == 'ack_before_events' and operation == 'submit_user_prompt':
+                result['last_sequence'] = sequence + 1
             emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'], 'result': result})
+            if mode == 'ack_before_events' and operation == 'submit_user_prompt':
+                while not (root / 'release-events').exists():
+                    time.sleep(0.01)
             if result['status'] == 'accepted' and operation.startswith('answer_') and mode.startswith('permission_'):
                 sequence += 1
                 emit('event', {'runtime_id': runtime, 'session_id': native, 'event': {

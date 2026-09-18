@@ -19,7 +19,8 @@ local launch/cleanup are implemented in `agenthub-config`, `agenthub-rara` and t
 existing agent manager. The per-agent event database also provides durable control
 receipts, event deduplication and contiguous replay cursors. Managed event consumption,
 prompt/follow-up submission, fenced user answers, live permissions and turn cancellation
-are integrated. Recovery visibility and loop admission remain implementation gates tracked
+are integrated. Authorized receipt/cursor history remains available after exit, and startup
+retires abandoned transport ownership. Loop admission remains an implementation gate tracked
 in [the transition TODO](../todo.md).
 
 - Local and remote AgentHub placement of a Rara runtime process.
@@ -420,6 +421,9 @@ Event projection uses the outer owned session, not optional provenance, and comp
 a SHA-256 fingerprint over recursively sorted JSON object keys. Assistant deltas retain
 contiguous message identities. Tool output follows the original open call across an
 approval answer's new turn; later reuse of a completed call ID creates a new card.
+After an owned shell approval is granted, the native repeated start event updates the
+original card once in the answer turn. Other duplicate starts remain conflicts. A native
+plan answer completes its interaction card without requiring a tool-result event.
 Terminal or discarded turns fail unfinished tool cards and retire their identities;
 an old turn's cleanup cannot retire calls owned by its successor.
 Question cards carry runtime, native session and waiting turn for reply validation.
@@ -524,7 +528,27 @@ live phase/pending-input state and presentation state. The pinned stdio protocol
 not reconnect across process lifetimes; reopening a cursor alone cannot rebuild live
 projection state or resurrect a pending approval.
 
+An accepted ACK may precede delivery of its referenced events. Before choosing the next
+prompt/follow-up or turn control, the adapter waits for that cursor to commit, bounded by
+the replay timeout. This wait never advances event persistence from ACK metadata alone.
+
+Startup recovery runs under the daemon's exclusive instance lock before new work is admitted.
+It closes earlier local stdio ownership, settles prepared requests as `not_sent` and unresolved
+sends as `outcome_unknown`, and expires live permission callbacks. Recorded ACKs remain intact.
+Native sessions waiting on approval are included even when their status is not `running`.
+This is transport retirement, not evidence that detached processes stopped or tasks finished;
+durable execution reservations retain their separate cleanup fence.
+
 ### 8) Diagnostics
+
+`GET /api/agents/{id}/sessions/{session_id}/runtime` requires `runtime:inspect` and verifies
+the local agent/session association before reading its event database. This release-visible
+endpoint returns the owned runtime, closed state, native stream cursors/gaps and safe typed
+request receipts after process exit. Unknown, foreign and remote sessions return not found.
+It never creates runtime ownership or returns raw input, provider envelopes or rejection prose.
+Receipts use descending request-ID pagination with `before_request_id`, a default limit of 50
+and a maximum of 100. Stream summaries are bounded to 100 with explicit truncation metadata.
+The response is one database read snapshot; ACK updates do not change receipt page ordering.
 
 `agenthub doctor agent-trace` and web debug surfaces should report a Rara provider adapter section
 when the active provider is Rara:

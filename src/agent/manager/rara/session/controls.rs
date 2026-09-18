@@ -6,6 +6,7 @@ impl RaraHandle {
     /// Capture the currently owned turn once; a late request must not stop its successor.
     pub(crate) async fn stop_turn(&self, interrupt: bool) -> anyhow::Result<()> {
         let _gate = self.input_gate.lock().await;
+        self.await_admitted_events().await?;
         let turn_id = match &self.state.read().await.phase {
             SessionPhase::Running { turn_id }
             | SessionPhase::Cancelling { turn_id }
@@ -29,6 +30,7 @@ impl RaraHandle {
             request,
         )
         .await?;
+        self.record_ack_cursor(&result);
         anyhow::ensure!(
             matches!(result, RuntimeRequestAck::Accepted { .. }),
             "direct runtime rejected turn cancellation"

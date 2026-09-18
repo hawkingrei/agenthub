@@ -69,13 +69,14 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   [History storage](journal/2026-09-17-loop-history-storage.md) adds authorized paged APIs, durable
   RPC/MCP boundaries, scoped metrics, lifecycle trace correlation, and activation-aware doctor.
   [PR #1159](https://github.com/hawkingrei/agenthub/pull/1159) passed applicable CI at
-  `7f2b9a2a97600a034622e517aab6c3d678f8ad1b`, including Rust/Bazel coverage, and is ready for review.
+  `7f2b9a2a97600a034622e517aab6c3d678f8ad1b`, including Rust/Bazel coverage, and was merged
+  into its dependency branch on 2026-09-18.
 - [x] 13. Expose offline configuration and task/IM/activation views with distinct process/policy
   state. [Workspace UI checkpoint](journal/2026-09-17-loop-workspace-ui.md) records local web
   validation and actual Chrome DevTools lifecycle/page-reopen evidence.
   [PR #1160](https://github.com/hawkingrei/agenthub/pull/1160) passed applicable CI at
   `0486b19db9a829a782f2f61d647a0f5053c64009`, including browser workflows and Rust/Bazel coverage,
-  and is ready for review.
+  and was merged into its dependency branch on 2026-09-18.
 - [x] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove
   call-time scope checks, fixed activation versions, immediate revocation, and safe attribution.
   The [storage checkpoint](journal/2026-09-17-app-registry-storage.md) covers durable registrations,
@@ -84,18 +85,21 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   immediate and deferred outcomes. [Runtime integration](features/app-tool-runtime.md) connects
   launch, preflight, schema enforcement, call/stream authorization, safe Cards, and App/version history
   attribution. [PR #1161](https://github.com/hawkingrei/agenthub/pull/1161) passed all applicable CI
-  at `5fd553b3d7773db94b5401ba68be1b7f83958d29` and is ready for review.
-- [ ] 15. Accept signed app events through durable intake. Ship signatures, event ID/cursor replay
+  at `5fd553b3d7773db94b5401ba68be1b7f83958d29` and was merged into its dependency branch
+  on 2026-09-18.
+- [x] 15. Accept signed app events through durable intake. Ship signatures, event ID/cursor replay
   protection, declared-class routing, revocation checks, and storm budgets together.
   The [configuration foundation](features/app-event-configuration.md) provides declarations,
   independent signing-key references and explicit routes. [Signed intake](features/app-event-ingress.md)
   adds atomic receipt/cursor/intake, bounded audit/budgets, standing conditions, and safe
-  doctor/context/web history. Complete final review and individual PR/CI delivery.
+  doctor/context/web history. [PR #1162](https://github.com/hawkingrei/agenthub/pull/1162)
+  passed applicable CI and was merged into its dependency branch on 2026-09-18.
 - [x] 16. Pin and validate the Rara app-server transport/handshake; add local launch and cleanup.
   The pinned codec/configuration, connection lifecycle and supervised local launch
   are implemented and locally validated, including two native process checks.
   [PR #1163](https://github.com/hawkingrei/agenthub/pull/1163) passed applicable CI at
-  `e6b0cd6cc32736a6139356aa8c46d61ef871c7e5` and is ready for review. See
+  `e6b0cd6cc32736a6139356aa8c46d61ef871c7e5` and was merged into its dependency branch
+  on 2026-09-18. These stacked merges do not imply that all slices are in main. See
   [the transport checkpoint](journal/2026-09-18-rara-local-transport.md).
   Any missing upstream protocol work is an explicit prerequisite, not an ACP fallback.
 - [ ] 17. Map Rara control acknowledgments, events, replay, and live permissions into existing
@@ -104,8 +108,9 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   native event associations, contiguous cursors and single-use control receipts. Managed
   request/event projection now covers the pinned native protocol. Managed session creation
   and bounded replay consumption are integrated. Managed text input, durable delivery
-  receipts, browser reply fences, live callbacks and cancellation are integrated. Recovery
-  visibility, the native prompt/approval fixture and PR/CI delivery remain open.
+  receipts, browser reply fences, live callbacks and cancellation are integrated. Safe history
+  queries and startup transport retirement are implemented and locally validated. The real
+  native question/plan/shell fixture passes both approval and denial. PR/CI delivery remains open.
 - [ ] 18. Align Rara with shared activation identity, semantic guard outcomes, capability-gated
   durable approvals, nested-subteam isolation, and safe event cursors in activation traces.
 

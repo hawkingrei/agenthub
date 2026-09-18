@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use agenthub_db::runtime_events::{
@@ -33,6 +34,8 @@ pub struct RaraHandle {
     idle_gc: Option<agenthub_db::AgentEventIdleGc>,
     event_dbs: agenthub_db::AgentEventDbRouter,
     input_gate: Arc<Mutex<()>>,
+    ack_cursor: Arc<AtomicU64>,
+    progress: watch::Sender<u64>,
     permissions: Arc<agenthub_acp::AcpPermissionService>,
     permission: Arc<Mutex<Option<permissions::LivePermission>>>,
     state: Arc<RwLock<LiveState>>,
@@ -75,7 +78,12 @@ impl RaraHandle {
             ControlRequest::CreateSession,
         )
         .await?;
-        let RuntimeRequestAck::Accepted { session_id, .. } = ack else {
+        let RuntimeRequestAck::Accepted {
+            session_id,
+            last_sequence,
+            ..
+        } = ack
+        else {
             anyhow::bail!("direct runtime rejected session creation");
         };
         let stream = store
@@ -83,6 +91,7 @@ impl RaraHandle {
             .await?
             .ok_or_else(|| anyhow::anyhow!("direct runtime stream ownership is missing"))?;
         let (delivery, _) = watch::channel(None);
+        let (progress, _) = watch::channel(0);
         Ok(Self {
             client,
             store,
@@ -93,6 +102,8 @@ impl RaraHandle {
             idle_gc: manager.idle_gc.clone(),
             event_dbs: manager.event_dbs.clone(),
             input_gate: Arc::new(Mutex::new(())),
+            ack_cursor: Arc::new(AtomicU64::new(last_sequence.unwrap_or(0))),
+            progress,
             permissions: manager.permissions.clone(),
             permission: Arc::new(Mutex::new(None)),
             state: Arc::new(RwLock::new(LiveState {
@@ -296,6 +307,40 @@ impl RaraHandle {
         if let Some((pending, tool_call_id)) = interaction {
             self.request_permission(pending, tool_call_id).await?;
         }
+        self.progress.send_replace(sequence);
         Ok(())
+    }
+
+    fn record_ack_cursor(&self, ack: &RuntimeRequestAck) {
+        if let RuntimeRequestAck::Accepted {
+            last_sequence: Some(sequence),
+            ..
+        } = ack
+        {
+            self.ack_cursor.fetch_max(*sequence, Ordering::AcqRel);
+        }
+    }
+
+    /// ACKs may arrive before their events. Route the next input/control only after
+    /// those events commit, without treating an ACK cursor as persisted history.
+    async fn await_admitted_events(&self) -> anyhow::Result<()> {
+        let cursor = self.ack_cursor.load(Ordering::Acquire);
+        let mut progress = self.progress.subscribe();
+        let result = tokio::time::timeout(Duration::from_secs(30), async {
+            loop {
+                if *progress.borrow_and_update() >= cursor { return Ok(()); }
+                tokio::select! {
+                    _ = self.client.closed() => anyhow::bail!("direct runtime closed before admitted events committed"),
+                    changed = progress.changed() => changed?,
+                }
+            }
+        }).await;
+        match result {
+            Ok(result) => result,
+            Err(_) => {
+                self.client.abort();
+                anyhow::bail!("direct runtime admitted events did not commit")
+            }
+        }
     }
 }

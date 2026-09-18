@@ -399,7 +399,9 @@ fn enum_name(value: impl Serialize) -> anyhow::Result<String> {
     }
 }
 
-fn receipt_from_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<RuntimeRequestReceipt> {
+pub(super) fn receipt_from_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> anyhow::Result<RuntimeRequestReceipt> {
     Ok(RuntimeRequestReceipt {
         request_id: row.try_get("request_id")?,
         kind: serde_json::from_value(serde_json::Value::String(row.try_get("kind")?))?,

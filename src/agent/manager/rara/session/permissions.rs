@@ -179,6 +179,7 @@ impl RaraHandle {
         )
         .await?;
         let _gate = self.input_gate.lock().await;
+        self.await_admitted_events().await?;
         if cancellation.is_cancelled() || self.state.read().await.pending.as_ref() != Some(&pending)
         {
             self.emit_history(json!({"type":"permission_control_expired","permission_id":id}))
@@ -201,6 +202,9 @@ impl RaraHandle {
             request.expected_turn_id(),
         )
         .await;
+        if let Ok(ack) = &result {
+            self.record_ack_cursor(ack);
+        }
         if let Some(receipt) = self.store.request_receipt(&request_id).await? {
             self.emit_history(json!({"type":"permission_control_receipt", "permission_id":id,
                 "receipt":receipt, "meta":{"provider_runtime":{"provider":"rara",

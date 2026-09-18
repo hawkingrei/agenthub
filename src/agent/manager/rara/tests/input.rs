@@ -272,3 +272,56 @@ async fn caller_disconnect_does_not_abandon_the_receipt_owner() {
     fixture.manager.stop_agent(&fixture.agent_id).await.unwrap();
     fixture.finish().await;
 }
+
+#[tokio::test]
+async fn accepted_cursor_fences_follow_up_routing_until_events_commit() {
+    let fixture = Fixture::new("ack_before_events").await;
+    let session = fixture
+        .manager
+        .start_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    fixture
+        .manager
+        .send_input(&fixture.agent_id, "first", Some("first"), Some(&session))
+        .await
+        .unwrap();
+    assert_eq!(fixture.input_receipt("first").await.0, "accepted");
+    let manager = fixture.manager.clone();
+    let agent_id = fixture.agent_id.clone();
+    let follow_up = tokio::spawn(async move {
+        manager
+            .send_input(&agent_id, "second", Some("second"), Some(&session))
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(!follow_up.is_finished());
+    assert_eq!(fixture.input_requests().len(), 1);
+    let pool = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let sequence: i64 = sqlx::query_scalar("SELECT last_sequence FROM runtime_event_streams")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        sequence, 1,
+        "an ACK cannot advance persisted event progress"
+    );
+    std::fs::write(fixture.directory.join("release-events"), "ready").unwrap();
+    tokio::time::timeout(Duration::from_secs(5), follow_up)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(fixture.input_receipt("second").await.0, "queued");
+    assert_eq!(
+        fixture.input_requests()[1]["payload"]["envelope"]["request"]["payload"]["type"],
+        "submit_follow_up"
+    );
+    fixture.manager.stop_agent(&fixture.agent_id).await.unwrap();
+    fixture.finish().await;
+}

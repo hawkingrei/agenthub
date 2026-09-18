@@ -157,3 +157,79 @@ async fn reorder_capacity_is_bounded_without_advancing_past_missing_history() {
     assert_eq!(fixture.stream.cursor().await.unwrap().sequence, 0);
     assert_eq!(fixture.count().await, 0);
 }
+
+#[tokio::test]
+async fn tool_replay_keeps_one_card_and_one_result_across_approval_handoff() {
+    let mut fixture = Fixture::new().await;
+    let payloads = [
+        (
+            "tool",
+            "use",
+            json!({"call_id":"call", "name":"bash", "input":{}}),
+        ),
+        (
+            "input",
+            "requested",
+            json!({"pending":{"turn_id":"turn", "kind":{"type":"shell","payload":{"approval_id":"call","request":{"command":"echo fixture"}}}}}),
+        ),
+        ("input", "answered", json!({"waiting_turn":"turn"})),
+        ("session", "turn_started", Value::Null),
+        (
+            "approval",
+            "answered",
+            json!({"approval_id":"call", "approved":true}),
+        ),
+        (
+            "tool",
+            "use",
+            json!({"call_id":"call", "name":"bash", "input":{}}),
+        ),
+        (
+            "tool",
+            "result",
+            json!({"call_id":"call", "name":"bash", "content":"done", "is_error":false}),
+        ),
+    ];
+    let mut committed = Vec::new();
+    let mut frames = Vec::new();
+    for (index, (family, kind, payload)) in payloads.into_iter().enumerate() {
+        let mut event = frame(index as u64 + 1, "");
+        event.event.event = json!({"type":family,"payload":{"type":kind,"payload":payload}});
+        if index >= 2 {
+            event.event.turn_id = Some("answer-turn".into());
+        }
+        fixture.consumer.enqueue(event.clone()).await.unwrap();
+        committed.extend(
+            fixture
+                .consumer
+                .commit_next()
+                .await
+                .unwrap()
+                .unwrap()
+                .output,
+        );
+        frames.push(event);
+    }
+    let count = fixture.count().await;
+    for event in frames.into_iter().rev() {
+        fixture.consumer.enqueue(event).await.unwrap();
+        assert!(fixture.consumer.commit_next().await.unwrap().is_none());
+    }
+    assert_eq!(fixture.count().await, count);
+    assert_eq!(fixture.stream.cursor().await.unwrap().sequence, 7);
+    let history: Vec<Value> = committed
+        .iter()
+        .map(|entry| serde_json::from_str(&entry.message).unwrap())
+        .collect();
+    let calls: Vec<_> = history
+        .iter()
+        .filter(|entry| entry["type"] == "tool_call")
+        .collect();
+    assert_eq!(calls.len(), 1);
+    let completed: Vec<_> = history
+        .iter()
+        .filter(|entry| entry["type"] == "tool_call_update" && entry["status"] == "completed")
+        .collect();
+    assert_eq!(completed.len(), 1);
+    assert_eq!(completed[0]["id"], calls[0]["id"]);
+}

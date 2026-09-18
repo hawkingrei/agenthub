@@ -6,7 +6,8 @@ The per-agent event database now provides atomic native event deduplication, his
 associations, contiguous replay cursors and durable control-request receipts. This is
 the storage foundation for slice 17. Typed projection and the managed durable event
 consumer, managed text input, fenced browser answers, live permission callbacks and turn
-cancellation are integrated. Recovery visibility remains open. The full 18-slice objective is not complete.
+cancellation are integrated. Authorized history and startup transport retirement are implemented;
+their current validation is recorded below. The full 18-slice objective is not complete.
 
 ## Background
 
@@ -23,7 +24,8 @@ keeps these facts separate from tasks, mailbox messages and activation outcomes.
 - Explicit launch/runtime/session binding; a closed runtime cannot reopen for writes.
 - Atomic event receipt, normalized history and cursor persistence, with bounded projections.
 - Prepared/send/ACK/unknown states, single-use send permits, turn checks and receipt limits.
-- No new transport launcher, transcript store, canonical task ledger or public endpoint.
+- No new transport launcher, transcript store or canonical task ledger. Safe delivery evidence
+  uses an authorized session history endpoint.
 
 ## Key Decisions
 
@@ -84,10 +86,8 @@ cargo clippy --locked --offline -p agenthub-rara --all-targets -- -D warnings
 
 ## Follow-Ups
 
-- Add durable receipt/cursor recovery visibility. Reconcile abandoned runtime owners only after supervisor
-  evidence establishes their process lifetime has ended.
-- Prove a native prompt/approval process round trip, then publish/validate the complete
-  slice 17 PR. Fake-peer checks cover disconnect around ACK and stale permissions.
+- Publish and validate the complete slice 17 PR. Native and fake-peer checks cover prompt,
+  approval, disconnect around ACK and stale permissions.
 - Keep slice 18 activation identity, role/source binding, semantic outcomes and nested
   worker isolation separate. See [the transition TODO](../todo.md).
 
@@ -187,3 +187,54 @@ cargo clippy --offline --locked -p agenthub-rara --all-targets -- -D warnings
 cargo test --offline --locked -p agenthub --lib agent::manager::rara:: -- --nocapture
 cargo clippy --offline --locked -p agenthub --lib --tests -- -D warnings
 ```
+
+## History And Recovery Checkpoint
+
+The release-visible runtime history route checks `runtime:inspect` and local session ownership,
+then returns a bounded snapshot of safe receipts and event cursors. It neither allocates runtime
+authority nor exposes transcript bodies. Request-ID pagination remains stable across ACK updates.
+
+Startup recovery uses the existing exclusive daemon generation, closes old stdio ownership,
+settles unsent/uncertain requests and expires old permissions. It covers native sessions left
+waiting for approval. This does not prove process-tree cleanup or grant loop admission; existing
+execution reservations remain fenced. The earlier recovery plan required supervisor evidence
+for process retirement; this implementation deliberately settles transport receipts only.
+
+An ACK cursor now fences routing of the next input/control until the consumer has committed
+that sequence. It cannot advance the history cursor or make a second prompt race ahead of
+the first turn's delayed start event.
+
+Database validation reports 24 focused cases and all 218 database tests passing, including
+bounded history, stable paging, gap visibility and exclusion of payload bodies. Final root
+validation reports 142 manager regressions passing (seven fixture/opt-in cases excluded), both
+runtime-history/authz API cases passing, and library/test Clippy passing. Database all-target
+Clippy also passes. The managed regressions include durable replay of the approval tool lifecycle:
+one card, one terminal result, and no extra history after reordered duplicate delivery.
+
+The real fixture first exposed a mode assumption: structured native questions require planning
+mode, so the scripted model now enters that mode through the native tool and later requests plan
+approval. It then exposed a projection defect: approved shell execution emits another tool-start
+event for its original call ID. That event now updates the original card exactly once in the
+answer turn, while unapproved duplicates remain conflicts. Native plan answers also settle their
+interaction card without waiting for a tool-result event the native runtime does not emit.
+The resulting protocol suite has 38 passing cases and all-target Clippy passes.
+
+The final real-process fixture passes both shell decisions against the pinned binary. It uses
+five local model requests per decision to enter planning mode, ask a question, receive the fenced
+answer, approve the plan, approve or deny the command, and finish. Approval creates one marker
+inside the fixture workspace; denial creates none. Both paths retain one tool card/result,
+complete the plan card and close with accepted receipts and a contiguous persisted cursor.
+No external provider is called. Unlike the earlier handshake-only smoke, this proves native
+conversation, input and permission mapping through the managed process and storage paths.
+
+```bash
+cargo test --offline --locked -p agenthub --lib agent::manager::rara::tests::native::managed_native_question_and_shell_approval_round_trip -- --ignored --exact --nocapture
+cargo test --offline --locked -p agenthub --lib agent::manager:: -- --test-threads=1
+cargo test --offline --locked -p agenthub --lib runtime_history_route
+cargo test --offline --locked -p agenthub --lib agent_inspect_routes_require_runtime_inspect_capability
+cargo test --offline --locked -p agenthub-db -- --test-threads=1
+cargo clippy --offline --locked -p agenthub-db --all-targets -- -D warnings
+```
+
+The ignored fixture requires `AGENTHUB_RARA_TEST_BINARY` from the pinned upstream and localhost
+HTTP access; the test configuration routes model traffic exclusively to its local server.

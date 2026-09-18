@@ -44,6 +44,7 @@ impl RaraHandle {
         origin: Option<Value>,
     ) -> anyhow::Result<()> {
         let _gate = self.input_gate.lock().await;
+        self.await_admitted_events().await?;
         let request = {
             let state = self.state.read().await;
             match target {
@@ -151,6 +152,9 @@ impl RaraHandle {
                 Err(error)
             }
         };
+        if let Ok(ack) = &result {
+            self.record_ack_cursor(ack);
+        }
         if let Some(receipt) = self.store.request_receipt(&id).await? {
             self.emit_history(
                 json!({"type":"input_receipt","message_id":id,"receipt":receipt,

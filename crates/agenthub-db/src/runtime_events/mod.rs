@@ -1,6 +1,7 @@
 //! Provider cursors and receipts live beside history, never in the task or mailbox ledger.
 
 mod events;
+mod history;
 mod requests;
 mod schema;
 #[cfg(test)]
@@ -12,6 +13,7 @@ pub use events::{
     RuntimeCursor, RuntimeEventIdentity, RuntimeEventStream, RuntimeHistoryEntry,
     RuntimePersistResult, RuntimeReplayGap,
 };
+pub use history::{RuntimeHistory, RuntimeStreamSummary};
 pub use requests::{
     RuntimeRejectionCode, RuntimeRequestAck, RuntimeRequestIntent, RuntimeRequestKind,
     RuntimeRequestReceipt, RuntimeRequestStatus, RuntimeSendPermit, RuntimeSubmissionFailure,

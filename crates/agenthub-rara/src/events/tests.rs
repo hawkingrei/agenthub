@@ -401,7 +401,11 @@ fn approval_notice_is_not_a_live_input_request() {
                 json!({"waiting_turn":"turn-1"}),
             ))
             .unwrap();
-        assert!(answer.history.is_empty());
+        if kind == "plan" {
+            assert_eq!(conversation(&answer, 0)["status"], "completed");
+        } else {
+            assert!(answer.history.is_empty());
+        }
     }
     let answered = projector
         .project(&event(
@@ -604,4 +608,96 @@ fn unknown_or_malformed_events_fail_with_fixed_error_categories() {
             .expect("reject malformed event");
         assert!(!error.to_string().contains("PRIVATE-MARKER"));
     }
+}
+
+#[test]
+fn approved_shell_restarts_the_original_card_once_in_the_answer_turn() {
+    let mut projector = projector();
+    let used = event(
+        1,
+        "tool",
+        "use",
+        json!({"call_id":"call", "name":"bash", "input":{"command":"echo fixture"}}),
+    );
+    let first = projector.project(&used).unwrap();
+    let id = conversation(&first, 0)["id"].clone();
+    let mut premature = used.clone();
+    premature.event.sequence = 2;
+    premature.event.event_id = "premature".into();
+    assert!(projector.clone().project(&premature).is_err());
+    projector.project(&event(2, "input", "requested", json!({"pending":{
+        "turn_id":"turn-1", "kind":{"type":"shell","payload":{"approval_id":"call","request":{"command":"echo fixture"}}}
+    }}))).unwrap();
+    let mut answered = event(
+        3,
+        "approval",
+        "answered",
+        json!({"approval_id":"call", "approved":true}),
+    );
+    answered.event.turn_id = Some("turn-2".into());
+    projector.project(&answered).unwrap();
+    let mut resumed = used;
+    resumed.event.sequence = 4;
+    resumed.event.event_id = "resumed".into();
+    assert!(
+        projector.clone().project(&resumed).is_err(),
+        "the waiting turn cannot restart execution"
+    );
+    resumed.event.turn_id = Some("turn-2".into());
+    let projection = projector.project(&resumed).unwrap();
+    assert_eq!(conversation(&projection, 0)["type"], "tool_call_update");
+    assert_eq!(conversation(&projection, 0)["id"], id);
+    assert!(
+        projector.project(&resumed).is_err(),
+        "another start is a conflict, not a second card"
+    );
+}
+
+#[test]
+fn plan_answer_settles_only_its_matching_interaction_card() {
+    let mut projector = projector();
+    let first = projector
+        .project(&event(
+            1,
+            "tool",
+            "use",
+            json!({"call_id":"plan", "name":"exit_plan_mode", "input":{}}),
+        ))
+        .unwrap();
+    let id = conversation(&first, 0)["id"].clone();
+    projector.project(&event(2, "input", "requested", json!({"pending":{
+        "turn_id":"turn-1", "kind":{"type":"plan","payload":{"approval_id":"plan","plan":"Review"}}
+    }}))).unwrap();
+    let old = projector
+        .project(&event(
+            3,
+            "input",
+            "answered",
+            json!({"waiting_turn":"old-turn"}),
+        ))
+        .unwrap();
+    assert!(old.history.is_empty());
+    let answered = projector
+        .project(&event(
+            4,
+            "input",
+            "answered",
+            json!({"waiting_turn":"turn-1"}),
+        ))
+        .unwrap();
+    assert_eq!(conversation(&answered, 0)["id"], id);
+    assert_eq!(conversation(&answered, 0)["status"], "completed");
+    let ended = projector
+        .project(&event(
+            5,
+            "session",
+            "turn_finished",
+            json!({"reason":"done"}),
+        ))
+        .unwrap();
+    assert_eq!(
+        ended.history.len(),
+        1,
+        "the resolved plan must not become a failed open tool"
+    );
 }

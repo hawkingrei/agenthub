@@ -68,7 +68,21 @@ pub struct EventProjector {
     question_turn: Option<String>,
     pending_turn: Option<String>,
     active_turn: Option<String>,
-    tools: BTreeMap<String, (String, String)>,
+    tools: BTreeMap<String, OpenTool>,
+}
+
+#[derive(Clone)]
+struct OpenTool {
+    name: String,
+    id: String,
+    approval: Option<ToolApproval>,
+    resume_turn: Option<String>,
+}
+
+#[derive(Clone)]
+enum ToolApproval {
+    Plan { waiting_turn: String },
+    Shell,
 }
 
 #[derive(Clone)]
@@ -142,6 +156,12 @@ impl EventProjector {
                 approved,
             }) => {
                 validate_id(&approval_id)?;
+                if let Some(tool) = self.tools.get_mut(&approval_id)
+                    && matches!(tool.approval.take(), Some(ToolApproval::Shell))
+                    && approved
+                {
+                    tool.resume_turn.clone_from(&frame.event.turn_id);
+                }
                 history.push(update(json!({"event": "approval_answered", "approval_id": approval_id, "approved": approved})));
                 effect = EventEffect::ApprovalAnswered {
                     approval_id,
@@ -265,27 +285,44 @@ impl EventProjector {
         // Approval answers start a new turn while the original call is still open.
         // Bind output to that call, and give a reused call ID a fresh history item.
         let mut id = format!("direct:{}:tool:{}", self.session_id, frame.event.event_id);
+        let mut resumed = false;
         if let Some(call_id) = call_id {
             match &event {
                 ToolEvent::Use { .. } => {
                     if self.active_turn.is_none() {
                         self.active_turn.clone_from(&frame.event.turn_id);
                     }
-                    if self.tools.contains_key(call_id) {
-                        return Err(ProtocolError::InvalidTarget);
-                    }
-                    if self.tools.len() >= 512 {
-                        return Err(ProtocolError::FrameTooLarge);
-                    }
-                    self.tools
-                        .insert(call_id.clone(), (name.clone(), id.clone()));
-                }
-                ToolEvent::Progress { .. } | ToolEvent::Result { .. } => {
-                    if let Some((known_name, known_id)) = self.tools.get(call_id) {
-                        if known_name != name {
+                    if let Some(tool) = self.tools.get_mut(call_id) {
+                        if tool.name != *name
+                            || tool.resume_turn.is_none()
+                            || tool.resume_turn != frame.event.turn_id
+                        {
                             return Err(ProtocolError::InvalidTarget);
                         }
-                        id.clone_from(known_id);
+                        tool.resume_turn = None;
+                        id.clone_from(&tool.id);
+                        resumed = true;
+                    } else {
+                        if self.tools.len() >= 512 {
+                            return Err(ProtocolError::FrameTooLarge);
+                        }
+                        self.tools.insert(
+                            call_id.clone(),
+                            OpenTool {
+                                name: name.clone(),
+                                id: id.clone(),
+                                approval: None,
+                                resume_turn: None,
+                            },
+                        );
+                    }
+                }
+                ToolEvent::Progress { .. } | ToolEvent::Result { .. } => {
+                    if let Some(tool) = self.tools.get(call_id) {
+                        if tool.name != *name {
+                            return Err(ProtocolError::InvalidTarget);
+                        }
+                        id.clone_from(&tool.id);
                     }
                     if matches!(event, ToolEvent::Result { .. }) {
                         self.tools.remove(call_id);
@@ -294,8 +331,10 @@ impl EventProjector {
             }
         }
         Ok(match event {
-            ToolEvent::Use { name, input, .. } => json!({"type": "tool_call", "id": id,
-                "title": name, "kind": "other", "status": "in_progress", "raw_input": input}),
+            ToolEvent::Use { name, input, .. } => {
+                json!({"type": if resumed {"tool_call_update"} else {"tool_call"}, "id": id,
+                "title": name, "kind": "other", "status": "in_progress", "raw_input": input})
+            }
             ToolEvent::Result {
                 name,
                 content,
@@ -446,8 +485,17 @@ impl EventProjector {
                     PendingInputKind::User { .. } => self.question_id(&pending.turn_id),
                     PendingInputKind::Plan { approval_id, .. }
                     | PendingInputKind::Shell { approval_id, .. } => {
-                        if let Some((_, id)) = self.tools.get(approval_id) {
-                            id.clone()
+                        let is_plan = matches!(pending.kind, PendingInputKind::Plan { .. });
+                        let approval = if is_plan {
+                            ToolApproval::Plan {
+                                waiting_turn: pending.turn_id.clone(),
+                            }
+                        } else {
+                            ToolApproval::Shell
+                        };
+                        if let Some(tool) = self.tools.get_mut(approval_id) {
+                            tool.approval = Some(approval);
+                            tool.id.clone()
                         } else {
                             let id =
                                 format!("direct:{}:approval:{}", self.session_id, pending.turn_id);
@@ -464,6 +512,18 @@ impl EventProjector {
                                 json!({"type":"tool_call", "id":id,
                                 "title":title,"status":"pending","raw_input":raw_input}),
                             ));
+                            if self.tools.len() >= 512 {
+                                return Err(ProtocolError::FrameTooLarge);
+                            }
+                            self.tools.insert(
+                                approval_id.clone(),
+                                OpenTool {
+                                    name: if is_plan { "exit_plan_mode" } else { "bash" }.into(),
+                                    id: id.clone(),
+                                    approval: Some(approval),
+                                    resume_turn: None,
+                                },
+                            );
                             id
                         }
                     }
@@ -513,6 +573,18 @@ impl EventProjector {
             }
             InputEvent::Answered { waiting_turn } => {
                 validate_id(&waiting_turn)?;
+                // Native plan responses settle the interaction without a Tool::Result event.
+                // Shell approvals instead re-emit Tool::Use before executing the original call.
+                self.tools.retain(|_, tool| {
+                    let plan_answered = matches!(tool.approval.as_ref(), Some(ToolApproval::Plan { waiting_turn: turn }) if turn == &waiting_turn);
+                    if plan_answered {
+                        history.push(ProjectedHistory::Conversation(json!({
+                            "type":"tool_call_update", "id":tool.id, "status":"completed",
+                            "raw_output":"Plan response received."
+                        })));
+                    }
+                    !plan_answered
+                });
                 if self.pending_turn.as_deref() == Some(&waiting_turn) {
                     self.pending_turn = None;
                 }
@@ -537,9 +609,9 @@ impl EventProjector {
         if self.active_turn.as_deref() != Some(turn) {
             return;
         }
-        for (_, (_, id)) in std::mem::take(&mut self.tools) {
+        for (_, tool) in std::mem::take(&mut self.tools) {
             history.push(ProjectedHistory::Conversation(
-                json!({"type":"tool_call_update", "id":id,
+                json!({"type":"tool_call_update", "id":tool.id,
                 "status":"failed", "raw_output":"The turn ended before this tool completed."}),
             ));
         }
