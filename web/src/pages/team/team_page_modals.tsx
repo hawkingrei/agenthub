@@ -40,6 +40,7 @@ export type TeamPageModalsProps = {
   onSaveTeamMemberProfile: () => void;
   selectedAgentSupportsRuntimeProfile: boolean;
   selectedAgentIsCodex: boolean;
+  loopExecution?: boolean;
   createChrome: TeamModalChrome;
   forgeChrome: TeamModalChrome;
   editChrome: TeamModalChrome;
@@ -74,6 +75,7 @@ export const TeamPageModals = React.memo(function TeamPageModals({
   onSaveTeamMemberProfile,
   selectedAgentSupportsRuntimeProfile,
   selectedAgentIsCodex,
+  loopExecution,
   createChrome,
   forgeChrome,
   editChrome,
@@ -124,6 +126,7 @@ export const TeamPageModals = React.memo(function TeamPageModals({
         chrome={editChrome}
         supportsRuntimeProfile={selectedAgentSupportsRuntimeProfile}
         isCodexProvider={selectedAgentIsCodex}
+        loopExecution={loopExecution}
       />
     </>
   );

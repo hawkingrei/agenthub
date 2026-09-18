@@ -134,10 +134,10 @@ regression now uses the normal startup timeout and a broad retry window; it stil
 synthetic spawn error, rejection of the next start, and exactly one executor invocation. Its short
 startup deadline could previously test timeout behavior under coverage instead of spawn failure.
 The integrated root library regression passes 919 tests with four intentionally ignored child
-fixtures after the direct-capture change. The new head still requires both coverage jobs to pass
-before draft promotion.
+fixtures after the direct-capture change. PR #1159 passed applicable CI, including Rust and Bazel
+coverage, at `7f2b9a2a97600a034622e517aab6c3d678f8ad1b` and is ready for review.
 
 ## Follow-Ups
-- Complete slice 12 current-head CI before treating observability as delivered.
+- Continue the workspace UI and remaining integration slices; the full transition is not complete.
 - Contracts: [loop runtime](../features/agent-loop-runtime.md) and
   [runtime diagnostics](../features/runtime-diagnostics.md).

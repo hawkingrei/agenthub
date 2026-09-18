@@ -42,6 +42,10 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+export function usesLoopExecution(spec: unknown): boolean {
+  return asObjectRecord(spec)?.execution_mode === "loop";
+}
+
 export function buildTeamSpecFromForm(
   coordinatorMemberId: string,
   coordinatorModel: string,
@@ -165,7 +169,7 @@ export function appendTeamMemberToSpec(
   }
 
   const prompt =
-    draft.prompt.trim() || resolveTeamPromptForRole(promptDefaults, role);
+    draft.prompt.trim() || (usesLoopExecution(spec) ? undefined : resolveTeamPromptForRole(promptDefaults, role));
 
   existingMembers.push({
     member_id: memberId,
@@ -279,7 +283,8 @@ export function buildTeamMemberDraftFromSpec(
     description: readOptionalStringField(member, "description"),
     model: readOptionalStringField(member, "model"),
     prompt:
-      readOptionalStringField(member, "prompt") || resolveTeamPromptForRole(promptDefaults, role),
+      readOptionalStringField(member, "prompt") ||
+      (usesLoopExecution(spec) ? "" : resolveTeamPromptForRole(promptDefaults, role)),
     skills:
       role === "coordinator"
         ? [...DEFAULT_TEAM_COORDINATOR_SKILLS]
@@ -321,8 +326,9 @@ export function updateTeamMemberProfileInSpec(
   }
   const existing = existingMembers[memberIndex];
   const role = readMemberRole(existing) === "coordinator" ? "coordinator" : "worker";
+  const loopExecution = usesLoopExecution(nextSpec);
   const prompt =
-    draft.prompt.trim() || resolveTeamPromptForRole(promptDefaults, role);
+    draft.prompt.trim() || (loopExecution ? undefined : resolveTeamPromptForRole(promptDefaults, role));
   const loopIdleRaw = draft.agent_loop_idle_seconds.trim();
   const parsedLoopIdleSeconds =
     loopIdleRaw !== "" && /^\d+$/.test(loopIdleRaw)
@@ -343,9 +349,11 @@ export function updateTeamMemberProfileInSpec(
     prompt,
     runtime: {
       ...asObjectRecord(existing.runtime),
-      agent_loop_enabled: draft.agent_loop_enabled || undefined,
-      agent_loop_idle_seconds: normalizedLoopIdleSeconds,
-      agent_loop_prompt: draft.agent_loop_prompt.trim() || undefined,
+      ...(!loopExecution ? {
+        agent_loop_enabled: draft.agent_loop_enabled || undefined,
+        agent_loop_idle_seconds: normalizedLoopIdleSeconds,
+        agent_loop_prompt: draft.agent_loop_prompt.trim() || undefined,
+      } : {}),
       codex_acp_default_mode: normalizeCodexAcpModeId(draft.codex_acp_default_mode),
       runtime_model: draft.runtime_model.trim() || undefined,
       thinking_level: draft.thinking_level.trim() || undefined,

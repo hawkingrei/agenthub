@@ -29,6 +29,7 @@ import {
   formatTeamForgeWorktreeError,
   parseErrorMessage,
   updateTeamMemberProfileInSpec,
+  usesLoopExecution,
   type TeamMemberProfileDraft,
 } from "./create_helpers";
 import { clearTeamCreateDraft, loadTeamCreateDraft } from "./create_draft_storage";
@@ -304,7 +305,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setError(null);
     setWarning(null);
     setShowCopyExistingAgentModal(false);
-    setTeamMemberDraft(defaults.draft);
+    setTeamMemberDraft(usesLoopExecution(selectedTeam.spec) ? { ...defaults.draft, prompt: "" } : defaults.draft);
     setShowForgeAgentForm(true);
     setForgeAgentName(defaults.agentName);
     setForgeAgentWorktreeMode(defaults.worktreeMode);
@@ -572,7 +573,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       role,
       description: `Copied from existing agent ${sourceAgent.name || sourceAgent.id}.`,
       model: formatAgentModelLabel(sourceAgent.command, sourceAgent.args) || DEFAULT_AGENT_PRESET_ID,
-      prompt: resolveTeamPromptForRole(teamPromptDefaults, role),
+      prompt: usesLoopExecution(selectedTeam.spec) ? "" : resolveTeamPromptForRole(teamPromptDefaults, role),
       skills: [],
       custom_skills: "",
       agent_loop_enabled: false,
@@ -649,7 +650,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       member_id: sourceAgent.id, role,
       description: "Moved from the global agent catalog.",
       model: formatAgentModelLabel(sourceAgent.command, sourceAgent.args) || DEFAULT_AGENT_PRESET_ID,
-      prompt: resolveTeamPromptForRole(teamPromptDefaults, role),
+      prompt: usesLoopExecution(selectedTeam.spec) ? "" : resolveTeamPromptForRole(teamPromptDefaults, role),
       skills: [], custom_skills: "", agent_loop_enabled: false, agent_loop_idle_seconds: "", agent_loop_prompt: "",
       codex_acp_default_mode: DEFAULT_CODEX_ACP_MODE,
       runtime_model: sourceAgent.runtime_model ?? "", thinking_level: sourceAgent.thinking_level ?? "",
@@ -696,53 +697,55 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         spec: nextSpec,
         expected_updated_at: selectedTeam.updated_at,
       });
-      const idleSeconds = teamMemberEditDraft.agent_loop_idle_seconds.trim();
-      const parsedIdleSeconds = Number.parseInt(idleSeconds, 10);
-      const loopPayload = {
-        enabled: teamMemberEditDraft.agent_loop_enabled,
-        idle_seconds:
-          teamMemberEditDraft.agent_loop_enabled &&
-          idleSeconds !== "" &&
-          Number.isFinite(parsedIdleSeconds)
-            ? parsedIdleSeconds
-            : null,
-        prompt:
-          teamMemberEditDraft.agent_loop_enabled &&
-          teamMemberEditDraft.agent_loop_prompt.trim()
-            ? teamMemberEditDraft.agent_loop_prompt.trim()
-            : null,
-      };
-      try {
-        await api.setAgentLoop(token, teamMemberEditDraft.member_id, loopPayload);
-        setAgents((prev) =>
-          prev.map((agent) =>
-            agent.id === teamMemberEditDraft.member_id
-              ? {
-                  ...agent,
-                  agent_loop_enabled: loopPayload.enabled,
-                  agent_loop_idle_seconds: loopPayload.idle_seconds,
-                  agent_loop_prompt: loopPayload.prompt,
-                }
-              : agent
-          )
-        );
-        setTeamMemberAgentsById((prev) => ({
-          ...prev,
-          [teamMemberEditDraft.member_id]: (() => {
-            const existingAgent = prev[teamMemberEditDraft.member_id];
-            if (!existingAgent) {
-              return existingAgent;
-            }
-            return {
-              ...existingAgent,
-              agent_loop_enabled: loopPayload.enabled,
-              agent_loop_idle_seconds: loopPayload.idle_seconds,
-              agent_loop_prompt: loopPayload.prompt,
-            } satisfies AgentRecord;
-          })(),
-        }));
-      } catch (loopErr) {
-        setWarning(`Agent loop settings were not applied: ${parseErrorMessage(loopErr)}`);
+      if (!usesLoopExecution(selectedTeam.spec)) {
+        const idleSeconds = teamMemberEditDraft.agent_loop_idle_seconds.trim();
+        const parsedIdleSeconds = Number.parseInt(idleSeconds, 10);
+        const loopPayload = {
+          enabled: teamMemberEditDraft.agent_loop_enabled,
+          idle_seconds:
+            teamMemberEditDraft.agent_loop_enabled &&
+            idleSeconds !== "" &&
+            Number.isFinite(parsedIdleSeconds)
+              ? parsedIdleSeconds
+              : null,
+          prompt:
+            teamMemberEditDraft.agent_loop_enabled &&
+            teamMemberEditDraft.agent_loop_prompt.trim()
+              ? teamMemberEditDraft.agent_loop_prompt.trim()
+              : null,
+        };
+        try {
+          await api.setAgentLoop(token, teamMemberEditDraft.member_id, loopPayload);
+          setAgents((prev) =>
+            prev.map((agent) =>
+              agent.id === teamMemberEditDraft.member_id
+                ? {
+                    ...agent,
+                    agent_loop_enabled: loopPayload.enabled,
+                    agent_loop_idle_seconds: loopPayload.idle_seconds,
+                    agent_loop_prompt: loopPayload.prompt,
+                  }
+                : agent
+            )
+          );
+          setTeamMemberAgentsById((prev) => ({
+            ...prev,
+            [teamMemberEditDraft.member_id]: (() => {
+              const existingAgent = prev[teamMemberEditDraft.member_id];
+              if (!existingAgent) {
+                return existingAgent;
+              }
+              return {
+                ...existingAgent,
+                agent_loop_enabled: loopPayload.enabled,
+                agent_loop_idle_seconds: loopPayload.idle_seconds,
+                agent_loop_prompt: loopPayload.prompt,
+              } satisfies AgentRecord;
+            })(),
+          }));
+        } catch (loopErr) {
+          setWarning(`Agent loop settings were not applied: ${parseErrorMessage(loopErr)}`);
+        }
       }
       if (
         selectedAgentWorkspaceAgent &&

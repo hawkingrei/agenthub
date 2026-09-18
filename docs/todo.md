@@ -64,13 +64,16 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   selection, the shared loop skill, and provider/CLI regression coverage. Focused local validation
   passes. [PR #1158](https://github.com/hawkingrei/agenthub/pull/1158) passed its current-head CI
   and was merged into its target branch on 2026-09-17. Slice 12 uses that merged baseline.
-- [ ] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
+- [x] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
   Prove durable redacted trace reconstruction and preserve debug-only diagnostic boundaries.
   [History storage](journal/2026-09-17-loop-history-storage.md) adds authorized paged APIs, durable
   RPC/MCP boundaries, scoped metrics, lifecycle trace correlation, and activation-aware doctor.
-  Local release/debug checks pass; publication and current-head CI remain open.
+  [PR #1159](https://github.com/hawkingrei/agenthub/pull/1159) passed applicable CI at
+  `7f2b9a2a97600a034622e517aab6c3d678f8ad1b`, including Rust/Bazel coverage, and is ready for review.
 - [ ] 13. Expose offline configuration and task/IM/activation views with distinct process/policy
-  state. Require focused web checks and Chrome DevTools lifecycle/reconnect evidence.
+  state. [Workspace UI checkpoint](journal/2026-09-17-loop-workspace-ui.md) records local web
+  validation and actual Chrome DevTools lifecycle/page-reopen evidence. Publication and current-head
+  CI remain open.
 - [ ] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove
   call-time scope checks, fixed activation versions, immediate revocation, and safe attribution.
 - [ ] 15. Accept signed app events through durable intake. Ship signatures, event ID/cursor replay

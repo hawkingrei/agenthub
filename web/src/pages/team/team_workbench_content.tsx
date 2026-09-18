@@ -130,6 +130,7 @@ export type TeamWorkbenchContentProps = {
   threadPane?: React.ReactNode;
   tasksPanel: React.ReactNode;
   agentAcpPanel: React.ReactNode;
+  memberOverviewPanel?: React.ReactNode;
   overviewPanelProps: React.ComponentProps<typeof import("../team_overview_panel").TeamOverviewPanel> | null;
   eventsPanelProps: React.ComponentProps<typeof import("../team_events_panel").TeamEventsPanel> | null;
   stepsPanelProps: React.ComponentProps<typeof import("../team_steps_panel").TeamStepsPanel> | null;
@@ -167,6 +168,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   threadPane = null,
   tasksPanel,
   agentAcpPanel,
+  memberOverviewPanel = null,
   overviewPanelProps,
   eventsPanelProps,
   stepsPanelProps,
@@ -191,7 +193,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
 
       {selectedTeam && (
         <WorkspaceContentStack compact={isAgentWorkspace}>
-          {showWorkspaceHeader && (
+          {showWorkspaceHeader && !memberOverviewPanel && (
             <WorkspaceSectionShell
               className={teamWorkbenchWorkspaceShellClassName}
               compact={isAgentWorkspace}
@@ -219,7 +221,9 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
             </React.Suspense>
           )}
 
-          {showRunContextLoading && (
+          {memberOverviewPanel}
+
+          {showRunContextLoading && !memberOverviewPanel && (
             <WorkspacePanelLoadingFallback
               className={teamSectionCardClassName}
               title="Loading run context..."
@@ -227,7 +231,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
             />
           )}
 
-          {showNoActiveRunNotice && (
+          {showNoActiveRunNotice && !memberOverviewPanel && (
             <EmptyState
               className={teamSectionCardClassName}
               title="No Active Execution Run"
@@ -246,7 +250,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
             </EmptyState>
           )}
 
-          {tab !== "runs" && !showRunContextLoading && !showNoActiveRunNotice && (
+          {tab !== "runs" && !memberOverviewPanel && !showRunContextLoading && !showNoActiveRunNotice && (
             <WorkspaceContentStack
               compact={isAgentWorkspace}
               gap={isAgentWorkspace ? "compact" : "tight"}

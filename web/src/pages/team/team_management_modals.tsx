@@ -205,6 +205,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
   chrome,
   supportsRuntimeProfile,
   isCodexProvider = false,
+  loopExecution = false,
 }: {
   open: boolean;
   busy: string | null;
@@ -216,6 +217,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
   chrome: TeamModalChrome;
   supportsRuntimeProfile: boolean;
   isCodexProvider?: boolean;
+  loopExecution?: boolean;
 }) {
   const dialogActive = open && Boolean(draft);
   const focusTrapRef = useFocusTrap(dialogActive);
@@ -334,7 +336,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                 })
               }
             />
-            <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-4 shadow-none">
+            {!loopExecution && <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-4 shadow-none">
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -381,8 +383,8 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                   }
                 />
               </div>
-            </SurfaceCard>
-            <SurfaceCard className="mt-4 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3 shadow-none">
+            </SurfaceCard>}
+            {!loopExecution && <SurfaceCard className="mt-4 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3 shadow-none">
               <p className={chrome.infoStripLabelClassName}>System Skills</p>
               <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
                 Role-bound Team skills come from the system-managed skill path and are shown here
@@ -401,11 +403,12 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                   </span>
                 ))}
               </div>
-            </SurfaceCard>
+            </SurfaceCard>}
             <Textarea
               className="mt-3"
               radius="md"
               label="Prompt"
+              description={loopExecution ? "Leave empty to use the built-in prompt for this role. Changes apply to the next activation." : undefined}
               minRows={6}
               autosize
               value={draft.prompt}

@@ -440,6 +440,39 @@ describe("team create helpers", () => {
     expect(draft?.agent_loop_idle_seconds).toBe("");
   });
 
+  it("adds loop members without copying legacy default prompts", () => {
+    const spec = { execution_mode: "loop", members: [] };
+    const coordinator = appendTeamMemberToSpec(spec,
+      buildProfileDraft({ member_id: "planner", role: "coordinator" }),
+      buildForgeAgent({ id: "planner" }), TEST_PROMPT_DEFAULTS);
+    const worker = appendTeamMemberToSpec(coordinator,
+      buildProfileDraft({ member_id: "worker", role: "worker" }),
+      buildForgeAgent({ id: "worker" }), TEST_PROMPT_DEFAULTS);
+    for (const actor of ["planner", "worker"]) {
+      expect(buildTeamMemberDraftFromSpec(worker, actor, undefined, TEST_PROMPT_DEFAULTS)?.prompt).toBe("");
+    }
+  });
+
+  it.each(["coordinator", "worker"])("keeps the built-in loop %s prompt unless explicitly overridden", (role) => {
+    const original = {
+      execution_mode: "loop",
+      members: [{ member_id: "actor", role, runtime: { agent_loop_enabled: true, agent_loop_prompt: "legacy" } }],
+    };
+    const draft = buildTeamMemberDraftFromSpec(original, "actor", undefined, TEST_PROMPT_DEFAULTS)!;
+    expect(draft.prompt).toBe("");
+    draft.description = "Offline profile edit";
+    draft.agent_loop_enabled = false;
+    draft.agent_loop_prompt = "";
+    const updated = updateTeamMemberProfileInSpec(original, draft, TEST_PROMPT_DEFAULTS) as typeof original;
+    expect(updated.members[0]).not.toHaveProperty("prompt", expect.any(String));
+    expect(updated.members[0].runtime).toMatchObject(original.members[0].runtime);
+    expect(original.members[0]).not.toHaveProperty("description");
+    const overridden = updateTeamMemberProfileInSpec(original, { ...draft, prompt: "Scoped override" }, TEST_PROMPT_DEFAULTS);
+    expect(buildTeamMemberDraftFromSpec(overridden, "actor", undefined, TEST_PROMPT_DEFAULTS)?.prompt).toBe("Scoped override");
+    const cleared = updateTeamMemberProfileInSpec(overridden, draft, TEST_PROMPT_DEFAULTS);
+    expect(buildTeamMemberDraftFromSpec(cleared, "actor", undefined, TEST_PROMPT_DEFAULTS)?.prompt).toBe("");
+  });
+
   it("updates existing team member profile fields without replacing runtime hints", () => {
     const original = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
