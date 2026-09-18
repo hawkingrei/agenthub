@@ -92,6 +92,10 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   adds atomic receipt/cursor/intake, bounded audit/budgets, standing conditions, and safe
   doctor/context/web history. Complete final review and individual PR/CI delivery.
 - [ ] 16. Pin and validate the Rara app-server transport/handshake; add local launch and cleanup.
+  The pinned codec/configuration, connection lifecycle and supervised local launch
+  are implemented and locally validated, including two native process checks.
+  Complete separate PR/CI delivery. See
+  [the transport checkpoint](journal/2026-09-18-rara-local-transport.md).
   Any missing upstream protocol work is an explicit prerequisite, not an ACP fallback.
 - [ ] 17. Map Rara control acknowledgments, events, replay, and live permissions into existing
   runtime/history boundaries. Prove unknown-ack and duplicate-event handling.

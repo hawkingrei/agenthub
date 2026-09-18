@@ -2,6 +2,8 @@
 
 This file is the index for `docs/journal/`.
 
+- [2026-09-18: Direct runtime transport](2026-09-18-rara-local-transport.md)
+
 - [2026-09-16: Scoped Mem context bootstrap](2026-09-16-mem-context-bootstrap.md)
 
 Use it to find dated implementation checkpoints, rollout notes, validation evidence, and historical
