@@ -517,10 +517,15 @@ pub async fn run_main(
                     agent_client_protocol::on_receive_request!(),
                 )
                 .on_receive_request(
-                    async move |request: PromptRequest, responder, _connection| {
-                        responder.respond_with_result(
-                            local_send_future(agent_for_prompt.prompt(request)).await,
-                        )
+                    async move |request: PromptRequest, responder, connection| {
+                        // Enqueue in receive order, then release the dispatch loop so
+                        // session/cancel can invalidate a pending permission request.
+                        match local_send_future(agent_for_prompt.start_prompt(request)).await {
+                            Ok(completion) => connection.spawn(local_send_future(async move {
+                                responder.respond_with_result(completion.await)
+                            })),
+                            Err(error) => responder.respond_with_result(Err(error)),
+                        }
                     },
                     agent_client_protocol::on_receive_request!(),
                 )

@@ -50,7 +50,8 @@ The [loop product model](agent-loop-product-model.md) makes task progress and du
 work surfaces. Agent Cards configure execution participants; history explains each activation,
 outcome, and next wake/wait reason. Process absence is ordinary, and must not hide tasks or IM.
 Keep execution enablement/suspension distinct from process controls and retain ACP for diagnosis.
-The route grammar below remains compatible; lifecycle UI changes need their own implementation.
+The route grammar below remains compatible. The [loop workspace UI](agent-loop-workspace-ui.md)
+provides offline member configuration, explicit execution policy, and retained activation history.
 
 ### 1) Core Product Principle
 

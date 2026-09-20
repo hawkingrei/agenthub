@@ -33,7 +33,15 @@ pub(super) fn actor_output_preference_for_command(command: &ActorCommand) -> Act
         | ActorCommand::TimeTriggerList { .. }
         | ActorCommand::TimeTriggerSet { .. }
         | ActorCommand::TimeTriggerCancel { .. } => ActorOutputPreference::ToonPreferred,
-        ActorCommand::Ack { .. }
+        ActorCommand::LoopSchedule { .. }
+        | ActorCommand::LoopSchedules { .. }
+        | ActorCommand::LoopScheduleShow { .. }
+        | ActorCommand::LoopScheduleRevoke { .. }
+        | ActorCommand::LoopFinish { .. }
+        | ActorCommand::LoopSource { .. }
+        | ActorCommand::LoopContext { .. }
+        | ActorCommand::LoopActivate { .. }
+        | ActorCommand::Ack { .. }
         | ActorCommand::Triage { .. }
         | ActorCommand::TaskLink { .. }
         | ActorCommand::Send { .. }

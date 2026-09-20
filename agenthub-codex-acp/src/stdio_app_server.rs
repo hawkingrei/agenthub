@@ -871,7 +871,7 @@ fn closed_channel_error(operation: &str) -> IoError {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{
         CodexRuntime, SUPPORTED_CODEX_VERSION, TypedRequestError, parse_codex_version,
         validate_initialize_response,
@@ -931,7 +931,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    async fn resolve_fake_runtime(
+    pub(crate) async fn resolve_fake_runtime(
         temp_dir: &tempfile::TempDir,
         app_server_body: &str,
     ) -> CodexRuntime {
@@ -953,7 +953,7 @@ fi
     }
 
     #[cfg(unix)]
-    fn initialized_app_server(body: &str) -> String {
+    pub(crate) fn initialized_app_server(body: &str) -> String {
         format!(
             r#"if [ "${{1:-}}" != "app-server" ]; then
   exit 64

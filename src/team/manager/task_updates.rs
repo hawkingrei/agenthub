@@ -1,4 +1,4 @@
-use sqlx::{Executor, QueryBuilder, Sqlite};
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use super::teamspace::release_task_goal_in_tx;
 use super::{
@@ -112,7 +112,7 @@ impl TeamManager {
             return Ok(prepared.current);
         }
         let mut tx = self.db.begin().await?;
-        self.execute_prepared_task_update(&mut *tx, task_id, &prepared)
+        self.execute_prepared_task_update(&mut tx, task_id, &prepared)
             .await?;
         if let Some(reason) = terminal_goal_release_reason(prepared.status_patch.as_ref()) {
             let active_lease_generation = self
@@ -158,7 +158,7 @@ impl TeamManager {
             );
         }
         if prepared.has_changes() {
-            self.execute_prepared_task_update(&mut *tx, input.task_id, &prepared)
+            self.execute_prepared_task_update(&mut tx, input.task_id, &prepared)
                 .await?;
             if let Some(reason) = terminal_goal_release_reason(prepared.status_patch.as_ref()) {
                 let active_lease_generation = self
@@ -253,15 +253,12 @@ impl TeamManager {
         Ok(generation)
     }
 
-    async fn execute_prepared_task_update<'e, E>(
+    async fn execute_prepared_task_update(
         &self,
-        executor: E,
+        tx: &mut Transaction<'_, Sqlite>,
         task_id: &str,
         prepared: &PreparedTeamTaskUpdate,
-    ) -> anyhow::Result<()>
-    where
-        E: Executor<'e, Database = Sqlite>,
-    {
+    ) -> anyhow::Result<()> {
         let now = chrono::Utc::now().timestamp();
         let mut builder = QueryBuilder::<Sqlite>::new("UPDATE team_tasks SET ");
         let mut first = true;
@@ -313,9 +310,29 @@ impl TeamManager {
         builder.push_bind(task_id);
         builder.push(" AND updated_at = ");
         builder.push_bind(prepared.current.updated_at);
-        let result = builder.build().execute(executor).await?;
+        let result = builder.build().execute(&mut **tx).await?;
         agenthub_db::control_store::require_guarded_write_applied(result.rows_affected())
             .map_err(|_| anyhow::anyhow!("task changed concurrently, retry the update"))?;
+        let reassigned = prepared
+            .assignment_patch
+            .as_ref()
+            .is_some_and(|next| next != &prepared.current.assigned_member_id);
+        let reopened = matches!(
+            prepared.current.status,
+            TeamTaskStatus::Completed | TeamTaskStatus::Canceled
+        ) && prepared.status_patch.as_ref().is_some_and(|next| {
+            !matches!(next, TeamTaskStatus::Completed | TeamTaskStatus::Canceled)
+        });
+        if reassigned || reopened {
+            super::loop_work_events::stage_assignment_event(tx, task_id, None).await?;
+        }
+        agenthub_db::loop_runtime::LoopStore::observe_task_schedule_tx(
+            tx,
+            &prepared.current.team_id,
+            task_id,
+            now,
+        )
+        .await?;
         Ok(())
     }
 }

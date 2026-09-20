@@ -64,7 +64,7 @@ import {
   resolveTeamTabForWorkspaceLens,
   type WorkspaceLens,
 } from "./team/team_route_helpers";
-import { parseErrorMessage } from "./team/create_helpers";
+import { parseErrorMessage, usesLoopExecution } from "./team/create_helpers";
 import {
   persistTeamCreateDraft,
 } from "./team/create_draft_storage";
@@ -1530,7 +1530,7 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useEffect(() => {
-    if (!teamMemberDraft || teamMemberDraft.prompt.trim()) {
+    if (usesLoopExecution(selectedTeam?.spec) || !teamMemberDraft || teamMemberDraft.prompt.trim()) {
       return;
     }
     const prompt = resolveTeamPromptForRole(teamPromptDefaults, teamMemberDraft.role);
@@ -1538,10 +1538,10 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     patchTeamMemberDraft({ prompt });
-  }, [patchTeamMemberDraft, teamMemberDraft, teamPromptDefaults]);
+  }, [patchTeamMemberDraft, selectedTeam?.spec, teamMemberDraft, teamPromptDefaults]);
 
   useEffect(() => {
-    if (!teamMemberEditDraft || teamMemberEditDraft.prompt.trim()) {
+    if (usesLoopExecution(selectedTeam?.spec) || !teamMemberEditDraft || teamMemberEditDraft.prompt.trim()) {
       return;
     }
     const prompt = resolveTeamPromptForRole(teamPromptDefaults, teamMemberEditDraft.role);
@@ -1549,7 +1549,7 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     patchTeamMemberEditDraft({ prompt });
-  }, [patchTeamMemberEditDraft, teamMemberEditDraft, teamPromptDefaults]);
+  }, [patchTeamMemberEditDraft, selectedTeam?.spec, teamMemberEditDraft, teamPromptDefaults]);
 
   useEffect(() => {
     if (!showCreateTeamModal || busy === "create-team") {
@@ -2962,6 +2962,7 @@ export function TeamPage(props: TeamPageProps) {
     createChrome: modalChrome,
     forgeChrome: modalChrome,
     editChrome: modalChrome,
+    loopExecution: usesLoopExecution(selectedTeam?.spec),
   });
   const hasOpenTeamModal =
     showCreateTeamModal ||
@@ -3212,7 +3213,12 @@ export function TeamPage(props: TeamPageProps) {
       ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
       : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations.",
   });
+  const onLoopTeamUpdated = useCallback((updated: TeamDefinitionRecord) => {
+    setTeams((previous) => previous.map((team) => team.id === updated.id && team.updated_at <= updated.updated_at ? updated : team));
+  }, []);
+  const loopContext = useShallowStableObject({ auth: props.auth, onTeamUpdated: onLoopTeamUpdated });
   const teamWorkbenchContext = useShallowStableObject<TeamWorkbenchRuntimeContext>({
+    loop: loopContext,
     shell: shellContext,
     header: headerContext,
     runs: runsContext,

@@ -79,6 +79,9 @@ impl SqlActorMailboxStore {
         let (message_id, created) = if inserted.rows_affected() == 1 {
             let message_id = inserted.last_insert_rowid();
             maybe_persist_human_visible_chat_reply(&mut tx, &normalized_cmd).await?;
+            super::loop_work_events::stage_mailbox_event(&mut tx, &normalized_cmd, message_id)
+                .await
+                .map_err(SqlActorMailboxStoreError::WorkEvent)?;
             (message_id, true)
         } else if let Some(idempotency_key) = cmd.idempotency_key.as_deref() {
             let message = fetch_message_by_idempotency(

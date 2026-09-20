@@ -7,6 +7,18 @@ syntax = "proto3";
 package agenthub.internal.v1;
 
 service TeamInternalControl {
+  rpc OpenMcpProxy(OpenMcpProxyRequest) returns (OpenMcpProxyResponse);
+  rpc ExchangeMcpProxy(ExchangeMcpProxyRequest) returns (stream McpProxyFrame);
+  rpc ListenMcpProxy(ListenMcpProxyRequest) returns (stream McpProxyFrame);
+  rpc CloseMcpProxy(CloseMcpProxyRequest) returns (CloseMcpProxyResponse);
+  rpc RegisterLoopSchedule(RegisterLoopScheduleRequest) returns (RegisterLoopScheduleResponse);
+  rpc ListLoopSchedules(ListLoopSchedulesRequest) returns (ListLoopSchedulesResponse);
+  rpc GetLoopSchedule(GetLoopScheduleRequest) returns (GetLoopScheduleResponse);
+  rpc RevokeLoopSchedule(RevokeLoopScheduleRequest) returns (RevokeLoopScheduleResponse);
+  rpc GetLoopWork(GetLoopWorkRequest) returns (GetLoopWorkResponse);
+  rpc GetLoopWorkSource(GetLoopWorkSourceRequest) returns (GetLoopWorkSourceResponse);
+  rpc ActivateLoopMember(ActivateLoopMemberRequest) returns (ActivateLoopMemberResponse);
+  rpc FinishLoopActivation(FinishLoopActivationRequest) returns (FinishLoopActivationResponse);
   rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
   rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
   rpc AckActorMessage(AckActorMessageRequest) returns (AckActorMessageResponse);
@@ -37,6 +49,95 @@ service TeamInternalControl {
   rpc SendAgentInput(SendAgentInputRequest) returns (SendAgentInputResponse);
   rpc SendAgentReminder(SendAgentReminderRequest) returns (SendAgentInputResponse);
   rpc ListAgentEvents(ListAgentEventsRequest) returns (ListAgentEventsResponse);
+}
+
+// Upstream endpoint and credential material never cross this provider-facing bridge.
+message OpenMcpProxyRequest { string server_id = 1; }
+message OpenMcpProxyResponse { string session_id = 1; }
+message ExchangeMcpProxyRequest {
+  string session_id = 1;
+  string message_json = 2;
+}
+message McpProxyFrame {
+  string message_json = 1;
+  bool finished = 2;
+  bool can_listen = 3;
+}
+message CloseMcpProxyRequest { string session_id = 1; }
+message ListenMcpProxyRequest { string session_id = 1; }
+message CloseMcpProxyResponse {}
+// Scheduling identity is derived from signed activation credentials, never from request_json.
+message RegisterLoopScheduleRequest {
+  string member_id = 1;
+  string request_json = 2;
+}
+
+message RegisterLoopScheduleResponse {
+  string receipt_json = 1;
+}
+
+message ListLoopSchedulesRequest {
+  string member_id = 1;
+  string after_registration_id = 2;
+  uint32 limit = 3;
+}
+
+message ListLoopSchedulesResponse {
+  string page_json = 1;
+}
+
+message GetLoopScheduleRequest {
+  string registration_id = 1;
+  optional int64 after_firing_cursor = 2;
+  uint32 limit = 3;
+}
+
+message GetLoopScheduleResponse {
+  string detail_json = 1;
+}
+
+message RevokeLoopScheduleRequest {
+  string registration_id = 1;
+}
+
+message RevokeLoopScheduleResponse {
+  string registration_json = 1;
+}
+
+message GetLoopWorkRequest {
+  string after_source_id = 1;
+  uint32 limit = 2;
+}
+
+message GetLoopWorkResponse {
+  string page_json = 1;
+}
+
+message GetLoopWorkSourceRequest {
+  string source_id = 1;
+}
+
+message GetLoopWorkSourceResponse {
+  string source_json = 1;
+}
+
+message ActivateLoopMemberRequest {
+  string member_id = 1;
+  string source_key = 2;
+  string task_id = 3;
+}
+
+message ActivateLoopMemberResponse {
+  string receipt_json = 1;
+}
+
+// Executor identity and scope come exclusively from signed activation credentials.
+message FinishLoopActivationRequest {
+  string outcome_json = 1;
+}
+
+message FinishLoopActivationResponse {
+  string receipt_json = 1;
 }
 
 message SendActorMessageRequest {

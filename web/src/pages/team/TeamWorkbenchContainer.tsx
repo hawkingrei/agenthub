@@ -1,4 +1,6 @@
 import React, { Suspense, useMemo } from "react";
+import { Button } from "@mantine/core";
+import type { AuthState } from "../../types";
 import { TeamWorkbenchContent, TeamPanelLoadingFallback } from "./team_workbench_content";
 import type {
   TeamDefinitionRecord,
@@ -18,6 +20,8 @@ import type { MailboxTemplateKey, TeamMailboxChatActors } from "./mailbox_helper
 import type { TeamRunStatusFilter } from "./run_helpers";
 import {
   buildTeamChannelProfileClosePath,
+  buildTeamMemberWorkspacePath,
+  buildTeamTaskPath,
   type WorkspaceLens,
 } from "./team_route_helpers";
 import { TeamConversationContainer } from "./TeamConversationContainer";
@@ -48,6 +52,7 @@ import { isAgentActiveStatus } from "../../agent_ws";
 import {
   useTeamWorkbenchRuntime,
   useTeamWorkspaceShell,
+  useTeamTasksContext,
 } from "./team_workspace_context";
 
 type TeamWorkspaceHeaderProps = Parameters<typeof buildTeamWorkspaceHeaderProps>[0];
@@ -71,6 +76,11 @@ const LazyTeamMailboxPanel = React.lazy(async () => {
 const LazyTeamOverviewProfilePanel = React.lazy(async () => {
   const module = await import("../team_overview_panel");
   return { default: module.TeamOverviewPanel };
+});
+
+const LazyTeamLoopMemberPanel = React.lazy(async () => {
+  const module = await import("./team_loop_member_panel");
+  return { default: module.TeamLoopMemberPanel };
 });
 
 export type TeamWorkbenchShellContext = {
@@ -312,6 +322,7 @@ export type TeamWorkbenchMailboxDebugContext = {
 };
 
 export type TeamWorkbenchRuntimeContext = {
+  loop?: { auth: AuthState; onTeamUpdated: (team: TeamDefinitionRecord) => void };
   shell: TeamWorkbenchShellContext;
   header: TeamWorkbenchHeaderContext;
   runs: TeamWorkbenchRunsContext;
@@ -332,7 +343,9 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     selectedConversationMatchesChannelLane,
     routeChannelId,
     navigateTeamRoute,
+    selectedTeamMemberLiveStates,
   } = useTeamWorkspaceShell();
+  const { workspaceTasks, tasksLoading } = useTeamTasksContext();
   const {
     shell,
     header,
@@ -959,8 +972,34 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     (routeSelectedMemberId.trim() || selectedMemberId.trim()).length > 0
       ? routeSelectedMemberId.trim() || selectedMemberId.trim()
       : "";
-  const profilePane =
-    channelProfileMemberId && activeRunForSelectedTeam ? (
+  const memberPanel = (actorId: string, onClose?: () => void) => selectedTeam && props.loop ? (
+    <Suspense fallback={<TeamPanelLoadingFallback />}>
+      <LazyTeamLoopMemberPanel
+        key={JSON.stringify([props.loop.auth.token, selectedTeam.id, actorId])}
+        auth={props.loop.auth}
+        team={selectedTeam}
+        actorId={actorId}
+        label={mailboxDisplayNameByActorId[actorId] || actorId}
+        processStatus={selectedTeamMemberLiveStates.find((member) => member.member_id === actorId)?.lifecycle_status ?? null}
+        tasks={workspaceTasks}
+        tasksLoading={tasksLoading}
+        onEdit={onOpenTeamMemberEditModal}
+        onTeamUpdated={props.loop.onTeamUpdated}
+        onOpenTask={(taskId) => navigateTeamRoute(buildTeamTaskPath(selectedTeam.id, taskId))}
+        onOpenDiagnostics={() => navigateTeamRoute(buildTeamMemberWorkspacePath(selectedTeam.id, actorId, "agent_acp"))}
+        onClose={onClose}
+      />
+    </Suspense>
+  ) : null;
+  const closeChannelProfile = () => {
+    setSelectedMemberId("");
+    if (effectiveSelectedTeamId) navigateTeamRoute(buildTeamChannelProfileClosePath(effectiveSelectedTeamId, routeChannelId));
+  };
+  const memberOverviewPanel = tab === "overview" && activeWorkspaceLens === "members" && routeSelectedMemberId
+    ? memberPanel(routeSelectedMemberId) : null;
+  const profilePane = channelProfileMemberId && props.loop
+    ? memberPanel(channelProfileMemberId, closeChannelProfile)
+    : channelProfileMemberId && activeRunForSelectedTeam ? (
       <Suspense fallback={<TeamPanelLoadingFallback />}>
         <LazyTeamOverviewProfilePanel
           snapshot={snapshot}
@@ -985,6 +1024,8 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
     ) : null;
 
   const agentAcpPanel = (
+    <>
+    {selectedTeam && selectedAgentWorkspaceMemberId && <Button size="xs" variant="subtle" onClick={() => navigateTeamRoute(buildTeamMemberWorkspacePath(selectedTeam.id, selectedAgentWorkspaceMemberId, "overview"))}>Member configuration and history</Button>}
     <Suspense
       fallback={
         <WorkspacePanelLoadingFallback
@@ -1026,6 +1067,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
         onLoadOlder={onLoadOlderMemberConsole}
       />
     </Suspense>
+    </>
   );
 
   const debugPanel = developerMode ? (
@@ -1193,6 +1235,7 @@ export const TeamWorkbenchContainer = React.memo(function TeamWorkbenchContainer
       showRunContextLoading={showRunContextLoading}
       showNoActiveRunNotice={showNoActiveRunNotice}
       activeWorkspaceLens={activeWorkspaceLens}
+      memberOverviewPanel={memberOverviewPanel}
       {...bodyProps}
     />
   );

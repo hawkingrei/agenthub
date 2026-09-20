@@ -808,6 +808,9 @@ async fn create_full_test_schema(pool: &SqlitePool) {
     .execute(pool)
     .await
     .expect("create team_actor_messages idempotency index");
+    agenthub_db::loop_runtime::migrate_loop_runtime(pool)
+        .await
+        .expect("migrate loop runtime");
 }
 
 /// A file-backed, WAL-mode, multi-connection SQLite pool for concurrency/race tests over the mailbox
@@ -951,20 +954,26 @@ pub(super) async fn setup_concurrent_conversation_db() -> (SqlitePool, std::path
             .unwrap_or_else(|err| panic!("create {label}: {err}"));
     }
 
+    agenthub_db::loop_runtime::migrate_loop_runtime(&pool)
+        .await
+        .expect("migrate loop configuration guards");
+
     (pool, dir)
 }
 
-/// A real file-backed WAL pool with only the tables `team_definitions`/`team_tasks`/`team_goal_leases`/
-/// `team_execution_claims`/`team_audit_events` need, for tests that must exercise genuine interleaving
-/// between two transactions racing to claim/release a goal lease or execution claim (the shared
-/// `:memory:` pool used elsewhere is single-connection and serializes everything -- see
-/// `setup_concurrent_conversation_db`, which this mirrors for a different table slice).
+/// Use production migrations so terminal-task races also exercise scheduling observation.
+/// A WAL pool with multiple connections preserves genuine writer interleaving.
 pub(super) async fn setup_concurrent_teamspace_db() -> (SqlitePool, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("agenthub-teamspace-race-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&dir).expect("create temp dir");
+    let path = dir.join("race.db");
+    agenthub_db::init_db_at_path(&path)
+        .await
+        .expect("migrate race database")
+        .close()
+        .await;
     let options = SqliteConnectOptions::new()
-        .filename(dir.join("race.db"))
-        .create_if_missing(true)
+        .filename(path)
         .foreign_keys(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
         .busy_timeout(Duration::from_secs(20));
@@ -973,90 +982,6 @@ pub(super) async fn setup_concurrent_teamspace_db() -> (SqlitePool, std::path::P
         .connect_with(options)
         .await
         .expect("connect sqlite");
-
-    for (stmt, label) in [
-        (
-            r#"CREATE TABLE team_definitions (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                description TEXT,
-                spec_json TEXT NOT NULL,
-                owner_user_id TEXT,
-                group_id TEXT,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            );"#,
-            "team_definitions",
-        ),
-        (
-            r#"CREATE TABLE team_tasks (
-                id TEXT PRIMARY KEY,
-                team_id TEXT NOT NULL,
-                group_id TEXT,
-                title TEXT NOT NULL,
-                status TEXT NOT NULL,
-                priority TEXT NOT NULL DEFAULT 'medium',
-                created_by_actor_id TEXT NOT NULL,
-                assigned_member_id TEXT,
-                context_json TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
-                FOREIGN KEY(team_id) REFERENCES team_definitions(id)
-            );"#,
-            "team_tasks",
-        ),
-        (
-            r#"CREATE TABLE team_execution_claims (
-                entity_kind TEXT NOT NULL,
-                entity_id TEXT NOT NULL,
-                team_id TEXT NOT NULL,
-                owner_member_id TEXT NOT NULL,
-                lease_generation INTEGER NOT NULL,
-                claimed_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL,
-                released_at INTEGER,
-                PRIMARY KEY (entity_kind, entity_id),
-                FOREIGN KEY(team_id) REFERENCES team_definitions(id)
-            );"#,
-            "team_execution_claims",
-        ),
-        (
-            r#"CREATE TABLE team_goal_leases (
-                task_id TEXT PRIMARY KEY,
-                team_id TEXT NOT NULL,
-                owner_member_id TEXT NOT NULL,
-                lease_generation INTEGER NOT NULL CHECK(lease_generation > 0),
-                started_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL,
-                released_at INTEGER,
-                release_reason TEXT,
-                CHECK(expires_at > started_at),
-                FOREIGN KEY(task_id) REFERENCES team_tasks(id),
-                FOREIGN KEY(team_id) REFERENCES team_definitions(id)
-            );"#,
-            "team_goal_leases",
-        ),
-        (
-            r#"CREATE TABLE team_audit_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                team_id TEXT NOT NULL,
-                actor_user_id TEXT,
-                event_kind TEXT NOT NULL,
-                subject_kind TEXT NOT NULL,
-                subject_id TEXT NOT NULL,
-                detail_json TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                FOREIGN KEY(team_id) REFERENCES team_definitions(id)
-            );"#,
-            "team_audit_events",
-        ),
-    ] {
-        sqlx::query(stmt)
-            .execute(&pool)
-            .await
-            .unwrap_or_else(|err| panic!("create {label}: {err}"));
-    }
-
     (pool, dir)
 }
 

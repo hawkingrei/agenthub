@@ -1,4 +1,5 @@
 use serde_json::Value;
+use sqlx::{Sqlite, Transaction};
 use uuid::Uuid;
 
 use super::run_task_status_sync::{
@@ -13,6 +14,93 @@ use super::step_template_builders::{
 use super::{TeamManager, TeamRunRecord, TeamRunStatus, TeamTaskStatus, team_run_status_to_str};
 
 impl TeamManager {
+    async fn insert_submitted_run_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        run_id: &str,
+        team_id: &str,
+        context_id: &str,
+        input_json: &str,
+        now: i64,
+    ) -> anyhow::Result<()> {
+        sqlx::query("INSERT INTO team_runs (id, team_id, group_id, context_id, status, input_json, created_at) \
+            VALUES (?, ?, (SELECT group_id FROM team_definitions WHERE id = ?), ?, 'submitted', ?, ?)")
+            .bind(run_id).bind(team_id).bind(team_id).bind(context_id).bind(input_json).bind(now)
+            .execute(&mut **tx).await?;
+        Ok(())
+    }
+
+    /// Allocate mailbox identity independently of a task attempt or provider session.
+    pub(crate) async fn ensure_loop_mailbox_partition(
+        &self,
+        team_id: &str,
+    ) -> anyhow::Result<TeamRunRecord> {
+        self.get_team(team_id).await?;
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        if let Some(run_id) = sqlx::query_scalar::<_, String>(
+            "SELECT run_id FROM loop_mailbox_partitions WHERE team_id = ? AND active = 1",
+        )
+        .bind(team_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            tx.commit().await?;
+            let run = self.get_run(&run_id).await?;
+            anyhow::ensure!(
+                matches!(
+                    run.status,
+                    TeamRunStatus::Submitted
+                        | TeamRunStatus::Working
+                        | TeamRunStatus::InputRequired
+                ),
+                "loop mailbox partition is terminal; explicit scope reconciliation is required"
+            );
+            return Ok(run);
+        }
+        let run_id = Uuid::new_v4().to_string();
+        let context_id = format!("loop:{team_id}");
+        let input = serde_json::json!({"loop_mailbox_partition": {"version": 1}});
+        let now = chrono::Utc::now().timestamp();
+        Self::insert_submitted_run_tx(
+            &mut tx,
+            &run_id,
+            team_id,
+            &context_id,
+            &input.to_string(),
+            now,
+        )
+        .await?;
+        sqlx::query(
+            "INSERT INTO loop_mailbox_partitions(run_id, team_id, created_at) VALUES (?, ?, ?)",
+        )
+        .bind(&run_id)
+        .bind(team_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        let event = Self::append_run_event_tx(
+            &mut tx,
+            &run_id,
+            None,
+            "loop_mailbox_created",
+            now,
+            &serde_json::json!({"team_id": team_id, "context_id": context_id}),
+        )
+        .await?;
+        tx.commit().await?;
+        self.spawn_archive_team_run_events(vec![event]);
+        Ok(TeamRunRecord {
+            id: run_id,
+            team_id: team_id.into(),
+            context_id,
+            status: TeamRunStatus::Submitted,
+            input,
+            summary: None,
+            created_at: now,
+            started_at: None,
+            ended_at: None,
+        })
+    }
+
     pub async fn create_run(
         &self,
         team_id: &str,
@@ -56,19 +144,14 @@ impl TeamManager {
         let continuity_mode = extract_continuity_mode_from_input(&input);
 
         let mut tx = self.db.begin().await?;
-        sqlx::query(
-            r#"
-            INSERT INTO team_runs (id, team_id, group_id, context_id, status, input_json, created_at)
-            VALUES (?1, ?2, (SELECT group_id FROM team_definitions WHERE id = ?2), ?3, ?4, ?5, ?6)
-            "#,
+        Self::insert_submitted_run_tx(
+            &mut tx,
+            &run_id,
+            team_id,
+            &resolved_context_id,
+            &input_json,
+            now,
         )
-        .bind(&run_id)
-        .bind(team_id)
-        .bind(&resolved_context_id)
-        .bind(team_run_status_to_str(&status))
-        .bind(input_json)
-        .bind(now)
-        .execute(&mut *tx)
         .await?;
 
         let payload = serde_json::json!({

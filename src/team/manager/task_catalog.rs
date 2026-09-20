@@ -103,6 +103,12 @@ impl TeamManager {
         .bind(now)
         .execute(&mut *tx)
         .await?;
+        super::loop_work_events::stage_assignment_event(
+            &mut tx,
+            &task_id,
+            Some(input.created_by_actor_id),
+        )
+        .await?;
         tx.commit().await?;
 
         let task = self.get_task(&task_id).await?;

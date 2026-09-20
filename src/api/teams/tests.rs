@@ -1292,6 +1292,12 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_context_flush_checkpoint");
+    agenthub_db::loop_runtime::migrate_loop_runtime(db)
+        .await
+        .expect("migrate loop runtime");
+    agenthub_db::app_registry::migrate_app_registry(db)
+        .await
+        .expect("migrate app registry");
 }
 
 const DEFAULT_TEST_TEAM_MEMBER_IDS: &[&str] = &[
@@ -2135,6 +2141,10 @@ async fn team_upload_s3_route_fixture_publishes_metadata() {
 }
 
 include!("tests_core.rs");
+include!("tests_loop_configuration.rs");
+include!("tests_loop_history.rs");
+include!("tests_loop_work.rs");
+include!("tests_loop_scheduling.rs");
 include!("tests_router.rs");
 
 #[tokio::test]

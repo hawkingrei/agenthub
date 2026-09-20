@@ -472,7 +472,9 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   }, [isCompactWorkbench, navigateToTeamLens, selectedTeamId, setFocusedAgentMemberId, setTab, setTeamsSidebarCollapsed]);
 
   const onSelectAgentWorkspace = useCallback(
-    (memberId: string, nextTab: TeamTab = "agent_acp") => {
+    (memberId: string, requestedTab?: TeamTab) => {
+      const spec = selectedTeam?.spec as { execution_mode?: string } | undefined;
+      const nextTab = requestedTab ?? (spec?.execution_mode === "loop" ? "overview" : "agent_acp");
       setSelectedMemberId(memberId);
       setFocusedAgentMemberId(memberId);
       setTab(nextTab);
@@ -487,6 +489,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       isCompactWorkbench,
       navigateToTeamMemberWorkspace,
       selectedTeamId,
+      selectedTeam,
       setFocusedAgentMemberId,
       setSelectedMemberId,
       setTab,

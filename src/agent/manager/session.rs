@@ -282,6 +282,13 @@ impl AgentManager {
         match exit_result {
             Ok(None) => Some(session_id),
             Ok(Some(status)) => {
+                if let Err(error) = self
+                    .cleanup_observed_session(agent_id, &session_id, &child)
+                    .await
+                {
+                    tracing::error!(agent_id, session_id, %error, "exited session cleanup remains unverified");
+                    return Some(session_id);
+                }
                 Self::finalize_process_exit(
                     &self.db,
                     &self.event_dbs,
@@ -301,6 +308,13 @@ impl AgentManager {
                     agent_id,
                     err
                 );
+                if let Err(error) = self
+                    .cleanup_observed_session(agent_id, &session_id, &child)
+                    .await
+                {
+                    tracing::error!(agent_id, session_id, %error, "failed session cleanup remains unverified");
+                    return Some(session_id);
+                }
                 Self::finalize_process_exit(
                     &self.db,
                     &self.event_dbs,
@@ -369,23 +383,100 @@ impl AgentManager {
         agent_id: &str,
         actor_context: Option<AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
+        self.start_agent_owned(agent_id, actor_context, None).await
+    }
+
+    pub(super) async fn start_loop_agent(
+        &self,
+        reservation: &agenthub_agent_domain::loop_runtime::LoopReservation,
+        context: AcpActorSkillContext,
+    ) -> anyhow::Result<String> {
+        anyhow::ensure!(
+            reservation.owner_id == self.loop_owner_id,
+            "loop reservation belongs to another daemon"
+        );
+        self.start_agent_owned(
+            &reservation.actor_id,
+            Some(context),
+            Some(reservation.clone()),
+        )
+        .await
+    }
+
+    async fn start_agent_owned(
+        &self,
+        agent_id: &str,
+        actor_context: Option<AcpActorSkillContext>,
+        loop_reservation: Option<agenthub_agent_domain::loop_runtime::LoopReservation>,
+    ) -> anyhow::Result<String> {
+        // A disconnected caller must not drop a half-completed process start. Daemon shutdown
+        // owns this operation and waits for its supervisor permit before stopping processes.
+        let manager = self.clone();
+        let agent_id = agent_id.to_owned();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.daemon_tasks
+            .spawn_runtime_task(format!("agent-start:{agent_id}"), async move {
+                let _configuration = manager
+                    .configuration_gate(&agent_id)
+                    .await
+                    .lock_owned()
+                    .await;
+                let result = manager
+                    .start_agent_with_actor_context_inner(
+                        &agent_id,
+                        actor_context,
+                        loop_reservation,
+                    )
+                    .await;
+                let _ = sender.send(result);
+                Ok(())
+            })?;
+        receiver
+            .await
+            .context("agent start task ended without a result")?
+    }
+
+    async fn start_agent_with_actor_context_inner(
+        &self,
+        agent_id: &str,
+        actor_context: Option<AcpActorSkillContext>,
+        loop_reservation: Option<agenthub_agent_domain::loop_runtime::LoopReservation>,
+    ) -> anyhow::Result<String> {
         let agent = self.get_agent(agent_id).await?;
         let running_session_id = self.get_running_session_id(agent_id).await;
         match build_agent_start_plan(agent, actor_context, running_session_id.as_deref())? {
-            AgentStartPlan::ReuseRunningSession { session_id } => Ok(session_id),
+            AgentStartPlan::ReuseRunningSession { session_id } => {
+                anyhow::ensure!(
+                    loop_reservation.is_none(),
+                    "a loop activation cannot reuse a live provider process"
+                );
+                Ok(session_id)
+            }
             AgentStartPlan::StartLocal {
                 agent,
                 actor_context,
             } => {
                 self.reserve_agent_start(agent_id).await?;
+                let _start_permit = match self.process_supervisor.acquire_start_permit().await {
+                    Ok(permit) => permit,
+                    Err(error) => {
+                        self.release_agent_start(agent_id).await;
+                        return Err(error);
+                    }
+                };
+                let session_tracker = Arc::new(Mutex::new(None));
+                let mut loop_reserved = false;
                 let result = async {
+                    if let Some(reservation) = &loop_reservation {
+                        loop_reserved = true;
+                        agenthub_db::loop_runtime::LoopStore::new(self.db.clone()).renew(reservation, Utc::now().timestamp()).await?;
+                    } else {
+                        loop_reserved = self.reserve_manual_loop_start(agent_id).await?;
+                    }
                     let admission = self.start_scheduler.acquire(agent_id).await?;
-                    let session_tracker = Arc::new(Mutex::new(None));
                     match tokio::time::timeout(
                         admission.start_timeout(),
                         async {
-                            let _start_permit =
-                                self.process_supervisor.acquire_start_permit().await?;
                             self.start_local_agent(
                                 agent,
                                 actor_context,
@@ -413,6 +504,27 @@ impl AgentManager {
                     }
                 }
                 .await;
+                if result.is_err() && loop_reserved {
+                    // The supervisor registers every spawned session before the first yield.
+                    // A failed start with no tracked process therefore has no surviving writer.
+                    let session_id = session_tracker.lock().await.clone();
+                    let cleanup = async {
+                        if let Some(session_id) = &session_id {
+                            self.process_supervisor.stop_session(session_id).await?;
+                            let mut handles = self.inner.write().await;
+                            if Self::handle_matches_session(handles.get(agent_id), session_id)
+                                && let Some(handle) = handles.remove(agent_id)
+                                && let Some(controller) = handle.loop_controller {
+                                controller.stop();
+                            }
+                        }
+                        self.release_loop_after_cleanup(agent_id, None, agenthub_agent_domain::loop_runtime::LoopCleanupDisposition::StartupFailed).await
+                    }.await;
+                    if let Err(error) = cleanup {
+                        self.release_agent_start(agent_id).await;
+                        return Err(error.context("failed start retained loop reservation because cleanup could not be verified"));
+                    }
+                }
                 self.release_agent_start(agent_id).await;
                 result
             }
@@ -421,6 +533,16 @@ impl AgentManager {
                 target_node_id,
                 actor_context,
             } => {
+                let configured: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM loop_policies WHERE actor_id = ?)",
+                )
+                .bind(agent_id)
+                .fetch_one(&self.db)
+                .await?;
+                anyhow::ensure!(
+                    !configured && loop_reservation.is_none(),
+                    "loop execution does not support remote providers"
+                );
                 self.reserve_agent_start(agent_id).await?;
                 let result = self
                     .start_remote_agent(&agent, &target_node_id, actor_context.as_ref())
@@ -442,8 +564,14 @@ impl AgentManager {
         actor_context: Option<AcpActorSkillContext>,
         session_tracker: Arc<Mutex<Option<String>>>,
     ) -> anyhow::Result<String> {
-        self.start_local_agent_with_resume_fallback(agent, actor_context, true, session_tracker)
-            .await
+        let allow_resume_retry = !self.loop_reservations.lock().await.contains_key(&agent.id);
+        self.start_local_agent_with_resume_fallback(
+            agent,
+            actor_context,
+            allow_resume_retry,
+            session_tracker,
+        )
+        .await
     }
 
     async fn start_local_agent_with_resume_fallback(
@@ -458,6 +586,28 @@ impl AgentManager {
         let session_id = Uuid::new_v4().to_string();
         *session_tracker.lock().await = Some(session_id.clone());
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
+        let loop_reservation = self
+            .loop_reservations
+            .lock()
+            .await
+            .get(&agent.id)
+            .filter(|reservation| reservation.activation_id.is_some())
+            .cloned();
+        let is_loop_activation = loop_reservation.is_some();
+        anyhow::ensure!(
+            actor_context
+                .as_ref()
+                .is_some_and(AcpActorSkillContext::is_loop_activation)
+                == is_loop_activation,
+            "loop runtime context requires its reserved activation"
+        );
+        if is_loop_activation {
+            anyhow::ensure!(
+                self.acp_provider_spec_for_agent(&agent.command, &agent.args)
+                    .is_some(),
+                "loop execution requires a supported local ACP provider"
+            );
+        }
         let persisted_workdir = super::expand_tilde(&agent.workdir);
         let persisted_worktree_repo = agent.worktree_repo.as_deref().map(super::expand_tilde);
         if (persisted_workdir != agent.workdir
@@ -489,7 +639,10 @@ impl AgentManager {
             actor_context.as_ref(),
             &persisted_workdir,
             persisted_worktree_repo.as_deref(),
-            Some(&session_id),
+            loop_reservation
+                .as_ref()
+                .and_then(|reservation| reservation.activation_id.as_deref())
+                .or(Some(&session_id)),
         )?;
         let mut runtime_agent = agent.clone();
         runtime_agent.worktree_mode = start_policy.worktree_mode.clone();
@@ -574,10 +727,59 @@ impl AgentManager {
         let is_acp = acp_provider.is_some();
         let (command_path, command_args) =
             self.resolve_launch_command(&agent.command, &agent.args, acp_provider);
-        let spawn_summary = format!(
-            "command={} workdir={} args={:?}",
-            command_path, start_policy.workdir, command_args
+        let spawn_summary = if is_loop_activation {
+            format!(
+                "provider={} workdir={}",
+                acp_provider
+                    .map(|provider| provider.id)
+                    .unwrap_or("unknown"),
+                start_policy.workdir
+            )
+        } else {
+            format!(
+                "command={} workdir={} args={:?}",
+                command_path, start_policy.workdir, command_args
+            )
+        };
+        let (loop_launch, loop_session_policy, loop_env) = if let (Some(provider), Some(context)) = (
+            acp_provider,
+            actor_context.as_ref().filter(|_| is_loop_activation),
+        ) {
+            let (launch, policy, env) = self
+                .resolve_loop_launch(
+                    &agent,
+                    provider,
+                    context,
+                    &start_policy.workdir,
+                    &command_path,
+                    &command_args,
+                )
+                .await?;
+            (Some(launch), Some(policy), env)
+        } else {
+            (None, None, Vec::new())
+        };
+        let mut extra_env = default_env_for_acp_provider(
+            acp_provider,
+            self.codex_acp_multi_agent_enabled,
+            agent.runtime_model.as_deref(),
+            agent.thinking_level.as_deref(),
         );
+        extra_env.extend(loop_env);
+        let loop_reservation = self.loop_reservations.lock().await.get(&agent.id).cloned();
+        #[cfg(target_os = "linux")]
+        let cleanup_witness = if let Some(reservation) = &loop_reservation {
+            let witness = crate::executor_guardian::CleanupWitness::prepare(
+                self.event_dbs.base_dir(),
+                reservation,
+            )?;
+            agenthub_db::loop_runtime::LoopStore::new(self.db.clone())
+                .authorize_guarded_spawn(reservation, Utc::now().timestamp())
+                .await?;
+            Some(std::sync::Arc::new(witness))
+        } else {
+            None
+        };
         let local_execution_request = LocalExecutionRequest {
             agent_id: agent.id.clone(),
             session_id: session_id.clone(),
@@ -585,12 +787,22 @@ impl AgentManager {
             args: command_args,
             workdir: start_policy.workdir.clone(),
             actor_context: actor_context.clone(),
-            extra_env: default_env_for_acp_provider(
-                acp_provider,
-                self.codex_acp_multi_agent_enabled,
-                agent.runtime_model.as_deref(),
-                agent.thinking_level.as_deref(),
-            ),
+            guard_descendants: loop_reservation.is_some(),
+            #[cfg(target_os = "linux")]
+            cleanup_witness,
+            private_env: if is_loop_activation {
+                let mut private =
+                    crate::mcp_proxy::configured::private_environment(&self.loop_app_config);
+                private.extend(
+                    agenthub_db::app_registry::AppRegistry::new(self.db.clone())
+                        .credential_references()
+                        .await?,
+                );
+                private
+            } else {
+                Vec::new()
+            },
+            extra_env,
         };
         let local_execution = match self
             .local_executor
@@ -705,6 +917,7 @@ impl AgentManager {
             return Err(err.into());
         }
 
+        self.bind_loop_session(&agent.id, &session_id).await?;
         if let Err(err) = self
             .update_agent_status(&agent.id, AgentStatus::Running)
             .await
@@ -729,12 +942,17 @@ impl AgentManager {
             acp_prompt_delivery_policy = Some(provider.prompt_delivery_policy);
             // Provider continuity is stored separately from the AgentHub runtime launch id
             // above so restarts can keep ACP memory while still recording a new local start.
-            let resume_session_id = match self.get_persistent_session(&agent.id, provider.id).await
+            let resume_session_id = if loop_session_policy
+                == Some(agenthub_agent_domain::loop_runtime::LoopSessionPolicy::Fresh)
             {
-                Ok(session_id) => session_id,
-                Err(err) => {
-                    let _ = self.process_supervisor.stop_session(&session_id).await;
-                    return Err(err);
+                None
+            } else {
+                match self.get_persistent_session(&agent.id, provider.id).await {
+                    Ok(session_id) => session_id,
+                    Err(err) => {
+                        let _ = self.process_supervisor.stop_session(&session_id).await;
+                        return Err(err);
+                    }
                 }
             };
             resumed_provider_id = Some(provider.id.to_string());
@@ -810,7 +1028,8 @@ impl AgentManager {
                 .ok()
                 .and_then(|guard| guard.clone());
             let handle = match spawn_acp_session(SpawnAcpSessionRequest {
-                self_reminders_enabled: self.internal_peer_client.is_some(),
+                self_reminders_enabled: !is_loop_activation && self.internal_peer_client.is_some(),
+                loop_launch,
                 provider_id: provider.id.to_string(),
                 event_sink,
                 permissions: self.permissions.clone(),
@@ -872,7 +1091,7 @@ impl AgentManager {
                 self.acp_default_mode.as_deref(),
                 actor_context.is_some(),
             );
-            if provider.uses_default_mode_config() {
+            if !is_loop_activation && provider.uses_default_mode_config() {
                 if let Some(mode_id) = default_mode
                     && let Err(err) = handle.set_mode(mode_id.to_string()).await
                 {
@@ -898,7 +1117,7 @@ impl AgentManager {
             // ACP session config — currently Codex. Unset fields are skipped so the provider default
             // stays authoritative; failures are logged but never abort the launch. Claude takes the
             // profile as spawn env instead (handled where the launch environment is built).
-            if provider.applies_runtime_profile_via_session_config() {
+            if !is_loop_activation && provider.applies_runtime_profile_via_session_config() {
                 if let Some(model) = agent.runtime_model.as_deref()
                     && let Err(err) = handle.set_model(model.to_string()).await
                 {
@@ -936,11 +1155,13 @@ impl AgentManager {
                     }
                 }
             }
-            if let Some(config) = normalize_agent_loop_config(
-                agent.agent_loop_enabled,
-                agent.agent_loop_idle_seconds,
-                agent.agent_loop_prompt.as_deref(),
-            ) {
+            if !is_loop_activation
+                && let Some(config) = normalize_agent_loop_config(
+                    agent.agent_loop_enabled,
+                    agent.agent_loop_idle_seconds,
+                    agent.agent_loop_prompt.as_deref(),
+                )
+            {
                 loop_controller = Some(spawn_agent_loop_controller(
                     &self.daemon_tasks,
                     self.event_dbs.clone(),
@@ -1146,6 +1367,37 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn stop_agent(&self, agent_id: &str) -> anyhow::Result<()> {
+        self.stop_agent_inner(agent_id, true).await
+    }
+
+    pub(super) async fn stop_agent_inner(
+        &self,
+        agent_id: &str,
+        cancel_work: bool,
+    ) -> anyhow::Result<()> {
+        let reservation = self.loop_reservations.lock().await.get(agent_id).cloned();
+        if let Some(reservation) = reservation {
+            let store = agenthub_db::loop_runtime::LoopStore::new(self.db.clone());
+            // Serialize against cleanup removing this exact reservation while stop begins.
+            let held = self.loop_reservations.lock().await;
+            if held
+                .get(agent_id)
+                .is_some_and(|current| current.generation == reservation.generation)
+            {
+                if cancel_work && let Some(id) = &reservation.activation_id {
+                    store
+                        .cancel(&reservation.team_id, id, Utc::now().timestamp())
+                        .await?;
+                }
+                store
+                    .revoke_execution(&reservation, Utc::now().timestamp())
+                    .await?;
+            }
+            drop(held);
+            while self.starting.lock().await.contains(agent_id) {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }
         let agent = self.get_agent(agent_id).await?;
         if let Some(target_node_id) = agent.target_node_id.as_deref() {
             let client = self
@@ -1175,6 +1427,13 @@ impl AgentManager {
                         "failed to stop agent process: agent_id={agent_id} session_id={session_id}"
                     )
                 })?;
+
+            self.release_loop_after_cleanup(
+                agent_id,
+                Some(&session_id),
+                agenthub_agent_domain::loop_runtime::LoopCleanupDisposition::Exited,
+            )
+            .await?;
 
             let removed = {
                 let mut guard = self.inner.write().await;
@@ -1404,6 +1663,223 @@ mod tests {
         (agents, agent_id)
     }
 
+    async fn enable_loop_policy(agents: &AgentManager, agent_id: &str) -> String {
+        use agenthub_agent_domain::loop_runtime::{LoopLimits, LoopPolicyState, LoopSessionPolicy};
+        let team_id = uuid::Uuid::new_v4().to_string();
+        let spec = serde_json::json!({"members": [{"member_id": agent_id}]});
+        sqlx::query("INSERT INTO team_definitions(id, name, spec_json, created_at, updated_at) VALUES (?, 'loop-test', ?, 1, 1)")
+            .bind(&team_id).bind(spec.to_string()).execute(&agents.db).await.unwrap();
+        agenthub_db::loop_runtime::LoopStore::new(agents.db.clone())
+            .configure(
+                agenthub_db::loop_runtime::LoopPolicyUpdate {
+                    actor_id: agent_id,
+                    team_id: &team_id,
+                    expected_revision: 0,
+                    state: LoopPolicyState::Enabled,
+                    session_policy: LoopSessionPolicy::Fresh,
+                    limits: &LoopLimits::default(),
+                },
+                Utc::now().timestamp(),
+            )
+            .await
+            .unwrap();
+        team_id
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_manual_start_uses_durable_reservation_until_verified_stop() {
+        let (mut agents, agent_id) = build_scheduled_test_manager(
+            Arc::new(FailingExecutor::default()),
+            AgentStartSchedulerSettings::default(),
+        )
+        .await;
+        agents.local_executor = Arc::new(super::super::executor::LocalExecutor::new(
+            super::super::ProxyPolicy::new(Vec::new()),
+            agents.process_supervisor.clone(),
+        ));
+        sqlx::query("UPDATE agents SET command = 'cat' WHERE id = ?")
+            .bind(&agent_id)
+            .execute(&agents.db)
+            .await
+            .unwrap();
+        let team = enable_loop_policy(&agents, &agent_id).await;
+        let store = agenthub_db::loop_runtime::LoopStore::new(agents.db.clone());
+        let session = agents.start_agent(&agent_id).await.unwrap();
+        let first = store.reservation(&team, &agent_id).await.unwrap().unwrap();
+        assert_eq!(first.session_id.as_deref(), Some(session.as_str()));
+        assert_eq!(first.activation_id, None);
+        assert!(
+            store
+                .reserve_manual(&team, &agent_id, "another-daemon", Utc::now().timestamp())
+                .await
+                .is_err()
+        );
+        agents.stop_agent(&agent_id).await.unwrap();
+        assert!(store.reservation(&team, &agent_id).await.unwrap().is_none());
+        agents.start_agent(&agent_id).await.unwrap();
+        let second = store.reservation(&team, &agent_id).await.unwrap().unwrap();
+        assert!(second.generation > first.generation);
+        agents.fence_loop_reservation(&first).await.unwrap();
+        assert_eq!(
+            store
+                .reservation(&team, &agent_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .generation,
+            second.generation
+        );
+        assert_eq!(
+            agents.running_session_id_for_agent(&agent_id).await,
+            second.session_id
+        );
+        agents.stop_all_on_shutdown().await.unwrap();
+        assert!(store.reservation(&team, &agent_id).await.unwrap().is_none());
+        agents
+            .daemon_tasks
+            .shutdown_runtime(Duration::from_secs(2))
+            .await
+            .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_unbound_fence_keeps_an_existing_legacy_writer_owned() {
+        let (agents, agent_id) = build_scheduled_test_manager(
+            Arc::new(FailingExecutor::default()),
+            AgentStartSchedulerSettings::default(),
+        )
+        .await;
+        let team = enable_loop_policy(&agents, &agent_id).await;
+        let store = agenthub_db::loop_runtime::LoopStore::new(agents.db.clone());
+        let reservation = store
+            .reserve_manual(
+                &team,
+                &agent_id,
+                agents.loop_owner_id(),
+                Utc::now().timestamp(),
+            )
+            .await
+            .unwrap();
+        let mut command = tokio::process::Command::new("/bin/sleep");
+        command.arg("30");
+        let (child, registration) = agents
+            .process_supervisor
+            .spawn(agent_id.clone(), "legacy-session".into(), command)
+            .await
+            .unwrap();
+        registration.commit();
+        agents
+            .track_loop_reservation(reservation.clone())
+            .await
+            .unwrap();
+        assert!(agents.fence_loop_reservation(&reservation).await.is_err());
+        assert!(
+            child
+                .lock()
+                .await
+                .as_mut()
+                .unwrap()
+                .try_wait()
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            store.reservation(&team, &agent_id).await.unwrap().unwrap(),
+            reservation
+        );
+        agents
+            .process_supervisor
+            .stop_session("legacy-session")
+            .await
+            .unwrap();
+        agents.fence_loop_reservation(&reservation).await.unwrap();
+        assert!(store.reservation(&team, &agent_id).await.unwrap().is_none());
+        agents
+            .daemon_tasks
+            .shutdown_runtime(Duration::from_secs(2))
+            .await
+            .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_manual_start_cannot_release_another_executor_reservation() {
+        let (agents, agent_id) = build_scheduled_test_manager(
+            Arc::new(FailingExecutor::default()),
+            AgentStartSchedulerSettings::default(),
+        )
+        .await;
+        let team = enable_loop_policy(&agents, &agent_id).await;
+        let store = agenthub_db::loop_runtime::LoopStore::new(agents.db.clone());
+        let existing = store
+            .reserve_manual(&team, &agent_id, "prior-daemon", Utc::now().timestamp())
+            .await
+            .unwrap();
+        assert!(agents.start_agent(&agent_id).await.is_err());
+        assert_eq!(
+            store.reservation(&team, &agent_id).await.unwrap().unwrap(),
+            existing
+        );
+        assert!(!agents.starting.lock().await.contains(&agent_id));
+        assert!(!agents.inner.read().await.contains_key(&agent_id));
+        agents
+            .daemon_tasks
+            .shutdown_runtime(Duration::from_secs(2))
+            .await
+            .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_disconnected_start_caller_does_not_abandon_startup_cleanup() {
+        #[derive(Debug)]
+        struct ControlledFailure {
+            entered: tokio::sync::Notify,
+            release: tokio::sync::Notify,
+        }
+        #[async_trait]
+        impl AgentExecutor for ControlledFailure {
+            async fn spawn_process(
+                &self,
+                _: LocalExecutionRequest,
+            ) -> anyhow::Result<SpawnedLocalProcess> {
+                self.entered.notify_one();
+                self.release.notified().await;
+                anyhow::bail!("controlled startup failure")
+            }
+        }
+        let executor = Arc::new(ControlledFailure {
+            entered: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let (agents, agent_id) =
+            build_scheduled_test_manager(executor.clone(), AgentStartSchedulerSettings::default())
+                .await;
+        let team = enable_loop_policy(&agents, &agent_id).await;
+        let caller_manager = agents.clone();
+        let caller_actor = agent_id.clone();
+        let caller = tokio::spawn(async move { caller_manager.start_agent(&caller_actor).await });
+        executor.entered.notified().await;
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        executor.release.notify_one();
+        agents
+            .daemon_tasks
+            .shutdown_runtime(Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert!(!agents.starting.lock().await.contains(&agent_id));
+        assert!(
+            agenthub_db::loop_runtime::LoopStore::new(agents.db.clone())
+                .reservation(&team, &agent_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
     #[test]
     fn should_retry_resumed_acp_session_only_on_failed_matching_resume() {
         assert!(should_retry_resumed_acp_session(
@@ -1487,10 +1963,11 @@ mod tests {
     async fn spawn_failure_backoff_rejects_immediate_retry_without_respawn() {
         let settings = AgentStartSchedulerSettings {
             max_concurrent_starts: 1,
-            queue_timeout: Duration::from_millis(100),
-            start_timeout: Duration::from_secs(1),
-            spawn_backoff_initial: Duration::from_secs(1),
-            spawn_backoff_max: Duration::from_secs(2),
+            // This exercises spawn failure and retry admission, not startup latency.
+            // Keep failure persistence under coverage from consuming the backoff window.
+            spawn_backoff_initial: Duration::from_secs(60),
+            spawn_backoff_max: Duration::from_secs(60),
+            ..AgentStartSchedulerSettings::default()
         };
         let executor = Arc::new(FailingExecutor::default());
         let (agents, agent_id) = build_scheduled_test_manager(executor.clone(), settings).await;
@@ -1499,12 +1976,19 @@ mod tests {
             .start_agent(&agent_id)
             .await
             .expect_err("synthetic spawn must fail");
-        assert!(first_error.to_string().contains("retry_after_ms"));
+        assert!(
+            first_error.to_string().contains("synthetic spawn failure")
+                && first_error.to_string().contains("retry_after_ms"),
+            "{first_error:#}"
+        );
         let retry_error = agents
             .start_agent(&agent_id)
             .await
             .expect_err("immediate retry must hit spawn backoff");
-        assert!(retry_error.to_string().contains("spawn backoff active"));
+        assert!(
+            retry_error.to_string().contains("spawn backoff active"),
+            "{retry_error:#}"
+        );
         assert_eq!(executor.attempts.load(Ordering::SeqCst), 1);
     }
 

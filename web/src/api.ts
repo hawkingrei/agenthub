@@ -2,6 +2,7 @@ import {
   clearAuthAndRedirect,
   shouldRedirectOnAuthError,
 } from "./auth_redirect";
+import type * as Loop from "./loop_types";
 
 export const AGENT_SOURCE_MANUAL = "manual";
 export const AGENT_SOURCE_TEAM_FORGE = "team_forge";
@@ -847,6 +848,16 @@ function encodePathSegment(value: string | number): string {
   return encodeURIComponent(String(value));
 }
 
+function teamMemberLoopPath(teamId: string, actorId: string): string {
+  return `/api/teams/${encodePathSegment(teamId)}/members/${encodePathSegment(actorId)}/loop`;
+}
+
+function loopPageQuery(cursorName: string, cursor?: string | number | null): string {
+  const query = new URLSearchParams({ limit: "25" });
+  if (cursor != null) query.set(cursorName, String(cursor));
+  return `?${query}`;
+}
+
 export function buildTeamRunContextSseUrl(
   origin: string,
   teamId: string,
@@ -995,6 +1006,58 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+  getTeamMemberLoop: (token: string, teamId: string, actorId: string, signal?: AbortSignal) =>
+    apiFetch<Loop.LoopConfiguration>(teamMemberLoopPath(teamId, actorId), token, { signal }),
+  configureTeamMemberLoop: (
+    token: string, teamId: string, actorId: string, payload: Loop.LoopConfigurationUpdate
+  ) => apiFetch<Loop.LoopConfiguration>(teamMemberLoopPath(teamId, actorId), token, {
+    method: "PUT", body: JSON.stringify(payload),
+  }),
+  activateTeamMemberLoop: (
+    token: string, teamId: string, actorId: string, payload: { source_key: string; task_id?: string }
+  ) => apiFetch<Loop.LoopTriggerReceipt>(`${teamMemberLoopPath(teamId, actorId)}/activate`, token, {
+    method: "POST", body: JSON.stringify(payload),
+  }),
+  listTeamMemberActivations: (
+    token: string, teamId: string, actorId: string, before?: string | null, signal?: AbortSignal
+  ) => apiFetch<Loop.LoopHistoryPage>(
+    `${teamMemberLoopPath(teamId, actorId)}/activations${loopPageQuery("before_activation_id", before)}`,
+    token, { signal }
+  ),
+  getTeamMemberActivation: (
+    token: string, teamId: string, actorId: string, activationId: string, signal?: AbortSignal
+  ) => apiFetch<Loop.LoopActivation>(
+    `${teamMemberLoopPath(teamId, actorId)}/activations/${encodePathSegment(activationId)}`, token, { signal }
+  ),
+  listTeamMemberActivationSources: (
+    token: string, teamId: string, actorId: string, activationId: string,
+    after?: string | null, signal?: AbortSignal
+  ) => apiFetch<Loop.LoopSourcePage>(
+    `${teamMemberLoopPath(teamId, actorId)}/activations/${encodePathSegment(activationId)}/sources${loopPageQuery("after_source_id", after)}`,
+    token, { signal }
+  ),
+  listTeamMemberActivationEvents: (
+    token: string, teamId: string, actorId: string, activationId: string,
+    after?: number | null, signal?: AbortSignal
+  ) => apiFetch<Loop.LoopEventPage>(
+    `${teamMemberLoopPath(teamId, actorId)}/activations/${encodePathSegment(activationId)}/events${loopPageQuery("after_event_id", after)}`,
+    token, { signal }
+  ),
+  listTeamMemberActivationTools: (
+    token: string, teamId: string, actorId: string, activationId: string,
+    after?: number | null, signal?: AbortSignal
+  ) => apiFetch<Loop.LoopToolPage>(
+    `${teamMemberLoopPath(teamId, actorId)}/activations/${encodePathSegment(activationId)}/tools${loopPageQuery("after_tool_id", after)}`,
+    token, { signal }
+  ),
+  getTeamMemberLoopMetrics: (token: string, teamId: string, actorId: string, signal?: AbortSignal) =>
+    apiFetch<Loop.LoopMetrics>(`${teamMemberLoopPath(teamId, actorId)}/metrics`, token, { signal }),
+  listTeamMemberLoopSchedules: (
+    token: string, teamId: string, actorId: string, after?: string | null, signal?: AbortSignal
+  ) => apiFetch<Loop.LoopRegistrationPage>(
+    `${teamMemberLoopPath(teamId, actorId)}/schedules${loopPageQuery("after_registration_id", after)}`,
+    token, { signal }
+  ),
   listTeamspaceMembers: (token: string, id: string) =>
     apiFetch<TeamspaceMemberRecord[]>(`/api/teams/${encodePathSegment(id)}/members`, token),
   revokeTeamspaceMember: (token: string, teamId: string, userId: string) =>

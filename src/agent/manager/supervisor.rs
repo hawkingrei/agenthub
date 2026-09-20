@@ -103,21 +103,47 @@ impl AgentProcessSupervisor {
         session_id: String,
         command: Command,
     ) -> anyhow::Result<(SharedSupervisedChild, PendingProcessRegistration)> {
+        self.spawn_registered(agent_id, session_id, || spawn_supervised(command))
+            .await
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(super) async fn spawn_guarded(
+        &self,
+        agent_id: String,
+        session_id: String,
+        command: Command,
+        channel: crate::executor_guardian::GuardianChannel,
+    ) -> anyhow::Result<(SharedSupervisedChild, PendingProcessRegistration)> {
+        self.spawn_registered(agent_id, session_id, || channel.spawn(command))
+            .await
+    }
+
+    async fn spawn_registered(
+        &self,
+        agent_id: String,
+        session_id: String,
+        spawn: impl FnOnce() -> std::io::Result<SupervisedChild> + Send,
+    ) -> anyhow::Result<(SharedSupervisedChild, PendingProcessRegistration)> {
+        // Acquire the registry before spawning: cancellation must not leave an OS process
+        // between spawn and its first recoverable supervisor registration.
+        let mut processes = self.processes.write().await;
         if self.shutting_down.load(Ordering::Acquire) {
             anyhow::bail!("agent process supervisor is shutting down");
         }
+        anyhow::ensure!(
+            !processes.contains_key(&session_id),
+            "duplicate supervised agent session: {session_id}"
+        );
         let child = Arc::new(Mutex::new(Some(
-            spawn_supervised(command).context("failed to spawn supervised agent process")?,
+            spawn().context("failed to spawn supervised agent process")?,
         )));
         let target = StopTarget {
             agent_id,
             session_id: session_id.clone(),
             child: child.clone(),
         };
-        if self.track(target).await.is_err() {
-            let _ = self.stop(&child).await;
-            anyhow::bail!("duplicate supervised agent session: {session_id}");
-        }
+        processes.insert(session_id.clone(), target);
 
         Ok((
             child.clone(),
@@ -195,6 +221,14 @@ impl AgentProcessSupervisor {
         Ok(status)
     }
 
+    pub(super) async fn has_actor_process(&self, actor_id: &str) -> bool {
+        self.processes
+            .read()
+            .await
+            .values()
+            .any(|target| target.agent_id == actor_id)
+    }
+
     pub(super) async fn stop_session_or_child(
         &self,
         session_id: &str,
@@ -207,6 +241,7 @@ impl AgentProcessSupervisor {
         }
     }
 
+    #[cfg(test)]
     async fn track(&self, target: StopTarget) -> anyhow::Result<()> {
         let session_id = target.session_id.clone();
         let mut processes = self.processes.write().await;
@@ -243,6 +278,7 @@ impl AgentProcessSupervisor {
             .try_wait()
             .context("failed to poll supervised process before stop")?
         {
+            self.finish_process_group(process.as_mut()).await?;
             *guard = None;
             return Ok(Some(status));
         }
@@ -259,6 +295,7 @@ impl AgentProcessSupervisor {
 
             match tokio::time::timeout(self.graceful_stop_timeout, process.wait()).await {
                 Ok(Ok(status)) => {
+                    self.finish_process_group(process.as_mut()).await?;
                     *guard = None;
                     return Ok(Some(status));
                 }
@@ -279,6 +316,7 @@ impl AgentProcessSupervisor {
             .context("failed to force-kill supervised process tree")?;
         match tokio::time::timeout(self.force_stop_timeout, process.wait()).await {
             Ok(Ok(status)) => {
+                self.finish_process_group(process.as_mut()).await?;
                 *guard = None;
                 return Ok(Some(status));
             }
@@ -293,8 +331,7 @@ impl AgentProcessSupervisor {
             }
         }
 
-        // One final kill-and-wait pass is the orphan reaper. A successful
-        // process-wrap wait proves the process group/job object is empty.
+        // Waiting for the leader alone cannot establish that its descendants exited.
         process
             .start_kill()
             .context("final orphan reaper failed to kill supervised process tree")?;
@@ -302,9 +339,67 @@ impl AgentProcessSupervisor {
             .await
             .context("final orphan reaper timed out")?
             .context("final orphan reaper failed to wait for process tree")?;
+        self.finish_process_group(process.as_mut()).await?;
         *guard = None;
         Ok(Some(status))
     }
+
+    async fn finish_process_group(&self, process: &mut dyn ChildWrapper) -> anyhow::Result<()> {
+        #[cfg(target_os = "linux")]
+        if let Some(group) = (process as &dyn std::any::Any)
+            .downcast_ref::<process_wrap::tokio::ProcessGroupChild>()
+            .map(|child| child.pgid())
+        {
+            // process-wrap may cache the parent's exit status while an orphan is alive.
+            // Kill the remaining group even when wait/try_wait already returned an exit.
+            if let Err(error) = process.start_kill() {
+                tracing::debug!(%error, group, "process group kill returned an error; checking quiescence");
+            }
+            tokio::time::timeout(self.force_stop_timeout, async {
+                loop {
+                    let alive =
+                        tokio::task::spawn_blocking(move || linux_process_group_has_writers(group))
+                            .await??;
+                    if !alive {
+                        return Ok::<_, anyhow::Error>(());
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .context("process group cleanup could not be verified")??;
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = process;
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_group_has_writers(group: u32) -> std::io::Result<bool> {
+    for entry in std::fs::read_dir("/proc")? {
+        let entry = entry?;
+        if entry.file_name().to_string_lossy().parse::<u32>().is_err() {
+            continue;
+        }
+        let stat = match std::fs::read_to_string(entry.path().join("stat")) {
+            Ok(stat) => stat,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        let Some((_, fields)) = stat.rsplit_once(')') else {
+            return Err(std::io::Error::other("invalid process stat"));
+        };
+        let mut fields = fields.split_whitespace();
+        let state = fields.next();
+        let _parent = fields.next();
+        if fields.next().and_then(|field| field.parse::<u32>().ok()) == Some(group)
+            && !matches!(state, Some("Z" | "X"))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub(super) fn spawn_supervised(command: Command) -> std::io::Result<SupervisedChild> {
@@ -348,6 +443,44 @@ mod tests {
         shutdown.await.expect("join shutdown gate");
 
         assert!(supervisor.acquire_start_permit().await.is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn loop_cleanup_kills_surviving_child_after_parent_exit() {
+        let supervisor =
+            AgentProcessSupervisor::new(Duration::from_millis(100), Duration::from_secs(2));
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("sleep 60 & printf '%s\\n' \"$!\"; exit 0")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let mut process = spawn_supervised(command).unwrap();
+        let group = (process.as_ref() as &dyn std::any::Any)
+            .downcast_ref::<process_wrap::tokio::ProcessGroupChild>()
+            .unwrap()
+            .pgid();
+        let stdout = process.stdout().take().unwrap();
+        let child_pid = BufReader::new(stdout)
+            .lines()
+            .next_line()
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), process.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            super::linux_process_group_has_writers(group).unwrap(),
+            "fixture must leave an orphan in the process group: {child_pid}"
+        );
+        let child = Arc::new(Mutex::new(Some(process)));
+        supervisor.stop(&child).await.unwrap();
+        assert!(!super::linux_process_group_has_writers(group).unwrap());
+        assert!(child.lock().await.is_none());
     }
 
     #[cfg(unix)]

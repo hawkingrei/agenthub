@@ -233,6 +233,33 @@ test("team channels opens member profile from canonical channel url", async ({ p
   await expect(page.getByText("Agent Profile")).toBeHidden();
 });
 
+test("channel member profile remains available without an execution run", async ({ page }) => {
+  const fixture = await mockTeamPageApis(page);
+  fixture.agents.forEach((agent) => { agent.status = "stopped"; });
+  const teamId = "team-offline-profile";
+  fixture.teams.push({
+    id: teamId,
+    name: "Offline Profile Team",
+    spec: {
+      coordinator_member_id: "agent-coordinator-1",
+      members: [
+        { member_id: "agent-coordinator-1", role: "coordinator" },
+        { member_id: "agent-worker-1", role: "worker", description: "Configured while stopped" },
+      ],
+    },
+    created_at: fixture.now,
+    updated_at: fixture.now,
+  });
+  fixture.seedRuns(teamId, []);
+  await page.goto(buildTeamChannelProfilePath(teamId, "all", "agent-worker-1"));
+  await expect(page.getByText("Agent Profile", { exact: true })).toBeVisible();
+  await expect(page.getByText("Configured while stopped", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close agent profile" })).toBeVisible();
+  await expect(page.getByText("Process: stopped", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByText("No Active Execution Run", { exact: true })).toBeHidden();
+});
+
 test("non-default channel delete requires confirmation", async ({ page }) => {
   const fixture = await mockTeamPageApis(page);
   const teamId = "team-ch-confirm";

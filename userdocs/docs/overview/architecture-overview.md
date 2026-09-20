@@ -11,10 +11,12 @@ AgentHub is designed as a self-hosted AI agent control plane with a clear split
 between the operator-facing control plane and the machine-local or remote
 execution plane.
 
-The [loop product direction](./product-overview.md) makes individual executions temporary:
+The [durable execution workflow](./product-overview.md) makes individual executions temporary:
 the control plane retains agent identity, tasks, IM, pending activations, and outcomes, while
 Nowledge Mem supplies scoped knowledge. Leader/worker prompts share one lifecycle mechanism.
-The activation and Mem parts are target design; the components below describe current foundations.
+The scheduler admits local Linux activations with exclusive ownership and bounded limits.
+A process guardian verifies descendant cleanup before ownership can be released after a crash.
+Mem and App credentials stay in the control plane; the provider receives local tool shims.
 
 ## High-Level Shape
 

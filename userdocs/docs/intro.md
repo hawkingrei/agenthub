@@ -5,17 +5,18 @@ slug: /
 
 # AgentHub Docs
 
-AgentHub is a self-hosted agent loop toolchain. Its target model uses one role
+AgentHub is a self-hosted agent loop toolchain. Its opt-in local Linux workflow uses one role
 prompt per activation, IM and task tools to advance work, and Nowledge Mem for
 knowledge across loops. Leader/worker roles and Agent Cards remain; individual
 processes may exit after recording their loop outcome.
 
-This direction is under design. Automatic offline activation and full Mem
-integration are pending; the operational guides below describe existing capabilities.
+Durable execution activates offline Team members when eligible work arrives. Scoped Mem and
+registered Apps are available through the shared tool proxy. Start with the
+[durable execution guide](./core/durable-execution.md) for provider and recovery boundaries.
 
 ## What AgentHub Gives You
 
-The existing runtime provides these foundations:
+The runtime provides these capabilities:
 
 - keep agent sessions alive after the browser tab closes
 - inspect structured ACP history instead of relying on raw scrollback

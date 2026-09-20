@@ -1,4 +1,9 @@
 mod helpers;
+mod loop_activation;
+mod loop_scheduling;
+mod loop_work;
+mod mcp_proxy;
+mod requests;
 mod rpc;
 
 #[cfg(test)]
@@ -36,25 +41,31 @@ pub(super) use super::auth::{InternalAction, InternalAuthz, InternalRole};
 pub(super) use super::p2p::{CredentialProvider, NodeCredentialRequest};
 pub(super) use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
 pub(super) use super::proto::agenthub::internal::v1::{
-    AckActorMessageRequest, AckActorMessageResponse, ActorMessage, AgentEventRecord,
-    AppendTeamTaskNoteRequest, AppendTeamTaskNoteResponse, CancelTimeTriggerRequest,
-    CancelTimeTriggerResponse, CreateTeamChannelRequest, CreateTeamChannelResponse,
-    CreateTeamTaskRequest, CreateTeamTaskResponse, CreateTimeTriggerRequest,
-    CreateTimeTriggerResponse, DeleteManagedAgentRequest, DeleteManagedAgentResponse,
-    DeleteTeamChannelRequest, DeleteTeamChannelResponse, DescribeTeamContextRequest,
-    DescribeTeamContextResponse, EnsureAgentRecordRequest, EnsureAgentRecordResponse,
-    GetAgentRecordRequest, GetAgentRecordResponse, GetTeamTaskRequest, GetTeamTaskResponse,
+    AckActorMessageRequest, AckActorMessageResponse, ActivateLoopMemberRequest,
+    ActivateLoopMemberResponse, ActorMessage, AgentEventRecord, AppendTeamTaskNoteRequest,
+    AppendTeamTaskNoteResponse, CancelTimeTriggerRequest, CancelTimeTriggerResponse,
+    CreateTeamChannelRequest, CreateTeamChannelResponse, CreateTeamTaskRequest,
+    CreateTeamTaskResponse, CreateTimeTriggerRequest, CreateTimeTriggerResponse,
+    DeleteManagedAgentRequest, DeleteManagedAgentResponse, DeleteTeamChannelRequest,
+    DeleteTeamChannelResponse, DescribeTeamContextRequest, DescribeTeamContextResponse,
+    EnsureAgentRecordRequest, EnsureAgentRecordResponse, FinishLoopActivationRequest,
+    FinishLoopActivationResponse, GetAgentRecordRequest, GetAgentRecordResponse,
+    GetLoopScheduleRequest, GetLoopScheduleResponse, GetLoopWorkRequest, GetLoopWorkResponse,
+    GetLoopWorkSourceRequest, GetLoopWorkSourceResponse, GetTeamTaskRequest, GetTeamTaskResponse,
     IssueNodeCredentialRequest, IssueNodeCredentialResponse, LinkActorMessageTaskRequest,
     LinkActorMessageTaskResponse, ListActorInboxRequest, ListActorInboxResponse,
-    ListAgentEventsRequest, ListAgentEventsResponse, ListTeamTasksRequest, ListTeamTasksResponse,
+    ListAgentEventsRequest, ListAgentEventsResponse, ListLoopSchedulesRequest,
+    ListLoopSchedulesResponse, ListTeamTasksRequest, ListTeamTasksResponse,
     ListTimeTriggersRequest, ListTimeTriggersResponse, OpenTeamThreadRequest,
-    OpenTeamThreadResponse, ReplyTeamThreadRequest, ReplyTeamThreadResponse,
-    ResolveActorRunScopeRequest, ResolveActorRunScopeResponse, RespondPermissionReviewRequest,
-    RespondPermissionReviewResponse, SendActorMessageRequest, SendActorMessageResponse,
-    SendAgentInputRequest, SendAgentInputResponse, StartManagedAgentRequest,
-    StartManagedAgentResponse, StopManagedAgentRequest, StopManagedAgentResponse,
-    TransitionStepRequest, TransitionStepResponse, TriageActorMessageRequest,
-    TriageActorMessageResponse, UpdateTeamTaskRequest, UpdateTeamTaskResponse,
+    OpenTeamThreadResponse, RegisterLoopScheduleRequest, RegisterLoopScheduleResponse,
+    ReplyTeamThreadRequest, ReplyTeamThreadResponse, ResolveActorRunScopeRequest,
+    ResolveActorRunScopeResponse, RespondPermissionReviewRequest, RespondPermissionReviewResponse,
+    RevokeLoopScheduleRequest, RevokeLoopScheduleResponse, SendActorMessageRequest,
+    SendActorMessageResponse, SendAgentInputRequest, SendAgentInputResponse,
+    StartManagedAgentRequest, StartManagedAgentResponse, StopManagedAgentRequest,
+    StopManagedAgentResponse, TransitionStepRequest, TransitionStepResponse,
+    TriageActorMessageRequest, TriageActorMessageResponse, UpdateTeamTaskRequest,
+    UpdateTeamTaskResponse,
 };
 pub(super) use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 

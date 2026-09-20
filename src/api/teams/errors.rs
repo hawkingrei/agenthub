@@ -102,7 +102,8 @@ pub(super) fn map_actor_service_api_error(err: ActorServiceError) -> ApiError {
             ApiError::not_found(&err.message)
         }
         ActorServiceErrorCode::Conflict => ApiError::conflict(&err.message),
-        ActorServiceErrorCode::TooManyRequests | ActorServiceErrorCode::Internal => {
+        ActorServiceErrorCode::TooManyRequests => ApiError::too_many_requests(&err.message),
+        ActorServiceErrorCode::Internal => {
             map_team_internal_error(anyhow::anyhow!("{}", err.message))
         }
     }
@@ -142,6 +143,18 @@ pub(super) fn map_runtime_start_error(err: anyhow::Error) -> ApiError {
 }
 
 pub(super) fn map_team_internal_error(err: anyhow::Error) -> ApiError {
+    if let Some(error) = err.downcast_ref::<agenthub_db::loop_runtime::LoopStoreError>() {
+        if matches!(
+            error,
+            agenthub_db::loop_runtime::LoopStoreError::InvalidHistoryQuery
+        ) {
+            return ApiError::bad_request(&error.to_string());
+        }
+        if matches!(error, agenthub_db::loop_runtime::LoopStoreError::Capacity) {
+            return ApiError::too_many_requests(&error.to_string());
+        }
+        return ApiError::conflict(&error.to_string());
+    }
     tracing::error!("team api internal error: {}", err);
     ApiError::from(anyhow::anyhow!("internal server error"))
 }

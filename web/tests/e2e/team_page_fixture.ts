@@ -62,6 +62,7 @@ export type TeamSpecStep = {
 
 export type TeamSpecPayload = {
   spec_version?: number;
+  execution_mode?: "loop";
   entrypoint?: string;
   coordinator_member_id?: string;
   members: TeamSpecMember[];
@@ -117,6 +118,7 @@ export type TeamTaskRecord = {
   title: string;
   status: "open" | "in_progress" | "completed" | "archived";
   created_by_actor_id: string;
+  assigned_member_id?: string | null;
   context: Record<string, unknown>;
   created_at: number;
   updated_at: number;
@@ -774,6 +776,24 @@ export async function mockTeamPageApis(
     updateSpecPayloads.push({ teamId, payload: { spec, expected_updated_at: payload.expected_updated_at } });
     teamRuntimeStateById.set(teamId, { status: spec.members.length > 0 ? "running" : "stopped" });
     await route.fulfill(jsonResponse({ agent, team: updated }));
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/members$/, async (route, request) => {
+    const teamId = new URL(request.url()).pathname.split("/")[3];
+    await route.fulfill(jsonResponse([
+      { team_id: teamId, user_id: auth.userId, role: "owner", created_at: now, updated_at: now },
+    ]));
+  });
+
+  await page.route(/\/api\/teams\/[^/]+\/members\/[^/]+\/loop$/, async (route, request) => {
+    if (request.method() !== "GET") {
+      await route.fulfill(jsonResponse({ error: "manual fixture requires explicit loop setup" }, 409));
+      return;
+    }
+    await route.fulfill(jsonResponse({
+      policy: null,
+      preflight: { ready: false, provider_id: null, capabilities: [], blockers: ["team_loop_mode_required"], warnings: [] },
+    }));
   });
 
   await page.route(/\/api\/teams\/[^/]+\/runtime$/, async (route, request) => {

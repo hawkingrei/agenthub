@@ -19,6 +19,8 @@ const TEAM_DELIBERATION_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-deliberation-rules.SKILL.md");
 const TEAM_ACTOR_MAILBOX_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-actor-mailbox.SKILL.md");
+const TEAM_LOOP_RUNTIME_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-loop-runtime.SKILL.md");
 const TEAM_REPORTING_SURFACES_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-reporting-surfaces.SKILL.md");
 const TEAM_TASK_GOVERNANCE_SKILL_TEXT: &str =
@@ -41,10 +43,11 @@ pub enum ManagedSkillKind {
     TeamDeliberationRules,
     TeamActorMailbox,
     ActorRuntime,
+    TeamLoopRuntime,
 }
 
 impl ManagedSkillKind {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::TeamAgentsIndex,
         Self::TeamCoordinatorAgentsIndex,
         Self::TeamWorkerAgentsIndex,
@@ -56,6 +59,7 @@ impl ManagedSkillKind {
         Self::TeamDeliberationRules,
         Self::TeamActorMailbox,
         Self::ActorRuntime,
+        Self::TeamLoopRuntime,
     ];
 
     fn relative_dir(self) -> &'static str {
@@ -71,6 +75,7 @@ impl ManagedSkillKind {
             Self::TeamDeliberationRules => "team/team-deliberation-rules",
             Self::TeamActorMailbox => "team/team-actor-mailbox",
             Self::ActorRuntime => "runtime/actor-runtime",
+            Self::TeamLoopRuntime => "team/team-loop-runtime",
         }
     }
 }
@@ -253,6 +258,7 @@ pub fn managed_skill_name(kind: ManagedSkillKind) -> &'static str {
         ManagedSkillKind::TeamDeliberationRules => "team-deliberation-rules",
         ManagedSkillKind::TeamActorMailbox => "team-actor-mailbox",
         ManagedSkillKind::ActorRuntime => "agenthub-actor-runtime",
+        ManagedSkillKind::TeamLoopRuntime => "team-loop-runtime",
     }
 }
 
@@ -269,6 +275,7 @@ pub fn managed_skill_contents(kind: ManagedSkillKind) -> String {
         ManagedSkillKind::TeamDeliberationRules => TEAM_DELIBERATION_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamActorMailbox => TEAM_ACTOR_MAILBOX_SKILL_TEXT.to_string(),
         ManagedSkillKind::ActorRuntime => actor_runtime_skill_doc(),
+        ManagedSkillKind::TeamLoopRuntime => TEAM_LOOP_RUNTIME_SKILL_TEXT.to_string(),
     }
 }
 

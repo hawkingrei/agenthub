@@ -16,11 +16,15 @@ mod daemon_instance;
 mod daemon_tasks;
 mod diagnostics;
 mod doctor_cli;
+mod executor_guardian;
 mod init_cli;
 pub use agenthub_config as config;
 pub use agenthub_db as db;
 mod internal;
 mod linkers;
+mod loop_credentials;
+mod mcp_proxy;
+mod mcp_proxy_cli;
 pub mod message_body_store;
 mod migrate_cli;
 pub mod object_upload;
@@ -33,6 +37,7 @@ mod web;
 
 pub use app::{run, run_daemon};
 pub use cli_error::report_cli_error;
+pub use executor_guardian::run_executor_guardian_if_requested;
 
 #[cfg(test)]
 mod release_feature_tests {

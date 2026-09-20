@@ -108,11 +108,36 @@ pub async fn maybe_spawn_internal_grpc(state: AppState, config: &AppConfig) -> a
         tracing::warn!("internal gRPC security mode: disabled (dev/testing only)");
     }
 
+    let local_ip = if bound_addr.ip().is_unspecified() {
+        if bound_addr.is_ipv4() {
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
+        } else {
+            std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)
+        }
+    } else {
+        bound_addr.ip()
+    };
+    let endpoint = crate::agent::LoopControlEndpoint {
+        target: format!(
+            "{}://{}",
+            if mode == InternalGrpcSecurityMode::Disabled {
+                "http"
+            } else {
+                "https"
+            },
+            SocketAddr::new(local_ip, bound_addr.port())
+        ),
+        authz: authz.clone(),
+        ca_cert_path: (mode != InternalGrpcSecurityMode::Disabled)
+            .then(|| cert_dir.join("ca-cert.pem").to_string_lossy().to_string()),
+    };
     let deps = team_internal_control_deps(&state);
     let service =
         proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControlServer::new(
             TeamInternalControlService::new(deps, authz, mode, cert_dir, bootstrap_token),
-        );
+        )
+        .max_decoding_message_size(crate::mcp_proxy::MCP_RPC_MESSAGE_LIMIT)
+        .max_encoding_message_size(crate::mcp_proxy::MCP_RPC_MESSAGE_LIMIT);
 
     let cancellation = state.agents.daemon_tasks().background_cancellation();
     state
@@ -126,6 +151,7 @@ pub async fn maybe_spawn_internal_grpc(state: AppState, config: &AppConfig) -> a
                 .context("internal gRPC server exited with error")?;
             Ok(())
         })?;
+    state.agents.publish_loop_control_endpoint(endpoint).await;
     tracing::info!("internal gRPC listening on {}", bound_addr);
     Ok(())
 }

@@ -6,6 +6,7 @@ use axum::http::HeaderMap;
 mod admin;
 mod agent_nodes;
 mod agents;
+mod apps;
 mod auth;
 mod authz;
 #[cfg(debug_assertions)]
@@ -43,6 +44,8 @@ pub fn router(state: AppState) -> Router {
     let router = Router::new()
         .nest("/agents", agents::router(state.clone()))
         .nest("/agent_nodes", agent_nodes::router(state.clone()))
+        .nest("/apps", apps::router(state.clone()))
+        .merge(apps::team_router(state.clone()))
         .nest("/teams", teams::router(state.clone()))
         .nest("/admin", admin::router(state.clone()))
         .nest("/auth", auth::router(state.clone()))

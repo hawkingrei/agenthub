@@ -522,7 +522,7 @@ describe("useTeamManagementActions", () => {
     }
   });
 
-  it("persists edited team member codex startup mode for restart", async () => {
+  it.each([false, true])("persists profile settings with loop execution %s", async (loopExecution) => {
     mockedApi.updateTeamSpec.mockResolvedValueOnce({
       id: "team-1",
       name: "Alpha Team",
@@ -545,6 +545,7 @@ describe("useTeamManagementActions", () => {
         name: "Alpha Team",
         description: "team",
         spec: {
+          execution_mode: loopExecution ? "loop" : undefined,
           coordinator_member_id: "coordinator-1",
           members: [
             { member_id: "coordinator-1", role: "coordinator" },
@@ -592,6 +593,7 @@ describe("useTeamManagementActions", () => {
         await mounted.getSnapshot()?.onSaveTeamMemberProfile();
       });
 
+      expect(mockedApi.setAgentLoop).toHaveBeenCalledTimes(loopExecution ? 0 : 1);
       expect(mockedApi.setAgentCodexAcpDefaultMode).toHaveBeenCalledWith(
         "token-1",
         "worker-1",

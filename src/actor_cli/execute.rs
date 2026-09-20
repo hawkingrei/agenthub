@@ -121,6 +121,11 @@ async fn resolve_inbox_run_id(actor_id: &str, run_id: Option<String>) -> anyhow:
     if let Some(run_id) = run_id {
         return Ok(run_id);
     }
+    if normalized_env_var(crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV).is_some()
+        || normalized_env_var(crate::loop_credentials::LOOP_ACTIVATION_ENV).is_some()
+    {
+        return resolve_direct_mailbox_run_id(actor_id, None, "actor loop inbox").await;
+    }
 
     let team_id = normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV).ok_or_else(|| {
         anyhow::anyhow!(
@@ -332,6 +337,81 @@ pub(super) async fn run_actor_command(
 ) -> anyhow::Result<()> {
     let output_preference = actor_output_preference_for_command(&command);
     match command {
+        ActorCommand::LoopSchedule { member_id, request } => {
+            let receipt = loop_control_client()
+                .await?
+                .register_loop_schedule(member_id.as_deref(), &request)
+                .await?;
+            write_actor_output(&receipt, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopSchedules {
+            member_id,
+            after_registration_id,
+            limit,
+        } => {
+            let page = loop_control_client()
+                .await?
+                .list_loop_schedules(
+                    member_id.as_deref(),
+                    after_registration_id.as_deref(),
+                    limit,
+                )
+                .await?;
+            write_actor_output(&page, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopScheduleShow {
+            registration_id,
+            after_firing_cursor,
+            limit,
+        } => {
+            let detail = loop_control_client()
+                .await?
+                .get_loop_schedule(&registration_id, after_firing_cursor, limit)
+                .await?;
+            write_actor_output(&detail, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopScheduleRevoke { registration_id } => {
+            let registration = loop_control_client()
+                .await?
+                .revoke_loop_schedule(&registration_id)
+                .await?;
+            write_actor_output(&registration, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopSource { source_id } => {
+            let detail = loop_control_client()
+                .await?
+                .loop_work_source(&source_id)
+                .await?;
+            write_actor_output(&detail, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopContext {
+            after_source_id,
+            limit,
+        } => {
+            let page = loop_control_client()
+                .await?
+                .loop_work_context(after_source_id.as_deref(), limit)
+                .await?;
+            write_actor_output(&page, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopActivate {
+            member_id,
+            source_key,
+            task_id,
+        } => {
+            let receipt = loop_control_client()
+                .await?
+                .activate_loop_member(&member_id, &source_key, task_id.as_deref())
+                .await?;
+            write_actor_output(&receipt, output_mode, output_preference)?;
+        }
+        ActorCommand::LoopFinish { outcome } => {
+            let receipt = loop_control_client()
+                .await?
+                .finish_loop_activation(&outcome)
+                .await?;
+            write_actor_output(&receipt, output_mode, output_preference)?;
+        }
         ActorCommand::Help { topic } => {
             let help = match topic {
                 Some(topic) => actor_topic_usage(topic),
@@ -995,6 +1075,17 @@ pub(super) async fn run_actor_command(
         }
     }
     Ok(())
+}
+
+async fn loop_control_client() -> anyhow::Result<crate::internal::client::InternalGrpcMailboxClient>
+{
+    let path =
+        normalized_env_var(crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV).ok_or_else(|| {
+            anyhow::anyhow!("loop commands require activation-scoped runtime credentials")
+        })?;
+    crate::loop_credentials::LoopCredentialEnvelope::read(std::path::Path::new(&path))?
+        .connect()
+        .await
 }
 
 #[cfg(test)]

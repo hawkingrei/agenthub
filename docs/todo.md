@@ -4,50 +4,25 @@ Active backlog only. Keep this file small and current.
 
 ## Agent Loop Product Transition
 
-Product: [features/agent-loop-product-model.md](features/agent-loop-product-model.md).
-Lifecycle: [features/agent-loop-runtime.md](features/agent-loop-runtime.md).
-Implementation: [features/agent-loop-activation-contract.md](features/agent-loop-activation-contract.md).
-The activation contract checkpoint completes slice 1; production implementation remains pending.
-Numbers below identify separate reviewable PR slices, not shipped capabilities.
+The ACP implementation combines original slices 1-15: durable lifecycle and intake, scoped
+MCP/Mem, role tools, history/workspace UI, and versioned App tools/events. The earlier PRs were
+merged into dependency branches; integration into main has its own validation gate.
 
-- [ ] 2. Persist trigger sources, activations, policy, and safe lifecycle events. Prove additive
-  migration, reopen, scope isolation, and idempotent acceptance.
-- [ ] 3. Add fenced admission with durable reservations, renewal, finite budgets, and no-progress
-  accounting. Prove simultaneous claims, stale fences, manual-start races, and suspension.
-- [ ] 4. Record finish/outcome/continuation atomically; reconcile verified cleanup and restart.
-  Prove crash/exit races, uncertain writers, idempotent finish, and legacy run compatibility.
-- [ ] 5. Connect local ACP launch/configuration snapshots and fresh/resumed context recovery.
-  Preserve mailbox partitions, task attempts, and native permission callback lifetimes.
-- [ ] 6. Separate offline Card/Team configuration from enable/suspend/process controls. Prove
-  copy isolation and pending-work/reservation guards for move/remove/rebind operations.
-- [ ] 7. Route addressed IM, engaged-thread replies, assignments, and member activation requests
-  through durable intake. Prove source attribution, outbox recovery, and offline delegation.
-- [ ] 8. Add due/dependency/standing triggers with inspection and revocation. Prove no lost
-  dependency wake, bounded catch-up, suspension, and convergent leader/worker wake cycles.
-- [ ] 9. Add the shared local MCP proxy and persistent operation journal. Prove schema/result
-  preservation, secret isolation, and no blind replay of unknown non-idempotent writes.
-- [ ] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
-  rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
-- [ ] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.
-  Prove one configured entry prompt, role authority, structured finish, and transcript-free recovery.
-- [ ] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
-  Prove durable redacted trace reconstruction and preserve debug-only diagnostic boundaries.
-- [ ] 13. Expose offline configuration and task/IM/activation views with distinct process/policy
-  state. Require focused web checks and Chrome DevTools lifecycle/reconnect evidence.
-- [ ] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove
-  call-time scope checks, fixed activation versions, immediate revocation, and safe attribution.
-- [ ] 15. Accept signed app events through durable intake. Ship signatures, event ID/cursor replay
-  protection, declared-class routing, revocation checks, and storm budgets together.
-- [ ] 16. Pin and validate the Rara app-server transport/handshake; add local launch and cleanup.
-  Any missing upstream protocol work is an explicit prerequisite, not an ACP fallback.
-- [ ] 17. Map Rara control acknowledgments, events, replay, and live permissions into existing
-  runtime/history boundaries. Prove unknown-ack and duplicate-event handling.
-- [ ] 18. Align Rara with shared activation identity, semantic guard outcomes, capability-gated
-  durable approvals, nested-subteam isolation, and safe event cursors in activation traces.
+Contracts: [activation](features/agent-loop-activation-contract.md),
+[runtime](features/agent-loop-runtime.md), [shared proxy](features/mcp-proxy-transport.md),
+and [App runtime](features/app-tool-runtime.md).
+Checkpoint: [ACP rollout integration](journal/2026-09-21-acp-rollout-integration.md).
 
-Each behavior slice includes focused tests and its owning spec/journal updates. Cargo and the
-normal Bazel targets remain viable. Remote ownership/credential parity, standalone Mem scope,
-plain HTTP action adaptation, marketplace work, and production trace ingestion are separate scopes.
+- [x] Integrate the ACP implementation in main-targeted PR #1169.
+- [x] Add verified old-owner recovery after daemon restart without releasing uncertain writers.
+- [x] Validate the installed ACP adapter/runtime chain, including supported resume and live approvals.
+- [x] Verify assembled ACP, scoped Mem, App revocation/events and browser-independent lifecycle.
+- [x] Publish supported-provider, configuration, recovery and troubleshooting guidance.
+- [ ] Merge PR #1169 after review and applicable current-head CI.
+
+Native runtime slices 16-18 and upstream prerequisites are deferred. Preserve draft PR #1168 and
+its unfinished work; they are not gates for this ACP rollout. Remote loop ownership, non-Linux
+guardians, standalone Mem scope, App authoring UI and cross-owner consent remain separate scope.
 
 ## Release And Packaging
 

@@ -24,6 +24,10 @@ pub(super) struct LocalExecutionRequest {
     pub workdir: String,
     pub actor_context: Option<AcpActorSkillContext>,
     pub extra_env: Vec<(String, String)>,
+    pub private_env: Vec<String>,
+    pub guard_descendants: bool,
+    #[cfg(target_os = "linux")]
+    pub cleanup_witness: Option<std::sync::Arc<crate::executor_guardian::CleanupWitness>>,
 }
 
 pub(super) struct SpawnedLocalProcess {
@@ -64,10 +68,27 @@ impl AgentExecutor for LocalExecutor {
         &self,
         request: LocalExecutionRequest,
     ) -> anyhow::Result<SpawnedLocalProcess> {
-        let mut command = Command::new(&request.command_path);
+        #[cfg(target_os = "linux")]
+        let (mut command, guardian) = if request.guard_descendants {
+            let (mut command, mut channel) =
+                crate::executor_guardian::prepare(&request.command_path, &request.args)?;
+            if let Some(witness) = &request.cleanup_witness {
+                channel.attach_witness(&mut command, witness.clone());
+            }
+            (command, Some(channel))
+        } else {
+            (provider_command(&request), None)
+        };
+        #[cfg(not(target_os = "linux"))]
+        let mut command = {
+            anyhow::ensure!(
+                !request.guard_descendants,
+                "loop execution requires an executor guardian"
+            );
+            provider_command(&request)
+        };
         command
             .current_dir(&request.workdir)
-            .args(&request.args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -75,15 +96,43 @@ impl AgentExecutor for LocalExecutor {
         // AgentHub itself was launched from a build output directory with the
         // daemon next to it.
         if let Some(path) = synthesized_child_path(
-            &request.command_path,
+            if request.guard_descendants {
+                "agenthub"
+            } else {
+                &request.command_path
+            },
             std::env::var_os("PATH"),
             std::env::current_exe().ok().as_deref(),
         ) {
             command.env("PATH", path);
         }
         self.proxy_policy.apply_to_command(&mut command);
+        if request.guard_descendants {
+            for (key, _) in std::env::vars_os().filter(|(key, _)| {
+                key.to_string_lossy().starts_with("AGENTHUB_INTERNAL_GRPC_")
+                    || key == crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV
+                    || key == crate::loop_credentials::LOOP_ACTIVATION_ENV
+            }) {
+                command.env_remove(key);
+            }
+        }
         for (key, value) in &request.extra_env {
             command.env(key, value);
+        }
+        if request.guard_descendants {
+            // Run after all additions, so a provider-specific override cannot reintroduce a
+            // configured upstream credential or ambient Mem header into the provider or its shim.
+            let names = std::env::vars_os()
+                .map(|(key, _)| key)
+                .chain(request.extra_env.iter().map(|(key, _)| OsString::from(key)));
+            for name in names {
+                if crate::mcp_proxy::configured::is_private_environment(
+                    &name.to_string_lossy(),
+                    &request.private_env,
+                ) {
+                    command.env_remove(name);
+                }
+            }
         }
         // Identity is available in standalone sessions without inventing a Team actor context.
         command.env("AGENTHUB_ACTOR_AGENT_ID", &request.agent_id);
@@ -121,6 +170,17 @@ impl AgentExecutor for LocalExecutor {
             }
         }
 
+        #[cfg(target_os = "linux")]
+        let (child, registration) = if let Some(guardian) = guardian {
+            self.process_supervisor
+                .spawn_guarded(request.agent_id, request.session_id, command, guardian)
+                .await?
+        } else {
+            self.process_supervisor
+                .spawn(request.agent_id, request.session_id, command)
+                .await?
+        };
+        #[cfg(not(target_os = "linux"))]
         let (child, registration) = self
             .process_supervisor
             .spawn(request.agent_id, request.session_id, command)
@@ -133,7 +193,13 @@ impl AgentExecutor for LocalExecutor {
     }
 }
 
-fn synthesized_child_path(
+fn provider_command(request: &LocalExecutionRequest) -> Command {
+    let mut command = Command::new(&request.command_path);
+    command.args(&request.args);
+    command
+}
+
+pub(super) fn synthesized_child_path(
     command_path: &str,
     inherited_path: Option<OsString>,
     current_exe: Option<&Path>,
@@ -211,6 +277,10 @@ mod tests {
             ],
             workdir: workdir.to_string_lossy().to_string(),
             actor_context: None,
+            guard_descendants: false,
+            #[cfg(target_os = "linux")]
+            cleanup_witness: None,
+            private_env: Vec::new(),
             extra_env: vec![("RUST_BACKTRACE".to_string(), "1".to_string())],
         };
 
@@ -263,6 +333,10 @@ mod tests {
             ],
             workdir: workdir.to_string_lossy().to_string(),
             actor_context: None,
+            guard_descendants: false,
+            #[cfg(target_os = "linux")]
+            cleanup_witness: None,
+            private_env: Vec::new(),
             extra_env: Vec::new(),
         };
 
@@ -347,6 +421,10 @@ mod tests {
                 .into(),
             ],
             actor_context: None,
+            guard_descendants: false,
+            #[cfg(target_os = "linux")]
+            cleanup_witness: None,
+            private_env: Vec::new(),
             extra_env: [
                 "AGENTHUB_ACTOR_AGENT_ID",
                 "AGENTHUB_ACTOR_ID",

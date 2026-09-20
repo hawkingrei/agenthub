@@ -9,7 +9,7 @@ rust_library(
     crate_name = "agenthub_agent_domain",
     edition = "2024",
     aliases = aliases(),
-    deps = all_crate_deps(normal = True),
+    deps = all_crate_deps(normal = True) + ["//crates/agenthub-team-domain:agenthub_team_domain"],
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 

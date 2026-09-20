@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+pub mod app_events;
+pub mod app_tools;
+pub mod loop_history;
+pub mod loop_metrics;
+pub mod loop_runtime;
+pub mod loop_scheduling;
+pub mod mcp_operations;
+
 pub const AGENT_NODE_MAIN_ID: &str = "main";
 pub const AGENT_NODE_MAIN_NAME: &str = "Main Node";
 

@@ -16,6 +16,13 @@ pub async fn ensure_team_runtime_started(
     agents: &AgentManager,
     team: &TeamDefinitionRecord,
 ) -> anyhow::Result<TeamRuntimeControlRecord> {
+    anyhow::ensure!(
+        !crate::team::TeamManager::uses_loop_execution(&team.spec),
+        TeamRuntimeStartError::InvalidConfig(
+            "loop members start through activation admission; configure their execution policy"
+                .into()
+        )
+    );
     let member_specs = parse_runtime_member_specs(&team.spec)?;
     let mut started_member_ids = Vec::new();
     let mut members = Vec::with_capacity(member_specs.len());
@@ -92,6 +99,12 @@ pub async fn force_team_member_new_session(
     team: &TeamDefinitionRecord,
     member_id: &str,
 ) -> anyhow::Result<TeamRuntimeControlRecord> {
+    anyhow::ensure!(
+        !crate::team::TeamManager::uses_loop_execution(&team.spec),
+        TeamRuntimeStartError::InvalidConfig(
+            "loop provider continuity is configured for the next activation".into()
+        )
+    );
     let member_specs = parse_runtime_member_specs(&team.spec)?;
     let member = member_specs
         .iter()

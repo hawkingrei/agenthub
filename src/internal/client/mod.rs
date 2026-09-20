@@ -1,5 +1,7 @@
 mod control;
+mod loop_scheduling;
 mod mailbox;
+mod mcp_proxy;
 
 #[cfg(test)]
 mod tests;

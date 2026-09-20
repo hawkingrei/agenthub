@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::api::{ApiError, authz};
 #[cfg(debug_assertions)]
 use crate::diagnostics::agent_trace::{
-    AgentTraceReport, AgentTraceRequest, apply_live_overlay, collect_from_pool,
+    ActivationNotFound, AgentTraceReport, AgentTraceRequest, apply_live_overlay, collect_from_pool,
 };
 #[cfg(debug_assertions)]
 use crate::state::AppState;
@@ -22,6 +22,7 @@ use crate::state::AppState;
 #[cfg(debug_assertions)]
 #[derive(Debug, Deserialize)]
 struct AgentTraceQuery {
+    activation_id: Option<String>,
     agent_id: Option<String>,
     team_id: Option<String>,
     member_id: Option<String>,
@@ -44,19 +45,29 @@ async fn agent_trace(
 ) -> Result<Json<AgentTraceReport>, ApiError> {
     authz::require_capability(&headers, &state, UserCapability::DiagnosticsRead).await?;
     let request = AgentTraceRequest {
+        activation_id: query.activation_id,
         agent_id: query.agent_id,
         team_id: query.team_id,
         member_id: query.member_id,
         session_id: query.session_id,
         event_limit: query.event_limit.unwrap_or(16),
     };
+    request
+        .validate()
+        .map_err(|error| ApiError::bad_request(&error.to_string()))?;
     let mut report = collect_from_pool(
         &state.db,
         state.agents.event_db_base_dir().to_path_buf(),
         request,
     )
     .await
-    .map_err(ApiError::from)?;
+    .map_err(|error| {
+        if error.is::<ActivationNotFound>() {
+            ApiError::not_found("activation not found")
+        } else {
+            ApiError::from(error)
+        }
+    })?;
     let overlay = state
         .agents
         .collect_agent_trace_live_overlay(&report.target.agent_id)
@@ -146,5 +157,48 @@ mod tests {
             .await
             .expect("run admin agent trace request");
         assert_ne!(allowed.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn activation_trace_validates_selectors_after_authorization() {
+        let state = build_test_state().await;
+        agenthub_db::loop_runtime::migrate_loop_runtime(&state.db)
+            .await
+            .unwrap();
+        let viewer = create_role_token(&state, UserRole::Viewer).await;
+        let admin = create_role_token(&state, UserRole::Admin).await;
+        let app = router(state);
+        for (query, expected) in [
+            ("activation_id=missing", StatusCode::NOT_FOUND),
+            (
+                "activation_id=missing&agent_id=actor",
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                "activation_id=missing&session_id=session",
+                StatusCode::BAD_REQUEST,
+            ),
+            ("activation_id=", StatusCode::BAD_REQUEST),
+        ] {
+            let path = format!("/agent_trace?{query}");
+            let denied = app
+                .clone()
+                .oneshot(build_request(&path, Some(&viewer)))
+                .await
+                .unwrap();
+            assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+            let response = app
+                .clone()
+                .oneshot(build_request(&path, Some(&admin)))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected, "{query}");
+            if expected == StatusCode::NOT_FOUND {
+                assert_eq!(
+                    decode_json_body(response).await["error"],
+                    "activation not found"
+                );
+            }
+        }
     }
 }

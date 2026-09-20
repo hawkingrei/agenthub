@@ -4,6 +4,18 @@ pub const DEFAULT_TEAM_COORDINATOR_PROMPT: &str =
 pub const DEFAULT_TEAM_WORKER_PROMPT: &str =
     include_str!("../prompts/default_team_worker_prompt.txt");
 
+pub const LOOP_ROLE_PROMPT_VERSION: &str = "loop-role-v1";
+pub const LOOP_COORDINATOR_PROMPT: &str = include_str!("../prompts/loop_coordinator_prompt.txt");
+pub const LOOP_WORKER_PROMPT: &str = include_str!("../prompts/loop_worker_prompt.txt");
+
+pub fn loop_prompt_for_role(role: &str) -> Option<&'static str> {
+    match role {
+        "coordinator" => Some(LOOP_COORDINATOR_PROMPT),
+        "worker" => Some(LOOP_WORKER_PROMPT),
+        _ => None,
+    }
+}
+
 pub fn default_team_prompt_for_role(role: &str) -> &'static str {
     match role {
         "coordinator" => DEFAULT_TEAM_COORDINATOR_PROMPT,
@@ -13,6 +25,40 @@ pub fn default_team_prompt_for_role(role: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn loop_roles_keep_authority_and_recovery_without_legacy_phases() {
+        use super::{LOOP_COORDINATOR_PROMPT, LOOP_WORKER_PROMPT, loop_prompt_for_role};
+        assert_eq!(
+            loop_prompt_for_role("coordinator"),
+            Some(LOOP_COORDINATOR_PROMPT)
+        );
+        assert_eq!(loop_prompt_for_role("worker"), Some(LOOP_WORKER_PROMPT));
+        assert_eq!(loop_prompt_for_role("unknown"), None);
+        for prompt in [LOOP_COORDINATOR_PROMPT, LOOP_WORKER_PROMPT] {
+            assert!(prompt.len() < 2_000);
+            for boundary in [
+                "team-loop-runtime",
+                "allowed-action gate",
+                "structured",
+                "canonical",
+                "self-propagation",
+                "attribution",
+            ] {
+                assert!(prompt.contains(boundary), "missing {boundary}");
+            }
+            for legacy in [
+                "Team workflow phases",
+                "time-trigger-set",
+                "idle watchdog",
+                "team-agents-index",
+            ] {
+                assert!(!prompt.contains(legacy), "unexpected {legacy}");
+            }
+        }
+        assert!(LOOP_WORKER_PROMPT.contains("Do not create, reassign, accept, or close"));
+        assert!(LOOP_COORDINATOR_PROMPT.contains("require worker evidence before accepting"));
+    }
+
     use super::{
         DEFAULT_TEAM_COORDINATOR_PROMPT, DEFAULT_TEAM_WORKER_PROMPT, default_team_prompt_for_role,
     };

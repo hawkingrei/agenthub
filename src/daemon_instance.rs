@@ -118,6 +118,20 @@ impl DaemonInstanceGuard {
         Ok(())
     }
 
+    pub(crate) fn mcp_operation_store(
+        &self,
+        pool: &SqlitePool,
+    ) -> anyhow::Result<agenthub_db::mcp_operations::McpOperationStore> {
+        let generation = self
+            .generation
+            .clone()
+            .context("daemon generation has not been claimed")?;
+        Ok(agenthub_db::mcp_operations::McpOperationStore::new(
+            pool.clone(),
+            generation,
+        ))
+    }
+
     fn generation(&self) -> Option<i64> {
         self.generation
             .as_ref()

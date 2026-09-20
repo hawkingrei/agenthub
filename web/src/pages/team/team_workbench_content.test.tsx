@@ -135,6 +135,19 @@ describe("team_workbench_content", () => {
     container.remove();
   });
 
+  it("shows an offline member panel without an execution run", () => {
+    const props = createBaseWorkbenchContentProps();
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamWorkbenchContent {...props} tab="overview" showNoActiveRunNotice
+          memberOverviewPanel={<section>Offline member configuration</section>} />
+      </MantineProvider>
+    );
+    expect(html).toContain("Offline member configuration");
+    expect(html).not.toContain("No Active Execution Run");
+    expect(html).not.toContain("Go to Execution Runs");
+  });
+
   it("renders the shared loading fallback chrome", () => {
     act(() => {
       root.render(<TeamPanelLoadingFallback />);

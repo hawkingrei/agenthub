@@ -1,0 +1,442 @@
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+
+use agenthub_agent_domain::loop_runtime::{LoopLaunchSnapshot, LoopReservation, LoopSessionPolicy};
+use agenthub_db::loop_runtime::LoopStore;
+use chrono::Utc;
+use sha2::{Digest, Sha256};
+
+use crate::acp::{AcpActorSkillContext, AcpLoopLaunchConfig, LOOP_ACTIVATION_CONTRACT_VERSION};
+use crate::internal::auth::{InternalAction, InternalAuthz, InternalRole, LoopExecutionClaims};
+use crate::internal::p2p::NodeCredentialRequest;
+use crate::loop_credentials::{LoopCredentialEnvelope, LoopCredentialFile};
+use crate::team::TeamManager;
+
+use super::acp_provider::{AcpProviderSpec, codex_reasoning_effort_for_thinking_level};
+use super::{AgentInput, AgentManager};
+
+mod mem;
+use mem::MemBootstrap;
+mod role;
+pub(super) use role::RolePrompt;
+
+const LOOP_ENTRY_PROMPT_VERSION: &str = "loop-entry-v6";
+const LOOP_ENTRY_PROMPT: &str = "Run one bounded AgentHub activation. Read `agenthub actor loop-context --json` and follow its next_cursor to recover all durable work sources; use `agenthub actor loop-source --source-id <id> --json` for exact source messages. Recover current role and authority with `agenthub actor team-members --json`, canonical work with `agenthub actor team-tasks --json`, and the addressed mailbox with `agenthub actor inbox --json`. The mailbox run is stable transport identity; this activation does not create a task attempt. Respect canonical assignment and task acceptance authority. Provider reasoning and native tool rounds belong to this activation. Record durable task evidence before reporting progress. For future work, use `agenthub actor help loop-schedule` and register before finishing. End with `agenthub actor loop-finish --outcome-file <path> --json`; `agenthub actor help loop-finish` describes the output contract. A provider exit or completed prompt is not an outcome. Do not poll for future work or start another resident loop.";
+
+#[derive(Clone)]
+pub(crate) struct LoopControlEndpoint {
+    pub target: String,
+    pub authz: InternalAuthz,
+    pub ca_cert_path: Option<String>,
+}
+
+pub(super) struct LoopCredentialState {
+    pub file: Arc<LoopCredentialFile>,
+    pub role: InternalRole,
+    pub run_id: String,
+    mem_bootstrap: MemBootstrap,
+    entry_prompt: String,
+}
+
+impl AgentManager {
+    pub(crate) async fn publish_loop_control_endpoint(&self, endpoint: LoopControlEndpoint) {
+        *self.loop_control_endpoint.write().await = Some(endpoint);
+    }
+
+    pub(super) async fn refresh_loop_credentials(
+        &self,
+        reservation: &LoopReservation,
+    ) -> anyhow::Result<()> {
+        let credentials = self.loop_credentials.lock().await;
+        let Some(credentials) = credentials.get(&reservation.actor_id) else {
+            return Ok(());
+        };
+        let endpoint = self
+            .loop_control_endpoint
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("local loop control endpoint is unavailable"))?;
+        let activation_id = reservation
+            .activation_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("loop activation identity is required"))?;
+        let issued = endpoint.authz.issue_loop_access_token(
+            NodeCredentialRequest {
+                source_node_id: crate::agent::AGENT_NODE_MAIN_ID.into(),
+                role: credentials.role.as_str().into(),
+                actor_id: Some(reservation.actor_id.clone()),
+                run_id: Some(credentials.run_id.clone()),
+                permissions: [
+                    InternalAction::MessageSend,
+                    InternalAction::InboxList,
+                    InternalAction::MessageAck,
+                    InternalAction::TeamRead,
+                    InternalAction::TeamTaskWrite,
+                    InternalAction::PermissionReview,
+                    InternalAction::LoopFinish,
+                    InternalAction::McpProxy,
+                    InternalAction::LoopActivate,
+                ]
+                .into_iter()
+                .map(|action| action.as_str().to_string())
+                .collect(),
+                scope: Vec::new(),
+                audience: Vec::new(),
+                ttl_seconds: i64::from(reservation.lease_seconds).max(60),
+            },
+            LoopExecutionClaims {
+                activation_id: activation_id.clone(),
+                generation: reservation.generation,
+            },
+        )?;
+        credentials.file.replace(&LoopCredentialEnvelope {
+            actor_id: reservation.actor_id.clone(),
+            run_id: credentials.run_id.clone(),
+            activation_id: activation_id.clone(),
+            generation: reservation.generation,
+            target: endpoint.target,
+            access_token: issued.access_token,
+            expires_at: issued.expires_at,
+            ca_cert_path: endpoint.ca_cert_path,
+        })
+    }
+
+    pub(super) async fn resolve_loop_launch(
+        &self,
+        agent: &crate::agent::AgentRecord,
+        provider: AcpProviderSpec,
+        context: &AcpActorSkillContext,
+        workdir: &str,
+        command: &str,
+        args: &[String],
+    ) -> anyhow::Result<(
+        AcpLoopLaunchConfig,
+        LoopSessionPolicy,
+        Vec<(String, String)>,
+    )> {
+        let _operations = self.loop_operation_gate(&agent.id).await.read_owned().await;
+        let reservation = self
+            .loop_reservations
+            .lock()
+            .await
+            .get(&agent.id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("loop execution reservation is required"))?;
+        let store = LoopStore::new(self.db.clone());
+        let policy = store
+            .policy(&reservation.team_id, &agent.id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("loop policy is missing"))?;
+        let spec: String =
+            sqlx::query_scalar("SELECT spec_json FROM team_definitions WHERE id = ?")
+                .bind(&reservation.team_id)
+                .fetch_one(&self.db)
+                .await?;
+        let spec: serde_json::Value = serde_json::from_str(&spec)?;
+        let preflight = self
+            .loop_preflight(
+                &reservation.team_id,
+                &spec,
+                &agent.id,
+                policy.session_policy,
+            )
+            .await?;
+        anyhow::ensure!(
+            preflight.ready,
+            "loop preflight failed: {}",
+            preflight.blockers.join(", ")
+        );
+        let role = InternalRole::parse(context.member_role.as_deref().unwrap_or_default())
+            .filter(|role| matches!(role, InternalRole::Coordinator | InternalRole::Worker))
+            .ok_or_else(|| anyhow::anyhow!("loop activation requires a supported member role"))?;
+        let role_prompt = RolePrompt::resolve(&spec, &agent.id, role)?;
+        let mut launch = AcpLoopLaunchConfig::resolve(
+            Path::new(workdir),
+            policy.session_policy == LoopSessionPolicy::Resume,
+        );
+        launch.install_loop_runtime_skill()?;
+        if provider.uses_default_mode_config() {
+            launch.mode_id = super::session::effective_acp_default_mode(
+                provider,
+                agent.codex_acp_default_mode.as_deref(),
+                self.acp_default_mode.as_deref(),
+                true,
+            )
+            .map(str::to_owned);
+        }
+        if provider.applies_runtime_profile_via_session_config() {
+            launch.model_id = agent.runtime_model.clone();
+            if let Some(level) = &agent.thinking_level {
+                let effort = codex_reasoning_effort_for_thinking_level(level)
+                    .ok_or_else(|| anyhow::anyhow!("unsupported loop thinking level"))?;
+                launch
+                    .config
+                    .push(("reasoning_effort".into(), effort.into()));
+            }
+        }
+        let file = Arc::new(LoopCredentialFile::create()?);
+        let path = file.path.to_string_lossy().to_string();
+        let mut mem_bootstrap = MemBootstrap::NotConfigured;
+        let mut unavailable_fingerprint = None;
+        let mcp = if crate::mcp_proxy::configured::has_mem_binding(
+            &self.loop_app_config,
+            &reservation.team_id,
+        ) {
+            let mcp = crate::mcp_proxy::configured::resolve_mem_for_launch(
+                &self.loop_app_config,
+                &reservation.team_id,
+                &agent.id,
+                |key| std::env::var(key).ok(),
+            )
+            .await?;
+            match mcp {
+                crate::mcp_proxy::configured::MemLaunchBinding::Ready(mcp) => {
+                    launch.add_mcp_proxy(
+                        &crate::mcp_proxy::configured::shim_executable()?,
+                        &file.path,
+                        mcp.binding.server_id(),
+                        &mcp.fingerprint,
+                    )?;
+                    mem_bootstrap = MemBootstrap::Ready {
+                        space: self
+                            .loop_app_config
+                            .resolve_nowledge_mem_binding(&reservation.team_id, &agent.id)?
+                            .space_id,
+                    };
+                    Some(mcp)
+                }
+                crate::mcp_proxy::configured::MemLaunchBinding::Unavailable { fingerprint } => {
+                    mem_bootstrap = MemBootstrap::Unavailable;
+                    unavailable_fingerprint = Some(fingerprint);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let registry = agenthub_db::app_registry::AppRegistry::new(self.db.clone());
+        let pins = registry
+            .pin_activation(&reservation, Utc::now().timestamp())
+            .await?;
+        let mut apps = Vec::with_capacity(pins.len());
+        for pin in pins {
+            let app =
+                crate::mcp_proxy::apps::resolve_pinned(&registry, pin, Path::new(workdir), |key| {
+                    std::env::var(key).ok()
+                })
+                .await?;
+            launch.add_mcp_proxy(
+                &crate::mcp_proxy::configured::shim_executable()?,
+                &file.path,
+                app.binding.server_id(),
+                &app.fingerprint,
+            )?;
+            apps.push(app);
+        }
+        let mut digest = Sha256::new();
+        digest.update(serde_json::to_vec(&(
+            command,
+            args,
+            context,
+            &agent.runtime_model,
+            &agent.thinking_level,
+            spec.get("required_capabilities"),
+            &role_prompt.version,
+            &role_prompt.entry,
+        ))?);
+        digest.update(launch.fingerprint_material()?);
+        if let Some(fingerprint) = unavailable_fingerprint {
+            digest.update(fingerprint.as_bytes());
+        }
+        let snapshot = LoopLaunchSnapshot {
+            version: 1,
+            provider_id: provider.id.into(),
+            configuration_digest: digest
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect(),
+            entry_prompt_version: role_prompt.version,
+            session_policy: policy.session_policy,
+            workspace: workdir.into(),
+            model: agent.runtime_model.clone(),
+            thinking_level: agent.thinking_level.clone(),
+        };
+        store
+            .record_launch(&reservation, &snapshot, Utc::now().timestamp())
+            .await?;
+        if let Some(mcp) = mcp {
+            self.mcp_proxy()?.mount(&reservation, mcp.binding).await?;
+        }
+        for app in apps {
+            self.mcp_proxy()?.mount_app(&reservation, app).await?;
+        }
+        let run_id = context
+            .current_run_id
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("loop mailbox identity is required"))?;
+        self.loop_credentials.lock().await.insert(
+            agent.id.clone(),
+            LoopCredentialState {
+                file,
+                role,
+                run_id,
+                mem_bootstrap,
+                entry_prompt: role_prompt.entry,
+            },
+        );
+        self.refresh_loop_credentials(&reservation).await?;
+        Ok((
+            launch,
+            policy.session_policy,
+            vec![
+                (
+                    crate::loop_credentials::LOOP_CREDENTIAL_FILE_ENV.into(),
+                    path,
+                ),
+                (
+                    crate::loop_credentials::LOOP_ACTIVATION_ENV.into(),
+                    reservation.activation_id.unwrap(),
+                ),
+            ],
+        ))
+    }
+
+    pub(crate) fn spawn_loop_worker(&self, teams: Arc<TeamManager>) -> anyhow::Result<()> {
+        if !cfg!(target_os = "linux") {
+            return Ok(());
+        }
+        let manager = self.clone();
+        let cancel = self.daemon_tasks.background_cancellation();
+        self.daemon_tasks.spawn_background_worker("local-agent-loop", async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let store = LoopStore::new(manager.db.clone());
+            loop {
+                tokio::select! { _ = cancel.cancelled() => return Ok(()), _ = interval.tick() => {} }
+                if manager.loop_control_endpoint.read().await.is_none() { continue; }
+                if let Err(error) = manager.recover_expired_loop_executors().await {
+                    tracing::warn!(%error, "loop executor recovery scan failed");
+                }
+                if let Err(error) = store.reconcile_schedules(Utc::now().timestamp()).await {
+                    tracing::warn!(%error, "loop schedule reconciliation failed");
+                }
+                let reservation = match store.admit_next(&manager.loop_owner_id, Utc::now().timestamp()).await {
+                    Ok(Some(reservation)) => reservation,
+                    Ok(None) => continue,
+                    Err(error) => { tracing::warn!(%error, "loop admission scan failed"); continue; }
+                };
+                manager.track_loop_reservation(reservation.clone()).await?;
+                let task_manager = manager.clone();
+                let task_teams = teams.clone();
+                let task_reservation = reservation.clone();
+                let started = manager.daemon_tasks.spawn_runtime_task(format!("loop-activation:{}:{}", reservation.actor_id, reservation.generation), async move {
+                    if let Err(error) = task_manager.execute_loop_activation(task_teams, task_reservation.clone()).await {
+                        tracing::warn!(actor_id = task_reservation.actor_id, generation = task_reservation.generation, %error, "local loop activation failed");
+                        task_manager.fence_loop_reservation(&task_reservation).await?;
+                    }
+                    Ok(())
+                });
+                if started.is_err() { manager.fence_loop_reservation(&reservation).await?; }
+            }
+        })
+    }
+
+    #[tracing::instrument(name = "loop.execute", skip_all, fields(
+        team_id = %reservation.team_id, actor_id = %reservation.actor_id,
+        activation_id = reservation.activation_id.as_deref(), generation = reservation.generation,
+        session_id = tracing::field::Empty, mailbox_run_id = tracing::field::Empty,
+    ))]
+    async fn execute_loop_activation(
+        &self,
+        teams: Arc<TeamManager>,
+        reservation: LoopReservation,
+    ) -> anyhow::Result<()> {
+        let team = teams.get_team(&reservation.team_id).await?;
+        let role = team
+            .spec
+            .get("members")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|members| {
+                members.iter().find(|member| {
+                    member.get("member_id").and_then(serde_json::Value::as_str)
+                        == Some(&reservation.actor_id)
+                })
+            })
+            .and_then(|member| member.get("role"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("loop member role is missing"))?;
+        let mailbox = teams
+            .ensure_loop_mailbox_partition(&reservation.team_id)
+            .await?;
+        tracing::Span::current().record("mailbox_run_id", &mailbox.id);
+        let store = LoopStore::new(self.db.clone());
+        store
+            .bind_mailbox(&reservation, &mailbox.id, Utc::now().timestamp())
+            .await?;
+        let mut context = crate::team::build_team_member_actor_context_for_role(
+            &reservation.team_id,
+            Some(&mailbox.id),
+            &reservation.actor_id,
+            role,
+        );
+        context.contract_version = Some(LOOP_ACTIVATION_CONTRACT_VERSION.into());
+        let session_id = self.start_loop_agent(&reservation, context).await?;
+        tracing::Span::current().record("session_id", &session_id);
+        let reservation = store
+            .reservation(&reservation.team_id, &reservation.actor_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("loop reservation disappeared during startup"))?;
+        store
+            .mark_running(&reservation, Utc::now().timestamp())
+            .await?;
+        let entry = self.loop_entry_with_mem(&reservation).await?;
+        let submission = format!(
+            "loop-entry:{}:{}",
+            reservation.activation_id.as_deref().unwrap_or_default(),
+            reservation.generation
+        );
+        self.send_input_inner(
+            &reservation.actor_id,
+            &entry,
+            &[],
+            Some(&submission),
+            Some(&session_id),
+            None,
+        )
+        .await?;
+        let cancellation = self.daemon_tasks.runtime_cancellation();
+        loop {
+            tokio::select! {
+                _ = cancellation.cancelled() => return self.fence_loop_reservation(&reservation).await,
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+            }
+            let diagnostics = {
+                let handles = self.inner.read().await;
+                let Some(handle) = handles
+                    .get(&reservation.actor_id)
+                    .filter(|handle| handle.session_id == session_id)
+                else {
+                    return Ok(());
+                };
+                let AgentInput::Acp(acp) = &handle.input else {
+                    anyhow::bail!("loop provider is not ACP");
+                };
+                acp.diagnostics()
+            };
+            if diagnostics.command_channel_closed
+                || (diagnostics.last_submission_id.as_deref() == Some(&submission)
+                    && diagnostics.active_submission_ids.is_empty()
+                    && diagnostics.active_prompt_count == 0)
+            {
+                // A transport turn may end without a durable outcome. Cleanup classifies that as interrupted.
+                return self.fence_loop_reservation(&reservation).await;
+            }
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests;

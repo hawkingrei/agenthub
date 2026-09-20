@@ -2,6 +2,8 @@
 
 This file is the index for `docs/journal/`.
 
+- [2026-09-16: Scoped Mem context bootstrap](2026-09-16-mem-context-bootstrap.md)
+
 Use it to find dated implementation checkpoints, rollout notes, validation evidence, and historical
 decision context without scanning every dated file. Stable contracts still belong in
 `docs/features/`; active remaining work belongs in `docs/todo.md`.
@@ -24,6 +26,37 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 ```
 
 ## Recent Checkpoints
+
+- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): combine the previously reviewed ACP slices against main; verified restart recovery, installed-adapter acceptance and operator guidance remain active. Native support is deferred.
+
+- [2026-09-18: Signed App intake](2026-09-18-app-event-intake.md): exact-body HMAC, atomic receipts/cursors/triggers, budgets, standing conditions, and safe context/doctor/web attribution; final PR/CI delivery remains open.
+- [2026-09-18: App event configuration](2026-09-18-app-event-configuration.md): explicit event classes, independent signing-key versions, and epoch/version-pinned member routes consumed by signed intake and standing conditions.
+- [2026-09-18: App runtime integration](2026-09-18-app-runtime.md): activation mounts, trusted HTTP identity, native schema enforcement, call/stream revocation, safe Cards, and pinned history attribution; PR #1161 passed applicable CI at `5fd553b3` and is ready for review.
+- [2026-09-18: App result validation](2026-09-18-app-result-validation.md): original-tool schema attribution for immediate, batch, continuation, and deferred results; invalid output retains replay protections and valid neighboring facts.
+- [2026-09-18: App management API](2026-09-18-app-management-api.md): root connection provisioning, owner publication, intersected Team grants, member bindings, and safe bounded HTTP responses; shared proxy integration remains open.
+- [2026-09-17: App registration storage](2026-09-17-app-registry-storage.md): bounded manifests, immutable versions, approved scope bindings, activation pins, and durable authorization epochs.
+
+- [2026-09-17: Loop workspace UI](2026-09-17-loop-workspace-ui.md): offline member configuration, independent execution/process/task state, paged history, and browser lifecycle/page-reopen evidence; current-head PR validation remains open.
+
+- [2026-09-17: Loop history storage](2026-09-17-loop-history-storage.md): scoped history APIs, durable RPC/MCP observations and metrics, activation-aware debug doctor, and lifecycle trace correlation; PR #1159 passed applicable CI at `7f2b9a2a` and is ready for review.
+
+- [2026-09-16: Loop role prompts](2026-09-16-loop-role-prompts.md): configured role selection, pinned runtime skill, structured finish, and provider/CLI authority checks.
+
+- [2026-09-16: Loop dependency integration](2026-09-16-loop-dependency-integration.md): combined scheduling and Mem runtime, regenerated control RPCs, and full backend regression evidence before role migration.
+
+- [2026-09-15: Shared MCP proxy](2026-09-15-shared-mcp-proxy.md): durable operation journal, transparent HTTP/RPC/stdio transport, configured ACP launch, verified Mem namespace authority, and endpoint continuity.
+- [2026-09-15: Bounded loop scheduling](2026-09-15-agent-loop-scheduling.md): durable future work, transactional dependency observations, source-aware revocation, and verified offline CLI cycles.
+
+- [2026-09-15: Durable loop work events](2026-09-15-agent-loop-work-events.md): atomic intake, scoped source recovery, and offline member dispatch.
+
+- [2026-09-15: Offline loop configuration](2026-09-15-agent-loop-offline-configuration.md): explicit policies, preflight, Card identity, and scope guards; full CI fixture correction included.
+- [2026-09-15: Recoverable local loop providers](2026-09-15-agent-loop-local-provider.md): launch snapshots, stable mailbox, guardian cleanup evidence, scoped actor control, and verified local ACP/CLI recovery.
+
+- [2026-09-15: Loop outcomes and cleanup](2026-09-15-agent-loop-lifecycle.md): structured finish, atomic continuations, retained uncertainty, and manual/process lifecycle integration.
+
+- [2026-09-15: Fenced loop admission](2026-09-15-agent-loop-admission.md): atomic claims, retained expired reservations, finite admission budgets, and bounded queue scanning.
+
+- [2026-09-15: Durable loop control store](2026-09-15-agent-loop-control-store.md): explicit policy, idempotent trigger receipts, pending work, and safe lifecycle events.
 
 - [2026-09-15: Agent loop activation contract](2026-09-15-agent-loop-activation-contract.md): identity, finite policy defaults, compatibility gates, and a deterministic transaction/cleanup experiment.
 

@@ -77,6 +77,19 @@ pub struct AgentDiscoveryCardResponse {
     pub team_member_role: Option<String>,
     pub skills: Vec<String>,
     pub capability_tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loop_execution: Option<AgentLoopDiscovery>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub bound_apps: Vec<super::apps::AppCapability>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AgentLoopDiscovery {
+    pub state: agenthub_agent_domain::loop_runtime::LoopPolicyState,
+    pub session_policy: agenthub_agent_domain::loop_runtime::LoopSessionPolicy,
+    pub policy_revision: i64,
+    pub contract_version: &'static str,
+    pub configuration_path: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -254,6 +267,17 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
+fn map_loop_configuration_error(error: anyhow::Error) -> ApiError {
+    if error
+        .downcast_ref::<agenthub_db::loop_runtime::LoopStoreError>()
+        .is_some()
+    {
+        ApiError::conflict(&error.to_string())
+    } else {
+        ApiError::from(error)
+    }
+}
+
 fn map_create_agent_error(err: anyhow::Error) -> ApiError {
     let message = err.to_string();
     if message.contains("not found")
@@ -405,11 +429,45 @@ async fn get_agent_discovery_card(
         .agents
         .acp_provider_for_agent(&agent.command, &agent.args);
     let member_profile = resolve_team_member_profile(&state, user.id.as_str(), &agent.id).await;
-    Ok(Json(build_agent_discovery_card(
-        &agent,
-        provider,
-        member_profile.as_ref(),
-    )))
+    let mut card = build_agent_discovery_card(&agent, provider, member_profile.as_ref());
+    let loop_team: Option<String> = sqlx::query_scalar("SELECT p.team_id FROM loop_policies p JOIN team_definitions t ON t.id = p.team_id WHERE p.actor_id = ? AND (t.owner_user_id IS NULL OR t.owner_user_id = ? OR EXISTS(SELECT 1 FROM team_members m WHERE m.team_id = p.team_id AND m.user_id = ? AND m.revoked_at IS NULL))")
+        .bind(&agent.id).bind(&user.id).bind(&user.id).fetch_optional(&state.db).await?;
+    if let Some(team_id) = loop_team
+        && let Some(policy) = agenthub_db::loop_runtime::LoopStore::new(state.db.clone())
+            .policy(&team_id, &agent.id)
+            .await?
+    {
+        card.bound_apps = super::apps::member_capabilities(
+            &agenthub_db::app_registry::AppRegistry::new(state.db.clone()),
+            &team_id,
+            &agent.id,
+        )
+        .await?;
+        card.loop_execution = Some(AgentLoopDiscovery {
+            state: policy.state,
+            session_policy: policy.session_policy,
+            policy_revision: policy.revision,
+            contract_version: crate::acp::LOOP_ACTIVATION_CONTRACT_VERSION,
+            configuration_path: format!("/api/teams/{team_id}/members/{}/loop", agent.id),
+        });
+        card.skills.clear();
+        card.capability_tags
+            .retain(|tag| tag != "team_step_execution_v1" && tag != "agent_loop");
+        card.capability_tags.extend([
+            "agent_loop_activation_v1".into(),
+            "structured_loop_finish_v1".into(),
+        ]);
+        if member_profile
+            .as_ref()
+            .is_none_or(|profile| profile.description.is_none())
+        {
+            card.description = format!(
+                "AgentHub member {} supports bounded loop activations",
+                agent.name
+            );
+        }
+    }
+    Ok(Json(card))
 }
 
 async fn start_agent(
@@ -446,8 +504,11 @@ async fn delete_agent(
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_capability(&headers, &state, UserCapability::AgentsManage).await?;
-    let _ = state.agents.stop_agent(&agent_id).await;
-    state.agents.delete_agent(&agent_id).await?;
+    state
+        .agents
+        .delete_agent(&agent_id)
+        .await
+        .map_err(map_loop_configuration_error)?;
     if let Err(err) = prune_deleted_agent_from_team_specs(&state, &agent_id).await {
         tracing::warn!(
             agent_id = %agent_id,
@@ -869,7 +930,8 @@ async fn set_acp_mode(
     state
         .agents
         .set_acp_mode(&agent_id, &payload.mode_id)
-        .await?;
+        .await
+        .map_err(map_loop_configuration_error)?;
     Ok(ok_response())
 }
 
@@ -883,7 +945,8 @@ async fn set_acp_model(
     state
         .agents
         .set_acp_model(&agent_id, &payload.model_id)
-        .await?;
+        .await
+        .map_err(map_loop_configuration_error)?;
     Ok(ok_response())
 }
 
@@ -897,7 +960,8 @@ async fn set_acp_config(
     state
         .agents
         .set_acp_config(&agent_id, &payload.config_id, &payload.value)
-        .await?;
+        .await
+        .map_err(map_loop_configuration_error)?;
     Ok(ok_response())
 }
 
@@ -1266,6 +1330,8 @@ fn build_agent_discovery_card(
             .map(|profile| effective_team_member_skills(&profile.role))
             .unwrap_or_default(),
         capability_tags,
+        loop_execution: None,
+        bound_apps: Vec::new(),
     }
 }
 
@@ -1984,6 +2050,9 @@ mod tests {
         .execute(db)
         .await
         .expect("create acp_permission_requests");
+        agenthub_db::loop_runtime::migrate_loop_runtime(db)
+            .await
+            .expect("migrate loop runtime");
     }
 
     async fn build_test_state_with_db_and_internal_peer(
@@ -4320,6 +4389,9 @@ mod tests {
         .execute(&state.db)
         .await
         .expect("create team_definitions table");
+
+        sqlx::query("CREATE TABLE team_members (team_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, revoked_at INTEGER, PRIMARY KEY(team_id, user_id))")
+            .execute(&state.db).await.expect("create discovery membership table");
 
         let team_spec = json!({
             "spec_version": 1,

@@ -404,6 +404,9 @@ impl AgentManager {
         .execute(&self.db)
         .await?;
 
+        if self.has_loop_activation(agent_id).await {
+            return Ok(());
+        }
         let mut guard = self.inner.write().await;
         if let Some(handle) = guard.get_mut(agent_id) {
             match (&handle.input, next_config) {
@@ -442,9 +445,38 @@ impl AgentManager {
         worktree_repo: Option<&str>,
         worktree_ref: Option<&str>,
     ) -> anyhow::Result<()> {
+        let manager = self.clone();
+        let actor_id = agent_id.to_owned();
+        let workdir = workdir.to_owned();
+        let worktree_repo = worktree_repo.map(str::to_owned);
+        let worktree_ref = worktree_ref.map(str::to_owned);
+        self.configure_actors_owned(vec![actor_id.clone()], async move {
+            manager
+                .update_team_member_runtime_config_inner(
+                    &actor_id,
+                    &workdir,
+                    worktree_mode,
+                    worktree_repo.as_deref(),
+                    worktree_ref.as_deref(),
+                )
+                .await
+        })
+        .await
+    }
+
+    async fn update_team_member_runtime_config_inner(
+        &self,
+        agent_id: &str,
+        workdir: &str,
+        worktree_mode: WorktreeMode,
+        worktree_repo: Option<&str>,
+        worktree_ref: Option<&str>,
+    ) -> anyhow::Result<()> {
         let normalized_workdir = expand_tilde(workdir);
         let normalized_worktree_repo = worktree_repo.map(expand_tilde);
         let now = Utc::now().timestamp();
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        crate::team::TeamManager::require_loop_actor_quiescent_tx(&mut tx, agent_id).await?;
         sqlx::query(
             r#"
             UPDATE agents
@@ -463,13 +495,18 @@ impl AgentManager {
         .bind(worktree_ref)
         .bind(now)
         .bind(agent_id)
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 
     #[tracing::instrument(skip(self), err)]
     pub async fn mark_exited_on_startup(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
+        self.recover_expired_loop_executors().await?;
+        agenthub_db::loop_runtime::LoopStore::new(self.db.clone())
+            .interrupt_expired(Utc::now().timestamp())
+            .await?;
         self.mark_running_agents_exited(AgentSessionExitMarkReason::Startup)
             .await
     }
@@ -478,6 +515,21 @@ impl AgentManager {
     pub async fn stop_all_on_shutdown(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
         let _shutdown_guard = self.process_supervisor.begin_shutdown().await;
         self.process_supervisor.stop_all().await?;
+        let loop_actors = self
+            .loop_reservations
+            .lock()
+            .await
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for actor_id in loop_actors {
+            self.release_loop_after_cleanup(
+                &actor_id,
+                None,
+                agenthub_agent_domain::loop_runtime::LoopCleanupDisposition::Exited,
+            )
+            .await?;
+        }
 
         let stopped_handles = {
             let mut guard = self.inner.write().await;
@@ -510,6 +562,7 @@ impl AgentManager {
             UPDATE agent_sessions
             SET status = 'exited', ended_at = ?1
             WHERE status = 'running' AND ended_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM loop_execution_reservations r WHERE r.session_id = agent_sessions.id)
             "#,
         )
         .bind(now)
@@ -529,6 +582,7 @@ impl AgentManager {
             UPDATE agents
             SET status = 'exited', updated_at = ?1
             WHERE status = 'running'
+              AND NOT EXISTS (SELECT 1 FROM loop_execution_reservations r WHERE r.actor_id = agents.id)
             "#,
         )
         .bind(now)
@@ -568,6 +622,32 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn delete_agent(&self, agent_id: &str) -> anyhow::Result<()> {
+        let manager = self.clone();
+        let actor_id = agent_id.to_owned();
+        self.configure_actors_owned(vec![actor_id.clone()], async move {
+            let mut tx = manager.db.begin_with("BEGIN IMMEDIATE").await?;
+            if crate::team::TeamManager::require_loop_actor_quiescent_tx(&mut tx, &actor_id).await?
+            {
+                agenthub_db::loop_runtime::LoopStore::require_no_retained_history_tx(
+                    &mut tx, &actor_id,
+                )
+                .await?;
+                anyhow::ensure!(
+                    !manager
+                        .process_supervisor
+                        .has_actor_process(&actor_id)
+                        .await,
+                    agenthub_db::loop_runtime::LoopStoreError::ReservationHeld
+                );
+            }
+            tx.commit().await?;
+            let _ = manager.stop_agent(&actor_id).await;
+            manager.delete_agent_inner(&actor_id).await
+        })
+        .await
+    }
+
+    async fn delete_agent_inner(&self, agent_id: &str) -> anyhow::Result<()> {
         if let Ok(agent) = self.get_agent(agent_id).await
             && let Some(target_node_id) = agent.target_node_id.as_deref()
         {
@@ -602,7 +682,14 @@ impl AgentManager {
         let has_persistent_sessions_table = self.has_agent_persistent_sessions_table().await?;
         let has_persistent_session_failures_table =
             self.has_agent_persistent_session_failures_table().await?;
-        let mut tx = self.db.begin().await?;
+        let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await?;
+        crate::team::TeamManager::require_loop_actor_quiescent_tx(&mut tx, agent_id).await?;
+        agenthub_db::loop_runtime::LoopStore::require_no_retained_history_tx(&mut tx, agent_id)
+            .await?;
+        sqlx::query("DELETE FROM loop_policies WHERE actor_id = ?")
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")
             .bind(agent_id)
             .execute(&mut *tx)

@@ -491,6 +491,134 @@ pub(super) fn parse_actor_command(
         });
     }
     match sub.as_str() {
+        "loop-source" => {
+            let mut source_id = None;
+            let mut index = 1;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--source-id" => {
+                        anyhow::ensure!(source_id.is_none(), "duplicate --source-id");
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow::anyhow!("--source-id requires a value"))?;
+                        agenthub_agent_domain::loop_runtime::validate_loop_id(value)?;
+                        source_id = Some(value.clone());
+                    }
+                    flag => anyhow::bail!("unsupported loop-source argument: {flag}"),
+                }
+                index += 1;
+            }
+            Ok(ActorCommand::LoopSource {
+                source_id: source_id.ok_or_else(|| anyhow::anyhow!("--source-id is required"))?,
+            })
+        }
+        "loop-schedule" | "loop-schedules" | "loop-schedule-show" | "loop-schedule-revoke" => {
+            super::scheduling::parse_schedule_command(args, output_mode)
+        }
+        "loop-context" => {
+            let mut after_source_id = None;
+            let mut limit = 64;
+            let mut seen = std::collections::HashSet::new();
+            let mut index = 1;
+            while index < args.len() {
+                let flag = args[index].as_str();
+                if flag == "--json" {
+                    *output_mode = ActorOutputMode::Json;
+                    index += 1;
+                    continue;
+                }
+                anyhow::ensure!(seen.insert(flag), "duplicate argument: {flag}");
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?;
+                match flag {
+                    "--after-source-id" => {
+                        agenthub_agent_domain::loop_runtime::validate_loop_id(value)?;
+                        after_source_id = Some(value.clone());
+                    }
+                    "--limit" => {
+                        limit = value.parse::<u32>()?;
+                        anyhow::ensure!(
+                            (1..=256).contains(&limit),
+                            "limit must be between 1 and 256"
+                        );
+                    }
+                    _ => anyhow::bail!("unsupported loop-context argument: {flag}"),
+                }
+                index += 1;
+            }
+            Ok(ActorCommand::LoopContext {
+                after_source_id,
+                limit,
+            })
+        }
+        "loop-activate" => {
+            let (mut member_id, mut source_key, mut task_id) = (None, None, None);
+            let mut seen = std::collections::HashSet::new();
+            let mut index = 1;
+            while index < args.len() {
+                let flag = args[index].as_str();
+                if flag == "--json" {
+                    *output_mode = ActorOutputMode::Json;
+                    index += 1;
+                    continue;
+                }
+                anyhow::ensure!(seen.insert(flag), "duplicate argument: {flag}");
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?;
+                agenthub_agent_domain::loop_runtime::validate_loop_id(value)?;
+                match flag {
+                    "--member-id" => member_id = Some(value.clone()),
+                    "--source-key" => source_key = Some(value.clone()),
+                    "--task-id" => task_id = Some(value.clone()),
+                    _ => anyhow::bail!("unsupported loop-activate argument: {flag}"),
+                }
+                index += 1;
+            }
+            Ok(ActorCommand::LoopActivate {
+                member_id: member_id.ok_or_else(|| anyhow::anyhow!("--member-id is required"))?,
+                source_key: source_key
+                    .ok_or_else(|| anyhow::anyhow!("--source-key is required"))?,
+                task_id,
+            })
+        }
+        "loop-finish" => {
+            use std::io::Read;
+            let mut path = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--outcome-file" => {
+                        anyhow::ensure!(path.is_none(), "--outcome-file may only be supplied once");
+                        idx += 1;
+                        path =
+                            Some(args.get(idx).ok_or_else(|| {
+                                anyhow::anyhow!("--outcome-file requires a path")
+                            })?);
+                    }
+                    flag => anyhow::bail!("unsupported loop-finish argument: {flag}"),
+                }
+                idx += 1;
+            }
+            let path =
+                path.ok_or_else(|| anyhow::anyhow!("loop-finish requires --outcome-file"))?;
+            let mut bytes = Vec::new();
+            fs::File::open(path)?.take(16_385).read_to_end(&mut bytes)?;
+            anyhow::ensure!(
+                bytes.len() <= 16_384,
+                "outcome exceeds the bounded finish request"
+            );
+            let outcome: agenthub_agent_domain::loop_runtime::LoopOutcome =
+                serde_json::from_slice(&bytes)?;
+            outcome.validate()?;
+            Ok(ActorCommand::LoopFinish { outcome })
+        }
         "team-members" => {
             let mut team_id = None;
             let mut run_id = None;
@@ -2718,5 +2846,41 @@ mod tests {
             err.to_string()
                 .contains("--mention and --mention-actor-id are supported only for channel send")
         );
+    }
+}
+
+#[cfg(test)]
+mod loop_finish_tests {
+    use super::*;
+
+    #[test]
+    fn loop_finish_parser_requires_bounded_structured_outcome_and_no_identity_override() {
+        let path = std::env::temp_dir().join(format!(
+            "agenthub-loop-outcome-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&path, r#"{"kind":"no_actionable_work"}"#).unwrap();
+        let mut args = vec![
+            "loop-finish".into(),
+            "--outcome-file".into(),
+            path.to_string_lossy().to_string(),
+        ];
+        assert!(matches!(
+            parse_actor_command(&args, &mut ActorOutputMode::Default).unwrap(),
+            ActorCommand::LoopFinish { .. }
+        ));
+        args.extend(["--actor-id".into(), "other".into()]);
+        assert!(parse_actor_command(&args, &mut ActorOutputMode::Default).is_err());
+        args.truncate(3);
+        for invalid in [
+            r#"{"kind":"waiting"}"#,
+            r#"{"kind":"progress","activation_id":"other"}"#,
+        ] {
+            std::fs::write(&path, invalid).unwrap();
+            assert!(parse_actor_command(&args, &mut ActorOutputMode::Default).is_err());
+        }
+        std::fs::write(&path, "x".repeat(16_385)).unwrap();
+        assert!(parse_actor_command(&args, &mut ActorOutputMode::Default).is_err());
+        std::fs::remove_file(path).unwrap();
     }
 }

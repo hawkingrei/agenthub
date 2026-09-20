@@ -99,12 +99,13 @@ describe("Team management modals", () => {
     );
   });
 
-  it("renders the edit-member dialog with current profile values", () => {
+  it.each([false, true])("renders the edit-member dialog for loop execution %s", (loopExecution) => {
     const html = renderToStaticMarkup(
       <MantineProvider>
         <TeamEditMemberDialog
           open
           busy={null}
+          loopExecution={loopExecution}
           selectedAgentLabel="worker-1"
           draft={{
             member_id: "worker-1",
@@ -139,7 +140,14 @@ describe("Team management modals", () => {
     expect(html).toContain("Yolo / full access");
     expect(html).toContain("Restart the agent for changes to apply.");
     expect(html).toContain("Save Profile");
-    expect(html).toContain("Role-bound Team skills come from the system-managed skill path");
+    if (loopExecution) {
+      expect(html).not.toContain("Idle timeout (seconds)");
+      expect(html).not.toContain("System Skills");
+      expect(html).toContain("Leave empty to use the built-in prompt for this role.");
+    } else {
+      expect(html).toContain("Idle timeout (seconds)");
+      expect(html).toContain("Role-bound Team skills come from the system-managed skill path");
+    }
   });
 
   it("renders the forge-agent dialog with role guidance and system skills", () => {

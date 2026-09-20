@@ -15,8 +15,11 @@ use tokio::sync::Mutex;
 
 use anyhow::Context;
 
+pub mod app_registry;
 pub mod control_store;
 mod daemon_generation;
+pub mod loop_runtime;
+pub mod mcp_operations;
 pub mod message_body_outbox;
 pub mod object_uploads;
 mod time_triggers;
@@ -288,7 +291,9 @@ pub async fn init_db() -> anyhow::Result<SqlitePool> {
     init_db_at_path(&db_path).await
 }
 
-async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
+/// Open and migrate an explicit control database. The caller still owns daemon locking and
+/// generation-specific runtime recovery; opening a database never grants execution authority.
+pub async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
     let pool = try_connect(db_path).await.map_err(|err| {
         tracing::error!(
             db_path = %db_path.display(),
@@ -1067,6 +1072,9 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     migrate_time_triggers(&pool).await?;
     ensure_app_linker_schema(&pool).await?;
+    loop_runtime::migrate_loop_runtime(&pool).await?;
+    mcp_operations::migrate_mcp_operations(&pool).await?;
+    app_registry::migrate_app_registry(&pool).await?;
 
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_team_tasks_add_assigned_member_id(&pool).await?;

@@ -6,9 +6,10 @@ sidebar_position: 2
 
 This page maps AgentHub's main capabilities to the problems they solve.
 
-These are current capabilities. The [target loop model](./product-overview.md) keeps leader/worker
-roles and Agent Cards, adds durable activation and exit, and integrates Nowledge Mem. Those loop
-and memory features still require implementation.
+The [durable execution workflow](../core/durable-execution.md) keeps coordinator/worker roles
+and Agent Cards, activates eligible offline members, and records outcomes before process cleanup.
+Scoped Mem and registered Apps use the shared MCP proxy. This workflow initially supports local
+Linux execution; each provider must satisfy the requested ACP capabilities.
 
 ## Single-Agent Control Surface
 

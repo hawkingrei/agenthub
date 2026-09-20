@@ -9,6 +9,7 @@ pub(crate) enum RootCliCommand {
     Doctor { args: Vec<String> },
     Actor { args: Vec<String> },
     Migrate { args: Vec<String> },
+    McpProxy { args: Vec<String> },
     LegacyActorMcp,
 }
 
@@ -25,6 +26,7 @@ enum AgentHubSubcommand {
     Doctor(PassthroughArgs),
     Actor(PassthroughArgs),
     Migrate(PassthroughArgs),
+    McpProxy(PassthroughArgs),
     #[command(name = "actor-mcp", hide = true)]
     ActorMcp(PassthroughArgs),
 }
@@ -52,6 +54,7 @@ where
         Some(AgentHubSubcommand::Doctor(args)) => RootCliCommand::Doctor { args: args.args },
         Some(AgentHubSubcommand::Actor(args)) => RootCliCommand::Actor { args: args.args },
         Some(AgentHubSubcommand::Migrate(args)) => RootCliCommand::Migrate { args: args.args },
+        Some(AgentHubSubcommand::McpProxy(args)) => RootCliCommand::McpProxy { args: args.args },
         Some(AgentHubSubcommand::ActorMcp(_)) => RootCliCommand::LegacyActorMcp,
     })
 }

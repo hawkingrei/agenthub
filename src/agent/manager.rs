@@ -1,6 +1,13 @@
 mod acp_provider;
 mod codec;
+mod configuration;
 mod executor;
+mod loop_launch;
+mod loop_lifecycle;
+mod loop_preflight;
+mod mcp_proxy;
+pub(crate) use loop_launch::LoopControlEndpoint;
+pub(crate) use loop_preflight::LoopPreflight;
 mod nodes;
 mod process;
 mod runtime;
@@ -86,6 +93,15 @@ pub struct AgentManager {
     permission_review_dispatcher: Arc<StdRwLock<Option<Arc<dyn AcpPermissionReviewDispatcher>>>>,
     internal_peer_client: Option<InternalGrpcPeerClientConfig>,
     starting: Arc<Mutex<HashSet<String>>>,
+    loop_owner_id: String,
+    mcp_proxy: Arc<std::sync::OnceLock<Arc<crate::mcp_proxy::McpProxyHub>>>,
+    loop_control_endpoint: Arc<RwLock<Option<LoopControlEndpoint>>>,
+    loop_credentials: Arc<Mutex<HashMap<String, loop_launch::LoopCredentialState>>>,
+    loop_operation_gates: Arc<Mutex<HashMap<String, Arc<RwLock<()>>>>>,
+    configuration_gates: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    loop_app_config: Arc<agenthub_config::AppConfig>,
+    loop_reservations:
+        Arc<Mutex<HashMap<String, agenthub_agent_domain::loop_runtime::LoopReservation>>>,
     inner: Arc<RwLock<HashMap<String, AgentHandle>>>,
 }
 
@@ -822,6 +838,14 @@ impl AgentManager {
             internal_peer_client,
             permission_review_dispatcher: Arc::new(StdRwLock::new(None)),
             starting: Arc::new(Mutex::new(HashSet::new())),
+            loop_owner_id: Uuid::new_v4().to_string(),
+            mcp_proxy: Arc::new(std::sync::OnceLock::new()),
+            loop_control_endpoint: Arc::new(RwLock::new(None)),
+            loop_credentials: Arc::new(Mutex::new(HashMap::new())),
+            loop_operation_gates: Arc::new(Mutex::new(HashMap::new())),
+            configuration_gates: Arc::new(Mutex::new(HashMap::new())),
+            loop_app_config: Arc::new(agenthub_config::AppConfig::default()),
+            loop_reservations: Arc::new(Mutex::new(HashMap::new())),
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -2188,6 +2212,10 @@ impl AgentManager {
         message_id: Option<&str>,
         expected_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.has_loop_activation(agent_id).await,
+            "loop input must arrive through durable work intake"
+        );
         self.send_input_inner(
             agent_id,
             input,
@@ -2437,6 +2465,10 @@ impl AgentManager {
         message_id: &str,
         source: &super::AgentReminderSource,
     ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.has_loop_activation(agent_id).await,
+            "resident reminders are unavailable during loop activations"
+        );
         self.send_input_inner(agent_id, input, &[], Some(message_id), None, Some(source))
             .await
     }
@@ -2536,12 +2568,16 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id, mode_id = %mode_id), err)]
     pub async fn set_acp_mode(&self, agent_id: &str, mode_id: &str) -> anyhow::Result<()> {
+        let _configuration = self.configuration_gate(agent_id).await.lock_owned().await;
+        self.require_mutable_acp_configuration(agent_id).await?;
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_mode(normalize_codex_acp_mode_id(mode_id)).await
     }
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id, model_id = %model_id), err)]
     pub async fn set_acp_model(&self, agent_id: &str, model_id: &str) -> anyhow::Result<()> {
+        let _configuration = self.configuration_gate(agent_id).await.lock_owned().await;
+        self.require_mutable_acp_configuration(agent_id).await?;
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_model(model_id.to_string()).await
     }
@@ -2557,6 +2593,8 @@ impl AgentManager {
         config_id: &str,
         value: &str,
     ) -> anyhow::Result<()> {
+        let _configuration = self.configuration_gate(agent_id).await.lock_owned().await;
+        self.require_mutable_acp_configuration(agent_id).await?;
         let acp = self.get_acp_handle(agent_id).await?;
         acp.set_config(config_id.to_string(), value.to_string())
             .await

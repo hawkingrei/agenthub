@@ -81,14 +81,14 @@ impl TeamManager {
         Ok(filter_visible_team_runs(runs))
     }
 
-    // Cancel all non-terminal runs left from a previous process lifetime.
-    // This keeps startup deterministic and shifts resumption to explicit user action.
+    // Legacy runs require manual restart; explicit loop partitions retain durable inbox identity.
     pub async fn cancel_active_runs_on_startup(&self) -> anyhow::Result<usize> {
         let active_run_ids = sqlx::query_scalar::<_, String>(
             r#"
             SELECT id
             FROM team_runs
             WHERE status IN ('submitted', 'working', 'input_required')
+              AND NOT EXISTS (SELECT 1 FROM loop_mailbox_partitions p WHERE p.run_id = team_runs.id)
             ORDER BY created_at ASC, id ASC
             "#,
         )

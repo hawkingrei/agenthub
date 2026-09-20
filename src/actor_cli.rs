@@ -35,6 +35,14 @@ const ACTOR_HELP_TOPIC_TEAM_THREAD_REPLY: &str = "team-thread-reply";
 const ACTOR_HELP_TOPIC_TEAM_STEP_DECISION: &str = "team-step-decision";
 const ACTOR_HELP_TOPIC_TEAM_STEP_TRANSITION: &str = "team-step-transition";
 const ACTOR_HELP_TOPICS: &[&str] = &[
+    "loop-schedule",
+    "loop-schedules",
+    "loop-schedule-show",
+    "loop-schedule-revoke",
+    "loop-context",
+    "loop-source",
+    "loop-activate",
+    "loop-finish",
     "team-members",
     "team-tasks",
     "team-task-create",
@@ -152,6 +160,38 @@ impl TeamTaskNoteKind {
 
 #[derive(Debug)]
 enum ActorCommand {
+    LoopSchedule {
+        member_id: Option<String>,
+        request: agenthub_agent_domain::loop_scheduling::LoopScheduleRequest,
+    },
+    LoopSchedules {
+        member_id: Option<String>,
+        after_registration_id: Option<String>,
+        limit: u32,
+    },
+    LoopScheduleShow {
+        registration_id: String,
+        after_firing_cursor: Option<i64>,
+        limit: u32,
+    },
+    LoopScheduleRevoke {
+        registration_id: String,
+    },
+    LoopSource {
+        source_id: String,
+    },
+    LoopContext {
+        after_source_id: Option<String>,
+        limit: u32,
+    },
+    LoopActivate {
+        member_id: String,
+        source_key: String,
+        task_id: Option<String>,
+    },
+    LoopFinish {
+        outcome: agenthub_agent_domain::loop_runtime::LoopOutcome,
+    },
     Help {
         topic: Option<&'static str>,
     },
@@ -326,6 +366,7 @@ mod help;
 mod output;
 mod parse;
 mod runtime;
+mod scheduling;
 mod upload;
 
 use self::execute::run_actor_command;
@@ -3919,5 +3960,65 @@ mod tests {
         }
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, previous_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, previous_agent);
+    }
+    #[test]
+    fn loop_work_commands_require_bounded_arguments_and_reject_identity_overrides() {
+        for arguments in [
+            vec!["loop-context", "--limit", "0"],
+            vec!["loop-context", "--limit", "257"],
+            vec!["loop-context", "--limit", "2", "--limit", "3"],
+            vec!["loop-activate", "--member-id", "reviewer"],
+            vec![
+                "loop-activate",
+                "--member-id",
+                "a",
+                "--member-id",
+                "b",
+                "--source-key",
+                "request",
+            ],
+            vec!["loop-source"],
+            vec!["loop-source", "--source-id", "one", "--source-id", "two"],
+        ] {
+            let args = arguments.into_iter().map(String::from).collect::<Vec<_>>();
+            assert!(
+                parse_actor_command(&args, &mut ActorOutputMode::Default).is_err(),
+                "{args:?}"
+            );
+        }
+        for command in ["loop-context", "loop-source", "loop-activate"] {
+            for flag in ["--actor-id", "--run-id", "--activation-id", "--team-id"] {
+                let args = [command, flag, "forged"].map(String::from);
+                assert!(parse_actor_command(&args, &mut ActorOutputMode::Default).is_err());
+            }
+            let help = super::help::actor_topic_usage(command);
+            assert!(help.contains("Usage:"), "missing help for {command}");
+        }
+        let args = [
+            "loop-activate",
+            "--member-id",
+            "reviewer",
+            "--source-key",
+            "review:1",
+            "--task-id",
+            "task:1",
+        ]
+        .map(String::from);
+        assert!(matches!(
+            parse_actor_command(&args, &mut ActorOutputMode::Default).unwrap(),
+            ActorCommand::LoopActivate { .. }
+        ));
+        let args = [
+            "loop-context",
+            "--after-source-id",
+            "source:1",
+            "--limit",
+            "1",
+        ]
+        .map(String::from);
+        assert!(matches!(
+            parse_actor_command(&args, &mut ActorOutputMode::Default).unwrap(),
+            ActorCommand::LoopContext { limit: 1, .. }
+        ));
     }
 }
