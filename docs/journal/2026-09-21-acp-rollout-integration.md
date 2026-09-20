@@ -57,13 +57,33 @@ The first pass caught lazy event-directory creation; the implementation now crea
 the witness. A parallel-fork test now waits for the transient CLOEXEC descriptor reference to close,
 without weakening the exclusive-lock requirement.
 
-Installed-adapter acceptance, assembled-product checks and recovery-head CI remain pending. No local
-Bazel command or build configuration change is part of this checkpoint.
+Installed-runtime qualification found two concrete adapter failures. A fresh thread was configured
+through `thread/resume` before any rollout existed. Settings now use `thread/settings/update` and
+commit local state only after acceptance. Also, awaiting a complete prompt inside the ACP dispatch
+handler prevented cancellation notifications from reaching a pending approval. Submission remains
+ordered, while completion waits outside that handler.
+
+The adapter's 155 unit cases cover the live-settings regression and existing cancellation state
+transitions. The executable qualification below uses the built adapter and official Codex 0.150.1
+with an isolated profile and local Responses server. It covers fresh configuration, native tools,
+cross-process session loading/history, canceling a pending approval and ignoring its late response.
+No paid model or real upstream account is used.
+
+```sh
+cargo test -p agenthub-codex-acp-runtime --lib
+python3 scripts/verify_real_acp_runtime.py --adapter /path/to/agenthubd --codex /path/to/codex
+cargo test -p agenthub --lib concurrent_terminal_status_update_and_handoff_do_not_both_apply
+```
+
+Recovery-head CI exposed one older concurrent-task fixture that omitted loop observer tables. It now
+uses production migrations with the same multi-connection WAL pool and race assertion. A final
+terminal update checks those observers whichever contender wins. The focused regression passes.
+Other applicable recovery-head checks passed. Assembled-product checks and final-head CI remain
+pending. No local Bazel command or build configuration change is part of this checkpoint.
 
 ## Follow-Ups
 
 - Retain fencing for legacy ownership, missing evidence or a killed guardian; no operator assertion
   or database-delete shortcut is an accepted recovery path.
-- Prove the installed ACP adapter path with a reproducible local provider fixture.
 - Exercise scoped tools, events and retained browser history together.
 - Update user/operator guidance to the actual supported behavior and finalize current-head CI.

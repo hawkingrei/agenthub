@@ -313,6 +313,12 @@ is bound and the activation is running. Provider reasoning/tool rounds stay insi
 A completed turn without a recorded outcome is interrupted and cleaned up. Legacy idle controllers,
 reminders, and mailbox prompt hints cannot inject another turn into this path.
 
+The Codex adapter configures a live thread through `thread/settings/update`; a fresh thread does
+not yet have the persisted rollout required by `thread/resume`. Local settings change only after
+the runtime accepts them. Prompt submission preserves receive order, but waiting for its stop
+reason runs outside the ACP dispatch loop. Cancellation must remain reachable during a pending
+permission request and invalidate that request before reporting the canceled prompt result.
+
 The entry points to `agenthub actor loop-context` and `loop-source` for durable sources,
 `team-members`, `team-tasks`, and `inbox` for current canonical state, and `agenthub actor loop-finish --outcome-file <path> --json` for the bounded outcome.
 These commands recover the signed stable mailbox; they do not scan historical run partitions.
@@ -347,6 +353,7 @@ identity, active mailbox, membership, owner, generation, lease, and operation-gu
 | Compatibility | Legacy watchdog/reminders and manual startup unchanged; loop run not startup-canceled |
 | Context | Fresh/resumed task and inbox recovery without new task attempts or mailbox rotation |
 | Local adapter | Guardian receipt, detached descendants, strict resume/profile negotiation, one entry turn |
+| Installed Codex | `scripts/verify_real_acp_runtime.py`: official 0.150.1, live settings, native commands, persisted load/history, canceled permission and ignored late approval |
 | Actor control | Credential rotation, stale owner/generation rejection, disconnect ownership, finish replay |
 | MCP bootstrap | Bound launch/session required; startup initialization/discovery cannot perform a journaled tool send |
 | Configuration | Offline creation/copy, preflight and authority, disconnect/start exclusion, concurrent removal/intake, claim/reply/permission guards |

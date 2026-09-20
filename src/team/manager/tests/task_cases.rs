@@ -1306,4 +1306,13 @@ async fn concurrent_terminal_status_update_and_handoff_do_not_both_apply() {
         released_at.is_some(),
         "the generation-1 goal lease must be released by whichever operation won"
     );
+    // Exercise terminal observers even when handoff wins the race.
+    manager
+        .update_task(
+            &task_id,
+            Some(TeamTaskStatus::Completed),
+            TeamTaskAssignmentUpdate::Unchanged,
+        )
+        .await
+        .expect("complete task after concurrent operations");
 }

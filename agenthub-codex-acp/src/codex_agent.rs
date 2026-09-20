@@ -918,16 +918,23 @@ impl CodexAgent {
         Ok(CloseSessionResponse::new())
     }
 
-    pub(crate) async fn prompt(&self, request: PromptRequest) -> Result<PromptResponse, Error> {
+    pub(crate) async fn start_prompt(
+        &self,
+        request: PromptRequest,
+    ) -> Result<impl Future<Output = Result<PromptResponse, Error>> + 'static, Error> {
         info!("Processing prompt for session: {}", request.session_id);
         // Check before sending if authentication was successful or not
         self.check_auth().await?;
 
         // Get the session state
         let thread = self.get_thread(&request.session_id)?;
-        let stop_reason = thread.prompt(request).await?;
-
-        Ok(PromptResponse::new(stop_reason))
+        let completion = thread.start_prompt(request).await?;
+        Ok(async move {
+            let stop_reason = completion
+                .await
+                .map_err(|error| Error::internal_error().data(error.to_string()))??;
+            Ok(PromptResponse::new(stop_reason))
+        })
     }
 
     pub(crate) async fn cancel(&self, args: CancelNotification) -> Result<(), Error> {

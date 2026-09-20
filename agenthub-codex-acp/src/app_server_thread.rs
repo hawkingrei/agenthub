@@ -14,9 +14,10 @@ use codex_app_server_protocol::{
     ReviewStartResponse, ReviewTarget as AppReviewTarget, SandboxMode, ServerNotification,
     ServerRequest, ThreadCompactStartParams, ThreadCompactStartResponse, ThreadItem,
     ThreadResumeParams, ThreadResumeResponse, ThreadRollbackParams, ThreadRollbackResponse,
-    ThreadStartParams, ThreadStartResponse, ThreadStatus, Turn, TurnError as AppServerTurnError,
-    TurnInterruptParams, TurnInterruptResponse, TurnStartParams, TurnStartResponse, TurnStatus,
-    TurnSteerParams, TurnSteerResponse,
+    ThreadSettingsUpdateParams, ThreadSettingsUpdateResponse, ThreadStartParams,
+    ThreadStartResponse, ThreadStatus, Turn, TurnError as AppServerTurnError, TurnInterruptParams,
+    TurnInterruptResponse, TurnStartParams, TurnStartResponse, TurnStatus, TurnSteerParams,
+    TurnSteerResponse,
 };
 use codex_core::config::Config;
 use codex_protocol::approvals::{
@@ -711,12 +712,12 @@ impl AppServerCodexThread {
             }
             if args.workspace_roots.is_some() {
                 warn!(
-                    "ignoring ThreadSettings.workspace_roots because app-server resume params do not expose runtime workspace roots through the ACP adapter yet"
+                    "ignoring ThreadSettings.workspace_roots because app-server settings updates do not expose runtime workspace roots through the ACP adapter yet"
                 );
             }
             if args.profile_workspace_roots.is_some() {
                 warn!(
-                    "ignoring ThreadSettings.profile_workspace_roots because app-server resume params do not expose profile workspace roots through the ACP adapter yet"
+                    "ignoring ThreadSettings.profile_workspace_roots because app-server settings updates do not expose profile workspace roots through the ACP adapter yet"
                 );
             }
             if args.active_permission_profile.is_some() {
@@ -726,12 +727,12 @@ impl AppServerCodexThread {
             }
             if args.windows_sandbox_level.is_some() {
                 warn!(
-                    "ignoring ThreadSettings.windows_sandbox_level because the ACP adapter does not currently project Windows sandbox level into app-server resume params"
+                    "ignoring ThreadSettings.windows_sandbox_level because the ACP adapter does not currently project Windows sandbox level into app-server settings updates"
                 );
             }
             if args.collaboration_mode.is_some() {
                 warn!(
-                    "ignoring ThreadSettings.collaboration_mode because the ACP adapter does not currently project collaboration mode into app-server resume params"
+                    "ignoring ThreadSettings.collaboration_mode because the ACP adapter does not currently project collaboration mode into app-server settings updates"
                 );
             }
 
@@ -740,17 +741,32 @@ impl AppServerCodexThread {
             (updated_config, request_id, thread_id)
         };
 
-        let _response: ThreadResumeResponse = self
+        // A fresh thread has no persisted rollout until its first turn. Update the live thread
+        // instead of trying to load history, including when setting the initial ACP mode/model.
+        let _response: ThreadSettingsUpdateResponse = self
             .request_handle
-            .request_typed(ClientRequest::ThreadResume {
+            .request_typed(ClientRequest::ThreadSettingsUpdate {
                 request_id,
-                params: thread_resume_params_from_config(
-                    &updated_config,
-                    &SessionId::new(thread_id),
-                )
-                .map_err(|err| {
-                    CodexErr::Fatal(format!("failed to serialize Codex thread config: {err}"))
-                })?,
+                params: ThreadSettingsUpdateParams {
+                    thread_id,
+                    cwd: Some(updated_config.cwd.to_path_buf()),
+                    approval_policy: Some(
+                        updated_config.permissions.approval_policy.value().into(),
+                    ),
+                    approvals_reviewer: Some(updated_config.approvals_reviewer.into()),
+                    sandbox_policy: Some(
+                        updated_config
+                            .permissions
+                            .legacy_sandbox_policy(updated_config.cwd.as_path())
+                            .into(),
+                    ),
+                    model: updated_config.model.clone(),
+                    service_tier: Some(updated_config.service_tier.clone()),
+                    effort: updated_config.model_reasoning_effort.clone(),
+                    summary: updated_config.model_reasoning_summary,
+                    personality: updated_config.personality,
+                    ..ThreadSettingsUpdateParams::default()
+                },
             })
             .await
             .map_err(typed_request_error_to_codex)?;
@@ -3439,6 +3455,90 @@ mod tests {
     use codex_utils_absolute_path::AbsolutePathBuf;
     use std::fs;
     use uuid::Uuid;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fresh_thread_settings_update_uses_live_thread_and_commits_only_on_success() {
+        use crate::stdio_app_server::tests::{initialized_app_server, resolve_fake_runtime};
+        use codex_protocol::protocol::{AskForApproval, SandboxPolicy, ThreadSettingsOverrides};
+
+        for succeeds in [true, false] {
+            let directory = tempfile::tempdir().unwrap();
+            let response = if succeeds {
+                r#"{"id":1,"result":{}}"#
+            } else {
+                r#"{"id":1,"error":{"code":-32602,"message":"settings rejected"}}"#
+            };
+            let script = r#"
+IFS= read -r request
+printf '%s\n' "$request" > request.json
+case "$request" in
+  *'"method":"thread/settings/update"'*) printf '%s\n' 'RESPONSE' ;;
+  *) printf '%s\n' '{"id":1,"error":{"code":-32600,"message":"no rollout found for fresh thread"}}' ;;
+esac
+cat >/dev/null
+"#.replace("RESPONSE", response);
+            let runtime = resolve_fake_runtime(&directory, &initialized_app_server(&script)).await;
+            let config = ConfigBuilder::default()
+                .codex_home(directory.path().to_path_buf())
+                .fallback_cwd(Some(directory.path().to_path_buf()))
+                .build()
+                .await
+                .unwrap();
+            let original_model = config.model.clone();
+            let client = start_client(&config, &runtime).await.unwrap();
+            let handle = client.request_handle();
+            let thread = AppServerCodexThread::new(
+                client,
+                handle,
+                "fresh-unpersisted".into(),
+                config,
+                1,
+                ThreadStatus::Idle,
+                vec![],
+            );
+            let result = thread
+                .submit(
+                    "config".into(),
+                    Op::ThreadSettings {
+                        thread_settings: ThreadSettingsOverrides {
+                            approval_policy: Some(AskForApproval::Never),
+                            sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
+                            model: Some("gpt-5.1-codex-mini".into()),
+                            effort: Some(Some(ReasoningEffort::Low)),
+                            service_tier: Some(None),
+                            ..Default::default()
+                        },
+                    },
+                )
+                .await;
+            assert_eq!(result.is_ok(), succeeds, "{result:?}");
+            let request: serde_json::Value =
+                serde_json::from_slice(&fs::read(directory.path().join("request.json")).unwrap())
+                    .unwrap();
+            assert_eq!(request["method"], "thread/settings/update");
+            assert_eq!(request["params"]["threadId"], "fresh-unpersisted");
+            assert_eq!(request["params"]["model"], "gpt-5.1-codex-mini");
+            assert_eq!(request["params"]["approvalPolicy"], "never");
+            assert_eq!(
+                request["params"]["sandboxPolicy"]["type"],
+                "dangerFullAccess"
+            );
+            assert_eq!(request["params"]["effort"], "low");
+            assert!(request["params"].get("serviceTier").unwrap().is_null());
+            let state = thread.state.lock().await;
+            assert_eq!(
+                state.config.model,
+                if succeeds {
+                    Some("gpt-5.1-codex-mini".into())
+                } else {
+                    original_model
+                }
+            );
+            drop(state);
+            thread.shutdown_thread().await.unwrap();
+        }
+    }
 
     async fn test_state_with_active_turn(active_turn: Option<ActiveTurn>) -> AppServerState {
         let codex_home =
