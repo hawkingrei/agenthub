@@ -62,9 +62,11 @@ contract below remains authoritative until the loop lifecycle is implemented.
   reply. Neither is a crash, a cancellation, or a permission denial.
 - A nested Rara subteam executes inside the outer member's activation. Internal subagents do not
   create AgentHub activations, Team members, or mailbox targets.
-- Rara `event_id`/`sequence` cursors and request ack states become adapter fields of the
-  activation trace, so `agenthub doctor agent-trace` can attribute a stalled loop to admission,
-  the Rara turn, approvals, event translation, or persistence.
+- Activation detail and `agenthub doctor agent-trace` join the selected local session to a
+  bounded native runtime snapshot: committed sequence/gap, request kind/status and safe ACK
+  identifiers. Finished and interrupted executions retain this evidence independently of
+  process liveness. ACK sequence never substitutes for the committed event cursor. Missing
+  ownership yields no runtime snapshot, and no other session is used as a fallback.
 
 ### 1) Provider / Placement / Protocol Axes
 

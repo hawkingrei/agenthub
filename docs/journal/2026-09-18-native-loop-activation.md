@@ -55,6 +55,24 @@ cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
 ## Follow-Ups
 
 Full Card/task context, stable task memory prefixes, controlled tool sources, semantic guard outcome mapping,
-safe activation trace enrichment, and real leader/worker execution remain open. The
+and real leader/worker execution remain open. The
 [canonical contract](../features/rara-direct-integration.md) and [TODO](../todo.md) track
-these boundaries. Slice 17 remains draft PR #1164 pending its complete CI/review closure.
+these boundaries. Slice 17 PR #1164 passes all current-head CI checks, including Bazel
+coverage, after correcting the member auto-start fixture race.
+
+## Native Trace Checkpoint
+
+Activation detail and doctor now join only the selected local session to the existing bounded
+native history. The snapshot carries stream gaps and uncertain receipts after exit without
+exposing event bodies or deriving success from ACK cursors. Doctor uses a read-only connection
+and tolerates legacy event databases without native tables. Public detail retains the existing
+capability, Team access and local-session ownership checks. All seven activation diagnostic
+tests and five history API tests pass, including finished/interrupted native history,
+unknown receipts, legacy event databases, redaction and authorization. Root library/tests
+and diagnostics Clippy pass with warnings denied.
+
+```bash
+cargo test --offline --locked -p agenthub-diagnostics loop_trace::
+cargo test --offline --locked -p agenthub --lib loop_history_api_
+cargo clippy --offline --locked -p agenthub --lib --tests -p agenthub-diagnostics -- -D warnings
+```

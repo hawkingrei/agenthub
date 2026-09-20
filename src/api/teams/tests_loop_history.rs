@@ -60,6 +60,66 @@ async fn history_api_fixture(state: &AppState) -> (String, String, Vec<String>) 
 }
 
 #[tokio::test]
+async fn loop_history_api_joins_only_the_selected_native_session_after_exit() {
+    use agenthub_db::runtime_events::{
+        RuntimeEventIdentity, RuntimeEventStore, RuntimeRequestIntent, RuntimeRequestKind,
+    };
+    let state = build_test_state().await;
+    let (team, owner, activations) = history_api_fixture(&state).await;
+    sqlx::query("INSERT INTO agent_sessions(id, agent_id, status, started_at, ended_at) VALUES ('native-local', 'planner', 'exited', 100, 101)")
+        .execute(&state.db).await.unwrap();
+    sqlx::query("UPDATE loop_activations SET session_id = 'native-local', state = 'interrupted', finished_at = 101 WHERE id = ?")
+        .bind(&activations[0]).execute(&state.db).await.unwrap();
+    let pool = state.agents.test_event_pool_for_agent("planner").await.unwrap();
+    let runtime = RuntimeEventStore::bind(pool.clone(), "native-local", "runtime")
+        .await.unwrap();
+    runtime.bind_stream("native-session").await.unwrap().persist(RuntimeEventIdentity {
+        event_id: "private-event-id", sequence: 1, fingerprint: &[7; 32],
+    }, &[]).await.unwrap();
+    runtime.prepare_request(RuntimeRequestIntent {
+        request_id: "uncertain-entry", kind: RuntimeRequestKind::Prompt,
+        target_session_id: Some("native-session"), expected_turn_id: None,
+    }, 100).await.unwrap();
+    runtime.mark_request_sent("uncertain-entry", 100).await.unwrap();
+    runtime.close(101).await.unwrap();
+    RuntimeEventStore::bind(pool, "another-local", "foreign-runtime")
+        .await.unwrap().bind_stream("foreign-native").await.unwrap();
+    let app = super::router(state.clone());
+    for (index, id) in activations.iter().enumerate() {
+        let response = app.clone().oneshot(build_json_request(
+            Method::GET, &format!("/{team}/members/planner/loop/activations/{id}"),
+            Some(&owner), None,
+        )).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        let detail: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(detail["id"], *id);
+        if index == 0 {
+            assert_eq!(detail["runtime"]["local_session_id"], "native-local");
+            assert_eq!(detail["runtime"]["closed"], true);
+            assert_eq!(detail["runtime"]["streams"][0]["cursor"]["sequence"], 1);
+            assert_eq!(detail["runtime"]["receipts"][0]["status"], "outcome_unknown");
+        } else {
+            assert!(detail["runtime"].is_null());
+        }
+        let text = std::str::from_utf8(&bytes).unwrap();
+        for private in ["private-event-id", "foreign-runtime", "foreign-native", "fingerprint"] {
+            assert!(!text.contains(private));
+        }
+    }
+    // A local launch ID cannot give an unrelated actor access to native history.
+    sqlx::query("UPDATE agent_sessions SET agent_id = 'reviewer' WHERE id = 'native-local'")
+        .execute(&state.db).await.unwrap();
+    let response = app.oneshot(build_json_request(
+        Method::GET, &format!("/{team}/members/planner/loop/activations/{}", activations[0]),
+        Some(&owner), None,
+    )).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let detail: Value = serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    assert!(detail["runtime"].is_null());
+}
+
+#[tokio::test]
 async fn loop_history_tracing_correlates_lifecycle_without_private_inputs() {
     use agenthub_agent_domain::loop_runtime::{
         LoopAdmission, LoopCleanupDisposition, LoopLimits, LoopOutcome, LoopOutcomeKind,
