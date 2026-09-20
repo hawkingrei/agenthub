@@ -43,7 +43,8 @@ and protocol all-target Clippy pass with warnings denied.
 
 The opt-in process fixture separately passes against the pinned native binary: prompt and
 inline skill registration are accepted and semantic shutdown completes without a model call.
-This proves source transport compatibility, not yet a real leader/worker activation.
+This source-only checkpoint proves transport compatibility; the later process checkpoint below
+adds the real leader/worker activation cycle.
 
 ```bash
 cargo test --locked --offline -p agenthub-rara
@@ -54,10 +55,12 @@ cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
 
 ## Follow-Ups
 
-Controlled tool sources, semantic guard outcome mapping, and real leader/worker execution remain open. The
+Controlled tool sources, semantic guard outcome mapping and final
+approval capability validation remain open. The
 [canonical contract](../features/rara-direct-integration.md) and [TODO](../todo.md) track
 these boundaries. Slice 17 PR #1164 passes all current-head CI checks, including Bazel
-coverage, after correcting the member auto-start fixture race.
+coverage, after correcting the member auto-start fixture race, and was merged by the user on
+2026-09-20 into its dependency branch.
 
 ## Native Trace Checkpoint
 
@@ -86,10 +89,36 @@ scope. Native children inherit only the outer activation's authority. Two databa
 pass for reopen/follow-up continuity, new tasks, cascade cleanup and fence/scope rejection.
 Six native activation tests pass, including mutation during startup and a child actor-ID spoof
 rejected through the signed control CLI. Root library/tests and database Clippy pass with
-warnings denied. This still does not prove an actual native internal subteam execution.
+warnings denied. The later process checkpoint below adds actual native internal child execution.
 
 ```bash
 cargo test --offline --locked -p agenthub-db loop_task_context_
 cargo test --offline --locked -p agenthub --lib native_loop_
 cargo clippy --offline --locked -p agenthub --lib --tests -p agenthub-db -- -D warnings
 ```
+
+## Native Process Cycle Checkpoint (2026-09-20)
+
+An opt-in fixture now drives the pinned native process through a local scripted model and the
+real signed actor CLI. The coordinator dispatches and exits, the worker recovers addressed
+task/message sources, records evidence and exits, then a fresh coordinator reviews and accepts
+the task. Each activation receives one registered entry and one live shell approval. The test
+also checks fresh session identity, stable coordinator mailbox identity, causal trigger links,
+worker self-acceptance rejection, credential cleanup and closed native history with accepted
+approval receipts and gap-free committed cursors. The extended cycle passes without an external
+provider: each of the three activations also spawns a native internal child that creates a local
+task. Captured model requests prove all three child tool results; the outer database retains
+exactly the original member identities and one canonical task. Actor-ID spoof attempts fail
+through the signed CLI. Internal tasks and native children acquire no outer roster or task identity. Root library/test Clippy also passes with warnings denied.
+
+The fixture uses absolute script paths because the coordinator has an isolated work directory.
+Execution and approval polling are separately polled futures so one does not prevent the other
+from releasing a database transaction. The script is embedded in a Rust module and follows the
+existing Bazel source glob without changing build configuration.
+
+```bash
+cargo test --offline --locked -p agenthub --lib agent::manager::loop_launch::tests::native_process::native_loop_process_dispatch_report_and_acceptance_survive_each_exit -- --ignored --exact --nocapture
+cargo clippy --offline --locked -p agenthub --lib --tests -- -D warnings
+```
+
+Set `AGENTHUB_RARA_TEST_BINARY` to the pinned binary. Model requests remain on localhost.

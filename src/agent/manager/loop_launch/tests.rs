@@ -13,6 +13,7 @@ mod browser;
 mod mcp;
 mod mem;
 mod native;
+mod native_process;
 mod roles;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3

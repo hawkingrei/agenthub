@@ -328,8 +328,8 @@ The pinned build has no cross-process resume, durable approval recovery, control
 registration, or semantic-guard event contract. Resume policies and configured native MCP/App
 bindings therefore fail preflight. Loop launches disable ambient extension discovery and native
 memory facilities. They never replace missing controlled sources with ambient configuration.
-Full Card/task source binding, stable task memory prefixes, semantic outcome adaptation and
-activation trace enrichment remain separate unfinished parts of this integration.
+Card/task source binding, stable task memory prefixes and activation trace enrichment are
+implemented. Controlled tool sources and semantic outcome adaptation remain unfinished.
 
 ### 2) Configuration
 
