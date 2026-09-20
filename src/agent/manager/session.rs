@@ -293,7 +293,7 @@ impl AgentManager {
                     tracing::error!(agent_id, session_id, %error, "exited session cleanup remains unverified");
                     return Some(session_id);
                 }
-                let success = super::rara::exit_success(status.success(), direct.as_ref()).await;
+                let success = super::rara::exit_success(status.success(), direct.as_deref()).await;
                 Self::finalize_process_exit(
                     &self.db,
                     &self.event_dbs,
@@ -980,6 +980,7 @@ impl AgentManager {
                         stdin,
                     },
                     config,
+                    output_tx.clone(),
                 )
                 .await
             }

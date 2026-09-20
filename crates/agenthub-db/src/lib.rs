@@ -22,6 +22,7 @@ pub mod loop_runtime;
 pub mod mcp_operations;
 pub mod message_body_outbox;
 pub mod object_uploads;
+pub mod runtime_events;
 mod time_triggers;
 
 pub use time_triggers::migrate_time_triggers;
@@ -2310,6 +2311,7 @@ async fn init_agent_event_db_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     .await?;
     migrate_per_agent_events_message_column_to_blob(pool).await?;
     ensure_per_agent_event_db_indexes(pool).await?;
+    runtime_events::migrate(pool).await?;
     Ok(())
 }
 

@@ -163,6 +163,7 @@ pub struct SendInputRequest {
     pub input: String,
     pub message_id: Option<String>,
     pub session_id: Option<String>,
+    pub native_input: Option<agenthub_rara::InputTarget>,
     #[serde(default)]
     pub images: Vec<SendInputImageRequest>,
 }
@@ -247,6 +248,10 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}", delete(delete_agent))
         .route("/{id}/events", get(list_events))
         .route("/{id}/events/{event_id}", get(get_event))
+        .route(
+            "/{id}/sessions/{session_id}/runtime",
+            get(get_runtime_history),
+        )
         .route("/{id}/code_mode", post(set_code_mode))
         .route(
             "/{id}/codex_acp_default_mode",
@@ -535,12 +540,13 @@ async fn send_input(
     let session_id = normalize_optional_request_field("session_id", payload.session_id)?;
     match state
         .agents
-        .send_input_with_images(
+        .send_input_with_native_target(
             &agent_id,
             &input,
             &images,
             message_id.as_deref(),
             session_id.as_deref(),
+            payload.native_input.as_ref(),
         )
         .await
     {
@@ -548,7 +554,11 @@ async fn send_input(
         Err(err) => {
             if let Some(send_error) = err.downcast_ref::<AgentSendInputError>() {
                 return match send_error {
-                    AgentSendInputError::SessionMismatch { .. } => {
+                    AgentSendInputError::SessionMismatch { .. }
+                    | AgentSendInputError::NativeInputMismatch
+                    | AgentSendInputError::NativeInputRequired
+                    | AgentSendInputError::NativeRequestReused { .. }
+                    | AgentSendInputError::NativeInputNotAccepted { .. } => {
                         Err(ApiError::conflict(&err.to_string()))
                     }
                     AgentSendInputError::MultimodalUnsupported => {
@@ -768,6 +778,42 @@ async fn list_events(
             .await?
     };
     Ok(Json(events))
+}
+
+#[derive(Deserialize)]
+struct RuntimeHistoryQuery {
+    limit: Option<i64>,
+    before_request_id: Option<String>,
+}
+
+async fn get_runtime_history(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((agent_id, session_id)): Path<(String, String)>,
+    Query(query): Query<RuntimeHistoryQuery>,
+) -> Result<Json<agenthub_db::runtime_events::RuntimeHistory>, ApiError> {
+    let _user = require_capability(&headers, &state, UserCapability::RuntimeInspect).await?;
+    let history = state
+        .agents
+        .runtime_history(
+            &agent_id,
+            &session_id,
+            query.limit.unwrap_or(50),
+            query.before_request_id.as_deref(),
+        )
+        .await
+        .map_err(|error| {
+            if matches!(
+                error.downcast_ref::<agenthub_db::runtime_events::RuntimeEventError>(),
+                Some(agenthub_db::runtime_events::RuntimeEventError::InvalidIdentity)
+            ) {
+                ApiError::bad_request("invalid runtime history cursor")
+            } else {
+                error.into()
+            }
+        })?
+        .ok_or_else(|| ApiError::not_found("runtime history not found"))?;
+    Ok(Json(history))
 }
 
 async fn get_event(
@@ -1463,6 +1509,7 @@ fn parse_optional_start_agent_request(body: Bytes) -> Result<Option<StartAgentRe
 
 #[cfg(test)]
 mod tests {
+    mod runtime_history;
     use std::collections::HashSet;
     use std::path::Path;
     use std::process::Command as StdCommand;
@@ -2363,6 +2410,7 @@ mod tests {
             "/missing-agent/.well-known/agent-card",
             "/missing-agent/events",
             "/missing-agent/events/1",
+            "/missing-agent/sessions/missing-session/runtime",
             "/missing-agent/permissions",
         ];
         for route in denied_routes {

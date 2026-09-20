@@ -16,8 +16,12 @@ boundaries.
 
 The dedicated configuration, bounded wire codec, connection lifecycle and managed
 local launch/cleanup are implemented in `agenthub-config`, `agenthub-rara` and the
-existing agent manager. Durable request/event mapping and loop admission remain
-the separate active implementation gates tracked in [the transition TODO](../todo.md).
+existing agent manager. The per-agent event database also provides durable control
+receipts, event deduplication and contiguous replay cursors. Managed event consumption,
+prompt/follow-up submission, fenced user answers, live permissions and turn cancellation
+are integrated. Authorized receipt/cursor history remains available after exit, and startup
+retires abandoned transport ownership. Loop admission remains an implementation gate tracked
+in [the transition TODO](../todo.md).
 
 - Local and remote AgentHub placement of a Rara runtime process.
 - Rara app-server / runtime-control interaction as the only supported integration path.
@@ -292,12 +296,14 @@ terminal state is recorded. Both exit watchers and live-session lookups require
 semantic completion in addition to process success for this transport. The local
 launch ID and negotiated runtime ID remain separate.
 
-This transport slice starts an app-server without creating a provider session or
-submitting work. User input is explicitly unavailable until durable request/event
-mapping is installed; unexpected runtime events fail visibly rather than being
-discarded. Remote placement, Team binding, legacy idle loops and durable loop
-admission are rejected. These gates prevent unsupported work from entering the
-ordinary raw-stdin or ACP paths.
+Managed startup creates one native session after the handshake. Its durable creation
+ACK establishes stream ownership before initial events are consumed. Received events
+commit history and cursor before broadcast; exit observation waits for that drain as
+well as semantic transport completion. Managed text input maps idle submissions to prompts
+and active-turn submissions to ordered follow-ups. A pending user question requires its
+explicit runtime/session/waiting-turn fence. Image input is unsupported. Remote placement,
+Team binding, legacy idle loops and durable loop admission remain rejected. Live plan/shell
+callbacks and fenced cancel/interrupt controls reuse the existing permission and control surfaces.
 
 ### 2) Configuration
 
@@ -378,6 +384,54 @@ Contract details:
 - Re-sending a request after an unknown outcome must reuse either the original `request_id` or an
   explicit `idempotency_key`; Rara must not apply the same accepted request twice.
 
+The durable receipt boundary is the owning agent's event database. A request records
+its method and target before dispatch, then obtains a single process-local send permit
+only after committing send intent with SQLite `synchronous = FULL`. Preparing the same
+identity or obtaining a second send permit is rejected. Receipt preparation is bounded
+to 4,096 identities per runtime; the negotiated transport limit can be lower.
+
+Receipts distinguish `prepared`, `sent`, `accepted`, `queued`, `rejected`,
+`outcome_unknown` and `not_sent`. Closing an owned runtime retires unsent preparations
+and marks unresolved sends unknown. A correlated late ACK can resolve uncertainty but
+does not authorize another send. Creation ACK and native stream ownership commit
+together; ACK sequence information never advances the persisted event cursor. Cancel
+and interrupt ACKs must name the fenced turn; pending-input answers may start a new turn.
+Receipt metadata contains safe identifiers, method/status, timestamps and an allowlisted
+rejection code, without request bodies or provider rejection prose. No control-request
+outcome authorizes an automatic replacement send.
+
+Managed user input atomically persists the attempted conversation message and prepared
+receipt under the caller's message ID before sending. A daemon-owned task finishes receipt
+persistence even if the HTTP caller disconnects. Reusing the ID cannot create another
+attempt or send. The conversation separately displays sending, accepted, queued, rejected,
+not-sent or unknown delivery; acceptance is not execution completion. Receipt updates match
+local session, runtime, native session and request ID, including out-of-order history pages.
+
+The input API accepts an optional `native_input` object with `runtime_id`, `session_id` and
+`turn_id`. Question cards carry their original target through both web workbenches. A stale
+native answer is never retargeted to a replacement local session, and malformed native cards
+cannot fall back to ordinary text input. Untargeted text cannot answer a pending question
+or permission. Existing ACP callers retain their input format and session-retry behavior.
+
+The typed control mapper validates target, turn and encoded size before dispatch.
+Native shell rejection is explicitly represented as `Deny`, serialized to the pinned
+protocol's `suggestion` decision, which rejects execution and resumes reasoning.
+
+Event projection uses the outer owned session, not optional provenance, and computes
+a SHA-256 fingerprint over recursively sorted JSON object keys. Assistant deltas retain
+contiguous message identities. Tool output follows the original open call across an
+approval answer's new turn; later reuse of a completed call ID creates a new card.
+After an owned shell approval is granted, the native repeated start event updates the
+original card once in the answer turn. Other duplicate starts remain conflicts. A native
+plan answer completes its interaction card without requiring a tool-result event.
+Terminal or discarded turns fail unfinished tool cards and retire their identities;
+an old turn's cleanup cannot retire calls owned by its successor.
+Question cards carry runtime, native session and waiting turn for reply validation.
+An approval notice alone never creates a live callback. Projection state is installed
+only after its event transaction commits; duplicates and failed transactions cannot
+advance chunk or tool state. Diagnostic/source events expose allowlisted identifiers,
+counts and statuses, while conversation bodies remain attributed history content.
+
 ### 5) Approval And Permission
 
 - Rara owns local sandbox and tool approval semantics.
@@ -386,6 +440,17 @@ Contract details:
   option; it must not silently kill or restart the Rara runtime.
 - Team permission-review routing may be reused, but the requester must never review its own Rara
   approval request.
+
+Only a committed pending plan or shell input creates a live permission callback. It retains
+the original tool card and runtime/session/waiting-turn ownership. Explicit option IDs map
+to native decisions; unknown choices and cancellation cannot grant execution. Timeout sends
+one explicit denial while the waiting turn remains owned. Superseded inputs, turn cancellation
+and transport loss expire the callback without answering a replacement turn.
+
+The operator's selected choice and the native control ACK are recorded separately. Rejected
+or uncertain answers never become implicit approval or an automatic retry. Cancel/interrupt
+controls capture their target once and require a matching accepted ACK; they cannot stop a
+successor turn. A transport failure retires the owned runtime through existing supervision.
 
 ### 6) Prompt, Skills, Memory, MCP, And Hooks
 
@@ -439,7 +504,51 @@ Replay contract:
 - AgentHub should store the latest translated Rara sequence in the provider adapter diagnostics so
   `agenthub doctor agent-trace` can explain whether persistence, transport, or rendering is stale.
 
+Event persistence commits the event identity/digest, zero or more normalized history
+rows, their native-event associations and the next contiguous cursor in one transaction.
+An identical replay emits no history rows. Reusing an ID or sequence with different
+content is an error. An out-of-order event returns the missing position without writing
+history or advancing the cursor; the adapter must bound its pending events and recover
+through the negotiated replay mechanism.
+
+A replay response that cannot supply the missing prefix, or whose latest sequence is
+behind the committed cursor, records an explicit incomplete-stream boundary. It cannot
+skip or rewind the cursor. History retention removes transcript associations together
+with their history rows but preserves deduplication receipts and cursors, so replay
+cannot resurrect expired transcript content. Local launch, runtime and native session
+ownership remain distinct; unsolicited events cannot allocate their own binding.
+Reopening this database for a live runtime is not evidence of cross-process native
+session resume or durable approval support.
+
+The managed consumer buffers at most 256 out-of-order events and 8 MiB. It requests
+replay from the committed contiguous cursor without blocking output consumption on
+the ACK. A replay must finish within 30 seconds; absent replay support, overflow,
+identity conflicts and unavailable history fail visibly. Only persisted events update
+live phase/pending-input state and presentation state. The pinned stdio protocol does
+not reconnect across process lifetimes; reopening a cursor alone cannot rebuild live
+projection state or resurrect a pending approval.
+
+An accepted ACK may precede delivery of its referenced events. Before choosing the next
+prompt/follow-up or turn control, the adapter waits for that cursor to commit, bounded by
+the replay timeout. This wait never advances event persistence from ACK metadata alone.
+
+Startup recovery runs under the daemon's exclusive instance lock before new work is admitted.
+It closes earlier local stdio ownership, settles prepared requests as `not_sent` and unresolved
+sends as `outcome_unknown`, and expires live permission callbacks. Recorded ACKs remain intact.
+Native sessions waiting on approval are included even when their status is not `running`.
+This is transport retirement, not evidence that detached processes stopped or tasks finished;
+durable execution reservations retain their separate cleanup fence.
+
 ### 8) Diagnostics
+
+`GET /api/agents/{id}/sessions/{session_id}/runtime` requires `runtime:inspect` and verifies
+the local agent/session association before reading its event database. This release-visible
+endpoint returns the owned runtime, closed state, native stream cursors/gaps and safe typed
+request receipts after process exit. Unknown, foreign and remote sessions return not found.
+It never creates runtime ownership or returns raw input, provider envelopes or rejection prose.
+Receipts use descending request-ID pagination with `before_request_id`, a default limit of 50
+and a maximum of 100. Stream summaries are bounded to 100 with explicit truncation metadata.
+The response is one database read snapshot; ACK updates do not change receipt page ordering.
 
 `agenthub doctor agent-trace` and web debug surfaces should report a Rara provider adapter section
 when the active provider is Rara:
@@ -583,6 +692,7 @@ Phase 1 implementation validation:
 
 ## Source Journals
 
+- [2026-09-18: Direct runtime event storage](../journal/2026-09-18-runtime-event-storage.md)
 - [2026-09-18: Direct runtime transport](../journal/2026-09-18-rara-local-transport.md)
 
 - [2026-06-06-rara-app-server-phase1-contract.md](../journal/2026-06-06-rara-app-server-phase1-contract.md)

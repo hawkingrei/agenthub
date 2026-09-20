@@ -1,3 +1,4 @@
+import type { SubmitRequestUserInput } from "../native_input";
 import type { AcpTerminalActivity } from "../acp";
 import type {
   ExploreGroupConversationItem,
@@ -43,7 +44,7 @@ export type ToolCallBubbleProps = {
   defaultCollapsed?: boolean;
   grouped?: boolean;
   indexLabel?: string;
-  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
+  onSubmitRequestUserInput?: SubmitRequestUserInput;
 };
 
 export type ToolCallGroupBubbleProps = {
@@ -52,7 +53,7 @@ export type ToolCallGroupBubbleProps = {
   runStatus?: string | null;
   autoCollapse?: boolean;
   defaultCollapsed?: boolean;
-  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
+  onSubmitRequestUserInput?: SubmitRequestUserInput;
 };
 
 export type ExploreGroupBubbleProps = {
@@ -61,7 +62,7 @@ export type ExploreGroupBubbleProps = {
   runStatus?: string | null;
   autoCollapse?: boolean;
   defaultCollapsed?: boolean;
-  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
+  onSubmitRequestUserInput?: SubmitRequestUserInput;
 };
 
 export function formatTerminalActivityLabel(activity: AcpTerminalActivity): string {

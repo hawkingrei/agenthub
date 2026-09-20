@@ -123,6 +123,16 @@ pub enum AgentSendInputError {
     SessionMismatch { expected: String, running: String },
     #[error("image input is only supported by local ACP agents")]
     MultimodalUnsupported,
+    #[error("the input request no longer belongs to the active runtime turn")]
+    NativeInputMismatch,
+    #[error("answer the pending runtime question using its input card")]
+    NativeInputRequired,
+    #[error("runtime input {request_id} already has a receipt; it was not resubmitted")]
+    NativeRequestReused { request_id: String },
+    #[error(
+        "runtime input {request_id} has no confirmed acceptance; check its delivery status before sending again"
+    )]
+    NativeInputNotAccepted { request_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -739,10 +749,11 @@ pub struct AgentHandle {
     loop_controller: Option<AgentLoopController>,
 }
 
+#[derive(Clone)]
 pub enum AgentInput {
     Stdin(Arc<Mutex<Option<ChildStdin>>>),
     Acp(AcpHandle),
-    Rara(agenthub_rara::Client),
+    Rara(Arc<rara::RaraHandle>),
 }
 
 struct AgentManagerMembershipView<'a> {
@@ -2229,6 +2240,27 @@ impl AgentManager {
         message_id: Option<&str>,
         expected_session_id: Option<&str>,
     ) -> anyhow::Result<()> {
+        self.send_input_with_native_target(
+            agent_id,
+            input,
+            images,
+            message_id,
+            expected_session_id,
+            None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_input_with_native_target(
+        &self,
+        agent_id: &str,
+        input: &str,
+        images: &[AgentInputImage],
+        message_id: Option<&str>,
+        expected_session_id: Option<&str>,
+        native_input: Option<&agenthub_rara::InputTarget>,
+    ) -> anyhow::Result<()> {
         anyhow::ensure!(
             !self.has_loop_activation(agent_id).await,
             "loop input must arrive through durable work intake"
@@ -2240,10 +2272,12 @@ impl AgentManager {
             message_id,
             expected_session_id,
             None,
+            native_input,
         )
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn send_input_inner(
         &self,
         agent_id: &str,
@@ -2252,9 +2286,14 @@ impl AgentManager {
         message_id: Option<&str>,
         expected_session_id: Option<&str>,
         reminder_source: Option<&super::AgentReminderSource>,
+        native_input: Option<&agenthub_rara::InputTarget>,
     ) -> anyhow::Result<()> {
         let agent = self.get_agent(agent_id).await?;
         if let Some(target_node_id) = agent.target_node_id.as_deref() {
+            anyhow::ensure!(
+                native_input.is_none(),
+                AgentSendInputError::NativeInputMismatch
+            );
             if !images.is_empty() {
                 return Err(AgentSendInputError::MultimodalUnsupported.into());
             }
@@ -2290,23 +2329,15 @@ impl AgentManager {
                     );
                 }
             }
-            guard.get(agent_id).map(|handle| match &handle.input {
-                AgentInput::Stdin(stdin) => (
-                    Some(stdin.clone()),
-                    None,
-                    None,
-                    Some(handle.session_id.clone()),
-                ),
-                AgentInput::Acp(acp) => (
-                    None,
-                    Some(acp.clone()),
-                    Some(handle.output_tx.clone()),
-                    Some(handle.session_id.clone()),
-                ),
-                AgentInput::Rara(_) => (None, None, None, Some(handle.session_id.clone())),
+            guard.get(agent_id).map(|handle| {
+                (
+                    handle.input.clone(),
+                    handle.output_tx.clone(),
+                    handle.session_id.clone(),
+                )
             })
         };
-        let (stdin, acp, output_tx, session_id) = match handle_snapshot {
+        let (input_handle, output_tx, session_id) = match handle_snapshot {
             Some(snapshot) => snapshot,
             None => {
                 let is_starting = {
@@ -2330,7 +2361,6 @@ impl AgentManager {
                 return Err(anyhow::anyhow!("agent not running"));
             }
         };
-        let session_id = session_id.ok_or_else(|| anyhow::anyhow!("agent session missing"))?;
         if let Some(expected_session_id) = expected_session_id
             && expected_session_id != session_id
         {
@@ -2341,7 +2371,22 @@ impl AgentManager {
             .into());
         }
 
-        if let Some(stdin) = stdin {
+        if let AgentInput::Rara(runtime) = input_handle {
+            anyhow::ensure!(
+                images.is_empty(),
+                AgentSendInputError::MultimodalUnsupported
+            );
+            let origin = reminder_source
+                .map(|source| serde_json::json!({"kind":"reminder","source":source}));
+            return runtime
+                .send_input(input, message_id, native_input, origin)
+                .await;
+        }
+        anyhow::ensure!(
+            native_input.is_none(),
+            AgentSendInputError::NativeInputMismatch
+        );
+        if let AgentInput::Stdin(stdin) = input_handle {
             if !images.is_empty() {
                 return Err(AgentSendInputError::MultimodalUnsupported.into());
             }
@@ -2355,9 +2400,9 @@ impl AgentManager {
             return Err(anyhow::anyhow!("agent stdin closed"));
         }
 
-        let acp =
-            acp.ok_or_else(|| anyhow::anyhow!("direct runtime input mapping is unavailable"))?;
-        let output_tx = output_tx.ok_or_else(|| anyhow::anyhow!("agent output missing"))?;
+        let AgentInput::Acp(acp) = input_handle else {
+            unreachable!("other input kinds returned");
+        };
 
         let seq = Uuid::now_v7().to_string();
         let message_id = message_id
@@ -2488,8 +2533,16 @@ impl AgentManager {
             !self.has_loop_activation(agent_id).await,
             "resident reminders are unavailable during loop activations"
         );
-        self.send_input_inner(agent_id, input, &[], Some(message_id), None, Some(source))
-            .await
+        self.send_input_inner(
+            agent_id,
+            input,
+            &[],
+            Some(message_id),
+            None,
+            Some(source),
+            None,
+        )
+        .await
     }
 
     pub(crate) async fn send_mailbox_hint_input(
@@ -2621,8 +2674,19 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), fields(agent_id = %agent_id), err)]
     pub async fn cancel_acp(&self, agent_id: &str) -> anyhow::Result<()> {
-        let acp = self.get_acp_handle(agent_id).await?;
-        acp.cancel().await
+        let input = self
+            .inner
+            .read()
+            .await
+            .get(agent_id)
+            .ok_or_else(|| anyhow::anyhow!("agent not running"))?
+            .input
+            .clone();
+        match input {
+            AgentInput::Acp(acp) => acp.cancel().await,
+            AgentInput::Rara(runtime) => runtime.stop_turn(false).await,
+            AgentInput::Stdin(_) => anyhow::bail!("agent does not support turn cancellation"),
+        }
     }
 
     async fn get_acp_handle(&self, agent_id: &str) -> anyhow::Result<AcpHandle> {

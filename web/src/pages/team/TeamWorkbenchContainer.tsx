@@ -1,3 +1,4 @@
+import type { NativeInputTarget } from "../../native_input";
 import React, { Suspense, useMemo } from "react";
 import { Button } from "@mantine/core";
 import type { AuthState } from "../../types";
@@ -265,7 +266,7 @@ export type TeamWorkbenchMemberAcpContext = {
   } | null;
   selectedAgentWorkspaceAgent: Pick<AgentRecord, "status" | "target_node_id"> | null;
   oldestMemberEventId: number | null;
-  onSendAgentAcpInput: (input: string, sessionId: string) => void;
+  onSendAgentAcpInput: (input: string, sessionId: string, target?: NativeInputTarget) => void;
   onCancelTeamMemberAcp: () => void;
   onSetTeamMemberAcpMode: (mode: string) => void;
   onSetTeamMemberAcpModel: (model: string) => void;
