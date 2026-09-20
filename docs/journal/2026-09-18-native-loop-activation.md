@@ -122,3 +122,12 @@ cargo clippy --offline --locked -p agenthub --lib --tests -- -D warnings
 ```
 
 Set `AGENTHUB_RARA_TEST_BINARY` to the pinned binary. Model requests remain on localhost.
+
+## Hermetic Fake-Peer Fixture Checkpoint (2026-09-21)
+
+The root Bazel test compile exposed a cross-package `include_str!` without a declared
+compile input. The fake activation peer now declares and validates its own bounded handshake
+in Rust; captured upstream protocol evidence remains owned by the protocol crate. Its replay
+capability is explicitly unavailable because this fake peer does not implement replay. All six
+focused native activation fixtures pass after the change. Remote Bazel validation is pending;
+no local Bazel execution or build configuration changes were needed.

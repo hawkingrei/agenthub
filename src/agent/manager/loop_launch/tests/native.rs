@@ -92,15 +92,39 @@ async fn fixture(mode: &str) -> Fixture {
     let program = fixture.directory.join("native-provider");
     std::fs::write(&program, PROVIDER).unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let wire: Value = serde_json::from_str(include_str!(
-        "../../../../../crates/agenthub-rara/fixtures/stdio-v1.json"
-    ))
-    .unwrap();
+    // The fake peer owns its capabilities; captured upstream wire data stays in the protocol crate.
+    let handshake = json!({
+        "protocol_version": agenthub_rara::PROTOCOL_VERSION,
+        "runtime_version": "fixture",
+        "runtime_id": "runtime-fixture",
+        "transport": agenthub_rara::TRANSPORT,
+        "request_families": ["session", "input", "prompt_source", "skill_source", "server"],
+        "request_methods": [
+            "session.create", "session.query_state", "session.cancel", "session.interrupt",
+            "input.submit_prompt", "input.submit_follow_up", "input.answer_user",
+            "input.answer_plan", "input.answer_shell", "prompt_source.register",
+            "skill_source.register", "server.shutdown"
+        ],
+        "event_families": [
+            "session", "input", "assistant", "tool", "approval", "plan", "warning", "error",
+            "prompt_source", "skill"
+        ],
+        "capabilities": {
+            "graceful_shutdown": true,
+            "approval_persistence": false,
+            "replay": {"lifetime":"unavailable"},
+            "request_receipts": {"lifetime":"runtime", "max_requests":1024}
+        }
+    });
+    serde_json::from_value::<agenthub_rara::Handshake>(handshake.clone())
+        .unwrap()
+        .validate()
+        .unwrap();
     std::fs::write(
         fixture.directory.join("native-fixture.json"),
         json!({
             "mode":mode,
-            "handshake":wire["frames"][0]["payload"],
+            "handshake":handshake,
             "control":crate::agenthub_binary::resolve_agenthub_binary_path().unwrap(),
         })
         .to_string(),
