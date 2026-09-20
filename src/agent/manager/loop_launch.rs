@@ -317,6 +317,9 @@ impl AgentManager {
             loop {
                 tokio::select! { _ = cancel.cancelled() => return Ok(()), _ = interval.tick() => {} }
                 if manager.loop_control_endpoint.read().await.is_none() { continue; }
+                if let Err(error) = manager.recover_expired_loop_executors().await {
+                    tracing::warn!(%error, "loop executor recovery scan failed");
+                }
                 if let Err(error) = store.reconcile_schedules(Utc::now().timestamp()).await {
                     tracing::warn!(%error, "loop schedule reconciliation failed");
                 }

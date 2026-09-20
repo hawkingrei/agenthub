@@ -766,6 +766,20 @@ impl AgentManager {
             agent.thinking_level.as_deref(),
         );
         extra_env.extend(loop_env);
+        let loop_reservation = self.loop_reservations.lock().await.get(&agent.id).cloned();
+        #[cfg(target_os = "linux")]
+        let cleanup_witness = if let Some(reservation) = &loop_reservation {
+            let witness = crate::executor_guardian::CleanupWitness::prepare(
+                self.event_dbs.base_dir(),
+                reservation,
+            )?;
+            agenthub_db::loop_runtime::LoopStore::new(self.db.clone())
+                .authorize_guarded_spawn(reservation, Utc::now().timestamp())
+                .await?;
+            Some(std::sync::Arc::new(witness))
+        } else {
+            None
+        };
         let local_execution_request = LocalExecutionRequest {
             agent_id: agent.id.clone(),
             session_id: session_id.clone(),
@@ -773,7 +787,9 @@ impl AgentManager {
             args: command_args,
             workdir: start_policy.workdir.clone(),
             actor_context: actor_context.clone(),
-            guard_descendants: self.loop_reservations.lock().await.contains_key(&agent.id),
+            guard_descendants: loop_reservation.is_some(),
+            #[cfg(target_os = "linux")]
+            cleanup_witness,
             private_env: if is_loop_activation {
                 let mut private =
                     crate::mcp_proxy::configured::private_environment(&self.loop_app_config);

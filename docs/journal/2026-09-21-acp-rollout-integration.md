@@ -24,22 +24,46 @@ Local Linux, explicit opt-in and default fresh sessions remain the supported ini
 - Merge main normally into the pre-native implementation; do not rewrite or replay published history.
 - Preserve main's dependency updates and the implemented feature contracts and journal navigation.
 - Keep one main-targeted review surface with focused follow-up commits and an explicit slice map.
-- Retain uncertain execution ownership until cleanup is verified. Restart recovery is a separate
-  implementation gate, not a documentation-only readiness claim.
+- Retain uncertain execution ownership until cleanup is verified. New reservations record whether
+  spawning was authorized; a delayed launcher must pass the same owner/generation transaction.
+- The guardian inherits a private file lock and writes durable state before spawn and after descendant
+  cleanup. Restart recovery acquires the lock and verifies its reservation identity before releasing
+  ownership. No PID-based inference or operator assertion replaces this evidence.
 - Use ACP for this rollout. Preserve the deferred draft and uncommitted upstream work independently.
 
 ## Validation
 
 PR #1162's applicable checks passed at its historical head. Those results do not validate this new
-integration head. The merge introduces four documentation resolutions and retains main's web
-dependency updates. Runtime source is unchanged from the reviewed ACP snapshot.
+integration head. The initial merge introduces four documentation resolutions and retains main's web
+dependency updates. Follow-up commits add verified restart recovery and its focused regression cases.
 
-Current-head CI, installed-adapter acceptance and assembled-product checks remain pending. No local
-Bazel command or build configuration change is part of this integration checkpoint.
+The minimal inherited-lock proof confirmed that closing the launcher's file descriptor retains the
+guardian's lock until exit. Focused store cases cover migration of old rows to `unknown`, delayed spawn
+rejection, stale generation rejection, and preservation of recorded outcomes and canonical task state.
+Validation commands for the recovery change:
+
+```sh
+cargo test -p agenthub-db loop_recovery -- --nocapture
+cargo test -p agenthub --lib recovery -- --nocapture
+cargo test -p agenthub --lib executor_guardian -- --nocapture
+```
+
+Integration head `f242ebc6` passed every applicable remote check, including Cargo, Clippy, Bazel build,
+root/crate tests and coverage, browser/mobile, protocol generation, storage and documentation.
+Recovery validation: 11 guardian cases, 110 root loop cases (6 opt-in fixtures ignored), 70 store loop
+cases, and root/store all-target Clippy with warnings denied. The focused recovery selection also
+covers a replacement manager with no old process handle and 9 passing cases. These selections overlap.
+The first pass caught lazy event-directory creation; the implementation now creates that parent before
+the witness. A parallel-fork test now waits for the transient CLOEXEC descriptor reference to close,
+without weakening the exclusive-lock requirement.
+
+Installed-adapter acceptance, assembled-product checks and recovery-head CI remain pending. No local
+Bazel command or build configuration change is part of this checkpoint.
 
 ## Follow-Ups
 
-- Verify cleanup and recovery across daemon loss, including uncertain descendants and stale authority.
+- Retain fencing for legacy ownership, missing evidence or a killed guardian; no operator assertion
+  or database-delete shortcut is an accepted recovery path.
 - Prove the installed ACP adapter path with a reproducible local provider fixture.
 - Exercise scoped tools, events and retained browser history together.
 - Update user/operator guidance to the actual supported behavior and finalize current-head CI.

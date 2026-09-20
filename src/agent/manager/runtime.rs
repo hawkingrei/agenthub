@@ -503,6 +503,7 @@ impl AgentManager {
 
     #[tracing::instrument(skip(self), err)]
     pub async fn mark_exited_on_startup(&self) -> anyhow::Result<AgentSessionExitMarkSummary> {
+        self.recover_expired_loop_executors().await?;
         agenthub_db::loop_runtime::LoopStore::new(self.db.clone())
             .interrupt_expired(Utc::now().timestamp())
             .await?;

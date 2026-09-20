@@ -120,8 +120,11 @@ requests may depend on live callbacks: do not claim they survive process exit be
 exists. Keep the callback within its timeout or settle it explicitly and record interruption. A later
 session must not reuse expired approval or treat an unrelated reply as authority.
 
-Daemon restart preserves suspension and pending work. In-flight records require lease/process
-reconciliation; do not reset live leases or blindly repeat unknown effects. Startup failures use
+Daemon restart preserves suspension and pending work. Expired foreign reservations are automatically
+reconciled only through atomic proof that spawning was never authorized or an exclusively locked,
+identity-bound guardian witness proving no start or completed descendant cleanup. Legacy or uncertain
+executions stay fenced; see the [activation contract](agent-loop-activation-contract.md).
+Do not reset live leases or blindly repeat unknown effects. Startup failures use
 bounded backoff, while permanently missing configuration becomes an inspectable blocked condition.
 Retry limits and no-progress budgets must be explicit before rollout.
 

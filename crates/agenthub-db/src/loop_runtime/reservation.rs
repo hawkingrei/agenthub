@@ -7,6 +7,33 @@ use super::{
 };
 
 impl LoopStore {
+    /// Commit before any OS spawn, while holding the guardian witness lock.
+    /// A recovery that removed an unstarted reservation makes this CAS fail.
+    pub async fn authorize_guarded_spawn(
+        &self,
+        expected: &LoopReservation,
+        now: i64,
+    ) -> anyhow::Result<()> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let current = require_live_reservation(&mut tx, expected, now).await?;
+        let changed = sqlx::query("UPDATE loop_execution_reservations SET executor_state = 'guarded' WHERE actor_id = ? AND executor_state = 'unstarted'")
+            .bind(&current.actor_id).execute(&mut *tx).await?.rows_affected();
+        anyhow::ensure!(changed == 1, LoopStoreError::InvalidState);
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn expired_foreign_reservations(
+        &self,
+        owner_id: &str,
+        after_actor: &str,
+        now: i64,
+    ) -> anyhow::Result<Vec<LoopReservation>> {
+        let rows = sqlx::query("SELECT r.*, p.team_id FROM loop_execution_reservations r JOIN loop_policies p ON p.actor_id = r.actor_id WHERE r.owner_id != ? AND r.lease_expires_at <= ? AND r.actor_id > ? ORDER BY r.actor_id LIMIT 128")
+            .bind(owner_id).bind(now).bind(after_actor).fetch_all(&self.pool).await?;
+        rows.iter().map(parse_reservation).collect()
+    }
+
     pub async fn reservation(
         &self,
         team_id: &str,
@@ -94,8 +121,8 @@ pub(super) async fn reserve_in_transaction(
         .execute(&mut **tx)
         .await?;
     sqlx::query(
-        "INSERT INTO loop_execution_reservations(actor_id, activation_id, generation, owner_id, lease_expires_at, lease_seconds, renewal_seconds, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO loop_execution_reservations(actor_id, activation_id, generation, owner_id, lease_expires_at, lease_seconds, renewal_seconds, created_at, executor_state) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unstarted')",
     ).bind(&policy.actor_id).bind(activation_id).bind(generation).bind(owner_id).bind(expires)
         .bind(policy.limits.lease_seconds).bind(policy.limits.renewal_seconds).bind(now).execute(&mut **tx).await?;
     Ok(LoopReservation {

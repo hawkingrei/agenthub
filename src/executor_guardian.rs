@@ -5,7 +5,7 @@ use std::process::ExitCode;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub(crate) use linux::{GuardianChannel, prepare};
+pub(crate) use linux::{CleanupWitness, GuardianChannel, prepare};
 
 const INTERNAL_COMMAND: &str = "internal-executor-guardian";
 

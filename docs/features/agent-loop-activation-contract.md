@@ -10,7 +10,7 @@ Local ACP execution now resolves a launch snapshot and uses generation-scoped ac
 Offline Team configuration, explicit policy controls, and durable work-event intake are available.
 Shared MCP tools, scoped Mem, role prompts, App tools/events, and product history are integrated.
 No existing actor is implicitly opted in. Local Linux ACP is the current execution boundary;
-verified restart recovery and real-adapter acceptance remain rollout gates.
+verified restart recovery is implemented; real-adapter acceptance remains a rollout gate.
 
 ## Problem
 
@@ -248,9 +248,30 @@ Revocation retains every source and its trace. Independently accepted coalesced 
 Admission rechecks whether referenced tasks remain actionable before starting their continuations.
 Configured Linux executors run beneath a single-threaded subreaper guardian. It adopts and reaps
 descendants that leave the provider process group, then sends a private cleanup receipt. Provider
-stdio remains the ACP transport; the provider never inherits the receipt descriptor. A missing
-receipt, guardian crash, or cleanup timeout retains the reservation. Closing the daemon control
-connection requests cleanup, but a restarted daemon still cannot infer proof that it did not observe.
+stdio remains the ACP transport; the provider never inherits control or witness descriptors.
+Closing the daemon control connection requests cleanup even if the daemon cannot receive a reply.
+
+New reservations start with durable `unstarted` executor state. Before any OS spawn, the launcher
+locks a private witness file and atomically changes the matching live reservation to `guarded`.
+Recovery can retire an expired `unstarted` reservation in the same transaction that proves no spawn
+was authorized; any delayed launch then fails its owner/generation check. Legacy reservations migrate
+to `unknown`, never to `unstarted`.
+
+The guardian inherits the witness lock, durably records `started` before spawning the provider, and
+records `cleaned` only after reaping its entire descendant tree. On startup and subsequent scheduler
+ticks, a replacement daemon reconciles expired foreign reservations. It must acquire the exclusive
+witness lock and verify the exact Team, actor, activation, owner and generation identity. An unlocked
+`prepared` witness proves no provider was started; an unlocked `cleaned` witness proves cleanup.
+The recovery keeps the lock through the database compare-and-swap and retires the witness afterward.
+Recorded outcomes remain finished, while executions without outcomes become interrupted. Recovery
+does not replay unknown tool effects, reopen accepted tasks, or change suspension/pending intent.
+
+A missing, corrupt, mismatched or `started` witness, a live lock, guardian crash or cleanup timeout
+retains the reservation. This includes legacy reservations without evidence. PID absence, lease
+expiry, provider output and bulk session-status changes are not substitutes for cleanup proof.
+The event-store directory must retain the private `.executor-recovery` directory across daemon
+restarts; do not delete or edit these files to clear a fence. Back up database and evidence together
+after quiescing executors; restoring a snapshot while its original executors are alive is unsupported.
 This is an execution-cleanup boundary, not a security sandbox for hostile same-user processes.
 Other platforms do not admit loop execution until equivalent verification is available.
 

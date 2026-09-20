@@ -14,7 +14,7 @@ and [App runtime](features/app-tool-runtime.md).
 Checkpoint: [ACP rollout integration](journal/2026-09-21-acp-rollout-integration.md).
 
 - [ ] Complete the ACP-only main integration PR and its applicable current-head CI.
-- [ ] Add verified old-owner recovery after daemon restart without releasing uncertain writers.
+- [x] Add verified old-owner recovery after daemon restart without releasing uncertain writers.
 - [ ] Validate the installed ACP adapter/runtime chain, including supported resume and live approvals.
 - [ ] Verify assembled ACP, scoped Mem, App revocation/events and browser-independent lifecycle.
 - [ ] Publish supported-provider, configuration, recovery and troubleshooting guidance.

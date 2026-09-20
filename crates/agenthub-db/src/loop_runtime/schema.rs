@@ -73,6 +73,7 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             lease_expires_at INTEGER NOT NULL,
             lease_seconds INTEGER NOT NULL DEFAULT 60 CHECK(lease_seconds > 0),
             renewal_seconds INTEGER NOT NULL DEFAULT 15 CHECK(renewal_seconds > 0),
+            executor_state TEXT NOT NULL DEFAULT 'unknown' CHECK(executor_state IN ('unknown', 'unstarted', 'guarded')),
             session_id TEXT REFERENCES agent_sessions(id),
             created_at INTEGER NOT NULL
         );
@@ -226,6 +227,14 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
     let columns = sqlx::query("PRAGMA table_info(loop_execution_reservations)")
         .fetch_all(&mut *tx)
         .await?;
+    if !columns
+        .iter()
+        .any(|row| row.get::<&str, _>("name") == "executor_state")
+    {
+        // Legacy reservations never participated in the spawn authorization protocol.
+        sqlx::query("ALTER TABLE loop_execution_reservations ADD COLUMN executor_state TEXT NOT NULL DEFAULT 'unknown' CHECK(executor_state IN ('unknown', 'unstarted', 'guarded'))")
+            .execute(&mut *tx).await?;
+    }
     if !columns
         .iter()
         .any(|row| row.get::<&str, _>("name") == "lease_seconds")

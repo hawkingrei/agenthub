@@ -7,6 +7,64 @@ use chrono::Utc;
 use super::AgentManager;
 
 impl AgentManager {
+    pub(crate) async fn recover_expired_loop_executors(&self) -> anyhow::Result<u64> {
+        #[cfg(not(target_os = "linux"))]
+        return Ok(0);
+        #[cfg(target_os = "linux")]
+        {
+            use crate::executor_guardian::CleanupWitness;
+            let store = LoopStore::new(self.db.clone());
+            let now = Utc::now().timestamp();
+            store.interrupt_expired(now).await?;
+            let mut cursor = String::new();
+            let mut recovered = 0;
+            loop {
+                let batch = store
+                    .expired_foreign_reservations(&self.loop_owner_id, &cursor, now)
+                    .await?;
+                if batch.is_empty() {
+                    break;
+                }
+                for reservation in batch {
+                    cursor.clone_from(&reservation.actor_id);
+                    let result: anyhow::Result<bool> = async {
+                        if store.cleanup_unstarted(&reservation, now).await? {
+                            return Ok(true);
+                        }
+                        let Some(_proof) =
+                            CleanupWitness::verify(self.event_dbs.base_dir(), &reservation)?
+                        else {
+                            return Ok(false);
+                        };
+                        if let Some(session_id) = &reservation.session_id {
+                            self.permissions
+                                .interrupt_session_permissions(session_id)
+                                .await?;
+                        }
+                        store
+                            .cleanup_verified(&reservation, LoopCleanupDisposition::Exited, now)
+                            .await?;
+                        CleanupWitness::retire(self.event_dbs.base_dir(), &reservation);
+                        Ok(true)
+                    }
+                    .await;
+                    match result {
+                        Ok(true) => {
+                            recovered += 1;
+                            tracing::info!(actor_id = %reservation.actor_id, generation = reservation.generation, "recovered expired loop executor with verified cleanup");
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            tracing::warn!(actor_id = %reservation.actor_id, %error, "loop executor recovery retained reservation")
+                        }
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+            Ok(recovered)
+        }
+    }
+
     pub(crate) fn loop_owner_id(&self) -> &str {
         &self.loop_owner_id
     }
@@ -204,6 +262,8 @@ impl AgentManager {
         store
             .cleanup_verified(&current, disposition, Utc::now().timestamp())
             .await?;
+        #[cfg(target_os = "linux")]
+        crate::executor_guardian::CleanupWitness::retire(self.event_dbs.base_dir(), &current);
         reservations.remove(&current.actor_id);
         self.release_mcp_activation(&current).await;
         self.loop_credentials.lock().await.remove(&current.actor_id);
@@ -261,6 +321,8 @@ impl AgentManager {
         LoopStore::new(self.db.clone())
             .cleanup_verified(current, disposition, Utc::now().timestamp())
             .await?;
+        #[cfg(target_os = "linux")]
+        crate::executor_guardian::CleanupWitness::retire(self.event_dbs.base_dir(), current);
         self.release_mcp_activation(current).await;
         reservations.remove(actor_id);
         self.loop_credentials.lock().await.remove(actor_id);
