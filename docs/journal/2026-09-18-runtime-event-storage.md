@@ -253,3 +253,12 @@ the coverage upload and aggregate checks after this fixture correction.
 ```bash
 cargo test --offline --locked -p agenthub --lib api::teams::tests::teams_api_create_team_auto_starts_member_runtime -- --exact
 ```
+
+## Delivery Checkpoint (2026-09-20)
+
+All applicable CI checks passed at `c6e2bbd15a35df95b806d0926360d38a4419bdb3`,
+including Bazel coverage and both Codecov checks. No review feedback remained outstanding.
+[PR #1164](https://github.com/hawkingrei/agenthub/pull/1164) was merged by the user into
+`codex/loop-16-rara` at `95447346f3e559133c293f91c3f97480b6ac4175`. Its squash-merge
+tree matches the validated PR head. Slice 18 preserves its subsequent changes while merging
+that dependency forward; the complete stack is not thereby claimed to be on main.

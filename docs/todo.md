@@ -111,8 +111,9 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   receipts, browser reply fences, live callbacks and cancellation are integrated. Safe history
   queries and startup transport retirement are implemented and locally validated. The real
   native question/plan/shell fixture passes both approval and denial. [PR #1164](https://github.com/hawkingrei/agenthub/pull/1164)
-  is ready for review at `c6e2bbd15a35df95b806d0926360d38a4419bdb3` with all applicable CI
-  checks passing, including Bazel coverage, and no outstanding review feedback.
+  passed all applicable CI at `c6e2bbd15a35df95b806d0926360d38a4419bdb3`, including
+  Bazel coverage, with no outstanding review feedback. It was merged into its dependency
+  branch on 2026-09-20 at `95447346f3e559133c293f91c3f97480b6ac4175`.
 - [ ] 18. Align Rara with shared activation identity, semantic guard outcomes, capability-gated
   durable approvals, nested-subteam isolation, and safe event cursors in activation traces.
   Initial [native activation wiring](journal/2026-09-18-native-loop-activation.md) reuses
