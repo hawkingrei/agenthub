@@ -114,7 +114,8 @@ class Client:
             assert message.get("method") != "session/request_permission", message
 
     def result(self, request_id):
-        result = self.wait(lambda message: message.get("id") == request_id)
+        result = self.wait(lambda message: message.get("id") == request_id
+                           and ("result" in message or "error" in message))
         assert "error" not in result, result
         return result["result"]
 
@@ -176,7 +177,8 @@ def main():
         with contextlib.closing(Client(command, root)) as client:
             client.initialize()
             client.rpc("session/load", {"sessionId": session, "cwd": str(root), "mcpServers": []})
-            assert client.updates, "Persisted history must replay on load"
+            assert "Run the native command fixture." in json.dumps(client.updates), \
+                "The original user message must replay on load"
             client.rpc("session/prompt", {"sessionId": session, "prompt": [
                 {"type": "text", "text": "Run another native command after resume."},
             ]})

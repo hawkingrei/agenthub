@@ -3,8 +3,9 @@
 ## Summary
 
 Combine the original ACP slices 1-15 in a main-targeted integration branch. Native runtime slices
-16-18 and their upstream prerequisites are deferred by the user. This checkpoint does not claim
-production readiness before the remaining recovery and acceptance work is complete.
+16-18 and their upstream prerequisites are deferred by the user. This checkpoint qualifies the
+explicitly enabled local Linux ACP path, including verified recovery and installed-runtime
+acceptance. A scripted model proves runtime behavior, not autonomous task-solving quality.
 
 ## Background
 
@@ -78,12 +79,82 @@ cargo test -p agenthub --lib concurrent_terminal_status_update_and_handoff_do_no
 Recovery-head CI exposed one older concurrent-task fixture that omitted loop observer tables. It now
 uses production migrations with the same multi-connection WAL pool and race assertion. A final
 terminal update checks those observers whichever contender wins. The focused regression passes.
-Other applicable recovery-head checks passed. Assembled-product checks and final-head CI remain
-pending. No local Bazel command or build configuration change is part of this checkpoint.
+Other applicable recovery-head checks passed. No local Bazel command or build configuration change
+is part of this checkpoint.
+
+Adapter-fix head `915f7ea4` passed every applicable remote check, including both Bazel and Rust
+coverage. The final acceptance/documentation commit requires its own current-head checks before
+merge; the PR check suite is authoritative for that result.
+
+### Assembled acceptance
+
+The opt-in `loop_real_acp_dispatch_worker_and_fresh_acceptance` fixture uses production migrations,
+the real adapter, official Codex 0.150.1, native command tools, signed actor RPC, and real MCP shims.
+Only the Responses model and external Mem/App services are scripted. It proves:
+
+- signed event intake and duplicate receipt identity;
+- coordinator dispatch, offline worker evidence, and acceptance from a fresh coordinator session;
+- one entry per activation with multiple native rounds and the existing role skill pointer;
+- current scoped Context Lens recovery on each fresh activation;
+- native deferred-tool discovery and namespaced MCP calls;
+- explicit foreign-space rejection and omission-based binding to the correct Mem space;
+- pinned App version, one actual upstream write, and rejection after binding revocation;
+- isolation of Mem, App and event credentials from the provider;
+- a fourth activation retaining independent local progress during Mem outage;
+- canonical progress receipts linking each new task note to its activation outcome;
+- release of execution reservations after each completed activation.
+
+Reproduce with a built `agenthub` control CLI and matching `agenthubd` adapter:
+
+```sh
+TEST_MEM_UPSTREAM_KEY=acceptance-mem-key \
+TEST_APP_TOKEN=acceptance-app-key \
+TEST_EVENT_KEY=ExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExM= \
+CARGO_BIN_EXE_agenthub=/absolute/path/to/agenthub \
+LOOP_REAL_ACP_BINARY=/absolute/path/to/agenthubd \
+LOOP_REAL_CODEX_BINARY=/absolute/path/to/codex \
+cargo test -p agenthub --lib loop_real_acp_dispatch_worker_and_fresh_acceptance -- --ignored --nocapture
+```
+
+For browser acceptance, also set `LOOP_REAL_BROWSER_DIR` to a new directory and `LOOP_UI_WEB_DIR`
+to the absolute built web directory. `ready.json` contains an isolated fixture login and URL. Open
+the planner's member profile, close the page while its first activation is held, then remove
+`browser-hold` from the provider directory. `completed` signals the four verified activations.
+The optional harness then runs the actual scheduler for suspension/admission inspection until the
+operator creates `stop`. Suspend execution, activate the member, verify the retained pending entry,
+then resume execution and inspect the new finished entry. All services and profiles are isolated
+from user configuration.
+
+Chrome DevTools MCP observed RUNNING before page closure, then EXITED and three FINISHED coordinator
+history entries on reopening. The fourth activation's details retained `mem context unavailable`;
+Kanban retained the completed task, worker result, and coordinator decision. Database inspection
+confirmed four finished activations and zero retained reservations. Browser snapshots/screenshots
+are local artifacts under `/tmp/agenthub-real-browser-20260921/`.
+
+The final browser pass also suspended admission, accepted an operator trigger, and retained it
+pending across scheduler ticks without acquiring a reservation. Resuming through the UI let the
+actual scheduler execute that activation. Final inspection found five finished activations, five
+canonical progress receipts, zero reservations, zero consecutive no-progress counts, and the
+completed task. The first fixture attempt omitted `task_note_id`; the resulting `no_progress_limit`
+correctly blocked admission. The fixture now links actual dispatch, worker result, acceptance and
+local-work notes instead of weakening the budget. Final snapshots, screenshots and `verified.json`
+are under `/tmp/agenthub-real-browser-evidence-20260921/`.
+
+The real daemon-crash regression also passes at all four boundaries: before sending, after sending
+without a response, after receiving a response before its durable commit, and after durable success.
+A replacement daemon acquires independent ownership and preserves ambiguous writes as unknown;
+the real MCP shim cannot replay them. Reproduce with
+`cargo test -p agenthub --lib real_mcp_proxy_survives_daemon_crashes_without_replaying_an_unknown_write`.
+
+Prompt review classification: skill/recovery-pointer regression coverage. Prompt text and skill
+entrypoints are unchanged; the fixture checks delivery of the existing `team-loop-runtime` pointer.
+The operator guide documents the local Linux/provider matrix and enable, inspect, suspend/resume,
+Mem/App setup, and verified restart recovery. User docs and the current web build pass.
+Final local validation also passes 110 root loop cases (7 opt-in cases ignored), with the real ACP
+fixture executed separately, plus root/adapter all-target Clippy with warnings denied.
 
 ## Follow-Ups
 
 - Retain fencing for legacy ownership, missing evidence or a killed guardian; no operator assertion
   or database-delete shortcut is an accepted recovery path.
-- Exercise scoped tools, events and retained browser history together.
-- Update user/operator guidance to the actual supported behavior and finalize current-head CI.
+- Merge PR #1169 after review and applicable current-head CI.

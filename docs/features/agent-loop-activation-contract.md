@@ -322,8 +322,8 @@ permission request and invalidate that request before reporting the canceled pro
 The entry points to `agenthub actor loop-context` and `loop-source` for durable sources,
 `team-members`, `team-tasks`, and `inbox` for current canonical state, and `agenthub actor loop-finish --outcome-file <path> --json` for the bounded outcome.
 These commands recover the signed stable mailbox; they do not scan historical run partitions.
-Legacy resident role skills are not attached to the loop contract. Loop ACP sessions leave direct
-static MCP servers disconnected until the shared proxy and operation journal supply those tools.
+Legacy resident role skills are not attached to the loop contract. Loop ACP sessions mount approved
+tools through the shared proxy and operation journal; direct static MCP servers stay disconnected.
 Legacy sessions retain their configured MCP behavior.
 
 A private file with mode 0600 in a mode-0700 runtime directory supplies short-lived actor credentials.
@@ -354,6 +354,7 @@ identity, active mailbox, membership, owner, generation, lease, and operation-gu
 | Context | Fresh/resumed task and inbox recovery without new task attempts or mailbox rotation |
 | Local adapter | Guardian receipt, detached descendants, strict resume/profile negotiation, one entry turn |
 | Installed Codex | `scripts/verify_real_acp_runtime.py`: official 0.150.1, live settings, native commands, persisted load/history, canceled permission and ignored late approval |
+| Assembled runtime | Opt-in `loop_real_acp_dispatch_worker_and_fresh_acceptance`: real ACP/app-server/CLI/MCP, deferred discovery, scoped Mem, App revocation, signed event deduplication, fresh acceptance, local progress during Mem outage |
 | Actor control | Credential rotation, stale owner/generation rejection, disconnect ownership, finish replay |
 | MCP bootstrap | Bound launch/session required; startup initialization/discovery cannot perform a journaled tool send |
 | Configuration | Offline creation/copy, preflight and authority, disconnect/start exclusion, concurrent removal/intake, claim/reply/permission guards |
@@ -368,10 +369,11 @@ with normal Cargo/Bazel checks and browser evidence for the eventual UI.
 
 ## Operational Notes
 
-Land storage, admission, and deterministic lifecycle recovery before real provider enablement.
-Connect scoped tools before switching role prompts. Expose workbench controls after backend policy
-and history are inspectable. App and Rara tracks reuse these boundaries; unsupported capabilities
-fail explicitly rather than claim parity. Track implementation and remaining validation in
+The initial supported path is explicit opt-in, local Linux ACP execution with verified guardian
+cleanup. Scoped tools, role prompts, policy controls, and retained history use the same admission
+boundary. Follow the [operator guide](../../userdocs/docs/core/durable-execution.md) for configuration,
+provider qualification, suspension and recovery. Unsupported capabilities fail explicitly.
+Track implementation and remaining validation in
 [TODO](../todo.md#agent-loop-product-transition).
 
 ## Open Risks
