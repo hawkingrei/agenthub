@@ -120,6 +120,12 @@ pub async fn migrate_loop_runtime(pool: &SqlitePool) -> anyhow::Result<()> {
             task_note_id INTEGER PRIMARY KEY REFERENCES team_conversation_messages(id),
             activation_id TEXT NOT NULL REFERENCES loop_activations(id)
         );
+        CREATE TABLE IF NOT EXISTS loop_task_memory_prefixes (
+            task_id TEXT PRIMARY KEY REFERENCES team_tasks(id) ON DELETE CASCADE,
+            team_id TEXT NOT NULL REFERENCES team_definitions(id),
+            prefix TEXT NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS loop_revoked_sources (
             trigger_id TEXT PRIMARY KEY REFERENCES loop_trigger_sources(id),
             created_at INTEGER NOT NULL

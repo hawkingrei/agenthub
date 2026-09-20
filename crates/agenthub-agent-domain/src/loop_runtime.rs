@@ -400,6 +400,15 @@ pub struct LoopWorkPage {
     pub next_cursor: Option<String>,
 }
 
+/// Canonical task wording and a durable routing prefix, not task execution authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopTaskContext {
+    pub task_id: String,
+    pub title: String,
+    pub summary: Option<String>,
+    pub memory_prefix: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoopActivation {
     pub id: String,

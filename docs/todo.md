@@ -102,7 +102,7 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   on 2026-09-18. These stacked merges do not imply that all slices are in main. See
   [the transport checkpoint](journal/2026-09-18-rara-local-transport.md).
   Any missing upstream protocol work is an explicit prerequisite, not an ACP fallback.
-- [ ] 17. Map Rara control acknowledgments, events, replay, and live permissions into existing
+- [x] 17. Map Rara control acknowledgments, events, replay, and live permissions into existing
   runtime/history boundaries. Prove unknown-ack and duplicate-event handling.
   The [storage foundation](journal/2026-09-18-runtime-event-storage.md) adds atomic history,
   native event associations, contiguous cursors and single-use control receipts. Managed
@@ -110,9 +110,18 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   and bounded replay consumption are integrated. Managed text input, durable delivery
   receipts, browser reply fences, live callbacks and cancellation are integrated. Safe history
   queries and startup transport retirement are implemented and locally validated. The real
-  native question/plan/shell fixture passes both approval and denial. PR/CI delivery remains open.
+  native question/plan/shell fixture passes both approval and denial. [PR #1164](https://github.com/hawkingrei/agenthub/pull/1164)
+  passed all applicable CI at `c6e2bbd15a35df95b806d0926360d38a4419bdb3`, including
+  Bazel coverage, with no outstanding review feedback. It was merged into its dependency
+  branch on 2026-09-20 at `95447346f3e559133c293f91c3f97480b6ac4175`.
 - [ ] 18. Align Rara with shared activation identity, semantic guard outcomes, capability-gated
   durable approvals, nested-subteam isolation, and safe event cursors in activation traces.
+  Initial [native activation wiring](journal/2026-09-18-native-loop-activation.md) reuses
+  shared launch/cleanup, pins role and skill sources, and gates unsupported resume/tool
+  bindings. Card/task snapshots and persistent task prefixes are implemented. The local real-process
+  leader/worker cycle and internal-child task isolation pass. Complete controlled tool sources,
+  semantic outcomes and approval capability validation before delivery. Native cursor/receipt
+  snapshots are available in activation detail and doctor, including after exit.
 
 Each behavior slice includes focused tests and its owning spec/journal updates. Cargo and the
 normal Bazel targets remain viable. Remote ownership/credential parity, standalone Mem scope,

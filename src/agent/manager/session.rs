@@ -455,7 +455,10 @@ impl AgentManager {
                     .bind(agent_id)
                     .fetch_one(&self.db)
                     .await?;
-            anyhow::ensure!(!configured, "direct runtime loop execution is unavailable");
+            anyhow::ensure!(
+                !configured || loop_reservation.is_some(),
+                "direct runtime loop execution requires scheduler admission"
+            );
         }
         let running_session_id = self.get_running_session_id(agent_id).await;
         match build_agent_start_plan(agent, actor_context, running_session_id.as_deref())? {
@@ -624,9 +627,11 @@ impl AgentManager {
         );
         if is_loop_activation {
             anyhow::ensure!(
-                self.acp_provider_spec_for_agent(&agent.command, &agent.args)
-                    .is_some(),
-                "loop execution requires a supported local ACP provider"
+                rara_config.is_some()
+                    || self
+                        .acp_provider_spec_for_agent(&agent.command, &agent.args)
+                        .is_some(),
+                "loop execution requires a supported local provider"
             );
         }
         let persisted_workdir = super::expand_tilde(&agent.workdir);
@@ -752,10 +757,16 @@ impl AgentManager {
         };
         let is_acp = acp_provider.is_some();
         let (command_path, command_args) = if let Some(config) = &rara_config {
-            let launch = agenthub_rara::LaunchCommand::new(
+            let mut launch = agenthub_rara::LaunchCommand::new(
                 config,
                 std::path::Path::new(&start_policy.workdir),
             )?;
+            if is_loop_activation {
+                launch.args.extend([
+                    "--no-extension-discovery".into(),
+                    "--no-memory-facilities".into(),
+                ]);
+            }
             (launch.program, launch.args)
         } else {
             self.resolve_launch_command(&agent.command, &agent.args, acp_provider)
@@ -776,24 +787,22 @@ impl AgentManager {
                 command_path, start_policy.workdir, command_args
             )
         };
-        let (loop_launch, loop_session_policy, loop_env) = if let (Some(provider), Some(context)) = (
-            acp_provider,
-            actor_context.as_ref().filter(|_| is_loop_activation),
-        ) {
-            let (launch, policy, env) = self
-                .resolve_loop_launch(
-                    &agent,
-                    provider,
-                    context,
-                    &start_policy.workdir,
-                    &command_path,
-                    &command_args,
-                )
-                .await?;
-            (Some(launch), Some(policy), env)
-        } else {
-            (None, None, Vec::new())
-        };
+        let (loop_launch, loop_session_policy, loop_env) =
+            if let Some(context) = actor_context.as_ref().filter(|_| is_loop_activation) {
+                let (launch, policy, env) = self
+                    .resolve_loop_launch(
+                        &agent,
+                        acp_provider,
+                        context,
+                        &start_policy.workdir,
+                        &command_path,
+                        &command_args,
+                    )
+                    .await?;
+                (Some(launch), Some(policy), env)
+            } else {
+                (None, None, Vec::new())
+            };
         let mut extra_env = default_env_for_acp_provider(
             acp_provider,
             self.codex_acp_multi_agent_enabled,

@@ -26,6 +26,75 @@ fn accepted(session: &str) -> RuntimeRequestAck {
 }
 
 #[tokio::test]
+async fn source_receipts_require_owned_session_ack_without_turn_or_queue() {
+    let fixture = Fixture::new().await;
+    for (id, kind) in [
+        ("prompt-source", RuntimeRequestKind::PromptSource),
+        ("skill-source", RuntimeRequestKind::SkillSource),
+    ] {
+        fixture
+            .owner
+            .prepare_request(intent(id, kind), 1)
+            .await
+            .unwrap();
+        let permit = fixture.owner.mark_request_sent(id, 2).await.unwrap();
+        for ack in [
+            accepted("native"),
+            RuntimeRequestAck::Queued {
+                session_id: "native".into(),
+            },
+            RuntimeRequestAck::Accepted {
+                session_id: "foreign".into(),
+                turn_id: None,
+                last_sequence: Some(9),
+            },
+        ] {
+            assert!(
+                fixture
+                    .owner
+                    .record_request_ack(&permit, ack, 3)
+                    .await
+                    .is_err()
+            );
+        }
+        let ack = RuntimeRequestAck::Accepted {
+            session_id: "native".into(),
+            turn_id: None,
+            last_sequence: Some(9),
+        };
+        fixture
+            .owner
+            .record_request_ack(&permit, ack.clone(), 3)
+            .await
+            .unwrap();
+        let receipt = fixture.owner.request_receipt(id).await.unwrap().unwrap();
+        assert_eq!(receipt.kind, kind);
+        assert_eq!(receipt.status, RuntimeRequestStatus::Accepted);
+        assert_eq!(receipt.ack, Some(ack));
+        assert_eq!(fixture.stream.cursor().await.unwrap().sequence, 0);
+        assert!(
+            fixture
+                .owner
+                .prepare_request(intent(id, kind), 4)
+                .await
+                .is_err()
+        );
+    }
+    fixture.owner.close(5).await.unwrap();
+    assert_eq!(fixture.history_count().await, 0);
+    assert_eq!(
+        fixture
+            .owner
+            .request_receipt("prompt-source")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        RuntimeRequestStatus::Accepted
+    );
+}
+
+#[tokio::test]
 async fn input_preparation_commits_one_attempt_and_receipt_without_advancing_native_cursor() {
     let fixture = Fixture::new().await;
     let id = fixture

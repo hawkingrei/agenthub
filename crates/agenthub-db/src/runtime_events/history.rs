@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 
 use super::{
@@ -6,7 +6,7 @@ use super::{
 };
 
 /// Read-only delivery evidence. It grants neither execution nor session-resume authority.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeHistory {
     pub local_session_id: String,
     pub runtime_id: String,
@@ -17,7 +17,7 @@ pub struct RuntimeHistory {
     pub next_before_request_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeStreamSummary {
     pub native_session_id: String,
     pub cursor: RuntimeCursor,

@@ -44,6 +44,7 @@ pub enum EventEffect {
     },
     InputCleared {
         waiting_turn: String,
+        terminal: bool,
     },
     ApprovalAnswered {
         approval_id: String,
@@ -557,7 +558,6 @@ impl EventProjector {
                 reason,
             } => {
                 validate_id(&waiting_turn)?;
-                let _ = reason;
                 if self.pending_turn.as_deref() == Some(&waiting_turn) {
                     self.retire_tools(&waiting_turn, history);
                     self.pending_turn = None;
@@ -569,7 +569,10 @@ impl EventProjector {
                     ));
                     self.question_turn = None;
                 }
-                *effect = EventEffect::InputCleared { waiting_turn };
+                *effect = EventEffect::InputCleared {
+                    waiting_turn,
+                    terminal: !matches!(reason, DiscardReason::Superseded),
+                };
             }
             InputEvent::Answered { waiting_turn } => {
                 validate_id(&waiting_turn)?;
@@ -595,7 +598,10 @@ impl EventProjector {
                     ));
                     self.question_turn = None;
                 }
-                *effect = EventEffect::InputCleared { waiting_turn };
+                *effect = EventEffect::InputCleared {
+                    waiting_turn,
+                    terminal: false,
+                };
             }
             InputEvent::FollowUpQueued { queue_len } => history.push(update(
                 json!({"event":"follow_up_queued", "queue_len":queue_len}),

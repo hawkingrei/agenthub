@@ -14,11 +14,16 @@ use crate::agent::AgentRecord;
 
 mod events;
 mod history;
+mod loop_activation;
+mod loop_context;
+pub(super) use loop_activation::NativeLoopSources;
+pub(super) use loop_context::NativeLoopContext;
 mod receipts;
 mod session;
 pub use session::RaraHandle;
 
 const PROCESS_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
+pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v2";
 
 #[cfg(all(test, unix))]
 mod tests;
@@ -58,8 +63,8 @@ impl AgentManager {
             "direct runtime remote placement is unavailable"
         );
         anyhow::ensure!(
-            actor_context.is_none(),
-            "direct runtime Team binding is unavailable"
+            actor_context.is_none_or(AcpActorSkillContext::is_loop_activation),
+            "direct runtime Team binding requires a reserved loop activation"
         );
         anyhow::ensure!(
             !agent.agent_loop_enabled,
@@ -127,6 +132,11 @@ impl AgentManager {
             },
         )
         .await?;
+        if self.has_loop_activation(agent_id).await {
+            client
+                .handshake()
+                .require_methods(&["prompt_source.register", "skill_source.register"])?;
+        }
         let store = agenthub_db::runtime_events::RuntimeEventStore::bind(
             self.event_dbs.pool_for_agent(agent_id).await?,
             session_id,

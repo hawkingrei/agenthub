@@ -23,6 +23,8 @@ mod metrics_tests;
 mod scheduling_tests;
 #[path = "scope_tests.rs"]
 mod scope_tests;
+#[path = "task_context_tests.rs"]
+mod task_context_tests;
 #[path = "tool_observation_tests.rs"]
 mod tool_observation_tests;
 #[path = "work_context_tests.rs"]

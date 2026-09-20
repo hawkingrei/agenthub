@@ -107,6 +107,31 @@ async fn native_process_transport_round_trip() {
     assert_eq!(first.runtime_id, runtime_id);
     assert_eq!(first.session_id, session_id);
     assert_eq!(first.event.sequence, 1);
+    let sources = [
+        crate::SourceRegistration::Prompt {
+            source_id: "loop-context".into(),
+            content: "Use the assigned outer activation identity.".into(),
+        },
+        crate::SourceRegistration::Skill {
+            source_id: "loop-skill".into(),
+            name: "loop-fixture".into(),
+            content: "---\ndescription: Inspect canonical work.\n---\nInspect the current task before acting.".into(),
+        },
+    ];
+    crate::SourceRegistration::validate_batch(&sources, connection.client.handshake()).unwrap();
+    for (index, source) in sources.into_iter().enumerate() {
+        let frame = crate::ControlRequest::RegisterSource(source)
+            .frame(
+                &runtime_id,
+                &format!("probe-source-{index}"),
+                Some(&session_id),
+            )
+            .unwrap();
+        let receipt = connection.client.request(frame).await.unwrap();
+        assert!(
+            matches!(receipt.result, RequestResult::Accepted { session_id: Some(ref owned), turn_id: None, .. } if owned == &session_id)
+        );
+    }
     let consumer = tokio::spawn(async move {
         let mut count = 1;
         while let Some(frame) = connection.output.recv().await {
@@ -133,7 +158,7 @@ async fn native_process_transport_round_trip() {
             .unwrap()
             .success()
     );
-    assert!(consumer.await.unwrap() >= 1);
+    assert!(consumer.await.unwrap() >= 3);
     let _diagnostic_bytes = timeout(Duration::from_secs(10), diagnostics)
         .await
         .unwrap()

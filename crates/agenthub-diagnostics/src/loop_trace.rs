@@ -16,6 +16,9 @@ use sqlx::{Row, SqlitePool};
 
 use crate::agent_trace::{AgentTraceRequest, AgentTraceStallLayer, AgentTraceVerdict};
 
+mod runtime;
+pub(super) use runtime::load as load_runtime;
+
 #[derive(Debug)]
 pub struct ActivationNotFound;
 
@@ -61,6 +64,8 @@ pub struct ActivationSchedule {
 pub struct ActivationTrace {
     pub observed_at: i64,
     pub activation: LoopActivation,
+    #[serde(default)]
+    pub runtime: Option<agenthub_db::runtime_events::RuntimeHistory>,
     pub lease: Option<ActivationLease>,
     pub sources: LoopSourceHistoryPage,
     pub events: LoopEventHistoryPage,
@@ -197,6 +202,7 @@ pub(super) async fn collect(
     Ok(ActivationTrace {
         observed_at: now,
         activation,
+        runtime: None,
         lease,
         sources,
         events,
@@ -378,6 +384,32 @@ pub(super) fn render(trace: &ActivationTrace) -> Vec<String> {
             launch.entry_prompt_version,
             launch.configuration_digest,
             launch.workspace
+        ));
+    }
+    if let Some(runtime) = &trace.runtime {
+        lines.push(format!(
+            "loop.runtime: id={} local_session={} closed={}",
+            runtime.runtime_id, runtime.local_session_id, runtime.closed
+        ));
+        for stream in &runtime.streams {
+            lines.push(format!(
+                "loop.runtime.stream: native_session={} cursor={} gap={:?}",
+                stream.native_session_id, stream.cursor.sequence, stream.cursor.gap
+            ));
+        }
+        for receipt in &runtime.receipts {
+            lines.push(format!(
+                "loop.runtime.receipt: id={} kind={:?} status={:?} ack={:?}",
+                receipt.request_id, receipt.kind, receipt.status, receipt.ack
+            ));
+        }
+        lines.push(format!(
+            "loop.runtime.more: streams_truncated={} before_request_id={}",
+            runtime.streams_truncated,
+            runtime
+                .next_before_request_id
+                .as_deref()
+                .unwrap_or("<none>")
         ));
     }
     for source in &trace.sources.sources {

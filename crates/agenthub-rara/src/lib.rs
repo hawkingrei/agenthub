@@ -7,6 +7,7 @@ mod framing;
 mod handshake;
 mod launch;
 mod protocol;
+mod source;
 
 pub use connection::{
     Client, Connection, ConnectionError, ConnectionOptions, ConnectionStatus, OutputFrame,
@@ -24,6 +25,7 @@ pub use protocol::{
     Acknowledgement, ClientFrame, ControlEnvelope, EventFrame, ProtocolError, Provenance,
     RejectionCode, ReplayGap, RequestResult, RuntimeEvent, ServerFrame,
 };
+pub use source::SourceRegistration;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const TRANSPORT: &str = "stdio-jsonl";

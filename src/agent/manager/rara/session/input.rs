@@ -131,6 +131,7 @@ impl RaraHandle {
             }
             Err(error) => return Err(error),
         };
+        self.state.write().await.input_attempted = true;
         let _ = self.output_tx.send(AgentOutput {
             event_id,
             agent_id: self.agent_id.clone(),

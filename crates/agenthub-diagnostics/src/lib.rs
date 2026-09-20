@@ -353,9 +353,15 @@ pub mod agent_trace {
                     .duration_since(std::time::UNIX_EPOCH)?
                     .as_secs(),
             )?;
-            let trace =
+            let mut trace =
                 crate::loop_trace::collect(db, selected, request.normalize_limit() as u32, now)
                     .await?;
+            trace.runtime = crate::loop_trace::load_runtime(
+                &event_db_dir,
+                &trace.activation,
+                request.normalize_limit(),
+            )
+            .await?;
             verdict = crate::loop_trace::verdict(&trace);
             Some(trace)
         } else {

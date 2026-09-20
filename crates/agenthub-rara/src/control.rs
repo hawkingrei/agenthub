@@ -23,6 +23,8 @@ pub enum ControlKind {
     UserAnswer,
     PlanAnswer,
     ShellAnswer,
+    PromptSource,
+    SkillSource,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -47,6 +49,7 @@ pub enum ShellDecision {
 /// Deliberately lacks Debug: user content must not become request diagnostics.
 #[derive(Clone)]
 pub enum ControlRequest {
+    RegisterSource(crate::SourceRegistration),
     CreateSession,
     Query,
     Prompt {
@@ -79,6 +82,7 @@ pub enum ControlRequest {
 impl ControlRequest {
     pub fn kind(&self) -> ControlKind {
         match self {
+            Self::RegisterSource(source) => source.kind(),
             Self::CreateSession => ControlKind::CreateSession,
             Self::Query => ControlKind::Query,
             Self::Prompt { .. } => ControlKind::Prompt,
@@ -109,6 +113,10 @@ impl ControlRequest {
         session_id: Option<&str>,
     ) -> Result<ClientFrame, ProtocolError> {
         let (family, method, body): (&str, &str, Option<Value>) = match self {
+            Self::RegisterSource(source) => {
+                let (family, method, body) = source.operation()?;
+                (family, method, Some(body))
+            }
             Self::CreateSession => ("session", "create_session", None),
             Self::Query => ("session", "query_runtime_state", None),
             Self::Cancel { .. } => ("session", "cancel_current_turn", None),
@@ -152,11 +160,15 @@ impl ControlRequest {
         if let Some(body) = body {
             operation["payload"] = body;
         }
+        let mut provenance = Provenance::new(session_id.map(str::to_owned));
+        if let Self::RegisterSource(source) = self {
+            provenance.source_id = Some(source.source_id().into());
+        }
         let frame = ClientFrame::Control {
             runtime_id: runtime_id.to_owned(),
             envelope: ControlEnvelope {
                 request_id: request_id.to_owned(),
-                provenance: Provenance::new(session_id.map(str::to_owned)),
+                provenance,
                 request: json!({"type": family, "payload": operation}),
             },
             expected_turn_id: self.expected_turn_id().map(str::to_owned),
