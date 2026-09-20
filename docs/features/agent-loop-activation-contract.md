@@ -8,8 +8,9 @@ activation coalescing, safe event persistence, generation-fenced admission, stru
 continuation recording, and verified cleanup. Configured manual starts share durable reservations.
 Local ACP execution now resolves a launch snapshot and uses generation-scoped actor control.
 Offline Team configuration, explicit policy controls, and durable work-event intake are available.
-Shared MCP tools and role migration remain separate rollout gates; no existing actor is implicitly
-opted in.
+Shared MCP tools, scoped Mem, role prompts, App tools/events, and product history are integrated.
+No existing actor is implicitly opted in. Local Linux ACP is the current execution boundary;
+verified restart recovery and real-adapter acceptance remain rollout gates.
 
 ## Problem
 

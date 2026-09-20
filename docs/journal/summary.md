@@ -27,6 +27,8 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
+- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): combine the previously reviewed ACP slices against main; verified restart recovery, installed-adapter acceptance and operator guidance remain active. Native support is deferred.
+
 - [2026-09-18: Signed App intake](2026-09-18-app-event-intake.md): exact-body HMAC, atomic receipts/cursors/triggers, budgets, standing conditions, and safe context/doctor/web attribution; final PR/CI delivery remains open.
 - [2026-09-18: App event configuration](2026-09-18-app-event-configuration.md): explicit event classes, independent signing-key versions, and epoch/version-pinned member routes consumed by signed intake and standing conditions.
 - [2026-09-18: App runtime integration](2026-09-18-app-runtime.md): activation mounts, trusted HTTP identity, native schema enforcement, call/stream revocation, safe Cards, and pinned history attribution; PR #1161 passed applicable CI at `5fd553b3` and is ready for review.
