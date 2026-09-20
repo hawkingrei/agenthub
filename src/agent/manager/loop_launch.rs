@@ -37,7 +37,7 @@ pub(super) struct LoopCredentialState {
     pub run_id: String,
     mem_bootstrap: MemBootstrap,
     entry_prompt: String,
-    pub(super) native_sources: Option<AcpLoopLaunchConfig>,
+    pub(super) native_sources: Option<super::rara::NativeLoopSources>,
 }
 
 impl AgentManager {
@@ -153,6 +153,11 @@ impl AgentManager {
             .filter(|role| matches!(role, InternalRole::Coordinator | InternalRole::Worker))
             .ok_or_else(|| anyhow::anyhow!("loop activation requires a supported member role"))?;
         let role_prompt = RolePrompt::resolve(&spec, &agent.id, role)?;
+        let native_context = if provider.is_none() {
+            Some(super::rara::NativeLoopContext::resolve(&store, &reservation, agent, &spec).await?)
+        } else {
+            None
+        };
         let mut launch = AcpLoopLaunchConfig::resolve(
             Path::new(workdir),
             policy.session_policy == LoopSessionPolicy::Resume,
@@ -250,6 +255,7 @@ impl AgentManager {
         digest.update(launch.fingerprint_material()?);
         if provider.is_none() {
             digest.update(super::rara::LOOP_SOURCE_VERSION);
+            digest.update(serde_json::to_vec(&native_context)?);
         }
         if let Some(fingerprint) = unavailable_fingerprint {
             digest.update(fingerprint.as_bytes());
@@ -297,7 +303,10 @@ impl AgentManager {
                 run_id,
                 mem_bootstrap,
                 entry_prompt: role_prompt.entry,
-                native_sources: provider.is_none().then(|| launch.clone()),
+                native_sources: native_context.map(|context| super::rara::NativeLoopSources {
+                    launch: launch.clone(),
+                    context,
+                }),
             },
         );
         self.refresh_loop_credentials(&reservation).await?;

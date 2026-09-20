@@ -117,7 +117,7 @@ Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduli
   durable approvals, nested-subteam isolation, and safe event cursors in activation traces.
   Initial [native activation wiring](journal/2026-09-18-native-loop-activation.md) reuses
   shared launch/cleanup, pins role and skill sources, and gates unsupported resume/tool
-  bindings. Complete Card/task context, stable memory prefixes, controlled tool sources,
+  bindings. Card/task snapshots and persistent task prefixes are implemented. Complete controlled tool sources,
   semantic outcomes and real leader/worker validation before delivery. Native cursor/receipt
   snapshots are available in activation detail and doctor, including after exit.
 

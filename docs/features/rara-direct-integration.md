@@ -316,7 +316,7 @@ input starts the activation only after every registration has an accepted durabl
 and its acknowledged event prefix has committed. A partial bootstrap is not retried in the
 same native session. Source limits are checked before sending the first registration.
 
-The `native-loop-v1` source contract is part of the configuration digest and entry version.
+The `native-loop-v2` source contract is part of the configuration digest and entry version.
 It keeps activation, local launch, native runtime and native session identities distinct;
 native subagents receive no independent outer membership, mailbox or execution credentials.
 An ordinary completed turn is insufficient to finish an activation: the existing structured
@@ -504,6 +504,18 @@ The prefix must be stable for the lifetime of that task:
 
 This lets Rara tune memory around the task wording while avoiding prefix drift across turns.
 
+Native loop startup pins the member's discovery Card and canonical task title/`context.summary`
+from its non-revoked activation sources before spawning the provider. Other task context fields
+and transient chat are excluded. The launch digest includes this source snapshot. One bounded
+prompt source carries each task expression, alongside the outer role source; more than 31 distinct
+tasks fails startup without silently dropping accepted work.
+
+The control database stores `task-memory-v1` prefixes derived from Team ID, task ID and normalized
+initial title/summary before source registration. Follow-ups, fresh sessions, clarification and
+ordinary task wording updates reuse the stored prefix; new task IDs derive distinct prefixes.
+Deleting a task deletes its routing record. Prefix creation requires the current activation fence,
+membership and a non-revoked reference to that task; the prefix grants no execution authority.
+
 ### 7) Event Replay And Idempotency
 
 Rara app-server events must carry enough identity for AgentHub to dedupe, replay, and diagnose
@@ -598,8 +610,8 @@ When AgentHub starts Rara as a Team member, startup context must include the out
 - AgentHub team id
 - AgentHub member id / actor id
 - assigned AgentHub Team role (`coordinator` or `worker`)
-- safe agent card fields for that member, including name, description, mission, role summary, and
-  allowed collaboration boundaries
+- the member name and safe discovery Card fields: description, role, skill references and
+  capability tags, together with the explicit outer collaboration boundary
 - canonical task expression when the Team work is task-backed, including task id, title, summary, and
   the stable memory prefix if one already exists
 

@@ -24,7 +24,7 @@ and inline skills but cannot resume across processes or persist an approval owne
 
 - Require source methods before session creation and validate all source bounds before sends.
   A missing method, rejected source or uncertain receipt prevents activation entry.
-- Pin `native-loop-v1` in the launch digest and entry version. Shared role prompt bodies and
+- Pin `native-loop-v2` in the launch digest and entry version. Shared role prompt bodies and
   their byte ceiling remain unchanged; the native source adds a bounded outer identity and
   nested-agent authority boundary. No role skill entrypoint changed.
 - Resume and configured MCP/App tool bindings remain explicitly unsupported on the pinned
@@ -54,8 +54,7 @@ cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
 
 ## Follow-Ups
 
-Full Card/task context, stable task memory prefixes, controlled tool sources, semantic guard outcome mapping,
-and real leader/worker execution remain open. The
+Controlled tool sources, semantic guard outcome mapping, and real leader/worker execution remain open. The
 [canonical contract](../features/rara-direct-integration.md) and [TODO](../todo.md) track
 these boundaries. Slice 17 PR #1164 passes all current-head CI checks, including Bazel
 coverage, after correcting the member auto-start fixture race.
@@ -75,4 +74,22 @@ and diagnostics Clippy pass with warnings denied.
 cargo test --offline --locked -p agenthub-diagnostics loop_trace::
 cargo test --offline --locked -p agenthub --lib loop_history_api_
 cargo clippy --offline --locked -p agenthub --lib --tests -p agenthub-diagnostics -- -D warnings
+```
+
+## Card And Task Source Checkpoint (2026-09-20)
+
+Startup now captures the same Card as discovery from the pinned member configuration and takes
+canonical title/summary snapshots for task-backed activation sources. The control database stores
+each task's routing prefix before registration; fresh sessions and follow-ups reuse it even when
+the task wording changes. Prefix writes require live reservation, membership and addressed source
+scope. Native children inherit only the outer activation's authority. Two database regressions
+pass for reopen/follow-up continuity, new tasks, cascade cleanup and fence/scope rejection.
+Six native activation tests pass, including mutation during startup and a child actor-ID spoof
+rejected through the signed control CLI. Root library/tests and database Clippy pass with
+warnings denied. This still does not prove an actual native internal subteam execution.
+
+```bash
+cargo test --offline --locked -p agenthub-db loop_task_context_
+cargo test --offline --locked -p agenthub --lib native_loop_
+cargo clippy --offline --locked -p agenthub --lib --tests -p agenthub-db -- -D warnings
 ```

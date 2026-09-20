@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3
-import json, pathlib, subprocess, sys, uuid
+import json, pathlib, subprocess, sys, time, uuid
 root = pathlib.Path.cwd()
 config = json.loads((root / 'native-fixture.json').read_text())
 hello = config['handshake']
@@ -41,6 +41,12 @@ for line in sys.stdin:
     operation = envelope['request']['payload']['type']
     body = envelope['request']['payload'].get('payload', {})
     if operation == 'create_session':
+        if config['mode'] == 'pin-card':
+            (root / 'native-starting').write_text(native)
+            deadline = time.monotonic() + 10
+            while not (root / 'native-release').exists():
+                assert time.monotonic() < deadline
+                time.sleep(0.01)
         ack(rid)
         event('session', 'created', {'session_id':native})
     elif family == 'prompt_source':
@@ -62,7 +68,9 @@ for line in sys.stdin:
             event('session', 'turn_finished', {'reason':'awaiting_input'}, turn)
             (root / 'native-waiting').write_text(turn)
             continue
-        if config['mode'] == 'finish':
+        if config['mode'] in ['finish', 'pin-card']:
+            denied = subprocess.run([config['control'], 'actor', 'team-tasks', '--actor-id', 'native-child', '--json'], capture_output=True, text=True)
+            assert denied.returncode != 0
             for command in ['loop-context', 'team-members', 'team-tasks', 'inbox']:
                 result = subprocess.run([config['control'], 'actor', command, '--json'], capture_output=True, text=True)
                 assert result.returncode == 0, result.stderr
@@ -306,5 +314,112 @@ async fn native_loop_missing_source_method_fails_before_native_session_creation(
         .await
         .unwrap();
     assert!(!fixture.directory.join("native-requests.jsonl").exists());
+    fixture.close().await;
+}
+
+async fn task_trigger(fixture: &Fixture, task_id: &str, key: &str) {
+    LoopStore::new(fixture.state.db.clone())
+        .accept_trigger(
+            &LoopTriggerInput {
+                actor_id: "worker".into(),
+                team_id: fixture.team_id.clone(),
+                kind: LoopTriggerKind::Operator,
+                source_key: key.into(),
+                due_at: None,
+                references: LoopSourceReferences {
+                    task_id: Some(task_id.into()),
+                    ..Default::default()
+                },
+            },
+            Utc::now().timestamp(),
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn native_loop_pins_card_and_task_sources_before_start_and_reuses_task_prefix() {
+    let fixture = fixture("pin-card").await;
+    for task_id in ["task-one", "task-two"] {
+        sqlx::query("INSERT INTO team_tasks(id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at) VALUES (?, ?, 'Review migration', 'open', 'planner', 'worker', '{\"summary\":\"Check rollback\",\"private\":\"omit-this-field\"}', 1, 1)")
+            .bind(task_id).bind(&fixture.team_id).execute(&fixture.state.db).await.unwrap();
+    }
+    sqlx::query("UPDATE team_definitions SET spec_json = json_set(spec_json, '$.members[1].description', 'Review schema changes') WHERE id = ?")
+        .bind(&fixture.team_id).execute(&fixture.state.db).await.unwrap();
+    task_trigger(&fixture, "task-one", "task-first").await;
+    let (first, ()) = tokio::join!(fixture.execute("first-card"), async {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !fixture.directory.join("native-starting").exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        sqlx::query("UPDATE team_definitions SET spec_json = json_set(spec_json, '$.members[1].description', 'Review query plans') WHERE id = ?")
+            .bind(&fixture.team_id).execute(&fixture.state.db).await.unwrap();
+        sqlx::query("UPDATE team_tasks SET title = 'Clarified migration' WHERE id = 'task-one'")
+            .execute(&fixture.state.db)
+            .await
+            .unwrap();
+        std::fs::write(fixture.directory.join("native-release"), "continue").unwrap();
+    });
+    task_trigger(&fixture, "task-one", "task-reply").await;
+    let follow_up = fixture.execute("follow-up-card").await;
+    task_trigger(&fixture, "task-two", "task-new").await;
+    let next = fixture.execute("next-card").await;
+    for activation in [&first, &follow_up, &next] {
+        assert_eq!(activation.state, LoopActivationState::Finished);
+    }
+    assert_ne!(
+        first.launch.as_ref().unwrap().configuration_digest,
+        follow_up.launch.as_ref().unwrap().configuration_digest
+    );
+    let frames: Vec<Value> =
+        std::fs::read_to_string(fixture.directory.join("native-requests.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+    let registrations: Vec<_> = frames
+        .iter()
+        .filter(|frame| frame["payload"]["envelope"]["request"]["type"] == "prompt_source")
+        .map(|frame| &frame["payload"]["envelope"]["request"]["payload"]["payload"])
+        .collect();
+    let cards: Vec<_> = registrations
+        .iter()
+        .filter(|source| source["source_id"] == "loop-activation-context-v2")
+        .map(|source| source["content"].as_str().unwrap())
+        .collect();
+    assert_eq!(cards.len(), 3);
+    assert!(cards[0].contains("Review schema changes"));
+    assert!(!cards[0].contains("Review query plans"));
+    assert!(cards[1].contains("Review query plans"));
+    assert!(cards[0].contains("agenthub.a2a.discovery_card.v1"));
+    let tasks: Vec<Value> = registrations
+        .iter()
+        .filter(|source| source["source_id"] == "loop-task-context-0")
+        .map(|source| serde_json::from_str(source["content"].as_str().unwrap()).unwrap())
+        .collect();
+    assert_eq!(tasks.len(), 3);
+    assert_eq!(tasks[0]["title"], "Review migration");
+    assert_eq!(tasks[1]["title"], "Clarified migration");
+    assert_eq!(tasks[0]["memory_prefix"], tasks[1]["memory_prefix"]);
+    assert_ne!(tasks[0]["memory_prefix"], tasks[2]["memory_prefix"]);
+    assert!(
+        !serde_json::to_string(&tasks)
+            .unwrap()
+            .contains("omit-this-field")
+    );
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM loop_task_memory_prefixes")
+        .fetch_one(&fixture.state.db)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+    let child_members: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM agents WHERE id = 'native-child'")
+            .fetch_one(&fixture.state.db)
+            .await
+            .unwrap();
+    assert_eq!(child_members, 0);
     fixture.close().await;
 }

@@ -4,6 +4,12 @@ use serde_json::json;
 
 use super::*;
 
+#[derive(Clone)]
+pub(in crate::agent::manager) struct NativeLoopSources {
+    pub launch: crate::acp::AcpLoopLaunchConfig,
+    pub context: NativeLoopContext,
+}
+
 impl AgentManager {
     pub(in crate::agent::manager) async fn prepare_loop_entry(
         &self,
@@ -23,7 +29,7 @@ impl AgentManager {
                 AgentInput::Stdin(_) => anyhow::bail!("loop entry requires a supported runtime"),
             }
         };
-        let launch = self
+        let pinned = self
             .loop_credentials
             .lock()
             .await
@@ -36,14 +42,23 @@ impl AgentManager {
             "generation": reservation.generation,
             "local_session_id": reservation.session_id,
             "outer_actor": context,
+            "name": pinned.context.name,
+            "card": pinned.context.card,
         });
         let mut sources = vec![SourceRegistration::Prompt {
-            source_id: "loop-activation-context-v1".into(),
+            source_id: "loop-activation-context-v2".into(),
             content: format!(
                 "{entry}\n\nOuter activation binding: {binding}\nNative subagents execute within this outer activation. Their native identities are not Team members, mailbox identities, task owners, or independent activation credentials."
             ),
         }];
-        for (index, (name, content)) in launch.inline_skill_sources().into_iter().enumerate() {
+        for (index, task) in pinned.context.tasks.iter().enumerate() {
+            sources.push(SourceRegistration::Prompt {
+                source_id: format!("loop-task-context-{index}"),
+                content: serde_json::to_string(task)?,
+            });
+        }
+        for (index, (name, content)) in pinned.launch.inline_skill_sources().into_iter().enumerate()
+        {
             sources.push(SourceRegistration::Skill {
                 source_id: format!("loop-skill-{index}"),
                 name,

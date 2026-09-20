@@ -17,6 +17,7 @@ mod scheduling_reconcile;
 mod scheduling_revocation;
 mod schema;
 mod scope;
+mod task_context;
 mod tool_observation;
 mod work_context;
 

@@ -15,12 +15,15 @@ use crate::agent::AgentRecord;
 mod events;
 mod history;
 mod loop_activation;
+mod loop_context;
+pub(super) use loop_activation::NativeLoopSources;
+pub(super) use loop_context::NativeLoopContext;
 mod receipts;
 mod session;
 pub use session::RaraHandle;
 
 const PROCESS_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
-pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v1";
+pub(super) const LOOP_SOURCE_VERSION: &str = "native-loop-v2";
 
 #[cfg(all(test, unix))]
 mod tests;
