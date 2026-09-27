@@ -58,7 +58,7 @@ jobs:
           submodules: recursive
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: ${{ matrix.target }}
 
