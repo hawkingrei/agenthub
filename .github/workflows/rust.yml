@@ -65,19 +65,21 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Start MinIO
         run: |
-          docker run -d --name agenthub-minio \
-            -p 9000:9000 \
-            -e MINIO_ROOT_USER="${MINIO_ROOT_USER}" \
-            -e MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD}" \
-            quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z \
-            server /data --address ":9000"
+          curl --fail --location --retry 3 --output "${RUNNER_TEMP}/minio.deb" \
+            https://github.com/minio/minio/releases/download/RELEASE.2025-06-13T11-33-47Z/minio_20250613113347.0.0_amd64.deb
+          echo "5a7157bb44a35ed5ff73cf676cc6bf1fec29671b82082810618005871eb31fa7  ${RUNNER_TEMP}/minio.deb" | sha256sum --check
+          dpkg-deb --extract "${RUNNER_TEMP}/minio.deb" "${RUNNER_TEMP}/minio-package"
+          "${RUNNER_TEMP}/minio-package/usr/local/bin/minio" --version
+          "${RUNNER_TEMP}/minio-package/usr/local/bin/minio" server "${RUNNER_TEMP}/minio-data" \
+            --address "127.0.0.1:9000" --console-address "127.0.0.1:9001" \
+            > "${RUNNER_TEMP}/minio.log" 2>&1 &
           for i in {1..30}; do
             if curl -fsS "${AGENTHUB_OBJECT_STORE_S3_TEST_ENDPOINT}/minio/health/ready"; then
               exit 0
             fi
             sleep 1
           done
-          docker logs agenthub-minio
+          cat "${RUNNER_TEMP}/minio.log"
           exit 1
       - name: Create fixture bucket
         run: |

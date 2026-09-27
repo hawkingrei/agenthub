@@ -14,8 +14,9 @@ integration PR is already merged, so this correction is a separate main-based fo
 
 ## Scope
 
-The two database execution-read queries, one focused regression, and the
-[activation contract](../features/agent-loop-activation-contract.md). Public response shapes,
+The two database execution-read queries, one focused regression, the
+[activation contract](../features/agent-loop-activation-contract.md), and a prerequisite repair to
+the CI S3 fixture. Public response shapes,
 revocation storage, history queries and the deferred native runtime track stay unchanged.
 
 ## Key Decisions
@@ -24,6 +25,8 @@ revocation storage, history queries and the deferred native runtime track stay u
 - Recheck revocation on exact-source reads, including IDs cached before revocation.
 - Keep stable ID cursors usable after their source is revoked.
 - Retain source records and revocation markers in the authorized history surface.
+- Restore the existing MinIO version using its official release package, pinned by SHA-256, after
+  both container registries reject anonymous pulls. Keep both S3 fixture tests enabled.
 
 ## Validation
 
@@ -43,6 +46,19 @@ cargo fmt --all --check
 
 The fixed loop selection passes 71 tests, including the new regression. Database all-target Clippy
 passes with warnings denied. Formatting and whitespace validation complete the local gate.
+
+The first PR CI run failed before the S3 tests because Quay rejected the pinned MinIO image with
+`unauthorized`; a scoped Docker Hub probe rejected the same tag as well. The
+[official release](https://github.com/minio/minio/releases/tag/RELEASE.2025-06-13T11-33-47Z)
+still provides `minio_20250613113347.0.0_amd64.deb`. Its published SHA-256 and the downloaded bytes
+agree on `5a7157bb44a35ed5ff73cf676cc6bf1fec29671b82082810618005871eb31fa7`.
+CI verifies that digest and extracts the package without installing it or running package scripts.
+
+The extracted binary passed a temporary loopback smoke check for readiness, SigV4 bucket creation,
+and a binary object upload/download round trip. Local extraction used `ar` and `tar` because
+`dpkg-deb` is unavailable on the development host; the Ubuntu runner uses `dpkg-deb --extract`.
+The changed workflow shell block passes `bash -n`. Both existing Rust S3 fixture tests remain the
+remote acceptance gate.
 
 ## Follow-Ups
 
