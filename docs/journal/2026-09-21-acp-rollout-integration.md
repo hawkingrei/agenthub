@@ -157,4 +157,5 @@ fixture executed separately, plus root/adapter all-target Clippy with warnings d
 
 - Retain fencing for legacy ownership, missing evidence or a killed guardian; no operator assertion
   or database-delete shortcut is an accepted recovery path.
-- Merge PR #1169 after review and applicable current-head CI.
+- Land the [execution-read follow-up](2026-09-27-loop-revoked-execution-sources.md) for the
+  revoked-source review finding left after PR #1169 merged with all applicable checks passing.

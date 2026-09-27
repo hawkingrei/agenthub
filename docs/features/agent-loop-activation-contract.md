@@ -205,10 +205,14 @@ Its source records the authenticated user, without fabricating an actor activati
 requests to disabled policies fail; suspended policies accept pending work.
 
 `agenthub actor loop-context` reads the live activation and pages its sources, with a default of
-64 and a maximum of 256 per page. Follow `next_cursor` through `--after-source-id` until exhausted.
+64 and a maximum of 256 per page. Only non-revoked sources are returned, with revocations filtered
+before applying the page limit. Follow `next_cursor` through `--after-source-id` until exhausted;
+the cursor remains usable if its source is revoked between pages.
 `agenthub actor loop-source --source-id <id>` resolves an exact source message, including a message
 older than the recent task detail window or one whose delivery replica is not available. The source
-must belong to the current actor, Team, and activation under a live fence. Message bodies stay in
+must belong to the current actor, Team, and activation under a live fence and must not be revoked,
+including when its ID was retained from an earlier page. Revoked sources remain visible in activation
+history. Message bodies stay in
 canonical stores and are hydrated through the existing body-store boundary. These reads do not
 consume messages or accept tasks; current task state still comes from the task tools.
 

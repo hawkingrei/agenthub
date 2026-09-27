@@ -6,7 +6,7 @@ Active backlog only. Keep this file small and current.
 
 The ACP implementation combines original slices 1-15: durable lifecycle and intake, scoped
 MCP/Mem, role tools, history/workspace UI, and versioned App tools/events. The earlier PRs were
-merged into dependency branches; integration into main has its own validation gate.
+merged into dependency branches; PR #1169 integrated them into main after its applicable checks passed.
 
 Contracts: [activation](features/agent-loop-activation-contract.md),
 [runtime](features/agent-loop-runtime.md), [shared proxy](features/mcp-proxy-transport.md),
@@ -18,7 +18,9 @@ Checkpoint: [ACP rollout integration](journal/2026-09-21-acp-rollout-integration
 - [x] Validate the installed ACP adapter/runtime chain, including supported resume and live approvals.
 - [x] Verify assembled ACP, scoped Mem, App revocation/events and browser-independent lifecycle.
 - [x] Publish supported-provider, configuration, recovery and troubleshooting guidance.
-- [ ] Merge PR #1169 after review and applicable current-head CI.
+- [x] Merge PR #1169 after applicable current-head CI.
+- [ ] Land the follow-up excluding revoked sources from execution reads while retaining their
+  history. Evidence: [revoked execution sources](journal/2026-09-27-loop-revoked-execution-sources.md).
 
 Native runtime slices 16-18 and upstream prerequisites are deferred. Preserve draft PR #1168 and
 its unfinished work; they are not gates for this ACP rollout. Remote loop ownership, non-Linux
