@@ -14,7 +14,7 @@ integration PR is already merged, so this correction is a separate main-based fo
 
 ## Scope
 
-The two database execution-read queries, one focused regression, the
+The two database execution-read queries, database and RPC regressions, the
 [activation contract](../features/agent-loop-activation-contract.md), and a prerequisite repair to
 the CI S3 fixture. Public response shapes,
 revocation storage, history queries and the deferred native runtime track stay unchanged.
@@ -46,6 +46,12 @@ cargo fmt --all --check
 
 The fixed loop selection passes 71 tests, including the new regression. Database all-target Clippy
 passes with warnings denied. Formatting and whitespace validation complete the local gate.
+
+The initial full CI run also found an outdated RPC expectation in the signed App-event fixture:
+it still required the revoked scheduled source to appear in live work. That fixture now requires
+only the independent direct source in live work and `PermissionDenied` for the cached revoked ID,
+while asserting both original revocation states through activation history. The Rust coverage and
+Bazel root suites exercise this boundary in CI.
 
 The first PR CI run failed before the S3 tests because Quay rejected the pinned MinIO image with
 `unauthorized`; a scoped Docker Hub probe rejected the same tag as well. The
