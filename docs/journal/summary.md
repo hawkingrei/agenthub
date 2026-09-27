@@ -27,7 +27,9 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
-- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): combine the previously reviewed ACP slices against main; verified restart recovery, installed-adapter acceptance and operator guidance remain active. Native support is deferred.
+- [2026-09-27: Revoked execution sources](2026-09-27-loop-revoked-execution-sources.md): exclude revoked sources from live execution pages and exact-source reads while preserving history and stable pagination.
+
+- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): PR #1169 merged the ACP slices, verified restart recovery, installed-adapter acceptance and operator guidance after applicable CI passed. Native support remains deferred.
 
 - [2026-09-18: Signed App intake](2026-09-18-app-event-intake.md): exact-body HMAC, atomic receipts/cursors/triggers, budgets, standing conditions, and safe context/doctor/web attribution; final PR/CI delivery remains open.
 - [2026-09-18: App event configuration](2026-09-18-app-event-configuration.md): explicit event classes, independent signing-key versions, and epoch/version-pinned member routes consumed by signed intake and standing conditions.
