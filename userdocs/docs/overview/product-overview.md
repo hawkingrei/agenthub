@@ -4,17 +4,17 @@ sidebar_position: 1
 
 # Product Overview
 
-AgentHub is a self-hosted agent loop toolchain. Its product direction is to let
+AgentHub is a self-hosted agent loop toolchain. It lets
 agents advance tasks through IM, task-list, execution, and Nowledge Mem tools,
 using one configured role prompt for each activation.
 
-The loop model is a target design. Automatic activation of offline agents and
-the complete Nowledge Mem integration are not yet delivered. Current runtime
-controls and installation instructions remain applicable during the transition.
+Durable execution is opt-in for local Linux Team members using ACP. Configure eligible triggers,
+scoped tools, and execution limits before enabling a member. See the
+[operator guide](../core/durable-execution.md) for supported capabilities.
 
 ## Core Idea
 
-The target workflow is:
+The workflow is:
 
 1. Express a goal or provide new information in IM.
 2. An eligible trigger activates an agent using its Agent Card and role prompt.
@@ -74,7 +74,7 @@ It is especially useful for engineering teams that want:
 
 ## What Makes AgentHub Distinct
 
-The product direction combines:
+The workflow combines:
 
 - **durable work**: agent identity, tasks, messages, and evidence survive process exit
 - **temporary execution**: processes run when work is actionable and may exit after recording an outcome

@@ -32,6 +32,7 @@ const sidebars = {
         'core/view-output',
         'core/review-and-apply-changes',
         'core/session-lifecycle',
+        'core/durable-execution',
       ],
     },
     {

@@ -4,128 +4,28 @@ Active backlog only. Keep this file small and current.
 
 ## Agent Loop Product Transition
 
-Product: [features/agent-loop-product-model.md](features/agent-loop-product-model.md).
-Lifecycle: [features/agent-loop-runtime.md](features/agent-loop-runtime.md).
-Implementation: [features/agent-loop-activation-contract.md](features/agent-loop-activation-contract.md).
-The activation contract, control store, admission, lifecycle, local provider, and offline
-configuration, durable work-event, and scheduling checkpoints complete slices 1-8. Tool and later
-integration slices remain pending.
-Numbers below identify separate reviewable PR slices, not shipped capabilities.
+The ACP implementation combines original slices 1-15: durable lifecycle and intake, scoped
+MCP/Mem, role tools, history/workspace UI, and versioned App tools/events. The earlier PRs were
+merged into dependency branches; PR #1169 integrated them into main after its applicable checks passed.
 
-Local provider evidence: [slice 5 checkpoint](journal/2026-09-15-agent-loop-local-provider.md).
+Contracts: [activation](features/agent-loop-activation-contract.md),
+[runtime](features/agent-loop-runtime.md), [shared proxy](features/mcp-proxy-transport.md),
+and [App runtime](features/app-tool-runtime.md).
+Checkpoint: [ACP rollout integration](journal/2026-09-21-acp-rollout-integration.md).
 
-Offline configuration evidence: [slice 6 checkpoint](journal/2026-09-15-agent-loop-offline-configuration.md).
+- [x] Integrate the ACP implementation in main-targeted PR #1169.
+- [x] Add verified old-owner recovery after daemon restart without releasing uncertain writers.
+- [x] Validate the installed ACP adapter/runtime chain, including supported resume and live approvals.
+- [x] Verify assembled ACP, scoped Mem, App revocation/events and browser-independent lifecycle.
+- [x] Publish supported-provider, configuration, recovery and troubleshooting guidance.
+- [x] Merge PR #1169 after applicable current-head CI.
+- [x] Land the follow-up excluding revoked sources from execution reads while retaining their
+  history. Evidence: [revoked execution sources](journal/2026-09-27-loop-revoked-execution-sources.md).
 
-Durable work evidence: [slice 7 checkpoint](journal/2026-09-15-agent-loop-work-events.md).
-
-Scheduling evidence: [slice 8 checkpoint](journal/2026-09-15-agent-loop-scheduling.md).
-
-- [x] 9. Add the shared local MCP proxy and persistent operation journal. Prove schema/result
-  preservation, secret isolation, and no blind replay of unknown non-idempotent writes.
-  The [operation journal](features/mcp-operation-journal.md) and
-  [transport and bound HTTP calls](features/mcp-proxy-transport.md) are implemented, with daemon
-  startup recovery, signed MCP session RPCs, a local stdio shim, and configured local ACP launch
-  with inherited-secret isolation, shared payload budgets, journaled March batches, and legacy
-  GET/resumption/DELETE, failed-handshake retirement, and receipt-linked modern tool MRTR rounds.
-  Declared retries now preserve the uncertain round's exact parameters and original identity.
-  Modern and legacy task lookups now resolve recorded tool attempts through separately journaled
-  queries. Cancellation has a separate durable send/receipt and never treats a modern acknowledgment
-  as tool completion. Task updates now consume recorded input IDs atomically and retain conflicting
-  request identities across reopen. Modern subscriptions validate acknowledgment filters,
-  journal task notifications before delivery, and release idle execution guards. Legacy GET/POST
-  task notifications now match authenticated ownership and accepted receipts, with bounded waiting
-  for creation receipts while callbacks continue. A trusted access policy now checks single requests,
-  batch members, subscription filters, callback registration, and discovery visibility. Configured
-  Mem now requires authenticated single-space key narrowing before provider startup and enables
-  its scoped non-tool surfaces under upstream authorization. Verified workspace/space identity now
-  keeps endpoint aliases within the same journal boundary; legacy unclassified effects retain
-  conservative replay checks without rewriting their intents. Client capability
-  snapshots now gate callbacks and deferred/task inputs throughout the proxy, including concurrent
-  modern requests, logging opt-in/severity, and retired method admission. Resource/prompt MRTR now links bounded session receipts to unchanged requests,
-  including parallel/foreign receipt rejection and no continuation replay after HTTP loss.
-  Native static MCP fresh/resume launch and
-  capability filtering are covered through a provider that starts and calls the configured server. Real shim/RPC
-  process-crash tests cover before-call, sent-without-response, parsed-success-before-commit,
-  and durable-success recovery, including no output before commit and no ambiguous-write replay.
-  [PR #1154](https://github.com/hawkingrei/agenthub/pull/1154) passed its current-head CI and was
-  merged into its target branch on 2026-09-17.
-- [x] 10. Connect scoped Mem bindings/context bootstrap and selected learning. Prove cross-scope
-  rejection, fresh-session knowledge recovery, and local progress surviving visible Mem failure.
-  Context bootstrap, availability handling, and selected-learning contracts are implemented in the
-  [slice 10 checkpoint](journal/2026-09-16-mem-context-bootstrap.md), with focused runtime checks
-  passing. Deadline/late-settlement, learning provenance, eager-provider failure, and adapter/proxy
-  regressions are covered. [PR #1155](https://github.com/hawkingrei/agenthub/pull/1155) passed its
-  current-head CI and was merged into its target branch on 2026-09-17.
-- [x] 11. Migrate role prompts and skills to task/IM/tool-driven loops after those tools exist.
-  Prove one configured entry prompt, role authority, structured finish, and transcript-free recovery.
-  The [dependency integration checkpoint](journal/2026-09-16-loop-dependency-integration.md) combines
-  scheduling and Mem with full backend regression coverage. The
-  [role integration checkpoint](journal/2026-09-16-loop-role-prompts.md) adds configured role
-  selection, the shared loop skill, and provider/CLI regression coverage. Focused local validation
-  passes. [PR #1158](https://github.com/hawkingrei/agenthub/pull/1158) passed its current-head CI
-  and was merged into its target branch on 2026-09-17. Slice 12 uses that merged baseline.
-- [x] 12. Expose authorized activation history, metrics, tracing/fastrace, and doctor explanations.
-  Prove durable redacted trace reconstruction and preserve debug-only diagnostic boundaries.
-  [History storage](journal/2026-09-17-loop-history-storage.md) adds authorized paged APIs, durable
-  RPC/MCP boundaries, scoped metrics, lifecycle trace correlation, and activation-aware doctor.
-  [PR #1159](https://github.com/hawkingrei/agenthub/pull/1159) passed applicable CI at
-  `7f2b9a2a97600a034622e517aab6c3d678f8ad1b`, including Rust/Bazel coverage, and was merged
-  into its dependency branch on 2026-09-18.
-- [x] 13. Expose offline configuration and task/IM/activation views with distinct process/policy
-  state. [Workspace UI checkpoint](journal/2026-09-17-loop-workspace-ui.md) records local web
-  validation and actual Chrome DevTools lifecycle/page-reopen evidence.
-  [PR #1160](https://github.com/hawkingrei/agenthub/pull/1160) passed applicable CI at
-  `0486b19db9a829a782f2f61d647a0f5053c64009`, including browser workflows and Rust/Bazel coverage,
-  and was merged into its dependency branch on 2026-09-18.
-- [x] 14. Register versioned app manifests and approved bindings through the shared proxy. Prove
-  call-time scope checks, fixed activation versions, immediate revocation, and safe attribution.
-  The [storage checkpoint](journal/2026-09-17-app-registry-storage.md) covers durable registrations,
-  grants, bindings, and activation pins. The [management API](features/app-management-api.md) adds
-  human authorization, and [result validation](journal/2026-09-18-app-result-validation.md) protects
-  immediate and deferred outcomes. [Runtime integration](features/app-tool-runtime.md) connects
-  launch, preflight, schema enforcement, call/stream authorization, safe Cards, and App/version history
-  attribution. [PR #1161](https://github.com/hawkingrei/agenthub/pull/1161) passed all applicable CI
-  at `5fd553b3d7773db94b5401ba68be1b7f83958d29` and was merged into its dependency branch
-  on 2026-09-18.
-- [x] 15. Accept signed app events through durable intake. Ship signatures, event ID/cursor replay
-  protection, declared-class routing, revocation checks, and storm budgets together.
-  The [configuration foundation](features/app-event-configuration.md) provides declarations,
-  independent signing-key references and explicit routes. [Signed intake](features/app-event-ingress.md)
-  adds atomic receipt/cursor/intake, bounded audit/budgets, standing conditions, and safe
-  doctor/context/web history. [PR #1162](https://github.com/hawkingrei/agenthub/pull/1162)
-  passed applicable CI and was merged into its dependency branch on 2026-09-18.
-- [x] 16. Pin and validate the Rara app-server transport/handshake; add local launch and cleanup.
-  The pinned codec/configuration, connection lifecycle and supervised local launch
-  are implemented and locally validated, including two native process checks.
-  [PR #1163](https://github.com/hawkingrei/agenthub/pull/1163) passed applicable CI at
-  `e6b0cd6cc32736a6139356aa8c46d61ef871c7e5` and was merged into its dependency branch
-  on 2026-09-18. These stacked merges do not imply that all slices are in main. See
-  [the transport checkpoint](journal/2026-09-18-rara-local-transport.md).
-  Any missing upstream protocol work is an explicit prerequisite, not an ACP fallback.
-- [x] 17. Map Rara control acknowledgments, events, replay, and live permissions into existing
-  runtime/history boundaries. Prove unknown-ack and duplicate-event handling.
-  The [storage foundation](journal/2026-09-18-runtime-event-storage.md) adds atomic history,
-  native event associations, contiguous cursors and single-use control receipts. Managed
-  request/event projection now covers the pinned native protocol. Managed session creation
-  and bounded replay consumption are integrated. Managed text input, durable delivery
-  receipts, browser reply fences, live callbacks and cancellation are integrated. Safe history
-  queries and startup transport retirement are implemented and locally validated. The real
-  native question/plan/shell fixture passes both approval and denial. [PR #1164](https://github.com/hawkingrei/agenthub/pull/1164)
-  passed all applicable CI at `c6e2bbd15a35df95b806d0926360d38a4419bdb3`, including
-  Bazel coverage, with no outstanding review feedback. It was merged into its dependency
-  branch on 2026-09-20 at `95447346f3e559133c293f91c3f97480b6ac4175`.
-- [ ] 18. Align Rara with shared activation identity, semantic guard outcomes, capability-gated
-  durable approvals, nested-subteam isolation, and safe event cursors in activation traces.
-  Initial [native activation wiring](journal/2026-09-18-native-loop-activation.md) reuses
-  shared launch/cleanup, pins role and skill sources, and gates unsupported resume/tool
-  bindings. Card/task snapshots and persistent task prefixes are implemented. The local real-process
-  leader/worker cycle and internal-child task isolation pass. Complete controlled tool sources,
-  semantic outcomes and approval capability validation before delivery. Native cursor/receipt
-  snapshots are available in activation detail and doctor, including after exit.
-
-Each behavior slice includes focused tests and its owning spec/journal updates. Cargo and the
-normal Bazel targets remain viable. Remote ownership/credential parity, standalone Mem scope,
-plain HTTP action adaptation, marketplace work, and production trace ingestion are separate scopes.
+Native runtime acceptance and upstream prerequisites remain deferred. PR #1168 integrates the
+existing slices 16-18 with the current mainline; completing tool sources, semantic outcomes and
+approval persistence remains separate work, not a gate for this ACP rollout. Remote loop ownership,
+non-Linux guardians, standalone Mem scope, App authoring UI and cross-owner consent remain separate scope.
 
 ## Release And Packaging
 

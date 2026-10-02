@@ -1,6 +1,6 @@
 # Nowledge Mem MCP Proxy
 
-Status: integration validation in progress. Scoped proxy startup, the shared operation journal,
+Status: implemented for explicitly scoped local ACP Teams. Scoped proxy startup, the shared operation journal,
 activation context bootstrap, and selected-learning contracts are implemented. This is the initial Mem seam for the
 [loop product model](agent-loop-product-model.md).
 
@@ -14,8 +14,8 @@ preserve the write-recovery boundary required by Mem's current MCP contracts.
 
 The current implementation resolves existing profiles into the shared daemon proxy and supplies
 local ACP stdio descriptors after verifying upstream namespace authorization. Context Lens recovery
-uses the same proxy before the activation's entry prompt; the full contract below is not yet a
-completion claim.
+uses the same proxy before the activation's entry prompt. Installed-runtime qualification and its
+limits are recorded in the [integration journal](../journal/2026-09-21-acp-rollout-integration.md).
 
 ## Scope
 
@@ -178,7 +178,7 @@ Canonical task progress and memory-operation outcomes remain independent.
 ### Operation Journal
 
 The shared [MCP operation journal](mcp-operation-journal.md) owns persistence and replay
-enforcement. Mem uses the same status/error types and store as future app integrations.
+enforcement. Mem uses the same status/error types and store as registered App integrations.
 
 The AgentHub-local journal records only endpoint/profile references, tool name,
 scope, correlation id, status, Mem pointer, and a redacted safe summary. It

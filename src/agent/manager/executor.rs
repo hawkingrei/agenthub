@@ -26,6 +26,8 @@ pub(super) struct LocalExecutionRequest {
     pub extra_env: Vec<(String, String)>,
     pub private_env: Vec<String>,
     pub guard_descendants: bool,
+    #[cfg(target_os = "linux")]
+    pub cleanup_witness: Option<std::sync::Arc<crate::executor_guardian::CleanupWitness>>,
 }
 
 pub(super) struct SpawnedLocalProcess {
@@ -68,8 +70,11 @@ impl AgentExecutor for LocalExecutor {
     ) -> anyhow::Result<SpawnedLocalProcess> {
         #[cfg(target_os = "linux")]
         let (mut command, guardian) = if request.guard_descendants {
-            let (command, channel) =
+            let (mut command, mut channel) =
                 crate::executor_guardian::prepare(&request.command_path, &request.args)?;
+            if let Some(witness) = &request.cleanup_witness {
+                channel.attach_witness(&mut command, witness.clone());
+            }
             (command, Some(channel))
         } else {
             (provider_command(&request), None)
@@ -273,6 +278,8 @@ mod tests {
             workdir: workdir.to_string_lossy().to_string(),
             actor_context: None,
             guard_descendants: false,
+            #[cfg(target_os = "linux")]
+            cleanup_witness: None,
             private_env: Vec::new(),
             extra_env: vec![("RUST_BACKTRACE".to_string(), "1".to_string())],
         };
@@ -327,6 +334,8 @@ mod tests {
             workdir: workdir.to_string_lossy().to_string(),
             actor_context: None,
             guard_descendants: false,
+            #[cfg(target_os = "linux")]
+            cleanup_witness: None,
             private_env: Vec::new(),
             extra_env: Vec::new(),
         };
@@ -413,6 +422,8 @@ mod tests {
             ],
             actor_context: None,
             guard_descendants: false,
+            #[cfg(target_os = "linux")]
+            cleanup_witness: None,
             private_env: Vec::new(),
             extra_env: [
                 "AGENTHUB_ACTOR_AGENT_ID",

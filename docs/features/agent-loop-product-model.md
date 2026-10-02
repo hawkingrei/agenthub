@@ -1,7 +1,9 @@
 # Agent Loop Product Model
 
-Status: target product contract. Runtime migration is pending; this document does not claim that
-the existing idle watchdog, reminders, or Mem policy helpers implement the complete loop model.
+Status: product contract with an implemented local Linux ACP workflow. The
+[activation contract](agent-loop-activation-contract.md) defines shipped policy, identity, storage,
+and recovery; provider qualification and remaining rollout gates are recorded in the
+[integration journal](../journal/2026-09-21-acp-rollout-integration.md).
 
 ## Problem
 
@@ -23,8 +25,9 @@ The product definition establishes four requirements:
 - Nowledge Mem is an integrated knowledge service for work across loops.
 
 This contract defines their lifecycle and state-ownership boundaries. Activation policy, provider
-session reuse defaults, concrete tool APIs, and storage migrations need separate implementation
-designs. The proposed delivery sequence is tracked in [TODO](../todo.md#agent-loop-product-transition).
+session reuse defaults, concrete tool APIs, and storage migrations are defined by the activation,
+scheduling, shared-proxy and App specs. Remaining delivery work is tracked in
+[TODO](../todo.md#agent-loop-product-transition).
 
 The [runtime design](agent-loop-runtime.md) defines admission, outcome recording, shutdown races,
 tool responsibilities, and recovery. `leader` is the product role name; the existing `coordinator`
@@ -75,9 +78,9 @@ Provider protocol messages, tool results, and runtime identity metadata remain n
 The same mechanism runs both roles. The leader prompt guides intake, decomposition, ownership,
 coordination, and acceptance. The worker prompt guides assigned execution, validation, reporting,
 and blocker handling. Existing tool authorization remains enforced independently of prompt text.
-The scheduler manages lifecycle and delivery; the agents choose the task plan. Provider adapters —
-the ACP runtimes and the [direct Rara integration](rara-direct-integration.md) — execute
-activations behind this same mechanism; adapter differences never change task or IM authority.
+The scheduler manages lifecycle and delivery; the agents choose the task plan. ACP adapters execute
+activations behind this mechanism; adapter differences never change task or IM authority. Native
+runtime integration is deferred from this rollout.
 
 Tool surfaces are extensible by registration. External apps can declare tools and event triggers
 through [app tool registration](app-tool-registration.md) and reach agents only through operator
@@ -214,14 +217,14 @@ DevTools inspection of an offline-to-active-to-exited agent and recovery history
 
 ## Operational Notes
 
-The current idle watchdog sends a prompt through an existing ACP handle. Current reminder delivery
-explicitly does not start a stopped process. Both remain compatibility behavior until activation
-semantics are implemented; turning them on does not enable this product model.
+The idle watchdog and reminder delivery remain compatibility behavior for resident sessions.
+Enabling them does not enable durable execution. Loop Teams use explicit policy and the fenced
+activation scheduler, with fresh provider sessions by default.
 
-The Mem integration currently has policy helpers for scope binding, error classification, and
-write-journal transitions. End-to-end proxy startup, context bootstrap, and write recovery still
-need implementation evidence. Existing process supervision, admission control, task ownership,
-mailbox persistence, and receipt fencing are reusable foundations.
+The shared proxy supplies scoped Mem and pinned App tools, context bootstrap, and a durable operation
+journal. Local guardian evidence supports verified restart recovery; ambiguous external writes
+remain unreplayed. The [operator guide](../../userdocs/docs/core/durable-execution.md) describes
+enablement, provider limits, suspension, and recovery without a database-delete workaround.
 
 Observe task progress, pending activation age, startup failures, exit reasons, retry counts, duplicate
 suppression, and Mem availability. Process uptime alone does not show whether work is advancing.
@@ -245,8 +248,10 @@ tracing/fastrace and `agenthub doctor agent-trace` foundations from
 
 ## Source Journals
 
-These establish reusable implementation foundations, not completion of this target model:
+The integration journal records qualification of the implemented subset; earlier journals retain
+the original design and its foundations:
 
+- [ACP rollout integration and acceptance](../journal/2026-09-21-acp-rollout-integration.md)
 - [Product redefinition checkpoint](../journal/2026-09-15-agent-loop-product-definition.md)
 - [Start scheduling](../journal/2026-08-28-agent-start-scheduler.md)
 - [Mailbox delivery receipts](../journal/2026-08-28-team-runtime-delivery-receipts.md)

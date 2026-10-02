@@ -24,6 +24,11 @@ async fn admitted(fixture: &Fixture, key: &str, now: i64) -> LoopReservation {
 
 pub(super) async fn running(fixture: &Fixture, key: &str, now: i64) -> LoopReservation {
     let reservation = admitted(fixture, key, now).await;
+    fixture
+        .store
+        .authorize_guarded_spawn(&reservation, now)
+        .await
+        .unwrap();
     let session = Uuid::new_v4().to_string();
     sqlx::query("INSERT INTO agent_sessions(id, agent_id, status, started_at) VALUES (?, 'worker', 'running', ?)")
         .bind(&session).bind(now).execute(&fixture.store.pool).await.unwrap();
@@ -34,6 +39,143 @@ pub(super) async fn running(fixture: &Fixture, key: &str, now: i64) -> LoopReser
         .unwrap();
     fixture.store.mark_running(&reservation, now).await.unwrap();
     reservation
+}
+
+#[tokio::test]
+async fn loop_recovery_unstarted_cas_fences_late_spawn_and_new_generation() {
+    let fixture = Fixture::new().await;
+    fixture.enable("worker", &LoopLimits::default()).await;
+    let first = admitted(&fixture, "before-spawn", 100).await;
+    assert!(!fixture.store.cleanup_unstarted(&first, 101).await.unwrap());
+    let expired = fixture
+        .store
+        .expired_foreign_reservations("replacement", "", 161)
+        .await
+        .unwrap();
+    assert_eq!(expired.len(), 1);
+    assert!(
+        fixture
+            .store
+            .expired_foreign_reservations("daemon", "", 161)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(fixture.store.cleanup_unstarted(&first, 161).await.unwrap());
+    assert!(
+        fixture
+            .store
+            .authorize_guarded_spawn(&first, 101)
+            .await
+            .is_err()
+    );
+    let second = admitted(&fixture, "replacement", 162).await;
+    assert!(fixture.store.cleanup_unstarted(&first, 300).await.is_err());
+    fixture
+        .store
+        .authorize_guarded_spawn(&second, 163)
+        .await
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .authorize_guarded_spawn(&second, 164)
+            .await
+            .is_err()
+    );
+    assert!(!fixture.store.cleanup_unstarted(&second, 300).await.unwrap());
+    assert_eq!(
+        fixture
+            .store
+            .reservation("team", "worker")
+            .await
+            .unwrap()
+            .unwrap()
+            .generation,
+        second.generation
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn loop_recovery_migration_never_certifies_legacy_reservations() {
+    let mut fixture = Fixture::new().await;
+    fixture.enable("worker", &LoopLimits::default()).await;
+    let first = admitted(&fixture, "legacy-spawn", 100).await;
+    sqlx::query("ALTER TABLE loop_execution_reservations DROP COLUMN executor_state")
+        .execute(&fixture.store.pool)
+        .await
+        .unwrap();
+    fixture.store.pool.close().await;
+    fixture.store = LoopStore::new(crate::init_db_at_path(&fixture.path).await.unwrap());
+    migrate_loop_runtime(&fixture.store.pool).await.unwrap();
+    assert!(!fixture.store.cleanup_unstarted(&first, 200).await.unwrap());
+    assert!(
+        fixture
+            .store
+            .authorize_guarded_spawn(&first, 101)
+            .await
+            .is_err()
+    );
+    assert!(
+        fixture
+            .store
+            .reservation("team", "worker")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn loop_recovery_preserves_recorded_outcome_and_canonical_task() {
+    let fixture = Fixture::new().await;
+    fixture.enable("worker", &LoopLimits::default()).await;
+    let reservation = running(&fixture, "after-effect", 100).await;
+    let note = task_note(&fixture, "worker", 101).await;
+    let mut finish = outcome();
+    finish.kind = LoopOutcomeKind::CompletionProposed;
+    finish.task_note_id = Some(note);
+    fixture
+        .store
+        .finish(&reservation, &finish, 102)
+        .await
+        .unwrap();
+    fixture.store.interrupt_expired(200).await.unwrap();
+    assert!(
+        !fixture
+            .store
+            .cleanup_unstarted(&reservation, 200)
+            .await
+            .unwrap()
+    );
+    fixture
+        .store
+        .cleanup_verified(&reservation, LoopCleanupDisposition::Exited, 200)
+        .await
+        .unwrap();
+    let activation = fixture
+        .store
+        .activation("team", reservation.activation_id.as_deref().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(activation.state, LoopActivationState::Finished);
+    assert_eq!(activation.outcome.unwrap().task_note_id, Some(note));
+    assert!(
+        fixture
+            .store
+            .cleanup_verified(&reservation, LoopCleanupDisposition::Exited, 201)
+            .await
+            .is_err()
+    );
+    let status: String = sqlx::query_scalar("SELECT status FROM team_tasks WHERE id = 'task'")
+        .fetch_one(&fixture.store.pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "in_progress");
+    fixture.close().await;
 }
 
 fn outcome() -> LoopOutcome {

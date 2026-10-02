@@ -18,6 +18,9 @@ use nix::unistd::Pid;
 use process_wrap::tokio::ChildWrapper;
 use tokio::process::{Child, Command};
 
+mod witness;
+pub(crate) use witness::CleanupWitness;
+
 const CONTROL_FD_ENV: &str = "AGENTHUB_EXECUTOR_GUARDIAN_FD";
 const CLEANED: u8 = 1;
 const STOP: u8 = 2;
@@ -27,6 +30,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(20);
 pub(crate) struct GuardianChannel {
     control: UnixStream,
     inherited: UnixStream,
+    witness: Option<std::sync::Arc<CleanupWitness>>,
 }
 
 pub(crate) fn prepare(program: &str, args: &[String]) -> io::Result<(Command, GuardianChannel)> {
@@ -52,7 +56,14 @@ pub(crate) fn prepare(program: &str, args: &[String]) -> io::Result<(Command, Gu
             Ok(())
         });
     }
-    Ok((command, GuardianChannel { control, inherited }))
+    Ok((
+        command,
+        GuardianChannel {
+            control,
+            inherited,
+            witness: None,
+        },
+    ))
 }
 
 fn guardian_executable() -> io::Result<std::path::PathBuf> {
@@ -73,10 +84,34 @@ fn guardian_executable() -> io::Result<std::path::PathBuf> {
 }
 
 impl GuardianChannel {
+    pub(crate) fn attach_witness(
+        &mut self,
+        command: &mut Command,
+        witness: std::sync::Arc<CleanupWitness>,
+    ) {
+        let fd = witness.descriptor();
+        // SAFETY: only async-signal-safe fcntl runs after fork; self owns the fd until spawn.
+        unsafe {
+            command.pre_exec(move || {
+                fcntl(
+                    BorrowedFd::borrow_raw(fd),
+                    FcntlArg::F_SETFD(FdFlag::empty()),
+                )?;
+                Ok(())
+            });
+        }
+        self.witness = Some(witness);
+    }
+
     pub(crate) fn spawn(self, mut command: Command) -> io::Result<Box<dyn ChildWrapper>> {
         // Closing the control connection requests cleanup, including during daemon death.
         // kill_on_drop would kill the subreaper before it can collect detached descendants.
         command.kill_on_drop(false);
+        command.env(CONTROL_FD_ENV, self.inherited.as_raw_fd().to_string());
+        command.env_remove(witness::FD_ENV);
+        if let Some(witness) = &self.witness {
+            command.env(witness::FD_ENV, witness.descriptor().to_string());
+        }
         let child = command.spawn()?;
         drop(self.inherited);
         Ok(Box::new(GuardianChild {
@@ -177,6 +212,7 @@ pub(super) fn run(args: Vec<OsString>) -> io::Result<u8> {
     fcntl(&control, FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC))?;
     control.set_nonblocking(true)?;
     set_child_subreaper(true)?;
+    let witness = CleanupWitness::inherit()?;
     let Some((program, args)) = args.split_first() else {
         return Err(io::Error::other("missing executor command"));
     };
@@ -184,14 +220,21 @@ pub(super) fn run(args: Vec<OsString>) -> io::Result<u8> {
     command
         .args(args)
         .env_remove(CONTROL_FD_ENV)
+        .env_remove(witness::FD_ENV)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .process_group(0);
+    if let Some(witness) = &witness {
+        witness.mark_started()?;
+    }
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(_) => {
             // No provider process exists, so startup failure can be safely retried.
+            if let Some(witness) = &witness {
+                witness.mark_cleaned()?;
+            }
             control.write_all(&[CLEANED])?;
             return Ok(125);
         }
@@ -211,6 +254,9 @@ pub(super) fn run(args: Vec<OsString>) -> io::Result<u8> {
         std::thread::sleep(POLL_INTERVAL);
     };
     reap_descendants()?;
+    if let Some(witness) = &witness {
+        witness.mark_cleaned()?;
+    }
     // A disconnected daemon still gets cleanup; only a live receiver needs the receipt.
     match control.write_all(&[CLEANED]) {
         Ok(()) => {}

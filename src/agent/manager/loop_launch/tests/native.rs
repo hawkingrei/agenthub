@@ -264,6 +264,27 @@ async fn native_loop_cancellation_settles_a_waiting_turn_without_a_second_termin
             while !fixture.directory.join("native-waiting").exists() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
+            // Native launches must participate in the mainline crash-recovery fence.
+            let executor_state: String = sqlx::query_scalar(
+                "SELECT executor_state FROM loop_execution_reservations WHERE actor_id = 'worker'",
+            )
+            .fetch_one(&fixture.state.db)
+            .await
+            .unwrap();
+            assert_eq!(executor_state, "guarded");
+            let reservation = LoopStore::new(fixture.state.db.clone())
+                .reservation(&fixture.team_id, "worker")
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(
+                crate::executor_guardian::CleanupWitness::verify(
+                    fixture.state.agents.event_dbs.base_dir(),
+                    &reservation,
+                )
+                .unwrap()
+                .is_none()
+            );
             let input = fixture.state.agents.inner.read().await["worker"]
                 .input
                 .clone();

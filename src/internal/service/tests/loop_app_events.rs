@@ -271,15 +271,38 @@ async fn app_event_schedule_rpc_preserves_signed_provenance_and_next_activation_
         .unwrap()
         .into_inner();
     let page: LoopWorkPage = serde_json::from_str(&page.page_json).unwrap();
+    assert_eq!(page.sources.len(), 1);
+    assert_eq!(page.sources[0].id, direct.trigger_id);
+    assert!(!page.sources[0].revoked);
+    assert_eq!(
+        service
+            .get_loop_work_source(authenticated_request(
+                GetLoopWorkSourceRequest {
+                    source_id: firing.receipt.trigger_id.clone(),
+                },
+                &credential,
+            ))
+            .await
+            .unwrap_err()
+            .code(),
+        Code::PermissionDenied
+    );
+    let history = loops
+        .activation_source_history(&run.team_id, "reviewer", &direct.activation_id, None, 10)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(history.sources.len(), 2);
     assert!(
-        page.sources
+        history
+            .sources
             .iter()
             .find(|source| source.id == firing.receipt.trigger_id)
             .unwrap()
             .revoked
     );
     assert!(
-        !page
+        !history
             .sources
             .iter()
             .find(|source| source.id == direct.trigger_id)

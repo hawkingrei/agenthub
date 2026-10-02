@@ -134,8 +134,36 @@ impl LoopStore {
         disposition: LoopCleanupDisposition,
         now: i64,
     ) -> anyhow::Result<()> {
+        self.cleanup(expected, disposition, now, false).await?;
+        Ok(())
+    }
+
+    /// Atomically prove that no spawn was authorized and retire the expired reservation.
+    pub async fn cleanup_unstarted(
+        &self,
+        expected: &LoopReservation,
+        now: i64,
+    ) -> anyhow::Result<bool> {
+        self.cleanup(expected, LoopCleanupDisposition::Exited, now, true)
+            .await
+    }
+
+    async fn cleanup(
+        &self,
+        expected: &LoopReservation,
+        disposition: LoopCleanupDisposition,
+        now: i64,
+        require_unstarted: bool,
+    ) -> anyhow::Result<bool> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let current = require_matching_reservation(&mut tx, expected).await?;
+        if require_unstarted {
+            let unstarted: bool = sqlx::query_scalar("SELECT executor_state = 'unstarted' AND session_id IS NULL AND lease_expires_at <= ? FROM loop_execution_reservations WHERE actor_id = ?")
+                .bind(now).bind(&current.actor_id).fetch_one(&mut *tx).await?;
+            if !unstarted {
+                return Ok(false);
+            }
+        }
         if let Some(id) = &current.activation_id {
             let row = sqlx::query(
                 "SELECT state, attempt_count, outcome_json FROM loop_activations WHERE id = ?",
@@ -193,7 +221,7 @@ impl LoopStore {
         sqlx::query("DELETE FROM loop_execution_reservations WHERE actor_id = ? AND generation = ? AND owner_id = ?")
             .bind(&current.actor_id).bind(current.generation).bind(&current.owner_id).execute(&mut *tx).await?;
         tx.commit().await?;
-        Ok(())
+        Ok(true)
     }
 
     /// Restart has no process handle proof. Retain expired reservations until explicit cleanup.

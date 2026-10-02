@@ -377,7 +377,10 @@ impl Thread {
             .map_err(|e| Error::internal_error().data(e.to_string()))?
     }
 
-    pub async fn prompt(&self, request: PromptRequest) -> Result<StopReason, Error> {
+    pub async fn start_prompt(
+        &self,
+        request: PromptRequest,
+    ) -> Result<oneshot::Receiver<Result<StopReason, Error>>, Error> {
         let acp_session_id = request.session_id.to_string();
         let prompt_block_count = request.prompt.len();
         let span = info_span!(
@@ -407,17 +410,7 @@ impl Thread {
                 "acp prompt request is waiting for Codex stop reason"
             );
 
-            let stop_reason = response_rx
-                .await
-                .map_err(|e| Error::internal_error().data(e.to_string()))?;
-
-            info!(
-                target: "codex_otel.trace_safe",
-                stop_reason = ?stop_reason,
-                "acp prompt request received Codex stop reason"
-            );
-
-            stop_reason
+            Ok(response_rx)
         }
         .instrument(span)
         .await

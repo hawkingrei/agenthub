@@ -8,8 +8,9 @@ activation coalescing, safe event persistence, generation-fenced admission, stru
 continuation recording, and verified cleanup. Configured manual starts share durable reservations.
 Local ACP execution now resolves a launch snapshot and uses generation-scoped actor control.
 Offline Team configuration, explicit policy controls, and durable work-event intake are available.
-Shared MCP tools and role migration remain separate rollout gates; no existing actor is implicitly
-opted in.
+Shared MCP tools, scoped Mem, role prompts, App tools/events, and product history are integrated.
+No existing actor is implicitly opted in. Local Linux ACP is the current execution boundary;
+verified restart recovery is implemented; real-adapter acceptance remains a rollout gate.
 
 ## Problem
 
@@ -204,10 +205,14 @@ Its source records the authenticated user, without fabricating an actor activati
 requests to disabled policies fail; suspended policies accept pending work.
 
 `agenthub actor loop-context` reads the live activation and pages its sources, with a default of
-64 and a maximum of 256 per page. Follow `next_cursor` through `--after-source-id` until exhausted.
+64 and a maximum of 256 per page. Only non-revoked sources are returned, with revocations filtered
+before applying the page limit. Follow `next_cursor` through `--after-source-id` until exhausted;
+the cursor remains usable if its source is revoked between pages.
 `agenthub actor loop-source --source-id <id>` resolves an exact source message, including a message
 older than the recent task detail window or one whose delivery replica is not available. The source
-must belong to the current actor, Team, and activation under a live fence. Message bodies stay in
+must belong to the current actor, Team, and activation under a live fence and must not be revoked,
+including when its ID was retained from an earlier page. Revoked sources remain visible in activation
+history. Message bodies stay in
 canonical stores and are hydrated through the existing body-store boundary. These reads do not
 consume messages or accept tasks; current task state still comes from the task tools.
 
@@ -247,9 +252,30 @@ Revocation retains every source and its trace. Independently accepted coalesced 
 Admission rechecks whether referenced tasks remain actionable before starting their continuations.
 Configured Linux executors run beneath a single-threaded subreaper guardian. It adopts and reaps
 descendants that leave the provider process group, then sends a private cleanup receipt. Provider
-stdio remains the ACP transport; the provider never inherits the receipt descriptor. A missing
-receipt, guardian crash, or cleanup timeout retains the reservation. Closing the daemon control
-connection requests cleanup, but a restarted daemon still cannot infer proof that it did not observe.
+stdio remains the ACP transport; the provider never inherits control or witness descriptors.
+Closing the daemon control connection requests cleanup even if the daemon cannot receive a reply.
+
+New reservations start with durable `unstarted` executor state. Before any OS spawn, the launcher
+locks a private witness file and atomically changes the matching live reservation to `guarded`.
+Recovery can retire an expired `unstarted` reservation in the same transaction that proves no spawn
+was authorized; any delayed launch then fails its owner/generation check. Legacy reservations migrate
+to `unknown`, never to `unstarted`.
+
+The guardian inherits the witness lock, durably records `started` before spawning the provider, and
+records `cleaned` only after reaping its entire descendant tree. On startup and subsequent scheduler
+ticks, a replacement daemon reconciles expired foreign reservations. It must acquire the exclusive
+witness lock and verify the exact Team, actor, activation, owner and generation identity. An unlocked
+`prepared` witness proves no provider was started; an unlocked `cleaned` witness proves cleanup.
+The recovery keeps the lock through the database compare-and-swap and retires the witness afterward.
+Recorded outcomes remain finished, while executions without outcomes become interrupted. Recovery
+does not replay unknown tool effects, reopen accepted tasks, or change suspension/pending intent.
+
+A missing, corrupt, mismatched or `started` witness, a live lock, guardian crash or cleanup timeout
+retains the reservation. This includes legacy reservations without evidence. PID absence, lease
+expiry, provider output and bulk session-status changes are not substitutes for cleanup proof.
+The event-store directory must retain the private `.executor-recovery` directory across daemon
+restarts; do not delete or edit these files to clear a fence. Back up database and evidence together
+after quiescing executors; restoring a snapshot while its original executors are alive is unsupported.
 This is an execution-cleanup boundary, not a security sandbox for hostile same-user processes.
 Other platforms do not admit loop execution until equivalent verification is available.
 
@@ -291,11 +317,17 @@ is bound and the activation is running. Provider reasoning/tool rounds stay insi
 A completed turn without a recorded outcome is interrupted and cleaned up. Legacy idle controllers,
 reminders, and mailbox prompt hints cannot inject another turn into this path.
 
+The Codex adapter configures a live thread through `thread/settings/update`; a fresh thread does
+not yet have the persisted rollout required by `thread/resume`. Local settings change only after
+the runtime accepts them. Prompt submission preserves receive order, but waiting for its stop
+reason runs outside the ACP dispatch loop. Cancellation must remain reachable during a pending
+permission request and invalidate that request before reporting the canceled prompt result.
+
 The entry points to `agenthub actor loop-context` and `loop-source` for durable sources,
 `team-members`, `team-tasks`, and `inbox` for current canonical state, and `agenthub actor loop-finish --outcome-file <path> --json` for the bounded outcome.
 These commands recover the signed stable mailbox; they do not scan historical run partitions.
-Legacy resident role skills are not attached to the loop contract. Loop ACP sessions leave direct
-static MCP servers disconnected until the shared proxy and operation journal supply those tools.
+Legacy resident role skills are not attached to the loop contract. Loop ACP sessions mount approved
+tools through the shared proxy and operation journal; direct static MCP servers stay disconnected.
 Legacy sessions retain their configured MCP behavior.
 
 A private file with mode 0600 in a mode-0700 runtime directory supplies short-lived actor credentials.
@@ -325,6 +357,8 @@ identity, active mailbox, membership, owner, generation, lease, and operation-gu
 | Compatibility | Legacy watchdog/reminders and manual startup unchanged; loop run not startup-canceled |
 | Context | Fresh/resumed task and inbox recovery without new task attempts or mailbox rotation |
 | Local adapter | Guardian receipt, detached descendants, strict resume/profile negotiation, one entry turn |
+| Installed Codex | `scripts/verify_real_acp_runtime.py`: official 0.150.1, live settings, native commands, persisted load/history, canceled permission and ignored late approval |
+| Assembled runtime | Opt-in `loop_real_acp_dispatch_worker_and_fresh_acceptance`: real ACP/app-server/CLI/MCP, deferred discovery, scoped Mem, App revocation, signed event deduplication, fresh acceptance, local progress during Mem outage |
 | Actor control | Credential rotation, stale owner/generation rejection, disconnect ownership, finish replay |
 | MCP bootstrap | Bound launch/session required; startup initialization/discovery cannot perform a journaled tool send |
 | Configuration | Offline creation/copy, preflight and authority, disconnect/start exclusion, concurrent removal/intake, claim/reply/permission guards |
@@ -339,10 +373,11 @@ with normal Cargo/Bazel checks and browser evidence for the eventual UI.
 
 ## Operational Notes
 
-Land storage, admission, and deterministic lifecycle recovery before real provider enablement.
-Connect scoped tools before switching role prompts. Expose workbench controls after backend policy
-and history are inspectable. App and Rara tracks reuse these boundaries; unsupported capabilities
-fail explicitly rather than claim parity. Track implementation and remaining validation in
+The initial supported path is explicit opt-in, local Linux ACP execution with verified guardian
+cleanup. Scoped tools, role prompts, policy controls, and retained history use the same admission
+boundary. Follow the [operator guide](../../userdocs/docs/core/durable-execution.md) for configuration,
+provider qualification, suspension and recovery. Unsupported capabilities fail explicitly.
+Track implementation and remaining validation in
 [TODO](../todo.md#agent-loop-product-transition).
 
 ## Open Risks

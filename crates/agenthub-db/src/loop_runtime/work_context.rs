@@ -19,7 +19,8 @@ impl LoopStore {
         let current = require_live_reservation(&mut tx, expected, now).await?;
         require_member(&mut tx, &current.team_id, &current.actor_id).await?;
         let row = sqlx::query("SELECT s.*, EXISTS(SELECT 1 FROM loop_revoked_sources r WHERE r.trigger_id = s.id) AS revoked \
-            FROM loop_trigger_sources s WHERE s.id = ? AND s.activation_id = ? AND s.actor_id = ? AND s.team_id = ?")
+            FROM loop_trigger_sources s WHERE s.id = ? AND s.activation_id = ? AND s.actor_id = ? AND s.team_id = ? \
+            AND NOT EXISTS(SELECT 1 FROM loop_revoked_sources r WHERE r.trigger_id = s.id)")
             .bind(source_id).bind(&current.activation_id).bind(&current.actor_id).bind(&current.team_id)
             .fetch_optional(&mut *tx).await?.ok_or(LoopStoreError::ScopeMismatch)?;
         let source = parse_trigger(&row)?;
@@ -27,7 +28,7 @@ impl LoopStore {
         Ok(source)
     }
 
-    /// Read only the live caller's activation, with a bounded source page and stable ID cursor.
+    /// Page the live caller's non-revoked sources with a stable ID cursor; history retains revocations.
     pub async fn work_context(
         &self,
         expected: &LoopReservation,
@@ -58,6 +59,7 @@ impl LoopStore {
         let rows = sqlx::query(
             "SELECT s.*, EXISTS(SELECT 1 FROM loop_revoked_sources r WHERE r.trigger_id = s.id) AS revoked \
              FROM loop_trigger_sources s WHERE s.activation_id = ? AND s.actor_id = ? AND s.team_id = ? \
+             AND NOT EXISTS(SELECT 1 FROM loop_revoked_sources r WHERE r.trigger_id = s.id) \
              AND (? IS NULL OR s.id > ?) ORDER BY s.id LIMIT ?",
         ).bind(activation_id).bind(&current.actor_id).bind(&current.team_id).bind(after).bind(after)
             .bind((limit + 1) as i64).fetch_all(&mut *tx).await?;

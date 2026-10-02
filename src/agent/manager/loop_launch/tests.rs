@@ -14,6 +14,8 @@ mod mcp;
 mod mem;
 mod native;
 mod native_process;
+mod real_runtime;
+mod recovery;
 mod roles;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3

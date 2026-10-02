@@ -1,8 +1,9 @@
 # Agent Loop Runtime
 
-Status: target design, pending implementation. This refines the
-[product model](agent-loop-product-model.md); state names below are design vocabulary, not shipped
-API enum values or a database migration.
+Status: conceptual runtime model with an implemented local Linux ACP path. This refines the
+[product model](agent-loop-product-model.md); the activation contract below is authoritative for
+shipped API values, policy defaults, storage, and recovery. Conceptual state names here are not SQL
+or API enum definitions.
 
 The [activation implementation contract](agent-loop-activation-contract.md) selects identity,
 policy defaults, storage boundaries, and compatibility gates for the initial local implementation.
@@ -25,7 +26,7 @@ ACP handle and cannot provide this lifecycle.
 
 - A second task planner implemented in the scheduler.
 - Exactly-once execution of external effects.
-- Public API or SQL changes before compatibility design.
+- Replacing the public API and SQL contracts selected by the activation implementation.
 - Migrating all providers and remote nodes in one release.
 
 ## Architecture
@@ -44,10 +45,9 @@ These are responsibilities, not a requirement to create seven crates or services
 managers, stores, scheduling, actor transport, and supervision where ownership matches. The daemon
 hosts the scheduler; individual agent processes can be temporary.
 
-Provider adapters include the existing ACP runtimes and the
-[direct Rara integration](rara-direct-integration.md). Adapter capability differences — durable
-permission waits, resumable provider continuity, replayable event cursors — change what the
-scheduler may claim about a loop, never task or IM authority.
+This rollout uses the existing ACP adapters; native runtime integration is deferred. Adapter
+capability differences, including resumable provider continuity and permission lifetimes, change
+what the scheduler may claim about a loop, never task or IM authority.
 
 Identity mapping:
 
@@ -120,8 +120,11 @@ requests may depend on live callbacks: do not claim they survive process exit be
 exists. Keep the callback within its timeout or settle it explicitly and record interruption. A later
 session must not reuse expired approval or treat an unrelated reply as authority.
 
-Daemon restart preserves suspension and pending work. In-flight records require lease/process
-reconciliation; do not reset live leases or blindly repeat unknown effects. Startup failures use
+Daemon restart preserves suspension and pending work. Expired foreign reservations are automatically
+reconciled only through atomic proof that spawning was never authorized or an exclusively locked,
+identity-bound guardian witness proving no start or completed descendant cleanup. Legacy or uncertain
+executions stay fenced; see the [activation contract](agent-loop-activation-contract.md).
+Do not reset live leases or blindly repeat unknown effects. Startup failures use
 bounded backoff, while permanently missing configuration becomes an inspectable blocked condition.
 Retry limits and no-progress budgets must be explicit before rollout.
 

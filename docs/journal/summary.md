@@ -29,8 +29,12 @@ rg -n "Validation|Follow-Ups|Key Decisions" docs/journal/2026-06-*.md
 
 ## Recent Checkpoints
 
-- [2026-09-18: Direct runtime loop activation](2026-09-18-native-loop-activation.md): typed source controls and initial fresh activation lifecycle; full context/tool/semantic/trace alignment and native leader/worker proof remain open.
-- [2026-09-18: Direct runtime event storage](2026-09-18-runtime-event-storage.md): atomic history/deduplication/cursors, control receipts, typed projection and managed live replay; user input, browser reply fences and live permission mapping remain open.
+- [2026-09-27: Revoked execution sources](2026-09-27-loop-revoked-execution-sources.md): exclude revoked sources from live execution pages and exact-source reads while preserving history and stable pagination.
+
+- [2026-09-21: ACP rollout integration](2026-09-21-acp-rollout-integration.md): PR #1169 merged the ACP slices, verified restart recovery, installed-adapter acceptance and operator guidance after applicable CI passed. Native support remains deferred.
+
+- [2026-09-18: Direct runtime loop activation](2026-09-18-native-loop-activation.md): typed source controls, pinned task context, retained traces and fresh leader/worker activation evidence; tool sources, semantic outcomes and approval persistence remain open.
+- [2026-09-18: Direct runtime event storage](2026-09-18-runtime-event-storage.md): atomic history/deduplication/cursors, control receipts, typed projection, managed replay and fenced live input/permissions.
 - [2026-09-18: Signed App intake](2026-09-18-app-event-intake.md): exact-body HMAC, atomic receipts/cursors/triggers, budgets, standing conditions, and safe context/doctor/web attribution; final PR/CI delivery remains open.
 - [2026-09-18: App event configuration](2026-09-18-app-event-configuration.md): explicit event classes, independent signing-key versions, and epoch/version-pinned member routes consumed by signed intake and standing conditions.
 - [2026-09-18: App runtime integration](2026-09-18-app-runtime.md): activation mounts, trusted HTTP identity, native schema enforcement, call/stream revocation, safe Cards, and pinned history attribution; PR #1161 passed applicable CI at `5fd553b3` and is ready for review.

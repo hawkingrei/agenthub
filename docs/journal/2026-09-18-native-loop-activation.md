@@ -131,3 +131,43 @@ in Rust; captured upstream protocol evidence remains owned by the protocol crate
 capability is explicitly unavailable because this fake peer does not implement replay. All six
 focused native activation fixtures pass after the change. Remote Bazel validation is pending;
 no local Bazel execution or build configuration changes were needed.
+
+## Mainline Integration Checkpoint (2026-10-02)
+
+PR #1168 now integrates main at `0c0229ce`. The ACP rollout was squash-merged, so the
+shared pre-native tree `7c671973` was used to reconcile duplicate additions while retaining
+a normal merge commit. Both ACP recovery and native activation test modules remain enabled.
+Mainline dependency versions, guardian cleanup witnesses, guarded-spawn authorization,
+revoked-source filtering and the pinned MinIO fixture are retained.
+
+The waiting native-turn regression additionally checks guarded execution ownership and rejects
+cleanup evidence while the provider is still live. Source registration, fresh sessions and the
+existing unsupported-capability checks keep their prior boundaries. Controlled tool sources,
+semantic outcomes and approval-persistence acceptance remain deferred.
+
+Validation commands for this integration:
+
+```bash
+cargo fmt --all --check
+cargo test --locked --offline -p agenthub --lib agent::manager::
+cargo test --locked --offline -p agenthub-db loop_runtime::
+cargo test --locked --offline -p agenthub-db runtime_events::
+cargo test --locked --offline -p agenthub-rara
+cargo test --locked --offline -p agenthub-diagnostics loop_trace::
+cargo test --locked --offline -p agenthub --lib loop_history_api_
+cargo test --locked --offline -p agenthub --lib internal::service::tests::loop_app_events::
+cargo clippy --locked --offline -p agenthub --lib --tests -p agenthub-db -p agenthub-diagnostics -p agenthub-rara -- -D warnings
+cd web
+npm ci --ignore-scripts --no-audit --no-fund
+npm run lint
+npm exec tsc -- --noEmit
+npm run build
+npm exec vitest -- run src/native_input.test.ts src/components/native_input.test.tsx src/components/use_agents_workbench_panel.test.tsx
+```
+
+The manager selection passes 150 tests (9 opt-in cases ignored), loop storage passes 72,
+runtime-event storage passes 25, protocol passes 42 (1 opt-in case ignored), diagnostics passes 7,
+history API passes 5 and App-event RPC passes 1. Web lint, type checking, production build and
+18 focused input/workbench tests pass against the mainline lockfile. Focused Clippy with warnings
+denied and workspace formatting pass. Real-provider opt-in
+acceptance is not repeated by this conflict-resolution checkpoint.
