@@ -1,6 +1,6 @@
 use agenthub_db::runtime_events::{
-    RuntimeEventStore, RuntimeRequestAck, RuntimeRequestIntent, RuntimeRequestKind,
-    RuntimeRequestStatus,
+    RuntimeEventStore, RuntimeHistoryEntry, RuntimeRequestAck, RuntimeRequestIntent,
+    RuntimeRequestKind, RuntimeRequestStatus,
 };
 
 use super::*;
@@ -21,8 +21,19 @@ async fn startup_recovery_retires_transport_ownership_without_retry_or_task_comp
         .unwrap();
     store.bind_stream("old-native").await.unwrap();
     for id in ["prepared", "sent", "accepted"] {
+        let message = serde_json::json!({
+            "type":"user_message", "text":"Recover this input", "message_id":id,
+            "meta":{"delivery":"pending", "provider_runtime":{
+                "provider":"rara", "runtime_id":"old-runtime",
+                "native_session_id":"old-native", "request_id":id
+            }}
+        });
+        let encoded = agenthub_agent_event_codec::encode_message_for_storage(
+            &crate::agent::OutputStream::Acp,
+            &message.to_string(),
+        );
         store
-            .prepare_request(
+            .prepare_input_request(
                 RuntimeRequestIntent {
                     request_id: id,
                     kind: RuntimeRequestKind::Prompt,
@@ -30,6 +41,12 @@ async fn startup_recovery_retires_transport_ownership_without_retry_or_task_comp
                     expected_turn_id: None,
                 },
                 1,
+                RuntimeHistoryEntry {
+                    seq: id,
+                    ts: 1,
+                    stream: crate::agent::OutputStream::Acp,
+                    message: &encoded,
+                },
             )
             .await
             .unwrap();
@@ -151,6 +168,35 @@ async fn startup_recovery_retires_transport_ownership_without_retry_or_task_comp
     .await
     .unwrap();
     assert!(ended);
+    let events = fixture
+        .manager
+        .list_events(&fixture.agent_id, 100, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        events.len(),
+        3,
+        "recovery must not append duplicate history"
+    );
+    for (event, expected) in events
+        .iter()
+        .zip(["not_sent", "outcome_unknown", "accepted"])
+    {
+        let message: serde_json::Value = serde_json::from_str(&event.message).unwrap();
+        assert_eq!(message["meta"]["delivery"], expected);
+        let reloaded = fixture
+            .manager
+            .get_event(&fixture.agent_id, event.event_id)
+            .await
+            .unwrap();
+        assert_eq!(reloaded.message, event.message);
+        let page = fixture
+            .manager
+            .list_events_for_session(&fixture.agent_id, "old-local", 1, Some(event.event_id + 1))
+            .await
+            .unwrap();
+        assert_eq!(page[0].message, event.message);
+    }
     drop(daemon);
     fixture.finish().await;
 }

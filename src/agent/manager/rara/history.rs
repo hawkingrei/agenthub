@@ -1,8 +1,100 @@
-use agenthub_db::runtime_events::{RuntimeEventStore, RuntimeHistory};
+use std::collections::{HashMap, hash_map::Entry};
+
+use agenthub_db::runtime_events::{
+    RuntimeEventError, RuntimeEventStore, RuntimeHistory, RuntimeRequestKind, RuntimeRequestStatus,
+};
+use serde_json::Value;
+use sqlx::SqlitePool;
 
 use super::AgentManager;
+use crate::agent::{AgentEvent, OutputStream};
 
 impl AgentManager {
+    /// Receipts remain authoritative if the daemon exits before emitting their history event.
+    /// Hydrate only retained rows so recovery neither rewrites history nor bypasses retention.
+    pub(in crate::agent::manager) async fn reconcile_native_input_history(
+        pool: &SqlitePool,
+        events: &mut [AgentEvent],
+    ) -> anyhow::Result<()> {
+        let mut owners = HashMap::new();
+        for event in events {
+            if !matches!(event.stream, OutputStream::Acp) {
+                continue;
+            }
+            let Ok(mut message) = serde_json::from_str::<Value>(&event.message) else {
+                continue;
+            };
+            let is_input = message["type"] == "user_message";
+            if !is_input && message["type"] != "input_receipt" {
+                continue;
+            }
+            let provider = &message["meta"]["provider_runtime"];
+            let (Some(request_id), Some(runtime_id), Some(native_session_id)) = (
+                message["message_id"].as_str(),
+                provider["runtime_id"].as_str(),
+                provider["native_session_id"].as_str(),
+            ) else {
+                continue;
+            };
+            if provider["provider"] != "rara" || provider["request_id"] != request_id {
+                continue;
+            }
+            if let Entry::Vacant(entry) = owners.entry(event.session_id.clone()) {
+                let owner = match RuntimeEventStore::load(pool.clone(), &event.session_id).await {
+                    Err(error)
+                        if matches!(
+                            error.downcast_ref::<RuntimeEventError>(),
+                            Some(RuntimeEventError::InvalidIdentity)
+                        ) =>
+                    {
+                        continue;
+                    }
+                    result => result?,
+                };
+                entry.insert(owner);
+            }
+            let Some(store) = owners.get(&event.session_id).and_then(Option::as_ref) else {
+                continue;
+            };
+            if store.runtime_id() != runtime_id {
+                continue;
+            }
+            let receipt = match store.request_receipt(request_id).await {
+                Err(error)
+                    if matches!(
+                        error.downcast_ref::<RuntimeEventError>(),
+                        Some(RuntimeEventError::InvalidIdentity)
+                    ) =>
+                {
+                    continue;
+                }
+                result => result?,
+            };
+            let Some(receipt) = receipt else { continue };
+            if receipt.target_session_id.as_deref() != Some(native_session_id)
+                || !matches!(
+                    receipt.kind,
+                    RuntimeRequestKind::Prompt
+                        | RuntimeRequestKind::FollowUp
+                        | RuntimeRequestKind::UserAnswer
+                )
+                || matches!(
+                    receipt.status,
+                    RuntimeRequestStatus::Prepared | RuntimeRequestStatus::Sent
+                )
+            {
+                continue;
+            }
+            if is_input {
+                message["meta"]["delivery"] = serde_json::to_value(receipt.status)?;
+            } else {
+                message["receipt"] = serde_json::to_value(receipt)?;
+            }
+            event.message = message.to_string();
+        }
+        Ok(())
+    }
+
     pub async fn runtime_history(
         &self,
         agent_id: &str,
@@ -41,7 +133,6 @@ impl AgentManager {
             let sessions: Vec<(String, String)> = sqlx::query_as(
                 "SELECT s.id, s.agent_id FROM agent_sessions s JOIN agents a ON a.id = s.agent_id \
                  WHERE s.id > ? AND a.target_node_id IS NULL \
-                 AND NOT EXISTS (SELECT 1 FROM loop_execution_reservations r WHERE r.session_id = s.id) \
                  ORDER BY s.id LIMIT 100",
             )
             .bind(&after)
@@ -67,7 +158,9 @@ impl AgentManager {
                     store.close(chrono::Utc::now().timestamp()).await?;
                     sqlx::query(
                         "UPDATE agent_sessions SET status = 'exited', ended_at = ? \
-                         WHERE id = ? AND agent_id = ? AND ended_at IS NULL",
+                         WHERE id = ? AND agent_id = ? AND ended_at IS NULL \
+                         AND NOT EXISTS (SELECT 1 FROM loop_execution_reservations r \
+                                         WHERE r.session_id = agent_sessions.id)",
                     )
                     .bind(chrono::Utc::now().timestamp())
                     .bind(session_id)

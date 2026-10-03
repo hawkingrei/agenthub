@@ -327,3 +327,39 @@ including Bazel coverage and both Codecov checks. No review feedback remained ou
 `codex/loop-16-rara` at `95447346f3e559133c293f91c3f97480b6ac4175`. Its squash-merge
 tree matches the validated PR head. Slice 18 preserves its subsequent changes while merging
 that dependency forward; the complete stack is not thereby claimed to be on main.
+
+## Startup Recovery Review (2026-10-03)
+
+Startup receipt recovery now includes sessions held by loop execution reservations. The old
+stdio owner cannot reconnect, so its preparations become `not_sent` and unresolved sends become
+`outcome_unknown`. The session exit update retains the reservation exclusion; guardian cleanup
+still gates replacement execution. Permission callbacks expire without completing an activation.
+
+Conversation history reads reconcile only retained input and receipt events with durable
+receipts, including late ACKs and a crash before receipt projection. This covers SQLite pages,
+fresh indexed pages and individual events without changing event identity, pagination or
+compressed storage. Repeated reads cannot append history or restore expired conversation rows.
+Local session, runtime, native session and request identity must all match.
+
+The pre-fix regressions reproduced an open transport under a retained reservation and a
+conversation message still showing `pending` after its receipt had settled. The guardian
+regression uses a real detached descendant and checks transport retirement independently
+from unchanged activation/session state and blocked replacement admission.
+
+Focused validation commands:
+
+The selections pass 29 runtime/receipt tests (two opt-in cases ignored), two guardian recovery
+tests, one indexed native-history regression, two existing indexed-history regressions and
+25 runtime-event storage tests. Root library/test Clippy with warnings denied, formatting,
+diff checks and all nine local documentation link targets pass. These checks use local
+fixtures; deferred real-provider acceptance was not repeated.
+
+```bash
+cargo test --locked --offline -p agenthub --lib agent::manager::rara:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::recovery:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::tests::native_history:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib list_agent_events -- --test-threads=1
+cargo test --locked --offline -p agenthub-db runtime_events:: -- --test-threads=1
+cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
+cargo fmt --all --check
+```

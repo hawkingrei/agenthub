@@ -1763,6 +1763,7 @@ impl AgentManager {
             events.push(agent_event_from_row(agent_id, &row));
         }
         events.reverse();
+        Self::reconcile_native_input_history(event_db, &mut events).await?;
         Ok(events)
     }
 
@@ -1925,6 +1926,7 @@ impl AgentManager {
             };
             events.push(event);
         }
+        Self::reconcile_native_input_history(event_db, &mut events).await?;
         Ok(events)
     }
 
@@ -1954,16 +1956,9 @@ impl AgentManager {
         .fetch_optional(&event_db)
         .await?
         .ok_or_else(|| anyhow::anyhow!("agent event not found"))?;
-        let stream_str: String = row.get("stream");
-        Ok(AgentEvent {
-            event_id: row.get("id"),
-            agent_id: agent_id.to_string(),
-            session_id: row.get("session_id"),
-            seq: row.get("seq"),
-            ts: row.get("ts"),
-            stream: stream_from_str(&stream_str),
-            message: decode_message_from_storage(row.get::<Vec<u8>, _>("message").as_slice()),
-        })
+        let mut event = agent_event_from_row(agent_id, &row);
+        Self::reconcile_native_input_history(&event_db, std::slice::from_mut(&mut event)).await?;
+        Ok(event)
     }
 
     #[cfg(test)]

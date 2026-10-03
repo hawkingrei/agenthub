@@ -447,6 +447,12 @@ polite live status region that updates in place without re-announcing the messag
 without a delivery receipt expose no status region. Receipt updates match local session, runtime,
 native session and request ID, including out-of-order history pages.
 
+History reads reconcile retained input messages and receipt events against their owned
+durable receipt. This also covers a daemon exit between receipt persistence and conversation
+projection, including a late ACK that settles an unknown outcome. SQLite, indexed pages and
+single-event reads use the same projection. Event identity, ordering and stored content remain
+unchanged; absent or expired conversation rows are never recreated from receipt metadata.
+
 The input API accepts an optional `native_input` object with `runtime_id`, `session_id` and
 `turn_id`. Question cards carry their original target through both web workbenches. A stale
 native answer is never retargeted to a replacement local session, and malformed native cards
@@ -591,6 +597,9 @@ Startup recovery runs under the daemon's exclusive instance lock before new work
 It closes earlier local stdio ownership, settles prepared requests as `not_sent` and unresolved
 sends as `outcome_unknown`, and expires live permission callbacks. Recorded ACKs remain intact.
 Native sessions waiting on approval are included even when their status is not `running`.
+Sessions still held by loop execution reservations are included as well: the old stdio
+connection cannot reconnect even while guardian cleanup remains unresolved. Transport
+retirement does not mark those reserved sessions exited or release their reservations.
 This is transport retirement, not evidence that detached processes stopped or tasks finished;
 durable execution reservations retain their separate cleanup fence.
 

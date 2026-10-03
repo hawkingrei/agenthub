@@ -28,6 +28,8 @@ use uuid::Uuid;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+mod native_history;
+
 #[derive(Debug, Default)]
 struct CountingIndexStore {
     inner: InMemoryIndexStore,
