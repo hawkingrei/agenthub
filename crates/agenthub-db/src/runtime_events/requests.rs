@@ -303,7 +303,12 @@ impl RuntimeEventStore {
                     RuntimeRequestKind::Cancel | RuntimeRequestKind::Interrupt => {
                         *turn_id == receipt.expected_turn_id
                     }
-                    _ => turn_id.is_some(),
+                    // Answers fence the waiting turn in the request; their ACK names the
+                    // newly admitted continuation turn, not the completed waiting turn.
+                    RuntimeRequestKind::UserAnswer
+                    | RuntimeRequestKind::PlanAnswer
+                    | RuntimeRequestKind::ShellAnswer => turn_id.is_some(),
+                    RuntimeRequestKind::Prompt | RuntimeRequestKind::FollowUp => turn_id.is_some(),
                 };
                 anyhow::ensure!(valid_turn, RuntimeEventError::InvalidTarget);
                 (RuntimeRequestStatus::Accepted, Some(session_id))

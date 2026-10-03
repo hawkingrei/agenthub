@@ -569,3 +569,62 @@ cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tes
 cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
 cargo fmt --all --check
 ```
+
+## Answer And Shutdown Boundaries (2026-10-03)
+
+The pinned upstream protocol uses the request's waiting turn to validate a user, plan or shell
+answer, then returns the newly admitted continuation turn in its ACK. Requiring that ACK turn
+to equal the waiting turn would reject valid answers. This is established by the pinned
+[dispatch implementation](https://github.com/linkerdog/rara/blob/6f489462251b73e1695bb22a59d2ece59ba26a21/src/app_server_stdio/dispatch.rs#L84)
+and [new-turn regression](https://github.com/linkerdog/rara/blob/6f489462251b73e1695bb22a59d2ece59ba26a21/src/runtime_session/input_tests.rs#L293).
+The receipt validator now spells out the answer cases with this rationale. Its regression
+covers all three answer kinds, valid new turns, missing turn IDs, foreign session rejection,
+unchanged event cursors and cross-runtime ownership rejection. The protocol remains unchanged.
+
+The Team page previously returned success before sending when its callback lacked a token,
+event-agent binding, nonempty text or local session. Targeted questions now reject that path
+so the card shows a retryable error. Ordinary input retains its existing no-op behavior.
+Four page-level cases fail before the fix and pass afterward, including an explicit retry
+with the same target and one API call after availability returns. The fixture waits for the
+lazy workbench callback before invoking it. All 27 focused page, input-hook, target and card
+cases pass, along with web lint, typecheck and production build.
+
+Chrome DevTools MCP was not exposed in this session. An isolated Chromium harness exercised
+the callback extracted unchanged from the Team page with the production input hook and
+question card. Before the fix, missing token/binding silently resolved without sending. After
+the fix, both cases show the error, retain the selection and target, avoid automatic retry,
+and send exactly once on explicit retry without browser exceptions. Screenshots and JSON
+evidence use `/tmp/agenthub-pr1168-unavailable-{token,agent}-{before,after}.png` and
+`/tmp/agenthub-pr1168-unavailable-{before,after}.json`. This is component/callback evidence;
+it does not establish full provider acceptance.
+
+Bazel Coverage at `e62ab4b8` exposed a separate race: `stop_agent` could return before the
+history owner was closed. Normal Bazel tests and Rust coverage passed, but the coverage job
+observed `history.closed == false`. The shutdown helper accepted a transport `Client`, so
+wire shutdown completion bypassed the durable consumer signal exposed by `RaraHandle`.
+It now waits for that signal and process exit within the existing two-second drain budget,
+then follows the unchanged supervised cleanup path. Explicit and daemon stops share this
+helper. A timeout or failed consumer still falls back to supervised cleanup.
+
+A controlled regression holds a real SQLite writer after startup, waits for wire EOF and
+process exit, and checks that the shutdown helper remains pending until the writer releases
+the history close transaction. It fails before the fix after safely cleaning the fixture.
+The original after-exit history/privacy/foreign-session assertions remain unchanged.
+
+After the fix, 75 focused Rust cases pass: 27 runtime storage, 40 runtime adapter/event and
+eight native activation cases. The two real-provider opt-in cases remain ignored. Together
+with the 27 web cases above, this gives 102 passing focused cases.
+Library/test Clippy with warnings denied, workspace formatting and diff checks also pass.
+
+```bash
+cargo test --locked --offline -p agenthub-db --lib runtime_events:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::rara:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::native:: -- --test-threads=1
+cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
+cargo fmt --all --check
+cd web
+npm exec -- vitest run src/pages/team_page.agent_loop.test.tsx src/pages/team/use_team_member_acp_input.test.tsx src/components/native_input.test.tsx src/native_input.test.ts
+npm run lint
+npm exec tsc -- --noEmit
+npm run build
+```

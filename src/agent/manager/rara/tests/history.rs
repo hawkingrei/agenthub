@@ -329,6 +329,83 @@ async fn startup_recovery_retires_transport_ownership_without_retry_or_task_comp
 }
 
 #[tokio::test]
+async fn semantic_shutdown_waits_for_history_commit_before_returning() {
+    let fixture = Fixture::new("normal").await;
+    let session = fixture
+        .manager
+        .start_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    let runtime = fixture.runtime().await;
+    let child = fixture.manager.inner.read().await[&fixture.agent_id]
+        .child
+        .clone();
+    let pool = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    // Hold the consumer's close transaction behind a real SQLite writer, after startup.
+    let write = pool.begin_with("BEGIN IMMEDIATE").await.unwrap();
+    let manager = fixture.manager.clone();
+    let stopping_runtime = runtime.clone();
+    let stopping_child = child.clone();
+    let mut stopping = tokio::spawn(async move {
+        manager
+            .shutdown_rara_transport(&stopping_runtime, &stopping_child)
+            .await;
+    });
+    let transport: &Client = &runtime;
+    tokio::time::timeout(Duration::from_secs(3), transport.closed())
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            let exited = child
+                .lock()
+                .await
+                .as_mut()
+                .is_none_or(|child| child.try_wait().unwrap().is_some());
+            if exited {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let returned_before_commit = tokio::time::timeout(Duration::from_millis(200), &mut stopping)
+        .await
+        .is_ok();
+    write.rollback().await.unwrap();
+    if !returned_before_commit {
+        tokio::time::timeout(Duration::from_secs(3), stopping)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    tokio::time::timeout(Duration::from_secs(3), runtime.closed())
+        .await
+        .unwrap()
+        .unwrap();
+    let closed = fixture
+        .manager
+        .runtime_history(&fixture.agent_id, &session, 100, None)
+        .await
+        .unwrap()
+        .unwrap()
+        .closed;
+    fixture.finish().await;
+    assert!(
+        !returned_before_commit,
+        "semantic shutdown must wait for durable history retirement"
+    );
+    assert!(closed);
+}
+
+#[tokio::test]
 async fn history_remains_readable_after_exit_and_cannot_resolve_foreign_sessions() {
     let fixture = Fixture::new("normal").await;
     let session = fixture

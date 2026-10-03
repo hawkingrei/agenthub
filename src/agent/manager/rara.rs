@@ -214,9 +214,10 @@ impl AgentManager {
 
     pub(super) async fn shutdown_rara_transport(
         &self,
-        client: &Client,
+        runtime: &RaraHandle,
         child: &SharedSupervisedChild,
     ) {
+        let client: &Client = runtime;
         let result = match client.status() {
             ConnectionStatus::Running => {
                 match client.shutdown(Uuid::now_v7().to_string()).await {
@@ -231,6 +232,9 @@ impl AgentManager {
         match result {
             Ok(_) => {
                 let drain = async {
+                    // Wire EOF can precede the consumer's final history/receipt transaction.
+                    // Explicit stop and daemon shutdown share the exit watcher's durable fence.
+                    runtime.closed().await?;
                     loop {
                         let done = {
                             let mut child = child.lock().await;
@@ -247,8 +251,14 @@ impl AgentManager {
                         }
                         tokio::time::sleep(Duration::from_millis(10)).await;
                     }
+                    Ok::<(), ConnectionError>(())
                 };
-                let _ = tokio::time::timeout(PROCESS_DRAIN_TIMEOUT, drain).await;
+                if !matches!(
+                    tokio::time::timeout(PROCESS_DRAIN_TIMEOUT, drain).await,
+                    Ok(Ok(()))
+                ) {
+                    tracing::warn!("direct runtime history or process drain did not complete");
+                }
             }
             Err(error) => {
                 tracing::warn!(%error, "direct runtime requires supervised shutdown fallback")

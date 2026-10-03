@@ -2461,6 +2461,9 @@ export function TeamPage(props: TeamPageProps) {
       const agentId = selectedAgentWorkspaceEventAgentId.trim();
       const normalizedText = text.trim();
       if (!props.token || !agentId || !normalizedText || !sessionId) {
+        if (target) {
+          throw new Error("Input was not sent. Reopen the member workspace and retry.");
+        }
         return;
       }
       setError(null);

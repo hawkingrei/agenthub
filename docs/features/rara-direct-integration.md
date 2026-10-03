@@ -298,7 +298,8 @@ fixed-size chunks. Only a byte counter reaches diagnostics; diagnostic text cann
 grant readiness or enter the conversation as an ACP event.
 
 Stopping one agent or the daemon first requests semantic shutdown and allows two
-seconds for process exit after clean transport drain. The existing supervisor
+seconds for received history/receipt commits and process exit after clean transport
+drain. Wire EOF alone does not complete this durable drain. The existing supervisor
 then verifies process-group cleanup, with its signal/kill fallback on failure or
 timeout. Startup failures and transport loss clean the same owned launch before
 terminal state is recorded. For loop activations, verified transport-loss cleanup
@@ -431,7 +432,10 @@ Receipts distinguish `prepared`, `sent`, `accepted`, `queued`, `rejected`,
 and marks unresolved sends unknown. A correlated late ACK can resolve uncertainty but
 does not authorize another send. Creation ACK and native stream ownership commit
 together; ACK sequence information never advances the persisted event cursor. Cancel
-and interrupt ACKs must name the fenced turn; pending-input answers may start a new turn.
+and interrupt ACKs must name the fenced turn. User, plan and shell answers carry the
+waiting turn in the request, while the pinned provider's ACK names the newly admitted
+continuation turn. These identities must not be required to match. Request/runtime/session
+correlation still applies, and an accepted answer ACK must include a valid turn identity.
 Receipt metadata contains safe identifiers, method/status, timestamps and an allowlisted
 rejection code, without request bodies or provider rejection prose. No control-request
 outcome authorizes an automatic replacement send.
@@ -469,8 +473,9 @@ validation. Untargeted prompts still require durable work intake; providing a ta
 bypasses local session, runtime, native session or pending-turn checks.
 
 A question-card submission rejected by the web input gate must reject its callback so the
-card shows a retryable error. An in-flight send, missing session or unavailable callback
-cannot silently acknowledge an unsent answer. Retrying remains an explicit user action.
+card shows a retryable error. An in-flight send, missing session, unavailable callback,
+missing authentication or missing event-agent binding cannot silently acknowledge an
+unsent targeted answer. Retrying remains an explicit user action.
 
 The typed control mapper validates target, turn and encoded size before dispatch.
 Native shell rejection is explicitly represented as `Deny`, serialized to the pinned

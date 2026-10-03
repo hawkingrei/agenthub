@@ -559,41 +559,57 @@ async fn request_scope_and_pending_turn_are_required_before_send() {
             .await
             .is_err()
     );
-    fixture
-        .owner
-        .prepare_request(intent("answer", RuntimeRequestKind::UserAnswer), 1)
-        .await
-        .unwrap();
-    let permit = fixture.owner.mark_request_sent("answer", 2).await.unwrap();
-    assert!(
-        fixture
-            .owner
-            .record_request_ack(&permit, accepted("another-native"), 3)
-            .await
-            .is_err()
-    );
-    // Answer admission starts a new turn; it need not equal the original waiting turn.
-    fixture
-        .owner
-        .record_request_ack(&permit, accepted("native"), 3)
-        .await
-        .unwrap();
-    let receipt = fixture
-        .owner
-        .request_receipt("answer")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(receipt.expected_turn_id.as_deref(), Some("waiting-turn"));
     let other = RuntimeEventStore::bind(fixture.pool.clone(), "another-local", "another-runtime")
         .await
         .unwrap();
-    assert!(
-        other
-            .record_request_ack(&permit, accepted("native"), 4)
+    for (id, kind) in [
+        ("user-answer", RuntimeRequestKind::UserAnswer),
+        ("plan-answer", RuntimeRequestKind::PlanAnswer),
+        ("shell-answer", RuntimeRequestKind::ShellAnswer),
+    ] {
+        fixture
+            .owner
+            .prepare_request(intent(id, kind), 1)
             .await
-            .is_err()
-    );
+            .unwrap();
+        let permit = fixture.owner.mark_request_sent(id, 2).await.unwrap();
+        for ack in [
+            accepted("another-native"),
+            RuntimeRequestAck::Accepted {
+                session_id: "native".into(),
+                turn_id: None,
+                last_sequence: Some(2),
+            },
+        ] {
+            assert!(
+                fixture
+                    .owner
+                    .record_request_ack(&permit, ack, 3)
+                    .await
+                    .is_err()
+            );
+            let receipt = fixture.owner.request_receipt(id).await.unwrap().unwrap();
+            assert_eq!(receipt.status, RuntimeRequestStatus::Sent);
+            assert!(receipt.ack.is_none());
+        }
+        // The pinned provider starts a new turn for all three kinds of pending-input answer.
+        fixture
+            .owner
+            .record_request_ack(&permit, accepted("native"), 3)
+            .await
+            .unwrap();
+        let receipt = fixture.owner.request_receipt(id).await.unwrap().unwrap();
+        assert_eq!(receipt.expected_turn_id.as_deref(), Some("waiting-turn"));
+        assert_eq!(receipt.status, RuntimeRequestStatus::Accepted);
+        assert_eq!(receipt.ack, Some(accepted("native")));
+        assert_eq!(fixture.stream.cursor().await.unwrap().sequence, 0);
+        assert!(
+            other
+                .record_request_ack(&permit, accepted("native"), 4)
+                .await
+                .is_err()
+        );
+    }
 }
 
 #[tokio::test]
