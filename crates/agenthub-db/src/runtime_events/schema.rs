@@ -9,6 +9,8 @@ pub(crate) async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
             local_session_id TEXT NOT NULL UNIQUE,
             closed INTEGER NOT NULL DEFAULT 0 CHECK (closed IN (0, 1))
         );
+        CREATE INDEX IF NOT EXISTS idx_runtime_event_owners_open
+            ON runtime_event_owners(local_session_id) WHERE closed = 0;
         CREATE TABLE IF NOT EXISTS runtime_event_streams (
             runtime_id TEXT NOT NULL REFERENCES runtime_event_owners(runtime_id),
             native_session_id TEXT NOT NULL,

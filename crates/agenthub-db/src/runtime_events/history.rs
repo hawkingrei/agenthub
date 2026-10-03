@@ -24,6 +24,31 @@ pub struct RuntimeStreamSummary {
 }
 
 impl RuntimeEventStore {
+    /// Startup recovery pages open owners without revisiting retained closed launches.
+    pub async fn load_open_page(
+        pool: SqlitePool,
+        after_local_session_id: Option<&str>,
+    ) -> anyhow::Result<Vec<Self>> {
+        if let Some(after) = after_local_session_id {
+            validate_id(after)?;
+        }
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT local_session_id, runtime_id FROM runtime_event_owners \
+             WHERE closed = 0 AND local_session_id > ? ORDER BY local_session_id LIMIT 100",
+        )
+        .bind(after_local_session_id.unwrap_or_default())
+        .fetch_all(&pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(local_session_id, runtime_id)| Self {
+                pool: pool.clone(),
+                local_session_id,
+                runtime_id,
+            })
+            .collect())
+    }
+
     /// Look up existing ownership without creating or reopening it.
     pub async fn load(pool: SqlitePool, local_session_id: &str) -> anyhow::Result<Option<Self>> {
         validate_id(local_session_id)?;

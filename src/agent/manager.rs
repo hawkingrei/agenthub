@@ -2256,8 +2256,9 @@ impl AgentManager {
         expected_session_id: Option<&str>,
         native_input: Option<&agenthub_rara::InputTarget>,
     ) -> anyhow::Result<()> {
+        // Question answers continue an owned turn; new work still requires durable intake.
         anyhow::ensure!(
-            !self.has_loop_activation(agent_id).await,
+            native_input.is_some() || !self.has_loop_activation(agent_id).await,
             "loop input must arrive through durable work intake"
         );
         self.send_input_inner(

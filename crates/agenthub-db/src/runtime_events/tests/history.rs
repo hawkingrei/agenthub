@@ -131,3 +131,66 @@ async fn history_reports_bounded_stream_metadata_explicitly() {
     assert!(history.receipts.is_empty());
     assert!(history.next_before_request_id.is_none());
 }
+
+#[tokio::test]
+async fn open_owner_recovery_migrates_an_index_and_pages_only_unclosed_launches() {
+    let fixture = Fixture::new().await;
+    fixture.owner.close(1).await.unwrap();
+    // Model an event database created before the open-owner recovery index existed.
+    sqlx::query("DROP INDEX idx_runtime_event_owners_open")
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(
+        "WITH RECURSIVE numbers(n) AS (VALUES(0) UNION ALL SELECT n + 1 FROM numbers WHERE n < 304) \
+         INSERT INTO runtime_event_owners(runtime_id, local_session_id, closed) \
+         SELECT printf('runtime-%03d', n), printf('local-%03d', n), n < 100 FROM numbers",
+    ).execute(&fixture.pool).await.unwrap();
+    migrate(&fixture.pool).await.unwrap();
+    migrate(&fixture.pool).await.unwrap();
+    let plan = sqlx::query(
+        "EXPLAIN QUERY PLAN SELECT local_session_id, runtime_id FROM runtime_event_owners \
+         WHERE closed = 0 AND local_session_id > ? ORDER BY local_session_id LIMIT 100",
+    )
+    .bind("")
+    .fetch_all(&fixture.pool)
+    .await
+    .unwrap();
+    assert!(plan.iter().any(|row| {
+        row.get::<String, _>("detail")
+            .contains("idx_runtime_event_owners_open")
+    }));
+    let mut after = None;
+    let mut sizes = Vec::new();
+    loop {
+        let page = RuntimeEventStore::load_open_page(fixture.pool.clone(), after.as_deref())
+            .await
+            .unwrap();
+        if page.is_empty() {
+            break;
+        }
+        sizes.push(page.len());
+        for owner in page {
+            assert!(owner.local_session_id() >= "local-100");
+            after = Some(owner.local_session_id().to_owned());
+            owner.close(2).await.unwrap();
+        }
+    }
+    assert_eq!(sizes, [100, 100, 5]);
+    assert!(
+        RuntimeEventStore::load_open_page(fixture.pool.clone(), None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        RuntimeEventStore::load_open_page(fixture.pool.clone(), Some("invalid cursor"))
+            .await
+            .is_err()
+    );
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM runtime_event_owners")
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 306, "recovery preserves retained ownership evidence");
+}

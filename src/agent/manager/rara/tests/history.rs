@@ -98,6 +98,23 @@ async fn startup_recovery_retires_transport_ownership_without_retry_or_task_comp
     );
     daemon.claim_generation(&fixture.manager.db).await.unwrap();
     fixture.manager.mark_exited_on_startup().await.unwrap();
+    sqlx::raw_sql("CREATE TRIGGER fail_permission_cleanup BEFORE UPDATE ON acp_permission_requests WHEN NEW.status = 'timeout' BEGIN SELECT RAISE(ABORT, 'fixture cleanup interruption'); END;")
+        .execute(&fixture.manager.db).await.unwrap();
+    assert!(
+        fixture
+            .manager
+            .recover_runtime_receipts_on_startup(&daemon)
+            .await
+            .is_err()
+    );
+    assert!(
+        !store.history(1, None).await.unwrap().closed,
+        "failed cleanup must remain recoverable"
+    );
+    sqlx::query("DROP TRIGGER fail_permission_cleanup")
+        .execute(&fixture.manager.db)
+        .await
+        .unwrap();
     fixture
         .manager
         .recover_runtime_receipts_on_startup(&daemon)
@@ -243,5 +260,57 @@ async fn history_remains_readable_after_exit_and_cannot_resolve_foreign_sessions
             .unwrap()
             .is_none()
     );
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn startup_recovery_skips_closed_owners_and_drains_multiple_open_pages() {
+    let fixture = Fixture::new("normal").await;
+    let pool = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent(&fixture.agent_id)
+        .await
+        .unwrap();
+    for index in 0..205 {
+        let session = format!("history-{index:03}");
+        sqlx::query("INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at) VALUES (?, ?, 'exited', 1, 2)")
+            .bind(&session).bind(&fixture.agent_id).execute(&fixture.manager.db).await.unwrap();
+        sqlx::query("INSERT INTO runtime_event_owners(runtime_id, local_session_id, closed) VALUES (?, ?, ?)")
+            .bind(format!("runtime-{index:03}")).bind(session).bind(index < 100)
+            .execute(&pool).await.unwrap();
+    }
+    // Repeated recovery must not write owners or control-plane rows already retired.
+    sqlx::raw_sql("CREATE TRIGGER reject_closed_owner_update BEFORE UPDATE ON runtime_event_owners WHEN OLD.closed = 1 BEGIN SELECT RAISE(ABORT, 'closed owner revisited'); END;")
+        .execute(&pool).await.unwrap();
+    sqlx::raw_sql("CREATE TRIGGER reject_ended_session_update BEFORE UPDATE ON agent_sessions WHEN OLD.ended_at IS NOT NULL BEGIN SELECT RAISE(ABORT, 'ended session revisited'); END;")
+        .execute(&fixture.manager.db).await.unwrap();
+    let mut daemon = crate::daemon_instance::DaemonInstanceGuard::acquire(
+        &fixture.directory.join("recovery.db"),
+        "main",
+    )
+    .unwrap();
+    daemon.claim_generation(&fixture.manager.db).await.unwrap();
+    let orphan = RuntimeEventStore::bind(pool.clone(), "foreign-local", "foreign-runtime")
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        fixture
+            .manager
+            .recover_runtime_receipts_on_startup(&daemon)
+            .await
+            .unwrap();
+    }
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM runtime_event_owners WHERE closed = 0")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(remaining, 1);
+    assert!(
+        !orphan.history(1, None).await.unwrap().closed,
+        "unassociated owners cannot mutate another session"
+    );
+    drop(daemon);
     fixture.finish().await;
 }

@@ -348,7 +348,7 @@ from unchanged activation/session state and blocked replacement admission.
 
 Focused validation commands:
 
-The selections pass 29 runtime/receipt tests (two opt-in cases ignored), two guardian recovery
+The first recovery revision passed 29 runtime/receipt tests (two opt-in cases ignored), two guardian recovery
 tests, one indexed native-history regression, two existing indexed-history regressions and
 25 runtime-event storage tests. Root library/test Clippy with warnings denied, formatting,
 diff checks and all nine local documentation link targets pass. These checks use local
@@ -361,5 +361,37 @@ cargo test --locked --offline -p agenthub --lib agent::manager::tests::native_hi
 cargo test --locked --offline -p agenthub --lib list_agent_events -- --test-threads=1
 cargo test --locked --offline -p agenthub-db runtime_events:: -- --test-threads=1
 cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
+cargo fmt --all --check
+```
+
+The next review found repeated retirement of already closed owners. Startup now visits each
+local event database once and reads open owners in 100-row keyset pages using a partial index.
+The session association and reservation checks remain in place. Main-database session and
+permission cleanup completes before closing the event-store owner, so an interrupted cleanup
+remains eligible for retry. No existing row format or protocol changes.
+
+A related API regression blocked explicitly targeted question answers during a loop activation.
+The loop admission gate now allows these answers into the existing local-session, runtime,
+native-session and pending-turn checks. Ordinary prompts still require durable work intake.
+The real API router regression uses a local fake provider and confirms exactly one answer is
+sent, wrong identities and an old turn return conflict, and untargeted input remains rejected.
+
+Both regressions reproduce against the prior implementation: a valid question answer returns
+HTTP 500, and a trigger detects another write to a closed owner during recovery. Added storage
+checks cover migration/reopen, the indexed query plan, three pages while closing owners, retained
+ownership evidence, and invalid cursors. Manager recovery checks include closed-owner write
+rejection, unassociated owner exclusion and retry after injected permission-cleanup failure.
+
+The follow-up passes 26 runtime storage tests, seven native activation/API tests, 30 runtime
+adapter tests (two real-provider opt-in cases ignored) and both guardian recovery tests.
+Root/database library/test Clippy with warnings denied, workspace formatting, diff checks
+and nine local documentation links pass. Existing real-provider acceptance remains deferred.
+
+```bash
+cargo test --locked --offline -p agenthub-db runtime_events:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::native:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::rara:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::recovery:: -- --test-threads=1
+cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
 cargo fmt --all --check
 ```

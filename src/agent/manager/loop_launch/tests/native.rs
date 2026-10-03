@@ -2,6 +2,8 @@ use serde_json::{Value, json};
 
 use super::*;
 
+mod input;
+
 const PROVIDER: &str = r#"#!/usr/bin/env python3
 import json, pathlib, subprocess, sys, time, uuid
 root = pathlib.Path.cwd()
@@ -79,6 +81,15 @@ for line in sys.stdin:
             result = subprocess.run([config['control'], 'actor', 'loop-finish', '--outcome-file', str(outcome), '--json'], capture_output=True, text=True)
             assert result.returncode == 0, result.stderr
         event('session', 'turn_finished', {'reason':'completed'}, turn)
+    elif operation == 'answer_pending_input':
+        assert config['mode'] == 'waiting'
+        assert request['payload']['expected_turn_id'] == turn
+        event('input', 'answered', {'waiting_turn':turn}, turn)
+        turn = str(uuid.uuid4())
+        event('session', 'turn_started', None, turn)
+        event('input', 'requested', {'pending':{'turn_id':turn, 'kind':{'type':'user','payload':{'question':'Confirm scope', 'options':[], 'note':None}}}}, turn)
+        event('session', 'turn_finished', {'reason':'awaiting_input'}, turn)
+        ack(rid, turn)
     elif operation == 'cancel_current_turn':
         assert request['payload']['expected_turn_id'] == turn
         ack(rid, turn)

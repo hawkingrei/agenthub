@@ -458,6 +458,9 @@ The input API accepts an optional `native_input` object with `runtime_id`, `sess
 native answer is never retargeted to a replacement local session, and malformed native cards
 cannot fall back to ordinary text input. Untargeted text cannot answer a pending question
 or permission. Existing ACP callers retain their input format and session-retry behavior.
+During a loop activation, explicitly targeted question answers may reach the same runtime
+validation. Untargeted prompts still require durable work intake; providing a target never
+bypasses local session, runtime, native session or pending-turn checks.
 
 A question-card submission rejected by the web input gate must reject its callback so the
 card shows a retryable error. An in-flight send, missing session or unavailable callback
@@ -602,6 +605,10 @@ connection cannot reconnect even while guardian cleanup remains unresolved. Tran
 retirement does not mark those reserved sessions exited or release their reservations.
 This is transport retirement, not evidence that detached processes stopped or tasks finished;
 durable execution reservations retain their separate cleanup fence.
+Recovery visits each local event database once and pages only open owners through a partial
+index. Closed launch history does not trigger repeated close transactions or permission
+cleanup. Control-plane cleanup completes before the open owner is retired, so interruption
+between the two databases leaves the owner eligible for a safe retry.
 
 ### 8) Diagnostics
 

@@ -130,18 +130,17 @@ impl AgentManager {
         daemon.verify_current(&self.db).await?;
         let mut after = String::new();
         loop {
-            let sessions: Vec<(String, String)> = sqlx::query_as(
-                "SELECT s.id, s.agent_id FROM agent_sessions s JOIN agents a ON a.id = s.agent_id \
-                 WHERE s.id > ? AND a.target_node_id IS NULL \
-                 ORDER BY s.id LIMIT 100",
+            let agents: Vec<String> = sqlx::query_scalar(
+                "SELECT id FROM agents WHERE id > ? AND target_node_id IS NULL \
+                 ORDER BY id LIMIT 100",
             )
             .bind(&after)
             .fetch_all(&self.db)
             .await?;
-            if sessions.is_empty() {
+            if agents.is_empty() {
                 break;
             }
-            for (session_id, agent_id) in &sessions {
+            for agent_id in &agents {
                 let _configuration = self.configuration_gate(agent_id).await.lock_owned().await;
                 anyhow::ensure!(
                     !self.process_supervisor.has_actor_process(agent_id).await
@@ -152,28 +151,57 @@ impl AgentManager {
                     continue;
                 }
                 let pool = self.event_dbs.pool_for_agent(agent_id).await?;
-                if let Some(store) = RuntimeEventStore::load(pool, session_id).await? {
-                    // The previous stdio owner cannot reconnect. Closing receipts does not
-                    // prove descendant cleanup, finish a task, or permit replacement execution.
-                    store.close(chrono::Utc::now().timestamp()).await?;
-                    sqlx::query(
-                        "UPDATE agent_sessions SET status = 'exited', ended_at = ? \
-                         WHERE id = ? AND agent_id = ? AND ended_at IS NULL \
-                         AND NOT EXISTS (SELECT 1 FROM loop_execution_reservations r \
-                                         WHERE r.session_id = agent_sessions.id)",
-                    )
-                    .bind(chrono::Utc::now().timestamp())
-                    .bind(session_id)
-                    .bind(agent_id)
-                    .execute(&self.db)
+                self.recover_runtime_receipts_for_agent(agent_id, pool)
                     .await?;
-                    self.permissions
-                        .interrupt_session_permissions(session_id)
-                        .await?;
-                }
             }
-            after = sessions.last().expect("nonempty session page").0.clone();
+            after = agents.last().expect("nonempty agent page").clone();
         }
         Ok(())
+    }
+
+    async fn recover_runtime_receipts_for_agent(
+        &self,
+        agent_id: &str,
+        pool: SqlitePool,
+    ) -> anyhow::Result<()> {
+        let mut after = None;
+        loop {
+            let owners = RuntimeEventStore::load_open_page(pool.clone(), after.as_deref()).await?;
+            if owners.is_empty() {
+                return Ok(());
+            }
+            for store in owners {
+                let session_id = store.local_session_id();
+                after = Some(session_id.to_owned());
+                let owned: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM agent_sessions WHERE id = ? AND agent_id = ?)",
+                )
+                .bind(session_id)
+                .bind(agent_id)
+                .fetch_one(&self.db)
+                .await?;
+                if !owned {
+                    continue;
+                }
+                sqlx::query(
+                    "UPDATE agent_sessions SET status = 'exited', ended_at = ? \
+                     WHERE id = ? AND agent_id = ? AND ended_at IS NULL \
+                     AND NOT EXISTS (SELECT 1 FROM loop_execution_reservations r \
+                                     WHERE r.session_id = agent_sessions.id)",
+                )
+                .bind(chrono::Utc::now().timestamp())
+                .bind(session_id)
+                .bind(agent_id)
+                .execute(&self.db)
+                .await?;
+                self.permissions
+                    .interrupt_session_permissions(session_id)
+                    .await?;
+                // Close last: interrupted control-plane cleanup must leave an open owner
+                // for the next startup. Retirement never proves descendant cleanup.
+                store.close(chrono::Utc::now().timestamp()).await?;
+            }
+            tokio::task::yield_now().await;
+        }
     }
 }
