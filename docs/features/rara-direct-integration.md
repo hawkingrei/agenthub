@@ -446,6 +446,10 @@ not-sent or unknown delivery; acceptance is not execution completion. The delive
 polite live status region that updates in place without re-announcing the message body. Messages
 without a delivery receipt expose no status region. Receipt updates match local session, runtime,
 native session and request ID, including out-of-order history pages.
+The input API determines acceptance from the durably recorded ACK. Failure to read or emit
+its derived receipt-history event is logged separately and cannot turn accepted or queued
+work into a failed submission. Rejected and uncertain deliveries remain failures; projection
+repair never dispatches another provider request.
 
 History reads reconcile retained input messages and receipt events against their owned
 durable receipt. This also covers a daemon exit between receipt persistence and conversation
@@ -622,6 +626,9 @@ Recovery visits each local event database once and pages only open owners throug
 index. Closed launch history does not trigger repeated close transactions or permission
 cleanup. Control-plane cleanup completes before the open owner is retired, so interruption
 between the two databases leaves the owner eligible for a safe retry.
+Each scan uses a temporary pool with the normal event schema and SQLite configuration.
+Recovery closes it after that agent, including failure paths, without populating the router
+cache or closing an existing cached reader. Schema initialization failure also closes its pool.
 
 ### 8) Diagnostics
 

@@ -150,9 +150,16 @@ impl AgentManager {
                 if !tokio::fs::try_exists(self.event_dbs.db_path_for_agent(agent_id)).await? {
                     continue;
                 }
-                let pool = self.event_dbs.pool_for_agent(agent_id).await?;
-                self.recover_runtime_receipts_for_agent(agent_id, pool)
+                let pool = self
+                    .event_dbs
+                    .open_uncached_pool_for_agent(agent_id)
                     .await?;
+                let result = self
+                    .recover_runtime_receipts_for_agent(agent_id, pool.clone())
+                    .await;
+                // Recovery visits cold history too. Do not retain these pools or close shared readers.
+                pool.close().await;
+                result?;
             }
             after = agents.last().expect("nonempty agent page").clone();
         }

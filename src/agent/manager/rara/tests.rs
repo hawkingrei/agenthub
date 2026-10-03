@@ -11,6 +11,7 @@ mod history;
 mod input;
 mod native;
 mod permissions;
+mod projection;
 mod questions;
 mod sources;
 
@@ -149,6 +150,8 @@ for line in sys.stdin:
             if mode == 'ack_before_events' and operation == 'submit_user_prompt':
                 result['last_sequence'] = sequence + 1
             emit('ack', {'runtime_id': runtime, 'request_id': envelope['request_id'], 'result': result})
+            if mode == 'input_ack_only':
+                continue
             if question_answer and result['status'] == 'accepted':
                 if mode != 'input_question_reject_once':
                     deadline = time.monotonic() + 10

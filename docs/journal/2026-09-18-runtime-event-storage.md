@@ -460,3 +460,41 @@ cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tes
 cargo clippy --locked --offline -p agenthub --lib --tests -- -D warnings
 cargo fmt --all --check
 ```
+
+## Receipt Projection And Recovery Pool Lifetime (2026-10-03)
+
+The input response now follows the ACK already committed by the receipt owner. Reading or
+writing the derived receipt-history event is a separate, logged projection step; its failure
+cannot report accepted or queued work as failed. Rejected and uncertain outcomes remain
+failures. Existing history reconciliation renders the durable status without another send
+or any rewrite of the stored attempted message.
+
+Startup recovery opens an initialized pool outside the event router's cache and closes it
+after each agent on success or error. The normal cached path shares the same opener and SQLite
+defaults. Schema initialization failure explicitly closes the pool, and recovery does not
+close pools already held by readers.
+
+Both regressions fail before the change: an accepted input returns the injected projection
+error, and a failed recovery increases open event-database file handles from five to ten.
+The projection fixture covers accepted, queued, rejected and unknown outcomes with only one
+wire request. The Linux recovery fixture checks that cold database handles return to zero after failure,
+success and repeated recovery while retaining an existing cached reader. SQLite shared WAL
+handles held by that existing reader are excluded from the cold-database count. A portable router test covers uncached
+initialization/reopen, retained data, invalid schema, unchanged cache membership and reader reuse.
+
+Focused validation covers 76 passing cases: 28 database/router cases, 39 runtime adapter/event
+cases, seven activation/API cases and two guardian recovery cases. Two real-provider opt-in
+cases remain ignored; the fixture evidence does not claim final provider acceptance.
+Library/test Clippy with warnings denied, workspace formatting, diff checks and nine local
+documentation links pass.
+
+```bash
+cargo test --locked --offline -p agenthub-db uncached_event_pools -- --test-threads=1
+cargo test --locked --offline -p agenthub-db remove_agent_db_retries -- --test-threads=1
+cargo test --locked --offline -p agenthub-db runtime_events:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::rara:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::native:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::recovery:: -- --test-threads=1
+cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
+cargo fmt --all --check
+```

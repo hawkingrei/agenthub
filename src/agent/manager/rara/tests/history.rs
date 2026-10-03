@@ -5,6 +5,116 @@ use agenthub_db::runtime_events::{
 
 use super::*;
 
+#[cfg(target_os = "linux")]
+fn event_database_handles(database: &std::path::Path) -> usize {
+    let paths: Vec<_> = ["", "-wal", "-shm"]
+        .into_iter()
+        .map(|suffix| {
+            let mut path = database.as_os_str().to_os_string();
+            path.push(suffix);
+            PathBuf::from(path)
+        })
+        .collect();
+    std::fs::read_dir("/proc/self/fd")
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|entry| std::fs::read_link(entry.path()).ok())
+        .filter(|path| paths.contains(path))
+        .count()
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn startup_recovery_releases_temporary_pools_on_success_and_failure() {
+    let fixture = Fixture::new("normal").await;
+    let directory = fixture.manager.event_dbs.base_dir().to_owned();
+    let seed = agenthub_db::AgentEventDbRouter::new(directory.clone());
+    for agent_id in [&fixture.agent_id, "historical-a", "historical-z"] {
+        if agent_id != fixture.agent_id {
+            sqlx::query("INSERT INTO agents (id, name, workdir, command, args, worktree_mode, status, created_at, updated_at) VALUES (?, ?, ?, 'codex', '[]', 'use_existing', 'stopped', 1, 1)")
+                .bind(agent_id).bind(agent_id).bind(fixture.directory.to_str().unwrap())
+                .execute(&fixture.manager.db).await.unwrap();
+        }
+        let pool = seed.pool_for_agent(agent_id).await.unwrap();
+        if agent_id == fixture.agent_id {
+            sqlx::query("INSERT INTO agent_sessions (id, agent_id, status, started_at) VALUES ('old-local', ?, 'running', 1)")
+                .bind(agent_id).execute(&fixture.manager.db).await.unwrap();
+            RuntimeEventStore::bind(pool.clone(), "old-local", "old-runtime")
+                .await
+                .unwrap();
+        }
+        pool.close().await;
+    }
+    drop(seed);
+    let cached = fixture
+        .manager
+        .event_dbs
+        .pool_for_agent("historical-z")
+        .await
+        .unwrap();
+    // SQLite can retain shared WAL handles while an existing reader remains open.
+    // Count only cold databases; the cached reader's lifetime is checked separately.
+    let cold_handles = || {
+        [&fixture.agent_id, "historical-a"].map(|agent_id| {
+            event_database_handles(&fixture.manager.event_dbs.db_path_for_agent(agent_id))
+        })
+    };
+    let baseline = cold_handles();
+    assert_eq!(baseline, [0, 0]);
+    let mut daemon = crate::daemon_instance::DaemonInstanceGuard::acquire(
+        &fixture.directory.join("pool-recovery.db"),
+        "main",
+    )
+    .unwrap();
+    daemon.claim_generation(&fixture.manager.db).await.unwrap();
+    sqlx::query("CREATE TRIGGER fail_recovery BEFORE UPDATE ON agent_sessions WHEN OLD.id = 'old-local' BEGIN SELECT RAISE(ABORT, 'fixture recovery failure'); END")
+        .execute(&fixture.manager.db).await.unwrap();
+    let failed = fixture
+        .manager
+        .recover_runtime_receipts_on_startup(&daemon)
+        .await;
+    let after_failure = cold_handles();
+    sqlx::query("DROP TRIGGER fail_recovery")
+        .execute(&fixture.manager.db)
+        .await
+        .unwrap();
+    fixture
+        .manager
+        .recover_runtime_receipts_on_startup(&daemon)
+        .await
+        .unwrap();
+    let after_success = cold_handles();
+    fixture
+        .manager
+        .recover_runtime_receipts_on_startup(&daemon)
+        .await
+        .unwrap();
+    let after_repeat = cold_handles();
+    let cached_open = !cached.is_closed();
+    let cached_query = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM runtime_event_owners")
+        .fetch_one(&cached)
+        .await;
+    cached.close().await;
+    drop(daemon);
+    fixture.finish().await;
+
+    assert!(failed.is_err());
+    assert_eq!(
+        after_failure, baseline,
+        "failed recovery must close its temporary pool"
+    );
+    assert_eq!(
+        after_success, baseline,
+        "historical databases must not retain new pools"
+    );
+    assert_eq!(after_repeat, baseline);
+    assert!(
+        cached_open,
+        "recovery must not close an existing cached reader"
+    );
+    cached_query.unwrap();
+}
+
 #[tokio::test]
 async fn startup_recovery_retires_transport_ownership_without_retry_or_task_completion() {
     let fixture = Fixture::new("normal").await;

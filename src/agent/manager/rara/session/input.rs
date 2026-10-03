@@ -1,7 +1,5 @@
 use agenthub_agent_event_codec::{encode_message_for_storage, persist_agent_event};
-use agenthub_db::runtime_events::{
-    RuntimeEventError, RuntimeHistoryEntry, RuntimeRequestIntent, RuntimeRequestStatus,
-};
+use agenthub_db::runtime_events::{RuntimeEventError, RuntimeHistoryEntry, RuntimeRequestIntent};
 use agenthub_rara::{InputTarget, PendingInputKind};
 use chrono::Utc;
 use serde_json::{Value, json};
@@ -166,23 +164,37 @@ impl RaraHandle {
                 self.state.write().await.answered_user_turn = Some(turn_id.clone());
             }
         }
-        if let Some(receipt) = self.store.request_receipt(&id).await? {
-            self.emit_history(
-                json!({"type":"input_receipt","message_id":id,"receipt":receipt,
-                "meta":{"provider_runtime":{"provider":"rara","runtime_id":self.store.runtime_id(),
-                    "native_session_id":self.stream.native_session_id(),"request_id":id}}}),
-            )
-            .await?;
-            if result.is_ok()
-                && matches!(
-                    receipt.status,
-                    RuntimeRequestStatus::Accepted | RuntimeRequestStatus::Queued
-                )
-            {
-                return Ok(());
-            }
+        // send_prepared returns an ACK only after committing it. A failed derived history write
+        // must not turn accepted work into a retryable failure; history reads reconcile the receipt.
+        if let Err(error) = self.emit_input_receipt(&id).await {
+            tracing::warn!(
+                agent_id = %self.agent_id,
+                request_id = %id,
+                error = %error,
+                "failed to project durable input receipt"
+            );
+        }
+        if matches!(
+            result,
+            Ok(RuntimeRequestAck::Accepted { .. } | RuntimeRequestAck::Queued { .. })
+        ) {
+            return Ok(());
         }
         Err(AgentSendInputError::NativeInputNotAccepted { request_id: id }.into())
+    }
+
+    async fn emit_input_receipt(&self, id: &str) -> anyhow::Result<()> {
+        let receipt = self
+            .store
+            .request_receipt(id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("direct input receipt is missing"))?;
+        self.emit_history(
+            json!({"type":"input_receipt","message_id":id,"receipt":receipt,
+            "meta":{"provider_runtime":{"provider":"rara","runtime_id":self.store.runtime_id(),
+                "native_session_id":self.stream.native_session_id(),"request_id":id}}}),
+        )
+        .await
     }
 
     pub(super) async fn emit_history(&self, value: Value) -> anyhow::Result<()> {
