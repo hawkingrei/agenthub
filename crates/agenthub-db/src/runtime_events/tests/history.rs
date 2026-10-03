@@ -146,20 +146,38 @@ async fn open_owner_recovery_migrates_an_index_and_pages_only_unclosed_launches(
          INSERT INTO runtime_event_owners(runtime_id, local_session_id, closed) \
          SELECT printf('runtime-%03d', n), printf('local-%03d', n), n < 100 FROM numbers",
     ).execute(&fixture.pool).await.unwrap();
+    // Cache the old schema on one connection while migration uses the other.
+    let mut plan_connection = fixture.pool.acquire().await.unwrap();
+    sqlx::query("SELECT COUNT(*) FROM runtime_event_owners")
+        .fetch_one(&mut *plan_connection)
+        .await
+        .unwrap();
     migrate(&fixture.pool).await.unwrap();
     migrate(&fixture.pool).await.unwrap();
-    let plan = sqlx::query(
-        "EXPLAIN QUERY PLAN SELECT local_session_id, runtime_id FROM runtime_event_owners \
-         WHERE closed = 0 AND local_session_id > ? ORDER BY local_session_id LIMIT 100",
-    )
+    let recovery_query = "SELECT local_session_id, runtime_id FROM runtime_event_owners \
+        WHERE closed = 0 AND local_session_id > ? ORDER BY local_session_id LIMIT 100";
+    // EXPLAIN alone can use a stale schema after DDL on another connection. Execute
+    // the real query first, then inspect its plan on that same refreshed connection.
+    let rows = sqlx::query(recovery_query)
+        .bind("")
+        .fetch_all(&mut *plan_connection)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 100);
+    let plan = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "EXPLAIN QUERY PLAN {recovery_query}"
+    )))
     .bind("")
-    .fetch_all(&fixture.pool)
+    .fetch_all(&mut *plan_connection)
     .await
     .unwrap();
-    assert!(plan.iter().any(|row| {
-        row.get::<String, _>("detail")
-            .contains("idx_runtime_event_owners_open")
-    }));
+    let plan: Vec<String> = plan.iter().map(|row| row.get("detail")).collect();
+    assert!(
+        plan.iter()
+            .any(|detail| detail.contains("idx_runtime_event_owners_open")),
+        "unexpected recovery query plan: {plan:?}"
+    );
+    drop(plan_connection);
     let mut after = None;
     let mut sizes = Vec::new();
     loop {

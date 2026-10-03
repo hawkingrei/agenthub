@@ -498,3 +498,33 @@ cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tes
 cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
 cargo fmt --all --check
 ```
+
+## Recovery Query-Plan Fixture (2026-10-03)
+
+Bazel coverage exposed a connection-dependent failure in the migration query-plan assertion.
+The two-connection pool could run the migration on one connection and `EXPLAIN QUERY PLAN`
+on another connection that still cached the schema without the partial index. A deterministic
+reproduction held that old-schema connection across migration and reported the unique session
+index instead of `idx_runtime_event_owners_open`.
+
+The fixture now executes the actual recovery query on the held connection before explaining
+that query on the same connection. This exercises SQLite's schema refresh before inspecting
+the plan. The exact partial-index assertion, 100/100/5 pagination, close-during-scan behavior,
+invalid cursor rejection and retained ownership count remain enforced. The assertion also
+includes the observed plan when it fails. Production SQL and schema are unchanged.
+
+The pre-fix regression fails deterministically with the old-schema connection. After the fix,
+all 227 database tests pass, along with database library/test Clippy with warnings denied,
+workspace formatting and whitespace checks.
+
+```bash
+cargo test --locked --offline -p agenthub-db --lib
+cargo clippy --locked --offline -p agenthub-db --lib --tests -- -D warnings
+cargo fmt --all --check
+bazel coverage --combined_report=lcov --test_output=errors --nocache_test_results //crates/agenthub-db:agenthub_db_tests
+```
+
+The local default-config Bazel coverage attempt stopped during repository analysis: its cached
+`remote_coverage_tools` extraction lacked a `MODULE.bazel`, `REPO.bazel` or `WORKSPACE` marker.
+No test target executed in that attempt. Current-head CI remains the Bazel coverage verification
+surface; the fixture fix does not change Bazel configuration or the shared repository cache.
