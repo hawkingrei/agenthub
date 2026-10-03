@@ -8,6 +8,6 @@
     "./fromFile": "./fromFile.js"
   },
   "dependencies": {
-    "probe-image-size": "7.3.0"
+    "probe-image-size": "7.4.0"
   }
 }
