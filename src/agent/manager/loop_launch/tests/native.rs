@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 
 mod input;
+mod transport;
 
 const PROVIDER: &str = r#"#!/usr/bin/env python3
 import json, pathlib, subprocess, sys, time, uuid
@@ -51,6 +52,11 @@ for line in sys.stdin:
                 time.sleep(0.01)
         ack(rid)
         event('session', 'created', {'session_id':native})
+        if config['mode'] == 'transport-loss':
+            child = subprocess.Popen(['sleep', '60'], stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            (root / 'native-descendant').write_text(str(child.pid))
+            time.sleep(60)
     elif family == 'prompt_source':
         assert body['scope'] == 'session' and body['layer'] == 'user'
         if config['mode'] == 'reject-source':

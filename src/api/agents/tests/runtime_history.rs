@@ -24,7 +24,8 @@ async fn runtime_history_route_is_authorized_scoped_and_available_after_exit() {
         .await
         .unwrap();
     store.bind_stream("native-history").await.unwrap();
-    for id in ["first", "second"] {
+    // Caller IDs deliberately sort in the opposite order to their creation time.
+    for (id, created_at) in [("z-older", 1), ("a-newer", 2)] {
         store
             .prepare_request(
                 RuntimeRequestIntent {
@@ -33,13 +34,13 @@ async fn runtime_history_route_is_authorized_scoped_and_available_after_exit() {
                     target_session_id: Some("native-history"),
                     expected_turn_id: None,
                 },
-                1,
+                created_at,
             )
             .await
             .unwrap();
     }
-    store.mark_request_sent("first", 2).await.unwrap();
-    store.close(3).await.unwrap();
+    store.mark_request_sent("z-older", 3).await.unwrap();
+    store.close(4).await.unwrap();
     let app = router(state.clone());
     let route = "/history-agent/sessions/local-history/runtime";
     let response = app
@@ -57,12 +58,13 @@ async fn runtime_history_route_is_authorized_scoped_and_available_after_exit() {
     assert_eq!(body["closed"], true);
     assert_eq!(body["runtime_id"], "runtime-history");
     assert_eq!(body["receipts"][0]["status"], "not_sent");
-    assert_eq!(body["next_before_request_id"], "second");
+    assert_eq!(body["receipts"][0]["request_id"], "a-newer");
+    assert_eq!(body["next_before_request_id"], "a-newer");
     let response = app
         .clone()
         .oneshot(build_json_request(
             Method::GET,
-            &format!("{route}?before_request_id=second"),
+            &format!("{route}?before_request_id=a-newer"),
             Some(&token),
             None,
         ))
@@ -71,6 +73,7 @@ async fn runtime_history_route_is_authorized_scoped_and_available_after_exit() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = decode_json_body(response).await;
     assert_eq!(body["receipts"][0]["status"], "outcome_unknown");
+    assert_eq!(body["receipts"][0]["request_id"], "z-older");
     assert!(body["next_before_request_id"].is_null());
     for route in [
         "/missing/sessions/local-history/runtime",
@@ -84,17 +87,19 @@ async fn runtime_history_route_is_authorized_scoped_and_available_after_exit() {
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
-    let response = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("{route}?before_request_id=bad%20cursor"),
-            Some(&token),
-            None,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    for cursor in ["bad%20cursor", "missing-request"] {
+        let response = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::GET,
+                &format!("{route}?before_request_id={cursor}"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
     let response = app
         .oneshot(build_json_request(Method::GET, route, None, None))
         .await

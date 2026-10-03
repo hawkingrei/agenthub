@@ -301,8 +301,10 @@ Stopping one agent or the daemon first requests semantic shutdown and allows two
 seconds for process exit after clean transport drain. The existing supervisor
 then verifies process-group cleanup, with its signal/kill fallback on failure or
 timeout. Startup failures and transport loss clean the same owned launch before
-terminal state is recorded. Both exit watchers and live-session lookups require
-semantic completion in addition to process success for this transport. The local
+terminal state is recorded. For loop activations, verified transport-loss cleanup
+also releases the matching reservation and credentials; it does not depend on a
+later process-exit watcher or lease recovery. Both exit watchers and live-session
+lookups require semantic completion in addition to process success for this transport. The local
 launch ID and negotiated runtime ID remain separate.
 
 Managed startup creates one native session after the handshake. Its durable creation
@@ -637,9 +639,12 @@ the local agent/session association before reading its event database. This rele
 endpoint returns the owned runtime, closed state, native stream cursors/gaps and safe typed
 request receipts after process exit. Unknown, foreign and remote sessions return not found.
 It never creates runtime ownership or returns raw input, provider envelopes or rejection prose.
-Receipts use descending request-ID pagination with `before_request_id`, a default limit of 50
-and a maximum of 100. Stream summaries are bounded to 100 with explicit truncation metadata.
-The response is one database read snapshot; ACK updates do not change receipt page ordering.
+Receipts use descending `(created_at, request_id)` pagination with `before_request_id`, a
+default limit of 50 and a maximum of 100. The cursor resolves to an existing receipt in the
+owned runtime; unknown and foreign cursors are rejected identically. Request IDs break ties
+within the same creation timestamp. Stream summaries are bounded to 100 with explicit
+truncation metadata. The response and cursor lookup use one database read snapshot; ACK
+updates do not change receipt page ordering.
 
 `agenthub doctor agent-trace` and web debug surfaces should report a Rara provider adapter section
 when the active provider is Rara:

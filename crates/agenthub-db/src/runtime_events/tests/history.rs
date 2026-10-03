@@ -116,6 +116,118 @@ async fn history_pages_receipts_without_allocating_ownership_or_exposing_content
 }
 
 #[tokio::test]
+async fn history_orders_caller_ids_by_creation_and_scopes_cursor_boundaries() {
+    let fixture = Fixture::new().await;
+    let foreign = RuntimeEventStore::bind(fixture.pool.clone(), "other-local", "other-runtime")
+        .await
+        .unwrap();
+    for id in ["m-tie", "foreign-only"] {
+        foreign
+            .prepare_request(
+                RuntimeRequestIntent {
+                    request_id: id,
+                    kind: RuntimeRequestKind::CreateSession,
+                    target_session_id: None,
+                    expected_turn_id: None,
+                },
+                99,
+            )
+            .await
+            .unwrap();
+    }
+    for (id, created_at) in [("z-older", 1), ("m-tie", 2), ("a-tie", 2), ("b-newer", 3)] {
+        fixture
+            .owner
+            .prepare_request(
+                RuntimeRequestIntent {
+                    request_id: id,
+                    kind: RuntimeRequestKind::Prompt,
+                    target_session_id: Some("native"),
+                    expected_turn_id: None,
+                },
+                created_at,
+            )
+            .await
+            .unwrap();
+    }
+    let first = fixture.owner.history(2, None).await.unwrap();
+    assert_eq!(
+        first
+            .receipts
+            .iter()
+            .map(|receipt| receipt.request_id.as_str())
+            .collect::<Vec<_>>(),
+        ["b-newer", "m-tie"]
+    );
+    assert_eq!(first.next_before_request_id.as_deref(), Some("m-tie"));
+    fixture
+        .owner
+        .prepare_request(
+            RuntimeRequestIntent {
+                request_id: "a-latest",
+                kind: RuntimeRequestKind::Prompt,
+                target_session_id: Some("native"),
+                expected_turn_id: None,
+            },
+            4,
+        )
+        .await
+        .unwrap();
+    let permit = fixture
+        .owner
+        .mark_request_sent("z-older", 100)
+        .await
+        .unwrap();
+    fixture
+        .owner
+        .record_request_ack(
+            &permit,
+            RuntimeRequestAck::Accepted {
+                session_id: "native".into(),
+                turn_id: Some("turn".into()),
+                last_sequence: None,
+            },
+            101,
+        )
+        .await
+        .unwrap();
+    fixture.owner.close(102).await.unwrap();
+    let loaded = RuntimeEventStore::load(fixture.pool.clone(), "local")
+        .await
+        .unwrap()
+        .unwrap();
+    let next = loaded
+        .history(2, first.next_before_request_id.as_deref())
+        .await
+        .unwrap();
+    assert_eq!(
+        next.receipts
+            .iter()
+            .map(|receipt| receipt.request_id.as_str())
+            .collect::<Vec<_>>(),
+        ["a-tie", "z-older"]
+    );
+    assert_eq!(next.receipts[1].status, RuntimeRequestStatus::Accepted);
+    assert!(next.next_before_request_id.is_none());
+    let latest = loaded.history(2, None).await.unwrap();
+    assert_eq!(
+        latest
+            .receipts
+            .iter()
+            .map(|receipt| receipt.request_id.as_str())
+            .collect::<Vec<_>>(),
+        ["a-latest", "b-newer"]
+    );
+    for cursor in ["foreign-only", "missing"] {
+        let error = loaded.history(2, Some(cursor)).await.unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<RuntimeEventError>(),
+            Some(RuntimeEventError::InvalidIdentity)
+        ));
+    }
+}
+
+#[tokio::test]
 async fn history_reports_bounded_stream_metadata_explicitly() {
     let fixture = Fixture::new().await;
     for index in 0..100 {

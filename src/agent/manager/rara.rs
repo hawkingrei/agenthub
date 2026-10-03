@@ -185,8 +185,7 @@ impl AgentManager {
                         .lock_owned()
                         .await;
                     manager
-                        .process_supervisor
-                        .stop_session_or_child(&session_id, &pipes.child)
+                        .cleanup_observed_session(&agent_id, &session_id, &pipes.child)
                         .await
                         .context("failed to clean direct runtime after transport loss")?;
                     let current = {

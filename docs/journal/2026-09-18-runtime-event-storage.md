@@ -528,3 +528,44 @@ The local default-config Bazel coverage attempt stopped during repository analys
 `remote_coverage_tools` extraction lacked a `MODULE.bazel`, `REPO.bazel` or `WORKSPACE` marker.
 No test target executed in that attempt. Current-head CI remains the Bazel coverage verification
 surface; the fixture fix does not change Bazel configuration or the shared repository cache.
+
+## Chronological Receipts And Transport Cleanup (2026-10-03)
+
+Caller-supplied request IDs are not chronological. Receipt history now orders by descending
+creation timestamp and request ID, resolving the existing ID cursor inside the owned runtime
+and the same read transaction. Unknown and foreign cursors return the same invalid-cursor
+error. ACK updates do not move a receipt between pages, and new receipts ahead of a cursor
+remain on the newest page. The existing 4096-receipt limit bounds each runtime's sort without
+a schema migration or a new API field.
+
+Transport failure previously stopped the supervised child directly. That clears the shared
+child handle, allowing the exit watcher to return before releasing the loop reservation.
+The failure path now uses the common observed-session cleanup helper under its existing
+configuration gate. Verified process and descendant cleanup precedes reservation, credential
+and activation-authority release, followed by finalization of only the matching local session.
+Transport loss interrupts an unfinished activation without inventing a semantic outcome.
+
+Both focused regressions fail before the fix. The storage fixture exposes a lexicographically
+high older ID displacing the newest receipt. It also covers timestamp ties, cross-runtime ID
+collisions, an insertion between pages, late ACK updates, closed-owner reads and invalid
+cursors. The API fixture covers newest-first ordering and missing-cursor rejection after exit.
+The transport fixture aborts a connection while its provider and a detached descendant remain
+alive, without an activation monitor. It observes the leaked reservation before explicitly
+cleaning the fixture. After the fix, it requires process and descendant removal, interruption,
+durable and in-memory reservation removal, credential retirement and replacement admission at
+a newer generation.
+
+Focused validation passes 77 cases: 27 runtime storage, eight native activation, one history
+API, 39 runtime adapter/event and two guardian recovery cases. Two real-provider opt-in cases
+remain ignored; these fixtures do not establish final provider acceptance.
+Library/test Clippy with warnings denied, workspace formatting and diff checks also pass.
+
+```bash
+cargo test --locked --offline -p agenthub-db --lib runtime_events:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::native:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib runtime_history_route_is_authorized_scoped_and_available_after_exit -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::rara:: -- --test-threads=1
+cargo test --locked --offline -p agenthub --lib agent::manager::loop_launch::tests::recovery:: -- --test-threads=1
+cargo clippy --locked --offline -p agenthub -p agenthub-db --lib --tests -- -D warnings
+cargo fmt --all --check
+```

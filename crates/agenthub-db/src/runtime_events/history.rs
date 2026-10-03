@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 
 use super::{
-    RuntimeCursor, RuntimeEventStore, RuntimeReplayGap, RuntimeRequestReceipt, validate_id,
+    RuntimeCursor, RuntimeEventError, RuntimeEventStore, RuntimeReplayGap, RuntimeRequestReceipt,
+    validate_id,
 };
 
 /// Read-only delivery evidence. It grants neither execution nor session-resume authority.
@@ -65,7 +66,7 @@ impl RuntimeEventStore {
         }))
     }
 
-    /// Receipts are paged in descending request-ID order, independent of ACK updates.
+    /// Receipts are paged by creation time with request-ID ties, independent of ACK updates.
     pub async fn history(
         &self,
         limit: i64,
@@ -113,12 +114,30 @@ impl RuntimeEventStore {
                 })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
+        // Caller-supplied IDs need not be chronological. Resolve the boundary in this
+        // runtime and read snapshot so another runtime cannot influence page membership.
+        let before_created_at: Option<i64> = match before_request_id {
+            Some(request_id) => Some(
+                sqlx::query_scalar(
+                    "SELECT created_at FROM runtime_control_receipts \
+                     WHERE runtime_id = ? AND request_id = ?",
+                )
+                .bind(&self.runtime_id)
+                .bind(request_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or(RuntimeEventError::InvalidIdentity)?,
+            ),
+            None => None,
+        };
         let rows = sqlx::query(
             "SELECT * FROM runtime_control_receipts WHERE runtime_id = ? \
-             AND (? IS NULL OR request_id < ?) ORDER BY request_id DESC LIMIT ?",
+             AND (? IS NULL OR (created_at, request_id) < (?, ?)) \
+             ORDER BY created_at DESC, request_id DESC LIMIT ?",
         )
         .bind(&self.runtime_id)
-        .bind(before_request_id)
+        .bind(before_created_at)
+        .bind(before_created_at)
         .bind(before_request_id)
         .bind(limit + 1)
         .fetch_all(&mut *tx)
