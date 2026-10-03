@@ -20,10 +20,16 @@ existing agent manager. The per-agent event database also provides durable contr
 receipts, event deduplication and contiguous replay cursors. Managed event consumption,
 prompt/follow-up submission, fenced user answers, live permissions and turn cancellation
 are integrated. Authorized receipt/cursor history remains available after exit, and startup
-retires abandoned transport ownership. Loop admission remains an implementation gate tracked
-in [the transition TODO](../todo.md).
+retires abandoned transport ownership. Fresh local Linux loop activations are admitted through
+the shared scheduler and supervised launch/cleanup path, with prompt/skill-source capability
+checks before entry. Cross-process resume, controlled MCP/App/Mem tool sources, semantic outcome
+mapping and durable approval recovery remain deferred gates tracked in
+[the transition TODO](../todo.md). Remote placement, legacy Team sessions and legacy idle loops
+remain rejected.
 
-- Local and remote AgentHub placement of a Rara runtime process.
+The broader integration contract covers:
+
+- Local AgentHub placement of a Rara runtime process, with remote placement reserved for a later slice.
 - Rara app-server / runtime-control interaction as the only supported integration path.
 - Session lifecycle, user input, follow-up, cancel, interrupt, approval, and output event mapping.
 - Prompt-source, skill-source, memory, MCP, hook, and diagnostics boundaries that AgentHub may use
@@ -45,21 +51,22 @@ in [the transition TODO](../todo.md).
 ### Loop Execution Boundary
 
 Rara direct integration participates in the [agent loop runtime](agent-loop-runtime.md) as one
-provider adapter behind the shared scheduler. This is a target alignment; the current integration
-contract below remains authoritative until the loop lifecycle is implemented.
+provider adapter behind the shared scheduler. Fresh local Linux activations use the shared
+reservation, launch, structured finish and supervised cleanup lifecycle. The deferred capability
+contracts below do not enable resume, controlled tool sources or durable approval recovery.
 
 - One admitted activation delivers one configured role prompt through `SubmitUserPrompt`, or
   `SubmitFollowUp` when the adapter reports a reusable live turn. Rara-internal reasoning and tool
   rounds stay inside that activation.
 - Activation identity is AgentHub-owned and distinct from both `agent_sessions.id` and Rara
-  thread/session continuity. Rara continuity is provider continuity that a later activation may
-  resume; losing it must not lose canonical task, IM, or outcome state.
+  thread/session continuity. Resuming provider continuity in a later activation remains deferred;
+  losing it must not lose canonical task, IM, or outcome state.
 - Handshake capabilities gate lifecycle claims. The scheduler must not record a durable wait for a
   Rara approval unless the handshake advertises approval persistence across process exit;
   otherwise Rara approvals keep the live-callback semantics of the runtime approval contract.
-- Semantic guard results map to loop outcomes: `mismatch` records a no-actionable-work outcome
-  with the guard's safe reason, and `needs_clarification` records a wait on the clarification
-  reply. Neither is a crash, a cancellation, or a permission denial.
+- Semantic guard translation remains a deferred contract: `mismatch` must record a
+  no-actionable-work outcome with the guard's safe reason, and `needs_clarification` must record
+  a wait on the clarification reply. Neither is a crash, a cancellation, or a permission denial.
 - A nested Rara subteam executes inside the outer member's activation. Internal subagents do not
   create AgentHub activations, Team members, or mailbox targets.
 - Activation detail and `agenthub doctor agent-trace` join the selected local session to a
@@ -355,7 +362,7 @@ The exact field names can evolve during implementation, but the boundary is stab
 
 The binary defaults to `rara`; provider/model defaults are optional and leave
 runtime-owned credential resolution intact. Only `stdio-jsonl` is accepted.
-Timeouts must be1-600 seconds. Explicit overrides are
+Timeouts must be 1-600 seconds. Explicit overrides are
 `AGENTHUB_RARA_BINARY`, `AGENTHUB_RARA_PROVIDER`, `AGENTHUB_RARA_MODEL`,
 `AGENTHUB_RARA_STARTUP_TIMEOUT_SECONDS` and
 `AGENTHUB_RARA_SHUTDOWN_TIMEOUT_SECONDS`. Unknown fields, including credential
