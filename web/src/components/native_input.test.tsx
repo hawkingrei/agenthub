@@ -65,11 +65,22 @@ describe("native input surfaces", () => {
     expect(container.textContent).toContain("This question is no longer pending.");
   });
 
-  it("updates the visible receipt without duplicating the user message", async () => {
-    for (const [delivery, label] of [["pending", "Sending"], ["accepted", "Accepted"], ["outcome_unknown", "Delivery unknown"]]) {
+  it("updates the same live receipt status without duplicating the user message", async () => {
+    let status: Element | null = null;
+    for (const [delivery, label] of [["pending", "Sending"], ["accepted", "Accepted"], ["rejected", "Rejected"], ["outcome_unknown", "Delivery unknown — check the output before retrying"]]) {
       await act(async () => root.render(<AcpConversationBubble msg={{ kind: "user_message", text: "Check release", delivery }} globalIndex={0} latestVisibleGlobalIndex={0} shouldAutoCollapse={false} collapseCutoff={0} isFrozenView={false} ansi={text => text} markdownRenderVersion={0} />));
-      expect(container.textContent).toContain(label);
+      const statuses = container.querySelectorAll('[role="status"]');
+      expect(statuses).toHaveLength(1);
+      expect(statuses[0].textContent).toBe(label);
+      if (status) expect(statuses[0]).toBe(status);
+      status = statuses[0];
       expect(container.querySelectorAll('[data-acp-message-bubble="user"]')).toHaveLength(1);
     }
+  });
+
+  it("does not add a delivery status to messages without a receipt", async () => {
+    await act(async () => root.render(<AcpConversationBubble msg={{ kind: "user_message", text: "Check release" }} globalIndex={0} latestVisibleGlobalIndex={0} shouldAutoCollapse={false} collapseCutoff={0} isFrozenView={false} ansi={text => text} markdownRenderVersion={0} />));
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.textContent?.trim()).toBe("Check release");
   });
 });

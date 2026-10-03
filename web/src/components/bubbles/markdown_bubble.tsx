@@ -36,7 +36,10 @@ export const MarkdownBubble = React.memo(function MarkdownBubble({
         className={isAgent ? ACP_MESSAGE_BUBBLE_AGENT_CLASS : ACP_MESSAGE_BUBBLE_USER_CLASS}
       >
         {deliveryLabel ? (
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-indigo-600">
+          <div
+            role="status"
+            className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-indigo-600"
+          >
             {deliveryLabel}
           </div>
         ) : null}

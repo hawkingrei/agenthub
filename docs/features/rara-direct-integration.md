@@ -437,8 +437,10 @@ Managed user input atomically persists the attempted conversation message and pr
 receipt under the caller's message ID before sending. A daemon-owned task finishes receipt
 persistence even if the HTTP caller disconnects. Reusing the ID cannot create another
 attempt or send. The conversation separately displays sending, accepted, queued, rejected,
-not-sent or unknown delivery; acceptance is not execution completion. Receipt updates match
-local session, runtime, native session and request ID, including out-of-order history pages.
+not-sent or unknown delivery; acceptance is not execution completion. The delivery label is a
+polite live status region that updates in place without re-announcing the message body. Messages
+without a delivery receipt expose no status region. Receipt updates match local session, runtime,
+native session and request ID, including out-of-order history pages.
 
 The input API accepts an optional `native_input` object with `runtime_id`, `session_id` and
 `turn_id`. Question cards carry their original target through both web workbenches. A stale

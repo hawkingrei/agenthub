@@ -163,6 +163,29 @@ console entries remained, with no new JavaScript exception. Bounded `before_id=1
 returned an empty page; no deeper backfill was introduced. This is local fixture validation,
 not production or native model-call evidence. Temporary browser processes were cleaned up.
 
+## Delivery Status Accessibility Follow-Up (2026-10-03)
+
+Delivery labels now expose `role="status"`, preserving the same polite, atomic live region as
+receipts change. The message body stays outside that region, and messages without a receipt
+have no delivery status. The regression failed before the fix because no status was exposed;
+all 19 focused input/workbench cases pass afterward. Web lint, TypeScript and production build pass.
+
+Chromium's DevTools Protocol accessibility tree confirmed the before/after behavior for sending,
+accepted, rejected and unknown delivery. All four transitions retain one receipt node and one
+message; the fixed status has `live: polite` and `atomic: true`. The isolated real-component fixture
+produced no browser exceptions. This validates browser accessibility semantics, not spoken output
+from a screen reader or the full runtime. Chrome DevTools MCP was unavailable in this session;
+Playwright drove local Chromium and its accessibility protocol instead. Temporary fixtures and
+browser/server processes were removed after validation.
+
+```bash
+cd web
+npm exec vitest -- run src/native_input.test.ts src/components/native_input.test.tsx src/components/use_agents_workbench_panel.test.tsx
+npm run lint
+npm exec tsc -- --noEmit
+npm run build
+```
+
 ## Permission And Cancellation Checkpoint
 
 Committed pending plan/shell input now allocates a callback through the existing permission
